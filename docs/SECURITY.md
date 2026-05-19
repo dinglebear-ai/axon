@@ -95,7 +95,7 @@ Source: `src/core/http/client.rs`.
 - `fetch_html()` validates the final URL before issuing the request (`client.rs:70`).
 - Test builds get a fresh leaked `reqwest::Client` per call to avoid cross-runtime "dispatch task is gone" failures and to keep `httpmock` working.
 
-The shared user-agent honours `AXON_CHROME_USER_AGENT` if set.
+The shared User-Agent resolves in priority order: `AXON_USER_AGENT` → `AXON_CHROME_USER_AGENT` → built-in Firefox browser UA (`DEFAULT_UA` in `src/core/http/ua.rs`). All HTTP paths — the `http_client()` singleton, Spider crawl/scrape/screenshot paths, and vertical extractors — use this resolved value consistently. Reddit ingestion uses its own OAuth-format UA regardless of these settings.
 
 ---
 

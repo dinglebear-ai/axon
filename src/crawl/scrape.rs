@@ -2,7 +2,7 @@ use crate::core::config::{Config, RenderMode};
 use crate::core::content::{
     build_selector_config, extract_meta_description, find_between, to_markdown,
 };
-use crate::core::http::{normalize_url, ssrf_blacklist_compact_strings, validate_url};
+use crate::core::http::{axon_ua, normalize_url, ssrf_blacklist_compact_strings, validate_url};
 use crate::core::logging::log_warn;
 use spider::website::Website;
 use spider_transformations::transformation::content::SelectorConfiguration;
@@ -48,9 +48,11 @@ pub(crate) fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, B
     let retries = cfg.fetch_retries.min(u8::MAX as usize) as u8;
     website.with_retry(retries);
 
-    if let Some(ua) = cfg.chrome_user_agent.as_deref() {
-        website.with_user_agent(Some(ua));
-    }
+    website.with_user_agent(Some(
+        cfg.chrome_user_agent
+            .as_deref()
+            .unwrap_or_else(|| axon_ua()),
+    ));
     if let Some(proxy) = cfg.chrome_proxy.as_deref() {
         website.with_proxies(Some(vec![proxy.to_string()]));
     }
@@ -165,9 +167,11 @@ fn build_scrape_fallback_client(cfg: &Config) -> Result<reqwest::Client, Box<dyn
         warn_invalid_certs_once();
         builder = builder.danger_accept_invalid_certs(true);
     }
-    if let Some(ua) = cfg.chrome_user_agent.as_deref() {
-        builder = builder.user_agent(ua);
-    }
+    builder = builder.user_agent(
+        cfg.chrome_user_agent
+            .as_deref()
+            .unwrap_or_else(|| axon_ua()),
+    );
     if let Some(proxy) = cfg.chrome_proxy.as_deref().filter(|p| !p.trim().is_empty()) {
         builder = builder.proxy(reqwest::Proxy::all(proxy)?);
     }

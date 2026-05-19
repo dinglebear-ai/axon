@@ -380,6 +380,7 @@ dependencies = [
  "dashmap",
  "dialoguer",
  "dotenvy",
+ "flate2",
  "futures",
  "futures-util",
  "hex",

@@ -3,7 +3,9 @@ use super::deterministic::{
 };
 use super::{ExtractionMetrics, to_markdown};
 use crate::core::config::RenderMode;
-use crate::core::http::{http_client, parse_custom_headers, ssrf_blacklist_patterns, validate_url};
+use crate::core::http::{
+    axon_ua, http_client, parse_custom_headers, ssrf_blacklist_patterns, validate_url,
+};
 use crate::core::logging::log_warn;
 use spider::website::Website;
 use std::collections::HashMap;
@@ -355,10 +357,10 @@ pub async fn run_extract_with_engine(
             website.with_headers(Some(map));
         }
     }
-    // Wire user-agent so HTTP extract crawls use the same UA as scrape/crawl.
-    if let Some(ua) = wcfg.user_agent.as_deref() {
-        website.with_user_agent(Some(ua));
-    }
+    // Always set UA so extract crawls are consistent with scrape/crawl paths.
+    website.with_user_agent(Some(
+        wcfg.user_agent.as_deref().unwrap_or_else(|| axon_ua()),
+    ));
     let mut website = website.build().map_err(|_| "build website")?;
 
     let rx = website.subscribe(16);

@@ -65,7 +65,12 @@ pub struct Config {
     /// HTTP proxy URL for Chrome requests. Env: `AXON_CHROME_PROXY`.
     pub chrome_proxy: Option<String>,
 
+    /// General-purpose `User-Agent` for all HTTP requests. Env: `AXON_USER_AGENT`.
+    /// Chrome-specific paths fall back to this when `chrome_user_agent` is `None`.
+    pub user_agent: Option<String>,
+
     /// Custom `User-Agent` header sent by Chrome. Env: `AXON_CHROME_USER_AGENT`.
+    /// Falls back to `user_agent` when unset.
     pub chrome_user_agent: Option<String>,
 
     /// Timeout in milliseconds to wait for Chrome bootstrap. TOML: `chrome.bootstrap-timeout-ms`.

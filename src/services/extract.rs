@@ -4,6 +4,7 @@ use crate::core::config::Config;
 use crate::core::content::{
     DeterministicExtractionEngine, ExtractWebConfig, run_extract_with_engine,
 };
+use crate::core::http::axon_ua;
 use crate::core::logging::log_done;
 use crate::jobs::backend::{JobKind, JobPayload};
 use crate::jobs::config_snapshot::extract_config_json;
@@ -300,7 +301,12 @@ fn build_extract_web_config(cfg: &Config, url: String, prompt: &str) -> ExtractW
         accept_invalid_certs: cfg.accept_invalid_certs,
         request_timeout_ms: cfg.request_timeout_ms,
         fetch_retries: cfg.fetch_retries,
-        user_agent: cfg.chrome_user_agent.clone(),
+        user_agent: Some(
+            cfg.chrome_user_agent
+                .as_deref()
+                .unwrap_or_else(|| axon_ua())
+                .to_string(),
+        ),
         chrome_network_idle_timeout_secs: cfg.chrome_network_idle_timeout_secs,
     }
 }

@@ -13,6 +13,7 @@ fn scrape(url: &str, markdown: &str) -> ScrapeResult {
         next_cursor: None,
         remaining_tokens_estimate: None,
         backend: None,
+        follow_crawl_urls: vec![],
     }
 }
 

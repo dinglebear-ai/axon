@@ -3,10 +3,12 @@
 //! Matches ebay.com/itm/{id} and /sch/* URLs.
 //! auto_dispatch: false — eBay deploys antibot; explicit opt-in only.
 //!
-//! Attempts to fetch JSON-LD structured data from listing pages.
+//! Uses Chrome rendering when configured, falls back to plain reqwest.
 //! Returns VerticalBlockedAntibot when the response signals a challenge.
 
+use crate::core::config::RenderMode;
 use crate::core::http::http_client;
+use crate::crawl::scrape::{build_scrape_website, fetch_single_page};
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
@@ -25,7 +27,6 @@ pub fn matches(url: &str) -> bool {
         return false;
     };
     let host = parsed.host_str().unwrap_or_default().to_lowercase();
-    // Match ebay.com, www.ebay.com, ebay.co.uk, ebay.de, etc.
     if !host.contains("ebay.") {
         return false;
     }
@@ -37,7 +38,74 @@ pub fn matches(url: &str) -> bool {
     matches!(segs[0], "itm" | "sch" | "p")
 }
 
-pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+    let body = fetch_page_body(url, ctx).await?;
+
+    let is_blocked = body.contains("Robot or human?")
+        || body.contains("Access Denied")
+        || body.contains("captcha")
+        || (body.len() < 5000 && body.contains("automated"));
+
+    if is_blocked {
+        return Err(ServiceTaxonomyError::VerticalBlockedAntibot {
+            vertical: INFO.name,
+            vendor: crate::services::error::ChallengeVendor::Other("ebay-bot"),
+        });
+    }
+
+    let jsonld = extract_jsonld(&body);
+    let item_id = extract_item_id(url);
+    build_scraped_doc(url, jsonld, item_id)
+}
+
+async fn fetch_page_body(url: &str, ctx: &VerticalContext) -> Result<String, VerticalError> {
+    // Only use Chrome when explicitly configured — AutoSwitch means "try HTTP
+    // first" which is what the reqwest fallback already does for structured APIs.
+    let use_chrome =
+        ctx.cfg.chrome_remote_url.is_some() && ctx.cfg.render_mode == RenderMode::Chrome;
+
+    if use_chrome {
+        return fetch_via_chrome(url, ctx).await;
+    }
+    fetch_via_reqwest(url, ctx).await
+}
+
+async fn fetch_via_chrome(url: &str, ctx: &VerticalContext) -> Result<String, VerticalError> {
+    let mut website = build_scrape_website(ctx.cfg.as_ref(), url).map_err(|_| {
+        VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        }
+    })?;
+    let page = fetch_single_page(ctx.cfg.as_ref(), &mut website, url)
+        .await
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
+
+    match page.status_code {
+        403 | 503 => Err(ServiceTaxonomyError::VerticalBlockedAntibot {
+            vertical: INFO.name,
+            vendor: crate::services::error::ChallengeVendor::Other("ebay-bot"),
+        }),
+        404 => Err(VerticalError::VerticalTargetNotFound {
+            vertical: INFO.name,
+            url: url.to_string(),
+        }),
+        429 => Err(VerticalError::VerticalRateLimited {
+            vertical: INFO.name,
+            retry_after: None,
+        }),
+        200 | 0 => Ok(page.html),
+        s => Err(VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: s,
+        }),
+    }
+}
+
+async fn fetch_via_reqwest(url: &str, ctx: &VerticalContext) -> Result<String, VerticalError> {
     let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
         vertical: INFO.name,
         status: 0,
@@ -45,7 +113,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let resp = client
         .get(url)
-        .header("User-Agent", "Mozilla/5.0 (compatible; axon-bot/1.0)")
+        .header("User-Agent", ctx.ua())
         .header("Accept", "text/html,application/xhtml+xml")
         .header("Accept-Language", "en-US,en;q=0.9")
         .send()
@@ -84,55 +152,103 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         }
     }
 
-    let body = resp
-        .text()
+    resp.text()
         .await
         .map_err(|_| VerticalError::VerticalTargetUnavailable {
             vertical: INFO.name,
             status,
-        })?;
+        })
+}
 
-    // Heuristic antibot detection
-    let is_blocked = body.contains("Robot or human?")
-        || body.contains("Access Denied")
-        || body.contains("captcha")
-        || (body.len() < 5000 && body.contains("automated"));
-
-    if is_blocked {
-        return Err(ServiceTaxonomyError::VerticalBlockedAntibot {
-            vertical: INFO.name,
-            vendor: crate::services::error::ChallengeVendor::Other("ebay-bot"),
-        });
+fn extract_item_id(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    let path = parsed.path();
+    let segs: Vec<&str> = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
+    // /itm/{id} — the most common form
+    if segs.first() == Some(&"itm")
+        && let Some(id) = segs.get(1)
+    {
+        // Strip any trailing slug suffix (e.g. /itm/12345678/some-title)
+        let numeric: String = id.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !numeric.is_empty() {
+            return Some(numeric);
+        }
     }
+    // /p/{id} (product page alternate form)
+    if segs.first() == Some(&"p") {
+        return segs.get(1).map(|s| s.to_string());
+    }
+    None
+}
 
-    let jsonld = extract_jsonld(&body);
+fn build_scraped_doc(
+    url: &str,
+    jsonld: Option<serde_json::Value>,
+    item_id: Option<String>,
+) -> Result<ScrapedDoc, VerticalError> {
     let title = jsonld
         .as_ref()
         .and_then(|j| j["name"].as_str())
         .map(str::to_string);
 
-    let mut md = "# eBay Listing
+    let mut md = if let Some(ref t) = title {
+        format!("# {t}\n\n")
+    } else {
+        "# eBay Listing\n\n".to_string()
+    };
 
-"
-    .to_string();
-    if let Some(ref t) = title {
-        md = format!("# {t}\n\n");
-    }
     if let Some(ref j) = jsonld {
-        if let Some(price) = j["offers"]["price"].as_str() {
-            md.push_str(&format!("**Price:** {price}\n"));
+        let price = j["offers"]["price"].as_str();
+        let currency = j["offers"]["priceCurrency"].as_str().unwrap_or("");
+        if let Some(p) = price {
+            if currency.is_empty() {
+                md.push_str(&format!("**Price:** {p}\n"));
+            } else {
+                md.push_str(&format!("**Price:** {p} {currency}\n"));
+            }
         }
-        if let Some(condition) = j["offers"]["itemCondition"].as_str() {
+        let condition = j["offers"]["itemCondition"].as_str().unwrap_or("");
+        if !condition.is_empty() {
             let condition_short = condition.split('/').next_back().unwrap_or(condition);
-            md.push_str(&format!("**Condition:** {condition_short}\n"));
+            // Strip trailing "Condition" suffix e.g. "NewCondition" → "New"
+            let cond_clean = condition_short.trim_end_matches("Condition");
+            md.push_str(&format!("**Condition:** {cond_clean}\n"));
+        }
+        let avail = j["offers"]["availability"].as_str().unwrap_or("");
+        if !avail.is_empty() {
+            let avail_short = avail.split('/').next_back().unwrap_or(avail);
+            md.push_str(&format!("**Availability:** {avail_short}\n"));
         }
         if let Some(brand) = j["brand"]["name"].as_str() {
             md.push_str(&format!("**Brand:** {brand}\n"));
         }
+        let rating = j["aggregateRating"]["ratingValue"].as_f64();
+        let review_count = j["aggregateRating"]["reviewCount"].as_u64();
+        if let Some(r) = rating {
+            let rc = review_count
+                .map(|n| format!(" ({n} reviews)"))
+                .unwrap_or_default();
+            md.push_str(&format!("**Rating:** {r:.1}{rc}\n"));
+        }
+        if let Some(img) = j["image"].as_str().or_else(|| {
+            j["image"]
+                .as_array()
+                .and_then(|a| a.first().and_then(|v| v.as_str()))
+        }) {
+            md.push_str(&format!("**Image:** {img}\n"));
+        }
         if let Some(desc) = j["description"].as_str() {
-            let excerpt: String = desc.chars().take(400).collect();
+            let excerpt: String = desc.chars().take(800).collect();
             md.push_str(&format!("\n{excerpt}\n"));
         }
+    }
+
+    if let Some(ref id) = item_id {
+        md.push_str(&format!("\n**Item ID:** {id}\n"));
     }
     md.push_str(&format!("\n**eBay:** {url}\n"));
 
@@ -141,8 +257,9 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: jsonld,
+        follow_crawl_urls: vec![],
     })
 }
 

@@ -4,7 +4,7 @@ use super::url_utils::{
 };
 use crate::core::config::parse::is_docker_service_host;
 use crate::core::config::{Config, RenderMode};
-use crate::core::http::{cdp_discovery_url, ssrf_blacklist_compact_strings};
+use crate::core::http::{axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings};
 use spider::CaseInsensitiveString;
 use spider::configuration::RedirectPolicy;
 use spider::features::chrome_common::{
@@ -235,9 +235,11 @@ fn apply_request_and_identity_settings(cfg: &Config, website: &mut Website, star
     if let Some(ref proxy) = cfg.chrome_proxy {
         website.with_proxies(Some(vec![proxy.clone()]));
     }
-    if let Some(ref ua) = cfg.chrome_user_agent {
-        website.with_user_agent(Some(ua.as_str()));
-    }
+    website.with_user_agent(Some(
+        cfg.chrome_user_agent
+            .as_deref()
+            .unwrap_or_else(|| axon_ua()),
+    ));
 }
 
 fn apply_custom_headers(cfg: &Config, website: &mut Website) {

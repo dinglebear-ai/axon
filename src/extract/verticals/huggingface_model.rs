@@ -11,7 +11,7 @@ use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "huggingface_model",
     label: "HuggingFace Model",
-    description: "Fetches model metadata from huggingface.co/api/models — downloads, likes, tasks, architecture.",
+    description: "Fetches model metadata from huggingface.co/api/models — downloads, likes, tasks, architecture, model card.",
     url_patterns: &["https://huggingface.co/{org}/{model}"],
     auto_dispatch: true,
 };
@@ -52,7 +52,67 @@ pub fn matches(url: &str) -> bool {
     !RESERVED_NAMESPACES.contains(&ns.as_str())
 }
 
-pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+/// Fetch the model card README (non-fatal).
+async fn fetch_model_card(model_id: &str) -> Option<String> {
+    let client = http_client().ok()?;
+    let readme_url = format!("https://huggingface.co/{model_id}/raw/main/README.md");
+    let mut req = client
+        .get(&readme_url)
+        .header("User-Agent", crate::core::http::axon_api_ua());
+    if let Ok(token) = std::env::var("HF_TOKEN")
+        && !token.is_empty()
+    {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let resp = req.send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let text = resp.text().await.ok()?;
+    // Truncate to 30_000 chars
+    let truncated: String = text.chars().take(30_000).collect();
+    Some(truncated)
+}
+
+/// Aggregated data for building HuggingFace model markdown.
+struct HfMarkdownData<'a> {
+    id: &'a str,
+    pipeline_tag: &'a str,
+    library_name: &'a str,
+    downloads: u64,
+    likes: u64,
+    tags: &'a [&'a str],
+    model_card: Option<&'a str>,
+    url: &'a str,
+}
+
+/// Build markdown from HuggingFace model metadata.
+fn build_hf_markdown(d: &HfMarkdownData<'_>) -> String {
+    let mut md = format!("# {}\n\n", d.id);
+    if !d.pipeline_tag.is_empty() {
+        md.push_str(&format!("**Task:** {}\n", d.pipeline_tag));
+    }
+    if !d.library_name.is_empty() {
+        md.push_str(&format!("**Library:** {}\n", d.library_name));
+    }
+    md.push_str(&format!(
+        "**Downloads:** {} | **Likes:** {}\n",
+        d.downloads, d.likes
+    ));
+    if !d.tags.is_empty() {
+        let relevant: Vec<&str> = d.tags.iter().take(10).copied().collect();
+        md.push_str(&format!("\n**Tags:** {}\n", relevant.join(", ")));
+    }
+    md.push_str(&format!("\n**HuggingFace:** {}\n", d.url));
+    if let Some(readme) = d.model_card {
+        md.push_str("\n## Model Card\n\n");
+        md.push_str(readme);
+        md.push('\n');
+    }
+    md
+}
+
+pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
         url: url.to_string(),
@@ -77,13 +137,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let mut req = client
         .get(&api_url)
-        .header(
-            "User-Agent",
-            format!(
-                "axon/{} (+https://github.com/jmagar/axon_rust)",
-                env!("CARGO_PKG_VERSION")
-            ),
-        )
+        .header("User-Agent", ctx.api_ua())
         .header("Accept", "application/json");
 
     // Optional HF_TOKEN for higher rate limits
@@ -93,15 +147,15 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         req = req.header("Authorization", format!("Bearer {token}"));
     }
 
-    let resp = req
-        .send()
-        .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status: 0,
-        })?;
+    // Run API call and model card fetch in parallel
+    let (api_resp, model_card) = tokio::join!(req.send(), fetch_model_card(&model_id));
 
-    let status = resp.status().as_u16();
+    let api_resp = api_resp.map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status: 0,
+    })?;
+
+    let status = api_resp.status().as_u16();
     match status {
         404 => {
             return Err(VerticalError::VerticalTargetNotFound {
@@ -125,7 +179,8 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     }
 
     let data: serde_json::Value =
-        resp.json()
+        api_resp
+            .json()
             .await
             .map_err(|_| VerticalError::VerticalTargetUnavailable {
                 vertical: INFO.name,
@@ -143,28 +198,24 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         .unwrap_or_default();
 
     let title = Some(id.to_string());
-    let mut md = format!("# {id}\n\n");
-    if !pipeline_tag.is_empty() {
-        md.push_str(&format!("**Task:** {pipeline_tag}\n"));
-    }
-    if !library_name.is_empty() {
-        md.push_str(&format!("**Library:** {library_name}\n"));
-    }
-    md.push_str(&format!(
-        "**Downloads:** {downloads} | **Likes:** {likes}\n"
-    ));
-    if !tags.is_empty() {
-        let relevant: Vec<&str> = tags.iter().take(10).copied().collect();
-        md.push_str(&format!("\n**Tags:** {}\n", relevant.join(", ")));
-    }
-    md.push_str(&format!("\n**HuggingFace:** {url}\n"));
+    let md = build_hf_markdown(&HfMarkdownData {
+        id,
+        pipeline_tag,
+        library_name,
+        downloads,
+        likes,
+        tags: &tags,
+        model_card: model_card.as_deref(),
+        url,
+    });
 
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(data),
+        follow_crawl_urls: vec![],
     })
 }

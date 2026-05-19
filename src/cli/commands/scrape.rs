@@ -4,6 +4,7 @@ mod scrape_migration_tests;
 use super::common::parse_urls;
 use crate::core::config::Config;
 use crate::core::content::url_to_filename;
+use crate::core::http::axon_ua;
 use crate::core::http::validate_url;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_option, print_phase};
@@ -21,7 +22,9 @@ pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {
     print_option("proxy", cfg.chrome_proxy.as_deref().unwrap_or("none"));
     print_option(
         "userAgent",
-        cfg.chrome_user_agent.as_deref().unwrap_or("spider-default"),
+        cfg.chrome_user_agent
+            .as_deref()
+            .unwrap_or_else(|| axon_ua()),
     );
     print_option(
         "timeoutMs",
@@ -181,8 +184,32 @@ async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<(String, String)>,
     let result = scrape_service::scrape(cfg, url, None).await?;
     let normalized = result.url.clone();
     let markdown = result.markdown.clone();
+    let follow_crawl_urls = result.follow_crawl_urls.clone();
 
     emit_scrape_result(cfg, &result)?;
+
+    // Enqueue follow-up crawl jobs (e.g. docs.rs crawl after crates.io scrape).
+    // Only when embed is on — no point crawling if we're not indexing.
+    // Deduplicate against the scraped URL itself and cap at 5 follow-ups.
+    if cfg.embed && !follow_crawl_urls.is_empty() {
+        let unique: Vec<&String> = follow_crawl_urls
+            .iter()
+            .filter(|u| u.as_str() != normalized.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .take(5)
+            .collect();
+        for follow_url in unique {
+            match crate::jobs::crawl::start_crawl_job(cfg, follow_url).await {
+                Ok(job_id) => log_info(&format!(
+                    "queued follow-up crawl: url={follow_url} job={job_id}"
+                )),
+                Err(e) => log_warn(&format!(
+                    "could not queue follow-up crawl: url={follow_url} err={e}"
+                )),
+            }
+        }
+    }
 
     if cfg.embed {
         Ok(Some((normalized, markdown)))

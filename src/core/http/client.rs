@@ -9,16 +9,14 @@ use super::normalize::normalize_url;
 use super::ssrf::validate_url;
 
 #[cfg(not(test))]
-pub(crate) static HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> = LazyLock::new(|| {
-    let ua = std::env::var("AXON_CHROME_USER_AGENT").ok();
-    build_client(30, ua.as_deref()).map_err(|e| e.to_string())
-});
+pub(crate) static HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> =
+    LazyLock::new(|| build_client(30, Some(super::ua::axon_ua())).map_err(|e| e.to_string()));
 
 #[cfg(not(test))]
 pub(crate) static INTERNAL_SERVICE_HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> =
     LazyLock::new(|| {
-        let ua = std::env::var("AXON_CHROME_USER_AGENT").ok();
-        build_client_without_ssrf_resolver(30, ua.as_deref()).map_err(|e| e.to_string())
+        build_client_without_ssrf_resolver(30, Some(super::ua::axon_ua()))
+            .map_err(|e| e.to_string())
     });
 
 #[cfg(not(test))]

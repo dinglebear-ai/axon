@@ -17,6 +17,9 @@ pub struct ScrapedDoc {
     pub extractor_version: u32,
     /// Optional structured-data blob (JSON-LD, API response fragment).
     pub structured: Option<serde_json::Value>,
+    /// URLs the caller should crawl after embedding this doc (e.g. the docs
+    /// site for a crate). Empty for most verticals. Propagated to `ScrapeResult`.
+    pub follow_crawl_urls: Vec<String>,
 }
 
 /// Catalog entry for one registered vertical extractor.
