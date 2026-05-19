@@ -355,6 +355,50 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
 
 #[tokio::test]
 #[serial]
+async fn openapi_docs_are_public_and_list_rest_routes() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    let spec = client
+        .get(format!("{base}/api-docs/openapi.json"))
+        .send()
+        .await
+        .expect("openapi spec request");
+    let ui = client
+        .get(format!("{base}/docs"))
+        .send()
+        .await
+        .expect("swagger ui request");
+
+    assert_eq!(spec.status(), StatusCode::OK);
+    assert_eq!(ui.status(), StatusCode::OK);
+
+    let spec_json: serde_json::Value = spec.json().await.expect("openapi json");
+    let paths = spec_json["paths"].as_object().expect("openapi paths");
+    for path in [
+        "/v1/query",
+        "/v1/ask",
+        "/v1/crawl",
+        "/v1/crawl/{id}",
+        "/v1/embed",
+        "/v1/extract",
+        "/v1/ingest",
+        "/v1/watch",
+        "/v1/watch/{id}/run",
+    ] {
+        assert!(
+            paths.contains_key(path),
+            "OpenAPI spec should include {path}"
+        );
+    }
+
+    stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;

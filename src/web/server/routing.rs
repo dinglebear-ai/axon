@@ -78,6 +78,7 @@ pub(super) fn router(
     let panel_router = Router::new()
         .route("/healthz", get(super::super::health::healthz))
         .route("/readyz", get(super::super::health::readyz))
+        .merge(super::openapi::docs_router())
         .route("/api/panel/state", get(handlers::panel_state))
         .route("/api/panel/login", post(handlers::login))
         .route(
