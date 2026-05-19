@@ -171,6 +171,12 @@ impl AxonMcpServer {
                 let result = crawl_svc::crawl_status(&service_context, id)
                     .await
                     .map_err(|e| logged_internal_error("crawl.status", e.as_ref()))?;
+                let Some(result) = result else {
+                    return Err(ErrorData::invalid_params(
+                        format!("crawl job {id} not found"),
+                        None,
+                    ));
+                };
                 let output_files = result.output_files;
                 let output_file_handles = result.output_file_handles;
                 Ok(AxonToolResponse::ok(

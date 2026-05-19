@@ -64,6 +64,7 @@ pub(super) fn router(
             "/v1/ingest",
             handlers::async_jobs::ingest_router(Arc::clone(&service_context)),
         )
+        .route("/v1/migrate", post(handlers::admin::migrate))
         .route("/v1/dedupe", post(handlers::admin::dedupe))
         .route(
             "/v1/watch",
@@ -166,7 +167,10 @@ async fn block_loopback_destructive_request(
 
 fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
-        && (path == "/v1/dedupe" || path == "/v1/watch" || path.starts_with("/v1/watch/"))
+        && (path == "/v1/dedupe"
+            || path == "/v1/migrate"
+            || path == "/v1/watch"
+            || path.starts_with("/v1/watch/"))
     {
         return true;
     }

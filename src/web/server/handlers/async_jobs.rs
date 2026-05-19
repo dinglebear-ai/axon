@@ -88,6 +88,16 @@ pub(crate) fn ingest_router(service_context: Arc<ServiceContext>) -> Router<WebS
         ))
 }
 
+/// Validate URLs for SSRF before enqueue — rejects private-IP targets with
+/// a 400 so callers learn immediately rather than after a worker run.
+fn validate_ssrf_urls(urls: &[String]) -> Result<(), HttpError> {
+    for url in urls {
+        crate::core::http::validate_url(url)
+            .map_err(|e| HttpError::bad_request(format!("{url}: {e}").as_str()))?;
+    }
+    Ok(())
+}
+
 #[utoipa::path(
     post,
     path = "/v1/crawl",
@@ -106,6 +116,7 @@ pub(crate) async fn start_crawl(
     if req.urls.is_empty() {
         return Err(HttpError::bad_request("urls cannot be empty"));
     }
+    validate_ssrf_urls(&req.urls)?;
     let cfg = cfg.apply_overrides(&ConfigOverrides {
         max_pages: req.max_pages,
         max_depth: req.max_depth,
@@ -135,6 +146,73 @@ pub(crate) async fn start_crawl(
     accepted_job("/v1/crawl", job_id)
 }
 
+/// Guard embed input against path traversal and symlinks — mirrors MCP's
+/// `validate_mcp_embed_input_with_roots`. Runs blocking I/O in a spawn_blocking
+/// task so the async handler does not block the tokio executor.
+async fn validate_embed_path(input: &str) -> Result<(), HttpError> {
+    let input = input.trim().to_string();
+    tokio::task::spawn_blocking(move || validate_embed_path_sync(&input))
+        .await
+        .map_err(|e| HttpError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", e.to_string()))?
+}
+
+fn validate_embed_path_sync(input: &str) -> Result<(), HttpError> {
+    if input.starts_with("http://") || input.starts_with("https://") {
+        return crate::core::http::validate_url(input)
+            .map_err(|e| HttpError::bad_request(e.to_string().as_str()));
+    }
+    let path = std::path::Path::new(input);
+    if !path.exists() {
+        return Ok(());
+    }
+    if std::fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err(HttpError::bad_request(
+            "local embed path must not be a symlink",
+        ));
+    }
+    let allowed_roots: Vec<std::path::PathBuf> = std::env::var("AXON_MCP_EMBED_ALLOWED_ROOTS")
+        .ok()
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|p| {
+                    let t = p.trim();
+                    (!t.is_empty()).then(|| std::path::PathBuf::from(t))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if allowed_roots.is_empty() {
+        return Err(HttpError::bad_request(
+            "local file embedding is disabled; set AXON_MCP_EMBED_ALLOWED_ROOTS to allow specific roots",
+        ));
+    }
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|e| HttpError::bad_request(format!("invalid embed path: {e}").as_str()))?;
+    let root = allowed_roots
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .find(|root| canonical.starts_with(root))
+        .ok_or_else(|| {
+            HttpError::bad_request(
+                "local embed path must be under one of AXON_MCP_EMBED_ALLOWED_ROOTS",
+            )
+        })?;
+    if let Ok(relative) = canonical.strip_prefix(&root) {
+        for component in relative.components() {
+            let name = component.as_os_str().to_string_lossy();
+            if name.starts_with('.') {
+                return Err(HttpError::bad_request(
+                    "local embed path must not include dotfiles",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[utoipa::path(
     post,
     path = "/v1/embed",
@@ -151,6 +229,7 @@ pub(crate) async fn start_embed(
     Json(req): Json<EmbedStartRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
     let input = super::rag::required_text(&req.input, "input")?;
+    validate_embed_path(input).await?;
     let outcome =
         services::embed::embed_start_with_context(&cfg, input, &state.service_context, None, None)
             .await
@@ -176,6 +255,7 @@ pub(crate) async fn start_extract(
     if req.urls.is_empty() {
         return Err(HttpError::bad_request("urls cannot be empty"));
     }
+    validate_ssrf_urls(&req.urls)?;
     let cfg = cfg.apply_overrides(&ConfigOverrides {
         query: Some(req.prompt.clone()),
         max_pages: req.max_pages,
