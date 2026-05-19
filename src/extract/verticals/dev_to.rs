@@ -11,7 +11,7 @@ use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "dev_to",
     label: "DEV Community Article",
-    description: "Fetches article metadata from dev.to API — title, tags, reactions, reading time.",
+    description: "Fetches article metadata and body from dev.to API — title, tags, reactions, reading time, full article body.",
     url_patterns: &["https://dev.to/{username}/{slug}"],
     auto_dispatch: true,
 };
@@ -38,7 +38,7 @@ pub fn matches(url: &str) -> bool {
     )
 }
 
-pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
         url: url.to_string(),
@@ -63,13 +63,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let resp = client
         .get(&api_url)
-        .header(
-            "User-Agent",
-            format!(
-                "axon/{} (+https://github.com/jmagar/axon_rust)",
-                env!("CARGO_PKG_VERSION")
-            ),
-        )
+        .header("User-Agent", ctx.api_ua())
         .header("Accept", "application/json")
         .send()
         .await
@@ -129,7 +123,6 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     };
 
     let title_str = data["title"].as_str().unwrap_or("Unknown article");
-    let description = data["description"].as_str().unwrap_or("");
     let reading_time = data["reading_time_minutes"].as_u64().unwrap_or(0);
     let reactions = data["positive_reactions_count"].as_u64().unwrap_or(0);
     let tags: Vec<&str> = data["tag_list"]
@@ -137,15 +130,24 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
 
+    // Use body_markdown if available, fall back to description
+    let body_markdown = data["body_markdown"].as_str().unwrap_or("");
+    let description = data["description"].as_str().unwrap_or("");
+    let body = if !body_markdown.is_empty() {
+        body_markdown
+    } else {
+        description
+    };
+
     let title = Some(title_str.to_string());
     let mut md = format!("# {title_str}\n\n");
     md.push_str(&format!("**Author:** {username} | **Reading time:** {reading_time} min | **Reactions:** {reactions}\n\n"));
-    if !description.is_empty() {
-        md.push_str(description);
-        md.push('\n');
-    }
     if !tags.is_empty() {
-        md.push_str(&format!("\n**Tags:** {}\n", tags.join(", ")));
+        md.push_str(&format!("**Tags:** {}\n\n", tags.join(", ")));
+    }
+    if !body.is_empty() {
+        md.push_str(body);
+        md.push('\n');
     }
     md.push_str(&format!("\n**DEV:** {url}\n"));
 
@@ -154,7 +156,8 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(data),
+        follow_crawl_urls: vec![],
     })
 }

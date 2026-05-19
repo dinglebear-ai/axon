@@ -11,7 +11,7 @@ use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "docker_hub",
     label: "Docker Hub Image",
-    description: "Fetches image metadata from hub.docker.com/v2/repositories — pulls, stars, description, tags.",
+    description: "Fetches image metadata from hub.docker.com/v2/repositories — pulls, stars, description, full description, last updated.",
     url_patterns: &[
         "https://hub.docker.com/r/{namespace}/{repo}",
         "https://hub.docker.com/_/{repo}",
@@ -36,7 +36,7 @@ pub fn matches(url: &str) -> bool {
     segs[0] == "r" || segs[0] == "_"
 }
 
-pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
         url: url.to_string(),
@@ -64,13 +64,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let resp = client
         .get(&api_url)
-        .header(
-            "User-Agent",
-            format!(
-                "axon/{} (+https://github.com/jmagar/axon_rust)",
-                env!("CARGO_PKG_VERSION")
-            ),
-        )
+        .header("User-Agent", ctx.api_ua())
         .header("Accept", "application/json")
         .send()
         .await
@@ -117,6 +111,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     let pull_count = data["pull_count"].as_u64().unwrap_or(0);
     let star_count = data["star_count"].as_u64().unwrap_or(0);
     let is_official = data["is_official"].as_bool().unwrap_or(false);
+    let last_updated = data["last_updated"].as_str().unwrap_or("");
 
     let title = Some(full_name.to_string());
     let mut md = format!("# {full_name}\n\n");
@@ -130,9 +125,13 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     md.push_str(&format!(
         "**Pulls:** {pull_count} | **Stars:** {star_count}\n"
     ));
+    if !last_updated.is_empty() {
+        md.push_str(&format!("**Last Updated:** {last_updated}\n"));
+    }
     if !full_description.is_empty() {
-        let excerpt: String = full_description.chars().take(500).collect();
-        md.push_str(&format!("\n{excerpt}\n"));
+        md.push_str("\n## Full Description\n\n");
+        md.push_str(full_description);
+        md.push('\n');
     }
     md.push_str(&format!("\n**Docker Hub:** {url}\n"));
 
@@ -141,7 +140,8 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(data),
+        follow_crawl_urls: vec![],
     })
 }

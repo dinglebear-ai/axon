@@ -11,7 +11,7 @@ use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "npm",
     label: "npm Package",
-    description: "Fetches package metadata from registry.npmjs.org — version, description, author, license, dist-tags.",
+    description: "Fetches package metadata from registry.npmjs.org — version, description, author, license, readme, keywords, repository.",
     url_patterns: &[
         "https://npmjs.com/package/{name}",
         "https://npmjs.com/package/@{scope}/{name}",
@@ -33,7 +33,102 @@ pub fn matches(url: &str) -> bool {
     segs.len() >= 2 && segs[0] == "package"
 }
 
-pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+/// Extract author name from the JSON value (string or object).
+fn extract_author(data: &serde_json::Value) -> String {
+    if let Some(s) = data["author"].as_str() {
+        s.to_string()
+    } else if let Some(obj) = data["author"].as_object() {
+        obj.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Clean a repository URL: strip git+ prefix, .git suffix, ssh/git schemes.
+fn clean_repo_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    // Strip git+ prefix
+    let s = s.strip_prefix("git+").unwrap_or(s);
+    // Only keep http/https
+    if !s.starts_with("https://") && !s.starts_with("http://") {
+        return None;
+    }
+    // Strip .git suffix
+    let s = s.strip_suffix(".git").unwrap_or(s);
+    Some(s.to_string())
+}
+
+/// Extract repository URL string from npm JSON (string or object).
+fn extract_repo_url(data: &serde_json::Value) -> Option<String> {
+    if let Some(s) = data["repository"].as_str() {
+        return clean_repo_url(s);
+    }
+    if let Some(obj) = data["repository"].as_object() {
+        let url = obj.get("url").and_then(|v| v.as_str())?;
+        return clean_repo_url(url);
+    }
+    None
+}
+
+/// Aggregated data for building npm package markdown.
+struct NpmMarkdownData<'a> {
+    name: &'a str,
+    latest_version: &'a str,
+    description: &'a str,
+    author: &'a str,
+    license: &'a str,
+    homepage: &'a str,
+    repo_url: Option<&'a str>,
+    keywords: &'a [&'a str],
+    engines: &'a serde_json::Value,
+    readme: &'a str,
+    url: &'a str,
+}
+
+/// Build the markdown output for an npm package.
+fn build_npm_markdown(d: &NpmMarkdownData<'_>) -> String {
+    let mut md = format!("# {}@{}\n\n", d.name, d.latest_version);
+    if !d.description.is_empty() {
+        md.push_str(d.description);
+        md.push_str("\n\n");
+    }
+    if !d.author.is_empty() {
+        md.push_str(&format!("**Author:** {}\n", d.author));
+    }
+    if !d.license.is_empty() {
+        md.push_str(&format!("**License:** {}\n", d.license));
+    }
+    if !d.homepage.is_empty() {
+        md.push_str(&format!("**Homepage:** {}\n", d.homepage));
+    }
+    if let Some(repo) = d.repo_url {
+        md.push_str(&format!("**Repository:** {repo}\n"));
+    }
+    if !d.keywords.is_empty() {
+        md.push_str(&format!("**Keywords:** {}\n", d.keywords.join(", ")));
+    }
+    if let Some(obj) = d.engines.as_object() {
+        let eng: Vec<String> = obj
+            .iter()
+            .filter_map(|(k, v)| v.as_str().map(|s| format!("{k}: {s}")))
+            .collect();
+        if !eng.is_empty() {
+            md.push_str(&format!("**Engines:** {}\n", eng.join(", ")));
+        }
+    }
+    md.push_str(&format!("\n**npm:** {}\n", d.url));
+    if !d.readme.is_empty() {
+        md.push_str("\n## README\n\n");
+        md.push_str(d.readme);
+        md.push('\n');
+    }
+    md
+}
+
+pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
         url: url.to_string(),
@@ -65,13 +160,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let resp = client
         .get(&api_url)
-        .header(
-            "User-Agent",
-            format!(
-                "axon/{} (+https://github.com/jmagar/axon_rust)",
-                env!("CARGO_PKG_VERSION")
-            ),
-        )
+        .header("User-Agent", ctx.api_ua())
         .header("Accept", "application/json")
         .send()
         .await
@@ -116,42 +205,45 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     let latest_version = data["dist-tags"]["latest"].as_str().unwrap_or("unknown");
     let license = data["license"].as_str().unwrap_or("");
     let homepage = data["homepage"].as_str().unwrap_or("");
+    let author = extract_author(&data);
+    let keywords: Vec<&str> = data["keywords"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    let readme = data["readme"].as_str().unwrap_or("");
+    let repo_url = extract_repo_url(&data);
+    let engines = &data["versions"][latest_version]["engines"];
 
-    // Author can be a string or an object
-    let author = if let Some(s) = data["author"].as_str() {
-        s.to_string()
-    } else if let Some(obj) = data["author"].as_object() {
-        obj.get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
-    } else {
-        String::new()
-    };
+    let mut follow_crawl_urls: Vec<String> = vec![];
+    if !homepage.is_empty() {
+        follow_crawl_urls.push(homepage.to_string());
+    }
+    if let Some(ref r) = repo_url {
+        follow_crawl_urls.push(r.clone());
+    }
 
     let title = Some(format!("{name}@{latest_version}"));
-    let mut md = format!("# {name}@{latest_version}\n\n");
-    if !description.is_empty() {
-        md.push_str(description);
-        md.push_str("\n\n");
-    }
-    if !author.is_empty() {
-        md.push_str(&format!("**Author:** {author}\n"));
-    }
-    if !license.is_empty() {
-        md.push_str(&format!("**License:** {license}\n"));
-    }
-    if !homepage.is_empty() {
-        md.push_str(&format!("**Homepage:** {homepage}\n"));
-    }
-    md.push_str(&format!("\n**npm:** {url}\n"));
+    let md = build_npm_markdown(&NpmMarkdownData {
+        name,
+        latest_version,
+        description,
+        author: &author,
+        license,
+        homepage,
+        repo_url: repo_url.as_deref(),
+        keywords: &keywords,
+        engines,
+        readme,
+        url,
+    });
 
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(data),
+        follow_crawl_urls,
     })
 }

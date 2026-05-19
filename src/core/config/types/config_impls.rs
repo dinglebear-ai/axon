@@ -29,6 +29,7 @@ impl Default for Config {
             render_mode: RenderMode::AutoSwitch,
             chrome_remote_url: None,
             chrome_proxy: None,
+            user_agent: None,
             chrome_user_agent: None,
             chrome_bootstrap_timeout_ms: 3_000,
             chrome_bootstrap_retries: 2,
@@ -256,6 +257,7 @@ impl fmt::Debug for Config {
             .field("render_mode", &self.render_mode)
             .field("chrome_remote_url", &self.chrome_remote_url)
             .field("chrome_proxy", &self.chrome_proxy)
+            .field("user_agent", &self.user_agent)
             .field("chrome_user_agent", &self.chrome_user_agent)
             .field(
                 "chrome_bootstrap_timeout_ms",

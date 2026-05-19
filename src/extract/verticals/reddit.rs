@@ -142,11 +142,12 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     let author = post_data["author"].as_str().unwrap_or("[deleted]");
     let score = post_data["score"].as_i64().unwrap_or(0);
     let subreddit = post_data["subreddit_name_prefixed"].as_str().unwrap_or("");
+    let num_comments = post_data["num_comments"].as_u64().unwrap_or(0);
 
     let mut md = format!("# {}\n\n", title.as_deref().unwrap_or("Reddit post"));
     if !subreddit.is_empty() {
         md.push_str(&format!(
-            "**{subreddit}** by u/{author} | score: {score}\n\n"
+            "**{subreddit}** by u/{author} | Score: {score} | Comments: {num_comments}\n\n"
         ));
     }
     if !selftext.is_empty() {
@@ -160,7 +161,8 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(data),
+        follow_crawl_urls: vec![],
     })
 }

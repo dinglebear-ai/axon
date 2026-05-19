@@ -1,6 +1,7 @@
 use super::{CrawlDiagnostic, CrawlSummary, canonicalize_url_for_dedupe};
 use crate::core::config::Config;
 use crate::core::content::{build_selector_config, bytes_to_markdown, url_to_stable_filename};
+use crate::core::http::axon_ua;
 use crate::core::logging::{log_info, log_warn};
 use crate::crawl::manifest::ManifestEntry;
 use futures_util::stream::{self, StreamExt};
@@ -41,9 +42,11 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
     if retries > 0 {
         website.with_retry(retries);
     }
-    if let Some(ua) = cfg.chrome_user_agent.as_deref() {
-        website.with_user_agent(Some(ua));
-    }
+    website.with_user_agent(Some(
+        cfg.chrome_user_agent
+            .as_deref()
+            .unwrap_or_else(|| axon_ua()),
+    ));
     if let Some(proxy) = cfg.chrome_proxy.as_deref() {
         website.with_proxies(Some(vec![proxy.to_string()]));
     }

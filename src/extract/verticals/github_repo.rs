@@ -3,6 +3,8 @@
 //! Matches `https://github.com/{owner}/{repo}` (no sub-paths) and fetches
 //! metadata from the GitHub REST API. Uses GITHUB_TOKEN when set.
 
+use base64::Engine;
+
 use crate::core::http::http_client;
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
@@ -11,7 +13,7 @@ use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_repo",
     label: "GitHub Repository",
-    description: "Fetches repository metadata from api.github.com — stars, description, license, language, topics.",
+    description: "Fetches repository metadata from api.github.com — stars, description, license, language, topics, README.",
     url_patterns: &["https://github.com/{owner}/{repo}"],
     auto_dispatch: true,
 };
@@ -55,12 +57,113 @@ pub fn matches(url: &str) -> bool {
         return false;
     }
     // Reject if the second segment looks like it has a file extension
-    // (e.g. github.com/user/file.txt) — not a repo root.
     !segs[1].contains('.')
 }
 
+/// Fetch the GitHub token from env (per-request, never global).
+fn github_auth_header() -> Option<String> {
+    let token = std::env::var("GITHUB_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())?;
+    Some(format!("Bearer {token}"))
+}
+
+/// Fetch and decode the README for a repo. Non-fatal — returns None on any error.
+async fn fetch_readme(owner: &str, repo: &str) -> Option<String> {
+    let client = http_client().ok()?;
+    let readme_url = format!("https://api.github.com/repos/{owner}/{repo}/readme");
+    let mut req = client
+        .get(&readme_url)
+        .header("User-Agent", crate::core::http::axon_api_ua())
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28");
+    if let Some(auth) = github_auth_header() {
+        req = req.header("Authorization", auth);
+    }
+    let resp = req.send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let json: serde_json::Value = resp.json().await.ok()?;
+    let encoded = json["content"].as_str()?;
+    // GitHub includes newlines in base64 — strip before decoding
+    let cleaned: String = encoded
+        .chars()
+        .filter(|c| *c != '\n' && *c != '\r')
+        .collect();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(cleaned.as_bytes())
+        .ok()?;
+    let text = String::from_utf8(bytes).ok()?;
+    // Truncate to 40_000 chars
+    let truncated: String = text.chars().take(40_000).collect();
+    Some(truncated)
+}
+
+/// Aggregated data for building GitHub repo markdown.
+struct RepoMarkdownData<'a> {
+    repo_name: &'a str,
+    description: &'a str,
+    stars: u64,
+    forks: u64,
+    watchers: u64,
+    open_issues: u64,
+    language: &'a str,
+    license: &'a str,
+    homepage: &'a str,
+    topics: &'a [&'a str],
+    created_at: &'a str,
+    updated_at: &'a str,
+    size_kb: u64,
+    readme: Option<&'a str>,
+    url: &'a str,
+}
+
+/// Build the markdown output for a GitHub repo.
+fn build_github_markdown(d: &RepoMarkdownData<'_>) -> String {
+    let mut md = format!("# {}\n\n", d.repo_name);
+    if !d.description.is_empty() {
+        md.push_str(d.description);
+        md.push_str("\n\n");
+    }
+    md.push_str(&format!(
+        "**Stars:** {} | **Forks:** {} | **Watchers:** {} | **Open Issues:** {}",
+        d.stars, d.forks, d.watchers, d.open_issues
+    ));
+    if !d.language.is_empty() {
+        md.push_str(&format!(" | **Language:** {}", d.language));
+    }
+    if !d.license.is_empty() {
+        md.push_str(&format!(" | **License:** {}", d.license));
+    }
+    md.push('\n');
+    if !d.homepage.is_empty() {
+        md.push_str(&format!("\n**Homepage:** {}\n", d.homepage));
+    }
+    if !d.topics.is_empty() {
+        md.push_str(&format!("\n**Topics:** {}\n", d.topics.join(", ")));
+    }
+    if !d.created_at.is_empty() {
+        md.push_str(&format!("**Created:** {}", d.created_at));
+        if !d.updated_at.is_empty() {
+            md.push_str(&format!(" | **Updated:** {}", d.updated_at));
+        }
+        md.push('\n');
+    }
+    if d.size_kb > 0 {
+        md.push_str(&format!("**Size:** {} KB\n", d.size_kb));
+    }
+    md.push_str(&format!("\n**GitHub:** {}\n", d.url));
+    if let Some(readme_text) = d.readme {
+        md.push_str("\n## README\n\n");
+        md.push_str(readme_text);
+        md.push('\n');
+    }
+    md
+}
+
 /// Extract repository metadata from the GitHub REST API.
-pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
         url: url.to_string(),
@@ -81,33 +184,23 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         status: 0,
     })?;
 
-    let mut req = client
+    let mut repo_req = client
         .get(&api_url)
-        .header(
-            "User-Agent",
-            format!(
-                "axon/{} (+https://github.com/jmagar/axon_rust)",
-                env!("CARGO_PKG_VERSION")
-            ),
-        )
+        .header("User-Agent", ctx.api_ua())
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28");
 
-    // Auth: per-request header (NOT global client header — prevents leaking
-    // GITHUB_TOKEN to non-github.com hosts sharing the pool).
-    if let Ok(token) = std::env::var("GITHUB_TOKEN")
-        && !token.is_empty()
-    {
-        req = req.header("Authorization", format!("Bearer {token}"));
+    if let Some(auth) = github_auth_header() {
+        repo_req = repo_req.header("Authorization", auth);
     }
 
-    let resp = req
-        .send()
-        .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status: 0,
-        })?;
+    // Fetch metadata and README in parallel
+    let (repo_resp, readme) = tokio::join!(repo_req.send(), fetch_readme(owner, repo));
+
+    let resp = repo_resp.map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status: 0,
+    })?;
 
     let status = resp.status().as_u16();
     match status {
@@ -144,44 +237,53 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     let description = data["description"].as_str().unwrap_or("").to_string();
     let stars = data["stargazers_count"].as_u64().unwrap_or(0);
     let forks = data["forks_count"].as_u64().unwrap_or(0);
+    let watchers = data["watchers_count"].as_u64().unwrap_or(0);
+    let open_issues = data["open_issues_count"].as_u64().unwrap_or(0);
     let language = data["language"].as_str().unwrap_or("").to_string();
     let license = data["license"]["spdx_id"]
         .as_str()
         .unwrap_or("")
         .to_string();
     let homepage = data["homepage"].as_str().unwrap_or("").to_string();
+    let created_at = data["created_at"].as_str().unwrap_or("").to_string();
+    let updated_at = data["updated_at"].as_str().unwrap_or("").to_string();
+    let size_kb = data["size"].as_u64().unwrap_or(0);
     let topics: Vec<&str> = data["topics"]
         .as_array()
         .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
 
-    let mut md = format!("# {}\n\n", title.as_deref().unwrap_or(repo));
-    if !description.is_empty() {
-        md.push_str(&description);
-        md.push_str("\n\n");
-    }
-    md.push_str(&format!("**Stars:** {stars} | **Forks:** {forks}"));
-    if !language.is_empty() {
-        md.push_str(&format!(" | **Language:** {language}"));
-    }
-    if !license.is_empty() {
-        md.push_str(&format!(" | **License:** {license}"));
-    }
-    md.push('\n');
+    let mut follow_crawl_urls: Vec<String> = vec![];
     if !homepage.is_empty() {
-        md.push_str(&format!("\n**Homepage:** {homepage}\n"));
+        follow_crawl_urls.push(homepage.clone());
     }
-    if !topics.is_empty() {
-        md.push_str(&format!("\n**Topics:** {}\n", topics.join(", ")));
-    }
-    md.push_str(&format!("\n**GitHub:** {url}\n"));
+
+    let repo_name = title.as_deref().unwrap_or(repo);
+    let md = build_github_markdown(&RepoMarkdownData {
+        repo_name,
+        description: &description,
+        stars,
+        forks,
+        watchers,
+        open_issues,
+        language: &language,
+        license: &license,
+        homepage: &homepage,
+        topics: &topics,
+        created_at: &created_at,
+        updated_at: &updated_at,
+        size_kb,
+        readme: readme.as_deref(),
+        url,
+    });
 
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(data),
+        follow_crawl_urls,
     })
 }

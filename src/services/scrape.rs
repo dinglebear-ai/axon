@@ -39,6 +39,7 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
         next_cursor: None,
         remaining_tokens_estimate: None,
         backend: Some(DocumentBackend::LiveScrape),
+        follow_crawl_urls: vec![],
     })
 }
 
@@ -83,6 +84,7 @@ pub async fn scrape(
             let payload = serde_json::json!({ "url": doc.url, "markdown": doc.markdown });
             let mut scrape_result = map_scrape_payload(payload)?;
             scrape_result.backend = Some(DocumentBackend::LiveScrape);
+            scrape_result.follow_crawl_urls = doc.follow_crawl_urls;
             tracing::debug!(
                 url = %normalized,
                 extractor = doc.extractor_name,

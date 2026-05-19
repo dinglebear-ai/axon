@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::core::http::parse_custom_headers;
-use crate::core::http::{cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url};
+use crate::core::http::{axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url};
 use crate::crawl::engine::resolve_cdp_ws_url;
 use spider::configuration::Viewport;
 use spider::features::chrome_common::RequestInterceptConfiguration;
@@ -63,9 +63,11 @@ pub(crate) async fn spider_screenshot_with_options(
         .with_depth(0)
         .with_subdomains(false);
 
-    if let Some(ua) = cfg.chrome_user_agent.as_deref() {
-        website.with_user_agent(Some(ua));
-    }
+    website.with_user_agent(Some(
+        cfg.chrome_user_agent
+            .as_deref()
+            .unwrap_or_else(|| axon_ua()),
+    ));
     if let Some(proxy) = cfg.chrome_proxy.as_deref() {
         website.with_proxies(Some(vec![proxy.to_string()]));
     }

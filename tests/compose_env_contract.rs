@@ -386,6 +386,9 @@ fn env_example_only_contains_production_runtime_keys() {
         "CUDA_VISIBLE_DEVICES",
         // Chrome + scrape stack
         "AXON_CHROME_REMOTE_URL",
+        // HTTP behavior — UA overrides
+        "AXON_USER_AGENT",
+        "AXON_CHROME_USER_AGENT",
         // LLM (Gemini headless)
         "GEMINI_HOME",
         "GEMINI_API_KEY",
