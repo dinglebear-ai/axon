@@ -2,10 +2,10 @@ use crate::core::config::Config;
 use crate::ingest;
 use crate::ingest::progress::PhaseReporter;
 use crate::jobs::backend::{JobKind, JobPayload};
+use crate::jobs::config_snapshot::ingest_config_json;
 use crate::jobs::ingest::types::{source_type_label, target_label};
 pub use crate::jobs::ingest::{IngestJob, IngestSource};
 use crate::jobs::ingest::{count_ingest_jobs, get_ingest_job, list_ingest_jobs, start_ingest_job};
-use crate::jobs::lite::config_snapshot::ingest_config_json;
 use crate::services::context::ServiceContext;
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::jobs as job_service;
@@ -81,6 +81,22 @@ pub fn source_from_mcp_request(
             })
         }
     }
+}
+
+pub fn validate_ingest_source(source: &IngestSource) -> Result<(), String> {
+    match source {
+        IngestSource::Github { repo, .. } => {
+            validate_github_ingest_target(repo)?;
+        }
+        IngestSource::Reddit { target } => {
+            validate_reddit_ingest_target(target)?;
+        }
+        IngestSource::Youtube { target } => {
+            validate_youtube_ingest_target(target)?;
+        }
+        IngestSource::Sessions { .. } => {}
+    }
+    Ok(())
 }
 
 fn validate_github_ingest_target(target: &str) -> Result<String, String> {

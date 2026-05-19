@@ -21,7 +21,6 @@ fn query_with_diagnostics_emits_structured_diagnostics_on_error() {
     });
 
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
-        .env("AXON_LITE", "1")
         .env("AXON_SQLITE_PATH", sqlite.path())
         .arg("--tei-url")
         .arg(tei.base_url())

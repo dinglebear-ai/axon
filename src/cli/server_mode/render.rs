@@ -8,8 +8,9 @@ use crate::cli::commands::crawl::subcommands::{
 use crate::core::config::{CommandKind, Config};
 use crate::core::ui::{accent, muted, primary};
 use crate::services::types::{
-    CrawlStartJob, CrawlStartResult, EmbedStartResult, ExtractStartResult, IngestStartResult,
-    JobListResult, ScrapeResult, ScreenshotResult, ServiceJob, StartDisposition,
+    CrawlStartJob, CrawlStartResult, EmbedStartResult, ExtractStartResult, ExtractSyncResult,
+    IngestStartResult, JobListResult, ScrapeResult, ScreenshotResult, ServiceJob, StartDisposition,
+    SummarizeResult,
 };
 use std::error::Error;
 use uuid::Uuid;
@@ -20,7 +21,12 @@ pub(super) fn render_server_result(
     result: &serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(result)?);
+        let output = if cfg.command == CommandKind::Extract && label == "job status" {
+            extract_status_json_result(result)
+        } else {
+            result.clone()
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
         return Ok(());
     }
 
@@ -30,6 +36,7 @@ pub(super) fn render_server_result(
             Ok(())
         }
         CommandKind::Scrape => render_scrape(cfg, result),
+        CommandKind::Summarize => render_summarize(cfg, result),
         CommandKind::Screenshot => render_screenshot(cfg, result),
         CommandKind::Crawl => render_crawl(cfg, label, result),
         CommandKind::Extract => render_extract(cfg, label, result),
@@ -51,6 +58,11 @@ fn render_scrape(cfg: &Config, result: &serde_json::Value) -> Result<(), Box<dyn
     let scrape: ScrapeResult = serde_json::from_value(result.clone())?;
     crate::cli::commands::scrape::print_scrape_preamble(cfg, &scrape.url);
     crate::cli::commands::scrape::emit_scrape_result(cfg, &scrape)
+}
+
+fn render_summarize(cfg: &Config, result: &serde_json::Value) -> Result<(), Box<dyn Error>> {
+    let summary: SummarizeResult = serde_json::from_value(result.clone())?;
+    crate::cli::commands::summarize::emit_summarize_result(cfg, &summary)
 }
 
 fn render_screenshot(cfg: &Config, result: &serde_json::Value) -> Result<(), Box<dyn Error>> {
@@ -123,6 +135,9 @@ fn render_extract(
             true,
         );
         return Ok(());
+    }
+    if let Some(extract_result) = completed_extract_sync_result(result)? {
+        return crate::cli::commands::extract::emit_extract_output(cfg, &extract_result);
     }
     render_generic_status(cfg, result, "Extract")
 }
@@ -324,6 +339,58 @@ fn maybe_job(result: &serde_json::Value) -> Result<Option<ServiceJob>, Box<dyn E
         Some(value) => Ok(Some(serde_json::from_value(value.clone())?)),
         None => Ok(None),
     }
+}
+
+pub(super) fn extract_status_json_result(result: &serde_json::Value) -> serde_json::Value {
+    let mut output = result.clone();
+    if let Some(extract_result) = result
+        .get("job")
+        .and_then(|job| job.get("result_json"))
+        .filter(|value| !value.is_null())
+        && let Some(object) = output.as_object_mut()
+    {
+        object.insert("extract_result".to_string(), extract_result.clone());
+    }
+    output
+}
+
+fn completed_extract_sync_result(
+    result: &serde_json::Value,
+) -> Result<Option<ExtractSyncResult>, Box<dyn Error>> {
+    let Some(job) = maybe_job(result)? else {
+        return Ok(None);
+    };
+    if job.status != "completed" {
+        return Ok(None);
+    }
+    let Some(summary) = job.result_json else {
+        return Ok(None);
+    };
+    let summary_path = summary
+        .get("summary_path")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+    let items_path = summary
+        .get("items_path")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+    let total_items = summary
+        .get("total_items")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0) as usize;
+    let duration_ms = summary
+        .get("duration_ms")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0) as u128;
+    Ok(Some(ExtractSyncResult {
+        summary,
+        summary_path,
+        items_path,
+        total_items,
+        duration_ms,
+    }))
 }
 
 fn jobs_from_result(result: &serde_json::Value) -> Result<Vec<ServiceJob>, Box<dyn Error>> {

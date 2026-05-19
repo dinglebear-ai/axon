@@ -65,10 +65,6 @@ pub(super) struct AskRequestBody {
     pub(super) diagnostics: Option<bool>,
     #[serde(default)]
     pub(super) explain: Option<bool>,
-    /// Deprecated compatibility field. `false`/unset is accepted as a no-op;
-    /// `true` is rejected before any ask execution.
-    #[serde(default)]
-    pub(super) graph: Option<bool>,
     #[serde(default)]
     pub(super) hybrid_search: Option<bool>,
     #[serde(default)]

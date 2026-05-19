@@ -124,7 +124,7 @@ fn docker_hub_matches_repository_paths() {
 }
 
 #[test]
-fn youtube_video_matches_watch_urls() {
+fn youtube_video_matches_video_page_urls() {
     assert!(verticals::youtube_video::matches(
         "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     ));

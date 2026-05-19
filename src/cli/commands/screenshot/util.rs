@@ -10,7 +10,7 @@ pub(crate) use crate::crawl::screenshot::url_to_screenshot_filename;
 pub(super) fn require_chrome(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.chrome_remote_url.is_none() {
         return Err(anyhow::anyhow!(
-            "screenshot requires Chrome — set AXON_CHROME_REMOTE_URL or pass --chrome-remote-url"
+            "screenshot requires Chrome — set AXON_CHROME_REMOTE_URL in the env layer"
         )
         .into());
     }

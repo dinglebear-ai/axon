@@ -80,11 +80,9 @@ fn apply_overrides_sets_query_filters_and_hybrid() {
 #[test]
 fn apply_overrides_sets_ask_flags() {
     let cfg = Config::default().apply_overrides(&ConfigOverrides {
-        ask_graph: Some(true),
         ask_diagnostics: Some(true),
         ..ConfigOverrides::default()
     });
-    assert!(cfg.ask_graph);
     assert!(cfg.ask_diagnostics);
 }
 

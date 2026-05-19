@@ -2,6 +2,25 @@ mod commands;
 
 use std::error::Error;
 
+/// Collect, trim, and deduplicate URLs from optional singular and plural fields.
+/// MCP handlers and action-API dispatchers share this inner logic; only the
+/// error type differs, so callers do the empty check with their own error type.
+pub(crate) fn collect_unique_urls(url: Option<String>, urls: Option<Vec<String>>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for u in urls
+        .unwrap_or_default()
+        .into_iter()
+        .chain(url)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        if !out.contains(&u) {
+            out.push(u);
+        }
+    }
+    out
+}
+
 use crate::mcp::schema::{
     AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction, SetupMode,
     WatchSubaction,
@@ -26,6 +45,7 @@ pub async fn dispatch_action(
         AxonRequest::Embed(req) => commands::dispatch_embed(service_context, req).await,
         AxonRequest::Ingest(req) => commands::dispatch_ingest(service_context, req).await,
         AxonRequest::Scrape(req) => commands::dispatch_scrape(service_context, req).await,
+        AxonRequest::Summarize(req) => commands::dispatch_summarize(service_context, req).await,
         AxonRequest::Screenshot(req) => commands::dispatch_screenshot(service_context, req).await,
         other => Err(unsupported_action(action_name(&other))),
     }
@@ -68,6 +88,7 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         // These trigger Gemini headless completions (external process, API quota) — write scope.
         // Note: Debug runs LLM-assisted troubleshooting (Gemini) so it belongs here, not above.
         AxonRequest::Ask(_)
+        | AxonRequest::Summarize(_)
         | AxonRequest::Evaluate(_)
         | AxonRequest::Suggest(_)
         | AxonRequest::Research(_)
@@ -132,6 +153,7 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Scrape(_) => "scrape",
         AxonRequest::Research(_) => "research",
         AxonRequest::Ask(_) => "ask",
+        AxonRequest::Summarize(_) => "summarize",
         AxonRequest::Screenshot(_) => "screenshot",
         AxonRequest::Debug(_) => "debug",
         AxonRequest::Dedupe(_) => "dedupe",

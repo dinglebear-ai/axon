@@ -406,6 +406,22 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_LOG_DIR",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
+        "AXON_LOG_FILE",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "AXON_NO_WIPE",
         TrustedOperatorBootstrap,
         HostOnly,
@@ -422,11 +438,11 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_TEST_QDRANT_URL",
-        Delete,
-        NotRuntime,
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        TrustedOperatorBootstrap,
+        Both,
         None,
-        DeleteOnMigration,
+        Advanced,
         false,
     ),
     // Dynamic per-vertical TTL override: AXON_VERTICAL_CACHE_TTL_<NAME>=secs.

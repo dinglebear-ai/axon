@@ -322,7 +322,7 @@ pub fn handle_job_recover(
 
 /// Handle the result of `job_service::start_worker(cfg, kind).await?`.
 ///
-/// Prints a message in lite mode (workers are in-process) and propagates
+/// Prints a message in the SQLite runtime (workers are in-process) and propagates
 /// any `Unsupported` error. Extracted to eliminate the identical 5-arm match
 /// block that appears in every command's `"worker"` subcommand handler.
 pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
@@ -332,7 +332,7 @@ pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
             elapsed_secs,
         } => {
             println!(
-                "Lite mode: queue drained — {pending_at_start} pending at start, {elapsed_secs}s elapsed."
+                "SQLite runtime: queue drained — {pending_at_start} pending at start, {elapsed_secs}s elapsed."
             );
         }
         WorkerMode::Started => {}

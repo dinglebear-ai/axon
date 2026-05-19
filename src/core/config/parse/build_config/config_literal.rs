@@ -36,7 +36,6 @@ pub(super) struct LiteralInputs<'a> {
 /// is delegated to `populate_*` helpers (each <120 lines per monolith policy).
 pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     warn_services_section_if_present(inputs.toml);
-    warn_compat_shim_env_vars();
 
     // Resolve fallible inputs first so `?` short-circuits before we mutate `cfg`.
     let tei_url = resolve_tei_url(inputs.global, inputs.toml)?;
@@ -56,8 +55,14 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
 
 fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     let g = inputs.global;
+    let scrape = &inputs.toml.scrape;
     cfg.command = inputs.dispatched.command;
-    cfg.start_url = g.start_url.clone();
+    cfg.start_url = inputs
+        .dispatched
+        .positional
+        .first()
+        .cloned()
+        .unwrap_or_default();
     cfg.positional = inputs.dispatched.positional.clone();
     cfg.urls_csv = g.urls.clone();
     cfg.url_glob = g.url_glob.clone();
@@ -73,52 +78,44 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.output_dir = g.output_dir.clone();
     cfg.output_path = g.output.clone();
     cfg.render_mode = g.render_mode;
-    cfg.respect_robots = g.respect_robots;
-    cfg.min_markdown_chars = g.min_markdown_chars;
-    cfg.drop_thin_markdown = g.drop_thin_markdown;
-    cfg.discover_sitemaps = g.discover_sitemaps;
-    cfg.sitemap_since_days = g.sitemap_since_days;
+    cfg.respect_robots = scrape.respect_robots.unwrap_or(false);
+    cfg.min_markdown_chars = scrape.min_markdown_chars.unwrap_or(200);
+    cfg.drop_thin_markdown = scrape.drop_thin_markdown.unwrap_or(true);
+    cfg.discover_sitemaps = scrape.discover_sitemaps.unwrap_or(true);
+    cfg.sitemap_since_days = scrape.sitemap_since_days.unwrap_or(0);
     cfg.map_fallback = inputs.dispatched.map_fallback;
-    cfg.max_sitemaps = g.max_sitemaps;
+    cfg.max_sitemaps = scrape.max_sitemaps.unwrap_or(512);
     cfg.cache = g.cache;
-    cfg.cache_skip_browser = g.cache_skip_browser;
+    cfg.cache_http_only = g.cache_http_only;
     cfg.format = g.format;
 }
 
 fn populate_chrome_and_filtering(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
-    let g = inputs.global;
-    cfg.chrome_remote_url = g
-        .chrome_remote_url
-        .clone()
-        .or_else(|| env::var("AXON_CHROME_REMOTE_URL").ok())
+    cfg.chrome_remote_url = env::var("AXON_CHROME_REMOTE_URL")
+        .ok()
         .or_else(|| {
             inputs.toml.services.chrome_remote_url.clone().inspect(|_| {
                 warn_legacy_service_url("chrome-remote-url", "AXON_CHROME_REMOTE_URL");
             })
         })
         .map(normalize_local_service_url);
-    cfg.chrome_proxy = g
-        .chrome_proxy
-        .clone()
-        .or_else(|| env::var("AXON_CHROME_PROXY").ok());
-    cfg.chrome_user_agent = g
-        .chrome_user_agent
-        .clone()
-        .or_else(|| env::var("AXON_CHROME_USER_AGENT").ok())
+    cfg.chrome_proxy = env::var("AXON_CHROME_PROXY").ok();
+    cfg.chrome_user_agent = env::var("AXON_CHROME_USER_AGENT")
+        .ok()
         .or_else(|| inputs.toml.chrome.user_agent.clone());
-    cfg.chrome_headless = g.chrome_headless;
-    cfg.chrome_anti_bot = g.chrome_anti_bot;
-    cfg.chrome_intercept = g.chrome_intercept;
-    cfg.chrome_stealth = g.chrome_stealth;
-    cfg.chrome_bootstrap = g.chrome_bootstrap;
-    cfg.chrome_bootstrap_timeout_ms = g.chrome_bootstrap_timeout_ms.max(250);
-    cfg.chrome_bootstrap_retries = g.chrome_bootstrap_retries.min(10);
+    cfg.chrome_bootstrap_timeout_ms = inputs
+        .toml
+        .chrome
+        .bootstrap_timeout_ms
+        .unwrap_or(3_000)
+        .max(250);
+    cfg.chrome_bootstrap_retries = inputs.toml.chrome.bootstrap_retries.unwrap_or(2).min(10);
 }
 
 fn populate_perf_and_credentials(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     let g = inputs.global;
     cfg.collection = inputs.collection.clone();
-    cfg.embed = g.embed;
+    cfg.embed = !g.skip_embed;
     cfg.batch_concurrency = g.batch_concurrency.clamp(1, 512);
     cfg.wait = g.wait;
     cfg.sqlite_path = inputs.sqlite_path.clone();
@@ -127,10 +124,10 @@ fn populate_perf_and_credentials(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.crawl_concurrency_limit = inputs.crawl_concurrency_limit;
     cfg.backfill_concurrency_limit = inputs.backfill_concurrency_limit;
     cfg.sitemap_only = g.sitemap_only;
-    cfg.delay_ms = g.delay_ms;
-    cfg.request_timeout_ms = g.request_timeout_ms;
-    cfg.fetch_retries = g.fetch_retries.unwrap_or(0);
-    cfg.retry_backoff_ms = g.retry_backoff_ms.unwrap_or(0);
+    cfg.delay_ms = inputs.toml.scrape.delay_ms.unwrap_or(0);
+    cfg.request_timeout_ms = inputs.toml.scrape.request_timeout_ms;
+    cfg.fetch_retries = inputs.toml.scrape.fetch_retries.unwrap_or(0);
+    cfg.retry_backoff_ms = inputs.toml.scrape.retry_backoff_ms.unwrap_or(0);
     let d = inputs.dispatched;
     cfg.sessions_claude = d.sessions_claude;
     cfg.sessions_codex = d.sessions_codex;
@@ -196,7 +193,6 @@ fn populate_services_and_ask_basics(
             );
         }
     }
-    cfg.ask_graph = false;
     cfg.evaluate_responses_mode = inputs.dispatched.evaluate_responses_mode;
     cfg.evaluate_retrieval_ab = inputs.dispatched.evaluate_retrieval_ab;
     Ok(())
@@ -260,27 +256,38 @@ fn populate_misc(
     cfg.hybrid_search_enabled = cfg.hybrid_search_enabled && !g.no_hybrid_search;
     cfg.cron_every_seconds = g.cron_every_seconds.filter(|v| *v > 0);
     cfg.cron_max_runs = g.cron_max_runs.filter(|v| *v > 0);
-    cfg.watchdog_stale_timeout_secs = g.watchdog_stale_timeout_secs.max(30);
-    cfg.watchdog_confirm_secs = g.watchdog_confirm_secs.max(10);
-    cfg.watchdog_sweep_secs = g.watchdog_sweep_secs.clamp(1, 600);
+    cfg.watchdog_stale_timeout_secs = parse_i64_env("AXON_JOB_STALE_TIMEOUT_SECS")
+        .or(inputs.toml.workers.watchdog_stale_timeout_secs)
+        .unwrap_or(300)
+        .max(30);
+    cfg.watchdog_confirm_secs = parse_i64_env("AXON_JOB_STALE_CONFIRM_SECS")
+        .or(inputs.toml.workers.watchdog_confirm_secs)
+        .unwrap_or(60)
+        .max(10);
+    cfg.watchdog_sweep_secs = parse_i64_env("AXON_WATCHDOG_SWEEP_SECS")
+        .or(inputs.toml.workers.watchdog_sweep_secs)
+        .unwrap_or(15)
+        .clamp(1, 600);
     cfg.json_output = g.json;
     cfg.reclaimed_status_only = g.reclaimed;
     cfg.active_status_only = g.active;
     cfg.recent_status_only = g.recent;
     cfg.normalize = g.normalize;
-    cfg.chrome_network_idle_timeout_secs = g.chrome_network_idle_timeout;
-    cfg.auto_switch_thin_ratio = g.auto_switch_thin_ratio;
-    cfg.auto_switch_min_pages = g.auto_switch_min_pages;
+    cfg.chrome_network_idle_timeout_secs =
+        inputs.toml.chrome.network_idle_timeout_secs.unwrap_or(15);
+    cfg.auto_switch_thin_ratio = inputs.toml.scrape.auto_switch_thin_ratio.unwrap_or(0.60);
+    cfg.auto_switch_min_pages = inputs.toml.scrape.auto_switch_min_pages.unwrap_or(10);
     cfg.crawl_broadcast_buffer_min = 4096; // placeholder — overwritten by post_init from profile
     cfg.crawl_broadcast_buffer_max = 16_384; // placeholder — overwritten by post_init from profile
-    cfg.url_whitelist = g.url_whitelist.clone();
+    cfg.url_whitelist = inputs.toml.scrape.url_whitelist.clone().unwrap_or_default();
     cfg.block_assets = g.block_assets;
-    cfg.max_page_bytes = if g.max_page_bytes == 0 {
+    let max_page_bytes = inputs.toml.scrape.max_page_bytes.unwrap_or(0);
+    cfg.max_page_bytes = if max_page_bytes == 0 {
         None
     } else {
-        Some(g.max_page_bytes)
+        Some(max_page_bytes)
     };
-    cfg.redirect_policy_strict = g.redirect_policy_strict;
+    cfg.redirect_policy_strict = inputs.toml.scrape.redirect_policy_strict.unwrap_or(false);
     cfg.chrome_wait_for_selector = g.chrome_wait_for_selector.clone();
     cfg.root_selector = g.root_selector.clone();
     cfg.exclude_selector = g.exclude_selector.clone();
@@ -290,8 +297,8 @@ fn populate_misc(
     cfg.since = g.since.clone();
     cfg.before = g.before.clone();
     cfg.sources_by_schema_version = g.sources_by_schema_version;
-    cfg.bypass_csp = g.bypass_csp;
-    cfg.accept_invalid_certs = g.accept_invalid_certs;
+    cfg.bypass_csp = inputs.toml.chrome.bypass_csp.unwrap_or(false);
+    cfg.accept_invalid_certs = inputs.toml.chrome.accept_invalid_certs.unwrap_or(false);
     cfg.screenshot_full_page = g.screenshot_full_page;
     cfg.viewport_width = inputs.viewport_width;
     cfg.viewport_height = inputs.viewport_height;
@@ -304,12 +311,12 @@ fn populate_misc(
     cfg.mcp_http_port = mcp_http_port;
     cfg.custom_headers = custom_headers;
     cfg.quiet = g.quiet;
-    cfg.log_level = g.log_level.clone();
+    cfg.log_level = env::var("AXON_LOG_LEVEL").ok();
     cfg.local_mode = g.local;
     cfg.server_url = if cfg.local_mode {
         None
     } else {
-        resolve_server_url(g)?
+        resolve_server_url()?
     };
     cfg.client_mode = if cfg.server_url.is_some() {
         ClientMode::Server
@@ -319,20 +326,25 @@ fn populate_misc(
     Ok(())
 }
 
-fn resolve_server_url(g: &GlobalArgs) -> Result<Option<reqwest::Url>, String> {
-    let candidate = g
-        .server_url
-        .as_ref()
-        .map(|value| ("--server-url / AXON_SERVER_URL", value.trim().to_string()))
+fn resolve_server_url() -> Result<Option<reqwest::Url>, String> {
+    let candidate = env::var("AXON_SERVER_URL")
+        .ok()
+        .map(|value| ("AXON_SERVER_URL", value.trim().to_string()))
         .filter(|(_, value)| !value.is_empty());
 
     candidate
         .map(|(source, raw)| {
-            reqwest::Url::parse(&raw).map(Some).map_err(|e| {
-                format!("invalid --server-url / AXON_SERVER_URL '{raw}' ({source}): {e}")
-            })
+            reqwest::Url::parse(&raw)
+                .map(Some)
+                .map_err(|e| format!("invalid AXON_SERVER_URL '{raw}' ({source}): {e}"))
         })
         .unwrap_or(Ok(None))
+}
+
+fn parse_i64_env(var_name: &str) -> Option<i64> {
+    env::var(var_name)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<i64>().ok())
 }
 
 fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {
@@ -401,43 +413,6 @@ fn warn_services_section_if_present(toml: &TomlConfig) {
             log_warn(
                 "[services] chrome-remote-url in config.toml is ignored; set AXON_CHROME_REMOTE_URL in ~/.axon/.env instead",
             );
-        }
-    });
-}
-
-/// Emit once-per-process deprecation warnings for env vars that are no longer
-/// honored — both `CompatibilityShim` (still accepted but slated for removal)
-/// and `Delete` (already removed; presence is silently ignored without this
-/// warning). Fires at every Config build but is guarded by a OnceLock so users
-/// see warnings on first invocation, not on every repeated subcommand.
-fn warn_compat_shim_env_vars() {
-    use crate::core::config::parse::env_registry::{EnvClassification, LegacyBehavior, all_specs};
-    use std::sync::OnceLock;
-    static WARNED: OnceLock<()> = OnceLock::new();
-    WARNED.get_or_init(|| {
-        for spec in all_specs() {
-            let is_compat = spec.classification == EnvClassification::CompatibilityShim;
-            let is_deleted = spec.classification == EnvClassification::Delete;
-            if !is_compat && !is_deleted {
-                continue;
-            }
-            if env::var(spec.key).is_err() {
-                continue;
-            }
-            let reason = if is_deleted {
-                "removed in 3.0.0; this variable is ignored — run `axon setup repair --migrate-env` to scrub it from ~/.axon/.env. See docs/env-migration-matrix.md for the replacement."
-            } else {
-                match spec.legacy_behavior {
-                    LegacyBehavior::WarnEnvOverride => {
-                        "still accepted but will be removed; set the TOML equivalent instead"
-                    }
-                    LegacyBehavior::WarnAndIgnore => {
-                        "ignored; this variable has no effect in the current runtime"
-                    }
-                    _ => "deprecated; consult docs/env-migration-matrix.md for the replacement",
-                }
-            };
-            log_warn(&format!("env var {} is deprecated: {}", spec.key, reason));
         }
     });
 }

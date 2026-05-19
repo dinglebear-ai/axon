@@ -32,6 +32,7 @@ pub mod sources;
 pub mod stats;
 pub mod status;
 pub mod suggest;
+pub mod summarize;
 pub mod train;
 pub mod watch;
 
@@ -67,6 +68,7 @@ pub use sources::run_sources;
 pub use stats::run_stats;
 pub use status::run_status;
 pub use suggest::run_suggest;
+pub use summarize::run_summarize;
 pub use train::run_train;
 pub use watch::run_watch;
 

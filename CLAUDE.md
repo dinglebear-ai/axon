@@ -5,7 +5,7 @@ Web crawl, scrape, extract, embed, and query — all in one binary backed by a s
 
 ## Quick Start
 
-> **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. The `AXON_LITE` / `--lite` compat shim was removed; run `axon setup repair --migrate-env` to scrub legacy keys from `~/.axon/.env`.
+> **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime.
 
 ```bash
 # Recommended: use the wrapper script (auto-sources .env)
@@ -52,6 +52,7 @@ MCP docs:
 | `query <text>` | Semantic vector search | No |
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
 | `ask <question>` | RAG: search + LLM answer. | No |
+| `summarize <url>...` | Scrape URL content and summarize it with the configured LLM | No |
 | `evaluate <question>` | RAG vs baseline + independent LLM judge (accuracy, relevance, completeness, specificity, verdict) | No |
 | `suggest [focus]` | Suggest new docs URLs to crawl | No |
 | `ingest <target>` | Ingest external source (GitHub repo, Reddit subreddit/thread, YouTube video/playlist/channel) — auto-detects source type from target. GitHub: source code indexed by default with tree-sitter AST chunking; use `--no-source` to skip. | Yes (default) |
@@ -64,7 +65,7 @@ MCP docs:
 | `debug` | Run doctor + LLM-assisted troubleshooting | No |
 | `mcp` | Start MCP stdio/HTTP server | No |
 | `serve` | Start the unified HTTP server (web panel, MCP HTTP, `/v1/ask`, `/v1/actions`, in-process workers) | No |
-| `setup` | First-run + remote SSH deploy helper | No |
+| `setup` | First-run local setup wrapper plus SSH target helper | No |
 | `screenshot <url>` | Capture a full-page screenshot via headless Chrome | No |
 | `dedupe` | Deduplicate near-identical chunks within a Qdrant collection | No |
 | `completions <shell>` | Emit shell completion scripts | No |
@@ -171,22 +172,22 @@ High-level subsystem map:
   - `src/extract/` — per-site extractor framework (registry + 13 verticals: github_repo, pypi, npm, crates_io, reddit, etc.) — see `src/extract/CLAUDE.md`
   - Auto-routed from `services::scrape::scrape` via `dispatch_by_url()` when `cfg.enable_verticals = true` (default on)
 - Async jobs:
-  - `src/jobs/lite.rs` + `src/jobs/lite/` (SQLite-backed enqueue/query/store/cancel)
-  - `src/jobs/lite/workers.rs` + `src/jobs/lite/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
+  - `src/jobs/runtime.rs` + `src/jobs/` (SQLite-backed enqueue/query/store/cancel)
+  - `src/jobs/workers.rs` + `src/jobs/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
   - `src/jobs/{crawl,embed,extract,ingest}.rs` (per-family job payload + dispatch helpers)
   - `src/jobs/crawl/` (manifest, processor, repo, sitemap, watchdog support)
-  - `src/jobs/watch_lite.rs` (recurring task scheduler — list/create/run-now/history)
-  - `src/jobs/backend.rs` (`JobBackend` trait + `LiteBackend` only)
+  - `src/jobs/watch.rs` (recurring task scheduler — list/create/run-now/history)
+  - `src/jobs/backend.rs` (`JobBackend` trait + `SqliteJobBackend` only)
   - job states in `src/jobs/status.rs`
 - Vector + RAG:
   - `src/vector/ops/*` (TEI embedding, Qdrant upsert/search, ask/evaluate/query)
   - Hybrid search: new collections use named `dense` + `bm42` sparse vectors with Reciprocal Rank Fusion (RRF) via Qdrant `/query` when hybrid search is active; falls back to dense-only when the sparse query is empty or hybrid is disabled. Legacy collections use dense-only. See `src/vector/CLAUDE.md`.
 - Services layer (services-first contract) — see `src/services/CLAUDE.md`:
   - `src/services/` — typed entry points consumed by both CLI handlers and MCP/web routes
-  - CLI commands call `src/services::{query,retrieve,ask,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those public call-site entry points are removed from the API surface; callers must go through the services layer)
+  - CLI commands call `src/services::{query,retrieve,ask,summarize,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those public call-site entry points are removed from the API surface; callers must go through the services layer)
   - Each service function returns a typed result struct (defined in `src/services/types/service.rs`) — no raw JSON printing or stdout side-effects
   - MCP handlers and web routes call the same service functions, mapping typed results to wire format
-  - Gemini headless LLM completions live in `src/services/llm_backend/` — used by ask synthesis, research, evaluate, suggest, debug, and extract fallback
+  - Gemini headless LLM completions live in `src/services/llm_backend/` — used by ask synthesis, summarize, research, evaluate, suggest, debug, and extract fallback
 - MCP server:
   - `src/mcp/` (schema, server routing, handler modules, config)
   - Single `axon` tool with `action`/`subaction` routing
@@ -276,7 +277,7 @@ QDRANT_URL=http://axon-qdrant:6333
 TEI_URL=http://axon-tei:80
 
 # LLM / Gemini headless completion settings
-# Gemini CLI is required for ask/evaluate/suggest/extract fallback/debug/research synthesis.
+# Gemini CLI is required for ask/summarize/evaluate/suggest/extract fallback/debug/research synthesis.
 AXON_HEADLESS_GEMINI_CMD=gemini
 AXON_HEADLESS_GEMINI_HOME=
 AXON_HEADLESS_GEMINI_MODEL=
@@ -309,6 +310,7 @@ AXON_JOB_STALE_CONFIRM_SECS=60     # additional grace period before stale reclai
 MCP HTTP auth is selected at startup:
 - `AXON_MCP_AUTH_MODE=oauth` enables the lab-auth Google OAuth/JWT flow and mounts `/.well-known/*`, `/authorize`, `/token`, `/register`, and related routes.
 - `AXON_MCP_HTTP_TOKEN` enables static bearer auth and also remains accepted in OAuth dual-mode.
+- OAuth email allowlisting is the access boundary. Allowed OAuth users receive full Axon server access; newly issued OAuth tokens default to both `axon:read` and `axon:write`, and either Axon scope is accepted for all Axon read/write routes for compatibility with existing tokens.
 - Tokenless HTTP is allowed only for loopback development binds; non-loopback binds require either OAuth mode or a static token.
 
 ```bash
@@ -329,15 +331,15 @@ AXON_MCP_ALLOWED_ORIGINS=
 
 ## Runtime Mode
 
-Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services. The legacy Postgres/Redis/RabbitMQ/AMQP path and the `AXON_LITE` / `--lite` compat shim have been removed.
+Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services. The legacy Postgres/Redis/RabbitMQ/AMQP path has been removed.
 
 ```bash
 axon scrape https://example.com           # SQLite/in-process runtime (only mode)
 ```
 
-**Supported commands:** scrape, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
+**Supported commands:** scrape, summarize, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
 
-**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch_lite.rs` and work today. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
+**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch.rs` and work today. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
 
 ```bash
 # Env vars for runtime tuning
@@ -346,7 +348,7 @@ AXON_SQLITE_PATH=/path/to/jobs.db        # optional; default: $AXON_DATA_DIR/job
 
 The `ServiceContext` (in `src/services/context.rs`) is constructed at startup and carries `cfg: Arc<Config>` plus `jobs: Arc<dyn ServiceJobRuntime>`. CLI fire-and-forget callers use `ServiceContext::new(cfg)` (no in-process workers); long-running services (`serve`, `mcp`, sync `--wait true` paths) use `ServiceContext::new_with_workers(cfg)`.
 
-See `src/jobs/CLAUDE.md` for the `JobBackend` trait and `LiteBackend` details, and `src/services/CLAUDE.md` for the `ServiceJobRuntime` abstraction.
+See `src/jobs/CLAUDE.md` for the `JobBackend` trait and `SqliteJobBackend` details, and `src/services/CLAUDE.md` for the `ServiceJobRuntime` abstraction.
 
 ## Gotchas
 
@@ -363,7 +365,7 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
 ### Gemini headless completion path
-All LLM operations — `ask`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`). Deterministic and vertical extractors in `src/extract/` and `src/core/content/deterministic.rs` run pure Rust without LLM calls; Gemini is invoked only when deterministic extraction yields nothing (the LLM fallback path). `AXON_HEADLESS_GEMINI_MODEL` is the model override knob. The legacy `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0 — `axon setup repair --migrate-env` scrubs them from existing `~/.axon/.env`.
+All LLM operations — `ask`, `summarize`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`). Deterministic and vertical extractors in `src/extract/` and `src/core/content/deterministic.rs` run pure Rust without LLM calls; Gemini is invoked only when deterministic extraction yields nothing (the LLM fallback path). `AXON_HEADLESS_GEMINI_MODEL` is the model override knob. The legacy `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0.
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).
@@ -428,7 +430,7 @@ spider_agent = { version = "2.45", default-features = false, features = ["search
 CLI commands output JSON data to stdout and progress/logs to stderr (Spinner via indicatif, tracing via `log_info`/`log_done`). Keep this split intact so server-mode and MCP callers can safely parse command output.
 
 ### Crawl queue cap (`AXON_MAX_PENDING_CRAWL_JOBS`)
-New crawl job submissions check the count of pending jobs before inserting. If the count is ≥ `AXON_MAX_PENDING_CRAWL_JOBS` (default 100, 0 = unlimited), the submission is rejected with a human-readable error. Set to 0 to disable. Implemented in `src/jobs/lite/ops/enqueue.rs` via `check_pending_cap_for()`.
+New crawl job submissions check the count of pending jobs before inserting. If the count is ≥ `AXON_MAX_PENDING_CRAWL_JOBS` (default 100, 0 = unlimited), the submission is rejected with a human-readable error. Set to 0 to disable. Implemented in `src/jobs/ops/enqueue.rs` via `check_pending_cap_for()`.
 
 ### Auto path-prefix scoping
 When crawling a URL with ≥2 path segments and no explicit `--url-whitelist`, the crawl is automatically scoped to the directory subtree of the start URL via a derived whitelist regex. For example, crawling `https://ai.google.dev/api/python/google/generativeai/GenerativeModel` auto-scopes to `^https?://ai\.google\.dev/api/python/google/generativeai(/|$)`. Root paths (`/`) and single-segment paths (`/docs`) are not scoped — they're already broad enough. Pass `--url-whitelist <pattern>` to override auto-scoping.

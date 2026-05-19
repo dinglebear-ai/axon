@@ -5,6 +5,7 @@ pub mod local;
 pub mod ssh_targets;
 
 pub use local::{
-    LocalSetupMode, LocalSetupPhase, LocalSetupReport, LocalSetupStatus, run_local_setup,
+    LocalSetupInitOptions, LocalSetupMode, LocalSetupPhase, LocalSetupReport, LocalSetupStatus,
+    StackAction, run_local_setup, run_local_setup_with_options, run_stack_action,
 };
 pub use ssh_targets::{SshTarget, list_ssh_targets};

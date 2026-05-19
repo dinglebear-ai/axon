@@ -32,9 +32,6 @@ pub struct ExtractWebConfig {
     pub render_mode: RenderMode,
     /// CDP management URL (e.g. `http://axon-chrome:6000`). `None` = no Chrome.
     pub chrome_remote_url: Option<String>,
-    pub chrome_stealth: bool,
-    pub chrome_anti_bot: bool,
-    pub chrome_intercept: bool,
     pub bypass_csp: bool,
     pub accept_invalid_certs: bool,
     pub request_timeout_ms: Option<u64>,

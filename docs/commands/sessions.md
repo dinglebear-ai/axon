@@ -75,4 +75,4 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon sessions --codex --json
 
 - Session ingest uses an incremental state tracker table: `axon_session_ingest_state`.
 - Job records for queued runs are stored in `axon_ingest_jobs` with `source_type='sessions'`.
-- In server mode (`AXON_SERVER_URL` / `--server-url`), session ingest and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers.
+- In server mode (`AXON_SERVER_URL`), session ingest and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers.

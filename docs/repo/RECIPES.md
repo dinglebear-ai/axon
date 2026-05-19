@@ -67,6 +67,7 @@ Run `just --list` to see all available recipes.
 | Recipe | Purpose |
 |--------|---------|
 | `just gen-mcp-schema` | Regenerate MCP-TOOL-SCHEMA.md from source |
+| `just test-watch` | Run focused watch command/parser/REST/scheduler tests |
 | `just watch-check` | cargo-watch: check + test on every save |
 
 ## Chaining

@@ -67,7 +67,7 @@ Implementation note: hosts are parsed with `host_str().parse::<IpAddr>()`, **not
 - `src/cli/commands/scrape.rs`, `crawl.rs`, `screenshot.rs`
 - `src/services/scrape.rs`, `map.rs`, `screenshot.rs`
 - `src/crawl/engine/map.rs`, `engine/sitemap.rs`, `scrape.rs`, `screenshot.rs`
-- `src/jobs/lite/workers/runners/crawl.rs`, `src/jobs/crawl.rs`
+- `src/jobs/workers/runners/crawl.rs`, `src/jobs/crawl.rs`
 - `src/ingest/youtube.rs`, `ingest/github/files/clone.rs`, `ingest/github/wiki.rs`
 - `src/mcp/server/common.rs`
 - `src/core/content/engine.rs`

@@ -1,0 +1,69 @@
+{
+    "metadata": {
+        "created_at": "2026-02-19T00:26:00Z",
+        "updated_at": "2026-02-19T07:00:00Z",
+        "repo_name": "axon_rust",
+        "current_branch": "chore/housekeeping",
+        "pull_request": "https://github.com/jmagar/axon_rust/pull/1",
+        "base_branch": "main",
+        "commit_sha": "4098d22",
+        "review_status": "completed",
+        "total_issues_found": 68,
+        "total_issues_resolved": 68,
+        "threads_marked_resolved": 114,
+        "final_commit": "4098d22",
+        "files_changed": 77,
+        "insertions": 3004,
+        "deletions": 4371
+    },
+    "superheroes": {
+        "Tony Stark": {
+            "partner": "Bruce Banner",
+            "assigned_issues": [2,13,18,31,33,47,48,50,72],
+            "resolved_issues": [2,13,18,31,33,47,48,50,72],
+            "markdown_filename": "tony-stark.md",
+            "full_completion": true,
+            "status": "complete"
+        },
+        "Bruce Banner": {
+            "partner": "Tony Stark",
+            "assigned_issues": [4,6,7,14,15,16,70,73,74,88,89,90],
+            "resolved_issues": [4,6,7,14,15,16,70,73,74,88,89,90],
+            "markdown_filename": "bruce-banner.md",
+            "full_completion": true,
+            "status": "complete"
+        },
+        "Phil Coulson": {
+            "partner": "Natasha Romanoff",
+            "assigned_issues": [8,9,11,19,20,21,22,25,86,87],
+            "resolved_issues": [8,9,11,19,20,21,22,25,86,87],
+            "markdown_filename": "phil-coulson.md",
+            "full_completion": true,
+            "status": "complete"
+        },
+        "Natasha Romanoff": {
+            "partner": "Phil Coulson",
+            "assigned_issues": [23,24,36,38,40,42,43,60,77,78,82],
+            "resolved_issues": [23,24,36,38,40,42,43,60,77,78,82],
+            "markdown_filename": "natasha-romanoff.md",
+            "full_completion": true,
+            "status": "complete"
+        },
+        "Gwen Stacy": {
+            "partner": "Miles Morales",
+            "assigned_issues": [34,35,37,39,44,61,62,63,64,65,66,67,76,79],
+            "resolved_issues": [34,35,37,39,44,61,62,63,64,65,66,67,76,79],
+            "markdown_filename": "gwen-stacy.md",
+            "full_completion": true,
+            "status": "complete"
+        },
+        "Miles Morales": {
+            "partner": "Gwen Stacy",
+            "assigned_issues": [52,54,55,57,58,59,68,69,80,81,84,85],
+            "resolved_issues": [52,54,55,57,58,59,68,69,80,81,84,85],
+            "markdown_filename": "miles-morales.md",
+            "full_completion": true,
+            "status": "complete"
+        }
+    }
+}

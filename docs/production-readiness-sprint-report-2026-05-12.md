@@ -2,7 +2,9 @@
 
 Date: 2026-05-12
 
-Scope: information gathering only. No source, configuration, workflow, hook, gitignore, or tracker changes were made as part of this report.
+Scope: historical information-gathering report from 2026-05-12. No source, configuration, workflow, hook, gitignore, or tracker changes were made as part of the original report.
+
+Status note (updated 2026-05-19): the local setup surface has since changed. Current commands are `axon setup` (init + stack up + preflight), `axon setup init`, `axon preflight`, `axon stack up|down|restart|rebuild`, and `axon smoke`. Sections below that say "current" describe the 2026-05-12 state unless explicitly marked updated.
 
 ## Release Target
 
@@ -31,7 +33,7 @@ The setup path should aggressively pre-pull and prewarm everything it can, inclu
 The repo has the pieces needed for a strong production path, but they are currently split across conflicting install stories:
 
 - `docker-compose.yaml` already defines the desired runtime shape: Axon server, Qdrant, TEI, and Chrome.
-- `axon setup` is currently centered on SSH-driven remote Docker deployment. That deployment style can remain, but it needs to share the same Docker-only production contract as local setup.
+- `axon setup` now has a local bootstrap wrapper; any remaining remote deployment story should share the same Docker-only production contract.
 - The Claude plugin hook currently writes `~/.axon/.env`, installs a systemd user service, restarts `axon serve mcp`, and symlinks a plugin-cache binary into `~/.local/bin/axon`. This directly conflicts with the new Docker-only target.
 - `.env.example` exposes too many tuning knobs. Many of them belong in `config.toml`; some should be removed from the production surface entirely.
 - CLI help is noisy because broad global flags are flattened into almost every subcommand, help output leaks current environment values, and the top-level custom help omits several real commands.
@@ -141,12 +143,12 @@ Claude plugin flow:
 
 ### CLI Setup Command
 
-Current `axon setup` is a remote Docker deployment helper, not a local install/setup wizard.
+Historical 2026-05-12 state: `axon setup` was a remote Docker deployment helper, not a local install/setup wizard. Updated 2026-05-19: local setup is split into `setup init`, `preflight`, `stack`, and `smoke`, with `setup` as a convenience wrapper.
 
 Observed behavior:
 
-- `axon setup` requires a subcommand.
-- `axon setup --json` fails before command handling with: `error: 'axon setup' requires a subcommand but one was not provided`.
+- Historical: `axon setup` required a subcommand.
+- Historical: `axon setup --json` failed before command handling when no subcommand was provided.
 - Existing subcommands are remote deployment oriented:
   - `axon setup targets`
   - `axon setup deploy <ssh-alias> [--remote-dir ...] [--accept-new-host-key] [--public-exposure]`
@@ -171,7 +173,7 @@ Production issue:
 
 - The SSH orchestration itself is not the problem if it deploys Docker Compose.
 - The problem is any path that deploys or supervises the Axon binary through systemd instead of the Docker stack.
-- The current setup shape also needs a local first-run path, because `axon setup` with no subcommand should be useful on the machine being installed.
+- The current setup shape includes a local bootstrap path, because `axon setup` with no subcommand is useful on the machine being installed.
 - The remote Docker deploy path should stay, but it should be made part of the same production setup contract as local setup.
 
 Required action:
@@ -185,10 +187,11 @@ Required action:
 
 ```bash
 axon setup
-axon setup --check
-axon setup --repair
-axon setup --first-run
-axon setup doctor
+axon setup init
+axon preflight
+axon stack up
+axon smoke
+axon doctor
 axon setup deploy <ssh-alias>
 ```
 
@@ -207,7 +210,7 @@ The script should:
 - Download a release binary or small bootstrap binary.
 - Verify checksum/signature when release artifacts are available.
 - Install `axon` to `~/.local/bin` or a user-selected prefix.
-- Run `axon setup --first-run`.
+- Run `axon setup`.
 - Avoid duplicating setup logic in shell. Shell should bootstrap, Rust should own the real checks and config writes.
 
 For a stable release, prefer:
@@ -298,7 +301,7 @@ Target plugin behavior:
 - Hook should call:
 
 ```bash
-axon setup --plugin --ensure-running
+axon setup plugin-hook
 ```
 
 or equivalent.
@@ -438,7 +441,7 @@ Current help issues:
 - Top-level `axon --help` is custom and incomplete.
 - It omits real commands including `serve`, `setup`, `watch`, `sessions`, `screenshot`, `dedupe`, `migrate`, and `completions`.
 - Subcommand help includes unrelated global flags because `GlobalArgs` is flattened everywhere.
-- `axon setup --help` shows crawl, Chrome, ask, vector, server, and tuning flags.
+- Historical: `axon setup --help` showed crawl, Chrome, ask, vector, server, and tuning flags.
 - Help output shows current env values, for example `AXON_SERVER_URL`, `AXON_COLLECTION`, and `AXON_CHROME_REMOTE_URL`. This is confusing and can leak sensitive or machine-local details if applied broadly.
 - `--lite` remains visible as if it changes behavior.
 - `--graph` advertises a Neo4j path that is not production-supported.
@@ -568,7 +571,7 @@ Required UX changes:
 
 CLI UX ergonomics beyond help:
 
-- `axon setup` should be idempotent and repair-oriented.
+- `axon setup` should be idempotent and bootstrap-oriented.
 - Failure messages should say which file to edit and which command to rerun.
 - `doctor` should check the production contract, not old optional backends.
 - The default command path should favor client/server mode once `AXON_SERVER_URL` exists.
@@ -587,7 +590,7 @@ These are candidates, not deletion instructions. Each needs a small verification
 | Postgres/Redis/RabbitMQ CI services | `.github/workflows/ci.yml` | Remove unless specific legacy tests still require them. |
 | `src/core/neo4j.rs` and graph flags | Graph retrieval not wired; MCP rejects graph mode | Remove from production code, CLI, MCP schema, docs, and tests. |
 | `src/vector/ops/stats/pg.rs` naming | SQLite-backed but named `pg` / `PostgresMetrics` | Rename to SQLite/job metrics. |
-| `src/jobs/lite/migrations/*graph*` / refresh jobs | Tables exist without clear production runner path | Remove graph-specific paths where safe; keep only explicit SQLite migration compatibility if existing user DBs require it. |
+| `src/jobs/migrations/*graph*` / refresh jobs | Tables exist without clear production runner path | Remove graph-specific paths where safe; keep only explicit SQLite migration compatibility if existing user DBs require it. |
 | `src/core/config/types/subconfigs.rs` queue config | AMQP-style queue names remain | Remove if unused after code search. |
 | `scripts/mcporter-axon` | Exports old `AXON_LITE` / `AXON_PG_URL` | Update or delete. |
 | `scripts/reingest.py` | Mentions AMQP hammering | Update or delete. |
@@ -611,14 +614,14 @@ Files over the current size policy and not covered by allowlist:
 - `vendor/lab-auth/src/sqlite.rs`
 - `src/services/types/service.rs`
 - `vendor/lab-auth/src/google.rs`
-- `src/jobs/lite/config_snapshot.rs`
+- `src/jobs/config_snapshot.rs`
 - `src/services/action_api/commands.rs`
 - `src/services/llm_backend/headless/gemini.rs`
 
 Function hard-limit failures:
 
 - `vendor/lab-auth/src/middleware.rs:263 authenticate()`
-- `src/jobs/lite/ops/enqueue.rs:99 enqueue_job_inner()`
+- `src/jobs/ops/enqueue.rs:99 enqueue_job_inner()`
 
 `.monolith-allowlist` state:
 
@@ -712,7 +715,7 @@ Outcome:
 Acceptance criteria:
 
 - Fresh `~/.axon` can be created idempotently.
-- Existing `~/.axon` is migrated or repaired without clobbering secrets.
+- Existing `~/.axon` is refreshed without clobbering secrets.
 - Docker Compose stack starts from published image.
 - Gemini auth is checked clearly.
 - OAuth/lab-auth config is checked clearly.
@@ -744,7 +747,7 @@ Acceptance criteria:
 
 - No systemd unit is created.
 - No plugin-cache binary becomes canonical.
-- Plugin hook starts/repairs Docker stack if needed.
+- Plugin hook runs preflight and invokes setup when needed.
 - Plugin uses existing `~/.axon/.env` and `~/.axon/config.toml`.
 - Claude MCP config points to the same server URL and token.
 

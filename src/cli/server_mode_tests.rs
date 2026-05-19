@@ -1,4 +1,6 @@
 use super::*;
+use crate::core::config::RenderMode;
+use crate::mcp::schema::{AxonRequest, McpRenderMode};
 use crate::services::types::ServiceJob;
 use chrono::Utc;
 use serde_json::json;
@@ -116,6 +118,29 @@ fn embed_server_mode_plan_fails_clearly_for_host_local_path() {
 }
 
 #[test]
+fn extract_server_mode_plan_preserves_extract_overrides() {
+    let mut cfg = cfg(CommandKind::Extract, &["https://example.com/docs"]);
+    cfg.query = Some("extract facts".to_string());
+    cfg.max_pages = 7;
+    cfg.render_mode = RenderMode::Http;
+    cfg.embed = false;
+
+    let plan = plan::server_action_plan(&cfg).expect("extract plan should build");
+    let AxonRequest::Extract(request) = plan.action else {
+        panic!("expected extract request");
+    };
+
+    assert_eq!(
+        request.urls,
+        Some(vec!["https://example.com/docs".to_string()])
+    );
+    assert_eq!(request.prompt.as_deref(), Some("extract facts"));
+    assert_eq!(request.max_pages, Some(7));
+    assert!(matches!(request.render_mode, Some(McpRenderMode::Http)));
+    assert_eq!(request.embed, Some(false));
+}
+
+#[test]
 fn server_status_text_matches_local_status_renderer() {
     let job = ServiceJob {
         id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
@@ -161,4 +186,32 @@ fn server_status_text_matches_local_status_renderer() {
     assert!(rendered.contains("Embed"));
     assert!(!rendered.contains("server mode"));
     assert!(rendered.contains("2 docs"));
+}
+
+#[test]
+fn extract_status_json_promotes_completed_result_payload() {
+    let result = json!({
+        "job": {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "status": "completed",
+            "result_json": {
+                "total_items": 1,
+                "summary_path": "/tmp/extract-summary.json",
+                "items_path": "/tmp/extract-items.ndjson",
+                "items": [{"kind": "json-ld"}]
+            }
+        }
+    });
+
+    let output = render::extract_status_json_result(&result);
+
+    assert_eq!(output["extract_result"]["total_items"], 1);
+    assert_eq!(
+        output["extract_result"]["items_path"],
+        "/tmp/extract-items.ndjson"
+    );
+    assert_eq!(
+        output["job"]["result_json"]["summary_path"],
+        "/tmp/extract-summary.json"
+    );
 }

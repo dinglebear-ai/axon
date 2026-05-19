@@ -235,6 +235,9 @@ fn build_filter_with_noise(
             })
         })
         .unwrap_or_else(|_| {
+            let default_level = read_trimmed_env("AXON_LOG_LEVEL")
+                .filter(|level| !level.is_empty())
+                .unwrap_or_else(|| default_level.to_string());
             let extras = noise_directives.join(",");
             EnvFilter::new(format!("{default_level},{extras}"))
         })

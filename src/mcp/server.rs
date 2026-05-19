@@ -22,6 +22,7 @@ mod services_migration_tests;
 
 use super::auth::AuthPolicy;
 use super::schema::{AxonRequest, parse_axon_request};
+use crate::authz::scope_satisfies;
 use crate::core::config::Config;
 use crate::services::context::ServiceContext;
 use crate::services::system;
@@ -126,7 +127,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo.",
         meta = axon_tool_meta()
     )]
     async fn axon<'a>(
@@ -175,6 +176,7 @@ impl AxonMcpServer {
             AxonRequest::VerticalScrape(req) => self.handle_vertical_scrape(req).await?,
             AxonRequest::Research(req) => self.handle_research(req).await?,
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
+            AxonRequest::Summarize(req) => self.handle_summarize(req).await?,
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
             AxonRequest::Debug(_)
             | AxonRequest::Dedupe(_)
@@ -268,13 +270,11 @@ fn require_auth_context<'a>(
 
 /// Enforce that `auth` carries `required_scope`.
 ///
-/// `axon:write` is treated as a superset of `axon:read` — a caller with write
-/// access implicitly satisfies any read-level scope requirement.
+/// Any valid Axon OAuth scope grants full Axon server access. OAuth email
+/// allowlisting is the access boundary; `axon:read`/`axon:write` are retained
+/// for client metadata and compatibility with existing tokens.
 fn check_scope(auth: &AuthContext, required_scope: &str, action: &str) -> Result<(), ErrorData> {
-    let satisfied = auth
-        .scopes
-        .iter()
-        .any(|s| s == required_scope || (required_scope == "axon:read" && s == "axon:write"));
+    let satisfied = scope_satisfies(&auth.scopes, required_scope);
     if satisfied {
         return Ok(());
     }
@@ -303,14 +303,14 @@ fn check_scope(auth: &AuthContext, required_scope: &str, action: &str) -> Result
 /// `axon:write`; all others require `axon:read`. The caller passes the
 /// `subaction` field from the parsed request arguments.
 ///
-/// Note on `"scrape"`: scrape crawls and stores content — it is a write
-/// operation and requires `axon:write`.
+/// Note on `"scrape"` and `"summarize"`: both scrape pages and may store
+/// content through the scrape service path, so they require `axon:write`.
 fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
     match action {
         // Informational — AuthContext required when Mounted, but no scope gate.
         "help" => None,
         // Write/mutating operations require axon:write.
-        "crawl" | "extract" | "embed" | "ingest" | "scrape" => Some("axon:write"),
+        "crawl" | "extract" | "embed" | "ingest" | "scrape" | "summarize" => Some("axon:write"),
         // artifacts: write subactions need axon:write, read subactions need axon:read.
         "artifacts" => match subaction {
             "delete" | "clean" => Some("axon:write"),
@@ -414,6 +414,7 @@ impl ServerHandler for AxonMcpServer {
             "- Run semantic search or RAG queries over indexed content\n",
             "- Ingest external sources (GitHub repos, Reddit threads/subreddits, YouTube videos/playlists)\n",
             "- Ask grounded questions against indexed docs (RAG with LLM synthesis)\n",
+            "- Summarize one or more URLs from freshly scraped page context\n",
             "- Research topics via web search with automatic indexing\n",
             "- Extract structured data from pages using LLM-powered extraction\n",
             "- Check job queue status, cancel jobs, or manage async workers\n",
@@ -426,6 +427,7 @@ impl ServerHandler for AxonMcpServer {
             "- `ingest` — GitHub/Reddit/YouTube source ingestion\n",
             "- `query` — dense + BM42 hybrid semantic search\n",
             "- `ask` — RAG: retrieve context + LLM answer\n",
+            "- `summarize` — scrape URL context + configured LLM summary\n",
             "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",
             "- `suggest` — propose new crawl targets from indexed source coverage\n",
             "- `research` — Tavily AI search with LLM synthesis\n",

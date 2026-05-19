@@ -122,7 +122,6 @@ fn map_ask_payload_typed() {
         "timing_ms": {
             "retrieval": 1,
             "context_build": 2,
-            "graph": 0,
             "llm": 3,
             "total": 6
         }
@@ -146,7 +145,6 @@ fn ask_result_serializes_absent_explain_as_null() {
         timing_ms: AskTiming {
             retrieval: 1,
             context_build: 2,
-            graph: 0,
             llm: 3,
             total: 6,
             tei_embed_ms: None,
@@ -238,7 +236,6 @@ fn map_ask_payload_preserves_explain_contract() {
         "timing_ms": {
             "retrieval": 1,
             "context_build": 2,
-            "graph": 0,
             "llm": 0,
             "total": 3
         }
@@ -300,8 +297,6 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
             "full_docs_selected": 2,
             "supplemental_selected": 1,
             "context_chars": 3000,
-            "graph_entities": 0,
-            "graph_context_chars": 0,
             "full_doc_fetch_skipped": true,
             "full_doc_fetch_skip_reason": "low_complexity",
             "detected_complexity": "simple",
@@ -323,7 +318,6 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
         "timing_ms": {
             "retrieval": 1,
             "context_build": 2,
-            "graph": 0,
             "llm": 3,
             "total": 6
         }

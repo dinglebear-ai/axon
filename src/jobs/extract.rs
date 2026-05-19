@@ -6,11 +6,11 @@ use uuid::Uuid;
 
 use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, JobPayload};
-use crate::jobs::lite::store::open_sqlite_pool;
+use crate::jobs::store::open_sqlite_pool;
 
 /// Thin Job struct used for CLI status display via `impl_job_status!`.
-/// Full-mode Postgres runtime has been removed.
-/// Lite-mode operations go through `crates/jobs/lite/`.
+/// Legacy Postgres runtime has been removed.
+/// SQLite operations go through `src/jobs/{store,query,ops}`.
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct ExtractJob {
     pub id: Uuid,
@@ -27,7 +27,7 @@ pub struct ExtractJob {
 /// Count all extract jobs in SQLite.
 pub async fn count_extract_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
     let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    Ok(crate::jobs::lite::query::count_jobs(&pool, JobKind::Extract).await?)
+    Ok(crate::jobs::query::count_jobs(&pool, JobKind::Extract).await?)
 }
 
 /// Enqueue a new extract job in SQLite. Returns the new job UUID.
@@ -41,7 +41,7 @@ pub async fn start_extract_job(
         .map(|p| serde_json::json!({ "prompt": p }).to_string())
         .unwrap_or_else(|| "{}".to_string());
     Ok(
-        crate::jobs::lite::ops::enqueue_job(&pool, &JobPayload::Extract { urls, config_json }, cfg)
+        crate::jobs::ops::enqueue_job(&pool, &JobPayload::Extract { urls, config_json }, cfg)
             .await?,
     )
 }

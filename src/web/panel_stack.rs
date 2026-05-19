@@ -183,7 +183,7 @@ fn compose_file_check(path: &std::path::Path) -> StackCheck {
         check(
             "Compose assets",
             "warn",
-            format!("missing {}; run axon setup repair", path.display()),
+            format!("missing {}; run axon setup init", path.display()),
         )
     }
 }

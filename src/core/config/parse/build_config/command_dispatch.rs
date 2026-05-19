@@ -6,7 +6,7 @@
 
 use super::super::super::cli::{
     CliCommand, ConfigArgs, ConfigSubcommand, IngestArgs, ServeArgs, ServeSubcommand, SessionsArgs,
-    SetupArgs, SetupSubcommand,
+    SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, StackArgs, StackSubcommand,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -177,6 +177,10 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.ask_diagnostics = args.diagnostics || args.explain;
             set_simple(&mut out, CommandKind::Ask, args.value);
         }
+        CliCommand::Summarize(args) => {
+            out.command = CommandKind::Summarize;
+            out.positional = args.positional_urls;
+        }
         CliCommand::Evaluate(args) => {
             out.ask_diagnostics = args.diagnostics;
             out.evaluate_responses_mode = args.responses_mode;
@@ -213,6 +217,9 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             ];
         }
         CliCommand::Serve(args) => apply_serve(&mut out, args),
+        CliCommand::Preflight => out.command = CommandKind::Preflight,
+        CliCommand::Smoke => out.command = CommandKind::Smoke,
+        CliCommand::Stack(args) => apply_stack(&mut out, args),
         CliCommand::Setup(args) => apply_setup(&mut out, args),
         CliCommand::Mcp(args) => {
             out.mcp_transport = args.transport;
@@ -346,23 +353,80 @@ fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
     out.command = CommandKind::Setup;
     match args.action {
         None => {}
-        Some(SetupSubcommand::PluginHook { no_repair }) => {
+        Some(SetupSubcommand::PluginHook { no_setup }) => {
             out.positional = vec!["plugin-hook".to_string()];
-            if no_repair {
-                out.positional.push("--no-repair".to_string());
+            if no_setup {
+                out.positional.push("--no-setup".to_string());
             }
         }
         Some(SetupSubcommand::Check) => {
-            out.positional = vec!["check".to_string()];
+            out.positional = vec!["preflight".to_string()];
         }
-        Some(SetupSubcommand::Repair { migrate_env }) => {
-            out.positional = vec!["repair".to_string()];
-            if migrate_env {
-                out.positional.push("--migrate-env".to_string());
-            }
+        Some(SetupSubcommand::Init(init)) => {
+            let init = *init;
+            out.positional = setup_init_positionals(init);
         }
         Some(SetupSubcommand::Targets) => {
             out.positional = vec!["targets".to_string()];
         }
+    }
+}
+
+fn apply_stack(out: &mut DispatchOutput, args: StackArgs) {
+    out.command = CommandKind::Stack;
+    out.positional = vec![
+        match args.action {
+            StackSubcommand::Up => "up",
+            StackSubcommand::Down => "down",
+            StackSubcommand::Restart => "restart",
+            StackSubcommand::Rebuild => "rebuild",
+        }
+        .to_string(),
+    ];
+}
+
+fn setup_init_positionals(init: SetupInitArgs) -> Vec<String> {
+    let mut out = vec!["init".to_string()];
+    push_opt(&mut out, "--mcp-host", init.mcp_host);
+    if let Some(port) = init.mcp_port {
+        push_opt(&mut out, "--mcp-port", Some(port.to_string()));
+    }
+    if let Some(mode) = init.auth_mode {
+        push_opt(
+            &mut out,
+            "--auth-mode",
+            Some(
+                match mode {
+                    SetupAuthMode::Bearer => "bearer",
+                    SetupAuthMode::Oauth => "oauth",
+                }
+                .to_string(),
+            ),
+        );
+    }
+    push_opt(&mut out, "--mcp-token", init.mcp_token);
+    push_opt(&mut out, "--oauth-public-url", init.oauth_public_url);
+    push_opt(&mut out, "--google-client-id", init.google_client_id);
+    push_opt(
+        &mut out,
+        "--google-client-secret",
+        init.google_client_secret,
+    );
+    push_opt(&mut out, "--auth-admin-email", init.auth_admin_email);
+    push_opt(&mut out, "--tavily-api-key", init.tavily_api_key);
+    push_opt(&mut out, "--github-token", init.github_token);
+    push_opt(&mut out, "--reddit-client-id", init.reddit_client_id);
+    push_opt(
+        &mut out,
+        "--reddit-client-secret",
+        init.reddit_client_secret,
+    );
+    out
+}
+
+fn push_opt(out: &mut Vec<String>, flag: &str, value: Option<String>) {
+    if let Some(value) = value {
+        out.push(flag.to_string());
+        out.push(value);
     }
 }

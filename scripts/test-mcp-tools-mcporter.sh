@@ -103,9 +103,6 @@ suggest
 EOF
 )"
 
-LITE_EXPECTED_ROUTES="$EXPECTED_ROUTES"
-LITE_EXPECTED_TOP_LEVEL_ACTIONS="$EXPECTED_TOP_LEVEL_ACTIONS"
-
 if ! command -v mcporter >/dev/null 2>&1; then
   echo "FAIL: mcporter not found in PATH" >&2
   exit 2
@@ -258,30 +255,22 @@ extract_json_field() {
 
 build_suite_config() {
   local mode="$1"
-  local lite_value="$2"
   local runtime_root="$BASE_OUTDIR/runtime-$mode"
   local suite_config="$BASE_OUTDIR/mcporter-$mode.json"
   jq \
     --arg server "$SERVER" \
-    --arg lite "$lite_value" \
     --arg repo_root "$REPO_ROOT" \
     --arg axon_home "$HOME/.axon" \
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/logs/axon.log" \
     --arg sqlite_path "$runtime_root/mcporter-jobs.db" \
     '.mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
-        AXON_LITE: $lite,
         AXON_REPO_ROOT: $repo_root,
         AXON_HOME: $axon_home,
         AXON_DATA_DIR: $data_dir,
         AXON_LOG_FILE: $log_file,
         AXON_SQLITE_PATH: $sqlite_path
       })
-     | if ((.mcpServers[$server].args // []) | length) > 1 then
-         .mcpServers[$server].args[1] |= sub("export AXON_LITE=\\\"\\$\\{AXON_LITE:-0\\}\\\""; "export AXON_LITE=" + $lite)
-       else
-         .
-       end
     ' \
     "$BASE_CONFIG_PATH" >"$suite_config"
   printf '%s\n' "$suite_config"
@@ -289,21 +278,16 @@ build_suite_config() {
 
 run_suite() {
   local mode="$1"
-  local lite_value="$2"
   local prefix="$mode"
   local expected_routes="$EXPECTED_ROUTES"
   local expected_top_level_actions="$EXPECTED_TOP_LEVEL_ACTIONS"
-  if [[ "$lite_value" == "1" ]]; then
-    expected_routes="$LITE_EXPECTED_ROUTES"
-    expected_top_level_actions="$LITE_EXPECTED_TOP_LEVEL_ACTIONS"
-  fi
 
-  CONFIG_PATH="$(build_suite_config "$mode" "$lite_value")"
+  CONFIG_PATH="$(build_suite_config "$mode")"
   OUTDIR="$BASE_OUTDIR/$mode"
   mkdir -p "$OUTDIR"
   MCPORTER=(mcporter --config "$CONFIG_PATH")
 
-  echo "== Suite: $mode (AXON_LITE=$lite_value) ==" | tee -a "$SUMMARY"
+  echo "== Suite: $mode ==" | tee -a "$SUMMARY"
   echo "Config: $CONFIG_PATH" | tee -a "$SUMMARY"
   echo "Server: $SERVER" | tee -a "$SUMMARY"
 
@@ -407,13 +391,10 @@ run_suite() {
 }
 
 if [[ "$URL_MODE" == "1" ]]; then
-  # URL-mode configs target an already-running MCP HTTP server. CI starts that
-  # server in default lite mode, so run the suite that matches the live process.
-  run_suite lite 1
+  # URL-mode configs target an already-running MCP HTTP server.
+  run_suite url
 else
-  run_suite full 0
-  echo "" | tee -a "$SUMMARY"
-  run_suite lite 1
+  run_suite stdio
 fi
 echo "" | tee -a "$SUMMARY"
 echo "Results: PASS=$pass FAIL=$fail" | tee -a "$SUMMARY"

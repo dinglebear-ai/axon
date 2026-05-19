@@ -1,7 +1,7 @@
 use super::*;
 use crate::core::config::CommandKind;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
-use crate::jobs::lite::config_snapshot::apply_lite_config_snapshot;
+use crate::jobs::config_snapshot::apply_config_snapshot;
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::types::ServiceJob;
 use std::error::Error as StdError;
@@ -170,8 +170,7 @@ async fn uses_hardened_bounded_crawl_config() {
     let JobPayload::Crawl { config_json, .. } = &payloads[0] else {
         panic!("expected crawl payload: {:?}", payloads[0]);
     };
-    let effective =
-        apply_lite_config_snapshot(&Config::test_default(), config_json).expect("snapshot");
+    let effective = apply_config_snapshot(&Config::test_default(), config_json).expect("snapshot");
     assert_eq!(effective.max_pages, 200);
     assert_eq!(effective.max_depth, 10);
     assert!(!effective.discover_sitemaps);

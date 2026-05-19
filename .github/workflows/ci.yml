@@ -30,6 +30,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -42,6 +56,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -54,6 +82,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: taiki-e/install-action@v2
         with:
           tool: taplo-cli
@@ -65,6 +107,20 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -89,6 +145,20 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -111,6 +181,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -125,6 +209,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            scripts
+      - name: Restore schema doc for drift comparison
+        run: mkdir -p docs && git show HEAD:docs/MCP-TOOL-SCHEMA.md > docs/MCP-TOOL-SCHEMA.md 2>/dev/null || true
       - name: Enforce generated MCP schema docs are in sync
         run: python3 scripts/generate_mcp_schema_doc.py --check
 
@@ -138,6 +228,20 @@ jobs:
       QDRANT_URL: http://127.0.0.1:53333
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -152,6 +256,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - name: Ban session-scoped advisory lock APIs
         run: |
           set -euo pipefail
@@ -180,6 +298,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - name: Ban spawn_adapter_skip_validation outside tests/
         run: |
           set -euo pipefail
@@ -199,6 +331,19 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - name: Enforce monolith policy (changed Rust files only)
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -240,6 +385,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -253,6 +412,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -267,6 +440,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -279,6 +466,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -297,6 +498,20 @@ jobs:
       RUST_MIN_STACK: "8388608"
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -316,6 +531,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -336,6 +565,20 @@ jobs:
       AXON_TEST_QDRANT_URL: http://127.0.0.1:6333
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -348,6 +591,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -375,6 +632,22 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
+      - name: Fetch MCP doc fixture for smoke test
+        run: mkdir -p docs && git show HEAD:docs/MCP.md > docs/MCP.md
 
       - uses: dtolnay/rust-toolchain@stable
         with:

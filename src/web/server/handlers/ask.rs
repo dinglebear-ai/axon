@@ -89,12 +89,6 @@ pub async fn v1_ask(
 ) -> impl IntoResponse {
     use super::super::types::ASK_QUERY_MAX_CHARS;
 
-    if req.graph.unwrap_or(false) {
-        return HttpError::bad_request(
-            "graph retrieval is not supported; omit graph or set graph to false",
-        )
-        .into_response();
-    }
     if req.query.trim().is_empty() {
         return HttpError::bad_request("query is required").into_response();
     }

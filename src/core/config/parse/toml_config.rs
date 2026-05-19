@@ -37,6 +37,36 @@ pub(super) struct TomlConfig {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlScrapeSection {
+    /// Respect robots.txt directives. Default false.
+    pub respect_robots: Option<bool>,
+    /// Minimum content length; shorter pages are flagged thin. Default 200.
+    pub min_markdown_chars: Option<usize>,
+    /// Skip thin pages instead of saving or embedding them. Default true.
+    pub drop_thin_markdown: Option<bool>,
+    /// Discover and backfill URLs from sitemap.xml after crawl. Default true.
+    pub discover_sitemaps: Option<bool>,
+    /// Only backfill sitemap URLs with a recent `<lastmod>` date. Default 0.
+    pub sitemap_since_days: Option<u32>,
+    /// Maximum number of sitemap documents to parse. Default 512.
+    pub max_sitemaps: Option<usize>,
+    /// Delay between requests in milliseconds. Default 0.
+    pub delay_ms: Option<u64>,
+    /// Per-request HTTP timeout in milliseconds. Default comes from performance profile.
+    pub request_timeout_ms: Option<u64>,
+    /// Number of retries on failed fetches. Default comes from performance profile.
+    pub fetch_retries: Option<usize>,
+    /// Backoff between retries in milliseconds. Default comes from performance profile.
+    pub retry_backoff_ms: Option<u64>,
+    /// Thin-page ratio to trigger auto-switch to Chrome. Default 0.60.
+    pub auto_switch_thin_ratio: Option<f64>,
+    /// Minimum pages before auto-switch eligibility check. Default 10.
+    pub auto_switch_min_pages: Option<usize>,
+    /// Only crawl URLs matching these regex patterns.
+    pub url_whitelist: Option<Vec<String>>,
+    /// Maximum response size per page in bytes; 0 means unlimited. Default 0.
+    pub max_page_bytes: Option<u64>,
+    /// Only follow same-origin redirects. Default false.
+    pub redirect_policy_strict: Option<bool>,
     /// DOM retry ladder Strategy 1 threshold (words). Default 30.
     pub ladder_strategy1_threshold: Option<usize>,
     /// DOM retry ladder Strategy 2 threshold (words). Default 200.
@@ -204,6 +234,18 @@ pub(super) struct TomlWorkersSection {
     /// Timeout in seconds for `--wait true` job polling (clamped 30–3600).
     /// Env: `AXON_JOB_WAIT_TIMEOUT_SECS`.
     pub job_wait_timeout_secs: Option<u64>,
+    /// Override crawl and backfill concurrency limits at once.
+    pub concurrency_limit: Option<usize>,
+    /// Override crawl concurrency. Default comes from performance profile.
+    pub crawl_concurrency_limit: Option<usize>,
+    /// Override sitemap backfill concurrency. Default comes from performance profile.
+    pub backfill_concurrency_limit: Option<usize>,
+    /// Seconds before a running job is considered stale.
+    pub watchdog_stale_timeout_secs: Option<i64>,
+    /// Additional grace period before a stale job is reclaimed.
+    pub watchdog_confirm_secs: Option<i64>,
+    /// Seconds between watchdog sweeps.
+    pub watchdog_sweep_secs: Option<i64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -211,6 +253,16 @@ pub(super) struct TomlWorkersSection {
 pub(super) struct TomlChromeSection {
     /// Custom `User-Agent` header sent by Chrome. Env: `AXON_CHROME_USER_AGENT`.
     pub user_agent: Option<String>,
+    /// Bypass Content Security Policy in Chrome. Default false.
+    pub bypass_csp: Option<bool>,
+    /// Accept invalid/self-signed TLS certificates in Chrome. Default false.
+    pub accept_invalid_certs: Option<bool>,
+    /// Seconds to wait for Chrome network idle before capture. Default 15.
+    pub network_idle_timeout_secs: Option<u64>,
+    /// Timeout in milliseconds for the remote Chrome bootstrap probe. Default 3000.
+    pub bootstrap_timeout_ms: Option<u64>,
+    /// Number of retries for the remote Chrome bootstrap probe. Default 2.
+    pub bootstrap_retries: Option<usize>,
 }
 
 /// Load TOML config from the first found path:

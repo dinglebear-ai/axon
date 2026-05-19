@@ -19,13 +19,13 @@ Async job runtime and lifecycle management for axon's SQLite backend.
 
 ## Key Files
 - `backend.rs`: `JobBackend` trait + `JobPayload` + `JobKind` + `JobStatusRow` + `JobSummary`.
-- `lite.rs`: `LiteBackend` — SQLite pool + in-process worker spawning (with `new()` enqueue-only and `new_with_workers()` constructors).
-- `lite/workers.rs` + `lite/workers/`: per-kind in-process workers.
-- `lite/store.rs`, `lite/query.rs`, `lite/cancel.rs`, `lite/ops.rs` (+ `lite/ops/`): SQL helpers.
-- `lite/config_snapshot.rs`: per-job config snapshotting.
-- `lite/migrations/`: SQLite migration files.
+- `runtime.rs`: `SqliteJobBackend` — SQLite pool + in-process worker spawning (with `new()` enqueue-only and `new_with_workers()` constructors).
+- `workers.rs` + `workers/`: per-kind in-process workers.
+- `store.rs`, `query.rs`, `cancel.rs`, `ops.rs` (+ `ops/`): SQL helpers.
+- `config_snapshot.rs`: per-job config snapshotting.
+- `migrations/`: SQLite migration files.
 - `crawl.rs`, `embed.rs`, `extract.rs`, `ingest.rs`: per-kind schema + payload helpers.
-- `watch_lite.rs`: SQLite-backed watch task scheduler.
+- `watch.rs`: SQLite-backed watch task scheduler.
 - `status.rs`: shared `JobStatus` enum.
 - `error.rs`: job error types.
 
@@ -38,8 +38,8 @@ Async job runtime and lifecycle management for axon's SQLite backend.
 
 ## Notes
 - SQLite is the source of truth for job state; there is no alternate Postgres/Redis/AMQP runtime.
-- `LiteBackend::new(cfg)` is enqueue-only — safe for fire-and-forget CLI commands.
-  Use `LiteBackend::new_with_workers(cfg)` for serve / mcp / web (anywhere the process
+- `SqliteJobBackend::new(cfg)` is enqueue-only — safe for fire-and-forget CLI commands.
+  Use `SqliteJobBackend::new_with_workers(cfg)` for serve / mcp / web (anywhere the process
   must drain the queue itself).
 - Recovery behavior is driven by `AXON_JOB_STALE_TIMEOUT_SECS` and `AXON_JOB_STALE_CONFIRM_SECS`.
 

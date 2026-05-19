@@ -21,6 +21,7 @@ pub mod screenshot;
 pub mod search;
 pub mod search_crawl;
 pub mod setup;
+pub mod summarize;
 pub mod system;
 pub mod types;
 pub mod watch;

@@ -1,0 +1,282 @@
+{
+  "metadata": {
+    "created_at": "22:04 | 02/19/2026",
+    "updated_at": "22:04 | 02/19/2026",
+    "repo_name": "axon_rust",
+    "current_branch": "perf/command-performance-fixes",
+    "pull_request": "https://github.com/jmagar/axon_rust/pull/2",
+    "base_branch": "main",
+    "commit_sha": "7c70830fc1e2cb61f017e03d62f6bcd8996df477",
+    "review_status": "in_progress",
+    "total_issues_found": 18,
+    "total_issues_resolved": 0
+  },
+  "issue_registry": {
+    "pair_1_tony_bruce": {
+      "subsystem": "jobs/crawl_jobs + jobs/common",
+      "files": [
+        {
+          "path": "crates/jobs/crawl_jobs/runtime/worker/worker_process.rs",
+          "lines": 625,
+          "violation": "file >500 lines AND process_job() is 342 lines (>120 fn limit) — primary refactor target: split by job-type dispatch",
+          "priority": "P0"
+        },
+        {
+          "path": "crates/jobs/crawl_jobs/runtime/worker/worker_loops.rs",
+          "lines": 320,
+          "violation": "reclaim_stale_running_jobs() 85 lines, run_amqp_worker_lane() 91 lines (>80 fn warn)",
+          "priority": "P1"
+        },
+        {
+          "path": "crates/jobs/crawl_jobs/runtime/robots.rs",
+          "lines": 260,
+          "violation": "discover_sitemap_urls_with_robots() 111 lines (>80 fn warn, approaching >120 fail)",
+          "priority": "P1"
+        },
+        {
+          "path": "crates/jobs/common.rs",
+          "lines": 418,
+          "violation": "approaching 500-line file limit; long functions inside shared infrastructure",
+          "priority": "P1"
+        },
+        {
+          "path": "crates/jobs/common/tests.rs",
+          "lines": 238,
+          "violation": "claim_and_fail_lifecycle_transitions_are_state_guarded() is 89 lines (>80 fn warn)",
+          "priority": "P2"
+        }
+      ]
+    },
+    "pair_2_phil_natasha": {
+      "subsystem": "cli/commands",
+      "files": [
+        {
+          "path": "crates/cli/commands/doctor.rs",
+          "lines": 491,
+          "violation": "approaching 500-line file limit; monolith command handler",
+          "priority": "P0"
+        },
+        {
+          "path": "crates/cli/commands/extract.rs",
+          "lines": 459,
+          "violation": "approaching 500-line file limit; monolith command handler",
+          "priority": "P0"
+        },
+        {
+          "path": "crates/cli/commands/status.rs",
+          "lines": 442,
+          "violation": "approaching 500-line file limit; monolith command handler",
+          "priority": "P1"
+        },
+        {
+          "path": "crates/cli/commands/batch.rs",
+          "lines": 384,
+          "violation": "long command handler, functions likely exceed 80-line warn",
+          "priority": "P1"
+        },
+        {
+          "path": "crates/cli/commands/embed.rs",
+          "lines": 257,
+          "violation": "long functions in command handler",
+          "priority": "P2"
+        },
+        {
+          "path": "crates/cli/commands/debug.rs",
+          "lines": 131,
+          "violation": "functions exceed 80-line warn threshold",
+          "priority": "P2"
+        }
+      ]
+    },
+    "pair_3_gwen_miles": {
+      "subsystem": "vector/ops + scripts",
+      "files": [
+        {
+          "path": "crates/vector/ops/stats.rs",
+          "lines": 578,
+          "violation": "file >500 lines (hard fail); needs module split",
+          "priority": "P0"
+        },
+        {
+          "path": "crates/vector/ops/commands/ask.rs",
+          "lines": 571,
+          "violation": "file >500 lines (hard fail); flagged 'by design' but still over limit",
+          "priority": "P0"
+        },
+        {
+          "path": "crates/vector/ops/commands/evaluate.rs",
+          "lines": 418,
+          "violation": "approaching 500-line file limit; flagged 'by design' but still over",
+          "priority": "P1"
+        },
+        {
+          "path": "crates/vector/ops/tei.rs",
+          "lines": 356,
+          "violation": "long functions in TEI embed/batch module",
+          "priority": "P1"
+        },
+        {
+          "path": "crates/vector/ops/commands/suggest.rs",
+          "lines": 328,
+          "violation": "long command handler, functions exceed 80-line warn",
+          "priority": "P1"
+        },
+        {
+          "path": "crates/vector/ops/qdrant/commands.rs",
+          "lines": 266,
+          "violation": "long functions in Qdrant command module",
+          "priority": "P2"
+        },
+        {
+          "path": "scripts/qdrant-quality.py",
+          "lines": 1498,
+          "violation": "pre-existing large Python script; tracked for future refactoring (not Rust monolith policy but still technical debt)",
+          "priority": "P3"
+        }
+      ]
+    }
+  },
+  "communication_log": [
+    {
+      "timestamp": "22:04 | 02/19/2026",
+      "from": "Team Leader",
+      "to": "ALL",
+      "message": "Gate 0 broadcast: squad.json initialized. 18 files assigned across 3 pairs. Repo: axon_rust, branch: perf/command-performance-fixes, PR: #2. Each pair owns a distinct subsystem — zero file overlap for safe parallel work. Superheroes activate and check in.",
+      "gate": 0
+    }
+  ],
+  "superheroes": {
+    "Tony Stark": {
+      "partner": "Bruce Banner",
+      "assigned_issues": [
+        "crates/jobs/crawl_jobs/runtime/worker/worker_process.rs",
+        "crates/jobs/crawl_jobs/runtime/robots.rs",
+        "crates/jobs/common/tests.rs"
+      ],
+      "markdown_created": false,
+      "markdown_filename": "docs/reports/superheroes-code-reviewers/26/02/19-22:04/tony-stark.md",
+      "markdown_last_updated": "",
+      "resolved_issues": [],
+      "partner_reviews": [],
+      "peer_reviews": [],
+      "superpowers_skills_used": [],
+      "full_completion": false,
+      "status": "idle",
+      "last_check_in": "",
+      "blockers": [],
+      "questions_pending": [],
+      "messages_sent": [],
+      "messages_received": []
+    },
+    "Bruce Banner": {
+      "partner": "Tony Stark",
+      "assigned_issues": [
+        "crates/jobs/crawl_jobs/runtime/worker/worker_loops.rs",
+        "crates/jobs/common.rs"
+      ],
+      "markdown_created": false,
+      "markdown_filename": "docs/reports/superheroes-code-reviewers/26/02/19-22:04/bruce-banner.md",
+      "markdown_last_updated": "",
+      "resolved_issues": [],
+      "partner_reviews": [],
+      "peer_reviews": [],
+      "superpowers_skills_used": [],
+      "full_completion": false,
+      "status": "idle",
+      "last_check_in": "",
+      "blockers": [],
+      "questions_pending": [],
+      "messages_sent": [],
+      "messages_received": []
+    },
+    "Phil Coulson": {
+      "partner": "Natasha Romanoff",
+      "assigned_issues": [
+        "crates/cli/commands/doctor.rs",
+        "crates/cli/commands/status.rs",
+        "crates/cli/commands/debug.rs"
+      ],
+      "markdown_created": false,
+      "markdown_filename": "docs/reports/superheroes-code-reviewers/26/02/19-22:04/phil-coulson.md",
+      "markdown_last_updated": "",
+      "resolved_issues": [],
+      "partner_reviews": [],
+      "peer_reviews": [],
+      "superpowers_skills_used": [],
+      "full_completion": false,
+      "status": "idle",
+      "last_check_in": "",
+      "blockers": [],
+      "questions_pending": [],
+      "messages_sent": [],
+      "messages_received": []
+    },
+    "Natasha Romanoff": {
+      "partner": "Phil Coulson",
+      "assigned_issues": [
+        "crates/cli/commands/extract.rs",
+        "crates/cli/commands/batch.rs",
+        "crates/cli/commands/embed.rs"
+      ],
+      "markdown_created": false,
+      "markdown_filename": "docs/reports/superheroes-code-reviewers/26/02/19-22:04/natasha-romanoff.md",
+      "markdown_last_updated": "",
+      "resolved_issues": [],
+      "partner_reviews": [],
+      "peer_reviews": [],
+      "superpowers_skills_used": [],
+      "full_completion": false,
+      "status": "idle",
+      "last_check_in": "",
+      "blockers": [],
+      "questions_pending": [],
+      "messages_sent": [],
+      "messages_received": []
+    },
+    "Gwen Stacy": {
+      "partner": "Miles Morales",
+      "assigned_issues": [
+        "crates/vector/ops/stats.rs",
+        "crates/vector/ops/commands/evaluate.rs",
+        "crates/vector/ops/commands/suggest.rs",
+        "scripts/qdrant-quality.py"
+      ],
+      "markdown_created": false,
+      "markdown_filename": "docs/reports/superheroes-code-reviewers/26/02/19-22:04/gwen-stacy.md",
+      "markdown_last_updated": "",
+      "resolved_issues": [],
+      "partner_reviews": [],
+      "peer_reviews": [],
+      "superpowers_skills_used": [],
+      "full_completion": false,
+      "status": "idle",
+      "last_check_in": "",
+      "blockers": [],
+      "questions_pending": [],
+      "messages_sent": [],
+      "messages_received": []
+    },
+    "Miles Morales": {
+      "partner": "Gwen Stacy",
+      "assigned_issues": [
+        "crates/vector/ops/commands/ask.rs",
+        "crates/vector/ops/tei.rs",
+        "crates/vector/ops/qdrant/commands.rs"
+      ],
+      "markdown_created": false,
+      "markdown_filename": "docs/reports/superheroes-code-reviewers/26/02/19-22:04/miles-morales.md",
+      "markdown_last_updated": "",
+      "resolved_issues": [],
+      "partner_reviews": [],
+      "peer_reviews": [],
+      "superpowers_skills_used": [],
+      "full_completion": false,
+      "status": "idle",
+      "last_check_in": "",
+      "blockers": [],
+      "questions_pending": [],
+      "messages_sent": [],
+      "messages_received": []
+    }
+  }
+}

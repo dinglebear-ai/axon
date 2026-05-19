@@ -168,22 +168,22 @@ flowchart LR
 State model:
 
 - Shared statuses in `src/jobs/status.rs`: `pending`, `running`, `completed`, `failed`, `canceled`.
-- Atomic claim/fail/update helpers in `src/jobs/lite/ops/lifecycle.rs`.
-- Queue-cap checks in `src/jobs/lite/ops/enqueue.rs`.
-- Stale job reclaim in `src/jobs/lite/store.rs`.
+- Atomic claim/fail/update helpers in `src/jobs/ops/lifecycle.rs`.
+- Queue-cap checks in `src/jobs/ops/enqueue.rs`.
+- Stale job reclaim in `src/jobs/store.rs`.
 
 Job families:
 
-- Crawl: `src/jobs/lite/workers/runners/crawl.rs`
-- Extract: `src/jobs/lite/workers/runners/extract.rs`
-- Embed: `src/jobs/lite/workers/runners/embed.rs`
-- Ingest: `src/jobs/lite/workers/runners/ingest.rs`
+- Crawl: `src/jobs/workers/runners/crawl.rs`
+- Extract: `src/jobs/workers/runners/extract.rs`
+- Embed: `src/jobs/workers/runners/embed.rs`
+- Ingest: `src/jobs/workers/runners/ingest.rs`
 
 ### Worker Architecture
 
 #### In-Process SQLite Workers
 
-`src/jobs/lite/workers.rs` provides the generic worker loop. Each lane claims a
+`src/jobs/workers.rs` provides the generic worker loop. Each lane claims a
 pending row from SQLite, updates heartbeat state while running, calls the
 per-kind runner, and records completion or failure.
 
@@ -281,7 +281,7 @@ Added in v0.12.0 to manage MCP tool response artifacts:
 ### LLM Backend (`src/services/llm_backend/`)
 
 `services/llm_backend` is the sole LLM synthesis gateway. It serves `ask`,
-`evaluate`, `suggest`, `research`, `debug`, and extract fallback by launching
+`summarize`, `evaluate`, `suggest`, `research`, `debug`, and extract fallback by launching
 Gemini headless with:
 
 - isolated temporary HOME populated from `AXON_HEADLESS_GEMINI_HOME` or process HOME
@@ -377,12 +377,12 @@ Crawl/jobs/vector:
 
 - `src/crawl/engine.rs`
 - `src/jobs/status.rs`
-- `src/jobs/lite.rs`
-- `src/jobs/lite/workers.rs`
-- `src/jobs/lite/ops/enqueue.rs`
-- `src/jobs/lite/ops/lifecycle.rs`
-- `src/jobs/lite/store.rs`
-- `src/jobs/lite/workers/runners/{crawl,embed,extract,ingest}.rs`
+- `src/jobs/runtime.rs`
+- `src/jobs/workers.rs`
+- `src/jobs/ops/enqueue.rs`
+- `src/jobs/ops/lifecycle.rs`
+- `src/jobs/store.rs`
+- `src/jobs/workers/runners/{crawl,embed,extract,ingest}.rs`
 - `src/vector/ops.rs`
 - `src/vector/ops/tei.rs`
 

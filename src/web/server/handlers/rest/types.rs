@@ -43,6 +43,15 @@ pub(crate) struct UrlOnlyBody {
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct UrlsBody {
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub urls: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct MapBody {
     pub url: String,
     #[serde(default)]

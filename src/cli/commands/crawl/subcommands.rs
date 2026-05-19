@@ -9,7 +9,7 @@ use crate::core::ui::{
     accent, confirm_destructive, muted, primary, status_text, symbol_for_status,
 };
 use crate::jobs::backend::JobKind;
-use crate::jobs::lite::store::RECLAIMED_ERROR_TEXT;
+use crate::jobs::store::RECLAIMED_ERROR_TEXT;
 use crate::services::context::ServiceContext;
 use crate::services::jobs as job_service;
 use crate::services::types::ServiceJob;

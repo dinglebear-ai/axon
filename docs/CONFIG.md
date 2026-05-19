@@ -9,13 +9,15 @@ Axon uses two user-editable files under `~/.axon/`:
 
 ## Precedence (highest to lowest)
 
-1. CLI flags (`--collection`, `--server-url`, etc.)
+1. CLI flags for command inputs (`--collection`, `--wait`, `--local`, etc.)
 2. Environment variables for secrets, URLs, auth/runtime, bootstrap, and temporary compatibility shims
 3. `~/.axon/config.toml` for non-secret tuning
 4. Built-in defaults
 
 Service endpoint URLs are intentionally not accepted from `config.toml`.
-Use `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`, or CLI flags.
+Use `QDRANT_URL`, `TEI_URL`, `AXON_SERVER_URL`, and `AXON_CHROME_REMOTE_URL`
+from the env layer. `QDRANT_URL` and `TEI_URL` also have temporary CLI
+overrides for one-off diagnostics.
 
 ## Canonical `~/.axon/` layout
 
@@ -72,11 +74,9 @@ cp .env.example ~/.axon/.env
 chmod 600 ~/.axon/.env
 ```
 
-`axon setup repair` is non-destructive: it adds missing required runtime keys and repairs blank generated auth tokens, but it does not prune unknown keys.
+`axon setup init` is non-destructive: it adds missing required runtime keys and fills blank generated auth tokens, but it does not prune unknown keys.
 
-Use `axon setup repair --migrate-env --json` to perform the env boundary migration. This creates a timestamped backup under `~/.axon/`, moves classified non-secret tuning into `config.toml`, prunes known stale keys, and reports counts without printing secret values.
-
-If `AXON_ENV_FILE` is set, Axon treats that file as the effective env file. The migration refuses to silently rewrite `~/.axon/.env` while runtime is pointed somewhere else.
+If `AXON_ENV_FILE` is set, Axon treats that file as the effective env file.
 
 ## CLI server mode
 
@@ -126,7 +126,9 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
 | `[ask]` | `max-context-chars`, `chunk-limit`, `candidate-limit`, `full-docs`, `backfill-chunks`, `doc-fetch-concurrency`, `doc-chunk-limit`, `min-relevance-score`, `authoritative-domains`, `authoritative-boost`, `min-citations-nontrivial` | `AXON_ASK_MAX_CONTEXT_CHARS`, `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_FULL_DOCS`, `AXON_ASK_BACKFILL_CHUNKS`, `AXON_ASK_DOC_FETCH_CONCURRENCY`, `AXON_ASK_DOC_CHUNK_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, `AXON_ASK_AUTHORITATIVE_BOOST`, `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
-| `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
+| `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs`, `concurrency-limit`, `crawl-concurrency-limit`, `backfill-concurrency-limit`, `watchdog-stale-timeout-secs`, `watchdog-confirm-secs`, `watchdog-sweep-secs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS`, `AXON_JOB_STALE_TIMEOUT_SECS`, `AXON_JOB_STALE_CONFIRM_SECS`, `AXON_WATCHDOG_SWEEP_SECS` |
+| `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
+| `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `delay-ms`, `request-timeout-ms`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | ladder env vars only |
 
 URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
@@ -163,12 +165,12 @@ URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/jobs.db` (default `~/.axon/jobs.db`) | SQLite jobs database path |
+| `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/jobs.db` (default `~/.axon/jobs.db`) | SQLite jobs database path. Env-only; no CLI flag. |
 
 **Worker spawn is conditional**, not unconditional. The SQLite backend has two construction modes:
 
-- `LiteBackend::new(cfg)` — **enqueue-only**. No workers spawn. Used by `ServiceContext::new()` for short-lived CLI commands (status/list/cancel/fire-and-forget submit).
-- `LiteBackend::new_with_workers(cfg)` — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest). Used by `ServiceContext::new_with_workers()` for long-running processes: `axon serve`, MCP server, web routes, and CLI commands that block on `--wait true`.
+- `SqliteJobBackend::new(cfg)` — **enqueue-only**. No workers spawn. Used by `ServiceContext::new()` for short-lived CLI commands (status/list/cancel/fire-and-forget submit).
+- `SqliteJobBackend::new_with_workers(cfg)` — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest). Used by `ServiceContext::new_with_workers()` for long-running processes: `axon serve`, MCP server, web routes, and CLI commands that block on `--wait true`.
 
 Spawning workers in a fire-and-forget CLI process orphans claimed jobs at process exit, so the CLI defaults to enqueue-only and lets a separate `serve`/`mcp` process drain the queue.
 
@@ -224,10 +226,21 @@ temporary overrides and legacy scripts.
 | `workers.queue-summary-secs` | `AXON_QUEUE_SUMMARY_SECS` | `30` | Queue summary logging interval (0 disables, clamped 0-3600) |
 | `workers.qdrant-point-buffer` | `AXON_QDRANT_POINT_BUFFER` | `256` | Buffered Qdrant points before flush (clamped 128-16384) |
 | `workers.job-wait-timeout-secs` | `AXON_JOB_WAIT_TIMEOUT_SECS` | `300` | Timeout for `--wait true` job polling (clamped 30-3600) |
+| `workers.concurrency-limit` | -- | profile default | Override crawl and backfill concurrency at once |
+| `workers.crawl-concurrency-limit` | -- | profile default | Override crawl concurrency |
+| `workers.backfill-concurrency-limit` | -- | profile default | Override sitemap backfill concurrency |
+| `workers.watchdog-stale-timeout-secs` | `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
+| `workers.watchdog-confirm-secs` | `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Additional grace period before stale reclaim |
+| `workers.watchdog-sweep-secs` | `AXON_WATCHDOG_SWEEP_SECS` | `15` | Seconds between watchdog sweeps |
 | `workers.max-pending-embed-jobs` | `AXON_MAX_PENDING_EMBED_JOBS` | `50` | Embed queue cap — reject new jobs above this count (0 = unlimited) |
 | `workers.max-pending-extract-jobs` | `AXON_MAX_PENDING_EXTRACT_JOBS` | `50` | Extract queue cap (0 = unlimited) |
 | `workers.max-pending-ingest-jobs` | `AXON_MAX_PENDING_INGEST_JOBS` | `50` | Ingest queue cap (0 = unlimited) |
 | `chrome.user-agent` | `AXON_CHROME_USER_AGENT` | *(Spider default)* | Custom User-Agent sent by Chrome |
+| `chrome.bypass-csp` | -- | `false` | Bypass Content Security Policy in Chrome |
+| `chrome.accept-invalid-certs` | -- | `false` | Accept invalid/self-signed TLS certificates in Chrome |
+| `chrome.network-idle-timeout-secs` | -- | `15` | Seconds to wait for Chrome network idle before capture |
+| `chrome.bootstrap-timeout-ms` | -- | `3000` | Remote Chrome bootstrap probe timeout in milliseconds (minimum 250) |
+| `chrome.bootstrap-retries` | -- | `2` | Remote Chrome bootstrap retry count (clamped 0-10) |
 
 ### Search and research
 
@@ -327,9 +340,9 @@ password under `~/.axon/panel-password`. MCP and `/v1/actions` use
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address; non-loopback requires bearer or OAuth auth |
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port |
-| `AXON_MCP_HTTP_TOKEN` | -- | Bearer or `x-api-key` token; required for non-loopback binds |
+| `AXON_MCP_HTTP_TOKEN` | -- | Bearer or `x-api-key` token; generated by `axon setup init` for local bearer mode |
 | `AXON_MCP_AUTH_MODE` | `bearer` | Set to `oauth` to enable Google OAuth + DCR through lab-auth. |
 | `AXON_MCP_PUBLIC_URL` | -- | Public origin used for OAuth metadata, e.g. `https://axon.example.com`. |
 | `AXON_MCP_GOOGLE_CLIENT_ID` | -- | Google OAuth client ID for MCP OAuth mode. |

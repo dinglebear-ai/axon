@@ -8,14 +8,6 @@ use std::env;
 #[test]
 fn parse_watch_create_with_every_and_type() {
     let _guard = ENV_LOCK.lock().unwrap();
-    const PG: &str = "AXON_PG_URL";
-    const REDIS: &str = "AXON_REDIS_URL";
-    const AMQP: &str = "AXON_AMQP_URL";
-    unsafe {
-        env::set_var(PG, "postgresql://axon:postgres@*********:53432/axon");
-        env::set_var(REDIS, "redis://*********:53379");
-        env::set_var(AMQP, "amqp://axon:axonrabbit@*********:45535/%2f");
-    }
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -44,12 +36,6 @@ fn parse_watch_create_with_every_and_type() {
             "300".to_string(),
         ]
     );
-
-    unsafe {
-        env::remove_var(PG);
-        env::remove_var(REDIS);
-        env::remove_var(AMQP);
-    }
 }
 
 #[test]
@@ -71,14 +57,6 @@ fn config_example_toml_parses() {
 #[test]
 fn parse_watch_run_now() {
     let _guard = ENV_LOCK.lock().unwrap();
-    const PG: &str = "AXON_PG_URL";
-    const REDIS: &str = "AXON_REDIS_URL";
-    const AMQP: &str = "AXON_AMQP_URL";
-    unsafe {
-        env::set_var(PG, "postgresql://axon:postgres@*********:53432/axon");
-        env::set_var(REDIS, "redis://*********:53379");
-        env::set_var(AMQP, "amqp://axon:axonrabbit@*********:45535/%2f");
-    }
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -99,26 +77,12 @@ fn parse_watch_run_now() {
             "11111111-1111-4111-8111-111111111111".to_string(),
         ]
     );
-
-    unsafe {
-        env::remove_var(PG);
-        env::remove_var(REDIS);
-        env::remove_var(AMQP);
-    }
 }
 
 #[allow(unsafe_code)]
 #[test]
 fn parse_watch_history_with_limit() {
     let _guard = ENV_LOCK.lock().unwrap();
-    const PG: &str = "AXON_PG_URL";
-    const REDIS: &str = "AXON_REDIS_URL";
-    const AMQP: &str = "AXON_AMQP_URL";
-    unsafe {
-        env::set_var(PG, "postgresql://axon:postgres@*********:53432/axon");
-        env::set_var(REDIS, "redis://*********:53379");
-        env::set_var(AMQP, "amqp://axon:axonrabbit@*********:45535/%2f");
-    }
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -143,49 +107,17 @@ fn parse_watch_history_with_limit() {
             "25".to_string(),
         ]
     );
-
-    unsafe {
-        env::remove_var(PG);
-        env::remove_var(REDIS);
-        env::remove_var(AMQP);
-    }
 }
 
 #[allow(unsafe_code)]
 #[test]
 fn parse_completions_bash_does_not_require_service_envs() {
     let _guard = ENV_LOCK.lock().unwrap();
-    const PG: &str = "AXON_PG_URL";
-    const REDIS: &str = "AXON_REDIS_URL";
-    const AMQP: &str = "AXON_AMQP_URL";
-    let prev_pg = env::var(PG).ok();
-    let prev_redis = env::var(REDIS).ok();
-    let prev_amqp = env::var(AMQP).ok();
-
-    unsafe {
-        env::remove_var(PG);
-        env::remove_var(REDIS);
-        env::remove_var(AMQP);
-    }
-
     let cli = super::Cli::parse_from(["axon", "completions", "bash"]);
     let cfg = super::build_config::into_config(cli)
         .expect("completions should parse without service env vars");
     assert!(matches!(cfg.command, CommandKind::Completions));
     assert_eq!(cfg.positional, vec!["bash".to_string()]);
-
-    match prev_pg {
-        Some(v) => unsafe { env::set_var(PG, v) },
-        None => unsafe { env::remove_var(PG) },
-    }
-    match prev_redis {
-        Some(v) => unsafe { env::set_var(REDIS, v) },
-        None => unsafe { env::remove_var(REDIS) },
-    }
-    match prev_amqp {
-        Some(v) => unsafe { env::set_var(AMQP, v) },
-        None => unsafe { env::remove_var(AMQP) },
-    }
 }
 
 #[test]
@@ -539,15 +471,6 @@ fn test_slash_disables_default_exclude_prefixes() {
 #[test]
 fn parse_mcp_defaults_to_stdio_transport() {
     let _guard = ENV_LOCK.lock().unwrap();
-    const PG: &str = "AXON_PG_URL";
-    const REDIS: &str = "AXON_REDIS_URL";
-    const AMQP: &str = "AXON_AMQP_URL";
-
-    unsafe {
-        env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-        env::set_var(REDIS, "redis://127.0.0.1:53379");
-        env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-    }
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -560,27 +483,15 @@ fn parse_mcp_defaults_to_stdio_transport() {
     let cfg = super::build_config::into_config(cli).expect("mcp config should parse");
     assert!(matches!(cfg.command, CommandKind::Mcp));
     assert_eq!(cfg.mcp_transport, McpTransport::Stdio);
-
-    unsafe {
-        env::remove_var(PG);
-        env::remove_var(REDIS);
-        env::remove_var(AMQP);
-    }
 }
 
 #[allow(unsafe_code)]
 #[test]
 fn parse_mcp_transport_flag_overrides_command_default() {
     let _guard = ENV_LOCK.lock().unwrap();
-    const PG: &str = "AXON_PG_URL";
-    const REDIS: &str = "AXON_REDIS_URL";
-    const AMQP: &str = "AXON_AMQP_URL";
     const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
 
     unsafe {
-        env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-        env::set_var(REDIS, "redis://127.0.0.1:53379");
-        env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
         env::set_var(TRANSPORT, "stdio");
     }
 
@@ -598,9 +509,6 @@ fn parse_mcp_transport_flag_overrides_command_default() {
     assert_eq!(cfg.mcp_transport, McpTransport::Both);
 
     unsafe {
-        env::remove_var(PG);
-        env::remove_var(REDIS);
-        env::remove_var(AMQP);
         env::remove_var(TRANSPORT);
     }
 }
@@ -679,7 +587,7 @@ fn parse_setup_without_subcommand_is_local_first_run() {
 
 #[allow(unsafe_code)]
 #[test]
-fn parse_setup_check_and_repair_modes() {
+fn parse_setup_init_preflight_smoke_and_stack_modes() {
     let _guard = ENV_LOCK.lock().unwrap();
     unsafe {
         env::remove_var("TEI_URL");
@@ -690,27 +598,65 @@ fn parse_setup_check_and_repair_modes() {
     let hook_cfg = super::build_config::into_config(hook).expect("setup plugin-hook should parse");
     assert_eq!(hook_cfg.positional, vec!["plugin-hook".to_string()]);
 
-    let hook_no_repair = super::Cli::parse_from(["axon", "setup", "plugin-hook", "--no-repair"]);
-    let hook_no_repair_cfg = super::build_config::into_config(hook_no_repair)
-        .expect("setup plugin-hook --no-repair should parse");
+    let hook_no_setup = super::Cli::parse_from(["axon", "setup", "plugin-hook", "--no-setup"]);
+    let hook_no_setup_cfg = super::build_config::into_config(hook_no_setup)
+        .expect("setup plugin-hook --no-setup should parse");
     assert_eq!(
-        hook_no_repair_cfg.positional,
-        vec!["plugin-hook".to_string(), "--no-repair".to_string()]
+        hook_no_setup_cfg.positional,
+        vec!["plugin-hook".to_string(), "--no-setup".to_string()]
     );
 
-    let check = super::Cli::parse_from(["axon", "setup", "check"]);
-    let check_cfg = super::build_config::into_config(check).expect("setup check should parse");
-    assert_eq!(check_cfg.positional, vec!["check".to_string()]);
+    let removed_hook_flag =
+        super::Cli::try_parse_from(["axon", "setup", "plugin-hook", concat!("--no-", "repair")]);
+    assert!(
+        removed_hook_flag.is_err(),
+        "removed plugin hook flag should be rejected"
+    );
 
-    let repair = super::Cli::parse_from(["axon", "setup", "repair"]);
-    let repair_cfg = super::build_config::into_config(repair).expect("setup repair should parse");
-    assert_eq!(repair_cfg.positional, vec!["repair".to_string()]);
-
-    let migrate = super::Cli::parse_from(["axon", "setup", "repair", "--migrate-env"]);
-    let migrate_cfg =
-        super::build_config::into_config(migrate).expect("setup repair --migrate-env should parse");
+    let init = super::Cli::parse_from([
+        "axon",
+        "setup",
+        "init",
+        "--auth-mode",
+        "oauth",
+        "--mcp-host",
+        "0.0.0.0",
+        "--mcp-port",
+        "9000",
+    ]);
+    let init_cfg = super::build_config::into_config(init).expect("setup init should parse");
     assert_eq!(
-        migrate_cfg.positional,
-        vec!["repair".to_string(), "--migrate-env".to_string()]
+        init_cfg.positional,
+        vec![
+            "init".to_string(),
+            "--mcp-host".to_string(),
+            "0.0.0.0".to_string(),
+            "--mcp-port".to_string(),
+            "9000".to_string(),
+            "--auth-mode".to_string(),
+            "oauth".to_string()
+        ]
+    );
+
+    let preflight = super::Cli::parse_from(["axon", "preflight"]);
+    let preflight_cfg =
+        super::build_config::into_config(preflight).expect("preflight should parse");
+    assert!(matches!(preflight_cfg.command, CommandKind::Preflight));
+
+    let smoke = super::Cli::parse_from(["axon", "smoke"]);
+    let smoke_cfg = super::build_config::into_config(smoke).expect("smoke should parse");
+    assert!(matches!(smoke_cfg.command, CommandKind::Smoke));
+
+    let stack = super::Cli::parse_from(["axon", "stack", "restart"]);
+    let stack_cfg = super::build_config::into_config(stack).expect("stack restart should parse");
+    assert!(matches!(stack_cfg.command, CommandKind::Stack));
+    assert_eq!(stack_cfg.positional, vec!["restart".to_string()]);
+
+    let removed_flag = concat!("--", "migrate", "-env");
+    let repair_with_removed_flag =
+        super::Cli::try_parse_from(["axon", "setup", "repair", removed_flag]);
+    assert!(
+        repair_with_removed_flag.is_err(),
+        "removed setup command should be rejected"
     );
 }

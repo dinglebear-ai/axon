@@ -32,6 +32,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use crate::authz::{AXON_FULL_ACCESS_SCOPE, AXON_READ_SCOPE, AXON_WRITE_SCOPE};
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use lab_auth::{AuthLayer, state::AuthState};
 
@@ -112,7 +113,7 @@ pub fn build_auth_layer(
             // empty Vec and every scope check would fail even with a valid token.
             AuthLayer::new()
                 .with_static_token(static_token)
-                .with_static_token_scopes(vec!["axon:read".into(), "axon:write".into()])
+                .with_static_token_scopes(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
                 .with_resource_url(resource_url)
                 .with_allow_session_cookie(false),
         ),
@@ -249,10 +250,10 @@ pub async fn build_auth_policy(
         let auth_config = lab_auth::config::AuthConfigBuilder::new()
             .env_prefix("AXON_MCP")
             .session_cookie_name("axon_mcp_session")
-            .scopes_supported(vec!["axon:read".into(), "axon:write".into()])
-            .default_scope("axon:read")
+            .scopes_supported(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
+            .default_scope(AXON_FULL_ACCESS_SCOPE)
             .resource_path("/mcp")
-            .static_token_scopes(vec!["axon:read".into(), "axon:write".into()])
+            .static_token_scopes(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
             .enable_dynamic_registration(true)
             .disable_static_token_with_oauth(false) // static bearer keeps working alongside OAuth
             .build_from_sources(vars)

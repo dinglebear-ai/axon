@@ -80,7 +80,7 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon embed https://example.com/docs --json
 ## Notes
 
 - Subcommands and input names can collide. If you need to embed a local path named `status`, pass it as a real path (`./status`) so it is treated as input, not a subcommand.
-- In server mode (`AXON_SERVER_URL` / `--server-url`), URL and text inputs are submitted to `axon serve`. Host-local paths such as `./README.md` are rejected with a clear error because the server normally runs in a Docker container with a different filesystem. Use `--local` for local file/directory embedding until upload/import support is added.
+- In server mode (`AXON_SERVER_URL`), URL and text inputs are submitted to `axon serve`. Host-local paths such as `./README.md` are rejected with a clear error because the server normally runs in a Docker container with a different filesystem. Use `--local` for local file/directory embedding until upload/import support is added.
 - `embed clear` is destructive and prompts unless `--yes` is set.
 - `--wait false` returns a queued job by default, and jobs stay pending until a worker process (`axon embed worker`) or long-running server process consumes them.
 - `--wait true` runs the submitted embed job in-process and blocks until it finishes. In that mode, `axon embed <input> --json` returns a single top-level object such as `{"job_id":"...","status":"completed"}`.

@@ -30,7 +30,7 @@ pub(crate) fn render_ingest_enqueue_result(
             let message = if via_server {
                 "Server completed the ingest before returning."
             } else {
-                "Lite mode completed the ingest in-process."
+                "SQLite runtime completed the ingest in-process."
             };
             println!("  {}", muted(message));
         }

@@ -23,6 +23,7 @@ use super::{handlers, openapi_jobs};
         handlers::rag::evaluate,
         handlers::rag::suggest,
         handlers::exploration::scrape,
+        handlers::exploration::summarize,
         handlers::exploration::map,
         handlers::exploration::search,
         handlers::exploration::research,
@@ -67,6 +68,7 @@ use super::{handlers, openapi_jobs};
         handlers::rag::EvaluateRequest,
         handlers::rag::SuggestRequest,
         handlers::exploration::ScrapeRequest,
+        handlers::exploration::SummarizeRequest,
         handlers::exploration::MapRequest,
         handlers::exploration::SearchRequest,
         handlers::exploration::ResearchRequest,
@@ -79,7 +81,7 @@ use super::{handlers, openapi_jobs};
     tags(
         (name = "discovery", description = "Read-only source, domain, stats, status, and health endpoints"),
         (name = "rag", description = "Query, retrieve, ask, evaluate, and suggest endpoints"),
-        (name = "exploration", description = "Scrape, map, search, and research endpoints"),
+        (name = "exploration", description = "Scrape, summarize, map, search, and research endpoints"),
         (name = "jobs", description = "Async crawl, embed, extract, and ingest job endpoints"),
         (name = "admin", description = "Administrative mutation endpoints"),
         (name = "watch", description = "Scheduled watch definitions and runs")

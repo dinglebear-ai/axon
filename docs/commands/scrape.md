@@ -23,7 +23,6 @@ axon scrape --url-glob "https://docs.example.com/{1..10}" [FLAGS]
 ## URL Input Rules
 
 - At least one URL is required via positional args, `--urls`, or `--url-glob`.
-- `--start-url` is global but not used by `scrape`.
 - URL inputs are normalized and deduplicated before execution.
 
 ## Flags
@@ -34,12 +33,10 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--format <fmt>` | `markdown` | Output format: `markdown`, `html`, `rawHtml`, `json`. |
 | `--render-mode <mode>` | `auto-switch` | Fetch mode: `http`, `chrome`, `auto-switch` (`auto-switch` behaves like HTTP for scrape). |
-| `--embed <bool>` | `true` | Batch-embed scraped markdown into Qdrant after all URLs finish. |
+| `--skip-embed` | `false` | Fetch/save only; do not batch-embed scraped markdown into Qdrant. |
 | `--output <path>` | — | Write output to a file (single URL only). |
 | `--output-dir <dir>` | `.cache/axon-rust/output` | Base output directory used by embed flow. |
 | `--header "Key: Value"` | — | Repeatable custom HTTP headers for scrape requests. |
-| `--request-timeout-ms <ms>` | profile default | Per-request timeout. |
-| `--fetch-retries <n>` | profile default | Fetch retry count. |
 | `--json` | `false` | Emit structured JSON per URL on stdout. |
 
 ## Examples
@@ -61,7 +58,7 @@ axon scrape https://example.com --format html --output page.html
 axon scrape https://example.com --json
 
 # Disable embedding
-axon scrape https://example.com --embed false
+axon scrape https://example.com --skip-embed
 
 # Run through the canonical server; output/artifacts are server-owned
 AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
@@ -72,5 +69,5 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
 - Non-2xx responses fail that URL with `scrape failed: HTTP <code>`.
 - `--output` with multiple URLs is rejected to prevent overwrite.
 - Scrape errors are reported per URL; other URLs continue.
-- When `--embed true`, markdown is written under `<output-dir>/scrape-markdown/runs/<uuid>/` (isolated per run) and embedded once at the end. Each scrape invocation writes into its own run directory so only the current session's files are indexed, not historical outputs.
-- In server mode (`AXON_SERVER_URL` / `--server-url`), scrape runs on `axon serve`. The CLI prints the server result and portable artifact handle; it does not write host-local markdown as the source of truth. Use `--local` to force the local behavior above.
+- By default, scrape writes markdown under `<output-dir>/scrape-markdown/runs/<uuid>/` (isolated per run) and embeds once at the end. Each scrape invocation writes into its own run directory so only the current session's files are indexed, not historical outputs. Pass `--skip-embed` to fetch/save without indexing.
+- In server mode (`AXON_SERVER_URL`), scrape runs on `axon serve`. The CLI prints the server result and portable artifact handle; it does not write host-local markdown as the source of truth. Use `--local` to force the local behavior above.

@@ -1,23 +1,24 @@
-//! Job abstraction for lite mode.
+//! Job abstraction for the SQLite in-process runtime.
 //!
 //! This module defines [`ServiceJobRuntime`], the **canonical** backend-agnostic
 //! job operations trait consumed by all callers: CLI handlers, MCP handlers, and
 //! web routes via [`ServiceContext.jobs`](super::context::ServiceContext).
 //!
-//! Only `LiteServiceRuntime` (SQLite + in-process workers) is supported. The
+//! Only `SqliteServiceRuntime` (SQLite + in-process workers) is supported. The
 //! Postgres + RabbitMQ full backend has been removed.
 
 use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::core::config::Config;
+use crate::jobs::SqliteJobBackend;
 use crate::jobs::backend::{BackendResult, JobBackend, JobKind, JobPayload};
-use crate::jobs::lite::LiteBackend;
-use crate::jobs::lite::query as lite_query;
-use crate::jobs::lite::store::reclaim_stale_running_jobs_for_table;
+use crate::jobs::query as job_query;
+use crate::jobs::store::reclaim_stale_running_jobs_for_table;
 use crate::services::types::ServiceJob;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +41,13 @@ pub enum WorkerMode {
 #[async_trait]
 pub trait ServiceJobRuntime: Send + Sync {
     fn mode_name(&self) -> &'static str;
+
+    /// Return the runtime's shared SQLite pool when this runtime is backed by
+    /// SQLite. Long-lived surfaces can use this to avoid opening a separate
+    /// pool and re-running migrations for adjacent scheduler/watch operations.
+    fn sqlite_pool(&self) -> Option<Arc<SqlitePool>> {
+        None
+    }
 
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid>;
     async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> BackendResult<String>;
@@ -139,26 +147,30 @@ pub async fn resolve_runtime_with_workers(
     spawn_workers: bool,
 ) -> Result<Arc<dyn ServiceJobRuntime>, Box<dyn Error + Send + Sync>> {
     let backend = if spawn_workers {
-        LiteBackend::new_with_workers(Arc::clone(&cfg)).await
+        SqliteJobBackend::new_with_workers(Arc::clone(&cfg)).await
     } else {
-        LiteBackend::new(Arc::clone(&cfg)).await
+        SqliteJobBackend::new(Arc::clone(&cfg)).await
     }
     .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
-    Ok(Arc::new(LiteServiceRuntime {
+    Ok(Arc::new(SqliteServiceRuntime {
         _cfg: cfg,
         backend: Arc::new(backend),
     }))
 }
 
-pub struct LiteServiceRuntime {
+pub struct SqliteServiceRuntime {
     _cfg: Arc<Config>,
-    backend: Arc<LiteBackend>,
+    backend: Arc<SqliteJobBackend>,
 }
 
 #[async_trait]
-impl ServiceJobRuntime for LiteServiceRuntime {
+impl ServiceJobRuntime for SqliteServiceRuntime {
     fn mode_name(&self) -> &'static str {
-        "lite"
+        "sqlite"
+    }
+
+    fn sqlite_pool(&self) -> Option<Arc<SqlitePool>> {
+        Some(Arc::clone(self.backend.pool()))
     }
 
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {
@@ -193,7 +205,7 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
-        Ok(lite_query::list_service_jobs(self.backend.pool(), kind, limit, offset).await?)
+        Ok(job_query::list_service_jobs(self.backend.pool(), kind, limit, offset).await?)
     }
 
     async fn list_ingest_jobs(
@@ -203,7 +215,7 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         offset: i64,
     ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
         Ok(
-            lite_query::list_ingest_service_jobs(self.backend.pool(), source_filter, limit, offset)
+            job_query::list_ingest_service_jobs(self.backend.pool(), source_filter, limit, offset)
                 .await?,
         )
     }
@@ -213,7 +225,7 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         kind: JobKind,
         id: Uuid,
     ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
-        Ok(lite_query::service_job(self.backend.pool(), kind, id).await?)
+        Ok(job_query::service_job(self.backend.pool(), kind, id).await?)
     }
 
     async fn cancel_job(
@@ -229,11 +241,11 @@ impl ServiceJobRuntime for LiteServiceRuntime {
     }
 
     async fn cleanup_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(lite_query::cleanup_jobs(self.backend.pool(), kind).await?)
+        Ok(job_query::cleanup_jobs(self.backend.pool(), kind).await?)
     }
 
     async fn clear_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(lite_query::clear_jobs(self.backend.pool(), kind).await?)
+        Ok(job_query::clear_jobs(self.backend.pool(), kind).await?)
     }
 
     async fn recover_jobs(
@@ -279,7 +291,7 @@ impl ServiceJobRuntime for LiteServiceRuntime {
     }
 
     async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
-        Ok(lite_query::count_jobs(self.backend.pool(), kind).await?)
+        Ok(job_query::count_jobs(self.backend.pool(), kind).await?)
     }
 }
 

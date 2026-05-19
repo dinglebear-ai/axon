@@ -1,15 +1,19 @@
 use super::config_store;
 use crate::core::paths::{axon_home_dir, ensure_private_dir};
-use serde::Serialize;
+use model::PhaseTimer;
+pub use model::{
+    LocalSetupInitOptions, LocalSetupMode, LocalSetupPhase, LocalSetupReport, LocalSetupStatus,
+    StackAction,
+};
 use std::collections::BTreeMap;
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
-use tokio::process::Command;
+use std::time::Instant;
 
 mod compose;
 mod env;
-mod env_migration;
+mod model;
+mod preflight;
 mod runtime;
 
 const SETUP_TARGET_SECS: u64 = 120;
@@ -29,98 +33,14 @@ const REQUIRED_CHILD_DIRS: &[&str] = &[
     "qdrant",
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LocalSetupMode {
-    FirstRun,
-    Check,
-    Repair,
-    MigrateEnv,
-}
-
-impl LocalSetupMode {
-    fn mutates(self) -> bool {
-        !matches!(self, Self::Check)
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::FirstRun => "first-run",
-            Self::Check => "check",
-            Self::Repair => "repair",
-            Self::MigrateEnv => "migrate-env",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LocalSetupStatus {
-    Ok,
-    Warn,
-    Error,
-    Skipped,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LocalSetupPhase {
-    pub name: &'static str,
-    pub status: LocalSetupStatus,
-    pub detail: String,
-    pub elapsed_ms: u128,
-}
-
-impl LocalSetupPhase {
-    pub fn is_hook_advisory(&self) -> bool {
-        matches!(self.name, "tei-prewarm" | "crawl-smoke" | "ask-smoke")
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LocalSetupReport {
-    pub mode: &'static str,
-    pub elapsed_ms: u128,
-    pub target_seconds: u64,
-    pub hard_max_seconds: u64,
-    pub met_target: bool,
-    pub exceeded_hard_max: bool,
-    pub axon_home: PathBuf,
-    pub env_path: PathBuf,
-    pub config_path: PathBuf,
-    pub compose_dir: PathBuf,
-    pub web_panel_url: String,
-    pub mcp_url: String,
-    pub phases: Vec<LocalSetupPhase>,
-    pub has_errors: bool,
-}
-
-pub(super) struct PhaseTimer {
-    name: &'static str,
-    start: Instant,
-}
-
-impl PhaseTimer {
-    pub(super) fn start(name: &'static str) -> Self {
-        Self {
-            name,
-            start: Instant::now(),
-        }
-    }
-
-    pub(super) fn finish(
-        self,
-        status: LocalSetupStatus,
-        detail: impl Into<String>,
-    ) -> LocalSetupPhase {
-        LocalSetupPhase {
-            name: self.name,
-            status,
-            detail: detail.into(),
-            elapsed_ms: self.start.elapsed().as_millis(),
-        }
-    }
-}
-
 pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupReport> {
+    run_local_setup_with_options(mode, LocalSetupInitOptions::default()).await
+}
+
+pub async fn run_local_setup_with_options(
+    mode: LocalSetupMode,
+    options: LocalSetupInitOptions,
+) -> io::Result<LocalSetupReport> {
     let started = Instant::now();
     let axon_home = axon_home_dir().ok_or_else(|| {
         io::Error::new(
@@ -134,42 +54,142 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
 
     phases.push(run_filesystem_phase(&axon_home, mode)?);
     let config_init = run_config_phase(mode, &mut phases)?;
-    let env_state = run_env_and_compose_phases(mode, &env_path, &compose_dir, &mut phases)?;
+    let env_state = run_env_and_compose_phases(
+        mode,
+        &env_path,
+        &compose_dir,
+        &mut phases,
+        &options.into_env_options(),
+    )?;
 
-    phases.push(check_command("docker", ["--version"]).await);
-    phases.push(check_command("docker compose", ["compose", "version"]).await);
-    phases.push(check_command("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"]).await);
-    phases.push(check_gemini_cli().await);
-    let oauth_env = env_state.finalized.as_ref().or(env_state.checked.as_ref());
-    phases.push(check_oauth_config(oauth_env));
-
-    let prereq_failed = phases
-        .iter()
-        .any(|phase| matches!(phase.status, LocalSetupStatus::Error));
-    if let Some(env_values) = env_state.finalized.as_ref().filter(|_| !prereq_failed) {
-        phases.extend(run_mutating_runtime_phases(&compose_dir, &env_path, env_values).await);
-    } else {
-        let (compose_detail, smoke_detail) = if prereq_failed {
-            (
-                "setup skipped because earlier prerequisite checks failed",
-                "smoke skipped because earlier prerequisite checks failed",
-            )
-        } else {
-            (
-                "check mode does not start Docker services",
-                "check mode does not run crawl/ask smoke",
-            )
-        };
-        phases.push(skipped_phase("compose-up", compose_detail));
-        phases.push(skipped_phase("smoke", smoke_detail));
+    let env_values = env_state.finalized.as_ref().or(env_state.checked.as_ref());
+    match mode {
+        LocalSetupMode::Init => {}
+        LocalSetupMode::Smoke => {
+            if phase_errors(&phases) || local_surface_incomplete(&phases) {
+                phases.push(skipped_phase(
+                    "smoke",
+                    "smoke skipped because env or compose checks failed",
+                ));
+            } else if let Some(env_values) = env_values {
+                phases.extend(run_smoke_phases(env_values).await);
+            }
+        }
+        LocalSetupMode::Preflight => {
+            let local_incomplete = local_surface_incomplete(&phases);
+            phases.extend(run_preflight_check_phases(env_values).await);
+            if phase_errors(&phases) || local_incomplete {
+                phases.push(skipped_phase(
+                    "readiness",
+                    "readiness skipped because prerequisite checks failed",
+                ));
+            } else if let Some(env_values) = env_values {
+                phases.extend(run_readiness_phases(env_values).await);
+            }
+        }
+        LocalSetupMode::Setup => {
+            phases.extend(run_preflight_check_phases(env_values).await);
+            if phase_errors(&phases) {
+                phases.push(skipped_phase(
+                    "stack-up",
+                    "stack startup skipped because prerequisite checks failed",
+                ));
+                phases.push(skipped_phase(
+                    "readiness",
+                    "readiness skipped because prerequisite checks failed",
+                ));
+            } else if let Some(env_values) = env_values {
+                phases.extend(run_stack_up_phases(&compose_dir, &env_path, false).await);
+                if phase_errors(&phases) {
+                    phases.push(skipped_phase(
+                        "readiness",
+                        "readiness skipped because stack startup failed",
+                    ));
+                } else {
+                    phases.extend(run_readiness_phases(env_values).await);
+                }
+            }
+        }
     }
 
+    Ok(build_report(
+        mode.as_str(),
+        started,
+        axon_home,
+        env_path,
+        config_init.path,
+        compose_dir,
+        phases,
+    ))
+}
+
+pub async fn run_stack_action(action: StackAction) -> io::Result<LocalSetupReport> {
+    let started = Instant::now();
+    let axon_home = axon_home_dir().ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::NotFound,
+            "HOME is unset or invalid; cannot resolve ~/.axon",
+        )
+    })?;
+    let env_path = axon_home.join(".env");
+    let compose_dir = axon_home.join("compose");
+    let mut phases = Vec::new();
+    phases.push(run_filesystem_phase(&axon_home, LocalSetupMode::Preflight)?);
+    let config_init = run_config_phase(LocalSetupMode::Preflight, &mut phases)?;
+    phases.push(env::check_env_file(&env_path));
+    phases.push(compose::check_compose_assets(&compose_dir));
+
+    // Also gate on Warn-level missing assets (check_env_file / check_compose_assets
+    // return Warn, not Error, when files are absent on a fresh machine).
+    if phase_errors(&phases) || local_surface_incomplete(&phases) {
+        phases.push(skipped_phase(
+            action.as_str(),
+            "stack command skipped because env or compose assets are missing; run axon setup init",
+        ));
+    } else {
+        phases.extend(match action {
+            // Pass follow_logs=false so `stack up` returns once containers are
+            // started rather than blocking on `docker compose logs -f` indefinitely.
+            StackAction::Up => run_stack_up_phases(&compose_dir, &env_path, false).await,
+            StackAction::Down => {
+                vec![runtime::run_compose(&compose_dir, &env_path, ["down"]).await]
+            }
+            StackAction::Restart => {
+                vec![runtime::run_compose(&compose_dir, &env_path, ["restart"]).await]
+            }
+            StackAction::Rebuild => {
+                vec![
+                    runtime::run_compose(&compose_dir, &env_path, ["build"]).await,
+                    runtime::run_compose(&compose_dir, &env_path, ["up", "-d"]).await,
+                ]
+            }
+        });
+    }
+
+    Ok(build_report(
+        action.as_str(),
+        started,
+        axon_home,
+        env_path,
+        config_init.path,
+        compose_dir,
+        phases,
+    ))
+}
+
+fn build_report(
+    mode: &'static str,
+    started: Instant,
+    axon_home: PathBuf,
+    env_path: PathBuf,
+    config_path: PathBuf,
+    compose_dir: PathBuf,
+    phases: Vec<LocalSetupPhase>,
+) -> LocalSetupReport {
     let elapsed_ms = started.elapsed().as_millis();
-    let has_errors = phases
-        .iter()
-        .any(|phase| matches!(phase.status, LocalSetupStatus::Error));
-    Ok(LocalSetupReport {
-        mode: mode.as_str(),
+    let has_errors = phase_errors(&phases);
+    LocalSetupReport {
+        mode,
         elapsed_ms,
         target_seconds: SETUP_TARGET_SECS,
         hard_max_seconds: SETUP_HARD_MAX_SECS,
@@ -177,18 +197,37 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
         exceeded_hard_max: elapsed_ms > u128::from(SETUP_HARD_MAX_SECS) * 1000,
         axon_home,
         env_path,
-        config_path: config_init.path,
+        config_path,
         compose_dir,
         web_panel_url: DEFAULT_SERVER_URL.to_string(),
         mcp_url: format!("{DEFAULT_SERVER_URL}/mcp"),
         phases,
         has_errors,
-    })
+    }
 }
 
 struct EnvPhaseState {
     finalized: Option<BTreeMap<String, String>>,
     checked: Option<BTreeMap<String, String>>,
+}
+
+impl LocalSetupInitOptions {
+    fn into_env_options(self) -> env::EnvSetupOptions {
+        env::EnvSetupOptions {
+            mcp_host: self.mcp_host,
+            mcp_port: self.mcp_port,
+            auth_mode: self.auth_mode,
+            mcp_token: self.mcp_token,
+            oauth_public_url: self.oauth_public_url,
+            google_client_id: self.google_client_id,
+            google_client_secret: self.google_client_secret,
+            auth_admin_email: self.auth_admin_email,
+            tavily_api_key: self.tavily_api_key,
+            github_token: self.github_token,
+            reddit_client_id: self.reddit_client_id,
+            reddit_client_secret: self.reddit_client_secret,
+        }
+    }
 }
 
 fn run_config_phase(
@@ -220,10 +259,7 @@ fn run_config_phase(
     } else {
         (
             LocalSetupStatus::Warn,
-            format!(
-                "missing {}; run axon setup or axon setup repair",
-                path.display()
-            ),
+            format!("missing {}; run axon setup init", path.display()),
         )
     };
     phases.push(timer.finish(status, detail));
@@ -238,20 +274,10 @@ fn run_env_and_compose_phases(
     env_path: &Path,
     compose_dir: &Path,
     phases: &mut Vec<LocalSetupPhase>,
+    options: &env::EnvSetupOptions,
 ) -> io::Result<EnvPhaseState> {
     if mode.mutates() {
-        let env_result = if matches!(mode, LocalSetupMode::MigrateEnv) {
-            if !env_path.exists() {
-                phases.push(env::ensure_env_file(env_path)?.phase);
-            }
-            env_migration::migrate_env_file(env_path)?
-        } else {
-            let result = env::ensure_env_file(env_path)?;
-            env_migration::EnvMigrationResult {
-                phase: result.phase,
-                values: result.values,
-            }
-        };
+        let env_result = env::ensure_env_file_with_options(env_path, options)?;
         let finalized = Some(env_result.values);
         phases.push(env_result.phase);
         phases.push(compose::write_compose_assets(compose_dir)?);
@@ -269,18 +295,39 @@ fn run_env_and_compose_phases(
     }
 }
 
-async fn run_mutating_runtime_phases(
+async fn run_preflight_check_phases(
+    env_values: Option<&BTreeMap<String, String>>,
+) -> Vec<LocalSetupPhase> {
+    vec![
+        preflight::check_command("docker", ["--version"]).await,
+        preflight::check_command("docker compose", ["compose", "version"]).await,
+        preflight::check_command("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"]).await,
+        preflight::check_gemini_cli().await,
+        preflight::check_oauth_config(env_values),
+    ]
+}
+
+async fn run_stack_up_phases(
     compose_dir: &Path,
     env_path: &Path,
-    env_values: &BTreeMap<String, String>,
+    follow_logs: bool,
 ) -> Vec<LocalSetupPhase> {
+    let mut phases = vec![
+        runtime::run_compose(compose_dir, env_path, ["pull"]).await,
+        runtime::run_compose(compose_dir, env_path, ["up", "-d"]).await,
+    ];
+    if follow_logs {
+        phases.push(runtime::follow_logs(compose_dir, env_path).await);
+    }
+    phases
+}
+
+async fn run_readiness_phases(env_values: &BTreeMap<String, String>) -> Vec<LocalSetupPhase> {
     let qdrant_url = env_value(env_values, "QDRANT_URL", DEFAULT_QDRANT_URL);
     let tei_url = env_value(env_values, "TEI_URL", DEFAULT_TEI_URL);
     let chrome_url = env_value(env_values, "AXON_CHROME_REMOTE_URL", DEFAULT_CHROME_URL);
 
     vec![
-        runtime::run_compose(compose_dir, env_path, ["pull"]).await,
-        runtime::run_compose(compose_dir, env_path, ["up", "-d"]).await,
         runtime::wait_http(
             "qdrant",
             format!("{}/readyz", qdrant_url.trim_end_matches('/')),
@@ -289,6 +336,12 @@ async fn run_mutating_runtime_phases(
         runtime::wait_http("tei", format!("{}/health", tei_url.trim_end_matches('/'))).await,
         runtime::wait_http("chrome", chrome_url).await,
         runtime::wait_http("axon", "http://127.0.0.1:8001/readyz").await,
+    ]
+}
+
+async fn run_smoke_phases(env_values: &BTreeMap<String, String>) -> Vec<LocalSetupPhase> {
+    let tei_url = env_value(env_values, "TEI_URL", DEFAULT_TEI_URL);
+    vec![
         runtime::prewarm_tei(&tei_url).await,
         runtime::run_smoke(
             "crawl-smoke",
@@ -297,6 +350,21 @@ async fn run_mutating_runtime_phases(
         .await,
         runtime::run_smoke("ask-smoke", ["ask", "What did we crawl?"]).await,
     ]
+}
+
+fn phase_errors(phases: &[LocalSetupPhase]) -> bool {
+    phases
+        .iter()
+        .any(|phase| matches!(phase.status, LocalSetupStatus::Error))
+}
+
+fn local_surface_incomplete(phases: &[LocalSetupPhase]) -> bool {
+    phases.iter().any(|phase| {
+        matches!(
+            phase.name,
+            "filesystem" | "config" | "env" | "compose-assets"
+        ) && !matches!(phase.status, LocalSetupStatus::Ok)
+    })
 }
 
 fn env_value(env_values: &BTreeMap<String, String>, key: &str, default: &str) -> String {
@@ -343,7 +411,7 @@ fn run_filesystem_phase(axon_home: &Path, mode: LocalSetupMode) -> io::Result<Lo
             Ok(timer.finish(
                 LocalSetupStatus::Warn,
                 format!(
-                    "missing child directories under {}: {}; run axon setup repair",
+                    "missing child directories under {}: {}; run axon setup init",
                     axon_home.display(),
                     missing.join(", ")
                 ),
@@ -359,100 +427,4 @@ fn skipped_phase(name: &'static str, detail: &str) -> LocalSetupPhase {
         detail: detail.to_string(),
         elapsed_ms: 0,
     }
-}
-
-async fn check_command<const N: usize>(name: &'static str, args: [&str; N]) -> LocalSetupPhase {
-    let timer = PhaseTimer::start(name);
-    // "docker compose" is a phase label; the actual binary to invoke is `docker`.
-    let binary = if name == "docker compose" {
-        "docker"
-    } else {
-        name
-    };
-    let result = super::diagnostics::check_command(binary, args, Duration::from_secs(10)).await;
-
-    let status = match result.status {
-        super::diagnostics::CommandStatus::Ok => LocalSetupStatus::Ok,
-        super::diagnostics::CommandStatus::Failed
-        | super::diagnostics::CommandStatus::NotFound
-        | super::diagnostics::CommandStatus::TimedOut => LocalSetupStatus::Error,
-    };
-    timer.finish(status, result.detail)
-}
-
-async fn check_gemini_cli() -> LocalSetupPhase {
-    let timer = PhaseTimer::start("gemini");
-    let mut cmd = Command::new("gemini");
-    cmd.arg("--version");
-    match tokio::time::timeout(Duration::from_secs(10), cmd.output()).await {
-        Ok(Ok(output)) if output.status.success() => timer.finish(
-            LocalSetupStatus::Ok,
-            format!(
-                "gemini CLI present: {}; ask-smoke verifies auth/completion",
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .next()
-                    .unwrap_or("version unavailable")
-            ),
-        ),
-        Ok(Ok(output)) => timer.finish(
-            LocalSetupStatus::Warn,
-            format!(
-                "gemini CLI version check failed: {}; ask-smoke verifies auth/completion",
-                String::from_utf8_lossy(&output.stderr)
-                    .lines()
-                    .next()
-                    .unwrap_or("gemini --version failed")
-            ),
-        ),
-        Ok(Err(err)) if err.kind() == ErrorKind::NotFound => timer.finish(
-            LocalSetupStatus::Warn,
-            "gemini CLI not found on PATH; ask-smoke is the auth/completion proof",
-        ),
-        Ok(Err(err)) => timer.finish(
-            LocalSetupStatus::Warn,
-            format!("gemini CLI check failed: {err}; ask-smoke verifies auth/completion"),
-        ),
-        Err(_) => timer.finish(
-            LocalSetupStatus::Warn,
-            "gemini CLI version check timed out; ask-smoke verifies auth/completion",
-        ),
-    }
-}
-
-fn check_oauth_config(env_values: Option<&BTreeMap<String, String>>) -> LocalSetupPhase {
-    let timer = PhaseTimer::start("oauth");
-    match setup_env_value(env_values, "AXON_MCP_AUTH_MODE") {
-        Some(value) if value.trim().eq_ignore_ascii_case("oauth") => {
-            let missing: Vec<&str> = [
-                "AXON_MCP_PUBLIC_URL",
-                "AXON_MCP_GOOGLE_CLIENT_ID",
-                "AXON_MCP_GOOGLE_CLIENT_SECRET",
-                "AXON_MCP_AUTH_ADMIN_EMAIL",
-            ]
-            .into_iter()
-            .filter(|key| {
-                setup_env_value(env_values, key).is_none_or(|value| value.trim().is_empty())
-            })
-            .collect();
-            if missing.is_empty() {
-                timer.finish(LocalSetupStatus::Ok, "oauth mode configured")
-            } else {
-                timer.finish(
-                    LocalSetupStatus::Error,
-                    format!("missing {}", missing.join(", ")),
-                )
-            }
-        }
-        _ => timer.finish(
-            LocalSetupStatus::Ok,
-            "static bearer token mode; OAuth not requested",
-        ),
-    }
-}
-
-fn setup_env_value(env_values: Option<&BTreeMap<String, String>>, key: &str) -> Option<String> {
-    env_values
-        .and_then(|values| values.get(key).cloned())
-        .or_else(|| std::env::var(key).ok())
 }

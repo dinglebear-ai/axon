@@ -216,8 +216,8 @@ async fn sync_post_routes_reject_empty_required_fields() {
             .await
             .unwrap_or_else(|e| panic!("request {path}: {e}"));
         let status = response.status();
-        let body: serde_json::Value = response.json().await.expect("json body");
         assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
+        let body: serde_json::Value = response.json().await.expect("json body");
         assert_eq!(body["kind"], "bad_request", "{path} kind");
     }
 
@@ -265,6 +265,14 @@ async fn async_submit_routes_reject_empty_required_fields() {
         ("/v1/crawl", serde_json::json!({ "urls": [] })),
         ("/v1/embed", serde_json::json!({ "input": "" })),
         ("/v1/extract", serde_json::json!({ "urls": [] })),
+        (
+            "/v1/ingest",
+            serde_json::json!({
+                "source_type": "github",
+                "repo": "",
+                "include_source": false
+            }),
+        ),
     ];
     for (path, body) in cases {
         let response = client
@@ -274,9 +282,41 @@ async fn async_submit_routes_reject_empty_required_fields() {
             .await
             .unwrap_or_else(|e| panic!("request {path}: {e}"));
         let status = response.status();
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
+        let body: serde_json::Value = response.json().await.expect("json body");
+        assert_eq!(body["kind"], "bad_request", "{path} kind");
+    }
+
+    stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn async_submit_routes_reject_private_urls_before_enqueue() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    for (path, body) in [
+        (
+            "/v1/crawl",
+            serde_json::json!({ "urls": ["http://127.0.0.1/admin"] }),
+        ),
+        (
+            "/v1/extract",
+            serde_json::json!({ "urls": ["http://127.0.0.1/admin"] }),
+        ),
+    ] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("request {path}: {e}"));
+        let status = response.status();
         let body: serde_json::Value = response.json().await.expect("json body");
         assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
-        assert_eq!(body["kind"], "bad_request", "{path} kind");
+        assert_eq!(body["kind"], "invalid_url", "{path} kind");
     }
 
     stop(shutdown, handle).await;
@@ -540,32 +580,26 @@ async fn bearer_token_grants_read_access() {
 // The scope-check logic lives in enforce_scope. We test it directly by
 // verifying the scope-matching predicate that the function uses, rather than
 // constructing a full axum tower stack (Next::new API varies by axum version).
-// These tests pin the invariant: axon:read is rejected on write routes, and
-// axon:write satisfies read routes.
+// These tests pin the invariant: authenticated Axon users receive full Axon
+// server access. OAuth email allowlisting is the access boundary; the read/write
+// scope strings are retained for client metadata and token compatibility.
 
-/// Core invariant: the scope-check predicate rejects an axon:read scope when
-/// axon:write is required. This mirrors the `allowed` check in enforce_scope.
+/// Core invariant: axon:read satisfies axon:write routes. This mirrors
+/// `crate::authz::scope_satisfies`, used by `enforce_scope`.
 #[test]
-fn scope_check_read_does_not_satisfy_write_requirement() {
+fn scope_check_read_satisfies_write_requirement() {
     let scopes: Vec<String> = vec!["axon:read".into()];
     let required_scope = "axon:write";
-    let allowed = scopes.iter().any(|scope| {
-        scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
-    });
-    assert!(
-        !allowed,
-        "axon:read must not satisfy axon:write requirement"
-    );
+    let allowed = crate::authz::scope_satisfies(&scopes, required_scope);
+    assert!(allowed, "axon:read must satisfy axon:write requirement");
 }
 
-/// axon:write satisfies axon:read (write implies read).
+/// axon:write satisfies axon:read.
 #[test]
 fn scope_check_write_satisfies_read_requirement() {
     let scopes: Vec<String> = vec!["axon:write".into()];
     let required_scope = "axon:read";
-    let allowed = scopes.iter().any(|scope| {
-        scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
-    });
+    let allowed = crate::authz::scope_satisfies(&scopes, required_scope);
     assert!(allowed, "axon:write must satisfy axon:read requirement");
 }
 
@@ -574,9 +608,7 @@ fn scope_check_write_satisfies_read_requirement() {
 fn scope_check_both_scopes_satisfy_either() {
     let scopes: Vec<String> = vec!["axon:read".into(), "axon:write".into()];
     for required_scope in ["axon:read", "axon:write"] {
-        let allowed = scopes.iter().any(|scope| {
-            scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
-        });
+        let allowed = crate::authz::scope_satisfies(&scopes, required_scope);
         assert!(allowed, "both scopes should satisfy {required_scope}");
     }
 }
@@ -721,6 +753,45 @@ async fn watch_create_rejects_unsupported_task_type() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+#[serial]
+async fn watch_create_refresh_requires_non_empty_url_array() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let cases = [
+        serde_json::json!({}),
+        serde_json::json!({ "urls": [] }),
+        serde_json::json!({ "urls": [1] }),
+    ];
+    for payload in cases {
+        let response = client
+            .post(format!("{base}/v1/watch/create"))
+            .json(&serde_json::json!({
+                "name": "test",
+                "task_type": "refresh",
+                "task_payload": payload,
+                "every_seconds": 60,
+                "enabled": true,
+                "next_run_at": "2026-01-01T00:00:00Z"
+            }))
+            .send()
+            .await
+            .expect("watch create");
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.expect("json body");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["kind"], "bad_request");
+        assert!(
+            body["message"].as_str().unwrap_or("").contains("urls"),
+            "expected urls error, got {body}"
+        );
+    }
+
+    stop(shutdown, handle).await;
 }
 
 /// GET /v1/watch/{uuid} with an unknown UUID returns 404 (not found in DB)

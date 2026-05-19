@@ -9,8 +9,8 @@ pub use self::types::{IngestJob, IngestJobConfig, IngestSource};
 use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, JobPayload};
 use crate::jobs::ingest::types::{source_type_label, target_label};
-use crate::jobs::lite::query::ms_to_dt;
-use crate::jobs::lite::store::open_sqlite_pool;
+use crate::jobs::query::ms_to_dt;
+use crate::jobs::store::open_sqlite_pool;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -63,7 +63,7 @@ fn row_to_ingest_job(row: IngestJobRow) -> IngestJob {
 /// Count all ingest jobs in SQLite.
 pub async fn count_ingest_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
     let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    Ok(crate::jobs::lite::query::count_jobs(&pool, JobKind::Ingest).await?)
+    Ok(crate::jobs::query::count_jobs(&pool, JobKind::Ingest).await?)
 }
 
 /// Fetch a single ingest job by UUID from SQLite.
@@ -109,7 +109,7 @@ pub async fn start_ingest_job(cfg: &Config, source: IngestSource) -> Result<Uuid
     let source_type = source_type_label(&source).to_string();
     let target = target_label(&source);
     let config_json = serde_json::to_string(&source)?;
-    Ok(crate::jobs::lite::ops::enqueue_job(
+    Ok(crate::jobs::ops::enqueue_job(
         &pool,
         &JobPayload::Ingest {
             target,

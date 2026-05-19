@@ -14,13 +14,15 @@
 
 use super::error::{map_service_error, rest_error};
 use super::state::RestState;
-use super::types::{MapBody, QueryBody, RetrieveBody, SearchBody, SuggestBody, UrlOnlyBody};
+use super::types::{
+    MapBody, QueryBody, RetrieveBody, SearchBody, SuggestBody, UrlOnlyBody, UrlsBody,
+};
 use crate::services::query as query_svc;
 use crate::services::search as search_svc;
 use crate::services::types::{
     MapOptions, Pagination, RetrieveOptions, SearchOptions, ServiceTimeRange,
 };
-use crate::services::{map as map_svc, scrape as scrape_svc};
+use crate::services::{map as map_svc, scrape as scrape_svc, summarize as summarize_svc};
 use axum::{
     Json,
     extract::State,
@@ -187,4 +189,32 @@ pub(crate) async fn v1_scrape(
         Ok(result) => Json(result).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }
+}
+
+pub(crate) async fn v1_summarize(
+    State(state): State<RestState>,
+    Json(req): Json<UrlsBody>,
+) -> Response {
+    let urls = urls_body(req);
+    if urls.is_empty() {
+        return rest_error(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "url or urls is required".to_string(),
+        );
+    }
+    match summarize_svc::summarize(state.cfg.as_ref(), &urls, None).await {
+        Ok(result) => Json(result).into_response(),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+fn urls_body(req: UrlsBody) -> Vec<String> {
+    req.urls
+        .unwrap_or_default()
+        .into_iter()
+        .chain(req.url)
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .collect()
 }

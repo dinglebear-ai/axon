@@ -45,8 +45,8 @@ mcporter --config config/mcporter.json call axon.axon action:doctor --output jso
 mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
 ```
 
-The smoke harness may set `AXON_LITE=1` for compatibility, but SQLite/in-process
-jobs are always used. Legacy `export` and `graph:*` actions were removed.
+The smoke harness uses SQLite/in-process jobs. Legacy `export` and graph
+actions were removed.
 
 ## Change Rule
 When changing tool behavior, update in the same commit:

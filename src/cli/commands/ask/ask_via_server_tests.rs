@@ -70,7 +70,6 @@ fn test_config() -> Config {
     Config {
         collection: "test_col".into(),
         ask_diagnostics: false,
-        ask_graph: false,
         hybrid_search_enabled: true,
         ..Config::default()
     }
@@ -84,7 +83,6 @@ fn valid_ask_result_json() -> serde_json::Value {
         "timing_ms": {
             "retrieval": 1,
             "context_build": 2,
-            "graph": 0,
             "llm": 3,
             "total": 6
         }

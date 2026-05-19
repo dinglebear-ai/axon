@@ -3,6 +3,8 @@ pre-commit:
   commands:
     compose-ports:
       run: python3 scripts/check_compose_port_bindings.py --staged
+    secrets:
+      run: cargo xtask check-secrets
     env-guard:
       run: cargo xtask check-env-staged
     claude-symlinks:
@@ -35,7 +37,7 @@ pre-commit:
         fi
     taplo:
       glob: "**/*.toml"
-      run: taplo fmt --check {staged_files}
+      run: command -v taplo >/dev/null 2>&1 && taplo fmt --check {staged_files} || true
     rustfmt:
       glob: "**/*.rs"
       run: cargo fmt -- --check

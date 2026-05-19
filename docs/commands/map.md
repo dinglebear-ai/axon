@@ -7,14 +7,14 @@ Discover all URLs on a site without scraping page content. Fast by default (seco
 
 ```bash
 axon map <url> [FLAGS]
-axon map --start-url <url> [FLAGS]
+axon map <url> [FLAGS]
 ```
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `<url>` | Start URL to map (optional if `--start-url` is set) |
+| `<url>` | Start URL to map |
 
 ## Flags
 
@@ -23,9 +23,6 @@ All global flags apply. Key flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--map-fallback <structure\|crawl>` | `structure` | Fallback when no sitemap is parsed. `structure`: extract anchors from the scope root page (fast). `crawl`: full Spider.rs crawl (slow, legacy — explicit opt-in). |
-| `--max-sitemaps <n>` | `512` | Maximum sitemap documents to parse per map operation (`0` = unlimited). |
-| `--discover-sitemaps <bool>` | `true` | Enable sitemap discovery (primary URL source). |
-| `--sitemap-since-days <n>` | `0` | Only include sitemap URLs with `<lastmod>` within the last N days (0 = no filter). |
 | `--include-subdomains <bool>` | `false` | Include subdomains under same parent domain. |
 | `--json` | `false` | Print structured payload including all discovered URLs. |
 
@@ -51,11 +48,7 @@ axon map https://example.com --json
 # Opt-in to full crawl fallback (legacy, slow)
 axon map https://example.com --map-fallback crawl
 
-# Limit sitemap documents processed
-axon map https://example.com --max-sitemaps 128
-
-# Disable sitemap discovery entirely (forces bounded-structure or crawl fallback)
-axon map https://example.com --discover-sitemaps false
+# Sitemap limits and discovery behavior live in config.toml under [scrape].
 ```
 
 ## Output
@@ -68,7 +61,7 @@ JSON mode returns:
 | `mapped_urls` | number | Count of discovered URLs in the output |
 | `sitemap_urls` | number | Count of sitemap-discovered URLs after deduplication and in-scope filtering |
 | `pages_seen` | number | Pages fetched during crawl (`0` in sitemap/structure modes) |
-| `thin_pages` | number | Pages below `--min-markdown-chars` (`0` in non-crawl modes) |
+| `thin_pages` | number | Pages below `scrape.min-markdown-chars` (`0` in non-crawl modes) |
 | `elapsed_ms` | number | Time taken in milliseconds |
 | `map_source` | string | How URLs were discovered: `"sitemap"`, `"bounded-structure"`, or `"crawl"` |
 | `warning` | string or null | Non-null when bounded-structure returns fewer than 5 URLs or fails to fetch the scope root (suggests using `--map-fallback crawl`) |

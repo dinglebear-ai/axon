@@ -246,7 +246,7 @@ Compact example:
     },
     "llm_skipped": true
   },
-  "timing_ms": { "retrieval": 21, "context_build": 3, "graph": 0, "llm": 0, "total": 24 }
+  "timing_ms": { "retrieval": 21, "context_build": 3, "llm": 0, "total": 24 }
 }
 ```
 

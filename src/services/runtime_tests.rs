@@ -1,7 +1,7 @@
 use super::*;
 use crate::jobs::backend::JobPayload;
-use crate::jobs::lite::ops::{enqueue_job, mark_completed, mark_failed};
-use crate::jobs::lite::store::open_sqlite_pool;
+use crate::jobs::ops::{enqueue_job, mark_completed, mark_failed};
+use crate::jobs::store::open_sqlite_pool;
 use sqlx::SqlitePool;
 use std::time::Duration;
 use uuid::Uuid;
@@ -79,7 +79,7 @@ async fn has_active_jobs_false_after_terminal_states() {
     .expect("enqueue embed");
 
     // Move crawl to running, then completed.
-    super::super::super::jobs::lite::ops::claim_next_pending(&pool, JobKind::Crawl)
+    super::super::super::jobs::ops::claim_next_pending(&pool, JobKind::Crawl)
         .await
         .expect("claim crawl");
     mark_completed(&pool, JobKind::Crawl, crawl_id, None)
@@ -123,7 +123,7 @@ async fn drain_terminates_quickly_on_terminal_state() {
     .expect("enqueue embed");
 
     // Mark crawl failed (terminal).
-    super::super::super::jobs::lite::ops::claim_next_pending(&pool, JobKind::Crawl)
+    super::super::super::jobs::ops::claim_next_pending(&pool, JobKind::Crawl)
         .await
         .expect("claim");
     mark_failed(&pool, JobKind::Crawl, id, "test")
@@ -158,8 +158,10 @@ async fn start_worker_requires_in_process_workers() {
     let mut cfg = Config::test_default();
     cfg.sqlite_path = tmp.path().join("jobs.db");
     let cfg = Arc::new(cfg);
-    let backend = LiteBackend::new(Arc::clone(&cfg)).await.expect("backend");
-    let runtime = LiteServiceRuntime {
+    let backend = SqliteJobBackend::new(Arc::clone(&cfg))
+        .await
+        .expect("backend");
+    let runtime = SqliteServiceRuntime {
         _cfg: cfg,
         backend: Arc::new(backend),
     };
@@ -174,9 +176,33 @@ async fn start_worker_requires_in_process_workers() {
     );
 }
 
-/// Mirror of LiteServiceRuntime::has_active_jobs that operates on a raw
+#[tokio::test]
+async fn sqlite_runtime_exposes_backend_pool_for_shared_watch_callers() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+    let cfg = Arc::new(cfg);
+    let backend = SqliteJobBackend::new(Arc::clone(&cfg))
+        .await
+        .expect("backend");
+    let expected_pool = Arc::clone(backend.pool());
+    let runtime = SqliteServiceRuntime {
+        _cfg: cfg,
+        backend: Arc::new(backend),
+    };
+
+    let shared_pool = runtime
+        .sqlite_pool()
+        .expect("sqlite runtime should expose shared pool");
+    assert!(
+        Arc::ptr_eq(&shared_pool, &expected_pool),
+        "runtime must expose the backend pool instead of opening a second pool"
+    );
+}
+
+/// Mirror of SqliteServiceRuntime::has_active_jobs that operates on a raw
 /// pool — lets tests exercise the same predicate without constructing a
-/// full LiteBackend.
+/// full SqliteJobBackend.
 async fn has_active_for_kind(pool: &SqlitePool, kind: JobKind) -> bool {
     let table = kind.table_name();
     let sql = format!(

@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### BREAKING CHANGES
+
+- Removed the legacy graph/Neo4j request surface and dead runtime code. The
+  CLI `--graph` flag, MCP `ask.graph`, `/v1/ask.graph`, internal
+  `Config::ask_graph`, `timing_ms.graph`, and the unused Neo4j client module
+  are no longer part of the production contract.
+- Removed `--embed <bool>` from the CLI. Scrape and crawl still index by
+  default when TEI and Qdrant are configured; use `--skip-embed` to fetch/save
+  without writing to Qdrant.
+- Renamed `--cache-skip-browser` to `--cache-http-only` so the flag describes
+  the real behavior: cached crawl flow stays on the HTTP path and suppresses
+  Chrome runtime/bootstrap.
+- Removed noisy/deep tuning flags from the CLI surface; these now live in
+  `~/.axon/config.toml` or `~/.axon/.env` as appropriate:
+  `--chrome-remote-url`, `--chrome-proxy`, `--chrome-user-agent`,
+  `--respect-robots`, `--min-markdown-chars`, `--drop-thin-markdown`,
+  `--discover-sitemaps`, `--sitemap-since-days`, `--max-sitemaps`,
+  `--delay-ms`, `--request-timeout-ms`, `--fetch-retries`,
+  `--retry-backoff-ms`, `--bypass-csp`, `--accept-invalid-certs`,
+  `--chrome-network-idle-timeout`, `--auto-switch-thin-ratio`,
+  `--auto-switch-min-pages`, `--url-whitelist`, `--max-page-bytes`,
+  `--redirect-policy-strict`, `--concurrency-limit`,
+  `--crawl-concurrency-limit`, `--backfill-concurrency-limit`,
+  `--watchdog-stale-timeout-secs`, `--watchdog-confirm-secs`,
+  `--watchdog-sweep-secs`, and `--sqlite-path`.
+- Removed `--server-url`, `--log-level`, and `--start-url` from the CLI.
+  `AXON_SERVER_URL` and `AXON_LOG_LEVEL` remain the supported runtime knobs.
+
+### Changed
+
+- Rebuilt `axon help` from the actual Clap command surface and tightened
+  command-specific help so subcommands no longer inherit unrelated global
+  crawl/Chrome/vector flags.
+- Kept `--local` as the explicit CLI override for bypassing `AXON_SERVER_URL`,
+  but only advertises it on the top-level global help.
+- Scrape preamble output now reports `indexing: enabled|skipped` instead of the
+  internal `embed: true|false` boolean.
+
+### Tests
+
+- Added CLI help contract coverage to ensure removed flags are rejected by Clap,
+  not merely hidden from generated help.
+- Added config parsing coverage for `--skip-embed` mapping to
+  `Config::embed = false`.
+
+## [4.2.0] - 2026-05-19
+
+### Added
+- `AXON_USER_AGENT` env var — general-purpose UA for all HTTP requests
+- `AXON_CHROME_USER_AGENT` falls back to `AXON_USER_AGENT`
+- docs.rs vertical extractor fetches rustdoc JSON directly
+- crates.io extractor pulls rustdoc JSON + README concurrently
+- New verticals: hackernews, stackoverflow, arxiv, github_issue, github_pr, docs_rs
+- YouTube extractor using ytInitialPlayerResponse (no yt-dlp needed)
+- Chrome path for Amazon/eBay extraction when configured
+- `cargo xtask check-secrets` pre-commit secret scanner
+- Sparse checkout on all CI jobs (significant checkout time reduction)
+
+### Fixed
+- All vertical extractors use correct UA (browser vs API)
+- crates.io 429 retry with Retry-After backoff
+- Various vertical content gaps (npm readme, PyPI description, etc.)
+
 ## [4.1.0] - 2026-05-18
 
 ### Added
@@ -38,7 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `src/jobs/watch_lite.rs::run_watch_now` outcome error type narrowed from
+- `src/jobs/watch.rs::run_watch_now` outcome error type narrowed from
   `Box<dyn Error>` to `Box<dyn Error + Send + Sync>` so it can be invoked from
   a multi-thread axum handler (`POST /v1/watch/{id}/run`).
 
@@ -877,7 +940,7 @@ Last Modified: 2026-03-31 (session: v0.34.1 — simplification pass: dedup helpe
 - **ServiceContext construction unified** — `new()` and `new_with_workers()` share a private `build()` helper; `wait_for_pending_embed_jobs` uses `has_active_jobs()` (single EXISTS query) instead of fetching 50 rows per poll tick.
 - **MCP Apps fixes** — redundant flat `"ui/resourceUri"` meta key removed; `serde_json::from_value(...).unwrap_or_default()` in capabilities replaced with direct Map construction; `ingest_count()` call that bypassed `ServiceContext` in lite mode removed.
 - **Graph error types fixed** — `Box<dyn Error + Send + Sync>` propagated through graph/context, graph/schema, graph/worker — explicit `as Box<dyn Error>` casts eliminated.
-- **lift_err / SQL / RAII cleanup** — `runners.rs` 13 verbose `.map_err` closures replaced with existing `lift_err`; `reclaim_stale_running_jobs` calls per-table helper; `watch_lite.rs` opens pool once per operation instead of per sub-call.
+- **lift_err / SQL / RAII cleanup** — `runners.rs` 13 verbose `.map_err` closures replaced with existing `lift_err`; `reclaim_stale_running_jobs` calls per-table helper; `watch.rs` opens pool once per operation instead of per sub-call.
 - **doctor/lite dedup** — `build_browser_runtime` made `pub(super)` and shared with `doctor/lite.rs`; duplicate function deleted.
 
 ### Commits since v0.34.0

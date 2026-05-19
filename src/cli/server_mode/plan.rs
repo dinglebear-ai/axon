@@ -4,7 +4,7 @@ use crate::mcp::schema::{
     AxonRequest, CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, ExtractRequest,
     ExtractSubaction, IngestRequest, IngestSourceType, IngestSubaction, McpRenderMode,
     McpScrapeFormat, ResponseMode, ScrapeRequest, ScreenshotRequest, SessionsIngestOptions,
-    StatusRequest,
+    StatusRequest, SummarizeRequest,
 };
 use crate::services;
 use std::error::Error;
@@ -65,6 +65,24 @@ pub(super) fn server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<d
                     token_budget: None,
                 }),
                 label: "scrape",
+                poll_family: None,
+            })
+        }
+        CommandKind::Summarize => {
+            let urls = cli::commands::common::parse_urls(cfg);
+            if urls.is_empty() {
+                return Err("summarize requires at least one URL (positional or --urls)".into());
+            }
+            Ok(ServerActionPlan {
+                action: AxonRequest::Summarize(SummarizeRequest {
+                    url: None,
+                    urls: Some(urls),
+                    render_mode: Some(mcp_render_mode(cfg.render_mode)),
+                    root_selector: cfg.root_selector.clone(),
+                    exclude_selector: cfg.exclude_selector.clone(),
+                    response_mode: Some(ResponseMode::Inline),
+                }),
+                label: "summarize",
                 poll_family: None,
             })
         }
@@ -184,6 +202,8 @@ fn extract_server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<dyn 
         None,
     );
     request.max_pages = Some(cfg.max_pages);
+    request.render_mode = Some(mcp_render_mode(cfg.render_mode));
+    request.embed = Some(cfg.embed);
     Ok(ServerActionPlan {
         action: AxonRequest::Extract(request),
         label: "extract",
@@ -428,6 +448,8 @@ fn extract_request(
         urls,
         prompt,
         max_pages: None,
+        render_mode: None,
+        embed: None,
         job_id,
         limit: Some(50),
         offset: Some(0),

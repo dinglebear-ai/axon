@@ -8,7 +8,7 @@ The contract boundary between all entry points (CLI commands, MCP handlers, web 
 ```
 services/
 ├── context.rs              # ServiceContext — canonical handler entry point (cfg + jobs only)
-├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime{,_with_workers}() + LiteServiceRuntime
+├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime{,_with_workers}() + SqliteServiceRuntime
 ├── llm_backend.rs          # Gemini headless LLM completion gateway module root
 ├── llm_backend/           # Gemini dispatch, env allowlist, concurrency, and typed completion API
 ├── crawl.rs                # crawl start/status/cancel/list/cleanup/recover
@@ -38,7 +38,7 @@ services/
 ├── types/
 │   ├── contracts.rs        # External-facing service contract types
 │   └── service.rs          # All typed result structs (QueryResult, AskResult, ...)
-└── watch.rs                # CRUD shim — actual scheduler runtime lives in src/jobs/watch_lite.rs
+└── watch.rs                # CRUD shim — actual scheduler runtime lives in src/jobs/watch.rs
 ```
 
 ## `ServiceContext` — The Entry Point
@@ -62,7 +62,7 @@ Fields:
 
 **This is the canonical job abstraction.** All callers (CLI, MCP) interact with jobs exclusively through `ServiceJobRuntime` via `ServiceContext.jobs` — never through `JobBackend` directly.
 
-`ServiceJobRuntime` is a strict superset of [`JobBackend`](../jobs/backend.rs): it adds `has_active_jobs`, `recover_jobs`, `run_worker`, pagination (`limit`/`offset` on `list_jobs`), and returns the richer `ServiceJob` type everywhere instead of `JobStatusRow`/`JobSummary`. `LiteServiceRuntime` delegates only `enqueue`, `wait_for_job`, and `job_errors` through `JobBackend`; all other operations call `lite_query::*` directly to avoid lossy type mapping. See the module-level doc comment in `runtime.rs` for the full rationale.
+`ServiceJobRuntime` is a strict superset of [`JobBackend`](../jobs/backend.rs): it adds `has_active_jobs`, `recover_jobs`, `run_worker`, pagination (`limit`/`offset` on `list_jobs`), and returns the richer `ServiceJob` type everywhere instead of `JobStatusRow`/`JobSummary`. `SqliteServiceRuntime` delegates only `enqueue`, `wait_for_job`, and `job_errors` through `JobBackend`; all other operations call `job_query::*` directly to avoid lossy type mapping. See the module-level doc comment in `runtime.rs` for the full rationale.
 
 The job operations interface consumed by `ServiceContext.jobs`:
 
@@ -74,16 +74,16 @@ The job operations interface consumed by `ServiceContext.jobs`:
 - `run_worker(kind)` → `WorkerMode` (`Started` / `InProcess` / `Unsupported`)
 - `wait_for_job(id, kind)` → `String` (final status)
 
-Two public entry points construct the runtime: `resolve_runtime(cfg)` (no workers) and `resolve_runtime_with_workers(cfg, spawn)` (driven by `ServiceContext::new_with_workers`). Both return `Arc<dyn ServiceJobRuntime>` backed by `LiteServiceRuntime`, which wraps `LiteBackend`.
+Two public entry points construct the runtime: `resolve_runtime(cfg)` (no workers) and `resolve_runtime_with_workers(cfg, spawn)` (driven by `ServiceContext::new_with_workers`). Both return `Arc<dyn ServiceJobRuntime>` backed by `SqliteServiceRuntime`, which wraps `SqliteJobBackend`.
 
-### LiteBackend construction modes
+### SqliteJobBackend construction modes
 
-`LiteBackend` has **two** construction modes — workers do **not** spawn unconditionally:
+`SqliteJobBackend` has **two** construction modes — workers do **not** spawn unconditionally:
 
 | Constructor | Workers? | Used by |
 |-------------|----------|---------|
-| `LiteBackend::new(cfg)` | **No** — enqueue-only | CLI commands that just enqueue/inspect jobs (status, list, cancel, fire-and-forget submit), all `ServiceContext::new(cfg)` callers |
-| `LiteBackend::new_with_workers(cfg)` | **Yes** — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest) | `ServiceContext::new_with_workers(cfg)`: serve, MCP server, web routes, sync `--wait true` CLI paths that need a worker to drain the queue |
+| `SqliteJobBackend::new(cfg)` | **No** — enqueue-only | CLI commands that just enqueue/inspect jobs (status, list, cancel, fire-and-forget submit), all `ServiceContext::new(cfg)` callers |
+| `SqliteJobBackend::new_with_workers(cfg)` | **Yes** — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest) | `ServiceContext::new_with_workers(cfg)`: serve, MCP server, web routes, sync `--wait true` CLI paths that need a worker to drain the queue |
 
 CLI fire-and-forget contexts must use `new()`. Spawning workers in a short-lived CLI process orphans claimed jobs when the process exits before they finish.
 
@@ -189,4 +189,4 @@ Pure mapping tests (`map_*` functions) and channel tests run without live servic
 
 ## `watch.rs` and `events.rs` — Live Streaming
 
-`src/services/watch.rs` is a thin CRUD layer (~2 KB) that exposes watch definition + run lookups to CLI, MCP, and HTTP callers. The actual scheduler runtime lives in `src/jobs/watch_lite.rs` (SQLite-backed, in-process). Streaming is plumbed through `ServiceEvent` so callers can forward progress without putting logging or serialization inside the service function.
+`src/services/watch.rs` is a thin CRUD layer (~2 KB) that exposes watch definition + run lookups to CLI, MCP, and HTTP callers. The actual scheduler runtime lives in `src/jobs/watch.rs` (SQLite-backed, in-process). Streaming is plumbed through `ServiceEvent` so callers can forward progress without putting logging or serialization inside the service function.

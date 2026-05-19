@@ -111,7 +111,7 @@ pub(crate) fn render_embed_enqueue_result(
             let message = if via_server {
                 "Server completed the embed before returning."
             } else {
-                "Lite mode completed the embed in-process."
+                "SQLite runtime completed the embed in-process."
             };
             println!("  {}", muted(message));
         }

@@ -18,8 +18,8 @@ fn test_config(start_url: &str) -> Config {
     cfg
 }
 
-struct CompletedLiteRuntime;
-struct CanceledLiteRuntime;
+struct CompletedRuntime;
+struct CanceledRuntime;
 struct CrawlWithDependentEmbedRuntime {
     crawl_job_id: Uuid,
     embed_job_id: Uuid,
@@ -119,9 +119,9 @@ macro_rules! impl_noop_runtime_for {
     };
 }
 
-impl_noop_runtime_for!(CompletedLiteRuntime, Ok("completed".to_string()), Ok(None));
+impl_noop_runtime_for!(CompletedRuntime, Ok("completed".to_string()), Ok(None));
 impl_noop_runtime_for!(
-    CanceledLiteRuntime,
+    CanceledRuntime,
     Ok("canceled".to_string()),
     Ok(Some("user canceled".to_string()))
 );
@@ -297,11 +297,11 @@ fn predict_crawl_output_dir_uses_runtime_job_layout() {
 }
 
 #[tokio::test]
-async fn crawl_start_with_context_completes_with_lite_backend()
+async fn crawl_start_with_context_completes_with_sqlite_backend()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut cfg = test_config("https://docs.rs");
     cfg.wait = true;
-    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedLiteRuntime));
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedRuntime));
 
     let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None)
         .await
@@ -344,9 +344,9 @@ async fn crawl_start_waits_for_only_its_dependent_embed_job()
 }
 
 #[tokio::test]
-async fn crawl_start_with_context_rejects_empty_urls_with_lite_backend() {
+async fn crawl_start_with_context_rejects_empty_urls_with_sqlite_backend() {
     let cfg = test_config("https://docs.rs");
-    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedLiteRuntime));
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedRuntime));
 
     let err = crawl_start_with_context(&cfg, &[], &ctx, None)
         .await
@@ -355,11 +355,11 @@ async fn crawl_start_with_context_rejects_empty_urls_with_lite_backend() {
 }
 
 #[tokio::test]
-async fn crawl_start_with_context_enqueues_without_blocking_with_lite_backend()
+async fn crawl_start_with_context_enqueues_without_blocking_with_sqlite_backend()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut cfg = test_config("https://docs.rs");
     cfg.wait = false;
-    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedLiteRuntime));
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedRuntime));
 
     let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None)
         .await
@@ -372,10 +372,10 @@ async fn crawl_start_with_context_enqueues_without_blocking_with_lite_backend()
 }
 
 #[tokio::test]
-async fn crawl_start_with_context_surfaces_canceled_jobs_with_lite_backend() {
+async fn crawl_start_with_context_surfaces_canceled_jobs_with_sqlite_backend() {
     let mut cfg = test_config("https://docs.rs");
     cfg.wait = true;
-    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CanceledLiteRuntime));
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CanceledRuntime));
 
     let err = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None)
         .await

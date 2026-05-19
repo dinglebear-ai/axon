@@ -38,7 +38,7 @@ doctor report includes:
 - Gemini headless CLI/config status
 - Chrome endpoint probe
 - Browser runtime diagnostics
-- compatibility fields such as `"lite_mode": true` in the report
+- no legacy runtime-mode marker fields
 
 ## Examples
 

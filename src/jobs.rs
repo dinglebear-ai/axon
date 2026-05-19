@@ -1,9 +1,17 @@
 pub mod backend;
+pub mod cancel;
+pub mod config_snapshot;
 pub mod crawl;
 pub mod embed;
 pub mod error;
 pub mod extract;
 pub mod ingest;
-pub mod lite;
+pub mod ops;
+pub mod query;
+pub mod runtime;
 pub mod status;
-pub mod watch_lite;
+pub mod store;
+pub mod watch;
+pub mod workers;
+
+pub use runtime::SqliteJobBackend;

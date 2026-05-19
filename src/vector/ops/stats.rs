@@ -1,6 +1,6 @@
 pub(crate) mod display;
-mod pg;
 mod qdrant_fetch;
+mod sqlite;
 
 use crate::core::config::Config;
 use crate::core::http::internal_service_http_client;
@@ -27,7 +27,7 @@ pub async fn stats_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Er
         .unwrap_or_default();
     let payload_fields: Vec<String> = payload_schema.keys().cloned().collect();
     let payload_fields_count = payload_fields.len();
-    let pg = pg::collect_postgres_metrics(cfg).await;
+    let job_metrics = sqlite::collect_job_metrics(cfg).await;
 
     Ok(serde_json::json!({
         "collection": cfg.collection,
@@ -41,33 +41,33 @@ pub async fn stats_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Er
         "avg_chunks_per_doc": avg_chunks_per_doc,
         "payload_fields_count": payload_fields_count,
         "payload_fields": payload_fields,
-        "avg_pages_crawled_per_second": pg.average_pages_per_second,
-        "avg_crawl_duration_seconds": pg.average_crawl_duration_seconds,
-        "avg_embedding_duration_seconds": pg.average_embedding_duration_seconds,
-        "avg_overall_crawl_duration_seconds": pg.average_overall_crawl_duration_seconds,
-        "longest_crawl": pg.longest_crawl,
-        "most_chunks": pg.most_chunks,
-        "total_chunks": pg.total_chunks,
-        "total_docs": pg.total_docs,
-        "base_urls_count": pg.base_urls_count,
+        "avg_pages_crawled_per_second": job_metrics.average_pages_per_second,
+        "avg_crawl_duration_seconds": job_metrics.average_crawl_duration_seconds,
+        "avg_embedding_duration_seconds": job_metrics.average_embedding_duration_seconds,
+        "avg_overall_crawl_duration_seconds": job_metrics.average_overall_crawl_duration_seconds,
+        "longest_crawl": job_metrics.longest_crawl,
+        "most_chunks": job_metrics.most_chunks,
+        "total_chunks": job_metrics.total_chunks,
+        "total_docs": job_metrics.total_docs,
+        "base_urls_count": job_metrics.base_urls_count,
         "freshness": {
-            "last_indexed_secs_ago": pg.last_indexed_secs_ago,
-            "crawls_last_24h": pg.crawls_last_24h,
-            "crawls_last_7d": pg.crawls_last_7d,
+            "last_indexed_secs_ago": job_metrics.last_indexed_secs_ago,
+            "crawls_last_24h": job_metrics.crawls_last_24h,
+            "crawls_last_7d": job_metrics.crawls_last_7d,
         },
-        "growth_7d": pg.chunks_per_day_7d,
+        "growth_7d": job_metrics.chunks_per_day_7d,
         "counts": {
-            "crawls": pg.crawl_count,
-            "embeds": pg.embed_count,
-            "scrapes": pg.scrape_count,
-            "extracts": pg.extract_count,
-            "queries": pg.query_count,
-            "asks": pg.ask_count,
-            "retrieves": pg.retrieve_count,
-            "evaluates": pg.evaluate_count,
-            "suggests": pg.suggest_count,
-            "maps": pg.map_count,
-            "searches": pg.search_count
+            "crawls": job_metrics.crawl_count,
+            "embeds": job_metrics.embed_count,
+            "scrapes": job_metrics.scrape_count,
+            "extracts": job_metrics.extract_count,
+            "queries": job_metrics.query_count,
+            "asks": job_metrics.ask_count,
+            "retrieves": job_metrics.retrieve_count,
+            "evaluates": job_metrics.evaluate_count,
+            "suggests": job_metrics.suggest_count,
+            "maps": job_metrics.map_count,
+            "searches": job_metrics.search_count
         }
     }))
 }

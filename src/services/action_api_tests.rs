@@ -143,7 +143,6 @@ async fn services_action_api_dispatches_crawl_list_lifecycle() {
 fn req_ask() -> AxonRequest {
     AxonRequest::Ask(AskRequest {
         query: Some("test?".into()),
-        graph: None,
         diagnostics: None,
         explain: None,
         collection: None,
@@ -267,7 +266,6 @@ fn required_scope_uses_secure_defaults_and_promotes_llm_actions() {
     assert_eq!(
         required_scope(&AxonRequest::Ask(AskRequest {
             query: Some("q".into()),
-            graph: None,
             diagnostics: None,
             explain: None,
             collection: None,

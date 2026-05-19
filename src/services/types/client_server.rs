@@ -100,6 +100,7 @@ pub fn supported_actions() -> Vec<String> {
     [
         "status",
         "scrape",
+        "summarize",
         "screenshot",
         "crawl.start",
         "crawl.status",

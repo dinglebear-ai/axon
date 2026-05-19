@@ -29,10 +29,7 @@ pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {
     );
     print_option("fetchRetries", &cfg.fetch_retries.to_string());
     print_option("retryBackoffMs", &cfg.retry_backoff_ms.to_string());
-    print_option("chromeAntiBot", &cfg.chrome_anti_bot.to_string());
-    print_option("chromeStealth", &cfg.chrome_stealth.to_string());
-    print_option("chromeIntercept", &cfg.chrome_intercept.to_string());
-    print_option("embed", &cfg.embed.to_string());
+    print_option("indexing", if cfg.embed { "enabled" } else { "skipped" });
     println!();
 }
 
@@ -144,8 +141,8 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     // Phase 2: embed all collected markdowns in one batch.
-    // Important: write this run's files into an isolated directory so `scrape --embed`
-    // only indexes current outputs, not every historical file in scrape-markdown.
+    // Important: write this run's files into an isolated directory so scrape only
+    // indexes current outputs, not every historical file in scrape-markdown.
     if cfg.embed && !to_embed.is_empty() {
         let run_id = Uuid::new_v4().to_string();
         let embed_dir = cfg

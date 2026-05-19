@@ -26,6 +26,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            docs/API-PARITY.md
+          sparse-checkout-cone-mode: false
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -53,6 +69,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            docs/API-PARITY.md
+          sparse-checkout-cone-mode: false
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -83,6 +115,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            docs/API-PARITY.md
+          sparse-checkout-cone-mode: false
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -120,6 +168,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            docs/API-PARITY.md
+          sparse-checkout-cone-mode: false
+            tests
+            scripts
+            config
+            vendor
+            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0

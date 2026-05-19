@@ -359,42 +359,6 @@ compatibility = "canonical"
 reason = "Hugging Face token for TEI model pulls."
 
 [[env]]
-key = "OPENAI_MODEL"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env", "scripts"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Removed from the axon runtime in 3.0.0; LLM operations now run through AXON_HEADLESS_GEMINI_*. `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` (e.g. `scripts/searxng-research`, `scripts/time-query-gen`) that talk to an OpenAI-compatible endpoint independently of axon's runtime config."
-
-[[env]]
-key = "OPENAI_BASE_URL"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env", "scripts"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Removed from the axon runtime in 3.0.0 along with the OpenAI client path; `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` that hit an OpenAI-compatible endpoint independently of axon's runtime."
-
-[[env]]
-key = "OPENAI_API_KEY"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env", "scripts"]
-secret = true
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Removed from the axon runtime in 3.0.0 along with the OpenAI client path; `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` that hit an OpenAI-compatible endpoint independently of axon's runtime."
-
-[[env]]
 key = "AXON_HEADLESS_GEMINI_CMD"
 classification = "keep-env"
 runtime_placement = "both"
@@ -597,78 +561,6 @@ container_allowed = false
 toml_destination = "workers.max-pending-ingest-jobs"
 compatibility = "warn-env-override"
 reason = "Queue cap tuning."
-
-[[env]]
-key = "AXON_BATCH_QUEUE"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Legacy removed queue runtime."
-
-[[env]]
-key = "AXON_CRAWL_QUEUE"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Legacy removed queue runtime."
-
-[[env]]
-key = "AXON_EMBED_QUEUE"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Legacy removed queue runtime."
-
-[[env]]
-key = "AXON_EXTRACT_QUEUE"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Legacy removed queue runtime."
-
-[[env]]
-key = "AXON_INGEST_QUEUE"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Legacy removed queue runtime."
-
-[[env]]
-key = "AXON_AMQP_URL"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["src", "tests"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Removed legacy runtime path; migration prunes it from env."
 
 [[env]]
 key = "AXON_ASK_AUTHORITATIVE_BOOST"
@@ -1163,18 +1055,6 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
-key = "AXON_LITE"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["src", "tests", "scripts", "docs"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Removed legacy runtime path; migration prunes it from env."
-
-[[env]]
 key = "AXON_LIVE_TEST_OUTDIR"
 classification = "external/test-only"
 runtime_placement = "not-runtime"
@@ -1415,30 +1295,6 @@ compatibility = "advanced"
 reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
 
 [[env]]
-key = "AXON_PG_MCP_URL"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["scripts"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Removed legacy runtime path; migration prunes it from env."
-
-[[env]]
-key = "AXON_PG_URL"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["src", "tests", "scripts"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Removed legacy runtime path; migration prunes it from env."
-
-[[env]]
 key = "AXON_QDRANT_UPSERT_BATCH_SIZE"
 classification = "keep-env"
 runtime_placement = "both"
@@ -1449,18 +1305,6 @@ container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
-
-[[env]]
-key = "AXON_REDIS_URL"
-classification = "delete"
-runtime_placement = "not-runtime"
-surfaces = ["src", "tests"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "delete-on-migration"
-reason = "Removed legacy runtime path; migration prunes it from env."
 
 [[env]]
 key = "AXON_REPO_ROOT"
@@ -2481,3 +2325,39 @@ container_allowed = false
 toml_destination = ""
 compatibility = "canonical"
 reason = "CLI shortcut env var read by `axon scrape` to force a specific vertical extractor by name (e.g. AXON_VERTICAL=amazon). One-shot operator override; not threaded through Config."
+
+[[env]]
+key = "OPENAI_API_KEY"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts", "tests"]
+secret = true
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "external"
+reason = "Not part of the Axon runtime. Referenced only by standalone helper scripts and tests that assert removed OpenAI runtime env is ignored."
+
+[[env]]
+key = "OPENAI_BASE_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts", "tests"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "external"
+reason = "Not part of the Axon runtime. Referenced only by standalone helper scripts and tests that assert removed OpenAI runtime env is ignored."
+
+[[env]]
+key = "OPENAI_MODEL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts", "tests"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "external"
+reason = "Not part of the Axon runtime. Referenced only by standalone helper scripts and tests that assert removed OpenAI runtime env is ignored."

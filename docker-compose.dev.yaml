@@ -1,12 +1,12 @@
 name: axon
 
-# Local development/build overlay.
+# Local development overlay.
 #
 # Use with the base compose file so the runtime service keeps the same ports,
-# volumes, healthcheck, dependencies, and environment, but the axon image is
-# built from this checkout instead of pulled from GHCR:
+# volumes, healthcheck, dependencies, and environment, but runs the debug
+# binary copied by scripts/axon into the host-mounted ~/.axon/dev directory:
 #
-#   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml build axon
+#   ./scripts/axon doctor
 #   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d axon
 #
 services:
@@ -15,3 +15,4 @@ services:
     build:
       context: .
       dockerfile: config/Dockerfile
+    entrypoint: ["/usr/bin/tini", "--", "/home/axon/.axon/dev/axon"]

@@ -79,13 +79,13 @@ Used in two files for HTML→Markdown content transformation:
 
 | `glob` | — | Removed — caused BudgetExceeded on first URL when using `with_limit(1)`. Do NOT re-enable. See CLAUDE.md gotchas. |
 
-| `fs` | — | Project uses lite SQLite jobs plus Qdrant vector storage, not spider disk FS |
+| `fs` | — | Project uses SQLite jobs plus Qdrant vector storage, not spider disk FS |
 | `sitemap` | ✅ | Sitemap discovery + backfill |
 | `time` | ✅ | Timing/duration tracking for crawl operations |
 | `encoding` | — | |
 | `serde` | — | Project uses its own serde deps directly |
 | `sync` | — | |
-| `control` | ✅ | Runtime crawl control — pause/resume/shutdown. Lite crawl cancellation sends Spider shutdown for the active crawl target before returning canceled |
+| `control` | ✅ | Runtime crawl control — pause/resume/shutdown. Crawl cancellation sends Spider shutdown for the active crawl target before returning canceled |
 | `full_resources` | — | |
 | `cookies` | — | |
 | `spoof` | — | `chrome_stealth` covers bot-evasion needs |
@@ -109,7 +109,7 @@ Used in two files for HTML→Markdown content transformation:
 
 | Flag | Status | Notes |
 |------|--------|-------|
-| `disk` | — | Project uses lite SQLite jobs plus Qdrant vector storage, not spider disk cache |
+| `disk` | — | Project uses SQLite jobs plus Qdrant vector storage, not spider disk cache |
 | `disk_native_tls` | — | |
 | `disk_aws` | — | |
 

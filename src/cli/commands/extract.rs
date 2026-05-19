@@ -37,7 +37,7 @@ pub(crate) fn render_extract_enqueue_result(
             let message = if via_server {
                 "Server completed the extract before returning."
             } else {
-                "Lite mode completed the extract in-process."
+                "SQLite runtime completed the extract in-process."
             };
             println!("  {}", muted(message));
         }
@@ -63,7 +63,7 @@ pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> 
             urls.len(),
             cfg.wait
         ));
-        let prompt = require_extract_prompt(cfg)?;
+        let prompt = cfg.query.clone().unwrap_or_default();
 
         if !cfg.wait {
             let result = enqueue_extract_job(cfg, &urls, prompt, service_context).await;
@@ -152,22 +152,19 @@ fn parse_extract_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Erro
     Ok(Uuid::parse_str(id)?)
 }
 
-fn require_extract_prompt(cfg: &Config) -> Result<String, Box<dyn Error>> {
-    cfg.query
-        .as_ref()
-        .ok_or("extract requires --query <prompt>")
-        .map(|v| v.to_string())
-        .map_err(Into::into)
-}
-
 async fn enqueue_extract_job(
     cfg: &Config,
     urls: &[String],
     prompt: String,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
+    let prompt = if prompt.trim().is_empty() {
+        None
+    } else {
+        Some(prompt)
+    };
     let outcome =
-        extract_service::extract_start_with_context(cfg, urls, Some(prompt), service_context, None)
+        extract_service::extract_start_with_context(cfg, urls, prompt, service_context, None)
             .await?;
     let job_id = outcome.result.job_id;
     let status = if outcome.disposition == StartDisposition::Completed {
@@ -180,7 +177,7 @@ async fn enqueue_extract_job(
     Ok(())
 }
 
-fn emit_extract_output(
+pub(crate) fn emit_extract_output(
     cfg: &Config,
     result: &crate::services::types::ExtractSyncResult,
 ) -> Result<(), Box<dyn Error>> {
@@ -208,6 +205,9 @@ fn emit_extract_output(
         summary["llm_fallback_pages"]
     );
     println!("  {} {}", muted("LLM requests:"), summary["llm_requests"]);
+    if let Some(message) = extract_provenance_message(summary) {
+        println!("  {} {}", muted("Parser provenance:"), message);
+    }
     println!("  {} {}", muted("Total tokens:"), summary["total_tokens"]);
     println!(
         "  {} {:.6}",
@@ -219,3 +219,40 @@ fn emit_extract_output(
     println!("  {} {}", muted("Items saved:"), result.items_path);
     Ok(())
 }
+
+pub(crate) fn extract_provenance_message(summary: &serde_json::Value) -> Option<String> {
+    let deterministic_pages = summary
+        .get("deterministic_pages")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    let llm_fallback_pages = summary
+        .get("llm_fallback_pages")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    if deterministic_pages == 0 {
+        return None;
+    }
+    let parser_hits = summary
+        .get("parser_hits")
+        .and_then(|value| value.as_object())
+        .map(|hits| {
+            let mut names = hits.keys().cloned().collect::<Vec<_>>();
+            names.sort();
+            names.join(", ")
+        })
+        .filter(|names| !names.is_empty())
+        .unwrap_or_else(|| "deterministic parsers".to_string());
+    if llm_fallback_pages == 0 {
+        Some(format!(
+            "{deterministic_pages} page(s) handled by {parser_hits}; LLM fallback was not used."
+        ))
+    } else {
+        Some(format!(
+            "{deterministic_pages} page(s) handled by {parser_hits}; LLM fallback ran for {llm_fallback_pages} page(s)."
+        ))
+    }
+}
+
+#[cfg(test)]
+#[path = "extract_tests.rs"]
+mod tests;

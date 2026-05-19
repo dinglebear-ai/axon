@@ -1,73 +1,81 @@
-# axon setup
+# axon setup / preflight / stack / smoke
 
-First-run local Docker setup helper. Creates `~/.axon`, writes shared config/env files, installs compose assets, starts the Docker stack (Qdrant, TEI, Chrome, Axon), checks health, prewarms TEI, and runs first-run smoke checks.
+Local service-stack bootstrap is split into focused commands.
 
 ## Synopsis
 
 ```bash
 axon setup [--json]
-axon setup check [--json]
-axon setup repair [--json]
-axon setup repair --migrate-env [--json]
+axon setup init [options] [--json]
+axon preflight [--json]
+axon stack up [--json]
+axon stack down [--json]
+axon stack restart [--json]
+axon stack rebuild [--json]
+axon smoke [--json]
 axon setup targets [--json]
-axon setup plugin-hook [--no-repair] [--json]
+axon setup plugin-hook [--no-setup] [--json]
 ```
 
-## Subcommands
+## Commands
 
-| Subcommand | Purpose |
-|------------|---------|
-| none | Create or repair local `~/.axon` config, install compose assets, start the Docker stack, and run first-run checks. |
-| `check` | Inspect local setup without mutating files or starting services. |
-| `repair` | Repair local config/assets and restart the Docker stack. Add `--migrate-env` for explicit backup-backed env pruning/migration. |
-| `targets` | List concrete SSH aliases from `~/.ssh/config` (informational only). |
-| `plugin-hook` | Hook-safe `check` + (optional) `repair` path used by Claude Code's `SessionStart` hook. Pass `--no-repair` to skip the repair pass. |
+| Command | Purpose |
+|---------|---------|
+| `setup` | Convenience wrapper: initialize local files/assets, start the service stack, then run preflight readiness checks. |
+| `setup init` | Create or refresh `~/.axon`, `config.toml`, `.env`, and compose assets. Does not start services. |
+| `preflight` | Check local prerequisites, auth config, and running service readiness. Does not mutate files or start services. |
+| `stack up` | Pull images, start the Docker service stack detached, then follow `docker compose logs -f` so startup is visible. Press Ctrl-C to stop watching logs; services keep running. |
+| `stack down` | Stop the Docker service stack. |
+| `stack restart` | Restart the Docker service stack. |
+| `stack rebuild` | Rebuild the Axon image and start the Docker service stack. |
+| `smoke` | Prewarm TEI, crawl `example.com`, and run a simple `ask` proof. |
+| `setup targets` | List concrete SSH aliases from `~/.ssh/config`. |
+| `setup plugin-hook` | Hook-safe preflight path used by Claude Code SessionStart. Use `--no-setup` for check-only mode. |
 
-## Flags
+## `setup init` Options
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--json` | `false` | Print machine-readable JSON output. |
-| `--migrate-env` | `false` | When used with `repair`, back up `~/.axon/.env`, prune deprecated keys, and move tuning knobs into `~/.axon/config.toml`. |
-| `--no-repair` | `false` | With `plugin-hook`, run `check` only and skip the repair pass. |
+| Option | Env key | Purpose |
+|--------|---------|---------|
+| `--mcp-host <host>` | `AXON_MCP_HTTP_HOST` | MCP HTTP bind host. |
+| `--mcp-port <port>` | `AXON_MCP_HTTP_PORT` | MCP HTTP bind port. |
+| `--auth-mode bearer\|oauth` | `AXON_MCP_AUTH_MODE` | Auth mode. Defaults to `bearer`. |
+| `--mcp-token <token>` | `AXON_MCP_HTTP_TOKEN` | Static bearer token. Generated when bearer mode is selected and no token exists. |
+| `--oauth-public-url <url>` | `AXON_MCP_PUBLIC_URL` | Required for OAuth mode. |
+| `--google-client-id <id>` | `AXON_MCP_GOOGLE_CLIENT_ID` | Required for OAuth mode. |
+| `--google-client-secret <secret>` | `AXON_MCP_GOOGLE_CLIENT_SECRET` | Required for OAuth mode. |
+| `--auth-admin-email <email>` | `AXON_MCP_AUTH_ADMIN_EMAIL` | Required for OAuth mode. |
+| `--tavily-api-key <key>` | `TAVILY_API_KEY` | Enables search/research. |
+| `--github-token <token>` | `GITHUB_TOKEN` | Raises GitHub ingest rate limits. |
+| `--reddit-client-id <id>` | `REDDIT_CLIENT_ID` | Required for Reddit ingest. |
+| `--reddit-client-secret <secret>` | `REDDIT_CLIENT_SECRET` | Required for Reddit ingest. |
+
+## Minimum Configuration
+
+For local bearer-token operation, no manual env values are required. `setup init`
+creates the local home, defaults to loopback MCP HTTP, writes
+`AXON_MCP_AUTH_MODE=bearer`, and generates `AXON_MCP_HTTP_TOKEN`.
+
+Optional features need their own credentials:
+
+| Feature | Required outside Axon |
+|---------|-----------------------|
+| LLM features (`ask`, `evaluate`, `suggest`, LLM fallback extract, research synthesis) | Gemini CLI authenticated under `~/.gemini`. |
+| Web search / research | `TAVILY_API_KEY`. |
+| GitHub ingest with higher rate limits | `GITHUB_TOKEN`. |
+| Reddit ingest | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`. |
+| OAuth MCP auth | `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`. |
 
 ## Examples
 
 ```bash
-axon setup                       # first run / interactive setup
-axon setup check --json          # report-only, machine-readable
-axon setup repair --migrate-env  # repair stack and migrate env into config.toml
-axon setup targets               # list ~/.ssh/config aliases
+axon setup init
+axon setup init --auth-mode oauth \
+  --oauth-public-url https://axon.example.com \
+  --google-client-id "$GOOGLE_CLIENT_ID" \
+  --google-client-secret "$GOOGLE_CLIENT_SECRET" \
+  --auth-admin-email you@example.com
+axon stack up
+axon preflight
+axon smoke
+axon setup plugin-hook --no-setup
 ```
-
-## Required environment variables
-
-The setup flow writes most env vars into `~/.axon/.env` for you; the few it reads from the existing environment are optional overrides:
-
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `AXON_DATA_DIR` | no — defaults to `~/.axon` | Override the canonical Axon home (where `.env`, `config.toml`, `jobs.db`, `logs/`, and `output/` live). |
-| `AXON_CONFIG_PATH` | no — defaults to `$AXON_DATA_DIR/config.toml` | Override the tuning-knobs TOML path. |
-| `HF_TOKEN` | only for gated TEI models | Hugging Face token; written into `~/.axon/.env` so TEI can fetch private model weights. |
-| `TZ` | no | Container timezone for log timestamps. Defaults to `America/New_York`. |
-| `AXON_MCP_HTTP_TOKEN` | only for non-loopback MCP exposure | Static bearer token for the MCP HTTP transport. Generated by setup if not provided. |
-
-Everything else — `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`, etc. — is materialized by setup itself.
-
-## External dependencies
-
-Local setup orchestrates Docker Compose; no system-level Axon install is required. You need:
-
-| Dependency | Purpose | Install hint |
-|------------|---------|--------------|
-| Docker Engine ≥ 24 | Run the Axon, Qdrant, TEI, and Chrome containers | https://docs.docker.com/engine/install/ |
-| Docker Compose v2 (`docker compose`, not `docker-compose`) | Compose project orchestration | Bundled with Docker Desktop; on Linux: `apt-get install docker-compose-plugin` or distro equivalent |
-| NVIDIA Container Toolkit | Required only if you want GPU-accelerated TEI | https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html |
-
-Setup will fail fast if `docker` / `docker compose` are missing or the daemon is unreachable.
-
-## Output
-
-Local setup prints phase status for config, Docker, Qdrant, TEI, Chrome, Axon
-server health, TEI prewarm, and smoke checks. `targets` prints SSH aliases with
-resolved host/user/port values.
