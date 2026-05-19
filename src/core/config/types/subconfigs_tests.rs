@@ -55,9 +55,6 @@ fn ask_config_default_values() {
 #[test]
 fn chrome_config_default_values() {
     let c = ChromeConfig::default();
-    assert!(c.chrome_headless);
-    assert!(c.chrome_anti_bot);
-    assert!(c.chrome_stealth);
     assert_eq!(c.chrome_network_idle_timeout_secs, 15);
     assert_eq!(c.viewport_width, 1920);
     assert_eq!(c.viewport_height, 1080);

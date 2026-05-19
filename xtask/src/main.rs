@@ -1,5 +1,3 @@
-mod checks;
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
@@ -26,6 +24,8 @@ enum Command {
     CheckClaudeSymlinks,
     /// Fail if any symlink in the worktree points to a non-existent target.
     CheckBrokenSymlinks,
+    /// Scan staged files for secrets and credentials.
+    CheckSecrets,
 }
 
 fn main() -> Result<()> {
@@ -39,5 +39,8 @@ fn main() -> Result<()> {
         Command::CheckUnwraps => checks::unwraps::check(&root),
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
         Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
+        Command::CheckSecrets => checks::secrets::check(&root),
     }
 }
+
+mod checks;

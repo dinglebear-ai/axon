@@ -650,7 +650,7 @@ async fn test_warning_when_bounded_structure_too_few_urls() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 11: --discover-sitemaps false skips sitemap fetch entirely
+// Test 11: config discover_sitemaps=false skips sitemap fetch entirely
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -721,18 +721,18 @@ async fn test_discover_sitemaps_false_skips_sitemap_fetch() {
     assert_eq!(
         robots_mock.calls(),
         0,
-        "robots.txt must NOT be fetched when --discover-sitemaps false"
+        "robots.txt must NOT be fetched when discover_sitemaps=false"
     );
     assert_eq!(
         sitemap_mock.calls(),
         0,
-        "sitemap.xml must NOT be fetched when --discover-sitemaps false"
+        "sitemap.xml must NOT be fetched when discover_sitemaps=false"
     );
     for m in &other_sitemap_mocks {
         assert_eq!(
             m.calls(),
             0,
-            "no sitemap path should be fetched when --discover-sitemaps false"
+            "no sitemap path should be fetched when discover_sitemaps=false"
         );
     }
 
@@ -740,7 +740,7 @@ async fn test_discover_sitemaps_false_skips_sitemap_fetch() {
     assert_eq!(
         result["map_source"].as_str(),
         Some("bounded-structure"),
-        "expected bounded-structure when --discover-sitemaps false"
+        "expected bounded-structure when discover_sitemaps=false"
     );
     let urls = result["urls"].as_array().expect("urls must be array");
     assert!(

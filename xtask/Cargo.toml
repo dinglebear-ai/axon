@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+regex = "1"
 walkdir = "2"
 
 [dev-dependencies]

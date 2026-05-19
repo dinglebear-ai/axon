@@ -53,7 +53,7 @@ fn map_ask_payload_wraps_value() {
     let payload = serde_json::json!({
         "query": "what is a vector database?",
         "answer": "A vector database stores embeddings...",
-        "timing_ms": {"retrieval": 1, "context_build": 2, "graph": 3, "llm": 4, "total": 10}
+        "timing_ms": {"retrieval": 1, "context_build": 2, "llm": 4, "total": 10}
     });
     let result = map_ask_payload(payload.clone()).expect("valid ask payload");
     assert_eq!(result.query, "what is a vector database?");
@@ -72,8 +72,6 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
             "full_docs_selected": 2,
             "supplemental_selected": 1,
             "context_chars": 1234,
-            "graph_entities": 0,
-            "graph_context_chars": 0,
             "min_relevance_score": 0.45,
             "doc_fetch_concurrency": 4,
             "top_domains": ["docs.example.com"],
@@ -84,7 +82,7 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
             "resolved_full_docs": 6,
             "full_docs_source": "adaptive_complex"
         },
-        "timing_ms": {"retrieval": 1, "context_build": 2, "graph": 3, "llm": 4, "total": 10}
+        "timing_ms": {"retrieval": 1, "context_build": 2, "llm": 4, "total": 10}
     });
 
     let result = map_ask_payload(payload).expect("valid ask payload");

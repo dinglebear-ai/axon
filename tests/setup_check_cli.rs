@@ -65,7 +65,7 @@ fn create_required_axon_dirs(home: &Path) {
     }
 }
 
-fn assert_setup_check_did_not_create_runtime_dirs(home: &Path) {
+fn assert_preflight_did_not_create_runtime_dirs(home: &Path) {
     let axon = home.join(".axon");
     for child in [
         "output",
@@ -78,20 +78,19 @@ fn assert_setup_check_did_not_create_runtime_dirs(home: &Path) {
     ] {
         assert!(
             !axon.join(child).exists(),
-            "check mode must not create runtime dir {child}"
+            "preflight must not create runtime dir {child}"
         );
     }
 }
 
 #[test]
-fn setup_check_skips_mutation_and_warnings_are_nonfatal() {
+fn preflight_skips_mutation_and_warnings_are_nonfatal() {
     let home = tempfile::tempdir().unwrap();
     let fake_bin = tempfile::tempdir().unwrap();
     write_fake_setup_commands(fake_bin.path());
 
     let output = Command::new(axon_bin())
-        .arg("setup")
-        .arg("check")
+        .arg("preflight")
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
@@ -106,21 +105,20 @@ fn setup_check_skips_mutation_and_warnings_are_nonfatal() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Skipped\tcompose-up"));
-    assert!(stdout.contains("check mode does not start Docker services"));
-    assert_setup_check_did_not_create_runtime_dirs(home.path());
+    assert!(stdout.contains("Skipped\treadiness"));
+    assert!(stdout.contains("readiness skipped because prerequisite checks failed"));
+    assert_preflight_did_not_create_runtime_dirs(home.path());
 }
 
 #[test]
-fn setup_check_warns_when_required_child_dirs_are_missing() {
+fn preflight_warns_when_required_child_dirs_are_missing() {
     let home = tempfile::tempdir().unwrap();
     let fake_bin = tempfile::tempdir().unwrap();
     write_fake_setup_commands(fake_bin.path());
     std::fs::create_dir_all(home.path().join(".axon/logs")).unwrap();
 
     let output = Command::new(axon_bin())
-        .arg("setup")
-        .arg("check")
+        .arg("preflight")
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
@@ -135,7 +133,7 @@ fn setup_check_warns_when_required_child_dirs_are_missing() {
 }
 
 #[test]
-fn setup_check_reads_oauth_config_from_managed_env_file() {
+fn preflight_reads_oauth_config_from_managed_env_file() {
     let home = tempfile::tempdir().unwrap();
     let fake_bin = tempfile::tempdir().unwrap();
     write_fake_setup_commands(fake_bin.path());
@@ -147,8 +145,7 @@ fn setup_check_reads_oauth_config_from_managed_env_file() {
     .unwrap();
 
     let output = Command::new(axon_bin())
-        .arg("setup")
-        .arg("check")
+        .arg("preflight")
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
@@ -184,19 +181,18 @@ fn setup_skips_runtime_phases_after_prerequisite_errors() {
     assert!(!output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Error\tdocker"));
-    assert!(stdout.contains("Skipped\tcompose-up"));
-    assert!(stdout.contains("setup skipped because earlier prerequisite checks failed"));
+    assert!(stdout.contains("Skipped\tstack-up"));
+    assert!(stdout.contains("stack startup skipped because prerequisite checks failed"));
 }
 
 #[test]
-fn setup_check_returns_nonzero_after_printing_plain_error_report() {
+fn preflight_returns_nonzero_after_printing_plain_error_report() {
     let home = tempfile::tempdir().unwrap();
     let fake_bin = tempfile::tempdir().unwrap();
     write_fake_setup_commands(fake_bin.path());
 
     let output = Command::new(axon_bin())
-        .arg("setup")
-        .arg("check")
+        .arg("preflight")
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env("AXON_TEST_DOCKER_FAIL", "1")
@@ -210,19 +206,18 @@ fn setup_check_returns_nonzero_after_printing_plain_error_report() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stdout.contains("Error\tdocker"));
     assert!(stdout.contains("docker unavailable"));
-    assert!(stderr.contains("axon setup completed with failed phases"));
+    assert!(stderr.contains("axon preflight completed with failed phases"));
 }
 
 #[test]
-fn setup_check_returns_nonzero_after_printing_json_error_report() {
+fn preflight_returns_nonzero_after_printing_json_error_report() {
     let home = tempfile::tempdir().unwrap();
     let fake_bin = tempfile::tempdir().unwrap();
     write_fake_setup_commands(fake_bin.path());
 
     let output = Command::new(axon_bin())
         .arg("--json")
-        .arg("setup")
-        .arg("check")
+        .arg("preflight")
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env("AXON_TEST_DOCKER_FAIL", "1")
@@ -233,7 +228,7 @@ fn setup_check_returns_nonzero_after_printing_json_error_report() {
 
     assert!(!output.status.success());
     let payload: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(payload["mode"], "check");
+    assert_eq!(payload["mode"], "preflight");
     assert_eq!(payload["has_errors"], true);
     assert!(
         payload["phases"]
@@ -245,7 +240,7 @@ fn setup_check_returns_nonzero_after_printing_json_error_report() {
 }
 
 #[test]
-fn setup_plugin_hook_json_reports_policy_without_repair() {
+fn setup_plugin_hook_json_reports_policy_without_setup() {
     let home = tempfile::tempdir().unwrap();
     let fake_bin = tempfile::tempdir().unwrap();
     write_fake_setup_commands(fake_bin.path());
@@ -254,7 +249,7 @@ fn setup_plugin_hook_json_reports_policy_without_repair() {
         .arg("--json")
         .arg("setup")
         .arg("plugin-hook")
-        .arg("--no-repair")
+        .arg("--no-setup")
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
@@ -270,11 +265,11 @@ fn setup_plugin_hook_json_reports_policy_without_repair() {
     );
     let payload: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(payload["exit_policy"], "success");
-    assert_eq!(payload["ran_repair"], false);
-    assert_eq!(payload["no_repair"], true);
+    assert_eq!(payload["ran_setup"], false);
+    assert_eq!(payload["no_setup"], true);
     assert!(payload["blocking_failures"].as_array().unwrap().is_empty());
     assert!(payload["advisory_failures"].as_array().unwrap().is_empty());
-    assert_eq!(payload["check"]["mode"], "check");
-    assert!(payload["repair"].is_null());
-    assert_setup_check_did_not_create_runtime_dirs(home.path());
+    assert_eq!(payload["check"]["mode"], "preflight");
+    assert!(payload["setup"].is_null());
+    assert_preflight_did_not_create_runtime_dirs(home.path());
 }

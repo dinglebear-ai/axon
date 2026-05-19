@@ -6,8 +6,8 @@ use crate::core::content::{
 };
 use crate::core::logging::log_done;
 use crate::jobs::backend::{JobKind, JobPayload};
+use crate::jobs::config_snapshot::extract_config_json;
 use crate::jobs::extract::start_extract_job;
-use crate::jobs::lite::config_snapshot::extract_config_json;
 use crate::services::context::ServiceContext;
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::jobs as job_service;
@@ -19,10 +19,12 @@ use crate::services::types::{
 use futures_util::StreamExt;
 use futures_util::stream;
 use std::error::Error;
+use std::io::Write;
 use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+const MAX_INLINE_EXTRACT_ITEMS: usize = 25;
 
 // --- Pure mapping helpers (no I/O, testable without live services) ---
 
@@ -170,7 +172,7 @@ pub async fn extract_sync(
     if let Some(parent) = items_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let mut items_file = tokio::fs::File::create(&items_path).await?;
+    let mut items_file = std::fs::File::create(&items_path)?;
 
     let agg = execute_extract_runs(cfg, urls, prompt, &mut items_file).await?;
     let summary = build_extract_summary(cfg, urls, prompt, &agg)?;
@@ -204,13 +206,14 @@ struct ExtractAggregation {
     total_tokens: u64,
     parser_hits: serde_json::Map<String, serde_json::Value>,
     total_items: usize,
+    sample_items: Vec<serde_json::Value>,
 }
 
 async fn execute_extract_runs(
     cfg: &Config,
     urls: &[String],
     prompt: &str,
-    items_file: &mut tokio::fs::File,
+    items_file: &mut std::fs::File,
 ) -> Result<ExtractAggregation, Box<dyn Error>> {
     let engine = Arc::new(DeterministicExtractionEngine::with_default_parsers());
 
@@ -224,31 +227,42 @@ async fn execute_extract_runs(
 
     let mut agg = ExtractAggregation::default();
     while let Some(run_result) = pending_runs.next().await {
-        let run = run_result?;
-        accumulate_run(&mut agg, &run);
+        let item_lines = {
+            let run = run_result?;
+            accumulate_run(&mut agg, &run);
 
-        for item in &run.results {
-            let mut line = serde_json::to_string(item)?;
-            line.push('\n');
-            items_file.write_all(line.as_bytes()).await?;
+            let mut item_lines = Vec::with_capacity(run.results.len());
+            for item in &run.results {
+                if agg.sample_items.len() < MAX_INLINE_EXTRACT_ITEMS {
+                    agg.sample_items.push(item.clone());
+                }
+                let mut line = serde_json::to_string(item)?;
+                line.push('\n');
+                item_lines.push(line);
+            }
+
+            agg.runs.push(serde_json::json!({
+                "url": run.start_url,
+                "pages_visited": run.pages_visited,
+                "pages_with_data": run.pages_with_data,
+                "deterministic_pages": run.metrics.deterministic_pages,
+                "llm_fallback_pages": run.metrics.llm_fallback_pages,
+                "llm_requests": run.metrics.llm_requests,
+                "prompt_tokens": run.metrics.prompt_tokens,
+                "completion_tokens": run.metrics.completion_tokens,
+                "total_tokens": run.metrics.total_tokens,
+                "parser_hits": run.parser_hits,
+                "total_items": run.results.len(),
+            }));
+            item_lines
+        };
+
+        for line in item_lines {
+            items_file.write_all(line.as_bytes())?;
         }
-
-        agg.runs.push(serde_json::json!({
-            "url": run.start_url,
-            "pages_visited": run.pages_visited,
-            "pages_with_data": run.pages_with_data,
-            "deterministic_pages": run.metrics.deterministic_pages,
-            "llm_fallback_pages": run.metrics.llm_fallback_pages,
-            "llm_requests": run.metrics.llm_requests,
-            "prompt_tokens": run.metrics.prompt_tokens,
-            "completion_tokens": run.metrics.completion_tokens,
-            "total_tokens": run.metrics.total_tokens,
-            "parser_hits": run.parser_hits,
-            "total_items": run.results.len(),
-        }));
     }
 
-    items_file.flush().await?;
+    items_file.flush()?;
     Ok(agg)
 }
 
@@ -282,9 +296,6 @@ fn build_extract_web_config(cfg: &Config, url: String, prompt: &str) -> ExtractW
         custom_headers: cfg.custom_headers.clone(),
         render_mode: cfg.render_mode,
         chrome_remote_url: cfg.chrome_remote_url.clone(),
-        chrome_stealth: cfg.chrome_stealth,
-        chrome_anti_bot: cfg.chrome_anti_bot,
-        chrome_intercept: cfg.chrome_intercept,
         bypass_csp: cfg.bypass_csp,
         accept_invalid_certs: cfg.accept_invalid_certs,
         request_timeout_ms: cfg.request_timeout_ms,
@@ -314,6 +325,9 @@ fn build_extract_summary(
         "total_tokens": agg.total_tokens,
         "parser_hits": agg.parser_hits,
         "total_items": agg.total_items,
+        "items": agg.sample_items,
+        "items_truncated": agg.total_items > agg.sample_items.len(),
+        "inline_items_limit": MAX_INLINE_EXTRACT_ITEMS,
         "runs": agg.runs,
     }))
 }

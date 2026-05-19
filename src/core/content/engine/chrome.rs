@@ -90,7 +90,7 @@ async fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Opt
         // for every href on the page — wasted work for a single-page fetch.
         .with_depth(0)
         .with_blacklist_url(Some(ssrf_patterns))
-        .with_stealth(wcfg.chrome_stealth || wcfg.chrome_anti_bot)
+        .with_stealth(true)
         .with_fingerprint(true)
         .with_dismiss_dialogs(true)
         // `idle_network0` waits until the network is fully quiet for 500 ms —
@@ -99,7 +99,7 @@ async fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Opt
         .with_wait_for_idle_network0(Some(spider::configuration::WaitForIdleNetwork::new(Some(
             std::time::Duration::from_secs(wcfg.chrome_network_idle_timeout_secs),
         ))))
-        .with_chrome_intercept(RequestInterceptConfiguration::new(wcfg.chrome_intercept))
+        .with_chrome_intercept(RequestInterceptConfiguration::new(true))
         .with_chrome_connection(Some(resolved_url));
 
     if wcfg.bypass_csp {

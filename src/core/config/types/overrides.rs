@@ -62,9 +62,6 @@ pub struct ConfigOverrides {
     /// Override `Config::hybrid_search_enabled`.
     pub hybrid_search_enabled: Option<bool>,
 
-    /// Override `Config::ask_graph`.
-    pub ask_graph: Option<bool>,
-
     /// Override `Config::ask_diagnostics`.
     pub ask_diagnostics: Option<bool>,
 
@@ -169,9 +166,6 @@ impl Config {
         }
         if let Some(v) = overrides.hybrid_search_enabled {
             cfg.hybrid_search_enabled = v;
-        }
-        if let Some(v) = overrides.ask_graph {
-            cfg.ask_graph = v;
         }
         if let Some(v) = overrides.ask_diagnostics {
             cfg.ask_diagnostics = v;

@@ -272,7 +272,7 @@ async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<
 pub(crate) fn hint_for_ask_error(msg: &str) -> Option<&'static str> {
     if msg.starts_with("connect to ") {
         return Some(
-            "ensure `axon serve` is running there, or unset --server-url / AXON_SERVER_URL to fall back to in-process ask.",
+            "ensure `axon serve` is running there, or unset AXON_SERVER_URL to fall back to in-process ask.",
         );
     }
     if msg.starts_with("server returned 401") || msg.starts_with("server returned 403") {

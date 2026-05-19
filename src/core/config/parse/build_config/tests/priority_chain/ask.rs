@@ -570,7 +570,7 @@ fn server_url_rejects_malformed_values() {
         env::set_var("AXON_SERVER_URL", "://not-a-url");
         err = into_config_via_args(&["status"]).unwrap_err();
     });
-    assert!(err.contains("invalid --server-url / AXON_SERVER_URL"));
+    assert!(err.contains("invalid AXON_SERVER_URL"));
 }
 
 #[allow(unsafe_code)]
@@ -605,23 +605,6 @@ fn generic_server_url_env_enables_server_mode() {
     });
     assert_eq!(got.as_deref(), Some("http://127.0.0.1:8001/"));
     assert_eq!(mode, crate::core::config::types::ClientMode::Server);
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn cli_server_url_overrides_generic_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    let mut got = String::new();
-    with_env_saved(&["AXON_SERVER_URL"], || unsafe {
-        env::set_var("AXON_SERVER_URL", "http://127.0.0.1:8001/env");
-        got = into_config_via_args(&["--server-url", "http://127.0.0.1:9000/cli", "status"])
-            .unwrap()
-            .server_url
-            .unwrap()
-            .to_string();
-    });
-    assert_eq!(got, "http://127.0.0.1:9000/cli");
 }
 
 #[allow(unsafe_code)]

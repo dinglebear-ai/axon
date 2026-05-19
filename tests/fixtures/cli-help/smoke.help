@@ -1,0 +1,7 @@
+[1m[38;2;244;143;177mRun crawl/ask smoke checks against the running stack[0m[0m
+
+[1m[38;2;244;143;177mUsage[0m[0m
+  [38;2;144;202;249maxon smoke [OPTIONS][0m
+
+[1m[38;2;244;143;177mOptions[0m[0m
+  [38;2;144;202;249m-h, --help                      [0m [2mPrint help[0m

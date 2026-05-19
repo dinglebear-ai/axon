@@ -81,6 +81,7 @@ Status meanings:
 ```text
 status
 scrape
+summarize
 screenshot
 crawl.start
 crawl.status

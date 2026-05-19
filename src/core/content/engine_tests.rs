@@ -14,9 +14,6 @@ async fn extract_chrome_mode_without_remote_url_falls_back_to_http() {
         custom_headers: vec![],
         render_mode: RenderMode::Chrome,
         chrome_remote_url: None, // ← no Chrome configured
-        chrome_stealth: true,
-        chrome_anti_bot: true,
-        chrome_intercept: true,
         bypass_csp: false,
         accept_invalid_certs: false,
         request_timeout_ms: Some(1000),

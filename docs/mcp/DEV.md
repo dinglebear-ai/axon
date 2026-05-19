@@ -29,7 +29,7 @@ src/
 │       ├── common.rs                # Shared handler utilities
 │       ├── handlers_crawl_extract.rs
 │       ├── handlers_embed_ingest.rs
-│       ├── handlers_query.rs        # query/retrieve/search/map/scrape/ask/research/screenshot
+│       ├── handlers_query.rs        # query/retrieve/search/map/scrape/ask/summarize/research/screenshot
 │       ├── handlers_system.rs       # doctor/domains/sources/stats/status/artifacts/help
 │       ├── handlers_elicit.rs       # elicit_demo handler
 │       ├── artifacts/               # Artifact storage helpers
@@ -37,9 +37,9 @@ src/
 ├── services.rs                      # Service-layer module root
 ├── services/
 │   ├── context.rs                   # ServiceContext { cfg, jobs }
-│   ├── runtime.rs                   # ServiceJobRuntime trait + LiteServiceRuntime
+│   ├── runtime.rs                   # ServiceJobRuntime trait + SqliteServiceRuntime
 │   ├── types/service.rs             # Typed result structs
-│   └── ...                          # query, ask, system, crawl, embed, ingest, etc.
+│   └── ...                          # query, ask, summarize, system, crawl, embed, ingest, etc.
 ```
 
 The MCP server calls the services layer, which is the same layer used by CLI handlers and web routes. MCP handlers map typed service results to MCP wire format.
@@ -89,7 +89,7 @@ Lifecycle actions (crawl, extract, embed, ingest) follow a common pattern with
 
 1. Use the existing `src/jobs/` framework
 2. Implement a `Processor` trait for the new job type
-3. Wire the in-process worker into `LiteBackend::new_with_workers`
+3. Wire the in-process worker into `SqliteJobBackend::new_with_workers`
 4. Wire into MCP dispatch with subaction routing
 
 ## Testing

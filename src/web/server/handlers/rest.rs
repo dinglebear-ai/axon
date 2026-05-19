@@ -74,6 +74,10 @@ fn family_2_sync_post(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> 
         .route("/v1/search", guarded(post(sync_post::v1_search), write))
         .route("/v1/research", guarded(post(sync_post::v1_research), write))
         .route("/v1/scrape", guarded(post(sync_post::v1_scrape), write))
+        .route(
+            "/v1/summarize",
+            guarded(post(sync_post::v1_summarize), write),
+        )
 }
 
 /// Cancel is POST .../cancel rather than DELETE /{id} so the GET (read) and

@@ -2,7 +2,7 @@
 //!
 //! Note: the error_text written by the SQLite watchdog itself
 //! (`reclaimed after unexpected shutdown`) lives in
-//! `src/jobs/lite/store.rs::RECLAIMED_ERROR_TEXT`. The prefix below is a
+//! `src/jobs/store.rs::RECLAIMED_ERROR_TEXT`. The prefix below is a
 //! legacy/alternative marker used by historical workers and is retained here
 //! purely as a status-filter input.
 

@@ -140,7 +140,7 @@ pub struct ServiceContext {
 ```
 
 There is no separate `capabilities` struct on `ServiceContext`. Jobs are backed by SQLite via
-`LiteServiceRuntime`. Two construction modes exist:
+`SqliteServiceRuntime`. Two construction modes exist:
 
 - `ServiceContext::new(cfg)` — enqueue-only, no in-process workers (CLI default).
 - `ServiceContext::new_with_workers(cfg)` — spawns in-process workers for jobs.
@@ -164,9 +164,9 @@ Lifecycle actions (crawl, extract, embed, ingest) share a common pattern:
 
 Each job type has:
 - A payload/schema helper in `src/jobs/<type>.rs`
-- A SQLite table (e.g., `axon_crawl_jobs`) created by the migrations under `src/jobs/lite/migrations/`
-- A runner under `src/jobs/lite/workers/runners/`
-- An in-process worker lane started by `LiteBackend::new_with_workers`
+- A SQLite table (e.g., `axon_crawl_jobs`) created by the migrations under `src/jobs/migrations/`
+- A runner under `src/jobs/workers/runners/`
+- An in-process worker lane started by `SqliteJobBackend::new_with_workers`
 
 ## Hybrid search pattern
 

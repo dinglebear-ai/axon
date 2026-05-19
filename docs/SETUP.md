@@ -30,33 +30,40 @@ git clone https://github.com/jmagar/axon.git ~/workspace/axon_rust
 cd ~/workspace/axon_rust
 ```
 
-## 2. Run the setup script
+## 2. Initialize local Axon state
 
 ```bash
-./scripts/dev-setup.sh
+./scripts/axon setup init
 ```
 
-This installs the Rust toolchain, cargo tools, `just`, runs `npm ci` for the web panel, and verifies all prerequisites. The script is idempotent — safe to re-run.
+This creates or refreshes `~/.axon`, `~/.axon/config.toml`, `~/.axon/.env`, and
+Compose assets. It is non-destructive and safe to re-run.
 
-## 3. Configure environment
+For local bearer-token operation, no manual env values are required. `setup init`
+defaults to loopback MCP HTTP, writes `AXON_MCP_AUTH_MODE=bearer`, and generates
+`AXON_MCP_HTTP_TOKEN`.
+
+Optional features need their own credentials:
+
+| Feature | Required outside Axon |
+|---------|-----------------------|
+| LLM features (`ask`, `evaluate`, `suggest`, LLM fallback extract, research synthesis) | Gemini CLI authenticated under `~/.gemini`. |
+| Web search / research | `TAVILY_API_KEY`. |
+| GitHub ingest with higher rate limits | `GITHUB_TOKEN`. |
+| Reddit ingest | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`. |
+| OAuth MCP auth | `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`. |
+
+## 3. Inspect configuration
 
 ```bash
-mkdir -m 700 -p ~/.axon
-cp .env.example ~/.axon/.env
-chmod 600 ~/.axon/.env
+./scripts/axon config path
+./scripts/axon config list
 ```
 
-Edit `~/.axon/.env` and set required values:
+The main generated files are:
 
-```bash
-# Host appdata root (optional; default is ~/.axon)
-AXON_HOME=/home/you/.axon
-AXON_DATA_DIR=/home/you/.axon
-
-# Host-reachable Qdrant and TEI
-QDRANT_URL=http://127.0.0.1:53333
-TEI_URL=http://127.0.0.1:52000
-```
+- `~/.axon/.env` for URLs, secrets, auth, Docker interpolation, and runtime bootstrap values.
+- `~/.axon/config.toml` for non-secret tuning.
 
 Optional client/server mode for host CLI calls:
 
@@ -64,25 +71,21 @@ Optional client/server mode for host CLI calls:
 # Server listens on the MCP/action HTTP port.
 AXON_SERVER_URL=http://127.0.0.1:8001
 
-# For non-loopback published servers, set the same token on server and client.
+# For non-loopback published servers, use OAuth mode or set the same token on server and client.
 AXON_MCP_HTTP_TOKEN=
 ```
 
 See [CONFIG.md](CONFIG.md) for the full variable reference.
 
-## 4. Start infrastructure
+## 4. Start the stack
 
 ```bash
-just services-up
+./scripts/axon stack up
 ```
 
-This starts Qdrant, TEI, and Chrome via `docker-compose.yaml`.
-
-For GPU-accelerated embeddings (NVIDIA):
-
-```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-tei
-```
+This pulls images, starts the Docker stack from `~/.axon/compose` with
+`docker compose up -d`, then follows compose logs. Press Ctrl-C when you are
+done watching startup; the services keep running.
 
 ## 5. Run axon
 
@@ -95,11 +98,17 @@ Axon uses SQLite-backed jobs and in-process workers. Qdrant and TEI are the only
 ## 6. Verify
 
 ```bash
-# Check service connectivity
+# Check prerequisites, auth config, and service readiness
+./scripts/axon preflight
+
+# Check service connectivity diagnostics
 ./scripts/axon doctor
 
 # Test a scrape
 ./scripts/axon scrape https://example.com --wait true
+
+# Run TEI prewarm + crawl/ask proof
+./scripts/axon smoke
 
 # Test host CLI against a running axon serve process
 AXON_SERVER_URL=http://127.0.0.1:8001 ./scripts/axon status --json
@@ -110,18 +119,16 @@ AXON_SERVER_URL=http://127.0.0.1:8001 ./scripts/axon status --json
 
 ## Job runtime
 
-Axon uses SQLite for job storage and runs workers in-process. Qdrant and TEI are required for embeddings. `AXON_LITE` / `--lite` are accepted only for backwards compatibility.
+Axon uses SQLite for job storage and runs workers in-process. Qdrant and TEI are required for embeddings.
 
 ## Docker deployment
 
 For production or containerized deployment:
 
 ```bash
-# Start infrastructure
-just services-up
-
-# Build and start the full stack
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d
+./scripts/axon setup       # init + stack up + preflight
+./scripts/axon stack up    # start services
+./scripts/axon stack down  # stop services
 ```
 
 See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.

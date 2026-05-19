@@ -15,15 +15,15 @@
 # Override path: AXON_CONFIG_PATH=/path/to/config.toml
 #
 # Priority (highest to lowest):
-#   CLI flags > environment variables > this file > built-in defaults
+#   CLI flags for command inputs > environment variables > this file > built-in defaults
 #
 # Every key below is wired through Config: setting it in this file takes effect.
 # The env var shown next to each key still overrides the TOML value at the same
 # priority described above.
 
 # Service endpoint URLs are intentionally not configured here.
-# Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL in ~/.axon/.env
-# or pass --qdrant-url / --tei-url / --chrome-remote-url on the CLI.
+# Put QDRANT_URL, TEI_URL, AXON_SERVER_URL, and AXON_CHROME_REMOTE_URL
+# in ~/.axon/.env. QDRANT_URL and TEI_URL also have temporary CLI overrides.
 
 [search]
 # Enable RRF hybrid search (requires a named-mode Qdrant collection).
@@ -208,10 +208,47 @@
 # Env: AXON_JOB_WAIT_TIMEOUT_SECS
 # job-wait-timeout-secs = 300
 
+# Override crawl and backfill concurrency at once. Default comes from
+# performance-profile.
+# concurrency-limit = 128
+
+# Override crawl concurrency. Default comes from performance-profile.
+# crawl-concurrency-limit = 128
+
+# Override sitemap backfill concurrency. Default comes from performance-profile.
+# backfill-concurrency-limit = 64
+
+# Seconds before a running job is considered stale. Env still overrides TOML.
+# Env: AXON_JOB_STALE_TIMEOUT_SECS
+# watchdog-stale-timeout-secs = 300
+
+# Additional grace period before stale reclaim. Env still overrides TOML.
+# Env: AXON_JOB_STALE_CONFIRM_SECS
+# watchdog-confirm-secs = 60
+
+# Seconds between watchdog sweeps. Env still overrides TOML.
+# Env: AXON_WATCHDOG_SWEEP_SECS
+# watchdog-sweep-secs = 15
+
 [chrome]
 # Custom User-Agent header sent by Chrome. Leave unset to use Spider's default.
 # Env: AXON_CHROME_USER_AGENT
 # user-agent = "Mozilla/5.0 (compatible; Axon/1.0)"
+
+# Bypass Content Security Policy in Chrome.
+# bypass-csp = false
+
+# Accept invalid or self-signed TLS certificates in Chrome.
+# accept-invalid-certs = false
+
+# Seconds to wait for Chrome network idle before page capture.
+# network-idle-timeout-secs = 15
+
+# Remote Chrome bootstrap probe timeout in milliseconds (clamped to at least 250).
+# bootstrap-timeout-ms = 3000
+
+# Remote Chrome bootstrap probe retries (clamped 0-10).
+# bootstrap-retries = 2
 
 # Log rotation is configured via env var only (not TOML), because
 # init_tracing() runs before Config is built.
@@ -220,6 +257,52 @@
 # ─── Webclaw Port (axon_rust-zehr) ───────────────────────────────────────────
 
 [scrape]
+# Respect robots.txt directives.
+# respect-robots = false
+
+# Thin-page threshold in markdown characters.
+# min-markdown-chars = 200
+
+# Skip thin pages instead of saving or embedding them.
+# drop-thin-markdown = true
+
+# Discover and backfill URLs from sitemap.xml after crawl.
+# discover-sitemaps = true
+
+# Only backfill sitemap URLs with a <lastmod> date within the last N days.
+# 0 disables the age filter.
+# sitemap-since-days = 0
+
+# Maximum number of sitemap documents to parse. 0 = unlimited.
+# max-sitemaps = 512
+
+# Delay between requests in milliseconds.
+# delay-ms = 0
+
+# Per-request HTTP timeout. Unset to use performance-profile default.
+# request-timeout-ms = 20000
+
+# Fetch retry count. Unset to use performance-profile default.
+# fetch-retries = 2
+
+# Retry backoff in milliseconds. Unset to use performance-profile default.
+# retry-backoff-ms = 250
+
+# Thin-page ratio that triggers auto-switch to Chrome.
+# auto-switch-thin-ratio = 0.60
+
+# Minimum page count before auto-switch eligibility check.
+# auto-switch-min-pages = 10
+
+# Only crawl URLs matching these regex patterns.
+# url-whitelist = ["^https://example\\.com/docs/"]
+
+# Maximum response size per page in bytes. 0 = unlimited.
+# max-page-bytes = 0
+
+# Only follow same-origin redirects.
+# redirect-policy-strict = false
+
 # DOM retry ladder Strategy 1 threshold (words). Re-run extraction with
 # `only_main_content=false` when scored extractor produces fewer words.
 # Env: AXON_LADDER_STRATEGY1_THRESHOLD. Default: 30. Clamped 1–1000.

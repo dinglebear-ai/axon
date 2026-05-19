@@ -37,7 +37,7 @@ Pre-release quality checklist. Complete all items before tagging a release.
 
 - [ ] `docker-compose.yaml` starts cleanly with `--env-file ~/.axon/.env` (Axon server, Qdrant, TEI, Chrome)
 - [ ] `axon serve` starts and owns in-process crawl/embed/extract/ingest workers
-- [ ] SQLite schema migrations apply under `src/jobs/lite/migrations/`
+- [ ] SQLite schema migrations apply under `src/jobs/migrations/`
 
 ## Documentation
 
@@ -54,7 +54,7 @@ Pre-release quality checklist. Complete all items before tagging a release.
 
 ## SQLite
 
-- [ ] Migrations in `src/jobs/lite/migrations/` are sequential
+- [ ] Migrations in `src/jobs/migrations/` are sequential
 - [ ] Schema changes are reflected in SQLite store/list/recover paths
 - [ ] Migration upgrade path works against an existing `~/.axon/jobs.db`
 

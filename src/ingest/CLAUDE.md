@@ -144,7 +144,7 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 `axon_ingest_jobs` differs from other job tables:
 - Uses `source_type TEXT` (`github`/`reddit`/`youtube`/`sessions`) + `target TEXT` (repo name, subreddit, video URL, session target)
 - Does **NOT** have `url` or `urls_json` columns
-- Ingest worker lifecycle is owned by the SQLite worker subsystem (`src/jobs/lite/workers.rs`); the legacy `worker_lane.rs` was removed with the old queue runtime. `AXON_INGEST_LANES` is wired through config and clamped to 1-16.
+- Ingest worker lifecycle is owned by the SQLite worker subsystem (`src/jobs/workers.rs`); the legacy `worker_lane.rs` was removed with the old queue runtime. `AXON_INGEST_LANES` is wired through config and clamped to 1-16.
 
 ## Known Gaps
 
@@ -153,7 +153,7 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 | YouTube age-restricted / private videos | `yt-dlp` exits non-zero; error is a per-video skip warning in playlist mode, job failure in single-video mode. No friendly message. |
 | YouTube manual captions | Only `--write-auto-sub` is passed; `--write-subs` (manual captions) is not requested. Videos with manual but no auto-generated captions will fail. |
 | GitHub file stream resilience | `flush_batch` errors are logged and counted (not propagated via `?`). A single TEI/Qdrant failure discards that batch and continues with remaining files. Batch timeout: 120s. |
-| Ingest job hang detection | Per-job heartbeat (30s touch, `src/jobs/lite/workers/heartbeat.rs`) + periodic watchdog (60s sweep, `src/jobs/lite/workers.rs`) reclaim jobs whose `updated_at` exceeds `watchdog_stale_timeout_secs + watchdog_confirm_secs` (default 360s). Reclaimed rows are reset to `pending` (not `failed`). |
+| Ingest job hang detection | Per-job heartbeat (30s touch, `src/jobs/workers/heartbeat.rs`) + periodic watchdog (60s sweep, `src/jobs/workers.rs`) reclaim jobs whose `updated_at` exceeds `watchdog_stale_timeout_secs + watchdog_confirm_secs` (default 360s). Reclaimed rows are reset to `pending` (not `failed`). |
 
 ## yt-dlp Requirement
 
@@ -167,5 +167,5 @@ Install: `pip install yt-dlp` or `brew install yt-dlp`. Verify: `yt-dlp --versio
 1. Add parser in `src/ingest/<source>.rs`
 2. Extend `classify_target()` in `src/ingest/classify.rs` to recognize the new source
 3. Add a per-source variant in the relevant ingest service entry point (`src/services/ingest.rs`)
-4. Add `source_type` variant handling in the SQLite ingest worker (`src/jobs/lite/workers.rs` and the ingest payload schema)
+4. Add `source_type` variant handling in the SQLite ingest worker (`src/jobs/workers.rs` and the ingest payload schema)
 5. Add env vars to `.env.example`

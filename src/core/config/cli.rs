@@ -1,9 +1,11 @@
 mod global_args;
+mod setup_args;
 
 use super::types::{EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 pub(super) use global_args::{DEFAULT_OUTPUT_DIR, GlobalArgs};
+pub(super) use setup_args::{SetupAuthMode, SetupInitArgs, StackArgs, StackSubcommand};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -47,6 +49,8 @@ pub(super) enum CliCommand {
     Retrieve(RetrieveArgs),
     /// RAG: retrieve relevant context, then answer with LLM
     Ask(AskArgs),
+    /// Scrape one or more URLs and summarize them with the configured LLM
+    Summarize(ScrapeArgs),
     /// RAG vs baseline with independent LLM judge scoring
     Evaluate(EvaluateArgs),
     /// Collect human preference votes for retrieved RAG candidates
@@ -57,7 +61,7 @@ pub(super) enum CliCommand {
     Sources,
     /// List indexed domains with document statistics
     Domains,
-    /// Show Qdrant collection and Postgres job statistics
+    /// Show Qdrant collection and SQLite job statistics
     Stats,
     /// Show async job queue status and recent activity
     Status,
@@ -74,9 +78,15 @@ pub(super) enum CliCommand {
     Completions(CompletionArgs),
     /// Start service runtimes
     Serve(ServeArgs),
-    /// Setup and deploy Axon infrastructure
+    /// Check host prerequisites and service readiness
+    Preflight,
+    /// Run crawl/ask smoke checks against the running stack
+    Smoke,
+    /// Manage the local Docker service stack
+    Stack(StackArgs),
+    /// Initialize and inspect Axon infrastructure
     Setup(SetupArgs),
-    /// Start MCP server (stdio, HTTP, or both)
+    /// Start MCP stdio or unified HTTP runtime
     Mcp(McpArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
     Migrate(MigrateArgs),
@@ -183,21 +193,17 @@ pub(super) struct SetupArgs {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum SetupSubcommand {
-    /// Hook-safe check/repair entrypoint for Claude Code plugin SessionStart
+    /// Hook-safe preflight/setup entrypoint for Claude Code plugin SessionStart
     #[command(name = "plugin-hook", alias = "hook")]
     PluginHook {
-        /// Inspect only; do not repair config/assets or restart services.
-        #[arg(long)]
-        no_repair: bool,
+        /// Run preflight only; do not run the setup wrapper if preflight fails.
+        #[arg(long = "no-setup")]
+        no_setup: bool,
     },
-    /// Check local Docker setup prerequisites without mutating files or services
+    /// Initialize local Axon config, env, and compose assets
+    Init(Box<SetupInitArgs>),
+    /// Check local prerequisites without mutating files or services
     Check,
-    /// Repair local Axon config, compose assets, and Docker stack
-    Repair {
-        /// Backup and migrate ~/.axon/.env to the minimal env/config boundary.
-        #[arg(long)]
-        migrate_env: bool,
-    },
     /// List SSH host aliases discovered from ~/.ssh/config (informational).
     Targets,
 }

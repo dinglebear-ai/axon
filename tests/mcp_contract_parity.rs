@@ -31,44 +31,6 @@ fn pagination_default_values_when_both_none() {
 }
 
 #[test]
-fn ask_request_accepts_graph_false_and_flags_graph_true_as_unsupported() {
-    let raw = json!({
-        "action": "ask",
-        "query": "what is indexed?",
-        "graph": false
-    })
-    .as_object()
-    .expect("object")
-    .clone();
-    let parsed = parse_axon_request(raw);
-    assert!(parsed.is_ok(), "graph:false remains backward-compatible");
-    if let Ok(AxonRequest::Ask(req)) = parsed {
-        assert_eq!(req.graph, Some(false));
-        assert_eq!(req.unsupported_graph_error(), None);
-    } else {
-        panic!("expected Ask request");
-    }
-
-    let raw = json!({
-        "action": "ask",
-        "query": "what is indexed?",
-        "graph": true
-    })
-    .as_object()
-    .expect("object")
-    .clone();
-    let parsed = parse_axon_request(raw).expect("graph:true parses for compatibility");
-    if let AxonRequest::Ask(req) = parsed {
-        assert_eq!(
-            req.unsupported_graph_error(),
-            Some("graph retrieval is not supported; omit graph or set graph to false")
-        );
-    } else {
-        panic!("expected Ask request");
-    }
-}
-
-#[test]
 fn ask_request_accepts_explain_flag() {
     let raw = json!({
         "action": "ask",
@@ -298,7 +260,6 @@ fn ask_result_exposes_typed_answer() {
         timing_ms: AskTiming {
             retrieval: 0,
             context_build: 0,
-            graph: 0,
             llm: 0,
             total: 0,
             tei_embed_ms: None,

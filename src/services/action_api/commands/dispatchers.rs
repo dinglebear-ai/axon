@@ -2,7 +2,7 @@ use crate::core::config::{Config, ConfigOverrides};
 use crate::core::content::url_to_filename;
 use crate::mcp::schema::{
     CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, ExtractRequest, ExtractSubaction,
-    IngestRequest, IngestSubaction, ScrapeRequest, ScreenshotRequest,
+    IngestRequest, IngestSubaction, ScrapeRequest, ScreenshotRequest, SummarizeRequest,
 };
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_svc;
@@ -11,6 +11,7 @@ use crate::services::extract as extract_svc;
 use crate::services::ingest as ingest_svc;
 use crate::services::scrape as scrape_svc;
 use crate::services::screenshot as screenshot_svc;
+use crate::services::summarize as summarize_svc;
 use crate::services::types::ClientActionError;
 use uuid::Uuid;
 
@@ -141,6 +142,8 @@ pub async fn dispatch_extract(
             let cfg = service_context.cfg.apply_overrides(&ConfigOverrides {
                 query: Some(prompt.clone()),
                 max_pages: req.max_pages,
+                render_mode: req.render_mode.map(map_render_mode),
+                embed: req.embed,
                 ..ConfigOverrides::default()
             });
             let outcome =
@@ -150,12 +153,22 @@ pub async fn dispatch_extract(
             Ok(serde_json::json!({ "job_id": outcome.result.job_id, "status": "pending" }))
         }
         ExtractSubaction::Status => {
-            job_status(
+            let mut payload = job_status(
                 service_context,
                 crate::jobs::backend::JobKind::Extract,
                 req.job_id,
             )
-            .await
+            .await?;
+            if let Some(result_json) = payload
+                .get("job")
+                .and_then(|job| job.get("result_json"))
+                .filter(|value| !value.is_null())
+                .cloned()
+                && let Some(object) = payload.as_object_mut()
+            {
+                object.insert("extract_result".to_string(), result_json);
+            }
+            Ok(payload)
         }
         ExtractSubaction::Cancel => {
             job_cancel(
@@ -335,6 +348,41 @@ pub async fn dispatch_scrape(
         "payload": result.payload,
         "artifact_handle": result.artifact_handle,
     }))
+}
+
+pub async fn dispatch_summarize(
+    service_context: &ServiceContext,
+    req: SummarizeRequest,
+) -> Result<serde_json::Value, ClientActionError> {
+    let urls = {
+        let collected = crate::services::action_api::collect_unique_urls(req.url, req.urls);
+        if collected.is_empty() {
+            return Err(ClientActionError::new(
+                "invalid_request",
+                "url or urls is required",
+                false,
+                None,
+            ));
+        }
+        collected
+    };
+    let cfg = service_context.cfg.apply_overrides(&ConfigOverrides {
+        render_mode: req.render_mode.map(map_render_mode),
+        root_selector: req.root_selector,
+        exclude_selector: req.exclude_selector,
+        ..ConfigOverrides::default()
+    });
+    let result = summarize_svc::summarize(&cfg, &urls, None)
+        .await
+        .map_err(internal_error)?;
+    serde_json::to_value(result).map_err(|err| {
+        ClientActionError::new(
+            "internal",
+            format!("serialize summarize result: {err}"),
+            false,
+            None,
+        )
+    })
 }
 
 fn server_scrape_output_path(cfg: &Config, url: &str) -> std::path::PathBuf {

@@ -8,10 +8,12 @@ pub(super) async fn run_compose<const N: usize>(
     env_path: &Path,
     args: [&str; N],
 ) -> LocalSetupPhase {
-    let timer = PhaseTimer::start(if args.first() == Some(&"pull") {
-        "compose-pull"
-    } else {
-        "compose-up"
+    let timer = PhaseTimer::start(match args.first().copied() {
+        Some("pull") => "compose-pull",
+        Some("down") => "compose-down",
+        Some("restart") => "compose-restart",
+        Some("build") => "compose-build",
+        _ => "compose-up",
     });
     let mut cmd = Command::new("docker");
     cmd.arg("compose")
@@ -22,6 +24,26 @@ pub(super) async fn run_compose<const N: usize>(
         .args(args)
         .current_dir(compose_dir);
     run_timed_command(timer, cmd, Duration::from_secs(SETUP_HARD_MAX_SECS)).await
+}
+
+pub(super) async fn follow_logs(compose_dir: &Path, env_path: &Path) -> LocalSetupPhase {
+    let timer = PhaseTimer::start("compose-logs");
+    let mut cmd = Command::new("docker");
+    cmd.arg("compose")
+        .arg("--env-file")
+        .arg(env_path)
+        .arg("-f")
+        .arg(compose_dir.join("docker-compose.yaml"))
+        .args(["logs", "-f"])
+        .current_dir(compose_dir);
+    match cmd.status().await {
+        Ok(status) if status.success() => timer.finish(LocalSetupStatus::Ok, "log stream ended"),
+        Ok(status) => timer.finish(
+            LocalSetupStatus::Error,
+            format!("docker compose logs exited with {status}"),
+        ),
+        Err(err) => timer.finish(LocalSetupStatus::Error, err.to_string()),
+    }
 }
 
 pub(super) async fn wait_http(name: &'static str, url: impl Into<String>) -> LocalSetupPhase {

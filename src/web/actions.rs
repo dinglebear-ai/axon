@@ -1,3 +1,4 @@
+use crate::authz::scope_satisfies;
 use crate::mcp::auth::{AuthPolicy, configured_mcp_http_token};
 use crate::services::action_api::{dispatch_action, required_scope};
 use crate::services::context::ServiceContext;
@@ -139,9 +140,7 @@ fn authorize_action(
         ));
     };
     let required_scope = required_scope(action).unwrap_or("axon:write");
-    let allowed = auth.scopes.iter().any(|scope| {
-        scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
-    });
+    let allowed = scope_satisfies(&auth.scopes, required_scope);
     if allowed {
         Ok(())
     } else {

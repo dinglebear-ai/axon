@@ -1,6 +1,7 @@
 use super::handlers;
 use super::state::AppState;
 use super::types::ASK_BODY_LIMIT;
+use crate::authz::scope_satisfies;
 use crate::core::config::Config;
 use crate::mcp::auth::{
     AuthPolicy, build_auth_layer, configured_mcp_http_token, normalize_api_key_header,
@@ -45,6 +46,7 @@ pub(super) fn router(
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
         .route("/v1/scrape", post(handlers::exploration::scrape))
+        .route("/v1/summarize", post(handlers::exploration::summarize))
         .route("/v1/map", post(handlers::exploration::map))
         .route("/v1/search", post(handlers::exploration::search))
         .route("/v1/research", post(handlers::exploration::research))
@@ -219,9 +221,7 @@ async fn require_scope(
     let Some(Extension(auth)) = auth else {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     };
-    let allowed = auth.scopes.iter().any(|scope| {
-        scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
-    });
+    let allowed = scope_satisfies(&auth.scopes, required_scope);
     if !allowed {
         return (
             StatusCode::FORBIDDEN,

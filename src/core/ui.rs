@@ -2,8 +2,32 @@ use crate::core::config::Config;
 use console::{Style, style};
 use dialoguer::{Confirm, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
+use std::env;
 use std::error::Error;
 use std::time::Duration;
+
+pub const PRIMARY_ANSI: &str = "\x1b[38;2;244;143;177m";
+pub const ACCENT_ANSI: &str = "\x1b[38;2;144;202;249m";
+
+fn color_enabled() -> bool {
+    env::var_os("NO_COLOR").is_none()
+}
+
+pub fn ansi_colorize(code: &str, text: &str) -> String {
+    if color_enabled() {
+        format!("{code}{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+pub fn ansi_bold(text: &str) -> String {
+    ansi_colorize("\x1b[1m", text)
+}
+
+pub fn ansi_dim(text: &str) -> String {
+    ansi_colorize("\x1b[2m", text)
+}
 
 pub struct Spinner {
     bar: ProgressBar,
@@ -39,12 +63,11 @@ pub fn confirm_destructive(cfg: &Config, prompt: &str) -> Result<bool, Box<dyn E
 }
 
 pub fn primary(text: &str) -> String {
-    Style::new().color256(211).bold().apply_to(text).to_string()
+    ansi_bold(&ansi_colorize(PRIMARY_ANSI, text))
 }
 
 pub fn accent(text: &str) -> String {
-    // #87afff — web UI primary blue
-    Style::new().color256(111).apply_to(text).to_string()
+    ansi_colorize(ACCENT_ANSI, text)
 }
 
 pub fn success(text: &str) -> String {
@@ -56,7 +79,7 @@ pub fn warning(text: &str) -> String {
 }
 
 pub fn muted(text: &str) -> String {
-    Style::new().dim().apply_to(text).to_string()
+    ansi_dim(text)
 }
 
 /// Soft blue for secondary info (UUIDs, ages, separators) — visible but not dominant.

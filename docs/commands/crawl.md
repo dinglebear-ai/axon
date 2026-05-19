@@ -20,7 +20,6 @@ axon crawl <SUBCOMMAND> [ARGS]
 ## URL Input Rules
 
 - At least one URL is required via positional args, `--urls`, or `--url-glob`.
-- `--start-url` is global but not used by `crawl`.
 - URL inputs are normalized and deduplicated before enqueue/run.
 
 ## Job Subcommands
@@ -48,21 +47,17 @@ All global flags apply. Key flags:
 | `--max-pages <n>` | `0` | Page cap (`0` = uncapped). |
 | `--max-depth <n>` | `10` | Maximum crawl depth. |
 | `--render-mode <mode>` | `auto-switch` | `http`, `chrome`, `auto-switch`. |
-| `--discover-sitemaps <bool>` | `true` | Enable Spider sitemap traversal plus Axon sitemap backfill before embed handoff. |
-| `--sitemap-since-days <n>` | `0` | Restrict sitemap backfill by `<lastmod>` age. |
 | `--include-subdomains <bool>` | `false` | Include subdomains under the same parent domain. |
-| `--respect-robots <bool>` | `false` | Respect `robots.txt` directives. |
-| `--min-markdown-chars <n>` | `200` | Thin-page threshold. |
-| `--drop-thin-markdown <bool>` | `true` | Skip thin pages. |
 | `--sitemap-only` | `false` | Sync-only path: run sitemap backfill without full crawl. |
-| `--embed <bool>` | `true` | Queue embed job from crawl output. |
+| `--skip-embed` | `false` | Do not queue an embed job from crawl output. |
 | `--json` | `false` | JSON output for job metadata/status responses. |
 
 With `--wait false`, `crawl` writes a SQLite job row and exits without draining
 other pending crawl rows. Workers run the same Axon sitemap backfill before
 auto-embedding the crawl output, so sitemap-added pages are visible to the
 dependent embed job. Use `--wait true` to wait for the submitted crawl and its
-explicit dependent embed job, if one is created.
+explicit dependent embed job, if one is created. Pass `--skip-embed` to crawl
+without indexing the output.
 
 ## Examples
 
@@ -92,10 +87,10 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon crawl https://example.com --json
 ## Behavior Notes
 
 - Async mode prints one job ID per URL and returns immediately.
-- In server mode (`AXON_SERVER_URL` / `--server-url`), crawl submit and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers. Use `--local` to force the local behavior.
+- In server mode (`AXON_SERVER_URL`), crawl submit and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers. Use `--local` to force the local behavior.
 - Async JSON output now includes the predicted `output_dir` plus `predicted_paths` for each enqueued job.
 - Sync mode writes crawl artifacts under `<output-dir>/domains/<domain>/sync/`.
-- With `--discover-sitemaps true`, both async worker mode and sync `--wait true` mode run Axon's sitemap backfill before the embed handoff. Sync mode performs the embed inline; async mode queues a dependent embed job after backfill completes.
+- With `scrape.discover-sitemaps = true` in `config.toml`, both async worker mode and sync `--wait true` mode run Axon's sitemap backfill before the embed handoff. Sync mode performs the embed inline; async mode queues a dependent embed job after backfill completes.
 - Completed crawl status JSON may include `output_files` when the worker has a manifest-backed file list available.
 - `axon crawl errors <job_id>` reports `error_text`, page-error aggregates, WAF-blocked counts, sitemap backfill errors, and bounded diagnostic samples from `result_json.diagnostics`. Samples are capped so a large crawl cannot grow the SQLite row without bound.
 - `--render-mode auto-switch` now treats one- and two-page HTTP crawls as too little signal and may retry in Chrome even when the pages are not technically thin.

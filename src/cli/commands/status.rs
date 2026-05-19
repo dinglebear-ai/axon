@@ -4,7 +4,7 @@ pub(crate) mod metrics;
 use crate::core::config::Config;
 use crate::core::logging::log_info;
 use crate::core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
-use crate::jobs::lite::store::RECLAIMED_ERROR_TEXT;
+use crate::jobs::store::RECLAIMED_ERROR_TEXT;
 use crate::services::context::ServiceContext;
 use crate::services::system::{build_status_payload, load_status_jobs};
 use crate::services::types::ServiceJob;

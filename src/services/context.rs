@@ -23,7 +23,7 @@ impl ServiceContext {
         Ok(Self { cfg, jobs })
     }
 
-    /// Create a ServiceContext without in-process workers (enqueue-only in lite mode).
+    /// Create a ServiceContext without in-process workers (enqueue-only in the SQLite runtime).
     ///
     /// This is the safe default for CLI commands that enqueue and exit.
     /// Use `new_with_workers()` for long-lived processes that should process jobs.
@@ -31,7 +31,7 @@ impl ServiceContext {
         Self::build(cfg, false).await
     }
 
-    /// Create a ServiceContext with in-process workers (lite mode only).
+    /// Create a ServiceContext with in-process workers (SQLite runtime only).
     ///
     /// Use for `axon serve`, MCP server, web server, or CLI `--wait true`.
     pub async fn new_with_workers(

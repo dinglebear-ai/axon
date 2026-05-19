@@ -23,9 +23,12 @@ axon_rust/
 │   ├── ingest/                      # GitHub, Reddit, YouTube adapters
 │   ├── jobs.rs                      # Jobs module root
 │   ├── jobs/                        # SQLite job runtime and workers
-│   │   ├── lite.rs                  # SQLite runtime module root
-│   │   ├── lite/                    # migrations, store, workers, runners
-│   │   └── watch_lite.rs            # recurring watch scheduler
+│   │   ├── runtime.rs               # SQLite runtime module root
+│   │   ├── workers.rs               # In-process worker loops
+│   │   ├── store.rs                 # SQLite schema and lifecycle helpers
+│   │   ├── ops.rs                   # Job state transition helpers
+│   │   ├── query.rs                 # Job query helpers
+│   │   └── watch.rs                 # Recurring watch scheduler
 │   ├── mcp.rs                       # MCP module root
 │   ├── mcp/                         # MCP schema and server
 │   │   ├── schema.rs               # Tool input schema, action enums

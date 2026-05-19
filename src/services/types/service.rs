@@ -458,8 +458,6 @@ pub struct AskDiagnostics {
     pub full_docs_selected: usize,
     pub supplemental_selected: usize,
     pub context_chars: usize,
-    pub graph_entities: usize,
-    pub graph_context_chars: usize,
     #[serde(default)]
     pub full_doc_fetch_skipped: bool,
     #[serde(default)]
@@ -676,7 +674,6 @@ pub struct AskExplainTrace {
 pub struct AskTiming {
     pub retrieval: u128,
     pub context_build: u128,
-    pub graph: u128,
     pub llm: u128,
     pub total: u128,
     // Populated only when ask_diagnostics=true; otherwise omitted via skip_serializing_if.
@@ -792,6 +789,40 @@ pub struct ScrapeResult {
     pub remaining_tokens_estimate: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backend: Option<DocumentBackend>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SummarizeDocument {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub content_chars: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SummarizeUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SummarizeTiming {
+    pub scrape: u128,
+    pub llm: u128,
+    pub total: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SummarizeResult {
+    pub urls: Vec<String>,
+    pub documents: Vec<SummarizeDocument>,
+    pub summary: String,
+    pub context_chars: usize,
+    pub context_truncated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<SummarizeUsage>,
+    pub timing_ms: SummarizeTiming,
 }
 
 /// Typed result of a `map` (URL discovery) operation.

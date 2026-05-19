@@ -30,7 +30,7 @@ fn detects_playlist_and_channel_urls() {
 }
 
 #[test]
-fn canonicalizes_enumerated_playlist_rows_to_watch_urls() {
+fn canonicalizes_enumerated_playlist_rows_to_youtube_video_urls() {
     let rows = vec![
         "dQw4w9WgXcQ".to_string(),
         " https://youtu.be/abcDEF123_4 ".to_string(),

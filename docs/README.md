@@ -8,7 +8,7 @@ Axon is a trimodal application:
 
 | Mode | Entry point | Port | Purpose |
 |------|-------------|------|---------|
-| CLI | `axon <command>` | -- | Interactive command-line tool for crawl, scrape, embed, query, ask |
+| CLI | `axon <command>` | -- | Interactive command-line tool for crawl, scrape, summarize, embed, query, ask |
 | MCP server | `axon mcp` | 8001 | Single-tool MCP server exposing all CLI operations to AI agents |
 | Web panel + HTTP API | `axon serve` | 8001 | Unified HTTP server for web panel, MCP, `/v1/ask`, and `/v1/actions` |
 

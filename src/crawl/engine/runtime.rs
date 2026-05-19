@@ -100,8 +100,8 @@ async fn apply_browser_settings(
         // CDP path — primary browser mode. chromiumoxide connects directly via CDP,
         // giving access to stealth, fingerprint, intercept, and network-idle features.
         website
-            .with_chrome_intercept(RequestInterceptConfiguration::new(cfg.chrome_intercept))
-            .with_stealth(cfg.chrome_stealth || cfg.chrome_anti_bot)
+            .with_chrome_intercept(RequestInterceptConfiguration::new(true))
+            .with_stealth(true)
             .with_fingerprint(true);
         // Dismiss browser dialogs (alert/confirm/prompt) automatically — without this
         // they block page capture indefinitely in headless Chrome.
@@ -283,7 +283,7 @@ pub(super) async fn configure_website_with_crawl_id(
 
     if cfg.cache {
         website.with_caching(true);
-        if cfg.cache_skip_browser {
+        if cfg.cache_http_only {
             website.with_cache_skip_browser(true);
         }
     }

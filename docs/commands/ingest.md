@@ -144,7 +144,7 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ingest rust-lang/rust --json
 
 ## Notes
 
-- In server mode (`AXON_SERVER_URL` / `--server-url`), ingest submit and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers. Use `--local` to force local execution.
+- In server mode (`AXON_SERVER_URL`), ingest submit and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers. Use `--local` to force local execution.
 - Reddit-specific flags (`--sort`, `--time`, etc.) are silently ignored for GitHub and YouTube targets.
 - `--no-source` is silently ignored for Reddit and YouTube targets.
 - `axon sessions` is not routed through `axon ingest` — sessions take no URL/target and have format-specific flags.

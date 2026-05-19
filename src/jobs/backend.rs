@@ -110,7 +110,7 @@ pub struct JobSummary {
 
 pub type BackendResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-/// Low-level job persistence interface implemented by [`LiteBackend`].
+/// Low-level job persistence interface implemented by [`SqliteJobBackend`].
 ///
 /// **Note:** The canonical abstraction consumed by all callers (CLI, MCP, web) is
 /// [`ServiceJobRuntime`](crate::services::runtime::ServiceJobRuntime), which
@@ -118,7 +118,7 @@ pub type BackendResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 /// In practice, only `enqueue`, `wait_for_job`, and `job_errors` are delegated through
 /// this trait by the service runtime layer; the remaining methods (`list_jobs`,
 /// `job_status`, `cancel_job`, `cleanup_jobs`, `clear_jobs`) are bypassed —
-/// `LiteServiceRuntime` calls `lite_query::*` directly, to avoid lossy type mapping
+/// `SqliteServiceRuntime` calls `job_query::*` directly, to avoid lossy type mapping
 /// from `JobStatusRow`/`JobSummary` to `ServiceJob`.
 #[async_trait]
 pub trait JobBackend: Send + Sync {
@@ -144,7 +144,7 @@ pub trait JobBackend: Send + Sync {
     async fn job_errors(&self, id: JobId, kind: JobKind) -> BackendResult<Option<String>>;
 
     /// Poll until the job reaches a terminal state (completed/failed/canceled).
-    /// Returns the final status string. Used in lite mode to keep the process
+    /// Returns the final status string. Used in the SQLite runtime to keep the process
     /// alive while in-process workers finish.
     ///
     /// Times out after `AXON_JOB_WAIT_TIMEOUT_SECS` (default 300s).

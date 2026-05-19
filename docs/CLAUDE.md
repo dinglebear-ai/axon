@@ -114,7 +114,7 @@ Code reviews, audits, security analysis. Named by date and scope: `2026-02-22-fu
 
 ### Database schema
 
-The SQLite schema is auto-created by lite migrations under `src/jobs/lite/migrations/` plus store helpers in `src/jobs/lite/store.rs`. There is no separate hand-maintained schema doc.
+The SQLite schema is auto-created by migrations under `src/jobs/migrations/` plus store helpers in `src/jobs/store.rs`. There is no separate hand-maintained schema doc.
 
 ---
 

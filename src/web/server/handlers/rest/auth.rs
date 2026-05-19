@@ -13,6 +13,7 @@
 //!     `src/web/actions.rs:authorize_action`.
 
 use super::error::rest_error;
+use crate::authz::scope_satisfies;
 use axum::{
     extract::Request,
     http::{HeaderValue, StatusCode},
@@ -82,10 +83,7 @@ pub(crate) async fn enforce_scope(guard: ScopeGuard, request: Request, next: Nex
             "unauthorized".into(),
         ));
     };
-    let allowed = auth.scopes.iter().any(|scope| {
-        scope == guard.required_scope
-            || (guard.required_scope == "axon:read" && scope == "axon:write")
-    });
+    let allowed = scope_satisfies(&auth.scopes, guard.required_scope);
     if !allowed {
         return tag_scope_guard(rest_error(
             StatusCode::FORBIDDEN,

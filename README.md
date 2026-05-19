@@ -1,6 +1,6 @@
 # Axon
 
-Version: 4.1.0
+Version: 4.2.0
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -62,33 +62,44 @@ Claude Code plugin install:
 claude plugin install <path-to-this-repo>
 ```
 
-The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook is a thin adapter around `axon setup plugin-hook`, which runs the lightweight check path first, falls back to repair when needed, and keeps advisory smoke/prewarm failures non-blocking for Claude Code startup. It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
+The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook is a thin adapter around `axon setup plugin-hook`, which runs preflight first and can fall back to the setup wrapper when local files or services need to be initialized. Use `axon setup plugin-hook --no-setup` when the hook must only check readiness. It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
 
 ## Setup Flow
 
-`axon setup` is idempotent and safe to rerun. It:
+`axon setup` is the convenience bootstrap path. It is idempotent and safe to rerun. It:
 
-1. Creates or repairs `~/.axon`.
+1. Creates or refreshes `~/.axon`.
 2. Creates or preserves `~/.axon/config.toml`.
 3. Creates or preserves `~/.axon/.env`, filling only missing runtime values and preserving secrets.
 4. Writes Docker Compose assets under `~/.axon/compose`.
 5. Checks Docker, Docker Compose, `nvidia-smi`, Gemini CLI auth, and OAuth config when requested.
 6. Pulls and starts the Compose stack.
 7. Waits for Qdrant, TEI, Chrome, and Axon server health.
-8. Prewarms TEI with Qwen3.
-9. Runs first crawl and ask smoke checks unless `AXON_SETUP_SKIP_SMOKE=1`.
 
-Setup modes:
+Focused commands:
 
 ```bash
-axon setup          # first-run or normal repair
-axon setup plugin-hook  # hook-safe check/repair path for Claude Code SessionStart
-axon setup plugin-hook --no-repair  # hook-safe check only; does not mutate files or services
-axon setup check    # inspect only; does not mutate files or start services
-axon setup repair   # repair config/assets and restart the Docker stack
-axon setup repair --migrate-env  # backup/prune env and move tuning to config.toml
+axon setup          # init + stack up + preflight
+axon setup init     # create ~/.axon, config.toml, .env, and compose assets
+axon preflight      # check prerequisites, auth config, and service readiness
+axon stack up       # pull/start services, then follow logs until Ctrl-C
+axon stack down     # stop services
+axon stack restart  # restart services
+axon stack rebuild  # rebuild the Axon image and start services
+axon smoke          # TEI prewarm + crawl/ask proof
+axon setup plugin-hook  # hook-safe preflight path for Claude Code SessionStart
+axon setup plugin-hook --no-setup   # preflight only; does not mutate files or services
 axon setup targets  # list SSH aliases discovered from ~/.ssh/config (informational)
 ```
+
+For local bearer-token operation, no manual env values are required. `setup init`
+defaults to loopback MCP HTTP, writes `AXON_MCP_AUTH_MODE=bearer`, and generates
+`AXON_MCP_HTTP_TOKEN`. Optional features need credentials: Gemini auth under
+`~/.gemini` for LLM features, `TAVILY_API_KEY` for search/research,
+`GITHUB_TOKEN` for higher-rate GitHub ingest, and `REDDIT_CLIENT_ID` plus
+`REDDIT_CLIENT_SECRET` for Reddit ingest. OAuth mode also requires
+`AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`,
+`AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`.
 
 The warm-path setup goal is under 2 minutes once images and model weights are cached. Cold starts that pull images and model weights can take longer; target-hardware timing still needs to be measured against published release artifacts.
 
@@ -113,7 +124,7 @@ Check:
 
 ```bash
 docker compose --env-file ~/.axon/.env -f ~/.axon/compose/docker-compose.yaml ps
-axon setup check
+axon preflight
 axon doctor
 ```
 
@@ -186,6 +197,7 @@ Core:
 - `query <text>`
 - `retrieve <url>`
 - `ask <question>`
+- `summarize <url>...`
 - `evaluate <question>`
 
 Discovery and ingest:
@@ -223,7 +235,7 @@ axon crawl --help
 axon mcp --help
 ```
 
-Compatibility-only flags such as `--lite` are hidden from production help. Graph flags are not part of the production CLI, MCP, or `/v1/ask` request contract.
+Graph flags are not part of the production CLI, MCP, or `/v1/ask` request contract.
 
 ## MCP And Auth
 
@@ -235,6 +247,7 @@ Examples:
 { "action": "doctor" }
 { "action": "scrape", "url": "https://example.com" }
 { "action": "ask", "query": "How does setup work?" }
+{ "action": "summarize", "url": "https://example.com" }
 { "action": "crawl", "subaction": "status", "job_id": "<uuid>" }
 ```
 
@@ -298,7 +311,7 @@ Required before production release:
 Fast checks:
 
 ```bash
-axon setup check
+axon preflight
 axon doctor
 docker compose --env-file ~/.axon/.env -f ~/.axon/compose/docker-compose.yaml ps
 docker compose --env-file ~/.axon/.env -f ~/.axon/compose/docker-compose.yaml logs --tail=100 axon axon-tei axon-qdrant axon-chrome
@@ -317,7 +330,7 @@ Important paths:
 
 Common failures:
 
-- Docker missing: install Docker and Docker Compose, then rerun `axon setup repair`.
+- Docker missing: install Docker and Docker Compose, then rerun `axon setup`.
 - GPU unavailable: verify `nvidia-smi` and NVIDIA Container Toolkit.
 - Gemini unauthenticated: run Gemini CLI login outside Axon, then rerun setup.
 - TEI slow on first boot: model download/cache warmup is the cold path.

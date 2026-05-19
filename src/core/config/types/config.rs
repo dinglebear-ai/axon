@@ -68,54 +68,39 @@ pub struct Config {
     /// Custom `User-Agent` header sent by Chrome. Env: `AXON_CHROME_USER_AGENT`.
     pub chrome_user_agent: Option<String>,
 
-    /// Run Chrome in headless mode (no visible window). Flag: `--chrome-headless`.
-    pub chrome_headless: bool,
-
-    /// Enable Chrome's anti-bot evasion mode. Flag: `--chrome-anti-bot`.
-    pub chrome_anti_bot: bool,
-
-    /// Enable Chrome network interception (for blocking ads/trackers). Flag: `--chrome-intercept`.
-    pub chrome_intercept: bool,
-
-    /// Enable Chrome stealth mode (patches `navigator.webdriver`). Flag: `--chrome-stealth`.
-    pub chrome_stealth: bool,
-
-    /// Bootstrap Chrome connection before starting the crawl. Flag: `--chrome-bootstrap`.
-    pub chrome_bootstrap: bool,
-
-    /// Timeout in milliseconds to wait for Chrome bootstrap. Flag: `--chrome-bootstrap-timeout-ms`.
+    /// Timeout in milliseconds to wait for Chrome bootstrap. TOML: `chrome.bootstrap-timeout-ms`.
     pub chrome_bootstrap_timeout_ms: u64,
 
-    /// Number of retries for Chrome bootstrap failures. Flag: `--chrome-bootstrap-retries`.
+    /// Number of retries for Chrome bootstrap failures. TOML: `chrome.bootstrap-retries`.
     pub chrome_bootstrap_retries: usize,
 
-    /// Whether to honour `robots.txt` directives. Defaults `false`. Flag: `--respect-robots`.
+    /// Whether to honour `robots.txt` directives. Defaults `false`. TOML: `scrape.respect-robots`.
     pub respect_robots: bool,
 
-    /// Pages with fewer than this many markdown characters are treated as "thin". Flag: `--min-markdown-chars`.
+    /// Pages with fewer than this many markdown characters are treated as "thin". TOML: `scrape.min-markdown-chars`.
     pub min_markdown_chars: usize,
 
-    /// Drop thin pages — do not save or embed them. Flag: `--drop-thin-markdown`.
+    /// Drop thin pages — do not save or embed them. TOML: `scrape.drop-thin-markdown`.
     pub drop_thin_markdown: bool,
 
-    /// Discover and backfill URLs from `sitemap.xml` after the main crawl. Flag: `--discover-sitemaps`.
+    /// Discover and backfill URLs from `sitemap.xml` after the main crawl. TOML: `scrape.discover-sitemaps`.
     pub discover_sitemaps: bool,
 
-    /// Only backfill sitemap URLs with `<lastmod>` within the last N days (0 = no filter). Flag: `--sitemap-since-days`.
+    /// Only backfill sitemap URLs with `<lastmod>` within the last N days (0 = no filter). TOML: `scrape.sitemap-since-days`.
     pub sitemap_since_days: u32,
 
     /// Fallback strategy for `map` when no sitemap documents are found. Flag: `--map-fallback`.
     pub map_fallback: MapFallback,
 
     /// Maximum number of sitemap documents to parse per map/backfill operation
-    /// (0 = unlimited). Flag: `--max-sitemaps`.
+    /// (0 = unlimited). TOML: `scrape.max-sitemaps`.
     pub max_sitemaps: usize,
 
     /// Enable Spider's built-in crawl-result caching. Flag: `--cache`.
     pub cache: bool,
 
-    /// Skip the cache for browser (Chrome) fetches only. Flag: `--cache-skip-browser`.
-    pub cache_skip_browser: bool,
+    /// Keep cached crawl flow on the HTTP path and suppress Chrome runtime/bootstrap. Flag: `--cache-http-only`.
+    pub cache_http_only: bool,
 
     /// Output format for scraped pages: `markdown`, `html`, `rawHtml`, or `json`. Flag: `--format`.
     pub format: ScrapeFormat,
@@ -123,7 +108,7 @@ pub struct Config {
     /// Qdrant collection name to read from and write to. Env: `AXON_COLLECTION`. Flag: `--collection`.
     pub collection: String,
 
-    /// Automatically embed scraped content into Qdrant after fetching. Flag: `--embed`.
+    /// Automatically embed scraped content into Qdrant after fetching. Disabled by `--skip-embed`.
     pub embed: bool,
 
     /// Number of concurrent connections for batch operations (clamped 1–512). Flag: `--batch-concurrency`.
@@ -132,7 +117,7 @@ pub struct Config {
     /// Block until async jobs complete instead of fire-and-forgetting. Flag: `--wait`.
     pub wait: bool,
 
-    /// Path to the SQLite jobs database file.
+    /// Path to the SQLite jobs database file. Env: `AXON_SQLITE_PATH`.
     pub sqlite_path: PathBuf,
 
     /// Skip confirmation prompts (non-interactive mode). Flag: `--yes`.
@@ -141,25 +126,25 @@ pub struct Config {
     /// Concurrency/timeout preset. Profiles scale linearly with CPU count. Flag: `--performance-profile`.
     pub performance_profile: PerformanceProfile,
 
-    /// Override concurrency limit for the primary crawl spider. Flag: `--crawl-concurrency-limit`.
+    /// Override concurrency limit for the primary crawl spider. TOML: `workers.crawl-concurrency-limit`.
     pub crawl_concurrency_limit: Option<usize>,
 
-    /// Override concurrency limit for sitemap backfill fetches. Flag: `--backfill-concurrency-limit`.
+    /// Override concurrency limit for sitemap backfill fetches. TOML: `workers.backfill-concurrency-limit`.
     pub backfill_concurrency_limit: Option<usize>,
 
     /// Only run sitemap discovery, not a full crawl. Flag: `--sitemap-only`.
     pub sitemap_only: bool,
 
-    /// Millisecond delay between spider requests (polite crawling). Flag: `--delay-ms`.
+    /// Millisecond delay between spider requests (polite crawling). TOML: `scrape.delay-ms`.
     pub delay_ms: u64,
 
-    /// Per-request timeout in milliseconds; `None` uses the profile default. Flag: `--request-timeout-ms`.
+    /// Per-request timeout in milliseconds; `None` uses the profile default. TOML: `scrape.request-timeout-ms`.
     pub request_timeout_ms: Option<u64>,
 
-    /// Number of retries on transient fetch failures. Flag: `--fetch-retries`.
+    /// Number of retries on transient fetch failures. TOML: `scrape.fetch-retries`.
     pub fetch_retries: usize,
 
-    /// Backoff in milliseconds between retries. Flag: `--retry-backoff-ms`.
+    /// Backoff in milliseconds between retries. TOML: `scrape.retry-backoff-ms`.
     pub retry_backoff_ms: u64,
 
     /// Index Claude Code session files when running the `sessions` command. Flag: `--claude`.
@@ -265,9 +250,6 @@ pub struct Config {
 
     /// List all local ask sessions and exit without running a query. Flag: `ask --list-sessions`.
     pub ask_list_sessions: bool,
-
-    /// Legacy internal graph toggle. Production request surfaces keep this disabled.
-    pub ask_graph: bool,
 
     /// Output mode for live `evaluate` answer rendering (`inline`, `side-by-side`, `events`).
     pub evaluate_responses_mode: EvaluateResponsesMode,
@@ -446,11 +428,11 @@ pub struct Config {
     pub cron_max_runs: Option<usize>,
 
     /// Seconds a running job may remain idle before the watchdog marks it stale.
-    /// Env: `AXON_JOB_STALE_TIMEOUT_SECS`. Flag: `--watchdog-stale-timeout-secs`.
+    /// Env: `AXON_JOB_STALE_TIMEOUT_SECS`. TOML: `workers.watchdog-stale-timeout-secs`.
     pub watchdog_stale_timeout_secs: i64,
 
     /// Seconds a stale-marked job must remain unchanged before the watchdog reclaims it.
-    /// Env: `AXON_JOB_STALE_CONFIRM_SECS`. Flag: `--watchdog-confirm-secs`.
+    /// Env: `AXON_JOB_STALE_CONFIRM_SECS`. TOML: `workers.watchdog-confirm-secs`.
     pub watchdog_confirm_secs: i64,
 
     /// Seconds between periodic watchdog sweeps in the long-running worker process.
@@ -476,16 +458,16 @@ pub struct Config {
 
     // P2 — engine tuning (previously hardcoded in engine.rs)
     /// Seconds to wait for Chrome network idle before capturing the page.
-    /// Used by `WaitForIdleNetwork`. Default: 15. Flag: `--chrome-network-idle-timeout`.
+    /// Used by `WaitForIdleNetwork`. Default: 15. TOML: `chrome.network-idle-timeout-secs`.
     pub chrome_network_idle_timeout_secs: u64,
 
     /// Thin-page ratio threshold for auto-switch from HTTP to Chrome mode (0.0–1.0).
     /// If more than this fraction of crawled pages are thin, retry with Chrome.
-    /// Default: 0.60. Flag: `--auto-switch-thin-ratio`.
+    /// Default: 0.60. TOML: `scrape.auto-switch-thin-ratio`.
     pub auto_switch_thin_ratio: f64,
 
     /// Minimum pages crawled before auto-switch eligibility is evaluated.
-    /// Prevents triggering Chrome on tiny crawls. Default: 10. Flag: `--auto-switch-min-pages`.
+    /// Prevents triggering Chrome on tiny crawls. Default: 10. TOML: `scrape.auto-switch-min-pages`.
     pub auto_switch_min_pages: usize,
 
     /// Minimum broadcast channel buffer for crawl page receiver (entries, not bytes).
@@ -498,7 +480,7 @@ pub struct Config {
 
     // P3 — missing spider builder methods
     /// URL allow-list: only crawl URLs matching at least one of these regex patterns.
-    /// Complement to the URL blacklist. Default: [] (no restriction). Flag: `--url-whitelist` (repeatable).
+    /// Complement to the URL blacklist. Default: [] (no restriction). TOML: `scrape.url-whitelist`.
     pub url_whitelist: Vec<String>,
 
     /// Block asset downloads (images, CSS, fonts, JS) during crawl to reduce bandwidth.
@@ -506,11 +488,11 @@ pub struct Config {
     pub block_assets: bool,
 
     /// Maximum response size per page in bytes; pages exceeding this are skipped.
-    /// Spider: `with_max_page_bytes(u64)`. Default: None (unlimited). Flag: `--max-page-bytes`.
+    /// Spider: `with_max_page_bytes(u64)`. Default: None (unlimited). TOML: `scrape.max-page-bytes`.
     pub max_page_bytes: Option<u64>,
 
     /// Use strict redirect policy — only follow same-origin redirects.
-    /// Spider: `with_redirect_policy(RedirectPolicy::Strict)`. Default: false. Flag: `--redirect-policy-strict`.
+    /// Spider: `with_redirect_policy(RedirectPolicy::Strict)`. Default: false. TOML: `scrape.redirect-policy-strict`.
     pub redirect_policy_strict: bool,
 
     /// CSS selector to wait for before capturing a Chrome page.
@@ -553,11 +535,11 @@ pub struct Config {
 
     // P5 — opt-in crawl safety/compat flags
     /// Bypass Content Security Policy in Chrome — helps on pages that block inline JS via CSP.
-    /// Spider: `with_csp_bypass(true)`. Chrome only. Default: false. Flag: `--bypass-csp`.
+    /// Spider: `with_csp_bypass(true)`. Chrome only. Default: false. TOML: `chrome.bypass-csp`.
     pub bypass_csp: bool,
 
     /// Accept invalid/self-signed TLS certificates. Useful for internal or staging sites.
-    /// Spider: `with_danger_accept_invalid_certs(true)`. Default: false. Flag: `--accept-invalid-certs`.
+    /// Spider: `with_danger_accept_invalid_certs(true)`. Default: false. TOML: `chrome.accept-invalid-certs`.
     pub accept_invalid_certs: bool,
 
     /// Capture the full scrollable page (true) or just the viewport (false).
@@ -591,17 +573,17 @@ pub struct Config {
     pub client_mode: ClientMode,
 
     /// Explicit local override. When true, CLI commands bypass server-client
-    /// dispatch even if `--server-url` / `AXON_SERVER_URL` is configured.
+    /// dispatch even if `AXON_SERVER_URL` is configured.
     pub local_mode: bool,
 
     /// When set, CLI commands with server-client support target this running
-    /// `axon serve` endpoint. Flag: `--server-url`, env: `AXON_SERVER_URL`.
+    /// `axon serve` endpoint. Env: `AXON_SERVER_URL`.
     ///
     /// Stored as a parsed `reqwest::Url` (re-export of `url::Url`) so malformed values are
     /// rejected at config-build time rather than at request time.
     pub server_url: Option<reqwest::Url>,
 
-    /// Override log level before tracing init. Flag: `--log-level`, env: `AXON_LOG_LEVEL`.
+    /// Override log level before tracing init. Env: `AXON_LOG_LEVEL`.
     pub log_level: Option<String>,
 
     /// Timeout in seconds for `--wait true` job polling.

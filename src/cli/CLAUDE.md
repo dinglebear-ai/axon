@@ -42,6 +42,7 @@ cli/
     ├── sources.rs                # Indexed source listing
     ├── stats.rs                  # Qdrant/stats command entry point
     ├── status.rs                 # System/job status entry point
+    ├── summarize.rs              # Scrape URL context + configured LLM summary via services layer
     ├── suggest.rs                # Suggested crawl target discovery
     ├── watch.rs                  # Watch definition and run management
     ├── crawl/
@@ -75,7 +76,7 @@ cli/
         └── map_sitemap_tests.rs
 ```
 
-> There is **no `commands/graph.rs`** and no `Graph` `CommandKind` variant. The `graph` ask flag survives as a per-request boolean (see `src/mcp/schema.rs`), not a dedicated CLI subcommand.
+> There is **no `commands/graph.rs`**, no `Graph` `CommandKind` variant, and no graph ask flag. Graph retrieval is not part of the production CLI, MCP, or `/v1/ask` request contract.
 
 ## Dispatch
 
@@ -89,6 +90,7 @@ match cfg.command {
     CommandKind::Extract   => run_extract(cfg, service_context).await?,
     CommandKind::Embed     => run_embed(cfg, service_context).await?,
     CommandKind::Ask       => run_ask(cfg).await?,
+    CommandKind::Summarize => run_summarize(cfg).await?,
     CommandKind::Status    => run_status(cfg, service_context).await?,
     CommandKind::Ingest    => run_ingest(cfg, service_context).await?,
     CommandKind::Sessions  => run_sessions(cfg, service_context).await?,

@@ -505,34 +505,18 @@ async fn v1_ask_auth_layer_accepts_bearer_and_x_api_key() {
 
 #[tokio::test]
 #[serial]
-async fn v1_ask_accepts_graph_false_and_rejects_graph_true_before_query_validation() {
+async fn v1_ask_rejects_removed_graph_field() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn_ask_test_server(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
 
-    let graph_false = client
+    let response = client
         .post(format!("{base}/v1/ask"))
-        .json(&serde_json::json!({ "query": "", "graph": false }))
+        .json(&serde_json::json!({ "query": "test", "graph": false }))
         .send()
         .await
-        .expect("graph false request");
-    let graph_false_status = graph_false.status();
-    let graph_false_body: serde_json::Value = graph_false.json().await.expect("graph false body");
-    let graph_true = client
-        .post(format!("{base}/v1/ask"))
-        .json(&serde_json::json!({ "query": "", "graph": true }))
-        .send()
-        .await
-        .expect("graph true request");
-    let graph_true_status = graph_true.status();
-    let graph_true_body: serde_json::Value = graph_true.json().await.expect("graph true body");
+        .expect("graph request");
 
     stop(shutdown, handle).await;
-    assert_eq!(graph_false_status, StatusCode::BAD_REQUEST);
-    assert_eq!(graph_false_body["message"], "query is required");
-    assert_eq!(graph_true_status, StatusCode::BAD_REQUEST);
-    assert_eq!(
-        graph_true_body["message"],
-        "graph retrieval is not supported; omit graph or set graph to false"
-    );
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }

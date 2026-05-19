@@ -1,7 +1,7 @@
 use super::*;
 use crate::core::config::Config;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
-use crate::jobs::lite::config_snapshot::decode_ingest_job_config;
+use crate::jobs::config_snapshot::decode_ingest_job_config;
 use crate::mcp::schema::{IngestRequest, IngestSourceType};
 use crate::services::context::ServiceContext;
 use crate::services::runtime::ServiceJobRuntime;
@@ -150,7 +150,7 @@ fn source_from_mcp_request_rejects_invalid_youtube_target() {
 }
 
 #[tokio::test]
-async fn ingest_start_with_context_enqueues_sessions_jobs_with_lite_backend() {
+async fn ingest_start_with_context_enqueues_sessions_jobs_with_sqlite_backend() {
     let mut cfg = Config::test_default();
     cfg.sessions_claude = true;
     cfg.sessions_codex = false;

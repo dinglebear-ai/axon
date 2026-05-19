@@ -25,7 +25,7 @@ mcp/
 │   ├── http.rs                     # HTTP transport plumbing
 │   ├── handlers_crawl_extract.rs   # crawl + extract action handlers
 │   ├── handlers_embed_ingest.rs    # embed + ingest action handlers
-│   ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, research
+│   ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, summarize, research
 │   ├── handlers_elicit.rs          # elicitation prompts
 │   ├── handlers_system.rs          # doctor, domains, sources, stats, status, artifacts, help
 │   ├── handlers_vertical_scrape.rs # vertical_scrape action — DISCOVERY ONLY (list/capabilities)
@@ -67,7 +67,7 @@ HTTP transport chooses one auth policy at startup:
 
 OAuth env vars use the `AXON_MCP_*` prefix: `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, `AXON_MCP_AUTH_ADMIN_EMAIL`, and `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS`. Do not document the old `GOOGLE_OAUTH_*` names as current Axon config.
 
-Mounted auth inserts `AuthContext`; tool calls then enforce `axon:read` / `axon:write` scopes in `server.rs`. Unknown actions fail closed.
+Mounted auth inserts `AuthContext`; tool calls then enforce Axon access in `server.rs`. OAuth email allowlisting is the access boundary: newly issued OAuth tokens default to both `axon:read` and `axon:write`, and either Axon scope is accepted for all Axon read/write actions for compatibility with existing tokens. Unknown actions fail closed.
 
 ## Consolidated Tool Pattern
 The single `axon` tool is the only public MCP tool. All operations route through:
@@ -93,6 +93,7 @@ Domains (`action`):
 - `map`
 - `scrape`
 - `ask`
+- `summarize`
 - `research`
 - `screenshot`
 - `doctor`
@@ -135,6 +136,10 @@ This split means clients that want to discover what URL patterns Axon supports q
 ### `ask`
 - Direct action (no subaction)
 - Integration: `src/vector/ops/commands/ask/`
+
+### `summarize`
+- Direct action (no subaction)
+- Integration: `src/services/summarize.rs` + configured LLM backend
 
 ### `research`
 - Direct action (no subaction)
@@ -252,9 +257,8 @@ mcporter --config config/mcporter.json call axon.axon action:sources limit:5 --o
 mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
 ```
 
-The smoke harness may set `AXON_LITE=1` for compatibility, but SQLite/in-process
-jobs are always used. When adding a new action or subaction, add at least one
-smoke case.
+The smoke harness uses SQLite/in-process jobs. When adding a new action or
+subaction, add at least one smoke case.
 
 ## Change Checklist (Mandatory)
 - [ ] `schema.rs` updated

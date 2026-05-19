@@ -7,12 +7,12 @@ use super::common::{
 use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{
     AskRequest, AxonToolResponse, EvaluateRequest, MapRequest, QueryRequest, ResearchRequest,
-    RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest,
+    RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest, SummarizeRequest,
 };
 use crate::services::{document as document_svc, types::DocumentBackend};
 use crate::services::{
     map as map_svc, query as query_svc, scrape as scrape_svc, search as search_svc,
-    search_crawl as search_crawl_svc,
+    search_crawl as search_crawl_svc, summarize as summarize_svc,
 };
 use rmcp::ErrorData;
 
@@ -373,9 +373,6 @@ impl AxonMcpServer {
     }
 
     pub(super) async fn handle_ask(&self, req: AskRequest) -> Result<AxonToolResponse, ErrorData> {
-        if let Some(message) = req.unsupported_graph_error() {
-            return Err(invalid_params(message));
-        }
         let query = req
             .query
             .ok_or_else(|| invalid_params("query is required for ask"))?;
@@ -408,6 +405,44 @@ impl AxonMcpServer {
             serde_json::to_value(result)
                 .map_err(|e| internal_error(format!("serialize ask result: {e}")))?,
             InlineHint::Fields(&["answer"]),
+        )
+        .await
+    }
+
+    pub(super) async fn handle_summarize(
+        &self,
+        req: SummarizeRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let urls = {
+            let collected = crate::services::action_api::collect_unique_urls(req.url, req.urls);
+            if collected.is_empty() {
+                return Err(invalid_params("url or urls is required for summarize"));
+            }
+            collected
+        };
+        for url in &urls {
+            validate_mcp_url(url)?;
+        }
+        let response_mode = req.response_mode;
+        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
+            render_mode: req.render_mode.map(map_render_mode),
+            root_selector: req.root_selector,
+            exclude_selector: req.exclude_selector,
+            ..ConfigOverrides::default()
+        });
+
+        let result = summarize_svc::summarize(&cfg, &urls, None)
+            .await
+            .map_err(|e| logged_internal_error("summarize", e.as_ref()))?;
+
+        respond_with_mode(
+            "summarize",
+            "summarize",
+            response_mode,
+            &format!("summarize-{}", slugify(&urls.join("-"), 56)),
+            serde_json::to_value(result)
+                .map_err(|e| internal_error(format!("serialize summarize result: {e}")))?,
+            InlineHint::Fields(&["summary"]),
         )
         .await
     }

@@ -1,4 +1,4 @@
-pub(crate) mod lite;
+pub(crate) mod sqlite;
 
 use crate::cli::commands::probe::with_path;
 use crate::core::config::Config;
@@ -103,5 +103,5 @@ pub(super) fn build_browser_runtime(
 }
 
 pub async fn build_doctor_report(cfg: &Config) -> Result<Value, Box<dyn Error>> {
-    lite::build(cfg).await
+    sqlite::build(cfg).await
 }

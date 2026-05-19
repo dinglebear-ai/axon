@@ -17,7 +17,6 @@ default = []
 axum = { version = "0.8", features = ["macros"] }
 base64 = "0.22"
 getrandom = "0.4"
-httpdate = "1"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 reqwest = { version = "0.13", default-features = false, features = [
   "rustls",
@@ -50,7 +49,6 @@ tracing = "0.1"
 url = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
-rand = "0.9"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
 wiremock = "0.6"

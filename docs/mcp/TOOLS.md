@@ -126,6 +126,23 @@ RAG: semantic search + LLM answer synthesis with citations.
 | `before` | string | -- | Date filter (before) |
 | `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config |
 
+### summarize
+
+Scrape one or more URLs and summarize the fetched markdown with the configured LLM backend.
+
+```json
+{ "action": "summarize", "url": "https://example.com" }
+{ "action": "summarize", "urls": ["https://a.example", "https://b.example"] }
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | string | -- | Single URL to scrape and summarize |
+| `urls` | string[] | -- | Multiple URLs to scrape and summarize |
+| `render_mode` | enum | server config | `http`, `chrome`, or `auto_switch` |
+| `root_selector` | string | -- | Scope extraction before summarization |
+| `exclude_selector` | string | -- | Remove elements before summarization |
+
 ### evaluate
 
 Evaluate RAG quality against a baseline answer.

@@ -79,9 +79,11 @@ fn explicit_process_token_replaces_existing_env_token_only() {
     )
     .unwrap();
 
-    let result = ensure_env_file_with_process(&env_path, |key| {
-        (key == "AXON_MCP_HTTP_TOKEN").then(|| "plugin-token".to_string())
-    })
+    let result = ensure_env_file_with_process(
+        &env_path,
+        |key| (key == "AXON_MCP_HTTP_TOKEN").then(|| "plugin-token".to_string()),
+        &EnvSetupOptions::default(),
+    )
     .unwrap();
     let raw = std::fs::read_to_string(&env_path).unwrap();
     assert_eq!(

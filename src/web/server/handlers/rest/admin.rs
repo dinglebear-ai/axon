@@ -150,7 +150,11 @@ pub(crate) async fn v1_watch_list(
         .limit
         .unwrap_or(DEFAULT_WATCH_LIMIT)
         .clamp(1, MAX_WATCH_LIMIT);
-    match watch_svc::list_watch_defs(state.cfg.as_ref(), limit).await {
+    let pool = match state.watch_pool().await {
+        Ok(pool) => pool,
+        Err(err) => return map_service_error(err.as_ref() as &(dyn std::error::Error + 'static)),
+    };
+    match watch_svc::list_watch_defs_with_pool(pool.as_ref(), limit).await {
         Ok(defs) => Json(serde_json::json!({ "watches": defs })).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }
@@ -268,7 +272,11 @@ pub(crate) async fn v1_watch_create(
             }
         }
     }
-    match watch_svc::create_watch_def(state.cfg.as_ref(), &input).await {
+    let pool = match state.watch_pool().await {
+        Ok(pool) => pool,
+        Err(err) => return map_service_error(err.as_ref() as &(dyn std::error::Error + 'static)),
+    };
+    match watch_svc::create_watch_def_with_pool(pool.as_ref(), &input).await {
         Ok(def) => (StatusCode::CREATED, Json(def)).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }
@@ -282,7 +290,11 @@ pub(crate) async fn v1_watch_get(
         Ok(id) => id,
         Err(r) => return r,
     };
-    match watch_svc::get_watch_def(state.cfg.as_ref(), watch_id).await {
+    let pool = match state.watch_pool().await {
+        Ok(pool) => pool,
+        Err(err) => return map_service_error(err.as_ref() as &(dyn std::error::Error + 'static)),
+    };
+    match watch_svc::get_watch_def_with_pool(pool.as_ref(), watch_id).await {
         Ok(Some(def)) => Json(def).into_response(),
         Ok(None) => rest_error(
             StatusCode::NOT_FOUND,
@@ -301,7 +313,11 @@ pub(crate) async fn v1_watch_run_now(
         Ok(id) => id,
         Err(r) => return r,
     };
-    let def = match watch_svc::get_watch_def(state.cfg.as_ref(), watch_id).await {
+    let pool = match state.watch_pool().await {
+        Ok(pool) => pool,
+        Err(err) => return map_service_error(err.as_ref() as &(dyn std::error::Error + 'static)),
+    };
+    let def = match watch_svc::get_watch_def_with_pool(pool.as_ref(), watch_id).await {
         Ok(Some(def)) => def,
         Ok(None) => {
             return rest_error(
@@ -312,7 +328,7 @@ pub(crate) async fn v1_watch_run_now(
         }
         Err(err) => return map_service_error(err.as_ref()),
     };
-    match watch_svc::run_watch_now(state.cfg.as_ref(), &def).await {
+    match watch_svc::run_watch_now_with_pool(state.cfg.as_ref(), pool.as_ref(), &def).await {
         Ok(run) => (StatusCode::ACCEPTED, Json(run)).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }

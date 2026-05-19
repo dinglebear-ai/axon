@@ -52,8 +52,8 @@ pub(crate) async fn spider_screenshot_with_options(
     let mut website = Website::new(url);
     website
         .with_chrome_connection(Some(chrome_url))
-        .with_chrome_intercept(RequestInterceptConfiguration::new(cfg.chrome_intercept))
-        .with_stealth(cfg.chrome_stealth || cfg.chrome_anti_bot)
+        .with_chrome_intercept(RequestInterceptConfiguration::new(true))
+        .with_stealth(true)
         .with_fingerprint(true)
         .with_screenshot(Some(screenshot_config))
         .with_viewport(Some(Viewport::new(width, height)))

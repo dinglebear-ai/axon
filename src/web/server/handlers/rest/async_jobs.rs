@@ -330,6 +330,9 @@ pub(crate) async fn v1_ingest_submit(
     State(state): State<RestState>,
     Json(source): Json<IngestSource>,
 ) -> Response {
+    if let Err(reason) = ingest_svc::validate_ingest_source(&source) {
+        return rest_error(StatusCode::BAD_REQUEST, "bad_request", reason);
+    }
     let ctx = match ctx_only(&state).await {
         Ok(ctx) => ctx,
         Err(r) => return r,

@@ -4,6 +4,7 @@ use crate::services::context::ServiceContext;
 use crate::services::watch as watch_svc;
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
+use sqlx::SqlitePool;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -72,19 +73,33 @@ fn parse_uuid(raw: Option<&String>, action: &str) -> Result<Uuid, Box<dyn Error>
 
 pub async fn run_watch(
     cfg: &Config,
-    _service_context: &ServiceContext,
+    service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     let parsed = parse_watch_runtime_args(&cfg.positional)?;
     let subcmd = parsed.action.unwrap_or(WatchRuntimeSubcommand::List);
+    let shared_pool = service_context.jobs.sqlite_pool();
     match subcmd {
         WatchRuntimeSubcommand::Create {
             name,
             task_type,
             every_seconds,
             task_payload,
-        } => handle_watch_create(cfg, name, task_type, every_seconds, task_payload).await?,
+        } => {
+            handle_watch_create(
+                cfg,
+                shared_pool.as_deref(),
+                name,
+                task_type,
+                every_seconds,
+                task_payload,
+            )
+            .await?
+        }
         WatchRuntimeSubcommand::List => {
-            let watches = watch_svc::list_watch_defs(cfg, 200).await?;
+            let watches = match shared_pool.as_deref() {
+                Some(pool) => watch_svc::list_watch_defs_with_pool(pool, 200).await?,
+                None => watch_svc::list_watch_defs(cfg, 200).await?,
+            };
             if cfg.json_output {
                 println!("{}", serde_json::to_string_pretty(&watches)?);
             } else {
@@ -99,10 +114,15 @@ pub async fn run_watch(
                 println!("  {} total", watches.len());
             }
         }
-        WatchRuntimeSubcommand::RunNow { id } => handle_watch_run_now(cfg, &id).await?,
+        WatchRuntimeSubcommand::RunNow { id } => {
+            handle_watch_run_now(cfg, shared_pool.as_deref(), &id).await?
+        }
         WatchRuntimeSubcommand::History { id, limit } => {
             let watch_id = parse_uuid(Some(&id), "history")?;
-            let runs = watch_svc::list_watch_runs(cfg, watch_id, limit).await?;
+            let runs = match shared_pool.as_deref() {
+                Some(pool) => watch_svc::list_watch_runs_with_pool(pool, watch_id, limit).await?,
+                None => watch_svc::list_watch_runs(cfg, watch_id, limit).await?,
+            };
             println!("{}", serde_json::to_string_pretty(&runs)?);
         }
         WatchRuntimeSubcommand::Get { .. } => {
@@ -129,9 +149,10 @@ pub async fn run_watch(
             return Err(
                 "'axon watch delete' is not yet implemented — once implemented, \
                  use 'axon watch delete <id>' to safely remove a watch definition. \
-                 Direct Postgres manipulation (DELETE FROM axon_watch_definitions) is a last resort \
-                 and requires schema knowledge; ensure no running jobs reference the definition \
-                 before deleting, and only do this if you understand the table relationships.".into()
+                 Direct SQLite manipulation is a last resort and requires schema knowledge; \
+                 ensure no running jobs reference the definition before deleting, and only do \
+                 this if you understand the table relationships."
+                    .into(),
             );
         }
         WatchRuntimeSubcommand::Artifacts { .. } => {
@@ -145,6 +166,7 @@ pub async fn run_watch(
 
 async fn handle_watch_create(
     cfg: &Config,
+    pool: Option<&SqlitePool>,
     name: String,
     task_type: String,
     every_seconds: i64,
@@ -161,18 +183,18 @@ async fn handle_watch_create(
         })?),
         None => None,
     };
-    let created = watch_svc::create_watch_def(
-        cfg,
-        &watch_svc::WatchDefCreate {
-            name,
-            task_type,
-            task_payload: task_payload.unwrap_or_else(|| serde_json::json!({})),
-            every_seconds,
-            enabled: true,
-            next_run_at: Utc::now() + Duration::seconds(every_seconds),
-        },
-    )
-    .await?;
+    let input = watch_svc::WatchDefCreate {
+        name,
+        task_type,
+        task_payload: task_payload.unwrap_or_else(|| serde_json::json!({})),
+        every_seconds,
+        enabled: true,
+        next_run_at: Utc::now() + Duration::seconds(every_seconds),
+    };
+    let created = match pool {
+        Some(pool) => watch_svc::create_watch_def_with_pool(pool, &input).await?,
+        None => watch_svc::create_watch_def(cfg, &input).await?,
+    };
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&created)?);
     } else {
@@ -181,12 +203,21 @@ async fn handle_watch_create(
     Ok(())
 }
 
-async fn handle_watch_run_now(cfg: &Config, raw_id: &str) -> Result<(), Box<dyn Error>> {
+async fn handle_watch_run_now(
+    cfg: &Config,
+    pool: Option<&SqlitePool>,
+    raw_id: &str,
+) -> Result<(), Box<dyn Error>> {
     let watch_id = parse_uuid(Some(&raw_id.to_string()), "run-now")?;
-    let watch = watch_svc::get_watch_def(cfg, watch_id)
-        .await?
-        .ok_or("watch not found")?;
-    let run = watch_svc::run_watch_now(cfg, &watch).await?;
+    let watch = match pool {
+        Some(pool) => watch_svc::get_watch_def_with_pool(pool, watch_id).await?,
+        None => watch_svc::get_watch_def(cfg, watch_id).await?,
+    }
+    .ok_or("watch not found")?;
+    let run = match pool {
+        Some(pool) => watch_svc::run_watch_now_with_pool(cfg, pool, &watch).await?,
+        None => watch_svc::run_watch_now(cfg, &watch).await?,
+    };
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&run)?);
     } else {

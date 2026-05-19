@@ -86,6 +86,6 @@ Summary includes page counts, deterministic vs LLM fallback counts, token usage,
 ## Behavior Notes
 
 - Async mode returns immediately with a job ID.
-- In server mode (`AXON_SERVER_URL` / `--server-url`), extract submit and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers.
+- In server mode (`AXON_SERVER_URL`), extract submit and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers.
 - `clear` is destructive and prompts unless `--yes` is passed.
 - `extract` runs URLs concurrently in sync mode and aggregates metrics across runs.

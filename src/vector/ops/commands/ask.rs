@@ -50,7 +50,6 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
             "timing_ms": build_timing_json(
                 ctx.retrieval_elapsed_ms,
                 ctx.context_elapsed_ms,
-                ctx.graph_elapsed_ms,
                 0,
                 total_elapsed_ms,
                 &timing,
@@ -107,7 +106,6 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         "timing_ms": build_timing_json(
             ctx.retrieval_elapsed_ms,
             ctx.context_elapsed_ms,
-            ctx.graph_elapsed_ms,
             llm_total_ms,
             total_elapsed_ms,
             &timing,
@@ -126,8 +124,6 @@ fn build_diagnostics_json(enabled: bool, cfg: &Config, ctx: &AskContext) -> serd
         "full_docs_selected": ctx.full_docs_selected,
         "supplemental_selected": ctx.supplemental_count,
         "context_chars": ctx.context.len(),
-        "graph_entities": ctx.graph_entities_found,
-        "graph_context_chars": ctx.graph_context_text.len(),
         "min_relevance_score": cfg.ask_min_relevance_score,
         "ask_candidate_limit": cfg.ask_candidate_limit,
         "ask_chunk_limit": cfg.ask_chunk_limit,
@@ -193,8 +189,6 @@ fn can_answer_from_follow_up_history(cfg: &Config, err: &anyhow::Error) -> bool 
 fn history_only_ask_context(elapsed_ms: u128) -> AskContext {
     AskContext {
         context: String::new(),
-        graph_context_text: String::new(),
-        graph_entities_found: 0,
         candidate_count: 0,
         reranked_count: 0,
         chunks_selected: 0,
@@ -202,7 +196,6 @@ fn history_only_ask_context(elapsed_ms: u128) -> AskContext {
         supplemental_count: 0,
         retrieval_elapsed_ms: elapsed_ms,
         context_elapsed_ms: 0,
-        graph_elapsed_ms: 0,
         diagnostic_sources: Vec::new(),
         top_domains: Vec::new(),
         authoritative_ratio: 0.0,
@@ -223,12 +216,11 @@ fn history_only_ask_context(elapsed_ms: u128) -> AskContext {
     }
 }
 
-/// Back-compat: legacy 5-bucket shape always present; sub-stage fields populate
+/// Back-compat: legacy timing shape always present; sub-stage fields populate
 /// only when `cfg.ask_diagnostics` is true.
 fn build_timing_json(
     retrieval_ms: u128,
     context_ms: u128,
-    graph_ms: u128,
     llm_ms: u128,
     total_ms: u128,
     timing: &AskTiming,
@@ -241,7 +233,6 @@ fn build_timing_json(
     let mut obj = serde_json::Map::new();
     obj.insert("retrieval".into(), ms(retrieval_ms));
     obj.insert("context_build".into(), ms(context_ms));
-    obj.insert("graph".into(), ms(graph_ms));
     obj.insert("llm".into(), ms(llm_ms));
     obj.insert("total".into(), ms(total_ms));
 

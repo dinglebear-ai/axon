@@ -29,6 +29,7 @@ RAG routes:
 Exploration routes:
 
 - `POST /v1/scrape` with `{ "url": "..." }` or `{ "urls": ["..."] }`
+- `POST /v1/summarize` with `{ "url": "..." }` or `{ "urls": ["..."] }`
 - `POST /v1/map` with `{ "url": "...", "limit": 100, "offset": 0 }`
 - `POST /v1/search` with `{ "query": "...", "limit": 10, "offset": 0, "time_range": "week" }`
 - `POST /v1/research` with the same body as search; HTTP requests time out after 35 seconds.
@@ -69,4 +70,4 @@ Admin routes:
 
 ## Auth
 
-When MCP HTTP auth is mounted, read routes require `axon:read` and write routes require `axon:write`. A write-scoped token is accepted for read routes. Loopback development mode keeps the existing local trust boundary.
+When MCP HTTP auth is mounted, OAuth email allowlisting is the access boundary. Axon-issued OAuth tokens default to both `axon:read` and `axon:write`, and either Axon scope is accepted for all Axon read/write routes for compatibility with existing tokens. Loopback development mode keeps the existing local trust boundary.

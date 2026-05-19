@@ -55,7 +55,7 @@ fn smoke_map_ask_payload_wraps_value() {
     let payload = serde_json::json!({
         "query": "what is RAG?",
         "answer": "Retrieval-Augmented Generation",
-        "timing_ms": {"retrieval": 1, "context_build": 2, "graph": 3, "llm": 4, "total": 10}
+        "timing_ms": {"retrieval": 1, "context_build": 2, "llm": 4, "total": 10}
     });
     let result: AskResult = map_ask_payload(payload.clone()).expect("valid ask payload");
     assert_eq!(result.query, "what is RAG?");

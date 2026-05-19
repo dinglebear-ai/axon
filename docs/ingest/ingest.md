@@ -19,7 +19,7 @@ Command-only operational notes live in `docs/commands/*.md`; do not add one-sent
 
 ## Storage Schema
 
-Ingest jobs are persisted in the SQLite `axon_ingest_jobs` table. The table is created by migrations under `src/jobs/lite/migrations/` and used through the SQLite job runtime.
+Ingest jobs are persisted in the SQLite `axon_ingest_jobs` table. The table is created by migrations under `src/jobs/migrations/` and used through the SQLite job runtime.
 
 | Column | Type | Description |
 |--------|------|-------------|

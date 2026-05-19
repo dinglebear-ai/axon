@@ -5,8 +5,10 @@
 //! family of REST routes.
 
 use crate::core::config::Config;
+use crate::jobs::store::open_config_pool;
 use crate::mcp::auth::AuthPolicy;
 use crate::services::context::ServiceContext;
+use sqlx::SqlitePool;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -15,6 +17,7 @@ use tokio::sync::OnceCell;
 pub(crate) struct RestState {
     pub(crate) cfg: Arc<Config>,
     pub(crate) service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+    fallback_watch_pool: Arc<OnceCell<Arc<SqlitePool>>>,
     pub(crate) auth_required: bool,
 }
 
@@ -27,6 +30,7 @@ impl RestState {
         Self {
             cfg,
             service_context,
+            fallback_watch_pool: Arc::new(OnceCell::new()),
             auth_required: !matches!(auth_policy, AuthPolicy::LoopbackDev),
         }
     }
@@ -43,5 +47,23 @@ impl RestState {
             })
             .await
             .map(Arc::clone)
+    }
+
+    /// Return the SQLite pool used by watch endpoints.
+    ///
+    /// Prefer the ServiceContext job-runtime pool so long-lived REST surfaces
+    /// use one SQLite pool for jobs and watches. The fallback is retained for
+    /// tests or future non-SQLite runtimes.
+    pub(crate) async fn watch_pool(&self) -> Result<Arc<SqlitePool>, Box<dyn Error + Send + Sync>> {
+        let context = self.service_context().await?;
+        if let Some(pool) = context.jobs.sqlite_pool() {
+            return Ok(pool);
+        }
+
+        self.fallback_watch_pool
+            .get_or_try_init(|| async { open_config_pool(&self.cfg).await.map(Arc::new) })
+            .await
+            .map(Arc::clone)
+            .map_err(|err| -> Box<dyn Error + Send + Sync> { err.into() })
     }
 }

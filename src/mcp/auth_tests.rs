@@ -271,7 +271,7 @@ fn oauth_metadata_base_keeps_mcp_as_canonical_resource_audience() {
         .env_prefix("AXON_MCP")
         .scopes_supported(vec!["axon:read".into(), "axon:write".into()])
         .resource_path("/mcp")
-        .default_scope("axon:read")
+        .default_scope("axon:read axon:write")
         .static_token_scopes(vec!["axon:read".into(), "axon:write".into()])
         .build_from_sources([
             ("AXON_MCP_AUTH_MODE".to_string(), "oauth".to_string()),

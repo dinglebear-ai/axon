@@ -39,9 +39,16 @@ fn parse_watch_runtime_args_rejects_unknown_argument() {
 #[tokio::test]
 async fn handle_watch_create_requires_every_seconds() {
     let cfg = Config::test_default();
-    let err = handle_watch_create(&cfg, "demo".to_string(), "refresh".to_string(), 0, None)
-        .await
-        .expect_err("missing interval should error");
+    let err = handle_watch_create(
+        &cfg,
+        None,
+        "demo".to_string(),
+        "refresh".to_string(),
+        0,
+        None,
+    )
+    .await
+    .expect_err("missing interval should error");
     assert!(err.to_string().contains("--every-seconds"));
 }
 
@@ -50,6 +57,7 @@ async fn handle_watch_create_rejects_invalid_task_payload_json() {
     let cfg = Config::test_default();
     let err = handle_watch_create(
         &cfg,
+        None,
         "demo".to_string(),
         "refresh".to_string(),
         30,
@@ -74,7 +82,7 @@ async fn run_watch_rejects_unknown_subcommand() {
 }
 
 #[tokio::test]
-async fn run_watch_lists_with_lite_backend() -> Result<(), Box<dyn Error>> {
+async fn run_watch_lists_with_sqlite_backend() -> Result<(), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::default_minimal();
     cfg.sqlite_path = tmp.path().join("jobs.db");

@@ -1,5 +1,6 @@
+use crate::core::config::CommandKind;
 use crate::core::config::Config;
-use crate::services::setup::{self, LocalSetupMode};
+use crate::services::setup::{self, LocalSetupInitOptions, LocalSetupMode, StackAction};
 use serde::Serialize;
 use serde_json::json;
 use std::error::Error;
@@ -9,29 +10,54 @@ const PLUGIN_HOOK_TIMEOUT_SECS: u64 = 360;
 
 const USAGE_LINES: &[&str] = &[
     "axon setup",
+    "axon setup init [--auth-mode bearer|oauth] [--mcp-host HOST] [--mcp-port PORT]",
+    "axon preflight",
+    "axon smoke",
+    "axon stack up|down|restart|rebuild",
     "axon setup plugin-hook",
-    "axon setup plugin-hook --no-repair",
-    "axon setup check",
-    "axon setup repair",
-    "axon setup repair --migrate-env",
+    "axon setup plugin-hook --no-setup",
 ];
 
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    match cfg.command {
+        CommandKind::Preflight => {
+            return run_local_setup_command(cfg, LocalSetupMode::Preflight).await;
+        }
+        CommandKind::Smoke => return run_local_setup_command(cfg, LocalSetupMode::Smoke).await,
+        CommandKind::Stack => return run_stack_command(cfg).await,
+        _ => {}
+    }
+
     match cfg.positional.first().map(String::as_str) {
-        None => run_local_setup_command(cfg, LocalSetupMode::FirstRun).await,
+        None => run_local_setup_command(cfg, LocalSetupMode::Setup).await,
         Some("plugin-hook" | "hook") => run_plugin_hook_setup_command(cfg).await,
-        Some("check") => run_local_setup_command(cfg, LocalSetupMode::Check).await,
-        Some("repair") => {
-            let mode = if cfg.positional.iter().any(|value| value == "--migrate-env") {
-                LocalSetupMode::MigrateEnv
-            } else {
-                LocalSetupMode::Repair
-            };
-            run_local_setup_command(cfg, mode).await
+        Some("init") => run_setup_init_command(cfg).await,
+        Some("preflight" | "check") => {
+            run_local_setup_command(cfg, LocalSetupMode::Preflight).await
         }
         Some("targets") => run_targets_command(cfg),
         _ => print_usage(cfg),
     }
+}
+
+async fn run_setup_init_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let options = parse_init_options(&cfg.positional[1..])?;
+    let result = setup::run_local_setup_with_options(LocalSetupMode::Init, options).await?;
+    print_local_setup_report(cfg, &result)?;
+    fail_if_setup_failed(&result)
+}
+
+async fn run_stack_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let action = match cfg.positional.first().map(String::as_str) {
+        Some("up") => StackAction::Up,
+        Some("down") => StackAction::Down,
+        Some("restart") => StackAction::Restart,
+        Some("rebuild") => StackAction::Rebuild,
+        _ => return print_usage(cfg),
+    };
+    let result = setup::run_stack_action(action).await?;
+    print_local_setup_report(cfg, &result)?;
+    fail_if_setup_failed(&result)
 }
 
 fn run_targets_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -78,10 +104,10 @@ fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let no_repair = cfg.positional.iter().any(|value| value == "--no-repair");
+    let no_setup = cfg.positional.iter().any(|value| value == "--no-setup");
     let result = tokio::time::timeout(
         Duration::from_secs(PLUGIN_HOOK_TIMEOUT_SECS),
-        build_plugin_hook_report(no_repair),
+        build_plugin_hook_report(no_setup),
     )
     .await;
 
@@ -111,15 +137,47 @@ async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error
     fail_if_plugin_hook_failed(&report)
 }
 
-async fn build_plugin_hook_report(no_repair: bool) -> Result<PluginHookReport, Box<dyn Error>> {
-    let check = setup::run_local_setup(LocalSetupMode::Check).await?;
-    let needs_repair = check.has_errors || check.exceeded_hard_max;
-    let repair = if needs_repair && !no_repair {
-        Some(setup::run_local_setup(LocalSetupMode::Repair).await?)
+async fn build_plugin_hook_report(no_setup: bool) -> Result<PluginHookReport, Box<dyn Error>> {
+    let check = setup::run_local_setup(LocalSetupMode::Preflight).await?;
+    let needs_setup = check.has_errors || check.exceeded_hard_max;
+    let setup = if needs_setup && !no_setup {
+        Some(setup::run_local_setup(LocalSetupMode::Setup).await?)
     } else {
         None
     };
-    Ok(PluginHookReport::new(check, repair, no_repair))
+    Ok(PluginHookReport::new(check, setup, no_setup))
+}
+
+fn parse_init_options(args: &[String]) -> Result<LocalSetupInitOptions, Box<dyn Error>> {
+    let mut options = LocalSetupInitOptions::default();
+    for chunk in args.chunks(2) {
+        let (flag, value) = match chunk {
+            [flag, value] => (flag.as_str(), value.clone()),
+            [flag] => return Err(format!("missing value for {flag}").into()),
+            _ => unreachable!(),
+        };
+        match flag {
+            "--mcp-host" => options.mcp_host = Some(value),
+            "--mcp-port" => options.mcp_port = Some(value),
+            "--auth-mode" => {
+                if !matches!(value.as_str(), "bearer" | "oauth") {
+                    return Err("--auth-mode must be bearer or oauth".into());
+                }
+                options.auth_mode = Some(value);
+            }
+            "--mcp-token" => options.mcp_token = Some(value),
+            "--oauth-public-url" => options.oauth_public_url = Some(value),
+            "--google-client-id" => options.google_client_id = Some(value),
+            "--google-client-secret" => options.google_client_secret = Some(value),
+            "--auth-admin-email" => options.auth_admin_email = Some(value),
+            "--tavily-api-key" => options.tavily_api_key = Some(value),
+            "--github-token" => options.github_token = Some(value),
+            "--reddit-client-id" => options.reddit_client_id = Some(value),
+            "--reddit-client-secret" => options.reddit_client_secret = Some(value),
+            _ => return Err(format!("unknown setup init option {flag}").into()),
+        }
+    }
+    Ok(options)
 }
 
 async fn run_local_setup_command(cfg: &Config, mode: LocalSetupMode) -> Result<(), Box<dyn Error>> {
@@ -130,9 +188,9 @@ async fn run_local_setup_command(cfg: &Config, mode: LocalSetupMode) -> Result<(
 
 fn fail_if_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn Error>> {
     if report.has_errors {
-        Err("axon setup completed with failed phases".into())
+        Err(format!("axon {} completed with failed phases", report.mode).into())
     } else if report.exceeded_hard_max {
-        Err("axon setup exceeded the hard maximum setup time".into())
+        Err(format!("axon {} exceeded the hard maximum setup time", report.mode).into())
     } else {
         Ok(())
     }
@@ -161,11 +219,11 @@ fn print_plugin_hook_report(cfg: &Config, report: &PluginHookReport) -> Result<(
         Ok(())
     } else {
         print_local_setup_report(cfg, &report.check)?;
-        if let Some(repair) = &report.repair {
-            print_local_setup_report(cfg, repair)?;
+        if let Some(setup) = &report.setup {
+            print_local_setup_report(cfg, setup)?;
         }
         println!("Plugin hook policy: {:?}", report.exit_policy);
-        println!("Plugin hook ran repair: {}", report.ran_repair);
+        println!("Plugin hook ran setup: {}", report.ran_setup);
         if !report.blocking_failures.is_empty() {
             println!(
                 "Plugin hook blocking failures: {}",
@@ -193,21 +251,21 @@ enum PluginHookExitPolicy {
 #[derive(Debug, Serialize)]
 struct PluginHookReport {
     exit_policy: PluginHookExitPolicy,
-    ran_repair: bool,
-    no_repair: bool,
+    ran_setup: bool,
+    no_setup: bool,
     blocking_failures: Vec<String>,
     advisory_failures: Vec<String>,
     check: setup::LocalSetupReport,
-    repair: Option<setup::LocalSetupReport>,
+    setup: Option<setup::LocalSetupReport>,
 }
 
 impl PluginHookReport {
     fn new(
         check: setup::LocalSetupReport,
-        repair: Option<setup::LocalSetupReport>,
-        no_repair: bool,
+        setup: Option<setup::LocalSetupReport>,
+        no_setup: bool,
     ) -> Self {
-        let active = repair.as_ref().unwrap_or(&check);
+        let active = setup.as_ref().unwrap_or(&check);
         let blocking_failures = blocking_failures(active);
         let advisory_failures = advisory_failures(active);
         let exit_policy = if !blocking_failures.is_empty() {
@@ -219,12 +277,12 @@ impl PluginHookReport {
         };
         Self {
             exit_policy,
-            ran_repair: repair.is_some(),
-            no_repair,
+            ran_setup: setup.is_some(),
+            no_setup,
             blocking_failures,
             advisory_failures,
             check,
-            repair,
+            setup,
         }
     }
 }

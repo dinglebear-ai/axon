@@ -28,8 +28,8 @@ fn screenshot_requires_chrome_remote_url() {
         "error must mention Chrome so the user knows what to configure: {msg}"
     );
     assert!(
-        msg.contains("AXON_CHROME_REMOTE_URL") || msg.contains("--chrome-remote-url"),
-        "error should reference the env var or flag: {msg}"
+        msg.contains("AXON_CHROME_REMOTE_URL"),
+        "error should reference the env var: {msg}"
     );
 }
 

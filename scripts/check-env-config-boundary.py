@@ -42,17 +42,23 @@ PREFIXES = (
 
 IGNORED_TOKENS = {
     "AXON_RUST",  # issue id prefix in docs/tests
+    "AXON_DEV_BIN",  # local shell variable in scripts/axon
+    "AXON_DEV_BIN_DIR",  # local shell variable in scripts/axon
+    "AXON_HOME_DIR",  # local shell variable in scripts/axon
+    "AXON_FULL_ACCESS_SCOPE",  # Rust authz const, not an env var
+    "AXON_READ_SCOPE",  # Rust authz const, not an env var
+    "AXON_WRITE_SCOPE",  # Rust authz const, not an env var
     "REDDIT_UA",  # Rust const (User-Agent string), not an env var; lives in src/extract/verticals/reddit.rs
+    "TAVILY_BACKOFF_BASE",  # Rust const, not an env var
+    "TAVILY_MAX_ATTEMPTS",  # Rust const, not an env var
 }
 
 VALID_CLASSIFICATIONS = {
     "keep-env",
     "compose-env",
     "move-toml",
-    "delete",
     "hard-default",
     "trusted-operator-bootstrap",
-    "compatibility-shim",
     "external/test-only",
 }
 
@@ -72,11 +78,9 @@ ENV_ONLY_CLASSIFICATIONS = {
 
 MIGRATION_ACTION_CLASSIFICATIONS = {
     "move-toml",
-    "delete",
     "hard-default",
     "compose-env",
     "trusted-operator-bootstrap",
-    "compatibility-shim",
 }
 
 VALID_TOML_DESTINATIONS = {
@@ -151,6 +155,8 @@ def scan_env_tokens() -> dict[str, set[str]]:
                 continue
             rel = path.relative_to(ROOT)
             if any(part in {".git", ".worktrees", "target"} for part in rel.parts):
+                continue
+            if str(rel) == "scripts/check_legacy_runtime_terms.sh":
                 continue
             text = path.read_text(errors="ignore")
             for token in ENV_RE.findall(text):

@@ -23,7 +23,6 @@ Each `<name>.rs` below is a module **root** with a sibling `<name>/` subdirector
 - `health.rs` + `health/doctor*`: service health probes (TEI, OpenAI, browser).
 - `logging.rs`: structured logging helpers used across runtime.
 - `paths.rs`: filesystem-path helpers (data/output/cache).
-- `neo4j.rs`: Legacy Neo4j client helper; graph retrieval is not wired in the current runtime.
 - `ui.rs`: spinner / colored output / `confirm_destructive`.
 
 ## Integration Points

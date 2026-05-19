@@ -47,6 +47,7 @@ fn is_server_routed_command(command: CommandKind) -> bool {
         command,
         CommandKind::Status
             | CommandKind::Scrape
+            | CommandKind::Summarize
             | CommandKind::Crawl
             | CommandKind::Extract
             | CommandKind::Embed
@@ -60,7 +61,7 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
     let server_url = cfg
         .server_url
         .clone()
-        .ok_or("server mode requires --server-url or AXON_SERVER_URL")?;
+        .ok_or("server mode requires AXON_SERVER_URL")?;
     let plan = plan::server_action_plan(cfg)?;
     let client = cli::client::ServerClient::new(server_url)?;
     let request = ClientActionRequest {
@@ -69,11 +70,12 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
     };
     let response = post_server_action(&client, &request, plan.label).await?;
     let result = server_action_result(response)?;
-    render::render_server_result(cfg, plan.label, &result)?;
     if cfg.wait
         && let Some(family) = plan.poll_family
     {
         poll_server_jobs(cfg, &client, family, &result).await?;
+    } else {
+        render::render_server_result(cfg, plan.label, &result)?;
     }
     Ok(())
 }

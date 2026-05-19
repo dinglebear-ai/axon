@@ -25,6 +25,7 @@ pub enum AxonRequest {
     Scrape(ScrapeRequest),
     Research(ResearchRequest),
     Ask(AskRequest),
+    Summarize(SummarizeRequest),
     Screenshot(ScreenshotRequest),
     Debug(DebugRequest),
     Dedupe(DedupeRequest),
@@ -100,6 +101,8 @@ pub struct ExtractRequest {
     pub urls: Option<Vec<String>>,
     pub prompt: Option<String>,
     pub max_pages: Option<u32>,
+    pub render_mode: Option<McpRenderMode>,
+    pub embed: Option<bool>,
     pub job_id: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<usize>,
@@ -477,9 +480,6 @@ pub struct ResearchRequest {
 #[serde(deny_unknown_fields)]
 pub struct AskRequest {
     pub query: Option<String>,
-    /// Deprecated compatibility field. `false`/unset is accepted as a no-op;
-    /// `true` is rejected by the handler because graph retrieval is not wired.
-    pub graph: Option<bool>,
     /// Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.
     pub diagnostics: Option<bool>,
     /// Include per-candidate explain trace and skip LLM synthesis.
@@ -498,12 +498,18 @@ pub struct AskRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-impl AskRequest {
-    pub fn unsupported_graph_error(&self) -> Option<&'static str> {
-        self.graph
-            .unwrap_or(false)
-            .then_some("graph retrieval is not supported; omit graph or set graph to false")
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SummarizeRequest {
+    pub url: Option<String>,
+    pub urls: Option<Vec<String>>,
+    /// Rendering engine override (http | chrome | auto_switch). Overrides cfg.render_mode.
+    pub render_mode: Option<McpRenderMode>,
+    /// CSS selector to scope content extraction before summarization.
+    pub root_selector: Option<String>,
+    /// CSS selector to exclude elements before summarization.
+    pub exclude_selector: Option<String>,
+    pub response_mode: Option<ResponseMode>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

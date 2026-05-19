@@ -74,7 +74,7 @@ just dev
 
 `just dev` requires the binary to build cleanly — if `cargo build` fails, no
 processes are started. Workers spawn inside the `axon mcp` runtime via
-`LiteBackend::new_with_workers`; CLI fire-and-forget submissions are
+`SqliteJobBackend::new_with_workers`; CLI fire-and-forget submissions are
 processed by that running `axon mcp` (or `axon serve`).
 
 > If you submit `--wait false` jobs **without** an `axon mcp` / `axon serve`
@@ -90,7 +90,7 @@ processed by that running `axon mcp` (or `axon serve`).
 ./scripts/axon status
 ```
 
-`axon doctor` (SQLite-runtime probe at `src/core/health/doctor/lite.rs`) reports:
+`axon doctor` (SQLite-runtime probe at `src/core/health/doctor/sqlite.rs`) reports:
 
 - **SQLite** — file exists at `cfg.sqlite_path`
 - **TEI** — `GET /health`, plus `/info` for embedding model + summary
@@ -180,7 +180,7 @@ Two failure modes, two recovery paths.
 The watchdog reclaims jobs whose `updated_at` heartbeat goes stale. Defaults:
 `AXON_JOB_STALE_TIMEOUT_SECS=300` + `AXON_JOB_STALE_CONFIRM_SECS=60`.
 
-Stale reclaim runs when `LiteBackend` starts and on the periodic worker
+Stale reclaim runs when `SqliteJobBackend` starts and on the periodic worker
 watchdog tick. To force a reclaim immediately:
 
 ```bash
@@ -240,7 +240,7 @@ ${AXON_DATA_DIR}/jobs.db          # default: ~/.axon/jobs.db
 ```
 
 Override path with `AXON_SQLITE_PATH`. Schema is auto-created at startup by
-`ensure_schema()` in each `src/jobs/lite/store.rs`-driven worker — there
+`ensure_schema()` in each `src/jobs/store.rs`-driven worker — there
 is no migration file to apply manually.
 
 ### Hot backup (process running)
@@ -344,7 +344,7 @@ This is faster for one-shot full backups and includes index state.
 tail -f "${AXON_DATA_DIR:-$HOME/.axon}/logs/axon.log"
 
 # noisier output for one run
-RUST_LOG=info,axon::jobs::lite=debug just dev
+RUST_LOG=info,axon::jobs=debug just dev
 ```
 
 `tracing` filters honor `RUST_LOG`. CDP decoder noise is suppressed by
@@ -400,7 +400,7 @@ Watchdog and queue cap tuning:
 | `AXON_MAX_PENDING_EXTRACT_JOBS` | 50 | Same, for extract |
 | `AXON_MAX_PENDING_INGEST_JOBS` | 50 | Same, for ingest |
 
-Implemented in `src/jobs/lite/ops/enqueue.rs`.
+Implemented in `src/jobs/ops/enqueue.rs`.
 
 ---
 
@@ -513,12 +513,12 @@ Volumes (`${AXON_HOME:-$HOME/.axon}/{qdrant,tei,...}`) are bind-mounted on the h
 | `scripts/axon` | Wrapper that auto-sources `~/.axon/.env` and runs `cargo run --bin axon` |
 | `scripts/dev-setup.sh` | First-run bootstrap |
 | `src/cli/commands/doctor.rs` | `axon doctor` entry point |
-| `src/core/health/doctor/lite.rs` | SQLite-runtime doctor probe |
+| `src/core/health/doctor/runtime.rs` | SQLite-runtime doctor probe |
 | `src/cli/commands/status.rs` | `axon status` entry point |
 | `src/cli/commands/crawl/subcommands.rs` | `crawl status/cancel/errors/list/cleanup/clear/recover` |
 | `src/cli/commands/migrate.rs` | `axon migrate` |
-| `src/jobs/lite/ops/enqueue.rs` | Queue caps, `AXON_MAX_PENDING_*` |
-| `src/jobs/lite/store.rs` | SQLite schema bootstrap + lifecycle SQL |
+| `src/jobs/ops/enqueue.rs` | Queue caps, `AXON_MAX_PENDING_*` |
+| `src/jobs/store.rs` | SQLite schema bootstrap + lifecycle SQL |
 | `src/core/logging.rs` | `init_tracing`, `AXON_LOG_DIR`/`AXON_LOG_FILE`, size-based rotation (`AXON_LOG_MAX_BYTES`, `AXON_LOG_MAX_FILES`) |
 | `src/core/logging/size_rotating.rs` | `SizeRotatingFile`: byte-budget rotation writer |
 | `src/core/paths.rs` | `axon_data_dir()`, `axon_data_base_dir()` |

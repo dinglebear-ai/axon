@@ -20,6 +20,12 @@ pub(crate) struct ScrapeRequest {
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct SummarizeRequest {
+    url: Option<String>,
+    urls: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct MapRequest {
     url: String,
     limit: Option<usize>,
@@ -72,6 +78,28 @@ pub(crate) async fn scrape(
     } else {
         Ok(Json(json!({ "results": results })))
     }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/summarize",
+    request_body = SummarizeRequest,
+    responses(
+        (status = 200, description = "Brief LLM summary of scraped URL content", body = serde_json::Value),
+        (status = 400, description = "Invalid summarize request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream crawl, render, or LLM service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
+pub(crate) async fn summarize(
+    State((_state, cfg)): State<WebState>,
+    Json(req): Json<SummarizeRequest>,
+) -> Result<Json<services::types::SummarizeResult>, HttpError> {
+    let urls = summarize_request_urls(req)?;
+    services::summarize::summarize(&cfg, &urls, None)
+        .await
+        .map(Json)
+        .map_err(HttpError::from_box)
 }
 
 #[utoipa::path(
@@ -172,6 +200,21 @@ fn request_urls(req: ScrapeRequest) -> Result<Vec<String>, HttpError> {
         .into_iter()
         .filter(|url| seen.insert(url.clone()))
         .collect())
+}
+
+fn summarize_request_urls(req: SummarizeRequest) -> Result<Vec<String>, HttpError> {
+    let urls: Vec<String> = req
+        .urls
+        .unwrap_or_default()
+        .into_iter()
+        .chain(req.url)
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .collect();
+    if urls.is_empty() {
+        return Err(HttpError::bad_request("url or urls is required"));
+    }
+    Ok(urls)
 }
 
 fn map_options(limit: Option<usize>, offset: Option<usize>) -> MapOptions {

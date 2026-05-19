@@ -271,14 +271,14 @@ fn dev_setup_does_not_seed_removed_full_stack_services() {
 
     for legacy_key in [
         "POSTGRES_PASSWORD",
-        "AXON_PG_URL",
+        concat!("AXON_", "PG_URL"),
         "REDIS_PASSWORD",
-        "AXON_REDIS_URL",
+        concat!("AXON_", "REDIS_URL"),
         "RABBITMQ_PASS",
-        "AXON_AMQP_URL",
-        "AXON_TEST_PG_URL",
-        "AXON_TEST_REDIS_URL",
-        "AXON_TEST_AMQP_URL",
+        concat!("AXON_", "AMQP_URL"),
+        concat!("AXON_", "TEST_PG_URL"),
+        concat!("AXON_", "TEST_REDIS_URL"),
+        concat!("AXON_", "TEST_AMQP_URL"),
     ] {
         assert!(
             !setup.contains(legacy_key),

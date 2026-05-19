@@ -150,8 +150,7 @@ fn status_result_payload_and_text_are_both_present() {
         "local_crawl_jobs": [],
         "local_extract_jobs": [],
         "local_embed_jobs": [],
-        "local_ingest_jobs": [],
-        "local_refresh_jobs": []
+        "local_ingest_jobs": []
     });
     let text = "Axon Status\ncrawl jobs:   0\nextract jobs: 0".to_string();
     let result = StatusResult {

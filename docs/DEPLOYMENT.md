@@ -83,7 +83,7 @@ Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and 
 - `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.yaml`)
 - Gemini CLI auth plus `AXON_HEADLESS_GEMINI_CMD` — canonical LLM synthesis path
 
-The legacy `OPENAI_*` env vars were removed in 3.0.0; all LLM synthesis now runs through the Gemini headless backend (`AXON_HEADLESS_GEMINI_*`). `axon setup repair --migrate-env` scrubs `OPENAI_*` entries from existing `~/.axon/.env`.
+The legacy `OPENAI_*` env vars were removed in 3.0.0; all LLM synthesis now runs through the Gemini headless backend (`AXON_HEADLESS_GEMINI_*`).
 
 ### Web Panel and HTTP Auth
 

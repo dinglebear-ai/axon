@@ -21,6 +21,12 @@ test:
 test-fast:
     if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --lib -E 'not test(/worker_e2e/)'; else {{rust_dev_env}}; cargo test -q --lib --locked -- --skip worker_e2e; fi
 
+test-watch:
+    {{rust_dev_env}}; RUST_MIN_STACK=16777216 cargo test -q --lib --locked jobs::watch
+    {{rust_dev_env}}; cargo test -q --lib --locked cli::commands::watch
+    {{rust_dev_env}}; cargo test -q --lib --locked parse_watch
+    {{rust_dev_env}}; cargo test -q --lib --locked web::server::handlers::rest::tests::watch_
+
 test-infra:
     {{rust_dev_env}}; cargo test --locked worker_e2e -- --ignored --nocapture
 
@@ -189,7 +195,11 @@ lint-all:
     just fmt-check
     just clippy
 
+legacy-runtime-check:
+    ./scripts/check_legacy_runtime_terms.sh
+
 verify:
+    just legacy-runtime-check
     just fmt-check
     just clippy
     just check
@@ -201,6 +211,7 @@ ci:
 precommit:
     python3 scripts/check_compose_port_bindings.py --staged
     python3 scripts/enforce_no_legacy_symbols.py
+    just legacy-runtime-check
     if [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged; elif [ -f "scripts/enforce_monoliths.py" ]; then python3 scripts/enforce_monoliths.py --staged; else echo "ERROR: enforce_monoliths.py not found" && exit 1; fi
     just fmt-check
     just clippy

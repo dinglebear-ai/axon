@@ -21,7 +21,7 @@ use crate::core::config::{Config, RenderMode};
 fn resolve_initial_mode_autoswitch_starts_http() {
     let cfg = Config {
         render_mode: RenderMode::AutoSwitch,
-        cache_skip_browser: false,
+        cache_http_only: false,
         ..Config::default()
     };
     assert_eq!(
@@ -35,7 +35,7 @@ fn resolve_initial_mode_autoswitch_starts_http() {
 fn resolve_initial_mode_chrome_stays_chrome() {
     let cfg = Config {
         render_mode: RenderMode::Chrome,
-        cache_skip_browser: false,
+        cache_http_only: false,
         ..Config::default()
     };
     assert_eq!(
@@ -49,7 +49,7 @@ fn resolve_initial_mode_chrome_stays_chrome() {
 fn resolve_initial_mode_http_stays_http() {
     let cfg = Config {
         render_mode: RenderMode::Http,
-        cache_skip_browser: false,
+        cache_http_only: false,
         ..Config::default()
     };
     assert_eq!(
@@ -60,30 +60,30 @@ fn resolve_initial_mode_http_stays_http() {
 }
 
 #[test]
-fn resolve_initial_mode_cache_skip_browser_forces_http() {
+fn resolve_initial_mode_cache_http_only_forces_http() {
     let cfg = Config {
         render_mode: RenderMode::Chrome,
-        cache_skip_browser: true,
+        cache_http_only: true,
         ..Config::default()
     };
     assert_eq!(
         resolve_initial_mode(&cfg),
         RenderMode::Http,
-        "cache_skip_browser=true must force Http regardless of render_mode"
+        "cache_http_only=true must force Http regardless of render_mode"
     );
 }
 
 #[test]
-fn resolve_initial_mode_cache_skip_browser_overrides_autoswitch() {
+fn resolve_initial_mode_cache_http_only_overrides_autoswitch() {
     let cfg = Config {
         render_mode: RenderMode::AutoSwitch,
-        cache_skip_browser: true,
+        cache_http_only: true,
         ..Config::default()
     };
     assert_eq!(
         resolve_initial_mode(&cfg),
         RenderMode::Http,
-        "cache_skip_browser=true must force Http even for AutoSwitch"
+        "cache_http_only=true must force Http even for AutoSwitch"
     );
 }
 
@@ -95,12 +95,12 @@ fn resolve_initial_mode_cache_skip_browser_overrides_autoswitch() {
 fn chrome_runtime_requested_true_for_chrome_mode() {
     let cfg = Config {
         render_mode: RenderMode::Chrome,
-        cache_skip_browser: false,
+        cache_http_only: false,
         ..Config::default()
     };
     assert!(
         chrome_runtime_requested(&cfg),
-        "Chrome mode with cache_skip_browser=false must request runtime"
+        "Chrome mode with cache_http_only=false must request runtime"
     );
 }
 
@@ -108,12 +108,12 @@ fn chrome_runtime_requested_true_for_chrome_mode() {
 fn chrome_runtime_requested_true_for_autoswitch_mode() {
     let cfg = Config {
         render_mode: RenderMode::AutoSwitch,
-        cache_skip_browser: false,
+        cache_http_only: false,
         ..Config::default()
     };
     assert!(
         chrome_runtime_requested(&cfg),
-        "AutoSwitch mode with cache_skip_browser=false must request runtime"
+        "AutoSwitch mode with cache_http_only=false must request runtime"
     );
 }
 
@@ -121,7 +121,7 @@ fn chrome_runtime_requested_true_for_autoswitch_mode() {
 fn chrome_runtime_requested_false_for_http_mode() {
     let cfg = Config {
         render_mode: RenderMode::Http,
-        cache_skip_browser: false,
+        cache_http_only: false,
         ..Config::default()
     };
     assert!(
@@ -131,28 +131,28 @@ fn chrome_runtime_requested_false_for_http_mode() {
 }
 
 #[test]
-fn chrome_runtime_requested_false_when_cache_skip_browser() {
+fn chrome_runtime_requested_false_when_cache_http_only() {
     let cfg = Config {
         render_mode: RenderMode::Chrome,
-        cache_skip_browser: true,
+        cache_http_only: true,
         ..Config::default()
     };
     assert!(
         !chrome_runtime_requested(&cfg),
-        "cache_skip_browser=true must suppress Chrome runtime request"
+        "cache_http_only=true must suppress Chrome runtime request"
     );
 }
 
 #[test]
-fn chrome_runtime_requested_false_when_cache_skip_browser_autoswitch() {
+fn chrome_runtime_requested_false_when_cache_http_only_autoswitch() {
     let cfg = Config {
         render_mode: RenderMode::AutoSwitch,
-        cache_skip_browser: true,
+        cache_http_only: true,
         ..Config::default()
     };
     assert!(
         !chrome_runtime_requested(&cfg),
-        "cache_skip_browser=true must suppress Chrome runtime even for AutoSwitch"
+        "cache_http_only=true must suppress Chrome runtime even for AutoSwitch"
     );
 }
 
@@ -164,8 +164,7 @@ fn chrome_runtime_requested_false_when_cache_skip_browser_autoswitch() {
 async fn bootstrap_skips_when_http_mode() {
     let cfg = Config {
         render_mode: RenderMode::Http,
-        cache_skip_browser: false,
-        chrome_bootstrap: true,
+        cache_http_only: false,
         ..Config::default()
     };
     let outcome = bootstrap_chrome_runtime(&cfg).await;
@@ -178,43 +177,18 @@ async fn bootstrap_skips_when_http_mode() {
 }
 
 #[tokio::test]
-async fn bootstrap_skips_when_cache_skip_browser() {
+async fn bootstrap_skips_when_cache_http_only() {
     let cfg = Config {
         render_mode: RenderMode::Chrome,
-        cache_skip_browser: true,
-        chrome_bootstrap: true,
+        cache_http_only: true,
         ..Config::default()
     };
     let outcome = bootstrap_chrome_runtime(&cfg).await;
-    assert!(
-        !outcome.remote_ready,
-        "cache_skip_browser must skip bootstrap"
-    );
+    assert!(!outcome.remote_ready, "cache_http_only must skip bootstrap");
     assert!(outcome.resolved_ws_url.is_none());
     assert!(
         outcome.warnings.is_empty(),
-        "cache_skip_browser early-exit must produce no warnings"
-    );
-}
-
-#[tokio::test]
-async fn bootstrap_skips_when_chrome_bootstrap_disabled() {
-    let cfg = Config {
-        render_mode: RenderMode::Chrome,
-        cache_skip_browser: false,
-        chrome_bootstrap: false,
-        chrome_remote_url: Some("http://127.0.0.1:9222".to_string()),
-        ..Config::default()
-    };
-    let outcome = bootstrap_chrome_runtime(&cfg).await;
-    assert!(
-        !outcome.remote_ready,
-        "chrome_bootstrap=false must skip bootstrap even with remote_url set"
-    );
-    assert!(outcome.resolved_ws_url.is_none());
-    assert!(
-        outcome.warnings.is_empty(),
-        "chrome_bootstrap=false early-exit must produce no warnings"
+        "cache_http_only early-exit must produce no warnings"
     );
 }
 
@@ -222,8 +196,7 @@ async fn bootstrap_skips_when_chrome_bootstrap_disabled() {
 async fn bootstrap_warns_when_no_remote_url() {
     let cfg = Config {
         render_mode: RenderMode::Chrome,
-        cache_skip_browser: false,
-        chrome_bootstrap: true,
+        cache_http_only: false,
         chrome_remote_url: None,
         ..Config::default()
     };
@@ -239,8 +212,8 @@ async fn bootstrap_warns_when_no_remote_url() {
         "missing remote_url must produce exactly one warning"
     );
     assert!(
-        outcome.warnings[0].contains("no --chrome-remote-url"),
-        "warning must mention missing --chrome-remote-url, got: {}",
+        outcome.warnings[0].contains("AXON_CHROME_REMOTE_URL is unset"),
+        "warning must mention missing AXON_CHROME_REMOTE_URL, got: {}",
         outcome.warnings[0]
     );
 }
@@ -252,8 +225,7 @@ async fn bootstrap_warns_when_remote_url_unparseable() {
     // None, causing the retry loop to exhaust and produce "probe failed".
     let cfg = Config {
         render_mode: RenderMode::Chrome,
-        cache_skip_browser: false,
-        chrome_bootstrap: true,
+        cache_http_only: false,
         chrome_bootstrap_retries: 0,
         chrome_remote_url: Some("ftp://invalid-scheme:9222".to_string()),
         ..Config::default()
@@ -281,8 +253,7 @@ async fn bootstrap_returns_warning_when_resolution_fails() {
     // Point at a port that nothing is listening on — probe must fail fast.
     let cfg = Config {
         render_mode: RenderMode::Chrome,
-        cache_skip_browser: false,
-        chrome_bootstrap: true,
+        cache_http_only: false,
         chrome_bootstrap_timeout_ms: 250,
         chrome_bootstrap_retries: 0,
         chrome_remote_url: Some("http://127.0.0.1:1".to_string()),

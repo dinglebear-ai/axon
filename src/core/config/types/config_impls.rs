@@ -30,11 +30,6 @@ impl Default for Config {
             chrome_remote_url: None,
             chrome_proxy: None,
             chrome_user_agent: None,
-            chrome_headless: true,
-            chrome_anti_bot: true,
-            chrome_intercept: true,
-            chrome_stealth: true,
-            chrome_bootstrap: true,
             chrome_bootstrap_timeout_ms: 3_000,
             chrome_bootstrap_retries: 2,
             respect_robots: false,
@@ -45,7 +40,7 @@ impl Default for Config {
             map_fallback: MapFallback::Structure,
             max_sitemaps: 512,
             cache: true,
-            cache_skip_browser: false,
+            cache_http_only: false,
             format: ScrapeFormat::Markdown,
             collection: "axon".to_string(),
             embed: true,
@@ -95,7 +90,6 @@ impl Default for Config {
             ask_reset_session: false,
             ask_new_session: false,
             ask_list_sessions: false,
-            ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             ask_max_context_chars: 300_000,
             ask_candidate_limit: 250,
@@ -263,11 +257,6 @@ impl fmt::Debug for Config {
             .field("chrome_remote_url", &self.chrome_remote_url)
             .field("chrome_proxy", &self.chrome_proxy)
             .field("chrome_user_agent", &self.chrome_user_agent)
-            .field("chrome_headless", &self.chrome_headless)
-            .field("chrome_anti_bot", &self.chrome_anti_bot)
-            .field("chrome_intercept", &self.chrome_intercept)
-            .field("chrome_stealth", &self.chrome_stealth)
-            .field("chrome_bootstrap", &self.chrome_bootstrap)
             .field(
                 "chrome_bootstrap_timeout_ms",
                 &self.chrome_bootstrap_timeout_ms,
@@ -281,7 +270,7 @@ impl fmt::Debug for Config {
             .field("map_fallback", &self.map_fallback)
             .field("max_sitemaps", &self.max_sitemaps)
             .field("cache", &self.cache)
-            .field("cache_skip_browser", &self.cache_skip_browser)
+            .field("cache_http_only", &self.cache_http_only)
             .field("format", &self.format)
             .field("collection", &self.collection)
             .field("embed", &self.embed)
@@ -343,7 +332,6 @@ impl fmt::Debug for Config {
             .field("ask_reset_session", &self.ask_reset_session)
             .field("ask_new_session", &self.ask_new_session)
             .field("ask_list_sessions", &self.ask_list_sessions)
-            .field("ask_graph", &self.ask_graph)
             .field("evaluate_responses_mode", &self.evaluate_responses_mode)
             .field("ask_max_context_chars", &self.ask_max_context_chars)
             .field("ask_candidate_limit", &self.ask_candidate_limit)

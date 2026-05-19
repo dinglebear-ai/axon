@@ -14,8 +14,6 @@ export AXON_HOME
 export AXON_DATA_DIR="${AXON_DATA_DIR:-$AXON_HOME}"
 export AXON_LOG_FILE="${AXON_LOG_FILE:-$AXON_HOME/logs/mcporter-axon.log}"
 export AXON_SQLITE_PATH="${AXON_SQLITE_PATH:-$AXON_HOME/mcporter-jobs.db}"
-export AXON_LITE="${AXON_LITE:-0}"
 export AXON_MCP_TRANSPORT=stdio
-export AXON_PG_URL="${AXON_PG_MCP_URL:-${AXON_PG_URL:-}}"
 
 exec ./target/debug/axon mcp

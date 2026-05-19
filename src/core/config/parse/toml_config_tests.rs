@@ -76,6 +76,19 @@ fn valid_toml_parses_tei_and_workers() {
 }
 
 #[test]
+fn valid_toml_parses_chrome_bootstrap_section() {
+    let mut f = NamedTempFile::new().unwrap();
+    writeln!(
+        f,
+        "[chrome]\nbootstrap-timeout-ms = 1500\nbootstrap-retries = 4"
+    )
+    .unwrap();
+    let cfg = load_from_path(f.path(), false).unwrap();
+    assert_eq!(cfg.chrome.bootstrap_timeout_ms, Some(1500));
+    assert_eq!(cfg.chrome.bootstrap_retries, Some(4));
+}
+
+#[test]
 fn malformed_toml_returns_err() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(f, "[search\nbadly_broken = !!!").unwrap();
@@ -257,6 +270,23 @@ user-agent = "Mozilla/5.0 (Axon Test)""#,
         result.unwrap().chrome.user_agent.as_deref(),
         Some("Mozilla/5.0 (Axon Test)")
     );
+}
+
+#[test]
+fn chrome_bootstrap_knobs_parse() {
+    let result = load_toml_config_from_str(
+        r#"[chrome]
+bootstrap-timeout-ms = 750
+bootstrap-retries = 4"#,
+    );
+    assert!(
+        result.is_ok(),
+        "chrome bootstrap knobs should parse: {:?}",
+        result.err()
+    );
+    let chrome = result.unwrap().chrome;
+    assert_eq!(chrome.bootstrap_timeout_ms, Some(750));
+    assert_eq!(chrome.bootstrap_retries, Some(4));
 }
 
 #[test]

@@ -40,6 +40,9 @@ server-side commands need them.
 | `AXON_MCP_HTTP_TOKEN` | unset | Static bearer / `x-api-key` token. Required for non-loopback bearer mode. |
 | `AXON_MCP_AUTH_MODE` | `bearer` | `bearer` for static token mode, `oauth` for Google OAuth + DCR through lab-auth. |
 | `AXON_MCP_PUBLIC_URL` | unset | Public origin used by OAuth metadata, for example `https://axon.example.com`. |
+| `AXON_MCP_GOOGLE_CLIENT_ID` | unset | Required for OAuth mode. |
+| `AXON_MCP_GOOGLE_CLIENT_SECRET` | unset | Required for OAuth mode. |
+| `AXON_MCP_AUTH_ADMIN_EMAIL` | unset | Required for OAuth mode. |
 | `AXON_SERVER_URL` | unset | CLI client/server endpoint. Set on client shells, not required by the server. |
 
 ## Examples

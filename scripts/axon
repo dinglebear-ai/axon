@@ -12,8 +12,21 @@ AXON_ENV_FILE_RESOLVED="$(resolve_axon_env_file "$REPO")"
 
 AXON_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO/target}"
 AXON_BIN="$AXON_TARGET_DIR/debug/axon"
+AXON_HOME_DIR="${AXON_HOME:-$HOME/.axon}"
+AXON_DEV_BIN_DIR="$AXON_HOME_DIR/dev"
+AXON_DEV_BIN="$AXON_DEV_BIN_DIR/axon"
 CONTAINER_SENTINEL="$AXON_TARGET_DIR/.container-built"
 CONTAINER_BUILD_LOG="${TMPDIR:-/tmp}/axon-container-build.log"
+CONTAINER_BUILD_LOCK="$AXON_TARGET_DIR/.container-build.lock"
+CONTAINER_SYNC_LOG="${TMPDIR:-/tmp}/axon-container-sync.log"
+
+compose_cmd() {
+    _compose=(docker compose)
+    if [ -f "$AXON_ENV_FILE_RESOLVED" ]; then
+        _compose+=(--env-file "$AXON_ENV_FILE_RESOLVED")
+    fi
+    _compose+=(-f "$REPO/docker-compose.yaml" -f "$REPO/docker-compose.dev.yaml")
+}
 
 # ── Build the debug binary (incremental; Cargo skips if nothing changed) ─────
 cargo build -q --locked --manifest-path "$REPO/Cargo.toml" --bin axon
@@ -26,7 +39,15 @@ while IFS= read -r -d '' _plugin_bin; do
 done < <(find "${HOME}/.claude/plugins/cache/jmagar-lab/axon" -maxdepth 3 \
              -name "axon" \( -type f -o -type l \) -print0 2>/dev/null)
 
-# ── Rebuild container if source is newer than last successful container build ─
+# ── Sync debug binary into the dev container's mounted data dir ───────────────
+_dev_bin_changed=0
+if [ ! -x "$AXON_DEV_BIN" ] || [ "$AXON_BIN" -nt "$AXON_DEV_BIN" ]; then
+    mkdir -p "$AXON_DEV_BIN_DIR"
+    install -m 0755 "$AXON_BIN" "$AXON_DEV_BIN"
+    _dev_bin_changed=1
+fi
+
+# ── Rebuild container image only when image-level inputs changed ──────────────
 _stale=0
 while IFS= read -r -d '' _f; do
     if [ "$_f" -nt "$CONTAINER_SENTINEL" ] 2>/dev/null; then
@@ -34,22 +55,34 @@ while IFS= read -r -d '' _f; do
         break
     fi
 done < <(git -C "$REPO" ls-files -z -- \
-             Cargo.toml Cargo.lock rust-toolchain.toml src config/Dockerfile config/ migrations \
-             docker-compose.yaml config.example.toml plugins/)
+             config/Dockerfile docker-compose.yaml docker-compose.dev.yaml \
+             config/chrome apps/web/package.json apps/web/package-lock.json apps/web)
 
 if [ "$_stale" -eq 1 ]; then
-    echo "axon: container is stale — rebuilding in background (log: $CONTAINER_BUILD_LOG)" >&2
+    mkdir -p "$AXON_TARGET_DIR"
+    if mkdir "$CONTAINER_BUILD_LOCK" 2>/dev/null; then
+        echo "axon: container image inputs changed — rebuilding in background (log: $CONTAINER_BUILD_LOG)" >&2
+        (
+            trap 'rmdir "$CONTAINER_BUILD_LOCK"' EXIT
+            compose_cmd
+            "${_compose[@]}" build axon \
+                && "${_compose[@]}" up -d axon --no-deps \
+                && touch "$CONTAINER_SENTINEL" \
+                || echo "axon: container rebuild FAILED — check $CONTAINER_BUILD_LOG" >&2
+        ) &>"$CONTAINER_BUILD_LOG" &
+        disown
+    else
+        echo "axon: container rebuild already running (log: $CONTAINER_BUILD_LOG)" >&2
+    fi
+elif [ "$_dev_bin_changed" -eq 1 ] && command -v docker >/dev/null 2>&1; then
     (
-        _compose=(docker compose)
-        if [ -f "$AXON_ENV_FILE_RESOLVED" ]; then
-            _compose+=(--env-file "$AXON_ENV_FILE_RESOLVED")
+        compose_cmd
+        if docker container inspect axon >/dev/null 2>&1; then
+            echo "axon: debug binary updated — restarting dev container"
+            "${_compose[@]}" up -d axon --no-deps --no-build
+            "${_compose[@]}" restart axon
         fi
-        _compose+=(-f "$REPO/docker-compose.yaml" -f "$REPO/docker-compose.dev.yaml")
-        "${_compose[@]}" build axon \
-            && "${_compose[@]}" up -d axon --no-deps \
-            && touch "$CONTAINER_SENTINEL" \
-            || echo "axon: container rebuild FAILED — check $CONTAINER_BUILD_LOG" >&2
-    ) &>"$CONTAINER_BUILD_LOG" &
+    ) &>"$CONTAINER_SYNC_LOG" &
     disown
 fi
 

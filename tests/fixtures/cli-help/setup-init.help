@@ -1,0 +1,26 @@
+[1m[38;2;244;143;177mInitialize local Axon config, env, and compose assets[0m[0m
+
+[1m[38;2;244;143;177mUsage[0m[0m
+  [38;2;144;202;249maxon setup init [OPTIONS][0m
+
+[1m[38;2;244;143;177mOptions[0m[0m
+  [38;2;144;202;249m--mcp-host <MCP_HOST>           [0m [2mMCP HTTP bind host written to AXON_MCP_HTTP_HOST[0m
+  [38;2;144;202;249m--mcp-port <MCP_PORT>           [0m [2mMCP HTTP bind port written to AXON_MCP_HTTP_PORT[0m
+  [38;2;144;202;249m--auth-mode <AUTH_MODE>         [0m [2mMCP auth mode. Bearer generates/requires AXON_MCP_HTTP_TOKEN; OAuth requires Google OAuth vars[0m
+  [38;2;144;202;249m--mcp-token <MCP_TOKEN>         [0m [2mStatic bearer token for AXON_MCP_HTTP_TOKEN[0m
+  [38;2;144;202;249m--oauth-public-url <OAUTH_PUBLIC_URL>[0m
+                                   [2mPublic URL for OAuth metadata and callbacks[0m
+  [38;2;144;202;249m--google-client-id <GOOGLE_CLIENT_ID>[0m
+                                   [2mGoogle OAuth client ID[0m
+  [38;2;144;202;249m--google-client-secret <GOOGLE_CLIENT_SECRET>[0m
+                                   [2mGoogle OAuth client secret[0m
+  [38;2;144;202;249m--auth-admin-email <AUTH_ADMIN_EMAIL>[0m
+                                   [2mAdmin email allowed to complete OAuth auth[0m
+  [38;2;144;202;249m--tavily-api-key <TAVILY_API_KEY>[0m
+                                   [2mTavily API key for search/research[0m
+  [38;2;144;202;249m--github-token <GITHUB_TOKEN>   [0m [2mGitHub token for higher-rate GitHub ingest[0m
+  [38;2;144;202;249m--reddit-client-id <REDDIT_CLIENT_ID>[0m
+                                   [2mReddit client ID for Reddit ingest[0m
+  [38;2;144;202;249m--reddit-client-secret <REDDIT_CLIENT_SECRET>[0m
+                                   [2mReddit client secret for Reddit ingest[0m
+  [38;2;144;202;249m-h, --help                      [0m [2mPrint help[0m

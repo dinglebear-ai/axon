@@ -6,11 +6,11 @@ use uuid::Uuid;
 
 use crate::core::config::Config;
 use crate::jobs::backend::JobKind;
-use crate::jobs::lite::store::open_sqlite_pool;
+use crate::jobs::store::open_sqlite_pool;
 
 /// Thin Job struct used for CLI status display via `impl_job_status!`.
-/// Full-mode Postgres runtime has been removed.
-/// Lite-mode operations go through `crates/jobs/lite/`.
+/// Legacy Postgres runtime has been removed.
+/// SQLite operations go through `src/jobs/{store,query,ops}`.
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct EmbedJob {
     pub id: Uuid,
@@ -28,5 +28,5 @@ pub struct EmbedJob {
 /// Count all embed jobs in SQLite.
 pub async fn count_embed_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
     let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    Ok(crate::jobs::lite::query::count_jobs(&pool, JobKind::Embed).await?)
+    Ok(crate::jobs::query::count_jobs(&pool, JobKind::Embed).await?)
 }

@@ -6,6 +6,7 @@ pub mod claude_symlinks;
 pub mod env_staged;
 pub mod mcp_http;
 pub mod no_mod_rs;
+pub mod secrets;
 pub mod unwraps;
 
 pub fn check(root: &Path) -> Result<()> {
@@ -15,6 +16,7 @@ pub fn check(root: &Path) -> Result<()> {
     unwraps::check(root)?;
     claude_symlinks::check(root)?;
     broken_symlinks::check(root)?;
+    secrets::check(root)?;
     println!("All checks passed.");
     Ok(())
 }

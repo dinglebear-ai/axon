@@ -13,7 +13,7 @@ config/data/
 *.pid
 *.bak
 *.bak-*
-
+WEBCLAW_PATTERNS_TO_BORROW.md
 # ── Claude Code / AI tooling ────────────────────────────────────────────────
 .claude/settings.local.json
 .claude/worktrees/
@@ -55,12 +55,6 @@ Thumbs.db
 
 # ── Documentation artifacts (session/plan docs, not reference) ───────────────
 .docs/
-docs/plans/
-docs/sessions/
-docs/reports/
-docs/research/
-docs/superpowers/
-specs/
 
 # ── Rust ─────────────────────────────────────────────────────────────────────
 /target/

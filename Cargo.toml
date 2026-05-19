@@ -18,7 +18,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "4.1.0"
+version = "4.2.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -33,7 +33,6 @@ anyhow = "1"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22"
-bollard = "0.20"
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6"
 clap = { version = "4", features = ["derive", "env"] }
@@ -41,10 +40,8 @@ clap_complete = "4"
 console = "0.16"
 dialoguer = "0.12"
 indicatif = "0.18"
-log = "0.4"
 moka = { version = "0.12", features = ["future"] }
 octocrab = "0.49"
-portable-pty = "0"
 futures-util = "0.3"
 futures = "0.3"
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
@@ -113,8 +110,6 @@ tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
 toml = { version = "1.1", default-features = false, features = ["parse", "serde"] }
 toml_edit = "0.25.11"
 tokio-util = { version = "0.7", features = ["compat"] }
-tokio-executor-trait = "3"
-tokio-reactor-trait = "4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 tracing-appender = "0.2"
@@ -122,7 +117,6 @@ utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
-zip = { version = "8", default-features = false, features = ["deflate"] }
 regex = "1"
 sha2 = "0.11"
 hex = "0.4"
@@ -194,7 +188,6 @@ tokio = { version = "1", features = [
 # tei_embed 413-retry logic, ensure_collection idempotency, and API clients
 # without requiring live services.
 httpmock = "0.8"
-insta = { version = "1", features = ["json"] }
 serial_test = "3"
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }

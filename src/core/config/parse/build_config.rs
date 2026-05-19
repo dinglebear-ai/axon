@@ -34,8 +34,6 @@ pub(super) fn into_config_with_sources(
     collection_was_explicit: bool,
 ) -> Result<Config, String> {
     let mut global = cli.global;
-    let fetch_retries_was_set = global.fetch_retries.is_some();
-    let retry_backoff_was_set = global.retry_backoff_ms.is_some();
 
     let dispatched = command_dispatch::dispatch(cli.command);
 
@@ -45,7 +43,12 @@ pub(super) fn into_config_with_sources(
     // intentionally not checked for these subcommands.
     if matches!(
         dispatched.command,
-        CommandKind::Completions | CommandKind::Setup | CommandKind::Config
+        CommandKind::Completions
+            | CommandKind::Preflight
+            | CommandKind::Smoke
+            | CommandKind::Stack
+            | CommandKind::Setup
+            | CommandKind::Config
     ) {
         return Ok(Config {
             command: dispatched.command,
@@ -83,10 +86,8 @@ pub(super) fn into_config_with_sources(
     };
     validate_collection_name(&collection)?;
 
-    let sqlite_path = global
-        .sqlite_path
-        .take()
-        .or_else(|| read_env("AXON_SQLITE_PATH").map(std::path::PathBuf::from))
+    let sqlite_path = read_env("AXON_SQLITE_PATH")
+        .map(std::path::PathBuf::from)
         .unwrap_or_else(default_sqlite_path);
 
     if !output_dir_was_explicit
@@ -96,12 +97,14 @@ pub(super) fn into_config_with_sources(
         global.output_dir = std::path::PathBuf::from(output_dir);
     }
 
-    let mut crawl_concurrency_limit = global.crawl_concurrency_limit;
-    let mut backfill_concurrency_limit = global.backfill_concurrency_limit;
-    if let Some(limit) = global.concurrency_limit {
+    let mut crawl_concurrency_limit = toml.workers.crawl_concurrency_limit;
+    let mut backfill_concurrency_limit = toml.workers.backfill_concurrency_limit;
+    if let Some(limit) = toml.workers.concurrency_limit {
         crawl_concurrency_limit = Some(limit);
         backfill_concurrency_limit = Some(limit);
     }
+    let fetch_retries_was_set = toml.scrape.fetch_retries.is_some();
+    let retry_backoff_was_set = toml.scrape.retry_backoff_ms.is_some();
 
     let exclude_input = std::mem::take(&mut global.exclude_path_prefix);
     let normalized_excludes = excludes::normalize_exclude_prefixes(exclude_input);

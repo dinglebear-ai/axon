@@ -16,8 +16,7 @@ pub struct ChromeBootstrapOutcome {
 }
 
 pub fn chrome_runtime_requested(cfg: &Config) -> bool {
-    !cfg.cache_skip_browser
-        && matches!(cfg.render_mode, RenderMode::Chrome | RenderMode::AutoSwitch)
+    !cfg.cache_http_only && matches!(cfg.render_mode, RenderMode::Chrome | RenderMode::AutoSwitch)
 }
 
 pub async fn bootstrap_chrome_runtime(cfg: &Config) -> ChromeBootstrapOutcome {
@@ -30,13 +29,9 @@ pub async fn bootstrap_chrome_runtime(cfg: &Config) -> ChromeBootstrapOutcome {
     if !chrome_runtime_requested(cfg) {
         return outcome;
     }
-    if !cfg.chrome_bootstrap {
-        return outcome;
-    }
-
     let Some(remote_url) = cfg.chrome_remote_url.as_deref() else {
         outcome.warnings.push(
-            "no --chrome-remote-url provided; using Spider local Chrome launcher".to_string(),
+            "AXON_CHROME_REMOTE_URL is unset; using Spider local Chrome launcher".to_string(),
         );
         return outcome;
     };
@@ -62,7 +57,7 @@ pub async fn bootstrap_chrome_runtime(cfg: &Config) -> ChromeBootstrapOutcome {
 }
 
 pub fn resolve_initial_mode(cfg: &Config) -> RenderMode {
-    if cfg.cache_skip_browser {
+    if cfg.cache_http_only {
         return RenderMode::Http;
     }
     match cfg.render_mode {
