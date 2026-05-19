@@ -15,11 +15,12 @@ pub(crate) struct HttpError {
     diagnostics: Option<serde_json::Value>,
 }
 
-#[derive(Serialize)]
-struct ErrorBody {
-    kind: &'static str,
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct ErrorBody {
+    kind: String,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Object)]
     diagnostics: Option<serde_json::Value>,
 }
 
@@ -100,7 +101,7 @@ impl IntoResponse for HttpError {
         (
             self.status,
             Json(ErrorBody {
-                kind: self.kind,
+                kind: self.kind.to_string(),
                 message: self.message,
                 diagnostics: self.diagnostics,
             }),
