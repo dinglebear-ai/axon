@@ -16,6 +16,8 @@ pub mod exploration;
 pub mod jobs;
 #[path = "handlers/rag.rs"]
 pub mod rag;
+#[path = "handlers/rest.rs"]
+pub(crate) mod rest;
 #[path = "handlers/setup.rs"]
 pub mod setup;
 

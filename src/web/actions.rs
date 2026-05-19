@@ -118,6 +118,10 @@ fn authorize_action(
     headers: &HeaderMap,
     action: &crate::mcp::schema::AxonRequest,
 ) -> Result<(), (StatusCode, ClientActionError)> {
+    // Destructive / irreversible actions require a valid token unconditionally —
+    // must NOT be reachable via LoopbackDev (no-token) mode regardless of the
+    // global auth_required flag. INVARIANT: required_scope() in action_api.rs
+    // must return Some(...) for every action listed here.
     let force_auth = matches!(
         action,
         crate::mcp::schema::AxonRequest::Dedupe(_) | crate::mcp::schema::AxonRequest::Migrate(_)
@@ -202,14 +206,30 @@ fn json_error(
     (status, Json(ClientActionResponse::error(request_id, error))).into_response()
 }
 
+// RFC 8594 Deprecation + Sunset + Link headers on every /v1/actions response.
+// Link advertises the successor REST surface so automated clients can migrate.
 fn deprecated_response(mut response: Response) -> Response {
-    response.headers_mut().insert(
+    let h = response.headers_mut();
+    h.insert(
         HeaderName::from_static("deprecation"),
         HeaderValue::from_static("true"),
     );
-    response.headers_mut().insert(
+    h.insert(
         HeaderName::from_static("sunset"),
         HeaderValue::from_static("Tue, 01 Sep 2026 00:00:00 GMT"),
+    );
+    h.insert(
+        HeaderName::from_static("link"),
+        HeaderValue::from_static(
+            "</v1/capabilities>; rel=\"alternate\"; type=\"application/json\", \
+</v1/sources>; rel=\"successor-version\", \
+</v1/query>; rel=\"successor-version\", \
+</v1/crawl>; rel=\"successor-version\", \
+</v1/embed>; rel=\"successor-version\", \
+</v1/ingest>; rel=\"successor-version\", \
+</v1/extract>; rel=\"successor-version\", \
+</v1/migrate>; rel=\"successor-version\"",
+        ),
     );
     response
 }
