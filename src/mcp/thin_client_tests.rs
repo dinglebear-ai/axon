@@ -22,7 +22,14 @@ fn mcp_stays_local_when_local_mode_is_forced() {
 #[test]
 fn mcp_lifecycle_list_preserves_pagination_query() {
     assert_eq!(
-        page_path_i64("/v1/crawl", Some(25), Some(50)),
+        page_path_i64("/v1/crawl", Some(25), Some(50)).expect("valid pagination"),
         "/v1/crawl?limit=25&offset=50"
     );
+}
+
+#[test]
+fn mcp_lifecycle_list_rejects_negative_limit() {
+    let err = page_path_i64("/v1/crawl", Some(-1), None).expect_err("negative limit rejected");
+
+    assert!(err.to_string().contains("limit must be"));
 }

@@ -86,7 +86,14 @@ fn uses_container_dns(url: &str) -> bool {
     let Some(host) = parsed.host_str() else {
         return false;
     };
-    ["axon-qdrant", "axon-tei", "axon-chrome", "axon-llm"].contains(&host)
+    [
+        "axon-qdrant",
+        "axon-tei",
+        "axon-chrome",
+        "axon-ollama",
+        "axon-llm",
+    ]
+    .contains(&host)
 }
 
 fn localhost_default(kind: EndpointKind) -> Option<&'static str> {

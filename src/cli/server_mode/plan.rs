@@ -129,6 +129,7 @@ fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, Box<dyn Error
                     "query": query,
                     "limit": cfg.search_limit,
                     "offset": 0,
+                    "collection": cfg.collection,
                 }),
                 label: "query",
                 poll_family: None,

@@ -184,6 +184,7 @@ fn query_server_mode_uses_direct_rest_path() {
     assert_eq!(plan.path, "/v1/query");
     assert_eq!(plan.body["query"], "routing contract");
     assert_eq!(plan.body["limit"], 7);
+    assert_eq!(plan.body["collection"], "axon");
 }
 
 #[test]
