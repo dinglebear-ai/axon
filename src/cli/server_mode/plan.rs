@@ -1,6 +1,7 @@
 use crate::cli;
 use crate::core::config::{CommandKind, Config};
 use std::error::Error;
+use std::fmt;
 
 use super::{ServerJobFamily, server_mode_rejects_host_local_embed_input};
 
@@ -13,6 +14,23 @@ pub(crate) struct ServerRestPlan {
     pub poll_family: Option<ServerJobFamily>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ServerPlanError(String);
+
+impl ServerPlanError {
+    fn new(message: impl Into<String>) -> Self {
+        Self(message.into())
+    }
+}
+
+impl fmt::Display for ServerPlanError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Error for ServerPlanError {}
+
 pub(crate) fn status_path_for_family(family: ServerJobFamily, job_id: &str) -> String {
     match family {
         ServerJobFamily::Crawl => format!("/v1/crawl/{job_id}"),
@@ -22,7 +40,7 @@ pub(crate) fn status_path_for_family(family: ServerJobFamily, job_id: &str) -> S
     }
 }
 
-pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
+pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanError> {
     if let Some(plan) = discovery_rest_plan(cfg) {
         return Ok(plan);
     }
@@ -44,7 +62,9 @@ pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn E
         CommandKind::Summarize => {
             let urls = cli::commands::common::parse_urls(cfg);
             if urls.is_empty() {
-                return Err("summarize requires at least one URL (positional or --urls)".into());
+                return Err(ServerPlanError::new(
+                    "summarize requires at least one URL (positional or --urls)",
+                ));
             }
             Ok(ServerRestPlan {
                 method: "POST",
@@ -59,7 +79,10 @@ pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn E
         CommandKind::Embed => embed_server_rest_plan(cfg),
         CommandKind::Ingest => ingest_server_rest_plan(cfg, false),
         CommandKind::Sessions => ingest_server_rest_plan(cfg, true),
-        _ => Err(format!("{} is not routed through server mode", cfg.command).into()),
+        _ => Err(ServerPlanError::new(format!(
+            "{} is not routed through server mode",
+            cfg.command
+        ))),
     }
 }
 
@@ -104,7 +127,7 @@ fn discovery_rest_plan(cfg: &Config) -> Option<ServerRestPlan> {
     }
 }
 
-fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, Box<dyn Error>> {
+fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, ServerPlanError> {
     let plan = match cfg.command {
         CommandKind::Map => {
             let url = single_url(cfg, "map")?;
@@ -195,7 +218,7 @@ fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, Box<dyn Error
     Ok(Some(plan))
 }
 
-fn crawl_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
+fn crawl_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanError> {
     if let Some(subaction) = cfg.positional.first().map(String::as_str)
         && let Some(plan) =
             async_job_lifecycle_plan("crawl", ServerJobFamily::Crawl, subaction, cfg)?
@@ -204,7 +227,9 @@ fn crawl_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>
     }
     let urls = cli::commands::common::parse_urls(cfg);
     if urls.is_empty() {
-        return Err("crawl requires at least one URL (positional or --urls)".into());
+        return Err(ServerPlanError::new(
+            "crawl requires at least one URL (positional or --urls)",
+        ));
     }
     Ok(ServerRestPlan {
         method: "POST",
@@ -226,7 +251,7 @@ fn crawl_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>
     })
 }
 
-fn extract_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
+fn extract_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanError> {
     if let Some(subaction) = cfg.positional.first().map(String::as_str)
         && let Some(plan) =
             async_job_lifecycle_plan("extract", ServerJobFamily::Extract, subaction, cfg)?
@@ -235,7 +260,9 @@ fn extract_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Erro
     }
     let urls = cli::commands::common::parse_urls(cfg);
     if urls.is_empty() {
-        return Err("extract requires at least one URL (positional or --urls)".into());
+        return Err(ServerPlanError::new(
+            "extract requires at least one URL (positional or --urls)",
+        ));
     }
     Ok(ServerRestPlan {
         method: "POST",
@@ -252,7 +279,7 @@ fn extract_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Erro
     })
 }
 
-fn embed_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
+fn embed_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanError> {
     if let Some(subaction) = cfg.positional.first().map(String::as_str)
         && let Some(plan) =
             async_job_lifecycle_plan("embed", ServerJobFamily::Embed, subaction, cfg)?
@@ -266,10 +293,9 @@ fn embed_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>
             .to_string()
     });
     if server_mode_rejects_host_local_embed_input(&input) {
-        return Err(
-            "server mode does not accept host-local embed paths yet; use a URL/text input or `--local`"
-                .into(),
-        );
+        return Err(ServerPlanError::new(
+            "server mode does not accept host-local embed paths yet; use a URL/text input or `--local`",
+        ));
     }
     Ok(ServerRestPlan {
         method: "POST",
@@ -283,7 +309,10 @@ fn embed_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>
     })
 }
 
-fn ingest_server_rest_plan(cfg: &Config, sessions: bool) -> Result<ServerRestPlan, Box<dyn Error>> {
+fn ingest_server_rest_plan(
+    cfg: &Config,
+    sessions: bool,
+) -> Result<ServerRestPlan, ServerPlanError> {
     if !sessions
         && let Some(subaction) = cfg.positional.first().map(String::as_str)
         && let Some(plan) =
@@ -306,33 +335,39 @@ fn ingest_server_rest_plan(cfg: &Config, sessions: bool) -> Result<ServerRestPla
             poll_family: Some(ServerJobFamily::Ingest),
         });
     }
-    let target = cfg.positional.first().ok_or("ingest requires <target>")?;
-    let source = crate::services::ingest::classify_target(target, cfg.github_include_source)?;
+    let target = cfg
+        .positional
+        .first()
+        .ok_or_else(|| ServerPlanError::new("ingest requires <target>"))?;
+    let source = crate::services::ingest::classify_target(target, cfg.github_include_source)
+        .map_err(|err| ServerPlanError::new(err.to_string()))?;
     Ok(ServerRestPlan {
         method: "POST",
         path: "/v1/ingest".to_string(),
-        body: serde_json::to_value(source)?,
+        body: serde_json::to_value(source).map_err(|err| ServerPlanError::new(err.to_string()))?,
         label: "ingest",
         poll_family: Some(ServerJobFamily::Ingest),
     })
 }
 
-fn single_url(cfg: &Config, command: &str) -> Result<String, Box<dyn Error>> {
+fn single_url(cfg: &Config, command: &str) -> Result<String, ServerPlanError> {
     let urls = cli::commands::common::parse_urls(cfg);
     match urls.as_slice() {
-        [] => Err(format!("{command} requires a URL").into()),
+        [] => Err(ServerPlanError::new(format!("{command} requires a URL"))),
         [url] => Ok(url.clone()),
-        _ => Err(format!("{command} accepts exactly one URL in server mode").into()),
+        _ => Err(ServerPlanError::new(format!(
+            "{command} accepts exactly one URL in server mode"
+        ))),
     }
 }
 
-fn query_text(cfg: &Config, command: &str) -> Result<String, Box<dyn Error>> {
+fn query_text(cfg: &Config, command: &str) -> Result<String, ServerPlanError> {
     cfg.query
         .as_deref()
         .map(str::trim)
         .filter(|query| !query.is_empty())
         .map(str::to_string)
-        .ok_or_else(|| format!("{command} requires text").into())
+        .ok_or_else(|| ServerPlanError::new(format!("{command} requires text")))
 }
 
 fn search_like_plan(
@@ -374,13 +409,12 @@ fn async_job_lifecycle_plan(
     poll_family: ServerJobFamily,
     subaction: &str,
     cfg: &Config,
-) -> Result<Option<ServerRestPlan>, Box<dyn Error>> {
+) -> Result<Option<ServerRestPlan>, ServerPlanError> {
     let plan = match subaction {
         "status" | "errors" => {
-            let id = cfg
-                .positional
-                .get(1)
-                .ok_or_else(|| format!("{family} {subaction} requires <job-id>"))?;
+            let id = cfg.positional.get(1).ok_or_else(|| {
+                ServerPlanError::new(format!("{family} {subaction} requires <job-id>"))
+            })?;
             ServerRestPlan {
                 method: "GET",
                 path: status_path_for_family(poll_family, id),
@@ -411,10 +445,9 @@ fn async_job_lifecycle_plan(
             poll_family: None,
         },
         "cancel" => {
-            let id = cfg
-                .positional
-                .get(1)
-                .ok_or_else(|| format!("{family} cancel requires <job-id>"))?;
+            let id = cfg.positional.get(1).ok_or_else(|| {
+                ServerPlanError::new(format!("{family} cancel requires <job-id>"))
+            })?;
             ServerRestPlan {
                 method: "POST",
                 path: format!("/v1/{family}/{id}/cancel"),
@@ -424,10 +457,9 @@ fn async_job_lifecycle_plan(
             }
         }
         "worker" => {
-            return Err(format!(
+            return Err(ServerPlanError::new(format!(
                 "server mode does not start local {family} workers; use `axon serve`"
-            )
-            .into());
+            )));
         }
         _ => return Ok(None),
     };
