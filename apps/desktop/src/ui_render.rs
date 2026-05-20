@@ -8,7 +8,7 @@ use gpui::{
     rgb,
 };
 
-use super::Palette;
+use super::{ChromeMenu, Palette};
 use crate::layout::compute_desired_height;
 use crate::output::CommandOutput;
 use crate::render::{
@@ -19,7 +19,7 @@ use crate::theme::{
     AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_STRONG, AURORA_TEXT_MUTED,
     AURORA_TEXT_PRIMARY,
 };
-use crate::{ClearOutput, Submit, ToggleActionMenu};
+use crate::{Submit, ToggleActionMenu};
 
 impl Render for Palette {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -44,6 +44,11 @@ impl Render for Palette {
 
         let status_dot = render_status_dot(self.connection, cx);
 
+        let chrome_menu_open = self.chrome_menu_open;
+        let has_output = command_output
+            .as_ref()
+            .is_some_and(|output| output.has_body());
+
         div()
             .key_context("Palette")
             .track_focus(&self.focus)
@@ -58,16 +63,16 @@ impl Render for Palette {
             .flex()
             .flex_col()
             .size_full()
+            .relative()
             .overflow_hidden()
             .font_family(AURORA_FONT_SANS)
             .bg(rgb(AURORA_PAGE_BG))
             .text_color(rgb(AURORA_TEXT_PRIMARY))
             .child(render_window_chrome(
                 action_menu_open,
-                command_output
-                    .as_ref()
-                    .is_some_and(|output| output.has_body()),
+                chrome_menu_open,
                 window,
+                cx,
             ))
             .child(
                 div().flex_1().overflow_hidden().p_5().child(
@@ -138,6 +143,9 @@ impl Render for Palette {
                         ),
                 ),
             )
+            .when_some(chrome_menu_open, |el, menu| {
+                el.child(render_chrome_menu_dropdown(menu, has_output, cx))
+            })
     }
 }
 
@@ -163,8 +171,9 @@ fn render_prompt_text(
 
 fn render_window_chrome(
     action_menu_open: bool,
-    has_output: bool,
+    chrome_menu_open: Option<ChromeMenu>,
     window: &mut Window,
+    cx: &mut Context<Palette>,
 ) -> impl IntoElement {
     div()
         .id("axon-window-chrome")
@@ -186,14 +195,36 @@ fn render_window_chrome(
                 .px_2()
                 .h_full()
                 .child(render_chrome_menu_trigger(action_menu_open))
-                .child(render_menu_item("File", MenuAction::OpenMenu))
-                .child(render_menu_item("Edit", MenuAction::OpenMenu))
+                .child(render_menu_item(
+                    "File",
+                    ChromeMenu::File,
+                    chrome_menu_open,
+                    cx,
+                ))
+                .child(render_menu_item(
+                    "Edit",
+                    ChromeMenu::Edit,
+                    chrome_menu_open,
+                    cx,
+                ))
                 .child(render_menu_item(
                     "View",
-                    MenuAction::ToggleOutput(has_output),
+                    ChromeMenu::View,
+                    chrome_menu_open,
+                    cx,
                 ))
-                .child(render_menu_item("Run", MenuAction::Submit))
-                .child(render_menu_item("Help", MenuAction::OpenMenu)),
+                .child(render_menu_item(
+                    "Run",
+                    ChromeMenu::Run,
+                    chrome_menu_open,
+                    cx,
+                ))
+                .child(render_menu_item(
+                    "Help",
+                    ChromeMenu::Help,
+                    chrome_menu_open,
+                    cx,
+                )),
         )
         .child(
             div()
@@ -212,13 +243,6 @@ fn render_window_chrome(
                 ),
         )
         .child(render_windows_caption_buttons(window))
-}
-
-#[derive(Clone, Copy)]
-enum MenuAction {
-    OpenMenu,
-    ToggleOutput(bool),
-    Submit,
 }
 
 fn render_chrome_menu_trigger(action_menu_open: bool) -> impl IntoElement {
@@ -243,7 +267,13 @@ fn render_chrome_menu_trigger(action_menu_open: bool) -> impl IntoElement {
         .child("≡")
 }
 
-fn render_menu_item(label: &'static str, action: MenuAction) -> impl IntoElement {
+fn render_menu_item(
+    label: &'static str,
+    menu: ChromeMenu,
+    chrome_menu_open: Option<ChromeMenu>,
+    cx: &mut Context<Palette>,
+) -> impl IntoElement {
+    let is_open = chrome_menu_open == Some(menu);
     div()
         .id(SharedString::from(format!("chrome-menu-{label}")))
         .occlude()
@@ -255,18 +285,136 @@ fn render_menu_item(label: &'static str, action: MenuAction) -> impl IntoElement
         .font_family(AURORA_FONT_SANS)
         .font_weight(FontWeight(520.0))
         .text_size(px(12.0))
-        .text_color(rgb(AURORA_TEXT_MUTED))
+        .text_color(if is_open {
+            rgb(AURORA_TEXT_PRIMARY)
+        } else {
+            rgb(AURORA_TEXT_MUTED)
+        })
+        .when(is_open, |el| el.bg(rgb(0x1a2633)))
         .hover(|el| el.bg(rgb(0x1a2633)).text_color(rgb(AURORA_TEXT_PRIMARY)))
         .on_mouse_down(
             MouseButton::Left,
-            move |_: &MouseDownEvent, window, cx| match action {
-                MenuAction::OpenMenu => window.dispatch_action(Box::new(ToggleActionMenu), cx),
-                MenuAction::ToggleOutput(true) => window.dispatch_action(Box::new(ClearOutput), cx),
-                MenuAction::ToggleOutput(false) => {
-                    window.dispatch_action(Box::new(ToggleActionMenu), cx)
+            cx.listener(move |this, _: &MouseDownEvent, _window, cx| {
+                this.toggle_chrome_menu(menu, cx);
+            }),
+        )
+        .child(label)
+}
+
+#[derive(Clone, Copy)]
+enum MenuCommand {
+    ClearOutput,
+    ClearInput,
+    Submit,
+    ShowCommands,
+    ToggleErrors,
+}
+
+fn render_chrome_menu_dropdown(
+    menu: ChromeMenu,
+    has_output: bool,
+    cx: &mut Context<Palette>,
+) -> impl IntoElement {
+    let left = match menu {
+        ChromeMenu::File => 38.0,
+        ChromeMenu::Edit => 78.0,
+        ChromeMenu::View => 119.0,
+        ChromeMenu::Run => 166.0,
+        ChromeMenu::Help => 208.0,
+    };
+
+    let rows: Vec<(&'static str, MenuCommand, bool)> = match menu {
+        ChromeMenu::File => vec![
+            ("Clear Output", MenuCommand::ClearOutput, has_output),
+            ("Show Commands", MenuCommand::ShowCommands, true),
+        ],
+        ChromeMenu::Edit => vec![
+            ("Clear Input", MenuCommand::ClearInput, true),
+            ("Show Commands", MenuCommand::ShowCommands, true),
+        ],
+        ChromeMenu::View => vec![
+            ("Toggle Errors", MenuCommand::ToggleErrors, has_output),
+            ("Clear Output", MenuCommand::ClearOutput, has_output),
+        ],
+        ChromeMenu::Run => vec![("Run Command", MenuCommand::Submit, true)],
+        ChromeMenu::Help => vec![("Show Commands", MenuCommand::ShowCommands, true)],
+    };
+
+    let row_elements: Vec<AnyElement> = rows
+        .into_iter()
+        .map(|(label, command, enabled)| {
+            render_chrome_menu_row(label, command, enabled, cx).into_any_element()
+        })
+        .collect();
+
+    div()
+        .id("chrome-menu-dropdown")
+        .absolute()
+        .top(px(crate::layout::WINDOW_CHROME_HEIGHT - 1.0))
+        .left(px(left))
+        .w(px(180.0))
+        .py_1()
+        .rounded_sm()
+        .border_1()
+        .border_color(rgb(AURORA_BORDER_STRONG))
+        .bg(rgb(0x111a24))
+        .shadow_lg()
+        .children(row_elements)
+}
+
+fn render_chrome_menu_row(
+    label: &'static str,
+    command: MenuCommand,
+    enabled: bool,
+    cx: &mut Context<Palette>,
+) -> impl IntoElement {
+    div()
+        .id(SharedString::from(format!("chrome-menu-row-{label}")))
+        .occlude()
+        .h(px(28.0))
+        .px_3()
+        .flex()
+        .items_center()
+        .font_family(AURORA_FONT_SANS)
+        .font_weight(FontWeight(520.0))
+        .text_size(px(12.0))
+        .text_color(if enabled {
+            rgb(AURORA_TEXT_PRIMARY)
+        } else {
+            rgb(AURORA_TEXT_MUTED)
+        })
+        .when(enabled, |el| el.hover(|el| el.bg(rgb(0x1a2633))))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                if !enabled {
+                    return;
                 }
-                MenuAction::Submit => window.dispatch_action(Box::new(Submit), cx),
-            },
+                this.chrome_menu_open = None;
+                match command {
+                    MenuCommand::ClearOutput => {
+                        this.command_output = None;
+                        this.errors_open = false;
+                        cx.notify();
+                    }
+                    MenuCommand::ClearInput => {
+                        this.query.clear();
+                        this.locked_command = None;
+                        this.selected = 0;
+                        cx.notify();
+                    }
+                    MenuCommand::Submit => this.submit(&Submit, window, cx),
+                    MenuCommand::ShowCommands => {
+                        this.action_menu_open = true;
+                        this.selected = this.selected_for_locked_action();
+                        cx.notify();
+                    }
+                    MenuCommand::ToggleErrors => {
+                        this.errors_open = !this.errors_open;
+                        cx.notify();
+                    }
+                }
+            }),
         )
         .child(label)
 }

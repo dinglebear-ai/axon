@@ -41,6 +41,15 @@ impl ConnectionState {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChromeMenu {
+    File,
+    Edit,
+    View,
+    Run,
+    Help,
+}
+
 pub(crate) struct Palette {
     query: String,
     selected: usize,
@@ -51,19 +60,18 @@ pub(crate) struct Palette {
     output_scroll: ScrollHandle,
     locked_command: Option<CommandAction>,
     action_menu_open: bool,
+    chrome_menu_open: Option<ChromeMenu>,
     errors_open: bool,
     connection: ConnectionState,
     /// Monotonic id for in-flight health checks. Each spawn increments this;
     /// completions only apply when their captured id still matches the latest,
     /// so a slower older probe can't overwrite a newer result.
     health_check_id: u64,
-    /// Last window height we pushed via `Window::resize`. Used to avoid
-    /// re-resizing on every render frame when the target is unchanged.
-    /// `None` until the first render commits a height. Starts as `None`
-    /// so the very first render unconditionally syncs to the computed
-    /// target (which, on a cold launch with no input, equals
-    /// `MIN_WINDOW_HEIGHT` — already the launch size).
-    current_window_height: Option<f32>,
+    /// Last height the palette itself pushed via `Window::resize`.
+    /// User-driven resizes are intentionally not written here; if we store a
+    /// manual height as the auto height, the next render sees `auto != target`
+    /// and snaps the window back to the content cap.
+    last_auto_window_height: Option<f32>,
 }
 
 pub(crate) struct RunningCommand {
@@ -110,10 +118,11 @@ impl Palette {
             output_scroll: ScrollHandle::new(),
             locked_command: None,
             action_menu_open: false,
+            chrome_menu_open: None,
             errors_open: false,
             connection: ConnectionState::Unknown,
             health_check_id: 0,
-            current_window_height: None,
+            last_auto_window_height: None,
         };
         palette.spawn_health_check(cx);
         palette
@@ -162,6 +171,7 @@ impl Palette {
         cx: &mut Context<Self>,
     ) {
         self.action_menu_open = !self.action_menu_open;
+        self.chrome_menu_open = None;
         self.selected = self.selected_for_locked_action();
         cx.notify();
     }
@@ -169,6 +179,7 @@ impl Palette {
     fn tab_complete(&mut self, _: &TabComplete, _window: &mut Window, cx: &mut Context<Self>) {
         if self.query.trim().is_empty() {
             self.action_menu_open = true;
+            self.chrome_menu_open = None;
             self.selected = self.selected_for_locked_action();
             cx.notify();
             return;
@@ -186,6 +197,7 @@ impl Palette {
         let n = self.matches().len();
         if n == 0 && self.query.trim().is_empty() {
             self.action_menu_open = true;
+            self.chrome_menu_open = None;
             self.selected = self.selected_for_locked_action();
             cx.notify();
             return;
@@ -219,7 +231,9 @@ impl Palette {
                 }
             }
             "escape" => {
-                if self.action_menu_open {
+                if self.chrome_menu_open.is_some() {
+                    self.chrome_menu_open = None;
+                } else if self.action_menu_open {
                     self.action_menu_open = false;
                 } else if self.locked_command.is_some() {
                     // Unlock but preserve typed argument so user can reselect a command.
@@ -237,6 +251,7 @@ impl Palette {
                 if !m.control && !m.alt && !m.platform && !m.function {
                     if let Some(ch) = ev.keystroke.key_char.as_deref() {
                         self.action_menu_open = false;
+                        self.chrome_menu_open = None;
                         self.query.push_str(ch);
                     }
                 }
@@ -276,16 +291,11 @@ impl Palette {
         // computed value collapse the window below the prompt row.
         let clamped = target_height.max(MIN_WINDOW_HEIGHT) + crate::layout::WINDOW_CHROME_HEIGHT;
         let current_height = window.bounds().size.height.as_f32();
-        let user_resized_taller = match self.current_window_height {
-            Some(prev) => (prev - current_height).abs() > 0.5 && current_height >= clamped,
-            None => false,
-        };
-        if user_resized_taller {
-            self.current_window_height = Some(current_height);
+        if preserves_manual_height(self.last_auto_window_height, current_height, clamped) {
             return;
         }
 
-        let needs_resize = match self.current_window_height {
+        let needs_resize = match self.last_auto_window_height {
             None => true,
             Some(prev) => current_height < clamped - 0.5 || (prev - clamped).abs() > 0.5,
         };
@@ -295,7 +305,7 @@ impl Palette {
                 width: current_width,
                 height: px(clamped),
             });
-            self.current_window_height = Some(clamped);
+            self.last_auto_window_height = Some(clamped);
         }
     }
 
@@ -355,6 +365,29 @@ impl Palette {
                     .position(|action| action.subcommand == locked.subcommand)
             })
             .unwrap_or(0)
+    }
+
+    fn toggle_chrome_menu(&mut self, menu: ChromeMenu, cx: &mut Context<Self>) {
+        self.chrome_menu_open = if self.chrome_menu_open == Some(menu) {
+            None
+        } else {
+            Some(menu)
+        };
+        self.action_menu_open = false;
+        cx.notify();
+    }
+}
+
+fn preserves_manual_height(
+    last_auto_height: Option<f32>,
+    current_height: f32,
+    target_height: f32,
+) -> bool {
+    match last_auto_height {
+        Some(auto_height) => {
+            (auto_height - current_height).abs() > 0.5 && current_height >= target_height
+        }
+        None => false,
     }
 }
 

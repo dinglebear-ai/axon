@@ -20,3 +20,16 @@ fn elapsed_label_minutes_uses_padded_seconds() {
     assert_eq!(format_elapsed(Duration::from_secs(63)), "1m 03s");
     assert_eq!(format_elapsed(Duration::from_secs(125)), "2m 05s");
 }
+
+#[test]
+fn manual_taller_resize_is_preserved_across_renders() {
+    assert!(preserves_manual_height(Some(445.0), 850.0, 445.0));
+    assert!(preserves_manual_height(Some(445.0), 850.0, 720.0));
+}
+
+#[test]
+fn auto_owned_or_too_short_window_is_not_preserved() {
+    assert!(!preserves_manual_height(None, 850.0, 445.0));
+    assert!(!preserves_manual_height(Some(445.0), 445.0, 445.0));
+    assert!(!preserves_manual_height(Some(445.0), 500.0, 720.0));
+}
