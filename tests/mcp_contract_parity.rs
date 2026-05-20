@@ -69,9 +69,13 @@ fn endpoints_request_parses_read_only_contract_fields() {
     let parsed = parse_axon_request(raw).expect("endpoints request should parse");
     if let AxonRequest::Endpoints(req) = parsed {
         assert_eq!(req.url.as_deref(), Some("https://example.com"));
+        assert_eq!(req.include_bundles, Some(true));
+        assert_eq!(req.first_party_only, Some(false));
+        assert_eq!(req.unique_only, Some(true));
         assert_eq!(req.max_scripts, Some(40));
         assert_eq!(req.max_scan_bytes, Some(8_388_608));
         assert_eq!(req.verify, Some(false));
+        assert_eq!(req.capture_network, Some(false));
     } else {
         panic!("expected Endpoints request");
     }

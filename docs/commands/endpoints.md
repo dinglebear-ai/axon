@@ -1,4 +1,5 @@
 # endpoints
+
 Last Modified: 2026-05-19
 
 Discover API-like endpoints from a target page without storing, embedding, or

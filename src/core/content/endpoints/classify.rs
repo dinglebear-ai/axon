@@ -15,11 +15,12 @@ pub(super) fn looks_like_endpoint(value: &str) -> bool {
 }
 
 pub(super) fn classify_value(value: &str) -> EndpointKind {
-    if value.starts_with("ws://") || value.starts_with("wss://") {
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("ws://") || lower.starts_with("wss://") {
         EndpointKind::Websocket
-    } else if value.to_ascii_lowercase().contains("graphql") || value.contains("/gql") {
+    } else if lower.contains("graphql") || lower.contains("/gql") {
         EndpointKind::Graphql
-    } else if value.starts_with("http://") || value.starts_with("https://") {
+    } else if lower.starts_with("http://") || lower.starts_with("https://") {
         EndpointKind::AbsoluteUrl
     } else {
         EndpointKind::RelativePath
@@ -27,7 +28,8 @@ pub(super) fn classify_value(value: &str) -> EndpointKind {
 }
 
 pub(super) fn classify_relative(value: &str) -> EndpointKind {
-    if value.to_ascii_lowercase().contains("graphql") || value.contains("/gql") {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("graphql") || lower.contains("/gql") {
         EndpointKind::Graphql
     } else {
         EndpointKind::RelativePath
@@ -35,7 +37,8 @@ pub(super) fn classify_relative(value: &str) -> EndpointKind {
 }
 
 pub(super) fn classify_absolute(value: &str) -> EndpointKind {
-    if value.to_ascii_lowercase().contains("graphql") || value.contains("/gql") {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("graphql") || lower.contains("/gql") {
         EndpointKind::Graphql
     } else {
         EndpointKind::AbsoluteUrl

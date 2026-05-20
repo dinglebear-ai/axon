@@ -154,6 +154,29 @@ fn matches_graphql_attributes_case_insensitively() {
 }
 
 #[test]
+fn matches_graphql_absolute_schemes_case_insensitively() {
+    let html = r#"<script>const endpoint = "HTTPS://api.example.test/GraphQL"</script>"#;
+
+    let report = extract_endpoints(
+        html,
+        "https://example.test",
+        &[],
+        &EndpointExtractOptions::default(),
+    );
+
+    let endpoint = report
+        .endpoints
+        .iter()
+        .find(|endpoint| endpoint.value == "HTTPS://api.example.test/GraphQL")
+        .expect("uppercase scheme GraphQL endpoint");
+    assert_eq!(endpoint.kind, EndpointKind::Graphql);
+    assert_eq!(
+        endpoint.normalized_url.as_deref(),
+        Some("https://api.example.test/GraphQL")
+    );
+}
+
+#[test]
 fn protocol_relative_urls_are_not_first_party_by_path_prefix() {
     let html = r#"<script>fetch("//api.other.test/graphql")</script>"#;
 

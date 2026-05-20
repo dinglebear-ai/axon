@@ -42,6 +42,7 @@ pub(super) async fn capture_requests_with_chrome(
         "Target.createTarget",
         serde_json::json!({ "url": "about:blank" }),
         cmd_timeout,
+        None,
     )
     .await?
     .get("targetId")
@@ -57,6 +58,7 @@ pub(super) async fn capture_requests_with_chrome(
         "Target.attachToTarget",
         serde_json::json!({ "targetId": target_id, "flatten": true }),
         cmd_timeout,
+        None,
     )
     .await?
     .get("sessionId")
@@ -81,6 +83,7 @@ pub(super) async fn capture_requests_with_chrome(
         "Target.closeTarget",
         serde_json::json!({ "targetId": target_id }),
         cmd_timeout,
+        None,
     )
     .await;
     capture_result
@@ -106,6 +109,7 @@ where
         "Network.enable",
         serde_json::json!({}),
         cmd_timeout,
+        None,
     )
     .await?;
     send_capture_cdp_cmd(
@@ -115,23 +119,39 @@ where
         "Page.enable",
         serde_json::json!({}),
         cmd_timeout,
+        None,
     )
     .await?;
-    send_capture_cdp_cmd(
-        tx,
-        rx,
-        Some(session_id),
-        "Page.navigate",
-        serde_json::json!({ "url": page_url }),
-        cmd_timeout,
-    )
-    .await?;
+    let mut captured = Vec::new();
+    {
+        let mut capture_early_event = |value: &serde_json::Value| {
+            if value.get("sessionId").and_then(|id| id.as_str()) != Some(session_id) {
+                return;
+            }
+            if value.get("method").and_then(|method| method.as_str())
+                == Some("Network.requestWillBeSent")
+                && captured.len() < max_requests
+                && let Some(request) = captured_request_from_event(value)
+            {
+                captured.push(request);
+            }
+        };
+        send_capture_cdp_cmd(
+            tx,
+            rx,
+            Some(session_id),
+            "Page.navigate",
+            serde_json::json!({ "url": page_url }),
+            cmd_timeout,
+            Some(&mut capture_early_event),
+        )
+        .await?;
+    }
 
     let deadline = tokio::time::Instant::now()
         + Duration::from_secs(network_idle_secs.clamp(5, 60) + CAPTURE_CDP_TIMEOUT_SECS);
     let mut last_network_event = tokio::time::Instant::now();
     let mut page_loaded = false;
-    let mut captured = Vec::new();
 
     while tokio::time::Instant::now() < deadline && captured.len() < max_requests {
         let idle_deadline = last_network_event + Duration::from_millis(CAPTURE_IDLE_MS);
@@ -204,6 +224,7 @@ async fn send_capture_cdp_cmd<Tx, Rx>(
     method: &str,
     params: serde_json::Value,
     timeout: Duration,
+    mut on_event: Option<&mut (dyn FnMut(&serde_json::Value) + Send)>,
 ) -> Result<serde_json::Value, String>
 where
     Tx: SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
@@ -231,6 +252,9 @@ where
         let value: serde_json::Value = serde_json::from_str(&text)
             .map_err(|err| format!("CDP response JSON parse failed: {err}"))?;
         if value.get("id").and_then(|value| value.as_u64()) != Some(id) {
+            if let Some(handler) = on_event.as_deref_mut() {
+                handler(&value);
+            }
             continue;
         }
         if let Some(error) = value.get("error") {

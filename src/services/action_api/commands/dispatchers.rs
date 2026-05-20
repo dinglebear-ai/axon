@@ -14,7 +14,7 @@ use crate::services::ingest as ingest_svc;
 use crate::services::scrape as scrape_svc;
 use crate::services::screenshot as screenshot_svc;
 use crate::services::summarize as summarize_svc;
-use crate::services::types::{ClientActionError, EndpointOptions};
+use crate::services::types::ClientActionError;
 use uuid::Uuid;
 
 use super::super::internal_error;
@@ -318,21 +318,31 @@ pub async fn dispatch_endpoints(
     let url = req
         .url
         .ok_or_else(|| ClientActionError::new("invalid_request", "url is required", false, None))?;
-    let result = endpoints_svc::discover(
-        service_context.cfg.as_ref(),
-        &url,
-        EndpointOptions {
-            include_bundles: req.include_bundles.unwrap_or(true),
-            first_party_only: req.first_party_only.unwrap_or(false),
-            unique_only: req.unique_only.unwrap_or(true),
-            max_scripts: req.max_scripts.unwrap_or(40),
-            max_scan_bytes: req.max_scan_bytes.unwrap_or(8 * 1024 * 1024),
-            verify: req.verify.unwrap_or(false),
-            capture_network: req.capture_network.unwrap_or(false),
-        },
-    )
-    .await
-    .map_err(|err| ClientActionError::new("internal", err.to_string(), true, None))?;
+    let mut options = endpoints_svc::options_from_config(service_context.cfg.as_ref());
+    if let Some(value) = req.include_bundles {
+        options.include_bundles = value;
+    }
+    if let Some(value) = req.first_party_only {
+        options.first_party_only = value;
+    }
+    if let Some(value) = req.unique_only {
+        options.unique_only = value;
+    }
+    if let Some(value) = req.max_scripts {
+        options.max_scripts = value;
+    }
+    if let Some(value) = req.max_scan_bytes {
+        options.max_scan_bytes = value;
+    }
+    if let Some(value) = req.verify {
+        options.verify = value;
+    }
+    if let Some(value) = req.capture_network {
+        options.capture_network = value;
+    }
+    let result = endpoints_svc::discover(service_context.cfg.as_ref(), &url, options, None)
+        .await
+        .map_err(|err| ClientActionError::new("internal", err.to_string(), true, None))?;
     serde_json::to_value(result).map_err(|err| {
         ClientActionError::new(
             "internal",

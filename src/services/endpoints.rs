@@ -2,31 +2,30 @@ use crate::core::config::Config;
 use crate::core::content::{
     EndpointExtractOptions, PrefetchedBundle, discover_script_sources, extract_endpoints,
 };
-use crate::core::http::{
-    axon_ua, build_client, build_client_no_redirect, normalize_url, validate_url_with_dns,
-};
+use crate::core::http::{axon_ua, build_client, normalize_url, validate_url_with_dns};
+use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::types::{
     DiscoveredEndpoint, EndpointKind, EndpointOptions, EndpointReport, EndpointSourceKind,
-    EndpointVerification,
 };
 use futures_util::{StreamExt, stream};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::future::Future;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 use url::Url;
 
 mod capture;
 use capture::capture_requests_with_chrome;
+mod verify;
+use verify::verify_endpoints;
 
 type EndpointError = Box<dyn Error + Send + Sync>;
 
 const BUNDLE_TIMEOUT_SECS: u64 = 8;
-const VERIFY_TIMEOUT_SECS: u64 = 4;
 const MAX_BUNDLE_BYTES: usize = 2 * 1024 * 1024;
-const MAX_VERIFY_PROBES: usize = 40;
-const VERIFY_CONCURRENCY: usize = 5;
 const CAPTURE_MAX_REQUESTS: usize = 500;
+const CAPTURE_VALIDATION_CONCURRENCY: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct CapturedRequest {
@@ -77,8 +76,9 @@ pub async fn discover(
     cfg: &Config,
     url: &str,
     options: EndpointOptions,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<EndpointReport, EndpointError> {
-    discover_with_capture_provider(cfg, url, options, &ChromeNetworkCapture).await
+    discover_with_capture_provider(cfg, url, options, &ChromeNetworkCapture, tx).await
 }
 
 pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
@@ -86,15 +86,18 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     url: &str,
     mut options: EndpointOptions,
     capture_provider: &P,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<EndpointReport, EndpointError> {
     normalize_options(&mut options);
     let started = Instant::now();
     let normalized = normalize_url(url).into_owned();
     validate_url_with_dns_timeout(&normalized).await?;
+    emit_endpoint_log(&tx, format!("starting endpoint discovery: {normalized}")).await;
 
     let client = build_client(timeout_secs(cfg, BUNDLE_TIMEOUT_SECS), Some(axon_ua()))?;
     let (html, html_truncated) =
         fetch_bounded_text(&client, &normalized, options.max_scan_bytes, true).await?;
+    emit_endpoint_log(&tx, "endpoint discovery fetched target page").await;
     let (script_sources, script_truncated) =
         discover_script_sources(&html, &normalized, options.max_scripts);
     let bundle_sources: Vec<_> = if options.include_bundles {
@@ -109,6 +112,13 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     };
 
     let bundles = fetch_bundles(&client, &bundle_sources, options.max_scan_bytes).await;
+    if options.include_bundles {
+        emit_endpoint_log(
+            &tx,
+            format!("endpoint discovery fetched {} bundles", bundles.len()),
+        )
+        .await;
+    }
     let mut warnings = Vec::new();
     let mut prefetched = Vec::new();
     for item in bundles {
@@ -134,6 +144,7 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     report.warnings.extend(warnings);
 
     if options.capture_network {
+        emit_endpoint_log(&tx, "endpoint discovery starting network capture").await;
         merge_network_capture(
             cfg,
             &normalized,
@@ -148,10 +159,42 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
         recompute_hosts(&mut report);
     }
     if options.verify {
+        emit_endpoint_log(&tx, "endpoint discovery verifying endpoints").await;
         verify_endpoints(cfg, &normalized, &mut report).await;
     }
     report.elapsed_ms = started.elapsed().as_millis() as u64;
+    emit_endpoint_log(
+        &tx,
+        format!(
+            "endpoint discovery complete: {} endpoints",
+            report.endpoints.len()
+        ),
+    )
+    .await;
     Ok(report)
+}
+
+async fn emit_endpoint_log(tx: &Option<mpsc::Sender<ServiceEvent>>, message: impl Into<String>) {
+    emit(
+        tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: message.into(),
+        },
+    )
+    .await;
+}
+
+pub fn options_from_config(cfg: &Config) -> EndpointOptions {
+    EndpointOptions {
+        include_bundles: cfg.endpoints_include_bundles,
+        first_party_only: cfg.endpoints_first_party_only,
+        unique_only: cfg.endpoints_unique_only,
+        max_scripts: cfg.endpoints_max_scripts,
+        max_scan_bytes: cfg.endpoints_max_scan_bytes,
+        verify: cfg.endpoints_verify,
+        capture_network: cfg.endpoints_capture_network,
+    }
 }
 
 fn normalize_options(options: &mut EndpointOptions) {
@@ -270,7 +313,7 @@ async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
     let captured = capture_provider
         .capture(cfg, url, CAPTURE_MAX_REQUESTS)
         .await?;
-    let mut validation_cache: BTreeMap<String, Option<String>> = BTreeMap::new();
+    let mut pending = Vec::with_capacity(CAPTURE_VALIDATION_CONCURRENCY);
     for request in captured {
         if report.endpoints.len() >= crate::core::content::DEFAULT_MAX_ENDPOINTS {
             report.truncated = true;
@@ -287,153 +330,16 @@ async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
             ));
             continue;
         };
-        let validation_err = match validation_cache.get(&validation_url) {
-            Some(cached) => cached.clone(),
-            None => {
-                let result = validate_url_with_dns_timeout(&validation_url)
-                    .await
-                    .err()
-                    .map(|err| err.to_string());
-                validation_cache.insert(validation_url, result.clone());
-                result
-            }
-        };
-        if let Some(err) = validation_err {
-            report
-                .warnings
-                .push(format!("network capture skipped {}: {err}", request.url));
-            continue;
+        pending.push((request, first_party, validation_url));
+        if pending.len() >= CAPTURE_VALIDATION_CONCURRENCY {
+            merge_validated_capture_batch(url, report, std::mem::take(&mut pending)).await;
         }
-        let kind = if request.url.starts_with("ws://") || request.url.starts_with("wss://") {
-            EndpointKind::Websocket
-        } else if request.url.to_ascii_lowercase().contains("graphql") {
-            EndpointKind::Graphql
-        } else {
-            EndpointKind::AbsoluteUrl
-        };
-        if report
-            .endpoints
-            .iter()
-            .any(|endpoint| endpoint.normalized_url.as_deref() == Some(request.url.as_str()))
-        {
-            continue;
-        }
-        report.endpoints.push(DiscoveredEndpoint {
-            value: request.url.clone(),
-            normalized_url: Some(request.url.clone()),
-            kind,
-            first_party,
-            source: EndpointSourceKind::NetworkCapture,
-            source_url: Some(url.to_string()),
-            verified: None,
-        });
+    }
+    if !pending.is_empty() {
+        merge_validated_capture_batch(url, report, pending).await;
     }
     recompute_hosts(report);
     Ok(())
-}
-
-async fn verify_endpoints(cfg: &Config, page_url: &str, report: &mut EndpointReport) {
-    let client =
-        match build_client_no_redirect(timeout_secs(cfg, VERIFY_TIMEOUT_SECS), Some(axon_ua())) {
-            Ok(client) => client,
-            Err(err) => {
-                report
-                    .warnings
-                    .push(format!("verification client unavailable: {err}"));
-                return;
-            }
-        };
-    let targets: Vec<(usize, String)> = report
-        .endpoints
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, endpoint)| verification_url(page_url, endpoint).map(|url| (idx, url)))
-        .take(MAX_VERIFY_PROBES)
-        .collect();
-
-    let results: Vec<_> = stream::iter(targets)
-        .map(|(idx, url)| {
-            let client = client.clone();
-            async move { (idx, verify_one(&client, &url).await) }
-        })
-        .buffer_unordered(VERIFY_CONCURRENCY)
-        .collect()
-        .await;
-
-    for (idx, verification) in results {
-        if let Some(endpoint) = report.endpoints.get_mut(idx) {
-            endpoint.verified = Some(verification);
-        }
-    }
-}
-
-fn verification_url(page_url: &str, endpoint: &DiscoveredEndpoint) -> Option<String> {
-    if matches!(endpoint.kind, EndpointKind::Websocket) {
-        return None;
-    }
-    endpoint.normalized_url.clone().or_else(|| {
-        let base = Url::parse(page_url).ok()?;
-        base.join(&endpoint.value).ok().map(|url| url.to_string())
-    })
-}
-
-async fn verify_one(client: &reqwest::Client, url: &str) -> EndpointVerification {
-    if let Err(err) = validate_url_with_dns_timeout(url).await {
-        return verification_error(url, "HEAD", "ssrf_rejected", err.to_string());
-    }
-    match probe(client, reqwest::Method::HEAD, url).await {
-        Ok(result) if result.status == Some(405) || result.status == Some(501) => {
-            match probe(client, reqwest::Method::OPTIONS, url).await {
-                Ok(result) => result,
-                Err(err) => verification_error(url, "OPTIONS", "probe_error", err.to_string()),
-            }
-        }
-        Ok(result) => result,
-        Err(err) => verification_error(url, "HEAD", "probe_error", err.to_string()),
-    }
-}
-
-async fn probe(
-    client: &reqwest::Client,
-    method: reqwest::Method,
-    url: &str,
-) -> Result<EndpointVerification, EndpointError> {
-    let response = client.request(method.clone(), url).send().await?;
-    let status = response.status().as_u16();
-    let content_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(ToString::to_string);
-    let final_url = response.url().to_string();
-    Ok(EndpointVerification {
-        attempted_url: url.to_string(),
-        method: method.as_str().to_string(),
-        status: Some(status),
-        content_type,
-        final_url: Some(final_url),
-        redirect_count: 0,
-        reachable: status < 500,
-        error: None,
-    })
-}
-
-fn verification_error(
-    url: &str,
-    method: &str,
-    class: &str,
-    detail: String,
-) -> EndpointVerification {
-    EndpointVerification {
-        attempted_url: url.to_string(),
-        method: method.to_string(),
-        status: None,
-        content_type: None,
-        final_url: None,
-        redirect_count: 0,
-        reachable: false,
-        error: Some(format!("{class}: {detail}")),
-    }
 }
 
 fn recompute_hosts(report: &mut EndpointReport) {
@@ -461,6 +367,79 @@ fn first_party_for_url(page_url: &str, candidate: &str) -> bool {
         .and_then(|url| url.host_str().map(|host| host.to_ascii_lowercase()))
         .map(|host| host == page_host || host.ends_with(&format!(".{page_host}")))
         .unwrap_or(true)
+}
+
+async fn validate_captured_request_origins(
+    validation_urls: std::collections::BTreeSet<String>,
+) -> BTreeMap<String, Option<String>> {
+    stream::iter(validation_urls)
+        .map(|validation_url| async move {
+            let result = validate_url_with_dns_timeout(&validation_url)
+                .await
+                .err()
+                .map(|err| err.to_string());
+            (validation_url, result)
+        })
+        .buffer_unordered(CAPTURE_VALIDATION_CONCURRENCY)
+        .collect()
+        .await
+}
+
+async fn merge_validated_capture_batch(
+    page_url: &str,
+    report: &mut EndpointReport,
+    batch: Vec<(CapturedRequest, bool, String)>,
+) {
+    let validation_urls = batch
+        .iter()
+        .map(|(_, _, validation_url)| validation_url.clone())
+        .collect();
+    let validation_cache = validate_captured_request_origins(validation_urls).await;
+
+    for (request, first_party, validation_url) in batch {
+        if report.endpoints.len() >= crate::core::content::DEFAULT_MAX_ENDPOINTS {
+            report.truncated = true;
+            break;
+        }
+        if let Some(Some(err)) = validation_cache.get(&validation_url) {
+            report
+                .warnings
+                .push(format!("network capture skipped {}: {err}", request.url));
+            continue;
+        }
+        merge_validated_capture_request(page_url, report, request, first_party);
+    }
+}
+
+fn merge_validated_capture_request(
+    page_url: &str,
+    report: &mut EndpointReport,
+    request: CapturedRequest,
+    first_party: bool,
+) {
+    let kind = if request.url.starts_with("ws://") || request.url.starts_with("wss://") {
+        EndpointKind::Websocket
+    } else if request.url.to_ascii_lowercase().contains("graphql") {
+        EndpointKind::Graphql
+    } else {
+        EndpointKind::AbsoluteUrl
+    };
+    if report
+        .endpoints
+        .iter()
+        .any(|endpoint| endpoint.normalized_url.as_deref() == Some(request.url.as_str()))
+    {
+        return;
+    }
+    report.endpoints.push(DiscoveredEndpoint {
+        value: request.url.clone(),
+        normalized_url: Some(request.url),
+        kind,
+        first_party,
+        source: EndpointSourceKind::NetworkCapture,
+        source_url: Some(page_url.to_string()),
+        verified: None,
+    });
 }
 
 fn capture_validation_url(value: &str) -> Option<String> {
