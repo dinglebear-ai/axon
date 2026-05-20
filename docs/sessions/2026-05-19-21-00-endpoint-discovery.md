@@ -22,6 +22,7 @@ Executed `docs/plans/2026-05-19-endpoint-discovery.md` in an isolated worktree. 
 - Updated MCP schema docs, command docs, OpenAPI docs, env/config boundary metadata, and CLI help snapshots.
 - Added parser, service, MCP contract, action API, and CLI help regression tests.
 - Addressed reviewer feedback after the initial PR: explicit boolean CLI parsing, unquoted script source parsing, case-insensitive GraphQL matching, shared scan-byte caps for HTML attributes, protocol-relative first-party classification, WebSocket capture merging, `first_party_only` capture filtering, bounded capture validation caching, no-redirect verification probes, REST error taxonomy, and RAII loopback test cleanup.
+- Addressed the second review wave: canonical env-matrix surface labels, timestamped session filename, guarded CLI URL extraction, config-backed defaults for MCP/REST/action API endpoint requests, optional service progress events, CDP event preservation while awaiting command responses, stronger MCP parity assertions, serialized loopback tests, and a non-vacuous capture filtering assertion.
 
 ## Verification
 
@@ -57,6 +58,8 @@ After the review-fix wave, the focused gates passed again:
 - `RUSTC_WRAPPER= just verify`
 
 The post-review local full gate passed with `2276 passed, 6 skipped`.
+
+After the second review-fix wave, repeat verification was run before the final push; see the final response for the exact command results and GitHub check status.
 
 ## Review And CI
 

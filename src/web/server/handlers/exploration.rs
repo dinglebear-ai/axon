@@ -1,6 +1,7 @@
 use crate::core::config::Config;
+use crate::core::http::validate_url;
 use crate::services;
-use crate::services::types::{EndpointOptions, MapOptions, SearchOptions, ServiceTimeRange};
+use crate::services::types::{MapOptions, SearchOptions, ServiceTimeRange};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use serde_json::json;
@@ -152,22 +153,34 @@ pub(crate) async fn endpoints(
     Json(req): Json<EndpointsRequest>,
 ) -> Result<Json<services::types::EndpointReport>, HttpError> {
     let url = required_text(&req.url, "url")?;
-    services::endpoints::discover(
-        &cfg,
-        url,
-        EndpointOptions {
-            include_bundles: req.include_bundles.unwrap_or(true),
-            first_party_only: req.first_party_only.unwrap_or(false),
-            unique_only: req.unique_only.unwrap_or(true),
-            max_scripts: req.max_scripts.unwrap_or(40),
-            max_scan_bytes: req.max_scan_bytes.unwrap_or(8 * 1024 * 1024),
-            verify: req.verify.unwrap_or(false),
-            capture_network: req.capture_network.unwrap_or(false),
-        },
-    )
-    .await
-    .map(Json)
-    .map_err(HttpError::from_box_send_sync)
+    validate_url(url)
+        .map_err(|err| HttpError::new(StatusCode::BAD_REQUEST, "bad_request", err.to_string()))?;
+    let mut options = services::endpoints::options_from_config(&cfg);
+    if let Some(value) = req.include_bundles {
+        options.include_bundles = value;
+    }
+    if let Some(value) = req.first_party_only {
+        options.first_party_only = value;
+    }
+    if let Some(value) = req.unique_only {
+        options.unique_only = value;
+    }
+    if let Some(value) = req.max_scripts {
+        options.max_scripts = value;
+    }
+    if let Some(value) = req.max_scan_bytes {
+        options.max_scan_bytes = value;
+    }
+    if let Some(value) = req.verify {
+        options.verify = value;
+    }
+    if let Some(value) = req.capture_network {
+        options.capture_network = value;
+    }
+    services::endpoints::discover(&cfg, url, options, None)
+        .await
+        .map(Json)
+        .map_err(HttpError::from_box_send_sync)
 }
 
 #[utoipa::path(

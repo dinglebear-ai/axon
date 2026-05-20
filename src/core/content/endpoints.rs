@@ -8,10 +8,10 @@ use crate::services::types::{
 };
 
 mod classify;
+mod scan;
 mod script_sources;
-use classify::{
-    classify_absolute, classify_relative, classify_value, is_noise_value, looks_like_endpoint,
-};
+use classify::{classify_value, is_noise_value, looks_like_endpoint};
+use scan::scan_text;
 pub use script_sources::discover_script_sources;
 
 pub const DEFAULT_MAX_SCRIPTS: usize = 40;
@@ -106,17 +106,7 @@ pub fn extract_endpoints(
         .and_then(Url::host_str)
         .unwrap_or_default()
         .to_ascii_lowercase();
-    let mut report = EndpointReport {
-        url: base_url.to_string(),
-        endpoints: Vec::new(),
-        hosts: Vec::new(),
-        scripts_discovered: 0,
-        bundles_fetched: bundles.len(),
-        bundles_scanned: 0,
-        truncated: false,
-        warnings: Vec::new(),
-        elapsed_ms: 0,
-    };
+    let mut report = new_endpoint_report(base_url, bundles.len());
 
     let (scripts, script_truncated) =
         discover_script_sources(html, base_url, options.max_scripts.max(1));
@@ -178,104 +168,17 @@ pub fn extract_endpoints(
     report
 }
 
-#[allow(clippy::too_many_arguments)]
-fn scan_text(
-    text: &str,
-    source: EndpointSourceKind,
-    source_url: Option<&str>,
-    base: Option<&Url>,
-    base_origin: Option<&Url>,
-    base_host: &str,
-    report: &mut EndpointReport,
-    hosts: &mut BTreeSet<String>,
-    seen: &mut BTreeSet<String>,
-    options: &EndpointExtractOptions,
-) {
-    if text.is_empty() {
-        return;
-    }
-
-    for captures in REL_PATH_RE.captures_iter(text) {
-        let Some(value) = captures.get(1).map(|m| m.as_str()) else {
-            continue;
-        };
-        let kind = classify_relative(value);
-        push_endpoint(
-            value,
-            kind,
-            source,
-            source_url,
-            base,
-            base_origin,
-            base_host,
-            report,
-            hosts,
-            seen,
-            options,
-        );
-    }
-
-    for captures in GRAPHQL_WORD_RE.captures_iter(text) {
-        let Some(value) = captures.get(1).map(|m| m.as_str().trim()) else {
-            continue;
-        };
-        if value.starts_with("http://")
-            || value.starts_with("https://")
-            || value.starts_with('/')
-            || value.starts_with("ws://")
-            || value.starts_with("wss://")
-        {
-            push_endpoint(
-                value,
-                if value.starts_with("ws://") || value.starts_with("wss://") {
-                    EndpointKind::Websocket
-                } else {
-                    EndpointKind::Graphql
-                },
-                source,
-                source_url,
-                base,
-                base_origin,
-                base_host,
-                report,
-                hosts,
-                seen,
-                options,
-            );
-        }
-    }
-
-    for found in WS_URL_RE.find_iter(text) {
-        push_endpoint(
-            found.as_str(),
-            EndpointKind::Websocket,
-            source,
-            source_url,
-            base,
-            base_origin,
-            base_host,
-            report,
-            hosts,
-            seen,
-            options,
-        );
-    }
-
-    for found in ABS_URL_RE.find_iter(text) {
-        let value = found.as_str();
-        push_endpoint(
-            value,
-            classify_absolute(value),
-            source,
-            source_url,
-            base,
-            base_origin,
-            base_host,
-            report,
-            hosts,
-            seen,
-            options,
-        );
+fn new_endpoint_report(base_url: &str, bundles_fetched: usize) -> EndpointReport {
+    EndpointReport {
+        url: base_url.to_string(),
+        endpoints: Vec::new(),
+        hosts: Vec::new(),
+        scripts_discovered: 0,
+        bundles_fetched,
+        bundles_scanned: 0,
+        truncated: false,
+        warnings: Vec::new(),
+        elapsed_ms: 0,
     }
 }
 

@@ -149,9 +149,7 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
         cursor = current.source();
     }
     let lc = message.to_lowercase();
-    if lc.contains("invalid endpoint discovery url") {
-        (StatusCode::BAD_REQUEST, "bad_request")
-    } else if contains_any(&lc, &["429", "rate limit", "rate-limited"]) {
+    if contains_any(&lc, &["429", "rate limit", "rate-limited"]) {
         (StatusCode::TOO_MANY_REQUESTS, "rate_limited")
     } else if contains_any(&lc, &["timed out", "timeout"]) {
         (StatusCode::GATEWAY_TIMEOUT, "timeout")
@@ -171,6 +169,7 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
     ) {
         (StatusCode::BAD_GATEWAY, "upstream_unavailable")
     } else if lc.contains("query is required")
+        || lc.contains("invalid endpoint discovery url")
         || lc.contains("invalid collection")
         || lc.contains("invalid query")
         || lc.contains("missing required")

@@ -1,3 +1,4 @@
+use super::common::start_url_from_cfg;
 use crate::core::config::Config;
 use crate::core::logging::log_done;
 use crate::core::ui::{Spinner, muted, primary, print_option, print_phase};
@@ -6,11 +7,11 @@ use crate::services::types::EndpointOptions;
 use std::error::Error;
 
 pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let url = cfg
-        .positional
-        .first()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or("url is required for endpoints")?;
+    let url_owned = start_url_from_cfg(cfg);
+    let url = url_owned.trim();
+    if url.is_empty() {
+        return Err("url is required for endpoints".into());
+    }
     let options = EndpointOptions {
         include_bundles: cfg.endpoints_include_bundles,
         first_party_only: cfg.endpoints_first_party_only,
@@ -36,7 +37,7 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
         Some(Spinner::new("endpoint discovery in progress"))
     };
 
-    let report = endpoints::discover(cfg, url, options)
+    let report = endpoints::discover(cfg, url, options, None)
         .await
         .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     if let Some(spinner) = spinner {

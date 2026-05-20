@@ -10,7 +10,6 @@ use crate::mcp::schema::{
     ResearchRequest, RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest,
     SummarizeRequest,
 };
-use crate::services::types::EndpointOptions;
 use crate::services::{document as document_svc, types::DocumentBackend};
 use crate::services::{
     endpoints as endpoints_svc, map as map_svc, query as query_svc, scrape as scrape_svc,
@@ -143,16 +142,29 @@ impl AxonMcpServer {
             .ok_or_else(|| invalid_params("url is required for endpoints"))?;
         validate_mcp_url(&url)?;
         let response_mode = req.response_mode;
-        let options = EndpointOptions {
-            include_bundles: req.include_bundles.unwrap_or(true),
-            first_party_only: req.first_party_only.unwrap_or(false),
-            unique_only: req.unique_only.unwrap_or(true),
-            max_scripts: req.max_scripts.unwrap_or(40),
-            max_scan_bytes: req.max_scan_bytes.unwrap_or(8 * 1024 * 1024),
-            verify: req.verify.unwrap_or(false),
-            capture_network: req.capture_network.unwrap_or(false),
-        };
-        let result = endpoints_svc::discover(self.cfg.as_ref(), &url, options)
+        let mut options = endpoints_svc::options_from_config(self.cfg.as_ref());
+        if let Some(value) = req.include_bundles {
+            options.include_bundles = value;
+        }
+        if let Some(value) = req.first_party_only {
+            options.first_party_only = value;
+        }
+        if let Some(value) = req.unique_only {
+            options.unique_only = value;
+        }
+        if let Some(value) = req.max_scripts {
+            options.max_scripts = value;
+        }
+        if let Some(value) = req.max_scan_bytes {
+            options.max_scan_bytes = value;
+        }
+        if let Some(value) = req.verify {
+            options.verify = value;
+        }
+        if let Some(value) = req.capture_network {
+            options.capture_network = value;
+        }
+        let result = endpoints_svc::discover(self.cfg.as_ref(), &url, options, None)
             .await
             .map_err(|e| logged_internal_error(&format!("endpoints '{url}'"), e.as_ref()))?;
         respond_with_mode(

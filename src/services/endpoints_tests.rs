@@ -1,25 +1,30 @@
 use super::*;
-use crate::core::http::set_allow_loopback;
+use crate::core::http::{get_allow_loopback, set_allow_loopback};
 use crate::services::types::{EndpointKind, EndpointSourceKind};
 use httpmock::Method::{HEAD, OPTIONS};
 use httpmock::prelude::*;
+use serial_test::serial;
 
-struct LoopbackGuard;
+struct LoopbackGuard {
+    previous: bool,
+}
 
 impl LoopbackGuard {
     fn allow() -> Self {
+        let previous = get_allow_loopback();
         set_allow_loopback(true);
-        Self
+        Self { previous }
     }
 }
 
 impl Drop for LoopbackGuard {
     fn drop(&mut self) {
-        set_allow_loopback(false);
+        set_allow_loopback(self.previous);
     }
 }
 
 #[tokio::test]
+#[serial]
 async fn service_fetches_page_and_first_party_bundles() {
     let _loopback = LoopbackGuard::allow();
     let server = MockServer::start_async().await;
@@ -44,6 +49,7 @@ async fn service_fetches_page_and_first_party_bundles() {
         &Config::test_default(),
         &server.base_url(),
         EndpointOptions::default(),
+        None,
     )
     .await
     .expect("endpoint discovery");
@@ -59,6 +65,7 @@ async fn service_fetches_page_and_first_party_bundles() {
 }
 
 #[tokio::test]
+#[serial]
 async fn service_filters_first_party_only() {
     let _loopback = LoopbackGuard::allow();
     let server = MockServer::start_async().await;
@@ -79,6 +86,7 @@ async fn service_filters_first_party_only() {
             include_bundles: false,
             ..EndpointOptions::default()
         },
+        None,
     )
     .await
     .expect("endpoint discovery");
@@ -93,6 +101,7 @@ async fn service_filters_first_party_only() {
 }
 
 #[tokio::test]
+#[serial]
 async fn verification_reports_head_405_options_fallback() {
     let _loopback = LoopbackGuard::allow();
     let server = MockServer::start_async().await;
@@ -124,6 +133,7 @@ async fn verification_reports_head_405_options_fallback() {
             verify: true,
             ..EndpointOptions::default()
         },
+        None,
     )
     .await
     .expect("endpoint discovery");
@@ -139,6 +149,7 @@ async fn verification_reports_head_405_options_fallback() {
 }
 
 #[tokio::test]
+#[serial]
 async fn fake_network_capture_merges_observed_requests() {
     struct FakeCapture;
 
@@ -175,6 +186,7 @@ async fn fake_network_capture_merges_observed_requests() {
             ..EndpointOptions::default()
         },
         &FakeCapture,
+        None,
     )
     .await
     .expect("capture discovery");
@@ -188,6 +200,7 @@ async fn fake_network_capture_merges_observed_requests() {
 }
 
 #[tokio::test]
+#[serial]
 async fn fake_network_capture_keeps_third_party_unless_filtered() {
     struct FakeCapture {
         third_party_url: String,
@@ -235,6 +248,7 @@ async fn fake_network_capture_keeps_third_party_unless_filtered() {
         &FakeCapture {
             third_party_url: third_party_url.clone(),
         },
+        None,
     )
     .await
     .expect("capture discovery");
@@ -256,19 +270,26 @@ async fn fake_network_capture_keeps_third_party_unless_filtered() {
             ..EndpointOptions::default()
         },
         &FakeCapture { third_party_url },
+        None,
     )
     .await
     .expect("filtered capture discovery");
 
+    assert!(!filtered.endpoints.is_empty());
     assert!(
         filtered
             .endpoints
             .iter()
             .all(|endpoint| endpoint.first_party)
+            && filtered
+                .endpoints
+                .iter()
+                .any(|endpoint| endpoint.value.ends_with("/api/observed"))
     );
 }
 
 #[tokio::test]
+#[serial]
 async fn fake_network_capture_merges_websocket_requests() {
     struct FakeCapture {
         websocket_url: String,
@@ -309,6 +330,7 @@ async fn fake_network_capture_merges_websocket_requests() {
         &FakeCapture {
             websocket_url: websocket_url.clone(),
         },
+        None,
     )
     .await
     .expect("websocket capture discovery");
