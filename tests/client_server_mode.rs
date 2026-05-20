@@ -107,6 +107,49 @@ fn scrape_json_sends_auth_header_and_preserves_host_output() {
 }
 
 #[test]
+fn server_mode_embed_status_renders_raw_rest_job_payload() {
+    let server = MockServer::start();
+    let job_id = "018f6f71-2d0a-7644-a4d0-1f07c5f0b001";
+    let action = server.mock(|when, then| {
+        when.method(GET).path(format!("/v1/embed/{job_id}"));
+        then.status(200).json_body(json!({
+            "id": job_id,
+            "status": "completed",
+            "created_at": "2026-05-20T00:00:00Z",
+            "updated_at": "2026-05-20T00:00:02Z",
+            "started_at": "2026-05-20T00:00:01Z",
+            "finished_at": "2026-05-20T00:00:02Z",
+            "error_text": null,
+            "url": null,
+            "source_type": null,
+            "target": "https://example.com",
+            "urls_json": null,
+            "result_json": null,
+            "config_json": null,
+            "attempt_count": 0,
+            "active_attempt_id": null,
+            "last_reclaimed_at": null,
+            "last_reclaimed_reason": null
+        }));
+    });
+    let home = TempDir::new().expect("temp home");
+
+    let output = axon_with_home(&home, &server.base_url(), &["embed", "status", job_id])
+        .output()
+        .expect("run axon");
+
+    assert!(
+        output.status.success(),
+        "embed status should succeed\n{}",
+        output_text(&output)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Embed Status for"), "{stdout}");
+    assert!(!stdout.contains("job not found"), "{stdout}");
+    action.assert_calls(1);
+}
+
+#[test]
 fn dead_server_fails_without_local_scrape_write() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind free port");
     let url = format!("http://{}", listener.local_addr().expect("local addr"));

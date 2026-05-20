@@ -175,10 +175,17 @@ pub(crate) async fn v1_embed_submit(
     }
     let input_for_validation = req.input.clone();
     let validation =
-        tokio::task::spawn_blocking(move || validate_embed_input(&input_for_validation))
-            .await
-            .map_err(|err| format!("embed input validation task failed: {err}"))
-            .and_then(|result| result);
+        tokio::task::spawn_blocking(move || validate_embed_input(&input_for_validation)).await;
+    let validation = match validation {
+        Ok(result) => result,
+        Err(err) => {
+            return rest_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                format!("embed input validation task failed: {err}"),
+            );
+        }
+    };
     if let Err(reason) = validation {
         return rest_error(StatusCode::BAD_REQUEST, "bad_request", reason);
     }
