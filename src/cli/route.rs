@@ -45,6 +45,7 @@ fn is_server_mode_rest_command(command: CommandKind) -> bool {
         command,
         CommandKind::Status
             | CommandKind::Map
+            | CommandKind::Endpoints
             | CommandKind::Scrape
             | CommandKind::Summarize
             | CommandKind::Search
@@ -80,6 +81,7 @@ fn fallback_policy_for(command: CommandKind, positional: &[String]) -> FallbackP
         CommandKind::Scrape
         | CommandKind::Summarize
         | CommandKind::Map
+        | CommandKind::Endpoints
         | CommandKind::Query
         | CommandKind::Retrieve
         | CommandKind::Sources
