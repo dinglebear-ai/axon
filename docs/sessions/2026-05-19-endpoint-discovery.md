@@ -48,6 +48,8 @@ The final local full gate passed with `2271 passed, 6 skipped`.
 
 CodeRabbit completed on PR #114. The first CI run exposed MCP schema doc drift, which was fixed by wiring endpoint discovery into the schema doc generator. The next CI run exposed ANSI color drift in CLI help snapshots, which was fixed by forcing `NO_COLOR=1` in the help contract test harness.
 
+The final-head `mcp-smoke` run then exposed MCP help/tool-description parity drift. `endpoints` had been added to the tool description and schema but not to the mcporter expected action lists or `action=help` response. The same parity audit also showed the pre-existing `summarize` description/help mismatch, so both direct actions were added to the help response and smoke expectations.
+
 Named work-it review agents were not all available in this Codex session. Substitutions used were local full verification, GitHub CI, CodeRabbit, clippy, monolith checks, and direct PR comment inspection.
 
 ## Open Questions
