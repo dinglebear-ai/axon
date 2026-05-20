@@ -42,7 +42,7 @@ fn hostname_substring_does_not_count_as_container_dns() {
 fn container_dns_llm_uses_trusted_cached_fallback_when_no_localhost_default_exists() {
     let resolved = resolve_host_endpoint(
         EndpointKind::Llm,
-        Some("http://axon-llm:11434"),
+        Some("http://axon-ollama:11434"),
         &["http://127.0.0.1:11434".to_string()],
     )
     .expect("trusted endpoint");

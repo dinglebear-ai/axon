@@ -244,7 +244,7 @@ fn async_route<S: AsyncSubaction>(
             &format!("/v1/{family}"),
             list_limit,
             list_offset,
-        ))),
+        )?)),
         "cleanup" => Ok(Route::post(format!("/v1/{family}/cleanup"), Value::Null)),
         "clear" => Ok(Route::delete(format!("/v1/{family}"))),
         "recover" => Ok(Route::post(format!("/v1/{family}/recover"), Value::Null)),
@@ -290,12 +290,19 @@ fn page_path(base: &str, limit: Option<usize>, offset: Option<usize>) -> String 
     }
 }
 
-pub(crate) fn page_path_i64(base: &str, limit: Option<i64>, offset: Option<usize>) -> String {
-    page_path(
-        base,
-        limit.and_then(|value| usize::try_from(value).ok()),
-        offset,
-    )
+pub(crate) fn page_path_i64(
+    base: &str,
+    limit: Option<i64>,
+    offset: Option<usize>,
+) -> Result<String, ThinClientError> {
+    let limit = limit
+        .map(|value| {
+            usize::try_from(value).map_err(|_| {
+                ThinClientError::InvalidRequest("limit must be a non-negative integer".to_string())
+            })
+        })
+        .transpose()?;
+    Ok(page_path(base, limit, offset))
 }
 
 fn rest_body_allowed<T: serde::Serialize>(
