@@ -1,3 +1,4 @@
+use super::error::HttpError;
 use super::handlers;
 use super::state::AppState;
 use super::types::ASK_BODY_LIMIT;
@@ -113,12 +114,20 @@ async fn v1_capabilities() -> Json<ServerInfo> {
     Json(ServerInfo::current())
 }
 
-async fn v1_actions_removed() -> StatusCode {
-    StatusCode::NOT_FOUND
+async fn v1_actions_removed() -> HttpError {
+    HttpError::new(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "/v1/actions was removed; use direct /v1 REST routes",
+    )
 }
 
-async fn v1_migrate_not_exposed() -> StatusCode {
-    StatusCode::NOT_FOUND
+async fn v1_migrate_not_exposed() -> HttpError {
+    HttpError::new(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "/v1/migrate is not exposed over REST",
+    )
 }
 
 pub(crate) fn ask_router<S>(cfg: Arc<Config>) -> Router<S>

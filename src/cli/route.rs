@@ -44,13 +44,25 @@ fn is_server_mode_rest_command(command: CommandKind) -> bool {
     matches!(
         command,
         CommandKind::Status
+            | CommandKind::Map
             | CommandKind::Scrape
             | CommandKind::Summarize
+            | CommandKind::Search
+            | CommandKind::Research
             | CommandKind::Crawl
             | CommandKind::Extract
             | CommandKind::Embed
             | CommandKind::Ingest
             | CommandKind::Sessions
+            | CommandKind::Query
+            | CommandKind::Retrieve
+            | CommandKind::Sources
+            | CommandKind::Domains
+            | CommandKind::Stats
+            | CommandKind::Doctor
+            | CommandKind::Ask
+            | CommandKind::Evaluate
+            | CommandKind::Suggest
     )
 }
 

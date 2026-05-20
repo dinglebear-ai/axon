@@ -10,7 +10,7 @@
 
 **Source Requirements:**
 - Spec: `docs/specs/server-mode-capability-tiers.md`
-- Contract: `docs/contracts/server-mode-routing-contract.md`
+- Contract: `docs/specs/server-mode-routing-contract.md`
 
 ---
 
@@ -58,7 +58,7 @@
 - `src/mcp/server.rs` and `src/mcp/server/handlers_*.rs` — route stdio MCP through `thin_client` when server URL is configured.
 - `src/mcp/schema.rs` — expose extract mode and any canonical request parity fields.
 - `docs/specs/server-mode-capability-tiers.md` — keep in sync if execution discovers necessary contract clarifications.
-- `docs/contracts/server-mode-routing-contract.md` — keep normative contract in sync with implemented behavior.
+- `docs/specs/server-mode-routing-contract.md` — keep normative contract in sync with implemented behavior.
 
 ---
 
@@ -1934,7 +1934,7 @@ git commit -m "refactor(server-mode): remove legacy v1 actions endpoint"
 **Files:**
 - Modify: `scripts/test-client-server-mode.sh`
 - Modify: `docs/specs/server-mode-capability-tiers.md`
-- Modify: `docs/contracts/server-mode-routing-contract.md`
+- Modify: `docs/specs/server-mode-routing-contract.md`
 - Modify: `docs/API.md`
 - Modify: `docs/MCP.md`
 
@@ -1984,7 +1984,7 @@ Update:
 
 - `docs/API.md`: direct REST is canonical; `/v1/actions` removed.
 - `docs/MCP.md`: stdio MCP thin-client behavior and local fallback notes.
-- `docs/contracts/server-mode-routing-contract.md`: mark implemented sections as current, not draft, only after tests pass.
+- `docs/specs/server-mode-routing-contract.md`: mark implemented sections as current, not draft, only after tests pass.
 - `docs/specs/server-mode-capability-tiers.md`: remove implementation-phase items that are complete or move them to a completed section.
 
 - [ ] **Step 14.4: Final verification**
@@ -2011,7 +2011,7 @@ Expected: all PASS.
 - [ ] **Step 14.5: Commit**
 
 ```bash
-git add scripts/test-client-server-mode.sh docs/API.md docs/MCP.md docs/specs/server-mode-capability-tiers.md docs/contracts/server-mode-routing-contract.md
+git add scripts/test-client-server-mode.sh docs/API.md docs/MCP.md docs/specs/server-mode-capability-tiers.md docs/specs/server-mode-routing-contract.md
 git commit -m "docs(server-mode): document REST cutover and fallback contract"
 ```
 
@@ -2020,7 +2020,7 @@ git commit -m "docs(server-mode): document REST cutover and fallback contract"
 ## Self-Review Checklist
 
 - [ ] Spec coverage: every section in `docs/specs/server-mode-capability-tiers.md` maps to a task above.
-- [ ] Contract coverage: every MUST in `docs/contracts/server-mode-routing-contract.md` maps to a task above.
+- [ ] Contract coverage: every MUST in `docs/specs/server-mode-routing-contract.md` maps to a task above.
 - [ ] No `/v1/actions` compatibility path remains after Task 13.
 - [ ] REST, CLI, and MCP map to canonical service request types.
 - [ ] `--wait` in server mode never starts local workers.

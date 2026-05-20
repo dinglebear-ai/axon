@@ -18,12 +18,24 @@ fn cfg(command: CommandKind, positional: &[&str]) -> Config {
 fn client_server_dispatch_routes_stateful_commands_to_server_client() {
     for command in [
         CommandKind::Status,
+        CommandKind::Map,
         CommandKind::Scrape,
+        CommandKind::Search,
+        CommandKind::Research,
         CommandKind::Crawl,
         CommandKind::Extract,
         CommandKind::Embed,
         CommandKind::Ingest,
         CommandKind::Sessions,
+        CommandKind::Query,
+        CommandKind::Retrieve,
+        CommandKind::Sources,
+        CommandKind::Domains,
+        CommandKind::Stats,
+        CommandKind::Doctor,
+        CommandKind::Ask,
+        CommandKind::Evaluate,
+        CommandKind::Suggest,
     ] {
         let cfg = cfg(command, &["https://example.com"]);
         assert_eq!(
@@ -70,26 +82,6 @@ fn extract_lifecycle_subcommands_route_to_rest_lifecycle_paths() {
 
     assert_eq!(plan.method, "POST");
     assert_eq!(plan.path, format!("/v1/extract/{job_id}/cancel"));
-}
-
-#[test]
-fn client_server_dispatch_query_only_commands_remain_local() {
-    for command in [
-        CommandKind::Query,
-        CommandKind::Retrieve,
-        CommandKind::Search,
-        CommandKind::Research,
-        CommandKind::Sources,
-        CommandKind::Domains,
-        CommandKind::Stats,
-    ] {
-        let cfg = cfg(command, &["test"]);
-        assert_eq!(
-            client_server_dispatch(&cfg),
-            ClientServerDispatch::Local,
-            "{command:?} should remain local"
-        );
-    }
 }
 
 #[tokio::test]
@@ -178,6 +170,31 @@ fn extract_server_mode_uses_direct_rest_path() {
     assert_eq!(plan.body["urls"][0], "https://example.com/docs");
     assert_eq!(plan.body["max_pages"], 1);
     assert_eq!(plan.body["embed"], false);
+}
+
+#[test]
+fn query_server_mode_uses_direct_rest_path() {
+    let mut cfg = cfg(CommandKind::Query, &[]);
+    cfg.query = Some("routing contract".to_string());
+    cfg.search_limit = 7;
+
+    let plan = plan::server_rest_plan(&cfg).expect("query plan");
+
+    assert_eq!(plan.method, "POST");
+    assert_eq!(plan.path, "/v1/query");
+    assert_eq!(plan.body["query"], "routing contract");
+    assert_eq!(plan.body["limit"], 7);
+}
+
+#[test]
+fn sources_server_mode_preserves_limit_query() {
+    let mut cfg = cfg(CommandKind::Sources, &[]);
+    cfg.search_limit = 25;
+
+    let plan = plan::server_rest_plan(&cfg).expect("sources plan");
+
+    assert_eq!(plan.method, "GET");
+    assert_eq!(plan.path, "/v1/sources?limit=25");
 }
 
 #[test]

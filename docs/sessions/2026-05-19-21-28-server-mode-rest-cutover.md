@@ -56,7 +56,7 @@ Execute `docs/superpowers/plans/2026-05-19-server-mode-rest-cutover.md` end to e
 - `src/cli/server_mode.rs`, `src/cli/server_mode/plan.rs`, `src/cli/client.rs`, `src/cli/commands/sync.rs`: direct REST client/server mode and sync command work.
 - `src/mcp/thin_client.rs`, `src/mcp/server.rs`, `src/mcp/auth.rs`: MCP thin-client and shared scope behavior.
 - `src/web/server/handlers/rest*.rs`, `src/web/server/routing.rs`, `src/web.rs`: REST parity/lifecycle routes and `/v1/actions` removal.
-- `docs/API.md`, `docs/MCP.md`, `docs/MCP-TOOL-SCHEMA.md`, `docs/contracts/server-mode-routing-contract.md`, `docs/specs/server-mode-capability-tiers.md`, `scripts/test-client-server-mode.sh`, `scripts/test-mcp-tools-mcporter.sh`: docs and smoke coverage.
+- `docs/API.md`, `docs/MCP.md`, `docs/MCP-TOOL-SCHEMA.md`, `docs/specs/server-mode-routing-contract.md`, `docs/specs/server-mode-capability-tiers.md`, `scripts/test-client-server-mode.sh`, `scripts/test-mcp-tools-mcporter.sh`: docs and smoke coverage.
 - Matching sidecar tests and fixtures were added or updated for each changed surface.
 
 ## Commands Executed
@@ -134,7 +134,7 @@ Execute `docs/superpowers/plans/2026-05-19-server-mode-rest-cutover.md` end to e
 
 - `docs/superpowers/plans/2026-05-19-server-mode-rest-cutover.md`
 - `docs/specs/server-mode-capability-tiers.md`
-- `docs/contracts/server-mode-routing-contract.md`
+- `docs/specs/server-mode-routing-contract.md`
 
 ## Open Questions
 

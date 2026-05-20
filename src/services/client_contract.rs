@@ -1,9 +1,10 @@
 use crate::core::config::{RenderMode, ScrapeFormat};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientRoutePreference {
+    #[default]
     Default,
     LocalOnly,
     ServerRequired,
@@ -30,7 +31,9 @@ pub struct ClientCrawlRequest {
     pub max_sitemaps: Option<usize>,
     pub sitemap_since_days: Option<u32>,
     pub delay_ms: Option<u64>,
+    #[serde(default)]
     pub headers: Vec<(String, String)>,
+    #[serde(default)]
     pub route_preference: ClientRoutePreference,
 }
 
@@ -42,7 +45,9 @@ pub struct ClientScrapeRequest {
     pub embed: Option<bool>,
     pub root_selector: Option<String>,
     pub exclude_selector: Option<String>,
+    #[serde(default)]
     pub headers: Vec<(String, String)>,
+    #[serde(default)]
     pub route_preference: ClientRoutePreference,
 }
 
@@ -55,7 +60,9 @@ pub struct ClientExtractRequest {
     pub max_pages: Option<u32>,
     pub render_mode: Option<RenderMode>,
     pub embed: Option<bool>,
+    #[serde(default)]
     pub headers: Vec<(String, String)>,
+    #[serde(default)]
     pub route_preference: ClientRoutePreference,
 }
 
@@ -70,6 +77,7 @@ pub struct ClientEmbedRequest {
     pub input: String,
     pub source_type: Option<String>,
     pub collection: Option<String>,
+    #[serde(default)]
     pub route_preference: ClientRoutePreference,
 }
 
@@ -79,6 +87,7 @@ pub struct ClientQueryRequest {
     pub collection: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    #[serde(default)]
     pub route_preference: ClientRoutePreference,
 }
 
@@ -88,5 +97,6 @@ pub struct ClientRetrieveRequest {
     pub max_points: Option<usize>,
     pub cursor: Option<String>,
     pub token_budget: Option<usize>,
+    #[serde(default)]
     pub route_preference: ClientRoutePreference,
 }

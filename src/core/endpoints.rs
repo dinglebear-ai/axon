@@ -39,14 +39,27 @@ pub fn resolve_host_endpoint(
                 warnings: vec![],
             });
         }
-        return Some(ResolvedEndpoint {
-            kind,
-            url: localhost_default(kind)?.to_string(),
-            source: EndpointSource::LocalhostDefault,
-            warnings: vec![format!(
-                "configured endpoint {configured} uses container DNS; using host localhost default"
-            )],
-        });
+        if let Some(url) = localhost_default(kind) {
+            return Some(ResolvedEndpoint {
+                kind,
+                url: url.to_string(),
+                source: EndpointSource::LocalhostDefault,
+                warnings: vec![format!(
+                    "configured endpoint {configured} uses container DNS; using host localhost default"
+                )],
+            });
+        }
+        if let Some(url) = trusted_cached.first() {
+            return Some(ResolvedEndpoint {
+                kind,
+                url: url.clone(),
+                source: EndpointSource::TrustedCached,
+                warnings: vec![format!(
+                    "configured endpoint {configured} uses container DNS; using trusted cached host endpoint"
+                )],
+            });
+        }
+        return None;
     }
 
     if let Some(url) = localhost_default(kind) {
@@ -73,7 +86,7 @@ fn uses_container_dns(url: &str) -> bool {
     let Some(host) = parsed.host_str() else {
         return false;
     };
-    ["axon-qdrant", "axon-tei", "axon-chrome"].contains(&host)
+    ["axon-qdrant", "axon-tei", "axon-chrome", "axon-llm"].contains(&host)
 }
 
 fn localhost_default(kind: EndpointKind) -> Option<&'static str> {
@@ -84,3 +97,7 @@ fn localhost_default(kind: EndpointKind) -> Option<&'static str> {
         EndpointKind::Llm => None,
     }
 }
+
+#[cfg(test)]
+#[path = "endpoints_tests.rs"]
+mod tests;
