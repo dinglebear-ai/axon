@@ -83,6 +83,7 @@ use super::{handlers, openapi_jobs};
         handlers::async_jobs::EmbedStartRequest,
         handlers::async_jobs::ExtractStartRequest,
         handlers::async_jobs::AcceptedJob,
+        handlers::admin::DedupeRequest,
         handlers::admin::WatchCreateRequest
     )),
     tags(

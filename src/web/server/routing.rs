@@ -68,7 +68,6 @@ pub(super) fn router(
             "/v1/ingest",
             handlers::async_jobs::ingest_router(Arc::clone(&service_context)),
         )
-        .route("/v1/migrate", post(handlers::admin::migrate))
         .route("/v1/dedupe", post(handlers::admin::dedupe))
         .route(
             "/v1/watch",
@@ -83,6 +82,7 @@ pub(super) fn router(
         .route("/healthz", get(super::super::health::healthz))
         .route("/readyz", get(super::super::health::readyz))
         .route("/v1/actions", post(v1_actions_removed))
+        .route("/v1/migrate", post(v1_migrate_not_exposed))
         .merge(super::openapi::docs_router())
         .route("/api/panel/state", get(handlers::panel_state))
         .route("/api/panel/login", post(handlers::login))
@@ -114,6 +114,10 @@ async fn v1_capabilities() -> Json<ServerInfo> {
 }
 
 async fn v1_actions_removed() -> StatusCode {
+    StatusCode::NOT_FOUND
+}
+
+async fn v1_migrate_not_exposed() -> StatusCode {
     StatusCode::NOT_FOUND
 }
 
@@ -178,10 +182,7 @@ async fn block_loopback_destructive_request(
 
 fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
-        && (path == "/v1/dedupe"
-            || path == "/v1/migrate"
-            || path == "/v1/watch"
-            || path.starts_with("/v1/watch/"))
+        && (path == "/v1/dedupe" || path == "/v1/watch" || path.starts_with("/v1/watch/"))
     {
         return true;
     }
