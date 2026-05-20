@@ -4,20 +4,15 @@
 
 use gpui::{
     AnyElement, Context, FontWeight, IntoElement, MouseButton, MouseDownEvent, ParentElement,
-    Render, ScrollHandle, SharedString, Styled, Window, WindowControlArea, div, prelude::*, px,
-    rgb,
+    Render, SharedString, Styled, Window, WindowControlArea, div, prelude::*, px, rgb,
 };
 
+use super::ui_body::render_palette_body;
 use super::{ChromeMenu, Palette};
 use crate::layout::compute_desired_height;
-use crate::output::CommandOutput;
-use crate::render::{
-    render_action_rows_interactive, render_output_body, render_palette_footer, render_prompt_row,
-};
 use crate::theme::{
     AURORA_ACCENT_PRIMARY, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_MONO,
-    AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_STRONG, AURORA_TEXT_MUTED,
-    AURORA_TEXT_PRIMARY,
+    AURORA_FONT_SANS, AURORA_PAGE_BG, AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
 };
 use crate::{Submit, ToggleActionMenu};
 
@@ -74,75 +69,22 @@ impl Render for Palette {
                 window,
                 cx,
             ))
-            .child(
-                div().flex_1().overflow_hidden().p_5().child(
-                    div()
-                        .w_full()
-                        .mx_auto()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .overflow_hidden()
-                        .rounded_md()
-                        .bg(rgb(AURORA_PANEL_STRONG))
-                        .border_1()
-                        .border_color(rgb(AURORA_BORDER_STRONG))
-                        .shadow_lg()
-                        .child(render_prompt_row(
-                            query_is_empty,
-                            locked,
-                            prompt,
-                            self.focus.is_focused(window),
-                            self.focus.clone(),
-                            action_menu_open,
-                            status_dot,
-                        ))
-                        .child(render_action_rows_interactive(
-                            actions,
-                            selected,
-                            running_subcommand,
-                            hide_list,
-                            |i| {
-                                cx.listener(move |this, _: &MouseDownEvent, window, cx| {
-                                    this.selected = i;
-                                    if this.action_menu_open {
-                                        if let Some(action) = this.matches().get(i).copied() {
-                                            this.select_action_mode(action, false, cx);
-                                        }
-                                    } else {
-                                        this.submit(&crate::Submit, window, cx);
-                                    }
-                                })
-                            },
-                            |i| {
-                                cx.listener(move |this, hovered: &bool, _window, cx| {
-                                    if *hovered && this.selected != i {
-                                        this.selected = i;
-                                        cx.notify();
-                                    }
-                                })
-                            },
-                        ))
-                        .when_some(selected_action, |el, action| {
-                            el.child(render_palette_footer(
-                                action,
-                                command_output.as_ref(),
-                                self.running.as_ref(),
-                                self.conversation_hint(),
-                            ))
-                        })
-                        .when_some(
-                            command_output.clone().filter(|o| o.has_body()),
-                            |el, output| {
-                                el.child(render_output_panel(
-                                    output,
-                                    self.errors_open,
-                                    &self.output_scroll,
-                                ))
-                            },
-                        ),
-                ),
-            )
+            .child(render_palette_body(
+                self,
+                actions,
+                selected,
+                running_subcommand,
+                hide_list,
+                selected_action,
+                command_output,
+                locked,
+                prompt,
+                query_is_empty,
+                action_menu_open,
+                status_dot,
+                window,
+                cx,
+            ))
             .when_some(chrome_menu_open, |el, menu| {
                 el.child(render_chrome_menu_dropdown(menu, has_output, cx))
             })
@@ -504,22 +446,4 @@ fn render_status_dot(connection: super::ConnectionState, cx: &mut Context<Palett
             }),
         )
         .into_any_element()
-}
-
-fn render_output_panel(
-    output: CommandOutput,
-    errors_open: bool,
-    output_scroll: &ScrollHandle,
-) -> impl IntoElement {
-    div()
-        .id("palette-output")
-        .flex_1()
-        .overflow_scroll()
-        .scrollbar_width(px(12.0))
-        .track_scroll(output_scroll)
-        .block_mouse_except_scroll()
-        .border_t_1()
-        .border_color(rgb(AURORA_BORDER_DEFAULT))
-        .bg(rgb(AURORA_NAV_BG))
-        .child(render_output_body(output, errors_open))
 }
