@@ -337,8 +337,13 @@ fn maybe_job(result: &serde_json::Value) -> Result<Option<ServiceJob>, Box<dyn E
     match result.get("job") {
         Some(value) if value.is_null() => Ok(None),
         Some(value) => Ok(Some(serde_json::from_value(value.clone())?)),
+        None if looks_like_service_job(result) => Ok(Some(serde_json::from_value(result.clone())?)),
         None => Ok(None),
     }
+}
+
+fn looks_like_service_job(result: &serde_json::Value) -> bool {
+    result.get("id").is_some() && result.get("status").is_some()
 }
 
 pub(super) fn extract_status_json_result(result: &serde_json::Value) -> serde_json::Value {
