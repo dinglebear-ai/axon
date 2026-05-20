@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use std::path::Path;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -69,7 +70,7 @@ pub(super) fn validate_embed_input(input: &str) -> Result<(), String> {
     if input.starts_with("http://") || input.starts_with("https://") {
         return crate::core::http::validate_url(input).map_err(|e| e.to_string());
     }
-    let path = std::path::Path::new(input);
+    let path = Path::new(input);
     if !path.exists() {
         return Ok(());
     }
@@ -112,6 +113,40 @@ pub(super) fn validate_embed_input(input: &str) -> Result<(), String> {
         let name = component.as_os_str().to_string_lossy();
         if name.starts_with('.') {
             return Err("local embed path must not include dotfiles".into());
+        }
+    }
+    validate_no_symlink_children(path)?;
+    Ok(())
+}
+
+fn validate_no_symlink_children(path: &Path) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|e| format!("inspect embed path for symlinks: {e}"))?;
+    if metadata.file_type().is_symlink() {
+        return Err("local embed path must not include symlinks".into());
+    }
+    if !metadata.is_dir() {
+        return Ok(());
+    }
+
+    let mut pending = vec![path.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries =
+            std::fs::read_dir(&dir).map_err(|e| format!("read embed directory {:?}: {e}", dir))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("read embed directory entry: {e}"))?;
+            let child = entry.path();
+            let metadata = std::fs::symlink_metadata(&child)
+                .map_err(|e| format!("inspect embed path {:?}: {e}", child))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "local embed path must not include symlinks: {}",
+                    child.display()
+                ));
+            }
+            if metadata.is_dir() {
+                pending.push(child);
+            }
         }
     }
     Ok(())

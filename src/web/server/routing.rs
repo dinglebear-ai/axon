@@ -42,14 +42,14 @@ pub(super) fn router(
         .route("/v1/doctor", get(handlers::discovery::doctor))
         .route("/v1/query", post(handlers::rag::query))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
-        .route("/v1/endpoints", post(handlers::exploration::endpoints));
+        .route("/v1/endpoints", post(handlers::exploration::endpoints))
+        .route("/v1/map", post(handlers::exploration::map));
     let write_routes = Router::new()
         .merge(ask_router)
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
         .route("/v1/scrape", post(handlers::exploration::scrape))
         .route("/v1/summarize", post(handlers::exploration::summarize))
-        .route("/v1/map", post(handlers::exploration::map))
         .route("/v1/search", post(handlers::exploration::search))
         .route("/v1/research", post(handlers::exploration::research))
         .nest(

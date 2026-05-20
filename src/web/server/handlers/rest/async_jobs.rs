@@ -173,7 +173,13 @@ pub(crate) async fn v1_embed_submit(
     if req.input.trim().is_empty() {
         return missing_field("input");
     }
-    if let Err(reason) = validate_embed_input(&req.input) {
+    let input_for_validation = req.input.clone();
+    let validation =
+        tokio::task::spawn_blocking(move || validate_embed_input(&input_for_validation))
+            .await
+            .map_err(|err| format!("embed input validation task failed: {err}"))
+            .and_then(|result| result);
+    if let Err(reason) = validation {
         return rest_error(StatusCode::BAD_REQUEST, "bad_request", reason);
     }
     let ctx = match ctx_only(&state).await {

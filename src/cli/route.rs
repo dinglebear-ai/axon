@@ -27,10 +27,31 @@ pub fn plan_command_route(cfg: &Config, positional: &[String]) -> Result<Command
         });
     }
 
+    if !is_server_mode_rest_command(cfg.command) {
+        return Ok(CommandRoutePlan {
+            route: CommandRoute::LocalOnly,
+            fallback_policy: fallback_policy_for(cfg.command, positional),
+        });
+    }
+
     Ok(CommandRoutePlan {
         route: CommandRoute::PreferServer,
         fallback_policy: fallback_policy_for(cfg.command, positional),
     })
+}
+
+fn is_server_mode_rest_command(command: CommandKind) -> bool {
+    matches!(
+        command,
+        CommandKind::Status
+            | CommandKind::Scrape
+            | CommandKind::Summarize
+            | CommandKind::Crawl
+            | CommandKind::Extract
+            | CommandKind::Embed
+            | CommandKind::Ingest
+            | CommandKind::Sessions
+    )
 }
 
 fn fallback_policy_for(command: CommandKind, positional: &[String]) -> FallbackPolicy {

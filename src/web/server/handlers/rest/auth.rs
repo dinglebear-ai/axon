@@ -25,8 +25,8 @@ use lab_auth::AuthContext;
 pub(crate) fn scope_for_rest_route(method: &str, path: &str) -> Option<&'static str> {
     let scope = match (method, path) {
         ("GET", p) if p.starts_with("/v1/") => crate::mcp::auth::AxonScope::Read,
-        ("POST", "/v1/query" | "/v1/retrieve") => crate::mcp::auth::AxonScope::Read,
-        ("POST", "/v1/migrate" | "/v1/dedupe") => crate::mcp::auth::AxonScope::Admin,
+        ("POST", "/v1/query" | "/v1/retrieve" | "/v1/map") => crate::mcp::auth::AxonScope::Read,
+        ("POST", "/v1/migrate" | "/v1/dedupe") => crate::mcp::auth::AxonScope::Write,
         ("POST", p) if p.starts_with("/v1/") => crate::mcp::auth::AxonScope::Write,
         ("DELETE", p) if p.starts_with("/v1/") => crate::mcp::auth::AxonScope::Write,
         _ => return None,

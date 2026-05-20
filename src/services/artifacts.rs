@@ -77,6 +77,13 @@ fn reject_unsafe_relative_path(path: &str) -> Result<(), String> {
 
 fn artifact_id(kind: ArtifactKind, relative_path: &str, content_hash: &str) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(format!("{kind:?}\n{relative_path}\n{content_hash}"));
+    hash_field(&mut hasher, format!("{kind:?}").as_bytes());
+    hash_field(&mut hasher, relative_path.as_bytes());
+    hash_field(&mut hasher, content_hash.as_bytes());
     format!("art_{}", hex::encode(&hasher.finalize()[..16]))
+}
+
+fn hash_field(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value);
 }

@@ -156,7 +156,7 @@ impl AxonMcpServer {
         })?;
         if let Some(response) = thin_client::route_request(self.cfg.as_ref(), &request)
             .await
-            .map_err(|err| internal_error(format!("MCP thin client route failed: {err}")))?
+            .map_err(map_thin_client_error)?
         {
             return serde_json::to_string(&response)
                 .map_err(|e| internal_error(format!("serialize {action} response: {e}")));
@@ -199,6 +199,13 @@ impl AxonMcpServer {
         };
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
+    }
+}
+
+fn map_thin_client_error(err: thin_client::ThinClientError) -> ErrorData {
+    match err {
+        thin_client::ThinClientError::InvalidRequest(message) => invalid_params(message),
+        other => internal_error(format!("MCP thin client route failed: {other}")),
     }
 }
 

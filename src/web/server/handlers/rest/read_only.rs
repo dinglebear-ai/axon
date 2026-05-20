@@ -40,9 +40,9 @@ pub(crate) async fn v1_sources(
     match system::sources(state.cfg.as_ref(), pagination).await {
         // Wire format intentionally matches the MCP `handle_sources` payload:
         // urls are emitted as a flat array of strings, without chunk counts.
-        // Clients that need chunk counts must use `GET /v1/sources` with
-        // `action: { action: "sources" }` until a wider sources response
-        // redesign happens. Keep these two surfaces shape-aligned.
+        // Clients that need chunk counts should use the MCP `sources` action
+        // until a wider REST sources response redesign happens. Keep these two
+        // surfaces shape-aligned.
         Ok(result) => Json(serde_json::json!({
             "count": result.count,
             "limit": result.limit,
