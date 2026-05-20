@@ -216,7 +216,7 @@ fn ingest_summary_suggests_status_for_async_job() {
         stderr: Vec::new(),
     };
 
-    let rendered = CommandOutput::from_process("axon --local ingest owner/repo", "ingest", output);
+    let rendered = CommandOutput::from_process("axon rest POST /v1/ingest", "ingest", output);
     assert_eq!(
         rendered
             .stdout
@@ -235,7 +235,7 @@ fn successful_process_output_drops_progress_stderr() {
         stderr: b"02:50:24 INFO command=search query_len=4\n".to_vec(),
     };
 
-    let rendered = CommandOutput::from_process("axon --local search axon", "search", output);
+    let rendered = CommandOutput::from_process("axon rest POST /v1/search", "search", output);
     assert!(rendered.stderr.is_none());
     assert_eq!(
         rendered

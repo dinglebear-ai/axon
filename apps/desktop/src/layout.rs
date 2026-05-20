@@ -63,6 +63,10 @@ const OUTPUT_BODY: f32 = 320.0;
 /// Minimum window height — "prompt only" state. This is the launch height.
 pub(crate) const MIN_WINDOW_HEIGHT: f32 = PAGE_PADDING_V + CARD_BORDER_V + PROMPT_ROW;
 
+/// Custom Zed-style title/menu strip drawn inside the window. On Windows the
+/// native titlebar is hidden, so the outer window needs to reserve this height.
+pub(crate) const WINDOW_CHROME_HEIGHT: f32 = 34.0;
+
 /// Maximum window height — even with everything visible, cap so the
 /// palette doesn't fill the whole display. `720px` is the chosen upper
 /// bound for "everything open" on typical desktop displays.

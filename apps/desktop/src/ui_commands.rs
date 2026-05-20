@@ -2,17 +2,17 @@ use std::time::{Duration, Instant};
 
 use gpui::{Context, Window, prelude::*};
 
-use super::{ConnectionState, Palette, RunningCommand, axon_command};
+use super::{ConnectionState, Palette, RunningCommand};
 use crate::Submit;
-use crate::actions::{ArgMode, build_axon_args, display_command_line};
-use crate::conversation::{AskConversation, inject_follow_up};
-use crate::output::{BoundedProcessOutput, CommandOutput, OutputKind, run_command_bounded};
+use crate::actions::ArgMode;
+use crate::output::{CommandOutput, OutputKind};
+use crate::rest_client::{RestClient, RestOutput, build_rest_request, display_rest_request};
 
 struct CommandResult {
     id: u64,
     subcommand: &'static str,
     command_line: String,
-    result: Result<BoundedProcessOutput, String>,
+    result: Result<RestOutput, String>,
 }
 
 struct HealthResult {
@@ -27,13 +27,22 @@ impl Palette {
         cx.notify();
 
         let task = cx.background_spawn(async move {
-            let mut cmd = axon_command();
-            cmd.args(["doctor", "--json"]);
-            let ok = run_command_bounded(cmd)
-                .map(|o| {
-                    let stdout = String::from_utf8_lossy(&o.stdout);
-                    stdout.contains(r#""all_ok":true"#) || stdout.contains(r#""all_ok": true"#)
+            let ok = RestClient::from_env()
+                .and_then(|client| {
+                    let request = build_rest_request(
+                        crate::actions::CommandAction {
+                            label: "Doctor",
+                            subcommand: "doctor",
+                            arg_mode: ArgMode::None,
+                            aliases: &[],
+                            description: "",
+                            example: "",
+                        },
+                        "",
+                    )?;
+                    client.execute(&request)
                 })
+                .map(|output| output.ok)
                 .unwrap_or(false);
             HealthResult { ok }
         });
@@ -88,13 +97,6 @@ impl Palette {
             return;
         }
 
-        if self
-            .ask_conversation
-            .is_some_and(|c| c.is_stale(Instant::now()))
-        {
-            self.ask_conversation = None;
-        }
-
         if action.arg_mode != ArgMode::None && arg.is_empty() {
             self.command_output = Some(CommandOutput::notice(
                 OutputKind::Warning,
@@ -115,8 +117,8 @@ impl Palette {
             return;
         }
 
-        let mut args = match build_axon_args(action, &arg) {
-            Ok(args) => args,
+        let request = match build_rest_request(action, &arg) {
+            Ok(request) => request,
             Err(error) => {
                 self.command_output = Some(CommandOutput::notice(
                     OutputKind::Error,
@@ -127,8 +129,7 @@ impl Palette {
                 return;
             }
         };
-        inject_follow_up(action.subcommand, &mut args, self.ask_conversation.as_ref());
-        let command_line = display_command_line(&args);
+        let command_line = display_rest_request(&request);
         let run_id = self.next_run_id;
         self.next_run_id += 1;
         self.running = Some(RunningCommand {
@@ -142,9 +143,7 @@ impl Palette {
         self.spawn_running_tick(run_id, cx);
 
         let task = cx.background_spawn(async move {
-            let mut cmd = axon_command();
-            cmd.args(&args);
-            let result = run_command_bounded(cmd).map_err(|error| error.to_string());
+            let result = RestClient::from_env().and_then(|client| client.execute(&request));
             CommandResult {
                 id: run_id,
                 subcommand: action.subcommand,
@@ -203,11 +202,10 @@ impl Palette {
     }
 
     fn handle_reset_conversation(&mut self, cx: &mut Context<Self>) {
-        self.ask_conversation = None;
         self.command_output = Some(CommandOutput::notice(
             OutputKind::Success,
-            "Conversation reset",
-            "Next ask will start a fresh session.",
+            "Ask state cleared",
+            "REST ask requests are stateless in the current server API.",
         ));
         self.query.clear();
         self.selected = 0;
@@ -216,16 +214,7 @@ impl Palette {
 
     fn finalize_result(&mut self, result: CommandResult) -> CommandOutput {
         match result.result {
-            Ok(output) => {
-                if result.subcommand == "ask" && output.status.success() {
-                    let now = Instant::now();
-                    match self.ask_conversation.as_mut() {
-                        Some(c) => c.bump(now),
-                        None => self.ask_conversation = Some(AskConversation::new(now)),
-                    }
-                }
-                CommandOutput::from_process(&result.command_line, result.subcommand, output)
-            }
+            Ok(output) => CommandOutput::from_rest(&result.command_line, result.subcommand, output),
             Err(error) => CommandOutput::spawn_error(&result.command_line, error),
         }
     }

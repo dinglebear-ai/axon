@@ -1,19 +1,19 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
-//! axon-palette: a global-hotkey command palette for the axon CLI.
+//! axon-palette: a global-hotkey command palette for the Axon REST API.
 //!
 //! Press the configured global hotkey (default: Ctrl+Shift+Space) anywhere on
 //! the desktop to bring the palette window forward. Type to filter actions,
 //! optionally followed by an argument (URL, query, etc.), then press Enter.
-//! The palette shells out to the `axon` binary on $PATH.
+//! The palette calls the configured Axon server directly.
 
 mod actions;
 mod anim;
-mod conversation;
 mod layout;
 mod markdown;
 mod output;
 mod render;
+mod rest_client;
 mod theme;
 mod ui;
 
@@ -29,6 +29,7 @@ use gpui::{
     WindowOptions, actions, prelude::*, px, size,
 };
 
+use crate::layout::WINDOW_CHROME_HEIGHT;
 use crate::theme::register_bundled_fonts;
 use crate::ui::Palette;
 
@@ -98,21 +99,18 @@ fn main() -> Result<()> {
             KeyBinding::new("ctrl+e", ToggleErrors, Some("Palette")),
         ]);
 
-        // Launch height is the prompt-only minimum from `layout::MIN_WINDOW_HEIGHT`.
+        // Launch height is the prompt-only minimum plus our custom title/menu strip.
         // The window then grows on demand as the user types, runs commands,
         // and produces output. See `Palette::sync_window_height`.
-        let bounds = Bounds::centered(
-            None,
-            size(px(720.0), px(crate::layout::MIN_WINDOW_HEIGHT)),
-            cx,
-        );
+        let launch_height = crate::layout::MIN_WINDOW_HEIGHT + WINDOW_CHROME_HEIGHT;
+        let bounds = Bounds::centered(None, size(px(720.0), px(launch_height)), cx);
         let window = cx
             .open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
                         title: Some("Axon Palette".into()),
-                        appears_transparent: false,
+                        appears_transparent: true,
                         ..Default::default()
                     }),
                     focus: true,
@@ -120,7 +118,7 @@ fn main() -> Result<()> {
                     is_movable: true,
                     is_resizable: true,
                     kind: WindowKind::Normal,
-                    window_min_size: Some(size(px(560.0), px(crate::layout::MIN_WINDOW_HEIGHT))),
+                    window_min_size: Some(size(px(560.0), px(launch_height))),
                     ..Default::default()
                 },
                 |window, cx| {

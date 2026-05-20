@@ -1,6 +1,6 @@
 # Axon Palette
 
-`axon-palette` is the desktop command palette for the `axon` CLI. It opens from a global hotkey, filters common Axon actions, and shells out to the `axon` binary.
+`axon-palette` is the desktop command palette for the Axon REST API. It opens from a global hotkey, filters common Axon actions, and calls the running Axon server directly.
 
 ## Platforms
 
@@ -46,14 +46,11 @@ or run the built binary directly:
 apps/desktop/target/release/axon-palette
 ```
 
-The palette resolves `axon` through `PATH` and executes it as a subprocess. Install or symlink the intended Axon CLI binary before launching the palette:
+The palette calls the Axon server REST API. It reads `AXON_SERVER_URL` when set and otherwise defaults to `http://127.0.0.1:8001`. If the server requires static bearer auth, set `AXON_MCP_HTTP_TOKEN` in the palette process environment.
 
 ```bash
-which axon
-axon --version
+AXON_SERVER_URL=http://127.0.0.1:8001 apps/desktop/target/release/axon-palette
 ```
-
-If the wrong binary is found, fix the shell or desktop-session `PATH` before testing the palette. The palette forces local CLI execution for its actions, so a configured `AXON_SERVER_URL` should not redirect palette commands to a remote server.
 
 ## Hotkey
 
@@ -66,12 +63,12 @@ If the palette starts but the hotkey does not focus the window, check whether an
 Before packaging a desktop release:
 
 1. Build the release binary for the target platform.
-2. Ensure `which axon` points at the expected Axon CLI.
+2. Start `axon serve` and confirm `/v1/doctor` is reachable.
 3. Launch `axon-palette`.
 4. Confirm the window accepts typing immediately after launch.
 5. Type `doctor`, press Enter, and confirm output appears.
 6. Press `Ctrl+Shift+Space` from another focused app and confirm the palette activates.
-7. Run an `ask` command, close and reopen the palette within 30 minutes, then confirm the next ask continues the restored conversation.
+7. Run `scrape https://docs.rs/serde` and confirm the palette shows the REST response.
 
 ## Output Links
 
