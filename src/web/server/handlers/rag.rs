@@ -14,6 +14,7 @@ pub(crate) struct QueryRequest {
     query: String,
     limit: Option<usize>,
     offset: Option<usize>,
+    collection: Option<String>,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -50,6 +51,7 @@ pub(crate) async fn query(
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<services::types::QueryResult>, HttpError> {
     let query = required_text(&req.query, "query")?;
+    let cfg = with_collection_override(&cfg, req.collection)?;
     services::query::query(&cfg, query, pagination(req.limit, req.offset, 10, 100))
         .await
         .map(Json)
@@ -140,6 +142,21 @@ pub(crate) fn required_text<'a>(value: &'a str, field: &'static str) -> Result<&
     } else {
         Ok(trimmed)
     }
+}
+
+fn with_collection_override(cfg: &Config, collection: Option<String>) -> Result<Config, HttpError> {
+    let Some(collection) = collection
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(cfg.clone());
+    };
+    crate::core::config::validation::validate_collection_name(collection)
+        .map_err(|err| HttpError::bad_request(format!("invalid collection: {err}")))?;
+    let mut cfg = cfg.clone();
+    cfg.collection = collection.to_string();
+    Ok(cfg)
 }
 
 pub(crate) fn pagination(

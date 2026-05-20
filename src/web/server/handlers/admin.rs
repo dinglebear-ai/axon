@@ -3,7 +3,7 @@ use crate::services;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header},
     routing::post,
 };
 use chrono::{DateTime, Utc};
@@ -40,6 +40,12 @@ const MAX_TASK_PAYLOAD_BYTES: usize = 64 * 1024;
 pub(crate) struct MigrateRequest {
     pub from: String,
     pub to: String,
+}
+
+#[derive(Debug, Deserialize, Default, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DedupeRequest {
+    collection: Option<String>,
 }
 
 // migrate_router is unused — migrate is wired directly in routing.rs
@@ -86,19 +92,67 @@ pub(crate) async fn migrate(
 #[utoipa::path(
     post,
     path = "/v1/dedupe",
+    request_body(content = Option<DedupeRequest>, content_type = "application/json"),
     responses(
         (status = 200, description = "Dedupe result", body = serde_json::Value),
+        (status = 400, description = "Invalid dedupe request", body = crate::web::server::error::ErrorBody),
+        (status = 415, description = "Unsupported request body content type", body = crate::web::server::error::ErrorBody),
         (status = 502, description = "Upstream vector service unavailable", body = crate::web::server::error::ErrorBody)
     ),
     tag = "admin"
 )]
 pub(crate) async fn dedupe(
     State((_state, cfg)): State<WebState>,
+    headers: HeaderMap,
+    body: String,
 ) -> Result<Json<services::types::DedupeResult>, HttpError> {
-    services::system::dedupe(&cfg, None)
+    let mut req_cfg = (*cfg).clone();
+    if let Some(req) = parse_optional_json_body::<DedupeRequest>(&headers, &body)?
+        && let Some(collection) = req.collection
+    {
+        crate::core::config::validate_collection_name(&collection)
+            .map_err(|e| HttpError::bad_request(format!("collection: {e}").as_str()))?;
+        req_cfg.collection = collection;
+    }
+    services::system::dedupe(&req_cfg, None)
         .await
         .map(Json)
         .map_err(HttpError::from_box)
+}
+
+fn parse_optional_json_body<T>(headers: &HeaderMap, body: &str) -> Result<Option<T>, HttpError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    if body.is_empty() {
+        return Ok(None);
+    }
+    if !has_json_content_type(headers) {
+        return Err(HttpError::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+            "non-empty request body must use application/json",
+        ));
+    }
+    serde_json::from_str(body)
+        .map(Some)
+        .map_err(|e| HttpError::bad_request(format!("invalid JSON request body: {e}")))
+}
+
+fn has_json_content_type(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            let media_type = value
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+            media_type == "application/json" || media_type.ends_with("+json")
+        })
+        .unwrap_or(false)
 }
 
 #[utoipa::path(

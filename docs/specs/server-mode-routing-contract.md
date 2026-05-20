@@ -78,17 +78,16 @@ These commands may offer an explicit `--local` rerun suggestion, but they must n
 
 - The service layer owns command semantics and request options.
 - CLI, REST, and MCP MUST map into shared service request/option types.
-- REST routes MUST reach feature parity with the current `/v1/actions` behavior before CLI server mode migrates away from `/v1/actions`.
+- REST routes are the feature-parity target for CLI server mode; `/v1/actions` is no longer a supported compatibility surface.
 - A REST route MUST NOT silently ignore a knob exposed by CLI or MCP for the same service operation.
 - Contract tests MUST compare effective service inputs or job configs across CLI planning, REST request parsing, and MCP request parsing.
 - New service options MUST be added to the canonical service request type first, then exposed through each supported surface.
 
-## `/v1/actions`
+## Removed `/v1/actions`
 
-- `/v1/actions` is an interim RPC endpoint that accepts the MCP-shaped `AxonRequest` action envelope.
-- `/v1/actions` MUST remain available only until direct REST routes have feature parity and CLI/MCP no longer depend on it.
-- This project uses a hard cutover. After migration, `/v1/actions` SHOULD be removed instead of kept for backwards compatibility.
-- New business logic SHOULD go in the service layer, not in `/v1/actions`.
+- `/v1/actions` was an interim RPC endpoint that accepted the MCP-shaped `AxonRequest` action envelope.
+- This project uses a hard cutover. New business logic belongs in the service layer and direct REST adapters.
+- Clients must use direct `/v1/*` REST routes after the cutover.
 
 ## Direct REST
 
@@ -225,7 +224,7 @@ Route decisions MUST be logged with structured fields:
 
 ## Cutover Exit Criteria
 
-`/v1/actions` may be deleted only after:
+`/v1/actions` deletion is complete when:
 
 - Direct REST routes cover all current server-routed CLI behavior.
 - Stdio MCP can thin-client through REST when `AXON_SERVER_URL` is set.

@@ -43,6 +43,44 @@ use axum::response::IntoResponse;
 #[cfg(test)]
 use subtle::ConstantTimeEq;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AxonScope {
+    Read,
+    Write,
+    Admin,
+}
+
+impl AxonScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Read => AXON_READ_SCOPE,
+            Self::Write => AXON_WRITE_SCOPE,
+            Self::Admin => AXON_FULL_ACCESS_SCOPE,
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub fn scope_for_action(action: &str, subaction: Option<&str>) -> Option<&'static str> {
+    let scope = match action {
+        "help" => return None,
+        "crawl" | "extract" | "embed" | "ingest" => match subaction.unwrap_or("start") {
+            "status" | "list" => AxonScope::Read,
+            _ => AxonScope::Write,
+        },
+        "scrape" | "summarize" => AxonScope::Write,
+        "artifacts" => match subaction.unwrap_or("list") {
+            "delete" | "clean" => AxonScope::Write,
+            _ => AxonScope::Read,
+        },
+        "query" | "retrieve" | "sources" | "domains" | "stats" | "status" | "doctor" | "search"
+        | "map" | "evaluate" | "suggest" | "research" | "ask" | "screenshot" => AxonScope::Read,
+        "migrate" | "dedupe" => AxonScope::Admin,
+        _ => return Some("__deny__"),
+    };
+    Some(scope.as_str())
+}
+
 // ── AuthPolicy ────────────────────────────────────────────────────────────────
 
 /// Authentication policy attached to the MCP router.

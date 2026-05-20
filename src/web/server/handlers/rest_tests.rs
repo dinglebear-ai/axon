@@ -22,6 +22,48 @@ use uuid::Uuid;
 
 const ENV_KEY: &str = "AXON_MCP_HTTP_TOKEN";
 
+#[test]
+fn extract_submit_body_accepts_cli_parity_knobs() {
+    let body = serde_json::json!({
+        "urls": ["https://example.com/docs"],
+        "prompt": "extract title",
+        "extract_mode": "llm",
+        "max_pages": 1,
+        "render_mode": "http",
+        "embed": false,
+        "headers": [["x-test", "1"]]
+    });
+
+    let parsed: crate::web::server::handlers::rest::types::ExtractSubmitBody =
+        serde_json::from_value(body).expect("parse extract body");
+
+    assert_eq!(parsed.urls, vec!["https://example.com/docs"]);
+    assert_eq!(parsed.prompt.as_deref(), Some("extract title"));
+    assert_eq!(parsed.max_pages, Some(1));
+    assert_eq!(parsed.embed, Some(false));
+}
+
+#[test]
+fn async_lifecycle_routes_are_declared_for_extract() {
+    let routes = crate::web::server::handlers::rest::documented_rest_paths_for_tests();
+    assert!(routes.contains(&"GET /v1/extract".to_string()));
+    assert!(routes.contains(&"POST /v1/extract/cleanup".to_string()));
+    assert!(routes.contains(&"DELETE /v1/extract".to_string()));
+    assert!(routes.contains(&"POST /v1/extract/recover".to_string()));
+}
+
+#[test]
+fn crawl_submit_is_write_scope_across_surfaces() {
+    assert_eq!(
+        crate::mcp::auth::scope_for_action("crawl", Some("start")),
+        Some("axon:write")
+    );
+    assert_eq!(
+        crate::web::server::handlers::rest::auth::scope_for_rest_route("POST", "/v1/crawl"),
+        Some("axon:write")
+    );
+}
+
 struct EnvGuard {
     prev: Option<String>,
 }
@@ -456,9 +498,8 @@ async fn bearer_token_passes_write_scope_guard() {
 }
 
 /// Review-followup: positive auth test for admin routes. With a valid bearer
-/// token (axon:write scope) the migrate route passes the admin_write guard
-/// and reaches body validation. Empty `from` then returns 400 from the
-/// handler — proving the request crossed the auth boundary.
+/// token (axon:write scope) the dedupe route passes the admin_write guard
+/// and reaches body validation — proving the request crossed the auth boundary.
 #[tokio::test]
 #[serial]
 async fn admin_routes_accept_valid_bearer() {
@@ -467,12 +508,12 @@ async fn admin_routes_accept_valid_bearer() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/migrate"))
+        .post(format!("{base}/v1/dedupe"))
         .header("authorization", "Bearer secret")
-        .json(&serde_json::json!({ "from": "", "to": "dst" }))
+        .json(&serde_json::json!({ "collection": "invalid/name" }))
         .send()
         .await
-        .expect("migrate request");
+        .expect("dedupe request");
     let status = response.status();
     let body: serde_json::Value = response.json().await.expect("json body");
 
@@ -484,28 +525,44 @@ async fn admin_routes_accept_valid_bearer() {
     );
     assert_eq!(body["kind"], "bad_request");
     assert!(
-        body["message"].as_str().unwrap_or("").contains("from"),
-        "should be from-field validation, got {body}"
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("collection"),
+        "should be collection validation, got {body}"
     );
 }
 
-/// F4: POST /v1/migrate and /v1/dedupe require auth EVEN in LoopbackDev
-/// (admin_write guard). Mirrors the existing /v1/actions Migrate/Dedupe
-/// invariant in src/web/actions.rs.
+#[tokio::test]
+#[serial]
+async fn admin_dedupe_rejects_body_without_json_content_type() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) = spawn(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/dedupe"))
+        .header("authorization", "Bearer secret")
+        .body(r#"{"collection":"invalid/name"}"#)
+        .send()
+        .await
+        .expect("dedupe request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(body["kind"], "unsupported_media_type");
+}
+
+/// F4: POST /v1/dedupe requires auth EVEN in LoopbackDev (admin_write guard).
+/// Migrate is intentionally not exposed as REST.
 #[tokio::test]
 #[serial]
 async fn admin_routes_require_auth_in_loopback_dev() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
-
-    let migrate = client
-        .post(format!("{base}/v1/migrate"))
-        .json(&serde_json::json!({ "from": "src", "to": "dst" }))
-        .send()
-        .await
-        .expect("migrate request");
-    let migrate_status = migrate.status();
 
     let dedupe = client
         .post(format!("{base}/v1/dedupe"))
@@ -516,21 +573,16 @@ async fn admin_routes_require_auth_in_loopback_dev() {
 
     stop(shutdown, handle).await;
     assert_eq!(
-        migrate_status,
-        StatusCode::UNAUTHORIZED,
-        "migrate must require auth in LoopbackDev"
-    );
-    assert_eq!(
         dedupe_status,
         StatusCode::UNAUTHORIZED,
         "dedupe must require auth in LoopbackDev"
     );
 }
 
-/// F4: migrate rejects empty from/to with 400 when authenticated.
+/// F4: migrate is intentionally not exposed as REST.
 #[tokio::test]
 #[serial]
-async fn migrate_rejects_empty_fields_when_authed() {
+async fn migrate_is_not_exposed_as_rest() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) = spawn(AuthPolicy::Mounted { auth_state: None }).await;
     let client = reqwest::Client::new();
@@ -543,12 +595,9 @@ async fn migrate_rejects_empty_fields_when_authed() {
         .await
         .expect("migrate request");
     let status = response.status();
-    let body: serde_json::Value = response.json().await.expect("json body");
 
     stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["kind"], "bad_request");
-    assert!(body["message"].as_str().unwrap_or("").contains("from"));
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

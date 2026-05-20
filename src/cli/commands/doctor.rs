@@ -11,6 +11,11 @@ pub async fn run_doctor(cfg: &Config) -> Result<(), Box<dyn Error>> {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         render_doctor_report_human(&report);
+        if cfg.doctor_diagnose {
+            println!(
+                "LLM diagnosis unavailable: configure AXON_HEADLESS_GEMINI_CMD to enable doctor diagnose."
+            );
+        }
     }
     Ok(())
 }

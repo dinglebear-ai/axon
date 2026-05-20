@@ -76,16 +76,16 @@ fn cleartext_guard_allows_generic_override() {
 
 #[tokio::test]
 #[serial]
-async fn post_action_attaches_bearer_token() {
+async fn post_json_attaches_bearer_token() {
     let _lo = LoopbackGuard::new();
     let _t = EnvGuard::set(TOKEN_ENV, Some("client-token"));
     let _i = EnvGuard::set(INSECURE_ENV, None);
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/v1/actions")
+            .path("/v1/scrape")
             .header("authorization", "Bearer client-token")
-            .json_body(json!({"action": "status"}));
+            .json_body(json!({"url": "https://example.com"}));
         then.status(200)
             .header("content-type", "application/json")
             .json_body(json!({"ok": true}));
@@ -93,7 +93,11 @@ async fn post_action_attaches_bearer_token() {
 
     let client = ServerClient::new(reqwest::Url::parse(&server.base_url()).unwrap()).unwrap();
     let got: serde_json::Value = client
-        .post_action(&json!({"action": "status"}))
+        .post_json(
+            "/v1/scrape",
+            &json!({"url": "https://example.com"}),
+            "scrape response",
+        )
         .await
         .unwrap();
 
@@ -103,18 +107,22 @@ async fn post_action_attaches_bearer_token() {
 
 #[tokio::test]
 #[serial]
-async fn post_action_classifies_auth_status() {
+async fn post_json_classifies_auth_status() {
     let _lo = LoopbackGuard::new();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     server.mock(|when, then| {
-        when.method(POST).path("/v1/actions");
+        when.method(POST).path("/v1/scrape");
         then.status(401).body("unauthorized");
     });
 
     let client = ServerClient::new(reqwest::Url::parse(&server.base_url()).unwrap()).unwrap();
     let err = client
-        .post_action::<_, serde_json::Value>(&json!({"action": "status"}))
+        .post_json::<_, serde_json::Value>(
+            "/v1/scrape",
+            &json!({"url": "https://example.com"}),
+            "scrape response",
+        )
         .await
         .unwrap_err();
 
@@ -124,18 +132,22 @@ async fn post_action_classifies_auth_status() {
 
 #[tokio::test]
 #[serial]
-async fn post_action_classifies_schema_version_mismatch() {
+async fn post_json_classifies_schema_version_mismatch() {
     let _lo = LoopbackGuard::new();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     server.mock(|when, then| {
-        when.method(POST).path("/v1/actions");
+        when.method(POST).path("/v1/scrape");
         then.status(426).body("schema version mismatch");
     });
 
     let client = ServerClient::new(reqwest::Url::parse(&server.base_url()).unwrap()).unwrap();
     let err = client
-        .post_action::<_, serde_json::Value>(&json!({"action": "status"}))
+        .post_json::<_, serde_json::Value>(
+            "/v1/scrape",
+            &json!({"url": "https://example.com"}),
+            "scrape response",
+        )
         .await
         .unwrap_err();
 

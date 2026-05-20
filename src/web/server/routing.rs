@@ -1,3 +1,4 @@
+use super::error::HttpError;
 use super::handlers;
 use super::state::AppState;
 use super::types::ASK_BODY_LIMIT;
@@ -8,8 +9,9 @@ use crate::mcp::auth::{
     oauth_resource_url,
 };
 use crate::services::context::ServiceContext;
+use crate::services::types::ServerInfo;
 use axum::{
-    Extension, Router,
+    Extension, Json, Router,
     body::Body,
     extract::DefaultBodyLimit,
     http::{Method, Request, StatusCode},
@@ -33,7 +35,7 @@ pub(super) fn router(
     let ask_router = ask_router::<(AppState, Arc<Config>)>(Arc::clone(&cfg));
     let rest_body_limit = DefaultBodyLimit::max(128 * 1024);
     let read_routes = Router::new()
-        .merge(super::super::actions::capabilities_router())
+        .route("/v1/capabilities", get(v1_capabilities))
         .route("/v1/sources", get(handlers::discovery::sources))
         .route("/v1/domains", get(handlers::discovery::domains))
         .route("/v1/stats", get(handlers::discovery::stats))
@@ -41,14 +43,14 @@ pub(super) fn router(
         .route("/v1/doctor", get(handlers::discovery::doctor))
         .route("/v1/query", post(handlers::rag::query))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
-        .route("/v1/endpoints", post(handlers::exploration::endpoints));
+        .route("/v1/endpoints", post(handlers::exploration::endpoints))
+        .route("/v1/map", post(handlers::exploration::map));
     let write_routes = Router::new()
         .merge(ask_router)
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
         .route("/v1/scrape", post(handlers::exploration::scrape))
         .route("/v1/summarize", post(handlers::exploration::summarize))
-        .route("/v1/map", post(handlers::exploration::map))
         .route("/v1/search", post(handlers::exploration::search))
         .route("/v1/research", post(handlers::exploration::research))
         .nest(
@@ -67,7 +69,6 @@ pub(super) fn router(
             "/v1/ingest",
             handlers::async_jobs::ingest_router(Arc::clone(&service_context)),
         )
-        .route("/v1/migrate", post(handlers::admin::migrate))
         .route("/v1/dedupe", post(handlers::admin::dedupe))
         .route(
             "/v1/watch",
@@ -78,9 +79,11 @@ pub(super) fn router(
     let rest_routes = protect_routes(read_routes, &auth_policy, ScopeRequirement::Read).merge(
         protect_routes(write_routes, &auth_policy, ScopeRequirement::Write),
     );
-    let panel_router = Router::new()
+    Router::new()
         .route("/healthz", get(super::super::health::healthz))
         .route("/readyz", get(super::super::health::readyz))
+        .route("/v1/actions", post(v1_actions_removed))
+        .route("/v1/migrate", post(v1_migrate_not_exposed))
         .merge(super::openapi::docs_router())
         .route("/api/panel/state", get(handlers::panel_state))
         .route("/api/panel/login", post(handlers::login))
@@ -104,9 +107,27 @@ pub(super) fn router(
         .route("/api/panel/setup/targets", get(handlers::setup_targets))
         .merge(rest_routes)
         .fallback(super::super::static_assets::serve_static)
-        .with_state((state, Arc::clone(&cfg)));
-    let v1_actions = super::super::actions::router(service_context, auth_policy.clone());
-    panel_router.merge(v1_actions)
+        .with_state((state, Arc::clone(&cfg)))
+}
+
+async fn v1_capabilities() -> Json<ServerInfo> {
+    Json(ServerInfo::current())
+}
+
+async fn v1_actions_removed() -> HttpError {
+    HttpError::new(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "/v1/actions was removed; use direct /v1 REST routes",
+    )
+}
+
+async fn v1_migrate_not_exposed() -> HttpError {
+    HttpError::new(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "/v1/migrate is not exposed over REST",
+    )
 }
 
 pub(crate) fn ask_router<S>(cfg: Arc<Config>) -> Router<S>
@@ -170,10 +191,7 @@ async fn block_loopback_destructive_request(
 
 fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
-        && (path == "/v1/dedupe"
-            || path == "/v1/migrate"
-            || path == "/v1/watch"
-            || path.starts_with("/v1/watch/"))
+        && (path == "/v1/dedupe" || path == "/v1/watch" || path.starts_with("/v1/watch/"))
     {
         return true;
     }
