@@ -46,6 +46,25 @@ fn env_quotes_values_with_spaces() {
 }
 
 #[test]
+fn raw_env_text_validates_before_write() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join(".env");
+
+    write_env_text(&path, "QDRANT_URL=http://localhost:53333\nTAVILY_API_KEY='secret value'\n")
+        .unwrap();
+    assert_eq!(
+        read_env_entries(&path)
+            .unwrap()
+            .get("TAVILY_API_KEY")
+            .map(String::as_str),
+        Some("secret value")
+    );
+
+    let err = write_env_text(&path, "BROKEN='unterminated\n").unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+}
+
+#[test]
 fn toml_set_get_unset_nested() {
     let mut doc = toml_edit::DocumentMut::new();
     set_toml_entry(&mut doc, "ask.cache.enabled", "true").unwrap();

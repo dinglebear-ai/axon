@@ -1,9 +1,13 @@
-use std::time::Duration;
+use std::{fs, path::PathBuf, time::Duration};
 
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
 
 use crate::actions::{ArgMode, CommandAction};
+
+#[cfg(test)]
+#[path = "rest_client_tests.rs"]
+mod tests;
 
 const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8001";
 const SERVER_URL_ENV: &str = "AXON_SERVER_URL";
@@ -32,8 +36,8 @@ pub(crate) struct RestOutput {
 
 impl RestClient {
     pub(crate) fn from_env() -> Result<Self, String> {
-        let base_url = std::env::var(SERVER_URL_ENV)
-            .ok()
+        let env_entries = read_default_env_entries();
+        let base_url = env_value(SERVER_URL_ENV, &env_entries)
             .map(|url| url.trim().trim_end_matches('/').to_string())
             .filter(|url| !url.is_empty())
             .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string());
@@ -41,8 +45,7 @@ impl RestClient {
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .build()
             .map_err(|err| format!("build REST client: {err}"))?;
-        let token = std::env::var(TOKEN_ENV)
-            .ok()
+        let token = env_value(TOKEN_ENV, &env_entries)
             .map(|token| token.trim().to_string())
             .filter(|token| !token.is_empty());
         Ok(Self {
@@ -92,9 +95,76 @@ impl RestClient {
     }
 }
 
+fn env_value(key: &str, file_entries: &[(String, String)]) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            file_entries
+                .iter()
+                .find(|(entry_key, _)| entry_key == key)
+                .map(|(_, value)| value.clone())
+        })
+}
+
+fn read_default_env_entries() -> Vec<(String, String)> {
+    let Some(path) = default_env_path() else {
+        return Vec::new();
+    };
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    parse_env_entries(&contents)
+}
+
+fn default_env_path() -> Option<PathBuf> {
+    std::env::var_os("AXON_ENV_PATH")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".axon/.env")))
+}
+
+fn parse_env_entries(contents: &str) -> Vec<(String, String)> {
+    contents
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let (key, value) = line.split_once('=')?;
+            let key = key.trim();
+            if key.is_empty() {
+                return None;
+            }
+            Some((key.to_string(), trim_env_value(value)))
+        })
+        .collect()
+}
+
+fn trim_env_value(value: &str) -> String {
+    let value = value.trim();
+    if value.len() >= 2 {
+        let bytes = value.as_bytes();
+        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
+        {
+            return value[1..value.len() - 1].to_string();
+        }
+    }
+    value.to_string()
+}
+
 pub(crate) fn build_rest_request(action: CommandAction, arg: &str) -> Result<RestRequest, String> {
     let words = match action.arg_mode {
         ArgMode::None => Vec::new(),
+        ArgMode::OptionalSingle => {
+            let arg = arg.trim();
+            if arg.is_empty() {
+                Vec::new()
+            } else {
+                vec![arg.to_string()]
+            }
+        }
         ArgMode::Single => vec![arg.trim().to_string()],
         ArgMode::Split => split_shell_words(arg)?,
     };
@@ -102,6 +172,9 @@ pub(crate) fn build_rest_request(action: CommandAction, arg: &str) -> Result<Res
     match action.subcommand {
         "doctor" => Ok(get("/v1/doctor", "GET /v1/doctor")),
         "status" => Ok(get("/v1/status", "GET /v1/status")),
+        "sources" => Ok(get("/v1/sources?limit=100", "GET /v1/sources")),
+        "domains" => Ok(get("/v1/domains?limit=100", "GET /v1/domains")),
+        "stats" => Ok(get("/v1/stats", "GET /v1/stats")),
         "scrape" => {
             let url = first_arg(&words, "url")?;
             Ok(post("/v1/scrape", json!({ "url": url }), "POST /v1/scrape"))
@@ -118,12 +191,51 @@ pub(crate) fn build_rest_request(action: CommandAction, arg: &str) -> Result<Res
                 "POST /v1/map",
             ))
         }
+        "summarize" => {
+            let urls = require_args(&words, "urls")?;
+            Ok(post(
+                "/v1/summarize",
+                json!({ "urls": urls }),
+                "POST /v1/summarize",
+            ))
+        }
         "ask" => {
             let query = first_arg(&words, "query")?;
             Ok(post(
                 "/v1/ask",
                 json!({ "query": query, "explain": false, "diagnostics": false }),
                 "POST /v1/ask",
+            ))
+        }
+        "query" => {
+            let query = first_arg(&words, "query")?;
+            Ok(post(
+                "/v1/query",
+                json!({ "query": query, "limit": 10 }),
+                "POST /v1/query",
+            ))
+        }
+        "retrieve" => {
+            let url = first_arg(&words, "url")?;
+            Ok(post(
+                "/v1/retrieve",
+                json!({ "url": url, "token_budget": 6000 }),
+                "POST /v1/retrieve",
+            ))
+        }
+        "suggest" => {
+            let body = words
+                .first()
+                .map(|focus| json!({ "focus": focus }))
+                .unwrap_or_else(|| json!({}));
+            Ok(post("/v1/suggest", body, "POST /v1/suggest"))
+        }
+        "evaluate" => {
+            let question = first_arg(&words, "question")?;
+            Ok(post(
+                "/v1/evaluate",
+                json!({ "question": question }),
+                "POST /v1/evaluate",
             ))
         }
         "search" => {
@@ -140,6 +252,22 @@ pub(crate) fn build_rest_request(action: CommandAction, arg: &str) -> Result<Res
                 "/v1/research",
                 json!({ "query": query, "limit": 10 }),
                 "POST /v1/research",
+            ))
+        }
+        "embed" => {
+            let input = first_arg(&words, "input")?;
+            Ok(post(
+                "/v1/embed",
+                json!({ "input": input }),
+                "POST /v1/embed",
+            ))
+        }
+        "extract" => {
+            let urls = require_args(&words, "urls")?;
+            Ok(post(
+                "/v1/extract",
+                json!({ "urls": urls }),
+                "POST /v1/extract",
             ))
         }
         "ingest" => {

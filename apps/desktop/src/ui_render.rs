@@ -4,12 +4,13 @@
 
 use gpui::{
     AnyElement, Context, FontWeight, IntoElement, MouseButton, MouseDownEvent, ParentElement,
-    Render, SharedString, Styled, Window, WindowControlArea, div, prelude::*, px, rgb,
+    Render, SharedString, Styled, Window, div, prelude::*, px, rgb, svg,
 };
 
 use super::ui_body::render_palette_body;
-use super::{ChromeMenu, Palette};
+use super::{ChromeMenu, Palette, PaletteMode};
 use crate::layout::compute_desired_height;
+use crate::settings_view::render_settings_view;
 use crate::theme::{
     AURORA_ACCENT_PRIMARY, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_MONO,
     AURORA_FONT_SANS, AURORA_PAGE_BG, AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
@@ -31,7 +32,10 @@ impl Render for Palette {
         // pass but `sync_window_height` is idempotent — it only calls
         // `Window::resize` when the computed target differs from the last
         // committed value.
-        let target_height = compute_desired_height(self.height_snapshot(&actions, hide_list));
+        let mut target_height = compute_desired_height(self.height_snapshot(&actions, hide_list));
+        if self.chrome_menu_open.is_some() {
+            target_height = target_height.max(180.0);
+        }
         self.sync_window_height(target_height, window);
 
         let prompt = render_prompt_text(self, locked);
@@ -43,6 +47,7 @@ impl Render for Palette {
         let has_output = command_output
             .as_ref()
             .is_some_and(|output| output.has_body());
+        let settings_open = self.mode == PaletteMode::Settings;
 
         div()
             .key_context("Palette")
@@ -55,6 +60,15 @@ impl Render for Palette {
             .on_action(cx.listener(Palette::toggle_action_menu))
             .on_action(cx.listener(Palette::toggle_errors))
             .on_key_down(cx.listener(Palette::on_key))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _: &MouseDownEvent, _window, cx| {
+                    if this.chrome_menu_open.is_some() {
+                        this.chrome_menu_open = None;
+                        cx.notify();
+                    }
+                }),
+            )
             .flex()
             .flex_col()
             .size_full()
@@ -69,22 +83,27 @@ impl Render for Palette {
                 window,
                 cx,
             ))
-            .child(render_palette_body(
-                self,
-                actions,
-                selected,
-                running_subcommand,
-                hide_list,
-                selected_action,
-                command_output,
-                locked,
-                prompt,
-                query_is_empty,
-                action_menu_open,
-                status_dot,
-                window,
-                cx,
-            ))
+            .child(if settings_open {
+                render_settings_view(&self.settings, &self.settings_scroll, cx).into_any_element()
+            } else {
+                render_palette_body(
+                    self,
+                    actions,
+                    selected,
+                    running_subcommand,
+                    hide_list,
+                    selected_action,
+                    command_output,
+                    locked,
+                    prompt,
+                    query_is_empty,
+                    action_menu_open,
+                    status_dot,
+                    window,
+                    cx,
+                )
+                .into_any_element()
+            })
             .when_some(chrome_menu_open, |el, menu| {
                 el.child(render_chrome_menu_dropdown(menu, has_output, cx))
             })
@@ -124,7 +143,6 @@ fn render_window_chrome(
         .flex_row()
         .items_center()
         .justify_between()
-        .window_control_area(WindowControlArea::Drag)
         .border_b_1()
         .border_color(rgb(AURORA_BORDER_DEFAULT))
         .bg(rgb(0x111a24))
@@ -175,12 +193,29 @@ fn render_window_chrome(
                 .flex()
                 .items_center()
                 .overflow_hidden()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this, _: &MouseDownEvent, window, cx| {
+                        cx.stop_propagation();
+                        if this.chrome_menu_open.is_some() {
+                            this.chrome_menu_open = None;
+                            cx.notify();
+                        } else {
+                            window.start_window_move();
+                        }
+                    }),
+                )
                 .child(
                     div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_1()
                         .font_family(AURORA_FONT_SANS)
                         .font_weight(FontWeight(560.0))
                         .text_size(px(12.0))
                         .text_color(rgb(AURORA_TEXT_MUTED))
+                        .child(svg().path("axon-glyph.svg").w(px(14.0)).h(px(14.0)))
                         .child("axon"),
                 ),
         )
@@ -204,6 +239,8 @@ fn render_chrome_menu_trigger(action_menu_open: bool) -> impl IntoElement {
         })
         .hover(|el| el.bg(rgb(0x1a2633)).text_color(rgb(AURORA_TEXT_PRIMARY)))
         .on_mouse_down(MouseButton::Left, |_: &MouseDownEvent, window, cx| {
+            cx.stop_propagation();
+            window.prevent_default();
             window.dispatch_action(Box::new(ToggleActionMenu), cx);
         })
         .child("≡")
@@ -236,7 +273,9 @@ fn render_menu_item(
         .hover(|el| el.bg(rgb(0x1a2633)).text_color(rgb(AURORA_TEXT_PRIMARY)))
         .on_mouse_down(
             MouseButton::Left,
-            cx.listener(move |this, _: &MouseDownEvent, _window, cx| {
+            cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                cx.stop_propagation();
+                window.prevent_default();
                 this.toggle_chrome_menu(menu, cx);
             }),
         )
@@ -250,6 +289,11 @@ enum MenuCommand {
     Submit,
     ShowCommands,
     ToggleErrors,
+    OpenSettings,
+    SaveSettings,
+    ReloadSettings,
+    ToggleSecrets,
+    Exit,
 }
 
 fn render_chrome_menu_dropdown(
@@ -267,19 +311,26 @@ fn render_chrome_menu_dropdown(
 
     let rows: Vec<(&'static str, MenuCommand, bool)> = match menu {
         ChromeMenu::File => vec![
+            ("Settings", MenuCommand::OpenSettings, true),
+            ("Save Settings", MenuCommand::SaveSettings, true),
             ("Clear Output", MenuCommand::ClearOutput, has_output),
             ("Show Commands", MenuCommand::ShowCommands, true),
+            ("Exit", MenuCommand::Exit, true),
         ],
         ChromeMenu::Edit => vec![
             ("Clear Input", MenuCommand::ClearInput, true),
             ("Show Commands", MenuCommand::ShowCommands, true),
         ],
         ChromeMenu::View => vec![
+            ("Reveal Secrets", MenuCommand::ToggleSecrets, true),
             ("Toggle Errors", MenuCommand::ToggleErrors, has_output),
             ("Clear Output", MenuCommand::ClearOutput, has_output),
         ],
         ChromeMenu::Run => vec![("Run Command", MenuCommand::Submit, true)],
-        ChromeMenu::Help => vec![("Show Commands", MenuCommand::ShowCommands, true)],
+        ChromeMenu::Help => vec![
+            ("Reload Settings", MenuCommand::ReloadSettings, true),
+            ("Show Commands", MenuCommand::ShowCommands, true),
+        ],
     };
 
     let row_elements: Vec<AnyElement> = rows
@@ -301,6 +352,10 @@ fn render_chrome_menu_dropdown(
         .border_color(rgb(AURORA_BORDER_STRONG))
         .bg(rgb(0x111a24))
         .shadow_lg()
+        .on_mouse_down(MouseButton::Left, |_: &MouseDownEvent, window, cx| {
+            cx.stop_propagation();
+            window.prevent_default();
+        })
         .children(row_elements)
 }
 
@@ -329,6 +384,8 @@ fn render_chrome_menu_row(
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                cx.stop_propagation();
+                window.prevent_default();
                 if !enabled {
                     return;
                 }
@@ -347,13 +404,32 @@ fn render_chrome_menu_row(
                     }
                     MenuCommand::Submit => this.submit(&Submit, window, cx),
                     MenuCommand::ShowCommands => {
+                        this.mode = PaletteMode::Commands;
                         this.action_menu_open = true;
+                        this.chrome_menu_open = None;
                         this.selected = this.selected_for_locked_action();
                         cx.notify();
                     }
                     MenuCommand::ToggleErrors => {
                         this.errors_open = !this.errors_open;
                         cx.notify();
+                    }
+                    MenuCommand::OpenSettings => this.open_settings(cx),
+                    MenuCommand::SaveSettings => {
+                        this.settings.save();
+                        cx.notify();
+                    }
+                    MenuCommand::ReloadSettings => {
+                        this.settings.reload();
+                        cx.notify();
+                    }
+                    MenuCommand::ToggleSecrets => {
+                        this.settings.reveal_secrets = !this.settings.reveal_secrets;
+                        cx.notify();
+                    }
+                    MenuCommand::Exit => {
+                        window.remove_window();
+                        cx.quit();
                     }
                 }
             }),
@@ -370,21 +446,27 @@ fn render_windows_caption_buttons(window: &mut Window) -> impl IntoElement {
         .h_full()
         .child(render_caption_button(
             "minimize",
-            "\u{e921}",
-            WindowControlArea::Min,
+            "−",
+            CaptionAction::Minimize,
         ))
         .child(if window.is_maximized() {
-            render_caption_button("restore", "\u{e923}", WindowControlArea::Max)
+            render_caption_button("restore", "▣", CaptionAction::Zoom)
         } else {
-            render_caption_button("maximize", "\u{e922}", WindowControlArea::Max)
+            render_caption_button("maximize", "□", CaptionAction::Zoom)
         })
         .child(render_close_button())
+}
+
+#[derive(Clone, Copy)]
+enum CaptionAction {
+    Minimize,
+    Zoom,
 }
 
 fn render_caption_button(
     id: &'static str,
     icon: &'static str,
-    control: WindowControlArea,
+    action: CaptionAction,
 ) -> impl IntoElement {
     div()
         .id(id)
@@ -396,9 +478,16 @@ fn render_caption_button(
         .justify_center()
         .text_size(px(10.0))
         .text_color(rgb(AURORA_TEXT_PRIMARY))
-        .window_control_area(control)
         .hover(|el| el.bg(rgb(0x243242)))
         .active(|el| el.bg(rgb(0x2c3d4f)))
+        .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, window, cx| {
+            cx.stop_propagation();
+            window.prevent_default();
+            match action {
+                CaptionAction::Minimize => window.minimize_window(),
+                CaptionAction::Zoom => window.zoom_window(),
+            }
+        })
         .child(icon)
 }
 
@@ -413,10 +502,15 @@ fn render_close_button() -> impl IntoElement {
         .justify_center()
         .text_size(px(10.0))
         .text_color(rgb(AURORA_TEXT_PRIMARY))
-        .window_control_area(WindowControlArea::Close)
         .hover(|el| el.bg(rgb(0xe81120)).text_color(rgb(0xffffff)))
         .active(|el| el.bg(rgb(0xb50d18)).text_color(rgb(0xffffff)))
-        .child("\u{e8bb}")
+        .on_mouse_down(MouseButton::Left, |_: &MouseDownEvent, window, cx| {
+            cx.stop_propagation();
+            window.prevent_default();
+            window.remove_window();
+            cx.quit();
+        })
+        .child("×")
 }
 
 #[cfg(target_os = "windows")]

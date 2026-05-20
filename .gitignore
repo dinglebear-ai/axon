@@ -14,6 +14,7 @@ config/data/
 *.bak
 *.bak-*
 WEBCLAW_PATTERNS_TO_BORROW.md
+Aurora Design System.zip
 # ── Claude Code / AI tooling ────────────────────────────────────────────────
 .claude/settings.local.json
 .claude/worktrees/
@@ -95,6 +96,7 @@ pip-log.txt
 # ── Node / TypeScript ────────────────────────────────────────────────────────
 node_modules/
 .next/
+apps/web/out/
 dist/
 coverage/
 *.tsbuildinfo

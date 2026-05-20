@@ -7,6 +7,7 @@ use crate::actions::{
 };
 use crate::layout::{HeightSnapshot, MIN_WINDOW_HEIGHT};
 use crate::output::CommandOutput;
+use crate::settings::{AxonSettings, SettingsStatus, SettingsStatusKind};
 use crate::theme::AURORA_BORDER_STRONG;
 use crate::{ClearOutput, MoveDown, MoveUp, TabComplete, ToggleActionMenu, ToggleErrors};
 
@@ -25,6 +26,12 @@ mod ui_body;
 
 #[path = "ui_commands.rs"]
 mod ui_commands;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PaletteMode {
+    Commands,
+    Settings,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConnectionState {
@@ -58,9 +65,13 @@ pub(crate) struct Palette {
     selected: usize,
     focus: FocusHandle,
     command_output: Option<CommandOutput>,
+    pub(crate) settings: AxonSettings,
+    mode: PaletteMode,
     running: Option<RunningCommand>,
     next_run_id: u64,
+    action_scroll: ScrollHandle,
     output_scroll: ScrollHandle,
+    settings_scroll: ScrollHandle,
     locked_command: Option<CommandAction>,
     action_menu_open: bool,
     chrome_menu_open: Option<ChromeMenu>,
@@ -116,9 +127,13 @@ impl Palette {
             selected: 0,
             focus: cx.focus_handle(),
             command_output: None,
+            settings: AxonSettings::load_default(),
+            mode: PaletteMode::Commands,
             running: None,
             next_run_id: 1,
+            action_scroll: ScrollHandle::new(),
             output_scroll: ScrollHandle::new(),
+            settings_scroll: ScrollHandle::new(),
             locked_command: None,
             action_menu_open: false,
             chrome_menu_open: None,
@@ -132,6 +147,9 @@ impl Palette {
     }
 
     fn matches(&self) -> Vec<CommandAction> {
+        if self.mode == PaletteMode::Settings {
+            return vec![];
+        }
         if self.action_menu_open {
             return ACTIONS.to_vec();
         }
@@ -224,6 +242,10 @@ impl Palette {
     }
 
     fn on_key(&mut self, ev: &gpui::KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == PaletteMode::Settings {
+            self.on_settings_key(ev, cx);
+            return;
+        }
         let key = ev.keystroke.key.as_str();
         match key {
             "backspace" => {
@@ -267,6 +289,12 @@ impl Palette {
     /// Build a `HeightSnapshot` from the current palette state. Called
     /// once per `render()` to drive the window-resize sync.
     fn height_snapshot(&self, actions: &[CommandAction], hide_list: bool) -> HeightSnapshot {
+        if self.mode == PaletteMode::Settings {
+            return HeightSnapshot {
+                settings_visible: true,
+                ..Default::default()
+            };
+        }
         let selected_action = actions.get(self.selected).copied();
         let footer_visible = selected_action.is_some();
         // Only `has_body()` outputs are actually rendered (see `ui_render.rs`
@@ -283,6 +311,7 @@ impl Palette {
             empty_placeholder_visible,
             footer_visible,
             output_body_visible,
+            settings_visible: false,
         }
     }
 
@@ -319,7 +348,7 @@ impl Palette {
     }
 
     fn argument_for(&self, action: CommandAction) -> &str {
-        if action.arg_mode == ArgMode::None {
+        if matches!(action.arg_mode, ArgMode::None) {
             return "";
         }
 
@@ -378,6 +407,76 @@ impl Palette {
         };
         self.action_menu_open = false;
         cx.notify();
+    }
+
+    pub(crate) fn open_settings(&mut self, cx: &mut Context<Self>) {
+        self.mode = PaletteMode::Settings;
+        self.action_menu_open = false;
+        self.chrome_menu_open = None;
+        self.locked_command = None;
+        self.query.clear();
+        cx.notify();
+    }
+
+    fn close_settings(&mut self, cx: &mut Context<Self>) {
+        self.mode = PaletteMode::Commands;
+        self.settings.status = Some(SettingsStatus {
+            kind: SettingsStatusKind::Info,
+            message: "Settings closed.".to_string(),
+        });
+        cx.notify();
+    }
+
+    fn on_settings_key(&mut self, ev: &gpui::KeyDownEvent, cx: &mut Context<Self>) {
+        let key = ev.keystroke.key.as_str();
+        let mods = &ev.keystroke.modifiers;
+        match key {
+            "escape" => self.close_settings(cx),
+            "up" => {
+                self.settings.move_selection(-1);
+                cx.notify();
+            }
+            "down" | "tab" => {
+                self.settings.move_selection(1);
+                cx.notify();
+            }
+            "backspace" => {
+                self.settings.backspace();
+                cx.notify();
+            }
+            "enter" => {
+                self.settings.save();
+                cx.notify();
+            }
+            "s" if mods.control || mods.platform => {
+                self.settings.save();
+                cx.notify();
+            }
+            "r" if mods.control || mods.platform => {
+                self.settings.reload();
+                cx.notify();
+            }
+            "l" if mods.control || mods.platform => {
+                self.settings.reveal_secrets = !self.settings.reveal_secrets;
+                cx.notify();
+            }
+            "delete" => {
+                self.settings.clear_selected();
+                cx.notify();
+            }
+            _ if !mods.control && !mods.alt && !mods.platform && !mods.function => {
+                if let Some(ch) = ev
+                    .keystroke
+                    .key_char
+                    .as_deref()
+                    .and_then(|s| s.chars().next())
+                {
+                    self.settings.push_char(ch);
+                    cx.notify();
+                }
+            }
+            _ => {}
+        }
     }
 }
 

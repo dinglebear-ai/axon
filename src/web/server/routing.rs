@@ -91,6 +91,13 @@ pub(super) fn router(
             "/api/panel/config",
             get(handlers::get_config).put(handlers::save_config),
         )
+        .route(
+            "/api/panel/env",
+            get(handlers::get_env_config).put(handlers::save_env_config),
+        )
+        .route("/api/panel/status", get(handlers::panel_status))
+        .route("/api/panel/doctor", get(handlers::panel_doctor))
+        .route("/api/panel/command", post(handlers::panel_command))
         .route("/api/panel/ops", get(handlers::ops))
         .route(
             "/api/panel/stack",

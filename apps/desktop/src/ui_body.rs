@@ -67,6 +67,7 @@ pub(super) fn render_palette_body(
                     selected,
                     running_subcommand,
                     hide_list,
+                    &palette.action_scroll,
                     |i| {
                         cx.listener(move |this, _: &MouseDownEvent, window, cx| {
                             this.selected = i;

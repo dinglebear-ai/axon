@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="48" viewBox="0 0 180 48" fill="none" aria-label="Labby wordmark">
+  
+  
+  <text x="0" y="36" class="lb" fill="var(--aurora-text-primary, #e6f4fb)">Lab</text>
+  <text x="73" y="36" class="lb" fill="var(--aurora-accent-primary, #29b6f6)">by</text>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="51" viewBox="0 0 48 51" fill="none" aria-label="Labby mark">
+  
+  <path d="M8 13L24 7L40 13L24 19Z" fill="var(--aurora-border-strong, #24536c)" opacity="0.96"></path>
+  <path d="M8 21L24 15L40 21L24 27Z" fill="var(--aurora-accent-deep,   #1c7fac)" opacity="0.92"></path>
+  <path d="M8 29L24 23L40 29L24 35Z" fill="var(--aurora-accent-primary,#29b6f6)" opacity="0.88"></path>
+  <path d="M8 37L24 31L40 37L24 43Z" fill="var(--aurora-accent-strong, #67cbfa)" opacity="0.90"></path>
+</svg>

@@ -25,6 +25,8 @@ pub(crate) struct HeightSnapshot {
     pub(crate) footer_visible: bool,
     /// True when the output card is rendered with a body (stdout/stderr).
     pub(crate) output_body_visible: bool,
+    /// True when the settings editor is rendered.
+    pub(crate) settings_visible: bool,
 }
 
 // ── per-component pixel budgets ───────────────────────────────────────────
@@ -75,6 +77,10 @@ pub(crate) const MAX_WINDOW_HEIGHT: f32 = 720.0;
 /// Compute the target window height from a state snapshot.
 pub(crate) fn compute_desired_height(snap: HeightSnapshot) -> f32 {
     let mut h = MIN_WINDOW_HEIGHT;
+
+    if snap.settings_visible {
+        return MAX_WINDOW_HEIGHT;
+    }
 
     if snap.action_row_count > 0 {
         h += ACTION_LIST_PADDING + (snap.action_row_count as f32) * ACTION_ROW;

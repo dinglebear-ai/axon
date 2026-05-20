@@ -3,63 +3,57 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Page Scraper Clipboard</title>
+    <title>Axon Chat</title>
     <link rel="stylesheet" href="popup.css">
   </head>
   <body class="surface-popup">
     <main>
       <header class="app-header">
-        <div>
-          <p class="eyebrow">Axon extension</p>
-          <h1>Page capture</h1>
-        </div>
-        <span id="api-status" class="header-badge tone-neutral">Ready</span>
-      </header>
-      <section class="config-panel compact-panel" aria-labelledby="config-title">
-        <div class="panel-heading">
-          <h2 id="config-title">Config</h2>
-          <div class="panel-actions">
-            <button id="open-sidebar" class="link-button sidebar-link" type="button">Sidebar</button>
-            <button id="check-api" class="link-button" type="button">Check API</button>
+        <div class="brand-heading">
+          <img class="brand-mark" src="assets/axon-glyph.svg" alt="" aria-hidden="true">
+          <div>
+            <p class="eyebrow">Axon extension</p>
+            <h1>Axon chat</h1>
           </div>
         </div>
-        <div class="field">
-          <label for="axon-url">Axon server</label>
-          <input id="axon-url" type="url" value="http://100.88.16.79:8001">
+        <div class="header-actions">
+          <button id="open-options" class="icon-button" type="button" aria-label="Open settings" title="Settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path>
+              <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2.1 2.1 0 0 1-2.97 2.97l-.04-.04a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.65V21.3a2.1 2.1 0 0 1-4.2 0v-.06a1.8 1.8 0 0 0-1.1-1.65 1.8 1.8 0 0 0-1.98.36l-.04.04a2.1 2.1 0 1 1-2.97-2.97l.04-.04A1.8 1.8 0 0 0 3.8 15a1.8 1.8 0 0 0-1.65-1.1H2.1a2.1 2.1 0 0 1 0-4.2h.06A1.8 1.8 0 0 0 3.8 8.6a1.8 1.8 0 0 0-.36-1.98l-.04-.04A2.1 2.1 0 1 1 6.37 3.6l.04.04a1.8 1.8 0 0 0 1.98.36 1.8 1.8 0 0 0 1.1-1.65V2.3a2.1 2.1 0 0 1 4.2 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 1.98-.36l.04-.04a2.1 2.1 0 0 1 2.97 2.97l-.04.04a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.1h.06a2.1 2.1 0 0 1 0 4.2h-.06A1.8 1.8 0 0 0 19.4 15Z"></path>
+            </svg>
+          </button>
+          <button id="api-status" class="header-badge tone-neutral" type="button" title="Check Axon API">Ready</button>
+          <button id="watch-status" class="header-badge tone-neutral" type="button" title="Toggle automatic page scraping">Paused</button>
         </div>
-        <div class="field">
-          <label for="axon-token">Token</label>
-          <input id="axon-token" type="password" placeholder="Bearer token">
+      </header>
+      <section class="target-panel" aria-label="Current target">
+        <span class="target-label">Target</span>
+        <div class="target-copy">
+          <strong id="target-title">No page selected</strong>
+          <span id="target-url">Open an http:// or https:// tab.</span>
+          <span id="target-state" class="target-state">Not scraped this session</span>
         </div>
       </section>
-      <section class="command-panel" aria-label="Actions">
-        <button id="copy-axon" class="command-button command-primary" type="button">
-          <span class="command-title">Capture + crawl</span>
-          <span class="command-meta">Markdown + job</span>
-        </button>
-        <button id="summarize-page" class="command-button command-violet" type="button">
-          <span class="command-title">Summarize page</span>
-          <span class="command-meta">LLM brief</span>
-        </button>
-        <button id="map-page" class="command-button command-neutral" type="button">
-          <span class="command-title">Map URLs</span>
-          <span class="command-meta">Discover links</span>
-        </button>
-        <button id="copy-dom" class="command-button command-rose" type="button" title="Fallback for authenticated or browser-only pages Axon cannot fetch by URL.">
-          <span class="command-title">Visible text fallback</span>
-          <span class="command-meta">Browser DOM</span>
-        </button>
-      </section>
-      <section class="ask-panel" aria-labelledby="ask-title">
+      <section class="chat-panel output-panel" aria-labelledby="output-title">
         <div class="panel-heading">
-          <h2 id="ask-title">Ask</h2>
-          <span class="section-meta">Indexed context</span>
+          <div>
+            <h2 id="output-title">Conversation</h2>
+            <p class="panel-subtitle">Answers, crawl jobs, and Axon command output.</p>
+          </div>
+          <span id="chat-status" class="status-badge tone-neutral">Axon</span>
         </div>
-        <textarea id="ask-question" spellcheck="true" placeholder="Ask about the current page or indexed corpus..."></textarea>
-        <button id="ask-axon" class="command-button command-violet full-width" type="button">
-          <span class="command-title">Ask Axon</span>
-          <span class="command-meta">Copy answer</span>
-        </button>
+        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+        <div class="output-actions">
+          <button id="chat-reset" class="link-button" type="button">Clear</button>
+        </div>
+      </section>
+      <section class="command-panel command-center" aria-label="Message composer">
+        <div class="command-input-shell">
+          <span class="command-prompt">&gt;</span>
+          <input id="command-input" type="text" spellcheck="false" autocomplete="off" placeholder="Type naturally, or run Axon CLI commands inline.">
+          <button id="command-send" class="send-button" type="button">Send</button>
+        </div>
       </section>
       <section class="crawl-panel" aria-labelledby="crawl-title">
         <div class="panel-heading">
@@ -71,14 +65,7 @@
           <button id="cancel-crawl" class="link-button danger-link" type="button" disabled>Cancel</button>
         </div>
       </section>
-      <section class="preview-panel" aria-labelledby="preview-title">
-        <div class="panel-heading">
-          <h2 id="preview-title">Preview</h2>
-          <span class="section-meta">Clipboard payload</span>
-        </div>
-        <textarea id="preview" readonly spellcheck="false"></textarea>
-      </section>
-      <p id="status" role="status" aria-live="polite"></p>
+      <p id="status" class="toast" role="status" aria-live="polite"></p>
     </main>
     <script src="popup.js"></script>
   </body>
