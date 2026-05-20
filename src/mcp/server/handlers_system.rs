@@ -317,6 +317,7 @@ impl AxonMcpServer {
                     "scrape": ["scrape"],
                     "research": ["research"],
                     "ask": ["ask"],
+                    "summarize": ["summarize"],
                     "evaluate": ["evaluate"],
                     "suggest": ["suggest"],
                     "screenshot": ["screenshot"],
