@@ -20,6 +20,9 @@ mod tests;
 #[path = "ui_render.rs"]
 mod ui_render;
 
+#[path = "ui_body.rs"]
+mod ui_body;
+
 #[path = "ui_commands.rs"]
 mod ui_commands;
 

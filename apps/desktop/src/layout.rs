@@ -55,9 +55,9 @@ const ACTION_LIST_PADDING: f32 = 8.0;
 /// at line-height 1.4 (~34px). Conservative measure.
 const FOOTER_ROW: f32 = 52.0;
 
-/// Output card with body — capped by `max_h(px(320.0))` in `ui.rs`. We
-/// allocate the full cap; smaller content is fine (the card will just have
-/// less internal scroll runway, no visual difference).
+/// Output card with body in the auto-sized palette. Manual user resizes can
+/// make the rendered output region taller; this value is only the automatic
+/// height budget.
 const OUTPUT_BODY: f32 = 320.0;
 
 /// Minimum window height — "prompt only" state. This is the launch height.
