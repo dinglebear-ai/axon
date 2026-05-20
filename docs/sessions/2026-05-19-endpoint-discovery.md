@@ -1,0 +1,55 @@
+# Endpoint Discovery Session
+
+Date: 2026-05-19
+Repository: `/home/jmagar/workspace/axon_rust`
+Worktree: `/home/jmagar/workspace/axon_rust/.worktrees/endpoint-discovery`
+Branch: `work/endpoint-discovery`
+Base: `ad5f714c7848a2ab0f793ad17ced702b2996cd20` (`origin/main`, `Update web panel and runtime env`)
+PR: <https://github.com/jmagar/axon/pull/114>
+
+## Scope
+
+Executed `docs/plans/2026-05-19-endpoint-discovery.md` in an isolated worktree. The root checkout was left untouched.
+
+## Changes
+
+- Added `axon endpoints <url>` with stable JSON output and human-readable output.
+- Added the endpoint discovery service and typed report model.
+- Added static discovery from HTML attributes, inline scripts, first-party script bundles, GraphQL paths, WebSocket URLs, and absolute URLs.
+- Added optional verification using conservative unauthenticated HEAD probes with OPTIONS fallback.
+- Added optional Chrome/CDP network capture through the existing Chrome remote URL plumbing.
+- Exposed endpoint discovery through MCP `action=endpoints`, the REST action API, and `/v1/endpoints`.
+- Updated MCP schema docs, command docs, OpenAPI docs, env/config boundary metadata, and CLI help snapshots.
+- Added parser, service, MCP contract, action API, and CLI help regression tests.
+
+## Verification
+
+Local verification run from the worktree:
+
+- `RUSTC_WRAPPER= cargo test -q endpoints`
+- `RUSTC_WRAPPER= cargo test -q action_api`
+- `RUSTC_WRAPPER= cargo test -q --test mcp_contract_parity`
+- `RUSTC_WRAPPER= cargo test -q --test cli_help_contract`
+- `unset NO_COLOR; RUSTC_WRAPPER= cargo test -q --test cli_help_contract`
+- `RUSTC_WRAPPER= cargo check --bin axon`
+- `python3 scripts/generate_mcp_schema_doc.py --check`
+- `python3 scripts/test_mcp_doc_renderer.py`
+- `RUSTC_WRAPPER= just verify`
+
+Manual smoke checks:
+
+- `./target/debug/axon endpoints https://example.com --json`
+- `./target/debug/axon endpoints https://example.com --verify --json`
+- `./target/debug/axon endpoints https://example.com --capture-network --json`
+
+The final local full gate passed with `2271 passed, 6 skipped`.
+
+## Review And CI
+
+CodeRabbit completed on PR #114. The first CI run exposed MCP schema doc drift, which was fixed by wiring endpoint discovery into the schema doc generator. The next CI run exposed ANSI color drift in CLI help snapshots, which was fixed by forcing `NO_COLOR=1` in the help contract test harness.
+
+Named work-it review agents were not all available in this Codex session. Substitutions used were local full verification, GitHub CI, CodeRabbit, clippy, monolith checks, and direct PR comment inspection.
+
+## Open Questions
+
+- None known at the time this note was written.
