@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Page Scraper Clipboard</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body class="surface-popup">
+    <main>
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Axon extension</p>
+          <h1>Page capture</h1>
+        </div>
+        <span id="api-status" class="header-badge tone-neutral">Ready</span>
+      </header>
+      <section class="config-panel compact-panel" aria-labelledby="config-title">
+        <div class="panel-heading">
+          <h2 id="config-title">Config</h2>
+          <div class="panel-actions">
+            <button id="open-sidebar" class="link-button sidebar-link" type="button">Sidebar</button>
+            <button id="check-api" class="link-button" type="button">Check API</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="axon-url">Axon server</label>
+          <input id="axon-url" type="url" value="http://100.88.16.79:8001">
+        </div>
+        <div class="field">
+          <label for="axon-token">Token</label>
+          <input id="axon-token" type="password" placeholder="Bearer token">
+        </div>
+      </section>
+      <section class="command-panel" aria-label="Actions">
+        <button id="copy-axon" class="command-button command-primary" type="button">
+          <span class="command-title">Capture + crawl</span>
+          <span class="command-meta">Markdown + job</span>
+        </button>
+        <button id="summarize-page" class="command-button command-violet" type="button">
+          <span class="command-title">Summarize page</span>
+          <span class="command-meta">LLM brief</span>
+        </button>
+        <button id="map-page" class="command-button command-neutral" type="button">
+          <span class="command-title">Map URLs</span>
+          <span class="command-meta">Discover links</span>
+        </button>
+        <button id="copy-dom" class="command-button command-rose" type="button" title="Fallback for authenticated or browser-only pages Axon cannot fetch by URL.">
+          <span class="command-title">Visible text fallback</span>
+          <span class="command-meta">Browser DOM</span>
+        </button>
+      </section>
+      <section class="ask-panel" aria-labelledby="ask-title">
+        <div class="panel-heading">
+          <h2 id="ask-title">Ask</h2>
+          <span class="section-meta">Indexed context</span>
+        </div>
+        <textarea id="ask-question" spellcheck="true" placeholder="Ask about the current page or indexed corpus..."></textarea>
+        <button id="ask-axon" class="command-button command-violet full-width" type="button">
+          <span class="command-title">Ask Axon</span>
+          <span class="command-meta">Copy answer</span>
+        </button>
+      </section>
+      <section class="crawl-panel" aria-labelledby="crawl-title">
+        <div class="panel-heading">
+          <h2 id="crawl-title">Crawl</h2>
+          <span id="crawl-status" class="status-badge tone-neutral">Idle</span>
+        </div>
+        <div class="crawl-toolbar">
+          <code id="crawl-job"></code>
+          <button id="cancel-crawl" class="link-button danger-link" type="button" disabled>Cancel</button>
+        </div>
+      </section>
+      <section class="preview-panel" aria-labelledby="preview-title">
+        <div class="panel-heading">
+          <h2 id="preview-title">Preview</h2>
+          <span class="section-meta">Clipboard payload</span>
+        </div>
+        <textarea id="preview" readonly spellcheck="false"></textarea>
+      </section>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
