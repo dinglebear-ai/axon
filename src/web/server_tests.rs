@@ -407,6 +407,27 @@ async fn dedupe_rejects_invalid_collection_before_work() {
 
 #[tokio::test]
 #[serial]
+async fn dedupe_rejects_body_without_json_content_type() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/dedupe"))
+        .header("authorization", "Bearer secret")
+        .body(r#"{"collection":"invalid/name"}"#)
+        .send()
+        .await
+        .expect("v1 dedupe request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json error");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(body["kind"], "unsupported_media_type");
+}
+
+#[tokio::test]
+#[serial]
 async fn openapi_docs_are_public_and_list_rest_routes() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =
