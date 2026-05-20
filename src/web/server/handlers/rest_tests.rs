@@ -22,6 +22,48 @@ use uuid::Uuid;
 
 const ENV_KEY: &str = "AXON_MCP_HTTP_TOKEN";
 
+#[test]
+fn extract_submit_body_accepts_cli_parity_knobs() {
+    let body = serde_json::json!({
+        "urls": ["https://example.com/docs"],
+        "prompt": "extract title",
+        "extract_mode": "llm",
+        "max_pages": 1,
+        "render_mode": "http",
+        "embed": false,
+        "headers": [["x-test", "1"]]
+    });
+
+    let parsed: crate::web::server::handlers::rest::types::ExtractSubmitBody =
+        serde_json::from_value(body).expect("parse extract body");
+
+    assert_eq!(parsed.urls, vec!["https://example.com/docs"]);
+    assert_eq!(parsed.prompt.as_deref(), Some("extract title"));
+    assert_eq!(parsed.max_pages, Some(1));
+    assert_eq!(parsed.embed, Some(false));
+}
+
+#[test]
+fn async_lifecycle_routes_are_declared_for_extract() {
+    let routes = crate::web::server::handlers::rest::documented_rest_paths_for_tests();
+    assert!(routes.contains(&"GET /v1/extract".to_string()));
+    assert!(routes.contains(&"POST /v1/extract/cleanup".to_string()));
+    assert!(routes.contains(&"DELETE /v1/extract".to_string()));
+    assert!(routes.contains(&"POST /v1/extract/recover".to_string()));
+}
+
+#[test]
+fn crawl_submit_is_write_scope_across_surfaces() {
+    assert_eq!(
+        crate::mcp::auth::scope_for_action("crawl", Some("start")),
+        Some("axon:write")
+    );
+    assert_eq!(
+        crate::web::server::handlers::rest::auth::scope_for_rest_route("POST", "/v1/crawl"),
+        Some("axon:write")
+    );
+}
+
 struct EnvGuard {
     prev: Option<String>,
 }
@@ -490,7 +532,7 @@ async fn admin_routes_accept_valid_bearer() {
 }
 
 /// F4: POST /v1/migrate and /v1/dedupe require auth EVEN in LoopbackDev
-/// (admin_write guard). Mirrors the existing /v1/actions Migrate/Dedupe
+/// (admin_write guard). Mirrors the former action-envelope Migrate/Dedupe
 /// invariant in src/web/actions.rs.
 #[tokio::test]
 #[serial]

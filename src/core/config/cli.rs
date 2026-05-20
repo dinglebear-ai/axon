@@ -44,7 +44,7 @@ pub(super) enum CliCommand {
     /// Run doctor diagnostics plus LLM-assisted troubleshooting
     Debug(TextArg),
     /// Check connectivity to all required services
-    Doctor,
+    Doctor(DoctorArgs),
     /// Semantic vector search over the Qdrant index
     Query(QueryArgs),
     /// Fetch stored document chunks from Qdrant by URL
@@ -94,6 +94,32 @@ pub(super) enum CliCommand {
     Migrate(MigrateArgs),
     /// Read or write entries in ~/.axon/.env and ~/.axon/config.toml
     Config(ConfigArgs),
+    /// Reconcile locally produced server-mode artifacts
+    Sync(SyncArgs),
+}
+
+#[derive(Debug, Args)]
+pub(super) struct SyncArgs {
+    #[command(subcommand)]
+    pub(super) action: Option<SyncSubcommand>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct DoctorArgs {
+    #[command(subcommand)]
+    pub(super) action: Option<DoctorSubcommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum DoctorSubcommand {
+    /// Print doctor output plus LLM diagnosis when configured
+    Diagnose,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum SyncSubcommand {
+    /// Show local artifacts waiting to be reconciled with the server
+    Pending,
 }
 
 #[derive(Debug, Args)]

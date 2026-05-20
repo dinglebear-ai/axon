@@ -1,27 +1,8 @@
-use httpmock::Method::POST;
+use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
 use serde_json::json;
 use std::process::{Command, Output};
 use tempfile::TempDir;
-
-fn server_info() -> serde_json::Value {
-    json!({
-        "version": env!("CARGO_PKG_VERSION"),
-        "schema_version": "client-server.v1",
-        "minimum_client_schema_version": "client-server.v1",
-        "required_request_fields": ["request_id", "action"],
-        "supported_actions": ["status", "scrape"]
-    })
-}
-
-fn response(result: serde_json::Value) -> serde_json::Value {
-    json!({
-        "request_id": "test-request",
-        "ok": true,
-        "result": result,
-        "server": server_info()
-    })
-}
 
 fn axon_with_home(home: &TempDir, server_url: &str, args: &[&str]) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_axon"));
@@ -47,12 +28,9 @@ fn output_text(output: &Output) -> String {
 fn status_uses_server_mode_and_renders_result_json() {
     let server = MockServer::start();
     let action = server.mock(|when, then| {
-        when.method(POST)
-            .path("/v1/actions")
-            .body_includes(r#""action":"status""#);
-        then.status(200).json_body(response(
-            json!({ "totals": { "crawl": 7, "extract": 0, "embed": 0, "ingest": 0 } }),
-        ));
+        when.method(GET).path("/v1/status");
+        then.status(200)
+            .json_body(json!({ "totals": { "crawl": 7, "extract": 0, "embed": 0, "ingest": 0 } }));
     });
     let home = TempDir::new().expect("temp home");
 
@@ -76,11 +54,10 @@ fn scrape_json_sends_auth_header_and_preserves_host_output() {
     let server = MockServer::start();
     let action = server.mock(|when, then| {
         when.method(POST)
-            .path("/v1/actions")
+            .path("/v1/scrape")
             .header("authorization", "Bearer test-token")
-            .body_includes(r#""action":"scrape""#)
             .body_includes("https://example.com");
-        then.status(200).json_body(response(json!({
+        then.status(200).json_body(json!({
             "url": "https://example.com",
             "artifact_handle": {
                 "kind": "scrape",
@@ -91,7 +68,7 @@ fn scrape_json_sends_auth_header_and_preserves_host_output() {
                 "job_id": null,
                 "url": "https://example.com"
             }
-        })));
+        }));
     });
     let home = TempDir::new().expect("temp home");
     let host_output = home.path().join("host.md");
@@ -168,7 +145,7 @@ fn dead_server_fails_without_local_scrape_write() {
 fn explicit_local_mode_bypasses_server_url() {
     let server = MockServer::start();
     let action = server.mock(|when, then| {
-        when.method(POST).path("/v1/actions");
+        when.method(GET).path("/v1/status");
         then.status(500).body("should not be called");
     });
     let home = TempDir::new().expect("temp home");

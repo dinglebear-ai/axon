@@ -73,13 +73,28 @@ impl ServerClient {
         Ok(Self { base_url, client })
     }
 
-    pub async fn post_action<T, R>(&self, request: &T) -> Result<R, ServerClientError>
+    pub async fn get_json<R>(
+        &self,
+        path: &str,
+        response_label: &'static str,
+    ) -> Result<R, ServerClientError>
     where
-        T: Serialize + ?Sized,
         R: DeserializeOwned,
     {
-        self.post_json("v1/actions", request, "server action response")
-            .await
+        let endpoint = self.endpoint(path);
+        let mut req = self.client.get(endpoint.clone());
+        if let Some(token) = bearer_token() {
+            check_cleartext_token_allowed(&self.base_url)?;
+            req = req.bearer_auth(token);
+        }
+
+        let resp = req.send().await.map_err(|e| {
+            ServerClientError::new(
+                ServerClientErrorKind::Connect,
+                format!("connect to {endpoint}: {e}"),
+            )
+        })?;
+        decode_response(resp, &endpoint, response_label).await
     }
 
     pub async fn post_json<T, R>(
@@ -94,6 +109,30 @@ impl ServerClient {
     {
         let endpoint = self.endpoint(path);
         let mut req = self.client.post(endpoint.clone()).json(request);
+        if let Some(token) = bearer_token() {
+            check_cleartext_token_allowed(&self.base_url)?;
+            req = req.bearer_auth(token);
+        }
+
+        let resp = req.send().await.map_err(|e| {
+            ServerClientError::new(
+                ServerClientErrorKind::Connect,
+                format!("connect to {endpoint}: {e}"),
+            )
+        })?;
+        decode_response(resp, &endpoint, response_label).await
+    }
+
+    pub async fn delete_json<R>(
+        &self,
+        path: &str,
+        response_label: &'static str,
+    ) -> Result<R, ServerClientError>
+    where
+        R: DeserializeOwned,
+    {
+        let endpoint = self.endpoint(path);
+        let mut req = self.client.delete(endpoint.clone());
         if let Some(token) = bearer_token() {
             check_cleartext_token_allowed(&self.base_url)?;
             req = req.bearer_auth(token);

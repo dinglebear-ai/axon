@@ -51,15 +51,15 @@ This can be implemented as one binary with subcommands or separate binary aliase
 
 The service layer is the product API. CLI, REST, and MCP should be thin adapters over the same service request/response types.
 
-Current mismatch to fix:
+Current state after the REST cutover:
 
-- `/v1/actions` accepts an MCP-shaped `AxonRequest` action envelope and has more knobs for some operations.
-- Direct REST routes are cleaner but thinner in places. For example, `POST /v1/extract` currently accepts `{ urls, prompt }`, while the MCP/action path carries options like `render_mode`, `embed`, and `max_pages`.
+- Direct REST routes are canonical for client/server mode.
+- REST request bodies carry the server-mode parity knobs for the routed operations, including extract options such as `render_mode`, `embed`, and `max_pages`.
 
 Target:
 
-- Direct REST routes become canonical for client/server mode.
-- REST request bodies gain full feature parity with the current `/v1/actions` action envelope before CLI server mode is migrated.
+- Direct REST routes remain canonical for client/server mode.
+- REST request bodies gain full feature parity with CLI and MCP request fields.
 - Shared service request/option structs should define the knobs once. CLI, REST, and MCP should map into those structs rather than each surface inventing its own subset.
 - This is a hard cutover project. There is no backwards-compatibility requirement for `/v1/actions`; after REST parity exists and CLI/MCP have moved, remove `/v1/actions` instead of keeping a compatibility phase.
 - Parity tests should compare CLI planning, REST request parsing, and MCP request parsing against the same canonical service request structs.

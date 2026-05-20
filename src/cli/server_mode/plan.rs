@@ -1,68 +1,48 @@
 use crate::cli;
 use crate::core::config::{CommandKind, Config};
-use crate::mcp::schema::{
-    AxonRequest, CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, ExtractRequest,
-    ExtractSubaction, IngestRequest, IngestSourceType, IngestSubaction, McpRenderMode,
-    McpScrapeFormat, ResponseMode, ScrapeRequest, ScreenshotRequest, SessionsIngestOptions,
-    StatusRequest, SummarizeRequest,
-};
-use crate::services;
 use std::error::Error;
-use std::path::Path;
 
-use super::{ServerActionPlan, ServerJobFamily, server_mode_rejects_host_local_embed_input};
+use super::{ServerJobFamily, server_mode_rejects_host_local_embed_input};
 
-pub(super) fn status_action_for_family(family: ServerJobFamily, job_id: &str) -> AxonRequest {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ServerRestPlan {
+    pub method: &'static str,
+    pub path: String,
+    pub body: serde_json::Value,
+    pub label: &'static str,
+    pub poll_family: Option<ServerJobFamily>,
+}
+
+pub(crate) fn status_path_for_family(family: ServerJobFamily, job_id: &str) -> String {
     match family {
-        ServerJobFamily::Crawl => AxonRequest::Crawl(crawl_request(
-            Some(CrawlSubaction::Status),
-            None,
-            Some(job_id.to_string()),
-        )),
-        ServerJobFamily::Extract => AxonRequest::Extract(extract_request(
-            Some(ExtractSubaction::Status),
-            None,
-            None,
-            Some(job_id.to_string()),
-        )),
-        ServerJobFamily::Embed => AxonRequest::Embed(embed_request(
-            Some(EmbedSubaction::Status),
-            None,
-            Some(job_id.to_string()),
-        )),
-        ServerJobFamily::Ingest => AxonRequest::Ingest(ingest_request(
-            Some(IngestSubaction::Status),
-            None,
-            None,
-            Some(job_id.to_string()),
-            None,
-        )),
+        ServerJobFamily::Crawl => format!("/v1/crawl/{job_id}"),
+        ServerJobFamily::Extract => format!("/v1/extract/{job_id}"),
+        ServerJobFamily::Embed => format!("/v1/embed/{job_id}"),
+        ServerJobFamily::Ingest => format!("/v1/ingest/{job_id}"),
     }
 }
 
-pub(super) fn server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<dyn Error>> {
+pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
     match cfg.command {
-        CommandKind::Status => Ok(ServerActionPlan {
-            action: AxonRequest::Status(StatusRequest {
-                subaction: None,
-                response_mode: Some(ResponseMode::Inline),
-            }),
+        CommandKind::Status => Ok(ServerRestPlan {
+            method: "GET",
+            path: "/v1/status".to_string(),
+            body: serde_json::Value::Null,
             label: "status",
             poll_family: None,
         }),
         CommandKind::Scrape => {
             let url = single_url(cfg, "scrape")?;
-            Ok(ServerActionPlan {
-                action: AxonRequest::Scrape(ScrapeRequest {
-                    url: Some(url),
-                    render_mode: Some(mcp_render_mode(cfg.render_mode)),
-                    format: Some(mcp_scrape_format(cfg.format)),
-                    embed: Some(cfg.embed),
-                    response_mode: Some(ResponseMode::Inline),
-                    root_selector: cfg.root_selector.clone(),
-                    exclude_selector: cfg.exclude_selector.clone(),
-                    cursor: None,
-                    token_budget: None,
+            Ok(ServerRestPlan {
+                method: "POST",
+                path: "/v1/scrape".to_string(),
+                body: serde_json::json!({
+                    "url": url,
+                    "render_mode": cfg.render_mode,
+                    "format": cfg.format,
+                    "embed": cfg.embed,
+                    "root_selector": cfg.root_selector,
+                    "exclude_selector": cfg.exclude_selector,
                 }),
                 label: "scrape",
                 poll_family: None,
@@ -73,33 +53,33 @@ pub(super) fn server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<d
             if urls.is_empty() {
                 return Err("summarize requires at least one URL (positional or --urls)".into());
             }
-            Ok(ServerActionPlan {
-                action: AxonRequest::Summarize(SummarizeRequest {
-                    url: None,
-                    urls: Some(urls),
-                    render_mode: Some(mcp_render_mode(cfg.render_mode)),
-                    root_selector: cfg.root_selector.clone(),
-                    exclude_selector: cfg.exclude_selector.clone(),
-                    response_mode: Some(ResponseMode::Inline),
+            Ok(ServerRestPlan {
+                method: "POST",
+                path: "/v1/summarize".to_string(),
+                body: serde_json::json!({
+                    "urls": urls,
+                    "render_mode": cfg.render_mode,
+                    "root_selector": cfg.root_selector,
+                    "exclude_selector": cfg.exclude_selector,
                 }),
                 label: "summarize",
                 poll_family: None,
             })
         }
-        CommandKind::Crawl => crawl_server_action_plan(cfg),
-        CommandKind::Extract => extract_server_action_plan(cfg),
-        CommandKind::Embed => embed_server_action_plan(cfg),
-        CommandKind::Ingest => ingest_server_action_plan(cfg, false),
-        CommandKind::Sessions => ingest_server_action_plan(cfg, true),
+        CommandKind::Crawl => crawl_server_rest_plan(cfg),
+        CommandKind::Extract => extract_server_rest_plan(cfg),
+        CommandKind::Embed => embed_server_rest_plan(cfg),
+        CommandKind::Ingest => ingest_server_rest_plan(cfg, false),
+        CommandKind::Sessions => ingest_server_rest_plan(cfg, true),
         CommandKind::Screenshot => {
             let url = single_url(cfg, "screenshot")?;
-            Ok(ServerActionPlan {
-                action: AxonRequest::Screenshot(ScreenshotRequest {
-                    url: Some(url),
-                    full_page: Some(cfg.screenshot_full_page),
-                    viewport: Some(format!("{}x{}", cfg.viewport_width, cfg.viewport_height)),
-                    output: None,
-                    response_mode: Some(ResponseMode::Path),
+            Ok(ServerRestPlan {
+                method: "POST",
+                path: "/v1/screenshot".to_string(),
+                body: serde_json::json!({
+                    "url": url,
+                    "full_page": cfg.screenshot_full_page,
+                    "viewport": format!("{}x{}", cfg.viewport_width, cfg.viewport_height),
                 }),
                 label: "screenshot",
                 poll_family: None,
@@ -109,46 +89,41 @@ pub(super) fn server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<d
     }
 }
 
-fn single_url(cfg: &Config, command: &str) -> Result<String, Box<dyn Error>> {
-    let mut urls = cli::commands::common::parse_urls(cfg).into_iter();
-    let Some(url) = urls.next() else {
-        return Err(format!("{command} requires at least one URL (positional or --urls)").into());
-    };
-    if urls.next().is_some() {
-        return Err(format!("server mode {command} accepts one URL per command for now").into());
-    }
-    Ok(url)
-}
-
-fn crawl_server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<dyn Error>> {
+fn crawl_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
     if let Some(subaction) = cfg.positional.first().map(String::as_str) {
         match subaction {
-            "status" | "errors" | "cancel" => {
+            "status" => {
                 let id = cfg
                     .positional
                     .get(1)
-                    .ok_or_else(|| format!("crawl {subaction} requires <job-id>"))?
-                    .to_string();
-                let action = match subaction {
-                    "cancel" => CrawlSubaction::Cancel,
-                    _ => CrawlSubaction::Status,
-                };
-                return Ok(ServerActionPlan {
-                    action: AxonRequest::Crawl(crawl_request(Some(action), None, Some(id))),
+                    .ok_or("crawl status requires <job-id>")?;
+                return Ok(ServerRestPlan {
+                    method: "GET",
+                    path: format!("/v1/crawl/{id}"),
+                    body: serde_json::Value::Null,
                     label: "crawl",
                     poll_family: None,
                 });
             }
-            "list" | "cleanup" | "clear" | "recover" => {
-                let action = match subaction {
-                    "list" => CrawlSubaction::List,
-                    "cleanup" => CrawlSubaction::Cleanup,
-                    "clear" => CrawlSubaction::Clear,
-                    "recover" => CrawlSubaction::Recover,
-                    _ => unreachable!(),
-                };
-                return Ok(ServerActionPlan {
-                    action: AxonRequest::Crawl(crawl_request(Some(action), None, None)),
+            "list" => {
+                return Ok(ServerRestPlan {
+                    method: "GET",
+                    path: "/v1/crawl".to_string(),
+                    body: serde_json::Value::Null,
+                    label: "crawl",
+                    poll_family: None,
+                });
+            }
+            "cleanup" | "recover" => {
+                return Ok(ServerRestPlan {
+                    method: "POST",
+                    path: if subaction == "cleanup" {
+                        "/v1/crawl/cleanup"
+                    } else {
+                        "/v1/crawl/recover"
+                    }
+                    .to_string(),
+                    body: serde_json::json!({}),
                     label: "crawl",
                     poll_family: None,
                 });
@@ -158,63 +133,54 @@ fn crawl_server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<dyn Er
                     "server mode does not start local crawl workers; use `axon serve`".into(),
                 );
             }
-            "audit" | "diff" => return Err("crawl audit/diff are local-only commands".into()),
             _ => {}
         }
     }
-
     let urls = cli::commands::common::parse_urls(cfg);
     if urls.is_empty() {
         return Err("crawl requires at least one URL (positional or --urls)".into());
     }
-    let mut request = crawl_request(Some(CrawlSubaction::Start), Some(urls), None);
-    request.max_pages = Some(cfg.max_pages);
-    request.max_depth = Some(cfg.max_depth);
-    request.include_subdomains = Some(cfg.include_subdomains);
-    request.respect_robots = Some(cfg.respect_robots);
-    request.discover_sitemaps = Some(cfg.discover_sitemaps);
-    request.sitemap_since_days = Some(cfg.sitemap_since_days);
-    request.render_mode = Some(mcp_render_mode(cfg.render_mode));
-    request.delay_ms = Some(cfg.delay_ms);
-    Ok(ServerActionPlan {
-        action: AxonRequest::Crawl(request),
+    Ok(ServerRestPlan {
+        method: "POST",
+        path: "/v1/crawl".to_string(),
+        body: serde_json::json!({
+            "urls": urls,
+            "max_pages": cfg.max_pages,
+            "max_depth": cfg.max_depth,
+            "render_mode": cfg.render_mode,
+            "include_subdomains": cfg.include_subdomains,
+            "respect_robots": cfg.respect_robots,
+            "discover_sitemaps": cfg.discover_sitemaps,
+            "max_sitemaps": cfg.max_sitemaps,
+            "sitemap_since_days": cfg.sitemap_since_days,
+            "delay_ms": cfg.delay_ms,
+        }),
         label: "crawl",
         poll_family: Some(ServerJobFamily::Crawl),
     })
 }
 
-fn extract_server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<dyn Error>> {
-    if let Some(plan) = extract_subcommand_plan(cfg)? {
-        return Ok(plan);
-    }
+fn extract_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
     let urls = cli::commands::common::parse_urls(cfg);
     if urls.is_empty() {
         return Err("extract requires at least one URL (positional or --urls)".into());
     }
-    let prompt = cfg
-        .query
-        .clone()
-        .ok_or("extract requires --query <prompt>")?;
-    let mut request = extract_request(
-        Some(ExtractSubaction::Start),
-        Some(urls),
-        Some(prompt),
-        None,
-    );
-    request.max_pages = Some(cfg.max_pages);
-    request.render_mode = Some(mcp_render_mode(cfg.render_mode));
-    request.embed = Some(cfg.embed);
-    Ok(ServerActionPlan {
-        action: AxonRequest::Extract(request),
+    Ok(ServerRestPlan {
+        method: "POST",
+        path: "/v1/extract".to_string(),
+        body: serde_json::json!({
+            "urls": urls,
+            "prompt": cfg.query,
+            "max_pages": cfg.max_pages,
+            "render_mode": cfg.render_mode,
+            "embed": cfg.embed,
+        }),
         label: "extract",
         poll_family: Some(ServerJobFamily::Extract),
     })
 }
 
-pub(super) fn embed_server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<dyn Error>> {
-    if let Some(plan) = embed_subcommand_plan(cfg)? {
-        return Ok(plan);
-    }
+fn embed_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
     let input = cfg.positional.first().cloned().unwrap_or_else(|| {
         cfg.output_dir
             .join("markdown")
@@ -227,284 +193,50 @@ pub(super) fn embed_server_action_plan(cfg: &Config) -> Result<ServerActionPlan,
                 .into(),
         );
     }
-    Ok(ServerActionPlan {
-        action: AxonRequest::Embed(embed_request(
-            Some(EmbedSubaction::Start),
-            Some(input),
-            None,
-        )),
+    Ok(ServerRestPlan {
+        method: "POST",
+        path: "/v1/embed".to_string(),
+        body: serde_json::json!({
+            "input": input,
+            "collection": cfg.collection,
+        }),
         label: "embed",
         poll_family: Some(ServerJobFamily::Embed),
     })
 }
 
-fn ingest_server_action_plan(
-    cfg: &Config,
-    sessions: bool,
-) -> Result<ServerActionPlan, Box<dyn Error>> {
-    if let Some(plan) = ingest_subcommand_plan(cfg, if sessions { "sessions" } else { "ingest" })? {
-        return Ok(plan);
-    }
+fn ingest_server_rest_plan(cfg: &Config, sessions: bool) -> Result<ServerRestPlan, Box<dyn Error>> {
     if sessions {
-        return Ok(ServerActionPlan {
-            action: AxonRequest::Ingest(ingest_request(
-                Some(IngestSubaction::Start),
-                Some(IngestSourceType::Sessions),
-                None,
-                None,
-                Some(SessionsIngestOptions {
-                    claude: Some(cfg.sessions_claude),
-                    codex: Some(cfg.sessions_codex),
-                    gemini: Some(cfg.sessions_gemini),
-                    project: cfg.sessions_project.clone(),
-                }),
-            )),
+        return Ok(ServerRestPlan {
+            method: "POST",
+            path: "/v1/ingest".to_string(),
+            body: serde_json::json!({
+                "source_type": "sessions",
+                "target": cfg.sessions_project.clone().unwrap_or_else(|| "sessions".to_string()),
+                "sessions": {
+                    "claude": cfg.sessions_claude,
+                    "codex": cfg.sessions_codex,
+                    "gemini": cfg.sessions_gemini,
+                    "project": cfg.sessions_project,
+                }
+            }),
             label: "sessions",
             poll_family: Some(ServerJobFamily::Ingest),
         });
     }
-    let target = cfg
-        .positional
-        .first()
-        .cloned()
-        .ok_or("ingest requires a target")?;
-    let source = services::ingest::classify_target(&target, cfg.github_include_source)?;
-    let (source_type, target, include_source) = match source {
-        services::ingest::IngestSource::Github {
-            repo,
-            include_source,
-        } => (IngestSourceType::Github, repo, Some(include_source)),
-        services::ingest::IngestSource::Reddit { target } => {
-            (IngestSourceType::Reddit, target, None)
-        }
-        services::ingest::IngestSource::Youtube { target } => {
-            (IngestSourceType::Youtube, target, None)
-        }
-        services::ingest::IngestSource::Sessions { .. } => {
-            return Err("sessions ingest must use the sessions command".into());
-        }
-    };
-    Ok(ServerActionPlan {
-        action: AxonRequest::Ingest(IngestRequest {
-            subaction: Some(IngestSubaction::Start),
-            source_type: Some(source_type),
-            target: Some(target),
-            include_source,
-            sessions: None,
-            job_id: None,
-            limit: None,
-            offset: None,
-            response_mode: Some(ResponseMode::Inline),
-        }),
+    let target = cfg.positional.first().ok_or("ingest requires <target>")?;
+    Ok(ServerRestPlan {
+        method: "POST",
+        path: "/v1/ingest".to_string(),
+        body: serde_json::json!({ "target": target }),
         label: "ingest",
         poll_family: Some(ServerJobFamily::Ingest),
     })
 }
 
-fn extract_subcommand_plan(cfg: &Config) -> Result<Option<ServerActionPlan>, Box<dyn Error>> {
-    let Some(subaction) = cfg.positional.first().map(String::as_str) else {
-        return Ok(None);
-    };
-    let action = match subaction {
-        "status" | "errors" => Some(ExtractSubaction::Status),
-        "cancel" => Some(ExtractSubaction::Cancel),
-        "list" => Some(ExtractSubaction::List),
-        "cleanup" => Some(ExtractSubaction::Cleanup),
-        "clear" => Some(ExtractSubaction::Clear),
-        "recover" => Some(ExtractSubaction::Recover),
-        "worker" => {
-            return Err(
-                "server mode does not start local extract workers; use `axon serve`".into(),
-            );
-        }
-        _ => None,
-    };
-    let Some(action) = action else {
-        return Ok(None);
-    };
-    let job_id = match action {
-        ExtractSubaction::Status | ExtractSubaction::Cancel => Some(
-            cfg.positional
-                .get(1)
-                .ok_or_else(|| format!("extract {subaction} requires <job-id>"))?
-                .to_string(),
-        ),
-        _ => None,
-    };
-    Ok(Some(ServerActionPlan {
-        action: AxonRequest::Extract(extract_request(Some(action), None, None, job_id)),
-        label: "extract",
-        poll_family: None,
-    }))
-}
-
-fn embed_subcommand_plan(cfg: &Config) -> Result<Option<ServerActionPlan>, Box<dyn Error>> {
-    let Some(subaction) = cfg.positional.first().map(String::as_str) else {
-        return Ok(None);
-    };
-    if cfg.positional.len() == 1 && Path::new(subaction).exists() {
-        return Ok(None);
-    }
-    let action = match subaction {
-        "status" | "errors" => Some(EmbedSubaction::Status),
-        "cancel" => Some(EmbedSubaction::Cancel),
-        "list" => Some(EmbedSubaction::List),
-        "cleanup" => Some(EmbedSubaction::Cleanup),
-        "clear" => Some(EmbedSubaction::Clear),
-        "recover" => Some(EmbedSubaction::Recover),
-        "worker" => {
-            return Err("server mode does not start local embed workers; use `axon serve`".into());
-        }
-        _ => None,
-    };
-    let Some(action) = action else {
-        return Ok(None);
-    };
-    let job_id = match action {
-        EmbedSubaction::Status | EmbedSubaction::Cancel => Some(
-            cfg.positional
-                .get(1)
-                .ok_or_else(|| format!("embed {subaction} requires <job-id>"))?
-                .to_string(),
-        ),
-        _ => None,
-    };
-    Ok(Some(ServerActionPlan {
-        action: AxonRequest::Embed(embed_request(Some(action), None, job_id)),
-        label: "embed",
-        poll_family: None,
-    }))
-}
-
-fn ingest_subcommand_plan(
-    cfg: &Config,
-    command_name: &'static str,
-) -> Result<Option<ServerActionPlan>, Box<dyn Error>> {
-    let Some(subaction) = cfg.positional.first().map(String::as_str) else {
-        return Ok(None);
-    };
-    let action = match subaction {
-        "status" | "errors" => Some(IngestSubaction::Status),
-        "cancel" => Some(IngestSubaction::Cancel),
-        "list" => Some(IngestSubaction::List),
-        "cleanup" => Some(IngestSubaction::Cleanup),
-        "clear" => Some(IngestSubaction::Clear),
-        "recover" => Some(IngestSubaction::Recover),
-        "worker" => {
-            return Err("server mode does not start local ingest workers; use `axon serve`".into());
-        }
-        _ => None,
-    };
-    let Some(action) = action else {
-        return Ok(None);
-    };
-    let job_id = match action {
-        IngestSubaction::Status | IngestSubaction::Cancel => Some(
-            cfg.positional
-                .get(1)
-                .ok_or_else(|| format!("{command_name} {subaction} requires <job-id>"))?
-                .to_string(),
-        ),
-        _ => None,
-    };
-    Ok(Some(ServerActionPlan {
-        action: AxonRequest::Ingest(ingest_request(Some(action), None, None, job_id, None)),
-        label: command_name,
-        poll_family: None,
-    }))
-}
-
-fn crawl_request(
-    subaction: Option<CrawlSubaction>,
-    urls: Option<Vec<String>>,
-    job_id: Option<String>,
-) -> CrawlRequest {
-    CrawlRequest {
-        subaction,
-        urls,
-        job_id,
-        limit: Some(50),
-        offset: Some(0),
-        response_mode: Some(ResponseMode::Inline),
-        max_pages: None,
-        max_depth: None,
-        include_subdomains: None,
-        respect_robots: None,
-        discover_sitemaps: None,
-        sitemap_since_days: None,
-        render_mode: None,
-        delay_ms: None,
-    }
-}
-
-fn extract_request(
-    subaction: Option<ExtractSubaction>,
-    urls: Option<Vec<String>>,
-    prompt: Option<String>,
-    job_id: Option<String>,
-) -> ExtractRequest {
-    ExtractRequest {
-        subaction,
-        urls,
-        prompt,
-        max_pages: None,
-        render_mode: None,
-        embed: None,
-        job_id,
-        limit: Some(50),
-        offset: Some(0),
-        response_mode: Some(ResponseMode::Inline),
-    }
-}
-
-fn embed_request(
-    subaction: Option<EmbedSubaction>,
-    input: Option<String>,
-    job_id: Option<String>,
-) -> EmbedRequest {
-    EmbedRequest {
-        subaction,
-        input,
-        job_id,
-        limit: Some(50),
-        offset: Some(0),
-        response_mode: Some(ResponseMode::Inline),
-    }
-}
-
-fn ingest_request(
-    subaction: Option<IngestSubaction>,
-    source_type: Option<IngestSourceType>,
-    target: Option<String>,
-    job_id: Option<String>,
-    sessions: Option<SessionsIngestOptions>,
-) -> IngestRequest {
-    IngestRequest {
-        subaction,
-        source_type,
-        target,
-        include_source: None,
-        sessions,
-        job_id,
-        limit: Some(50),
-        offset: Some(0),
-        response_mode: Some(ResponseMode::Inline),
-    }
-}
-
-fn mcp_render_mode(mode: crate::core::config::RenderMode) -> McpRenderMode {
-    match mode {
-        crate::core::config::RenderMode::Http => McpRenderMode::Http,
-        crate::core::config::RenderMode::Chrome => McpRenderMode::Chrome,
-        crate::core::config::RenderMode::AutoSwitch => McpRenderMode::AutoSwitch,
-    }
-}
-
-fn mcp_scrape_format(format: crate::core::config::ScrapeFormat) -> McpScrapeFormat {
-    match format {
-        crate::core::config::ScrapeFormat::Markdown => McpScrapeFormat::Markdown,
-        crate::core::config::ScrapeFormat::Html => McpScrapeFormat::Html,
-        crate::core::config::ScrapeFormat::RawHtml => McpScrapeFormat::RawHtml,
-        crate::core::config::ScrapeFormat::Json => McpScrapeFormat::Json,
-    }
+fn single_url(cfg: &Config, command: &str) -> Result<String, Box<dyn Error>> {
+    cli::commands::common::parse_urls(cfg)
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("{command} requires a URL").into())
 }

@@ -1,6 +1,5 @@
 use super::*;
 use crate::core::config::RenderMode;
-use crate::mcp::schema::{AxonRequest, McpRenderMode};
 use crate::services::types::ServiceJob;
 use chrono::Utc;
 use serde_json::json;
@@ -109,7 +108,7 @@ fn embed_server_mode_allows_url_and_text_inputs() {
 fn embed_server_mode_plan_fails_clearly_for_host_local_path() {
     let cfg = cfg(CommandKind::Embed, &["./README.md"]);
 
-    let err = plan::embed_server_action_plan(&cfg).expect_err("local path should fail");
+    let err = plan::server_rest_plan(&cfg).expect_err("local path should fail");
     assert!(
         err.to_string()
             .contains("server mode does not accept host-local embed paths yet"),
@@ -125,19 +124,30 @@ fn extract_server_mode_plan_preserves_extract_overrides() {
     cfg.render_mode = RenderMode::Http;
     cfg.embed = false;
 
-    let plan = plan::server_action_plan(&cfg).expect("extract plan should build");
-    let AxonRequest::Extract(request) = plan.action else {
-        panic!("expected extract request");
-    };
+    let plan = plan::server_rest_plan(&cfg).expect("extract plan should build");
 
-    assert_eq!(
-        request.urls,
-        Some(vec!["https://example.com/docs".to_string()])
-    );
-    assert_eq!(request.prompt.as_deref(), Some("extract facts"));
-    assert_eq!(request.max_pages, Some(7));
-    assert!(matches!(request.render_mode, Some(McpRenderMode::Http)));
-    assert_eq!(request.embed, Some(false));
+    assert_eq!(plan.path, "/v1/extract");
+    assert_eq!(plan.body["urls"][0], "https://example.com/docs");
+    assert_eq!(plan.body["prompt"], "extract facts");
+    assert_eq!(plan.body["max_pages"], 7);
+    assert_eq!(plan.body["render_mode"], "http");
+    assert_eq!(plan.body["embed"], false);
+}
+
+#[test]
+fn extract_server_mode_uses_direct_rest_path() {
+    let mut cfg = cfg(CommandKind::Extract, &["https://example.com/docs"]);
+    cfg.query = Some("extract title".to_string());
+    cfg.max_pages = 1;
+    cfg.embed = false;
+
+    let plan = plan::server_rest_plan(&cfg).expect("server rest plan");
+
+    assert_eq!(plan.method, "POST");
+    assert_eq!(plan.path, "/v1/extract");
+    assert_eq!(plan.body["urls"][0], "https://example.com/docs");
+    assert_eq!(plan.body["max_pages"], 1);
+    assert_eq!(plan.body["embed"], false);
 }
 
 #[test]

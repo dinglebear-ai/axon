@@ -18,32 +18,56 @@ cleanup() {
 trap cleanup EXIT
 
 HOST_OUTPUT="$TMP_DIR/host-scrape.md"
+LAST_JSON=""
+
+run_json() {
+    local name="$1"
+    shift
+    LAST_JSON="$TMP_DIR/axon-${name}.json"
+    "$@" >"$LAST_JSON"
+}
 
 echo "client-server smoke: axon=$AXON_BIN"
 echo "client-server smoke: server=$SERVER_URL"
 
-status_json="$(
-    AXON_SERVER_URL="$SERVER_URL" \
+run_json "status" \
+    env AXON_SERVER_URL="$SERVER_URL" \
     AXON_DATA_DIR="$TMP_DIR/client-data" \
     "$AXON_BIN" status --json
-)"
-python3 - "$status_json" <<'PY'
+python3 - "$LAST_JSON" <<'PY'
 import json, sys
-payload = json.loads(sys.argv[1])
+payload = json.load(open(sys.argv[1]))
 if "totals" not in payload:
     raise SystemExit("status payload missing totals")
 PY
 
-scrape_json="$(
-    AXON_SERVER_URL="$SERVER_URL" \
+run_json "scrape" \
+    env AXON_SERVER_URL="$SERVER_URL" \
     AXON_DATA_DIR="$TMP_DIR/client-data" \
-    "$AXON_BIN" scrape https://example.com --json --embed false --output "$HOST_OUTPUT"
-)"
-python3 - "$scrape_json" <<'PY'
+    "$AXON_BIN" scrape https://example.com --json --skip-embed --output "$HOST_OUTPUT"
+python3 - "$LAST_JSON" <<'PY'
 import json, sys
-payload = json.loads(sys.argv[1])
-if not (payload.get("artifact_handle") or payload.get("data", {}).get("artifact_handle")):
-    raise SystemExit("scrape payload missing artifact_handle")
+payload = json.load(open(sys.argv[1]))
+if not (payload.get("artifact_handle") or payload.get("data", {}).get("artifact_handle") or payload.get("url")):
+    raise SystemExit("scrape payload missing artifact handle or url")
+PY
+
+run_json "extract_wait_json_rest" \
+    env AXON_SERVER_URL="$SERVER_URL" \
+    AXON_DATA_DIR="$TMP_DIR/client-data" \
+    "$AXON_BIN" extract https://www.rfc-editor.org/rfc/rfc9110.txt \
+    --query "Extract title and document type" \
+    --wait true \
+    --json \
+    --skip-embed \
+    --render-mode http
+python3 - "$LAST_JSON" <<'PY'
+import json, sys
+payload = json.load(open(sys.argv[1]))
+result = payload.get("result", payload)
+extract_result = result.get("extract_result", result)
+if extract_result.get("total_items", 0) < 1:
+    raise SystemExit("extract wait payload missing extracted items")
 PY
 
 if [[ -e "$HOST_OUTPUT" ]]; then

@@ -1,4 +1,6 @@
 pub mod action_api;
+pub mod artifacts;
+pub mod client_contract;
 pub mod config;
 pub mod context;
 pub mod crawl;
@@ -16,6 +18,7 @@ pub mod llm_backend;
 pub mod map;
 pub mod migrate;
 pub mod query;
+pub mod route_meta;
 pub mod runtime;
 pub mod scrape;
 pub mod screenshot;
@@ -23,6 +26,20 @@ pub mod search;
 pub mod search_crawl;
 pub mod setup;
 pub mod summarize;
+pub mod sync;
 pub mod system;
 pub mod types;
 pub mod watch;
+
+#[cfg(test)]
+#[path = "services/artifacts_tests.rs"]
+mod artifacts_tests;
+#[cfg(test)]
+#[path = "services/client_contract_tests.rs"]
+mod client_contract_tests;
+#[cfg(test)]
+#[path = "services/route_meta_tests.rs"]
+mod route_meta_tests;
+#[cfg(test)]
+#[path = "services/sync_tests.rs"]
+mod sync_tests;

@@ -12,12 +12,11 @@
 //! apply across all methods on a single path.
 //!
 //! The handlers go through `RestState::service_context()` to share the same
-//! lazy `ServiceContext` (with workers) used by `/v1/actions`.
+//! lazy `ServiceContext` (with workers) used by the unified server runtime.
 
 use super::error::{map_service_error, rest_error};
 use super::state::RestState;
 use super::types::{CrawlSubmitBody, EmbedSubmitBody, ExtractSubmitBody};
-use crate::services::context::ServiceContext;
 use crate::services::ingest::IngestSource;
 use crate::services::{
     crawl as crawl_svc, embed as embed_svc, extract as extract_svc, ingest as ingest_svc,
@@ -28,70 +27,15 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use std::sync::Arc;
-use uuid::Uuid;
 
-// ── helpers ──────────────────────────────────────────────────────────────
-
-fn missing_field(field: &'static str) -> Response {
-    rest_error(
-        StatusCode::BAD_REQUEST,
-        "bad_request",
-        format!("{field} is required"),
-    )
-}
-
-fn not_found(kind: &'static str, id: Uuid) -> Response {
-    rest_error(
-        StatusCode::NOT_FOUND,
-        "not_found",
-        format!("{kind} job {id} not found"),
-    )
-}
-
-/// Lazily fetch the shared [`ServiceContext`], mapping init errors to a
-/// REST response so callers can `?` out.
-#[allow(clippy::result_large_err)] // Err is an Axum Response we just return as-is.
-async fn ctx_only(state: &RestState) -> Result<Arc<ServiceContext>, Response> {
-    state
-        .service_context()
-        .await
-        .map_err(|err| map_service_error(&*err))
-}
-
-/// Combined extractor for the status/cancel handler shape: parse the path
-/// `{id}` as a UUID and fetch the [`ServiceContext`] in one go.
-#[allow(clippy::result_large_err)] // Err is an Axum Response we just return as-is.
-async fn ctx_and_job_id(
-    state: &RestState,
-    id: &str,
-) -> Result<(Arc<ServiceContext>, Uuid), Response> {
-    let job_id = Uuid::parse_str(id).map_err(|_| {
-        rest_error(
-            StatusCode::BAD_REQUEST,
-            "bad_request",
-            format!("invalid job id: {id}"),
-        )
-    })?;
-    let ctx = ctx_only(state).await?;
-    Ok((ctx, job_id))
-}
-
-fn cancel_response(canceled: bool) -> Response {
-    Json(serde_json::json!({ "canceled": canceled })).into_response()
-}
+#[path = "async_jobs/helpers.rs"]
+mod helpers;
+use helpers::{
+    cancel_response, count_response, ctx_and_job_id, ctx_only, missing_field, not_found,
+    validate_embed_input, validate_urls,
+};
 
 // ── crawl ────────────────────────────────────────────────────────────────
-
-/// Validate a slice of submitted URLs before enqueue. MCP applies this at
-/// submit time; the REST surface must match so private-IP URLs are rejected
-/// with a 400 rather than accepted (202) then silently failing in the worker.
-fn validate_urls(urls: &[String]) -> Result<(), String> {
-    for url in urls {
-        crate::core::http::validate_url(url).map_err(|e| format!("{url}: {e}"))?;
-    }
-    Ok(())
-}
 
 pub(crate) async fn v1_crawl_submit(
     State(state): State<RestState>,
@@ -108,8 +52,85 @@ pub(crate) async fn v1_crawl_submit(
         Ok(ctx) => ctx,
         Err(r) => return r,
     };
-    match crawl_svc::crawl_start_with_context(state.cfg.as_ref(), &req.urls, &ctx, None).await {
+    let mut cfg = state.cfg.as_ref().clone();
+    if let Some(max_pages) = req.max_pages {
+        cfg.max_pages = max_pages;
+    }
+    if let Some(max_depth) = req.max_depth {
+        cfg.max_depth = max_depth;
+    }
+    if let Some(render_mode) = req.render_mode {
+        cfg.render_mode = render_mode;
+    }
+    if let Some(include_subdomains) = req.include_subdomains {
+        cfg.include_subdomains = include_subdomains;
+    }
+    if let Some(respect_robots) = req.respect_robots {
+        cfg.respect_robots = respect_robots;
+    }
+    if let Some(discover_sitemaps) = req.discover_sitemaps {
+        cfg.discover_sitemaps = discover_sitemaps;
+    }
+    if let Some(max_sitemaps) = req.max_sitemaps {
+        cfg.max_sitemaps = max_sitemaps;
+    }
+    if let Some(sitemap_since_days) = req.sitemap_since_days {
+        cfg.sitemap_since_days = sitemap_since_days;
+    }
+    if let Some(delay_ms) = req.delay_ms {
+        cfg.delay_ms = delay_ms;
+    }
+    cfg.custom_headers.extend(
+        req.headers
+            .into_iter()
+            .map(|(key, value)| format!("{key}: {value}")),
+    );
+    match crawl_svc::crawl_start_with_context(&cfg, &req.urls, &ctx, None).await {
         Ok(outcome) => (StatusCode::ACCEPTED, Json(outcome)).into_response(),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_crawl_list(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match crawl_svc::crawl_list(&ctx, 100, 0).await {
+        Ok(jobs) => Json(jobs).into_response(),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_crawl_cleanup(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match crawl_svc::crawl_cleanup(&ctx).await {
+        Ok(count) => count_response("cleaned", count),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_crawl_clear(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match crawl_svc::crawl_clear(&ctx).await {
+        Ok(count) => count_response("cleared", count),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_crawl_recover(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match crawl_svc::crawl_recover(&ctx).await {
+        Ok(count) => count_response("recovered", count),
         Err(err) => map_service_error(err.as_ref()),
     }
 }
@@ -145,69 +166,6 @@ pub(crate) async fn v1_crawl_cancel(
 
 // ── embed ────────────────────────────────────────────────────────────────
 
-/// Validate an embed `input` string with full parity to the MCP handler:
-/// - http(s) URL → SSRF check via `validate_url`
-/// - Non-existent path → pass through (service validates further)
-/// - Existing local path → must be under AXON_MCP_EMBED_ALLOWED_ROOTS,
-///   must not be a symlink, must not contain dotfile components
-///
-/// This mirrors `validate_mcp_embed_input_with_roots` in
-/// `src/mcp/server/common.rs` so both surfaces apply identical guards.
-fn validate_embed_input(input: &str) -> Result<(), String> {
-    let input = input.trim();
-    if input.starts_with("http://") || input.starts_with("https://") {
-        return crate::core::http::validate_url(input).map_err(|e| e.to_string());
-    }
-    let path = std::path::Path::new(input);
-    if !path.exists() {
-        return Ok(());
-    }
-    // Reject symlinks before canonicalization (canonicalize follows them).
-    if std::fs::symlink_metadata(path)
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        return Err("local embed path must not be a symlink".into());
-    }
-    let allowed_roots: Vec<std::path::PathBuf> = std::env::var("AXON_MCP_EMBED_ALLOWED_ROOTS")
-        .ok()
-        .map(|raw| {
-            raw.split(',')
-                .filter_map(|p| {
-                    let t = p.trim();
-                    (!t.is_empty()).then(|| std::path::PathBuf::from(t))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    if allowed_roots.is_empty() {
-        return Err(
-            "local file embedding is disabled; set AXON_MCP_EMBED_ALLOWED_ROOTS to allow specific roots".into()
-        );
-    }
-    let canonical = std::fs::canonicalize(path).map_err(|e| format!("invalid embed path: {e}"))?;
-    let root = allowed_roots
-        .iter()
-        .filter_map(|root| std::fs::canonicalize(root).ok())
-        .find(|root| canonical.starts_with(root))
-        .ok_or_else(|| {
-            format!(
-                "local embed path must be under one of AXON_MCP_EMBED_ALLOWED_ROOTS; got: {input}"
-            )
-        })?;
-    // Reject dotfile components (e.g. ~/.ssh, .env) — same check as MCP.
-    let relative = canonical
-        .strip_prefix(&root)
-        .map_err(|_| "local embed path is outside the allowed root".to_string())?;
-    for component in relative.components() {
-        let name = component.as_os_str().to_string_lossy();
-        if name.starts_with('.') {
-            return Err("local embed path must not include dotfiles".into());
-        }
-    }
-    Ok(())
-}
-
 pub(crate) async fn v1_embed_submit(
     State(state): State<RestState>,
     Json(req): Json<EmbedSubmitBody>,
@@ -222,8 +180,12 @@ pub(crate) async fn v1_embed_submit(
         Ok(ctx) => ctx,
         Err(r) => return r,
     };
+    let mut cfg = state.cfg.as_ref().clone();
+    if let Some(collection) = req.collection {
+        cfg.collection = collection;
+    }
     match embed_svc::embed_start_with_context(
-        state.cfg.as_ref(),
+        &cfg,
         &req.input,
         &ctx,
         None,
@@ -232,6 +194,50 @@ pub(crate) async fn v1_embed_submit(
     .await
     {
         Ok(outcome) => (StatusCode::ACCEPTED, Json(outcome)).into_response(),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_embed_list(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match embed_svc::embed_list(&ctx, 100, 0).await {
+        Ok(jobs) => Json(jobs).into_response(),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_embed_cleanup(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match embed_svc::embed_cleanup(&ctx).await {
+        Ok(count) => count_response("cleaned", count),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_embed_clear(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match embed_svc::embed_clear(&ctx).await {
+        Ok(count) => count_response("cleared", count),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_embed_recover(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match embed_svc::embed_recover(&ctx).await {
+        Ok(count) => count_response("recovered", count),
         Err(err) => map_service_error(err.as_ref()),
     }
 }
@@ -281,16 +287,67 @@ pub(crate) async fn v1_extract_submit(
         Ok(ctx) => ctx,
         Err(r) => return r,
     };
-    match extract_svc::extract_start_with_context(
-        state.cfg.as_ref(),
-        &req.urls,
-        req.prompt,
-        &ctx,
-        None,
-    )
-    .await
-    {
+    let mut cfg = state.cfg.as_ref().clone();
+    if let Some(max_pages) = req.max_pages {
+        cfg.max_pages = max_pages;
+    }
+    if let Some(render_mode) = req.render_mode {
+        cfg.render_mode = render_mode;
+    }
+    if let Some(embed) = req.embed {
+        cfg.embed = embed;
+    }
+    cfg.custom_headers.extend(
+        req.headers
+            .into_iter()
+            .map(|(key, value)| format!("{key}: {value}")),
+    );
+    match extract_svc::extract_start_with_context(&cfg, &req.urls, req.prompt, &ctx, None).await {
         Ok(outcome) => (StatusCode::ACCEPTED, Json(outcome)).into_response(),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_extract_list(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match extract_svc::extract_list(&ctx, 100, 0).await {
+        Ok(jobs) => Json(jobs).into_response(),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_extract_cleanup(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match extract_svc::extract_cleanup(&ctx).await {
+        Ok(count) => count_response("cleaned", count),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_extract_clear(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match extract_svc::extract_clear(&ctx).await {
+        Ok(count) => count_response("cleared", count),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_extract_recover(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match extract_svc::extract_recover(&ctx).await {
+        Ok(count) => count_response("recovered", count),
         Err(err) => map_service_error(err.as_ref()),
     }
 }
@@ -306,6 +363,50 @@ pub(crate) async fn v1_extract_status(
     match extract_svc::extract_status(&ctx, job_id).await {
         Ok(Some(result)) => Json(result.payload).into_response(),
         Ok(None) => not_found("extract", job_id),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_ingest_list(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match ingest_svc::ingest_list(&ctx, 100, 0).await {
+        Ok(jobs) => Json(jobs).into_response(),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_ingest_cleanup(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match ingest_svc::ingest_cleanup(&ctx).await {
+        Ok(count) => count_response("cleaned", count),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_ingest_clear(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match ingest_svc::ingest_clear(&ctx).await {
+        Ok(count) => count_response("cleared", count),
+        Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+pub(crate) async fn v1_ingest_recover(State(state): State<RestState>) -> Response {
+    let ctx = match ctx_only(&state).await {
+        Ok(ctx) => ctx,
+        Err(r) => return r,
+    };
+    match ingest_svc::ingest_recover(&ctx).await {
+        Ok(count) => count_response("recovered", count),
         Err(err) => map_service_error(err.as_ref()),
     }
 }

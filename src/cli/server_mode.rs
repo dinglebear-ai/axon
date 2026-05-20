@@ -3,12 +3,9 @@ mod render;
 
 use crate::cli;
 use crate::core::config::{CommandKind, Config};
-use crate::mcp::schema::AxonRequest;
-use crate::services::types::{ClientActionRequest, ClientActionResponse};
 use std::error::Error;
 use std::path::Path;
 use std::time::{Duration, Instant};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ClientServerDispatch {
@@ -22,13 +19,6 @@ enum ServerJobFamily {
     Extract,
     Embed,
     Ingest,
-}
-
-#[derive(Debug)]
-struct ServerActionPlan {
-    action: AxonRequest,
-    label: &'static str,
-    poll_family: Option<ServerJobFamily>,
 }
 
 pub(crate) fn client_server_dispatch(cfg: &Config) -> ClientServerDispatch {
@@ -62,14 +52,9 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
         .server_url
         .clone()
         .ok_or("server mode requires AXON_SERVER_URL")?;
-    let plan = plan::server_action_plan(cfg)?;
+    let plan = plan::server_rest_plan(cfg)?;
     let client = cli::client::ServerClient::new(server_url)?;
-    let request = ClientActionRequest {
-        request_id: Uuid::new_v4().to_string(),
-        action: plan.action,
-    };
-    let response = post_server_action(&client, &request, plan.label).await?;
-    let result = server_action_result(response)?;
+    let result = request_server_rest(&client, &plan).await?;
     if cfg.wait
         && let Some(family) = plan.poll_family
     {
@@ -80,34 +65,21 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
     Ok(())
 }
 
-async fn post_server_action(
+async fn request_server_rest(
     client: &cli::client::ServerClient,
-    request: &ClientActionRequest,
-    label: &'static str,
-) -> Result<ClientActionResponse, Box<dyn Error>> {
-    client
-        .post_action(request)
-        .await
-        .map_err(|err| server_client_error(label, err))
-}
-
-fn server_action_result(
-    response: ClientActionResponse,
+    plan: &plan::ServerRestPlan,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
-    if response.ok {
-        return Ok(response.result.unwrap_or(serde_json::Value::Null));
+    match plan.method {
+        "GET" => client
+            .get_json(&plan.path, plan.label)
+            .await
+            .map_err(|err| server_client_error(plan.label, err)),
+        "POST" => client
+            .post_json(&plan.path, &plan.body, plan.label)
+            .await
+            .map_err(|err| server_client_error(plan.label, err)),
+        method => Err(format!("unsupported server mode method: {method}").into()),
     }
-    let err = response
-        .error
-        .map(|error| {
-            let hint = error
-                .hint
-                .map(|hint| format!(" Hint: {hint}"))
-                .unwrap_or_default();
-            format!("server mode failed: {}.{}", error.message, hint)
-        })
-        .unwrap_or_else(|| "server mode failed with an empty error envelope".to_string());
-    Err(err.into())
 }
 
 fn server_client_error(label: &'static str, err: cli::client::ServerClientError) -> Box<dyn Error> {
@@ -149,12 +121,11 @@ async fn poll_server_jobs(
             if Instant::now() >= deadline {
                 return Err(format!("server mode wait timed out for job {job_id}").into());
             }
-            let request = ClientActionRequest {
-                request_id: Uuid::new_v4().to_string(),
-                action: plan::status_action_for_family(family, &job_id),
-            };
-            let response = post_server_action(client, &request, "job status").await?;
-            let result = server_action_result(response)?;
+            let path = plan::status_path_for_family(family, &job_id);
+            let result: serde_json::Value = client
+                .get_json(&path, "job status")
+                .await
+                .map_err(|err| server_client_error("job status", err))?;
             if let Some(status) = job_status_from_result(&result)
                 && matches!(status, "completed" | "failed" | "canceled")
             {

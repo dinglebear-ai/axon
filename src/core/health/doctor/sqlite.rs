@@ -2,6 +2,7 @@
 
 use crate::cli::commands::probe::with_path;
 use crate::core::config::Config;
+use crate::core::endpoints::{EndpointKind, resolve_host_endpoint};
 use crate::core::health::browser_diagnostics_pattern;
 use crate::core::health::doctor::{
     build_browser_runtime, probe_tei_info, tei_info_summary, tei_model_from_info, timed_probe,
@@ -64,8 +65,38 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
         gemini_service_json(cfg, &gemini_probe),
     );
 
+    let effective_qdrant = resolve_host_endpoint(EndpointKind::Qdrant, Some(&cfg.qdrant_url), &[]);
+    let effective_tei = resolve_host_endpoint(EndpointKind::Embedding, Some(&cfg.tei_url), &[]);
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
+        "mode": {
+            "client": cfg.client_mode.to_string(),
+            "server_url": cfg.server_url.as_ref().map(reqwest::Url::to_string),
+            "route": if cfg.server_url.is_some() && !cfg.local_mode { "server" } else { "local" },
+            "fallback": false,
+            "local_runtime": "sqlite_in_process",
+        },
+        "capabilities": [
+            {
+                "tier": "tier_1_crawl_retrieve",
+                "available": qdrant_ok,
+                "impact": ["crawl, retrieve, and query require Qdrant for indexed data"],
+                "remedies": if qdrant_ok { Vec::<String>::new() } else { vec!["start qdrant with `just services-up`".to_string()] },
+            },
+            {
+                "tier": "tier_2_embedding",
+                "available": tei_ok,
+                "impact": ["embed and semantic search require TEI embeddings"],
+                "remedies": if tei_ok { Vec::<String>::new() } else { vec!["start TEI or configure TEI_URL".to_string()] },
+            }
+        ],
+        "recommendations": [
+            "Use AXON_SERVER_URL for REST server mode; add --local for explicit local execution."
+        ],
+        "effective_endpoints": {
+            "qdrant": effective_qdrant,
+            "embedding": effective_tei,
+        },
         "services": Value::Object(services),
         "pipelines": {
             "crawl": true,
@@ -197,6 +228,12 @@ fn tei_service_json(
     serde_json::json!({
         "ok": ok,
         "url": cfg.tei_url,
+        "configured_url": cfg.tei_url,
+        "effective_url": resolve_host_endpoint(
+            EndpointKind::Embedding,
+            Some(&cfg.tei_url),
+            &[],
+        ).map(|endpoint| endpoint.url),
         "detail": detail,
         "model": model,
         "summary": summary,
@@ -214,6 +251,12 @@ fn qdrant_service_json(
     serde_json::json!({
         "ok": ok,
         "url": cfg.qdrant_url,
+        "configured_url": cfg.qdrant_url,
+        "effective_url": resolve_host_endpoint(
+            EndpointKind::Qdrant,
+            Some(&cfg.qdrant_url),
+            &[],
+        ).map(|endpoint| endpoint.url),
         "detail": detail,
         "collection": cfg.collection,
         "vector_mode": vector_mode,
