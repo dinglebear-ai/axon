@@ -260,5 +260,9 @@ pub(crate) fn router(
 }
 
 #[cfg(test)]
+#[path = "rest_auth_tests.rs"]
+mod auth_tests;
+
+#[cfg(test)]
 #[path = "rest_tests.rs"]
 mod tests;

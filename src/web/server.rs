@@ -36,6 +36,14 @@ pub(crate) fn router(
 }
 
 #[cfg(test)]
+#[path = "server_test_support_tests.rs"]
+mod test_support;
+
+#[cfg(test)]
+#[path = "server_dedupe_tests.rs"]
+mod dedupe_tests;
+
+#[cfg(test)]
 #[path = "server_tests.rs"]
 mod tests;
 

@@ -64,14 +64,6 @@ fn crawl_submit_is_write_scope_across_surfaces() {
     );
 }
 
-#[test]
-fn unknown_mcp_action_is_explicitly_denied() {
-    assert_eq!(
-        crate::mcp::auth::scope_for_action("future_action", None),
-        Some("__deny__")
-    );
-}
-
 struct EnvGuard {
     prev: Option<String>,
 }
