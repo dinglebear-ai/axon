@@ -309,13 +309,13 @@ pub(super) struct EndpointArgs {
     #[arg(value_name = "URL")]
     pub(super) url: String,
     /// Fetch and scan first-party JavaScript bundles.
-    #[arg(long = "include-bundles", default_value_t = true)]
+    #[arg(long = "include-bundles", action = ArgAction::Set, default_value_t = true)]
     pub(super) include_bundles: bool,
     /// Return only endpoints on the target page's host.
-    #[arg(long = "first-party-only", default_value_t = false)]
+    #[arg(long = "first-party-only", action = ArgAction::Set, default_value_t = false)]
     pub(super) first_party_only: bool,
     /// Deduplicate by normalized endpoint URL.
-    #[arg(long = "unique-only", default_value_t = true)]
+    #[arg(long = "unique-only", action = ArgAction::Set, default_value_t = true)]
     pub(super) unique_only: bool,
     /// Maximum script bundle URLs to fetch and scan.
     #[arg(long = "max-scripts", default_value_t = 40)]

@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 use url::Url;
 
 static SCRIPT_SRC_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?is)<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>"#)
+    Regex::new(r#"(?is)<script\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^'"\s>]+))[^>]*>"#)
         .expect("script src regex")
 });
 
@@ -24,7 +24,12 @@ pub fn discover_script_sources(
     let mut truncated = false;
 
     for captures in SCRIPT_SRC_RE.captures_iter(html) {
-        let Some(src) = captures.get(1).map(|m| m.as_str()) else {
+        let Some(src) = captures
+            .get(1)
+            .or_else(|| captures.get(2))
+            .or_else(|| captures.get(3))
+            .map(|m| m.as_str())
+        else {
             continue;
         };
         let Some(resolved) = resolve_url(&base, src) else {

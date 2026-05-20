@@ -6,17 +6,19 @@ fn resolves_and_caps_script_sources() {
     let html = r#"
         <script src="/app.js"></script>
         <script src="https://cdn.other.test/lib.js"></script>
+        <script src=/unquoted.js></script>
         <script src="/app.js"></script>
         <script src="/extra.js"></script>
     "#;
 
-    let (scripts, truncated) = discover_script_sources(html, "https://example.test/docs", 2);
+    let (scripts, truncated) = discover_script_sources(html, "https://example.test/docs", 3);
 
     assert!(truncated);
-    assert_eq!(scripts.len(), 2);
+    assert_eq!(scripts.len(), 3);
     assert_eq!(scripts[0].url, "https://example.test/app.js");
     assert!(scripts[0].first_party);
     assert!(!scripts[1].first_party);
+    assert_eq!(scripts[2].url, "https://example.test/unquoted.js");
 }
 
 #[test]
@@ -116,4 +118,60 @@ fn malformed_html_still_extracts_best_effort() {
 
     assert!(report.endpoints.iter().any(|e| e.value == "/api/unclosed"));
     assert!(report.endpoints.iter().any(|e| e.value == "/graphql"));
+}
+
+#[test]
+fn html_attribute_scan_respects_byte_cap() {
+    let html = format!("{}<a href=\"/api/late\">", "x".repeat(128));
+    let options = EndpointExtractOptions {
+        max_scan_bytes: 16,
+        ..EndpointExtractOptions::default()
+    };
+
+    let report = extract_endpoints(&html, "https://example.test", &[], &options);
+
+    assert!(report.truncated);
+    assert!(report.endpoints.is_empty());
+}
+
+#[test]
+fn matches_graphql_attributes_case_insensitively() {
+    let html = r#"<a href="/GraphQL"></a>"#;
+
+    let report = extract_endpoints(
+        html,
+        "https://example.test",
+        &[],
+        &EndpointExtractOptions::default(),
+    );
+
+    let endpoint = report
+        .endpoints
+        .iter()
+        .find(|endpoint| endpoint.value == "/GraphQL")
+        .expect("GraphQL endpoint");
+    assert_eq!(endpoint.kind, EndpointKind::Graphql);
+}
+
+#[test]
+fn protocol_relative_urls_are_not_first_party_by_path_prefix() {
+    let html = r#"<script>fetch("//api.other.test/graphql")</script>"#;
+
+    let report = extract_endpoints(
+        html,
+        "https://example.test",
+        &[],
+        &EndpointExtractOptions::default(),
+    );
+
+    let endpoint = report
+        .endpoints
+        .iter()
+        .find(|endpoint| endpoint.value == "//api.other.test/graphql")
+        .expect("protocol-relative endpoint");
+    assert!(!endpoint.first_party);
+    assert_eq!(
+        endpoint.normalized_url.as_deref(),
+        Some("https://api.other.test/graphql")
+    );
 }

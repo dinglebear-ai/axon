@@ -2,15 +2,16 @@ use crate::services::types::EndpointKind;
 
 pub(super) fn looks_like_endpoint(value: &str) -> bool {
     let value = value.trim();
-    value.starts_with("ws://")
-        || value.starts_with("wss://")
-        || value.contains("graphql")
-        || value.contains("/gql")
-        || value.contains("/api")
-        || value.contains("/v1/")
-        || value.contains("/v2/")
-        || value.contains("/rest")
-        || value.contains("/gateway")
+    let lower = value.to_ascii_lowercase();
+    lower.starts_with("ws://")
+        || lower.starts_with("wss://")
+        || lower.contains("graphql")
+        || lower.contains("/gql")
+        || lower.contains("/api")
+        || lower.contains("/v1/")
+        || lower.contains("/v2/")
+        || lower.contains("/rest")
+        || lower.contains("/gateway")
 }
 
 pub(super) fn classify_value(value: &str) -> EndpointKind {
