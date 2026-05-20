@@ -5,8 +5,9 @@
 //! shim small and the 28-arm match arm in its own module. No behavior change.
 
 use super::super::super::cli::{
-    CliCommand, ConfigArgs, ConfigSubcommand, IngestArgs, ServeArgs, ServeSubcommand, SessionsArgs,
-    SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, StackArgs, StackSubcommand,
+    CliCommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand, IngestArgs, ServeArgs,
+    ServeSubcommand, SessionsArgs, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand,
+    StackArgs, StackSubcommand, SyncSubcommand,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -63,6 +64,7 @@ pub(super) struct DispatchOutput {
     pub retrieve_max_points: Option<usize>,
     pub train_best_rank: Option<usize>,
     pub train_notes: Option<String>,
+    pub doctor_diagnose: bool,
 }
 
 impl DispatchOutput {
@@ -106,6 +108,7 @@ impl DispatchOutput {
             retrieve_max_points: None,
             train_best_rank: None,
             train_notes: None,
+            doctor_diagnose: false,
         }
     }
 }
@@ -173,7 +176,13 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             };
         }
         CliCommand::Debug(args) => set_simple(&mut out, CommandKind::Debug, args.value),
-        CliCommand::Doctor => out.command = CommandKind::Doctor,
+        CliCommand::Doctor(args) => {
+            out.command = CommandKind::Doctor;
+            out.doctor_diagnose = matches!(args.action, Some(DoctorSubcommand::Diagnose));
+            if out.doctor_diagnose {
+                out.positional = vec!["diagnose".to_string()];
+            }
+        }
         CliCommand::Query(args) => {
             out.ask_diagnostics = args.diagnostics;
             set_simple(&mut out, CommandKind::Query, args.value);
@@ -256,6 +265,12 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.positional = vec![args.from, args.to];
         }
         CliCommand::Config(args) => apply_config(&mut out, args),
+        CliCommand::Sync(args) => {
+            out.command = CommandKind::Sync;
+            out.positional = match args.action.unwrap_or(SyncSubcommand::Pending) {
+                SyncSubcommand::Pending => vec!["pending".to_string()],
+            };
+        }
     }
     out
 }

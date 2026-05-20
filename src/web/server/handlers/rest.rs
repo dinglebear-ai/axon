@@ -33,7 +33,7 @@ use crate::mcp::auth::{
 use crate::services::context::ServiceContext;
 use axum::{
     Router, middleware,
-    routing::{MethodRouter, get, post},
+    routing::{MethodRouter, delete, get, post},
 };
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -87,7 +87,17 @@ fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState>
     Router::new()
         .route(
             "/v1/crawl",
-            guarded(post(async_jobs::v1_crawl_submit), write),
+            guarded(post(async_jobs::v1_crawl_submit), write)
+                .merge(guarded(get(async_jobs::v1_crawl_list), read))
+                .merge(guarded(delete(async_jobs::v1_crawl_clear), write)),
+        )
+        .route(
+            "/v1/crawl/cleanup",
+            guarded(post(async_jobs::v1_crawl_cleanup), write),
+        )
+        .route(
+            "/v1/crawl/recover",
+            guarded(post(async_jobs::v1_crawl_recover), write),
         )
         .route(
             "/v1/crawl/{id}",
@@ -99,7 +109,17 @@ fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState>
         )
         .route(
             "/v1/embed",
-            guarded(post(async_jobs::v1_embed_submit), write),
+            guarded(post(async_jobs::v1_embed_submit), write)
+                .merge(guarded(get(async_jobs::v1_embed_list), read))
+                .merge(guarded(delete(async_jobs::v1_embed_clear), write)),
+        )
+        .route(
+            "/v1/embed/cleanup",
+            guarded(post(async_jobs::v1_embed_cleanup), write),
+        )
+        .route(
+            "/v1/embed/recover",
+            guarded(post(async_jobs::v1_embed_recover), write),
         )
         .route(
             "/v1/embed/{id}",
@@ -111,7 +131,17 @@ fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState>
         )
         .route(
             "/v1/extract",
-            guarded(post(async_jobs::v1_extract_submit), write),
+            guarded(post(async_jobs::v1_extract_submit), write)
+                .merge(guarded(get(async_jobs::v1_extract_list), read))
+                .merge(guarded(delete(async_jobs::v1_extract_clear), write)),
+        )
+        .route(
+            "/v1/extract/cleanup",
+            guarded(post(async_jobs::v1_extract_cleanup), write),
+        )
+        .route(
+            "/v1/extract/recover",
+            guarded(post(async_jobs::v1_extract_recover), write),
         )
         .route(
             "/v1/extract/{id}",
@@ -123,7 +153,17 @@ fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState>
         )
         .route(
             "/v1/ingest",
-            guarded(post(async_jobs::v1_ingest_submit), write),
+            guarded(post(async_jobs::v1_ingest_submit), write)
+                .merge(guarded(get(async_jobs::v1_ingest_list), read))
+                .merge(guarded(delete(async_jobs::v1_ingest_clear), write)),
+        )
+        .route(
+            "/v1/ingest/cleanup",
+            guarded(post(async_jobs::v1_ingest_cleanup), write),
+        )
+        .route(
+            "/v1/ingest/recover",
+            guarded(post(async_jobs::v1_ingest_recover), write),
         )
         .route(
             "/v1/ingest/{id}",
@@ -133,6 +173,34 @@ fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState>
             "/v1/ingest/{id}/cancel",
             guarded(post(async_jobs::v1_ingest_cancel), write),
         )
+}
+
+pub(crate) fn documented_rest_paths_for_tests() -> Vec<String> {
+    [
+        "GET /v1/crawl",
+        "POST /v1/crawl",
+        "POST /v1/crawl/cleanup",
+        "DELETE /v1/crawl",
+        "POST /v1/crawl/recover",
+        "GET /v1/embed",
+        "POST /v1/embed",
+        "POST /v1/embed/cleanup",
+        "DELETE /v1/embed",
+        "POST /v1/embed/recover",
+        "GET /v1/extract",
+        "POST /v1/extract",
+        "POST /v1/extract/cleanup",
+        "DELETE /v1/extract",
+        "POST /v1/extract/recover",
+        "GET /v1/ingest",
+        "POST /v1/ingest",
+        "POST /v1/ingest/cleanup",
+        "DELETE /v1/ingest",
+        "POST /v1/ingest/recover",
+    ]
+    .into_iter()
+    .map(ToString::to_string)
+    .collect()
 }
 
 /// migrate/dedupe carry `admin_write` (unconditional auth even in LoopbackDev).

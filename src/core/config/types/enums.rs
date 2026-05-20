@@ -38,6 +38,7 @@ pub enum CommandKind {
     Setup,
     Migrate,
     Config,
+    Sync,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +94,7 @@ impl CommandKind {
             Self::Setup => "setup",
             Self::Migrate => "migrate",
             Self::Config => "config",
+            Self::Sync => "sync",
         }
     }
 }
@@ -122,7 +124,7 @@ impl fmt::Display for RenderMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScrapeFormat {
     Markdown,

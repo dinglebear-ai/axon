@@ -55,7 +55,7 @@ fn parity_doc_lists_all_advertised_http_actions() {
         let needle = format!("`{action}`");
         assert!(
             DOC.contains(&needle) || DOC.contains(&action),
-            "docs/API-PARITY.md does not mention advertised /v1/actions capability `{action}`"
+            "docs/API-PARITY.md does not mention advertised HTTP capability `{action}`"
         );
     }
 }

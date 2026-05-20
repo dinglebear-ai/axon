@@ -43,6 +43,39 @@ use axum::response::IntoResponse;
 #[cfg(test)]
 use subtle::ConstantTimeEq;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AxonScope {
+    Read,
+    Write,
+    Admin,
+}
+
+impl AxonScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Read => AXON_READ_SCOPE,
+            Self::Write => AXON_WRITE_SCOPE,
+            Self::Admin => AXON_FULL_ACCESS_SCOPE,
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub fn scope_for_action(action: &str, subaction: Option<&str>) -> Option<&'static str> {
+    let scope = match action {
+        "crawl" | "extract" | "embed" | "ingest" => match subaction.unwrap_or("start") {
+            "status" | "list" => AxonScope::Read,
+            _ => AxonScope::Write,
+        },
+        "query" | "retrieve" | "sources" | "domains" | "stats" | "status" | "doctor" => {
+            AxonScope::Read
+        }
+        "migrate" | "dedupe" => AxonScope::Admin,
+        _ => AxonScope::Write,
+    };
+    Some(scope.as_str())
+}
+
 // ── AuthPolicy ────────────────────────────────────────────────────────────────
 
 /// Authentication policy attached to the MCP router.

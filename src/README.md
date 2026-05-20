@@ -12,7 +12,7 @@ Module index for Axon's Rust module directories.
 - [mcp](./mcp/README.md): MCP server crate for `axon mcp`.
 - [services](./services/CLAUDE.md): typed service layer — canonical entry contract for CLI/MCP/web handlers.
 - [vector](./vector/README.md): embeddings, Qdrant operations, retrieval, and RAG.
-- web: unified `axon serve` HTTP runtime for the static panel, `/v1/ask`, `/v1/actions`, `/v1/capabilities`, and MCP HTTP mounting.
+- web: unified `axon serve` HTTP runtime for the static panel, direct `/v1/*` REST routes, `/v1/capabilities`, and MCP HTTP mounting.
 
 ## Re-export Shims
 These top-level Rust files re-export module roots used by the workspace crate graph:

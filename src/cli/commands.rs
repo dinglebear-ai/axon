@@ -34,6 +34,7 @@ pub mod stats;
 pub mod status;
 pub mod suggest;
 pub mod summarize;
+pub mod sync;
 pub mod train;
 pub mod watch;
 
@@ -71,6 +72,7 @@ pub use stats::run_stats;
 pub use status::run_status;
 pub use suggest::run_suggest;
 pub use summarize::run_summarize;
+pub use sync::run_sync;
 pub use train::run_train;
 pub use watch::run_watch;
 

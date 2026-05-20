@@ -617,6 +617,9 @@ pub struct Config {
     /// Clamped 30–3600. Default: 300.
     pub job_wait_timeout_secs: u64,
 
+    /// Run `axon doctor diagnose` extended remediation mode.
+    pub doctor_diagnose: bool,
+
     // ── Webclaw port (axon_rust-zehr) ──────────────────────────────────────
     /// Enable per-site vertical extractors (GitHub, PyPI, Reddit, etc.).
     /// Env: `AXON_ENABLE_VERTICALS`. TOML: `verticals.enabled`. Default: `true`.

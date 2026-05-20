@@ -8,8 +8,9 @@ use crate::mcp::auth::{
     oauth_resource_url,
 };
 use crate::services::context::ServiceContext;
+use crate::services::types::ServerInfo;
 use axum::{
-    Extension, Router,
+    Extension, Json, Router,
     body::Body,
     extract::DefaultBodyLimit,
     http::{Method, Request, StatusCode},
@@ -33,7 +34,7 @@ pub(super) fn router(
     let ask_router = ask_router::<(AppState, Arc<Config>)>(Arc::clone(&cfg));
     let rest_body_limit = DefaultBodyLimit::max(128 * 1024);
     let read_routes = Router::new()
-        .merge(super::super::actions::capabilities_router())
+        .route("/v1/capabilities", get(v1_capabilities))
         .route("/v1/sources", get(handlers::discovery::sources))
         .route("/v1/domains", get(handlers::discovery::domains))
         .route("/v1/stats", get(handlers::discovery::stats))
@@ -78,9 +79,10 @@ pub(super) fn router(
     let rest_routes = protect_routes(read_routes, &auth_policy, ScopeRequirement::Read).merge(
         protect_routes(write_routes, &auth_policy, ScopeRequirement::Write),
     );
-    let panel_router = Router::new()
+    Router::new()
         .route("/healthz", get(super::super::health::healthz))
         .route("/readyz", get(super::super::health::readyz))
+        .route("/v1/actions", post(v1_actions_removed))
         .merge(super::openapi::docs_router())
         .route("/api/panel/state", get(handlers::panel_state))
         .route("/api/panel/login", post(handlers::login))
@@ -104,9 +106,15 @@ pub(super) fn router(
         .route("/api/panel/setup/targets", get(handlers::setup_targets))
         .merge(rest_routes)
         .fallback(super::super::static_assets::serve_static)
-        .with_state((state, Arc::clone(&cfg)));
-    let v1_actions = super::super::actions::router(service_context, auth_policy.clone());
-    panel_router.merge(v1_actions)
+        .with_state((state, Arc::clone(&cfg)))
+}
+
+async fn v1_capabilities() -> Json<ServerInfo> {
+    Json(ServerInfo::current())
+}
+
+async fn v1_actions_removed() -> StatusCode {
+    StatusCode::NOT_FOUND
 }
 
 pub(crate) fn ask_router<S>(cfg: Arc<Config>) -> Router<S>

@@ -1,11 +1,8 @@
 # Axon HTTP API
 
-Last Modified: 2026-05-18
+Last Modified: 2026-05-19
 
-Axon exposes traditional REST routes under `/v1`. `POST /v1/actions` remains for compatibility, but it is deprecated and responses include:
-
-- `Deprecation: true`
-- `Sunset: Tue, 01 Sep 2026 00:00:00 GMT`
+Axon exposes direct REST routes under `/v1`. Direct REST is the canonical client/server API; the legacy `POST /v1/actions` action-envelope endpoint has been removed.
 
 ## Routes
 
@@ -36,10 +33,10 @@ Exploration routes:
 
 Async job routes:
 
-- `POST /v1/crawl`, `GET /v1/crawl/{id}`
-- `POST /v1/embed`, `GET /v1/embed/{id}`
-- `POST /v1/extract`, `GET /v1/extract/{id}`
-- `POST /v1/ingest`, `GET /v1/ingest/{id}`
+- `POST /v1/crawl`, `GET /v1/crawl`, `GET /v1/crawl/{id}`
+- `POST /v1/embed`, `GET /v1/embed`, `GET /v1/embed/{id}`
+- `POST /v1/extract`, `GET /v1/extract`, `GET /v1/extract/{id}`
+- `POST /v1/ingest`, `GET /v1/ingest`, `GET /v1/ingest/{id}`
 
 Each async family also supports:
 

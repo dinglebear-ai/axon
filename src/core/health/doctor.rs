@@ -102,6 +102,63 @@ pub(super) fn build_browser_runtime(
     })
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DoctorModeReport {
+    pub client: String,
+    pub server_url: Option<String>,
+    pub route: String,
+    pub fallback: bool,
+    pub local_runtime: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DoctorCapability {
+    pub tier: String,
+    pub available: bool,
+    pub impact: Vec<String>,
+    pub remedies: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DoctorReport {
+    pub mode: DoctorModeReport,
+    pub capabilities: Vec<DoctorCapability>,
+    pub recommendations: Vec<String>,
+    pub services: Value,
+}
+
+impl DoctorReport {
+    pub fn sample_for_tests() -> Self {
+        Self {
+            mode: DoctorModeReport {
+                client: "local".to_string(),
+                server_url: None,
+                route: "local".to_string(),
+                fallback: false,
+                local_runtime: "sqlite_in_process".to_string(),
+            },
+            capabilities: vec![DoctorCapability {
+                tier: "tier_1_crawl_retrieve".to_string(),
+                available: true,
+                impact: vec!["crawl and retrieve are available".to_string()],
+                remedies: vec![],
+            }],
+            recommendations: vec!["start axon serve for remote client mode".to_string()],
+            services: serde_json::json!({
+                "qdrant": {
+                    "ok": true,
+                    "configured_url": "http://axon-qdrant:6333",
+                    "effective_url": "http://127.0.0.1:53333"
+                }
+            }),
+        }
+    }
+}
+
 pub async fn build_doctor_report(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     sqlite::build(cfg).await
 }
+
+#[cfg(test)]
+#[path = "doctor_tests.rs"]
+mod tests;

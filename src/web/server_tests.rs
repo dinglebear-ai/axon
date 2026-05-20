@@ -276,7 +276,6 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
     let watch_run = format!("/v1/watch/{job_id}/run");
     let routes = [
         ("GET", "/v1/capabilities"),
-        ("POST", "/v1/actions"),
         ("GET", "/v1/sources"),
         ("GET", "/v1/domains"),
         ("GET", "/v1/stats"),
@@ -326,17 +325,9 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
             "DELETE" => client.delete(format!("{base}{path}")).send().await,
             "GET" => client.get(format!("{base}{path}")).send().await,
             "POST" => {
-                let body = if path == "/v1/actions" {
-                    serde_json::json!({
-                        "request_id": "auth-test",
-                        "action": { "action": "status" }
-                    })
-                } else {
-                    serde_json::json!({})
-                };
                 client
                     .post(format!("{base}{path}"))
-                    .json(&body)
+                    .json(&serde_json::json!({}))
                     .send()
                     .await
             }
@@ -351,6 +342,21 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
     }
 
     stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn v1_actions_is_not_mounted_after_rest_cutover() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/actions"))
+        .send()
+        .await
+        .expect("v1 actions request");
+
+    stop(shutdown, handle).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
