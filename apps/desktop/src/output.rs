@@ -1,6 +1,4 @@
-use std::io::{self, Read};
-use std::process::{Command, ExitStatus, Stdio};
-use std::thread;
+use std::process::ExitStatus;
 
 use gpui::SharedString;
 
@@ -8,8 +6,17 @@ use gpui::SharedString;
 #[path = "output_tests.rs"]
 mod tests;
 
-use crate::actions::{ACTIONS, CommandAction};
+mod formatting;
+
+use formatting::{
+    actionable_error_text, ask_answer, command_title, crawl_summary, drop_cli_scaffolding,
+    format_exit_status, map_url_listing, palette_output_text, scrape_body, strip_ansi,
+    truncate_output,
+};
+
+use crate::actions::CommandAction;
 use crate::markdown::MarkdownDocument;
+use crate::rest_client::RestOutput;
 use crate::theme::{
     AURORA_ACCENT_PINK, AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_WARNING,
 };
@@ -110,13 +117,12 @@ impl CommandOutput {
             use_markdown,
         );
         let success = output.status.success();
-        let stderr = OutputSection::from_bytes("stderr", &output.stderr).map(|section| {
-            if success {
-                section
-            } else {
-                section.with_text(actionable_error_text(&section.text), false)
-            }
-        });
+        let stderr = if success {
+            None
+        } else {
+            OutputSection::from_bytes("stderr", &output.stderr)
+                .map(|section| section.with_text(actionable_error_text(&section.text), false))
+        };
         let kind = if success {
             OutputKind::Success
         } else {
@@ -141,12 +147,73 @@ impl CommandOutput {
         }
     }
 
+    pub(crate) fn from_rest(command_line: &str, subcommand: &str, output: RestOutput) -> Self {
+        let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
+        let stdout = output.stdout.as_deref().and_then(|text| {
+            OutputSection::from_text_for_command("stdout", subcommand, text, use_markdown)
+        });
+        let stderr = output
+            .stderr
+            .as_deref()
+            .and_then(|text| OutputSection::from_text("errors", text, false));
+        let title = if output.ok {
+            format!("{} completed", command_title(subcommand))
+        } else {
+            format!("{} failed", command_title(subcommand))
+        };
+        Self {
+            kind: if output.ok {
+                OutputKind::Success
+            } else {
+                OutputKind::Error
+            },
+            title,
+            subtitle: format!("{command_line} · HTTP {}", output.status),
+            stdout,
+            stderr,
+            use_markdown,
+            compact_stdout: output.ok,
+        }
+    }
+
     pub(crate) fn has_body(&self) -> bool {
         self.stdout.is_some() || self.stderr.is_some()
     }
 }
 
 impl OutputSection {
+    fn from_text_for_command(
+        label: &'static str,
+        subcommand: &str,
+        text: &str,
+        use_markdown: bool,
+    ) -> Option<Self> {
+        let section = Self::from_text(label, text, use_markdown)?;
+        let section = if subcommand == "map" {
+            section.with_text(map_url_listing(&section.text), use_markdown)
+        } else {
+            section
+        };
+        Some(if use_markdown {
+            section.with_markdown()
+        } else {
+            section
+        })
+    }
+
+    fn from_text(label: &'static str, text: &str, use_markdown: bool) -> Option<Self> {
+        let text = text.trim();
+        if text.is_empty() {
+            None
+        } else {
+            Some(Self::build(
+                label,
+                truncate_output(text.to_string()),
+                use_markdown,
+            ))
+        }
+    }
+
     fn from_bytes_for_command(
         label: &'static str,
         subcommand: &str,
@@ -156,6 +223,11 @@ impl OutputSection {
         Self::from_bytes(label, bytes).map(|section| {
             let section = if subcommand == "map" {
                 section.with_text(map_url_listing(&section.text), use_markdown)
+            } else if matches!(
+                subcommand,
+                "ask" | "crawl" | "embed" | "extract" | "ingest" | "scrape" | "search"
+            ) {
+                section.with_text(palette_output_text(subcommand, &section.text), use_markdown)
             } else {
                 section
             };
@@ -211,51 +283,6 @@ impl OutputSection {
     }
 }
 
-pub(crate) fn run_command_bounded(mut command: Command) -> io::Result<BoundedProcessOutput> {
-    let mut child = command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("child stdout was not piped"))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| io::Error::other("child stderr was not piped"))?;
-
-    let stdout_reader = thread::spawn(move || read_bounded(stdout));
-    let stderr_reader = thread::spawn(move || read_bounded(stderr));
-    let status = child.wait()?;
-    let stdout = stdout_reader
-        .join()
-        .map_err(|_| io::Error::other("stdout reader panicked"))??;
-    let stderr = stderr_reader
-        .join()
-        .map_err(|_| io::Error::other("stderr reader panicked"))??;
-
-    Ok(BoundedProcessOutput {
-        status,
-        stdout,
-        stderr,
-    })
-}
-
-fn read_bounded(mut reader: impl Read) -> io::Result<Vec<u8>> {
-    let mut buffer = BoundedByteBuffer::new(OUTPUT_LIMIT);
-    let mut chunk = [0_u8; 8192];
-    loop {
-        let read = reader.read(&mut chunk)?;
-        if read == 0 {
-            break;
-        }
-        buffer.push(&chunk[..read]);
-    }
-    Ok(buffer.into_bytes())
-}
-
 struct BoundedByteBuffer {
     bytes: Vec<u8>,
     limit: usize,
@@ -301,54 +328,6 @@ fn valid_utf8_boundary(bytes: &[u8]) -> usize {
     }
 }
 
-fn map_url_listing(text: &str) -> String {
-    let urls: Vec<&str> = text
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            trimmed
-                .strip_prefix('•')
-                .or_else(|| trimmed.strip_prefix("- "))
-                .map(str::trim)
-                .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
-        })
-        .collect();
-
-    if urls.is_empty() {
-        text.to_string()
-    } else {
-        urls.join("\n")
-    }
-}
-
-fn actionable_error_text(text: &str) -> String {
-    let lines: Vec<&str> = text.lines().collect();
-    if let Some(index) = lines
-        .iter()
-        .position(|line| line.trim_start().starts_with("Error:"))
-    {
-        return lines[index..].join("\n");
-    }
-
-    let non_log_lines: Vec<&str> = lines
-        .iter()
-        .copied()
-        .filter(|line| {
-            let trimmed = line.trim_start();
-            !(trimmed.contains(" WARN ")
-                || trimmed.contains(" INFO ")
-                || trimmed.contains(" DEBUG ")
-                || trimmed.contains(" TRACE "))
-        })
-        .collect();
-
-    if non_log_lines.is_empty() {
-        text.to_string()
-    } else {
-        non_log_lines.join("\n")
-    }
-}
-
 impl OutputKind {
     pub(crate) fn label(self) -> &'static str {
         match self {
@@ -369,130 +348,19 @@ impl OutputKind {
     }
 }
 
-/// Strip ANSI / VT escape sequences. CSI, OSC, DCS, APC, PM, and SOS are
-/// covered; malformed sequences are silently dropped.
-fn strip_ansi(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c != '\x1b' {
-            out.push(c);
-            continue;
-        }
-        // Look at the byte immediately after ESC to pick the sequence kind.
-        let Some(&next) = chars.peek() else {
-            // lone trailing ESC — drop it
-            continue;
-        };
-        match next {
-            '[' => {
-                chars.next();
-                // CSI: consume until a final byte in 0x40..=0x7E.
-                for ch in chars.by_ref() {
-                    if ('\x40'..='\x7e').contains(&ch) {
-                        break;
-                    }
-                }
-            }
-            ']' => {
-                // OSC — terminates on BEL (0x07) or ST (ESC \).
-                chars.next();
-                consume_until_string_terminator(&mut chars, /* allow_bel = */ true);
-            }
-            'P' | '_' | '^' | 'X' => {
-                // DCS/APC/PM/SOS terminate only on ST; embedded BEL is payload.
-                chars.next();
-                consume_until_string_terminator(&mut chars, /* allow_bel = */ false);
-            }
-            _ => {
-                // Some other Fp/Fe/Fs/two-char escape (e.g. ESC =, ESC c).
-                // Drop the single follow-up byte and move on.
-                chars.next();
-            }
-        }
-    }
-    out
-}
-
-/// Consume until ST (`ESC \`), optionally accepting BEL for OSC.
-fn consume_until_string_terminator(
-    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
-    allow_bel: bool,
-) {
-    while let Some(ch) = chars.next() {
-        if allow_bel && ch == '\x07' {
-            return;
-        }
-        if ch == '\x1b' {
-            // ST = ESC '\\'. Only a well-formed ST terminates the
-            // sequence. A bare ESC inside a string-type payload is
-            // malformed input; swallow it and keep stripping rather
-            // than leaking the remainder of the payload to output.
-            if chars.peek() == Some(&'\\') {
-                chars.next();
-                return;
-            }
-            continue;
-        }
-    }
-}
-
-/// Render an `ExitStatus` as a short human-readable string.
-///
-/// Replaces `std`'s `"exit status: 58"` / `"signal: 9 (SIGKILL)"` (and on some
-/// platforms a raw hex code) with `"exit 58"` / `"killed by SIGKILL"` / `"ok"`.
-fn format_exit_status(status: &std::process::ExitStatus) -> String {
-    if status.success() {
-        return "ok".to_string();
-    }
-    if let Some(code) = status.code() {
-        return format!("exit {code}");
-    }
-    #[cfg(unix)]
+#[cfg(test)]
+fn success_status() -> std::process::ExitStatus {
+    #[cfg(windows)]
     {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(sig) = status.signal() {
-            let name = signal_name(sig).unwrap_or("signal");
-            return format!("killed by {name} ({sig})");
-        }
+        std::process::Command::new("cmd")
+            .args(["/C", "exit", "0"])
+            .status()
+            .expect("success status")
     }
-    // Fallback for non-Unix or unknown termination.
-    format!("{status}")
-}
-
-#[cfg(unix)]
-fn signal_name(sig: i32) -> Option<&'static str> {
-    match sig {
-        1 => Some("SIGHUP"),
-        2 => Some("SIGINT"),
-        3 => Some("SIGQUIT"),
-        6 => Some("SIGABRT"),
-        9 => Some("SIGKILL"),
-        11 => Some("SIGSEGV"),
-        13 => Some("SIGPIPE"),
-        14 => Some("SIGALRM"),
-        15 => Some("SIGTERM"),
-        _ => None,
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new("true")
+            .status()
+            .expect("success status")
     }
-}
-
-fn command_title(subcommand: &str) -> &'static str {
-    ACTIONS
-        .iter()
-        .find(|action| action.subcommand == subcommand)
-        .map(|action| action.label)
-        .unwrap_or("Command")
-}
-
-fn truncate_output(mut text: String) -> String {
-    if text.len() <= OUTPUT_LIMIT {
-        return text;
-    }
-
-    // floor_char_boundary finds the largest char boundary <= OUTPUT_LIMIT,
-    // preventing a panic when a multibyte character straddles the limit.
-    let boundary = text.floor_char_boundary(OUTPUT_LIMIT);
-    text.truncate(boundary);
-    text.push_str("\n... output truncated ...");
-    text
 }

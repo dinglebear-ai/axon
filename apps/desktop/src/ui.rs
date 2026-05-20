@@ -1,30 +1,10 @@
-use std::process::Command;
 use std::time::{Duration, Instant};
-
-/// Spawn `axon` without flashing a console window on Windows. On Unix this
-/// is just `Command::new("axon")` — the flag is a no-op outside Windows.
-fn axon_command() -> Command {
-    let cmd = Command::new("axon");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NO_WINDOW = 0x08000000 — prevents the child from getting its
-        // own console; otherwise GPUI's non-console parent flashes a cmd.exe
-        // window per subprocess (every health check + every command run).
-        let mut cmd = cmd;
-        cmd.creation_flags(0x08000000);
-        return cmd;
-    }
-    #[cfg(not(windows))]
-    cmd
-}
 
 use gpui::{App, Context, FocusHandle, Focusable, ScrollHandle, SharedString, Size, Window, px};
 
 use crate::actions::{
     ACTIONS, ArgMode, CommandAction, action_invoked_by, action_matches, looks_like_url,
 };
-use crate::conversation::{AskConversation, restore_from_latest};
 use crate::layout::{HeightSnapshot, MIN_WINDOW_HEIGHT};
 use crate::output::CommandOutput;
 use crate::theme::AURORA_BORDER_STRONG;
@@ -84,11 +64,6 @@ pub(crate) struct Palette {
     /// target (which, on a cold launch with no input, equals
     /// `MIN_WINDOW_HEIGHT` — already the launch size).
     current_window_height: Option<f32>,
-    /// Live ask-conversation state. `Some` once the first `axon ask` succeeds;
-    /// every subsequent `axon ask` while this is `Some` is shelled out with
-    /// `--follow-up` so the CLI threads it onto the same session. In-memory
-    /// only — does not survive palette restart.
-    ask_conversation: Option<AskConversation>,
 }
 
 pub(crate) struct RunningCommand {
@@ -125,12 +100,6 @@ pub(crate) fn format_elapsed(elapsed: Duration) -> String {
 
 impl Palette {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-        // Restore any live `axon ask` conversation from the CLI's session
-        // file so reopening the palette picks up where the user left off
-        // (within the idle window). Sync local-file read — small JSONL, no
-        // need to defer to a background task. See `conversation::restore_from_latest`.
-        let ask_conversation = std::env::home_dir().and_then(|home| restore_from_latest(&home));
-
         let mut palette = Self {
             query: String::new(),
             selected: 0,
@@ -145,7 +114,6 @@ impl Palette {
             connection: ConnectionState::Unknown,
             health_check_id: 0,
             current_window_height: None,
-            ask_conversation,
         };
         palette.spawn_health_check(cx);
         palette
@@ -300,19 +268,26 @@ impl Palette {
         }
     }
 
-    /// Snap the window height to `target_height` when it differs from the
-    /// last committed value. This is the v1 "no easing" approach — render
-    /// is already called when content changes, so the resize tracks the
-    /// content. Per the PR #99 launch-time hotfix, we do NOT spawn a
-    /// repeating tick task; resize only fires in response to user-driven
-    /// content changes (typing, command runs, dismissals).
+    /// Snap the window height to `target_height` when the palette itself owns
+    /// the current size. If the user manually resized taller, preserve that
+    /// size and let the flex layout expand into it.
     fn sync_window_height(&mut self, target_height: f32, window: &mut Window) {
         // The minimum target is `MIN_WINDOW_HEIGHT` — never let the
         // computed value collapse the window below the prompt row.
-        let clamped = target_height.max(MIN_WINDOW_HEIGHT);
+        let clamped = target_height.max(MIN_WINDOW_HEIGHT) + crate::layout::WINDOW_CHROME_HEIGHT;
+        let current_height = window.bounds().size.height.as_f32();
+        let user_resized_taller = match self.current_window_height {
+            Some(prev) => (prev - current_height).abs() > 0.5 && current_height >= clamped,
+            None => false,
+        };
+        if user_resized_taller {
+            self.current_window_height = Some(current_height);
+            return;
+        }
+
         let needs_resize = match self.current_window_height {
             None => true,
-            Some(prev) => (prev - clamped).abs() > 0.5,
+            Some(prev) => current_height < clamped - 0.5 || (prev - clamped).abs() > 0.5,
         };
         if needs_resize {
             let current_width = window.bounds().size.width;
@@ -324,16 +299,10 @@ impl Palette {
         }
     }
 
-    /// Compact footer-status string describing the live ask conversation,
-    /// or `None` when no conversation is active. Rendered in the footer so
-    /// the user sees at a glance that follow-up mode is engaged.
+    /// `/v1/ask` is currently stateless, so the REST-backed palette does not
+    /// render a conversation footer.
     fn conversation_hint(&self) -> Option<SharedString> {
-        let convo = self.ask_conversation?;
-        let label = match convo.turn_count {
-            1 => "· conversation: 1 turn".to_string(),
-            n => format!("· conversation: {n} turns"),
-        };
-        Some(SharedString::from(label))
+        None
     }
 
     fn argument_for(&self, action: CommandAction) -> &str {
