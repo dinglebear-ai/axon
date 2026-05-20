@@ -73,10 +73,11 @@ sources
 stats
 status
 suggest
+summarize
 EOF
 )"
 
-DIRECT_ACTIONS_JSON='["ask","doctor","domains","elicit_demo","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest"]'
+DIRECT_ACTIONS_JSON='["ask","doctor","domains","elicit_demo","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
 artifacts
 ask
@@ -100,6 +101,7 @@ sources
 stats
 status
 suggest
+summarize
 EOF
 )"
 

@@ -46,6 +46,7 @@ IGNORED_TOKENS = {
     "AXON_DEV_BIN_DIR",  # local shell variable in scripts/axon
     "AXON_HOME_DIR",  # local shell variable in scripts/axon
     "AXON_FULL_ACCESS_SCOPE",  # Rust authz const, not an env var
+    "AXON_API_UA",  # Rust const (User-Agent string), not an env var
     "AXON_READ_SCOPE",  # Rust authz const, not an env var
     "AXON_WRITE_SCOPE",  # Rust authz const, not an env var
     "REDDIT_UA",  # Rust const (User-Agent string), not an env var; lives in src/extract/verticals/reddit.rs

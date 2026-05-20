@@ -791,6 +791,18 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_USER_AGENT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs", "tests"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Global HTTP User-Agent override. Kept in env with Chrome fallback until a typed config.toml field is wired."
+
+[[env]]
 key = "AXON_COLLECTION"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"
