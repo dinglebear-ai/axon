@@ -1,14 +1,14 @@
-[1m[38;2;244;143;177mManage the local Docker service stack[0m[0m
+Manage the local Docker service stack
 
-[1m[38;2;244;143;177mUsage[0m[0m
-  [38;2;144;202;249maxon stack [OPTIONS][0m
-  [38;2;144;202;249maxon stack <COMMAND>[0m
+Usage
+  axon stack [OPTIONS]
+  axon stack <COMMAND>
 
-[1m[38;2;244;143;177mCommands[0m[0m
-  [38;2;144;202;249mup                  [0m [2mPull and start the Docker service stack[0m
-  [38;2;144;202;249mdown                [0m [2mStop the Docker service stack[0m
-  [38;2;144;202;249mrestart             [0m [2mRestart running services[0m
-  [38;2;144;202;249mrebuild             [0m [2mRebuild the Axon image and start the stack[0m
+Commands
+  up                   Pull and start the Docker service stack
+  down                 Stop the Docker service stack
+  restart              Restart running services
+  rebuild              Rebuild the Axon image and start the stack
 
-[1m[38;2;244;143;177mOptions[0m[0m
-  [38;2;144;202;249m-h, --help                      [0m [2mPrint help[0m
+Options
+  -h, --help                       Print help

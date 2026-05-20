@@ -6,8 +6,8 @@ use crate::services::types::ClientActionError;
 use uuid::Uuid;
 
 pub(super) use dispatchers::{
-    dispatch_crawl, dispatch_embed, dispatch_extract, dispatch_ingest, dispatch_scrape,
-    dispatch_screenshot, dispatch_summarize,
+    dispatch_crawl, dispatch_embed, dispatch_endpoints, dispatch_extract, dispatch_ingest,
+    dispatch_scrape, dispatch_screenshot, dispatch_summarize,
 };
 
 pub(super) fn parse_job_id(raw: Option<&str>) -> Result<Uuid, ClientActionError> {

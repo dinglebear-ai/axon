@@ -7,8 +7,10 @@
 
 pub mod client_server;
 mod contracts;
+mod endpoints;
 mod service;
 
 pub use client_server::*;
 pub use contracts::*;
+pub use endpoints::*;
 pub use service::*;

@@ -39,6 +39,13 @@ impl Default for Config {
             discover_sitemaps: true,
             sitemap_since_days: 0,
             map_fallback: MapFallback::Structure,
+            endpoints_include_bundles: true,
+            endpoints_first_party_only: false,
+            endpoints_unique_only: true,
+            endpoints_max_scripts: 40,
+            endpoints_max_scan_bytes: 8 * 1024 * 1024,
+            endpoints_verify: false,
+            endpoints_capture_network: false,
             max_sitemaps: 512,
             cache: true,
             cache_http_only: false,
@@ -270,6 +277,16 @@ impl fmt::Debug for Config {
             .field("discover_sitemaps", &self.discover_sitemaps)
             .field("sitemap_since_days", &self.sitemap_since_days)
             .field("map_fallback", &self.map_fallback)
+            .field("endpoints_include_bundles", &self.endpoints_include_bundles)
+            .field(
+                "endpoints_first_party_only",
+                &self.endpoints_first_party_only,
+            )
+            .field("endpoints_unique_only", &self.endpoints_unique_only)
+            .field("endpoints_max_scripts", &self.endpoints_max_scripts)
+            .field("endpoints_max_scan_bytes", &self.endpoints_max_scan_bytes)
+            .field("endpoints_verify", &self.endpoints_verify)
+            .field("endpoints_capture_network", &self.endpoints_capture_network)
             .field("max_sitemaps", &self.max_sitemaps)
             .field("cache", &self.cache)
             .field("cache_http_only", &self.cache_http_only)

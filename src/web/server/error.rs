@@ -169,6 +169,7 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
     ) {
         (StatusCode::BAD_GATEWAY, "upstream_unavailable")
     } else if lc.contains("query is required")
+        || lc.contains("invalid endpoint discovery url")
         || lc.contains("invalid collection")
         || lc.contains("invalid query")
         || lc.contains("missing required")

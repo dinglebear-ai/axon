@@ -44,6 +44,7 @@ pub async fn dispatch_action(
         AxonRequest::Extract(req) => commands::dispatch_extract(service_context, req).await,
         AxonRequest::Embed(req) => commands::dispatch_embed(service_context, req).await,
         AxonRequest::Ingest(req) => commands::dispatch_ingest(service_context, req).await,
+        AxonRequest::Endpoints(req) => commands::dispatch_endpoints(service_context, req).await,
         AxonRequest::Scrape(req) => commands::dispatch_scrape(service_context, req).await,
         AxonRequest::Summarize(req) => commands::dispatch_summarize(service_context, req).await,
         AxonRequest::Screenshot(req) => commands::dispatch_screenshot(service_context, req).await,
@@ -79,6 +80,7 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         | AxonRequest::Retrieve(_)
         | AxonRequest::Search(_)
         | AxonRequest::Map(_)
+        | AxonRequest::Endpoints(_)
         | AxonRequest::Doctor(_)
         | AxonRequest::Domains(_)
         | AxonRequest::Sources(_)
@@ -142,6 +144,7 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Retrieve(_) => "retrieve",
         AxonRequest::Search(_) => "search",
         AxonRequest::Map(_) => "map",
+        AxonRequest::Endpoints(_) => "endpoints",
         AxonRequest::Evaluate(_) => "evaluate",
         AxonRequest::Suggest(_) => "suggest",
         AxonRequest::Doctor(_) => "doctor",

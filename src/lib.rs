@@ -14,10 +14,10 @@ pub mod web;
 
 use self::cli::commands::{
     run_ask, run_completions, run_config, run_crawl, run_debug, run_dedupe, run_doctor,
-    run_domains, run_embed, run_evaluate, run_extract, run_ingest, run_map, run_mcp, run_migrate,
-    run_query, run_research, run_retrieve, run_scrape, run_screenshot, run_search, run_serve,
-    run_sessions, run_setup, run_sources, run_stats, run_status, run_suggest, run_summarize,
-    run_train, run_watch, start_url_from_cfg,
+    run_domains, run_embed, run_endpoints, run_evaluate, run_extract, run_ingest, run_map, run_mcp,
+    run_migrate, run_query, run_research, run_retrieve, run_scrape, run_screenshot, run_search,
+    run_serve, run_sessions, run_setup, run_sources, run_stats, run_status, run_suggest,
+    run_summarize, run_train, run_watch, start_url_from_cfg,
 };
 use self::core::config::{CommandKind, Config, parse_args};
 use self::core::logging::{init_tracing, log_done, log_info, log_warn};
@@ -44,6 +44,7 @@ async fn run_once(
     match cfg.command {
         CommandKind::Scrape => run_scrape(cfg).await?,
         CommandKind::Map => run_map(cfg, start_url).await?,
+        CommandKind::Endpoints => run_endpoints(cfg).await?,
         CommandKind::Crawl => run_crawl(cfg, service_context).await?,
         CommandKind::Watch => run_watch(cfg, service_context).await?,
         CommandKind::Extract => run_extract(cfg, service_context).await?,

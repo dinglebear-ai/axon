@@ -1,7 +1,7 @@
-[1m[38;2;244;143;177mCheck host prerequisites and service readiness[0m[0m
+Check host prerequisites and service readiness
 
-[1m[38;2;244;143;177mUsage[0m[0m
-  [38;2;144;202;249maxon preflight [OPTIONS][0m
+Usage
+  axon preflight [OPTIONS]
 
-[1m[38;2;244;143;177mOptions[0m[0m
-  [38;2;144;202;249m-h, --help                      [0m [2mPrint help[0m
+Options
+  -h, --help                       Print help

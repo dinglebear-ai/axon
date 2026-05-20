@@ -321,6 +321,7 @@ impl AxonMcpServer {
                     "evaluate": ["evaluate"],
                     "suggest": ["suggest"],
                     "screenshot": ["screenshot"],
+                    "endpoints": ["endpoints"],
                     "crawl": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],

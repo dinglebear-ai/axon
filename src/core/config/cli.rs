@@ -31,6 +31,8 @@ pub(super) enum CliCommand {
     Watch(WatchArgs),
     /// Discover all URLs on a site without scraping
     Map(MapArgs),
+    /// Discover API endpoints from page HTML and JavaScript bundles
+    Endpoints(EndpointArgs),
     /// LLM-powered structured data extraction from URLs
     Extract(ExtractArgs),
     /// Web search via Tavily, auto-queues crawl jobs for results
@@ -300,6 +302,33 @@ pub(super) struct MapArgs {
     /// `crawl`: run a full Spider.rs crawl (slow, legacy — explicit opt-in).
     #[arg(long, value_enum)]
     pub(super) map_fallback: Option<MapFallback>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct EndpointArgs {
+    #[arg(value_name = "URL")]
+    pub(super) url: String,
+    /// Fetch and scan first-party JavaScript bundles.
+    #[arg(long = "include-bundles", action = ArgAction::Set, default_value_t = true)]
+    pub(super) include_bundles: bool,
+    /// Return only endpoints on the target page's host.
+    #[arg(long = "first-party-only", action = ArgAction::Set, default_value_t = false)]
+    pub(super) first_party_only: bool,
+    /// Deduplicate by normalized endpoint URL.
+    #[arg(long = "unique-only", action = ArgAction::Set, default_value_t = true)]
+    pub(super) unique_only: bool,
+    /// Maximum script bundle URLs to fetch and scan.
+    #[arg(long = "max-scripts", default_value_t = 40)]
+    pub(super) max_scripts: usize,
+    /// Maximum HTML plus JavaScript bytes to scan.
+    #[arg(long = "max-scan-bytes", default_value_t = 8 * 1024 * 1024)]
+    pub(super) max_scan_bytes: usize,
+    /// Probe discovered HTTP endpoints without credentials.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) verify: bool,
+    /// Capture browser network requests. Executes page code and requires Chrome.
+    #[arg(long = "capture-network", action = ArgAction::SetTrue)]
+    pub(super) capture_network: bool,
 }
 
 #[derive(Debug, Args)]
