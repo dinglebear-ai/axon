@@ -123,17 +123,26 @@ where
     )
     .await?;
     let mut captured = Vec::new();
+    let mut last_network_event = tokio::time::Instant::now();
+    let mut page_loaded = false;
     {
         let mut capture_early_event = |value: &serde_json::Value| {
             if value.get("sessionId").and_then(|id| id.as_str()) != Some(session_id) {
                 return;
             }
-            if value.get("method").and_then(|method| method.as_str())
-                == Some("Network.requestWillBeSent")
-                && captured.len() < max_requests
-                && let Some(request) = captured_request_from_event(value)
-            {
-                captured.push(request);
+            match value.get("method").and_then(|method| method.as_str()) {
+                Some("Network.requestWillBeSent") => {
+                    if captured.len() < max_requests
+                        && let Some(request) = captured_request_from_event(value)
+                    {
+                        captured.push(request);
+                        last_network_event = tokio::time::Instant::now();
+                    }
+                }
+                Some("Page.loadEventFired") => {
+                    page_loaded = true;
+                }
+                _ => {}
             }
         };
         send_capture_cdp_cmd(
@@ -150,8 +159,6 @@ where
 
     let deadline = tokio::time::Instant::now()
         + Duration::from_secs(network_idle_secs.clamp(5, 60) + CAPTURE_CDP_TIMEOUT_SECS);
-    let mut last_network_event = tokio::time::Instant::now();
-    let mut page_loaded = false;
 
     while tokio::time::Instant::now() < deadline && captured.len() < max_requests {
         let idle_deadline = last_network_event + Duration::from_millis(CAPTURE_IDLE_MS);

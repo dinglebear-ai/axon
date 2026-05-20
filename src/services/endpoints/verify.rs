@@ -22,13 +22,19 @@ pub(super) async fn verify_endpoints(cfg: &Config, page_url: &str, report: &mut 
                 return;
             }
         };
-    let targets: Vec<(usize, String)> = report
+    let eligible: Vec<(usize, String)> = report
         .endpoints
         .iter()
         .enumerate()
         .filter_map(|(idx, endpoint)| verification_url(page_url, endpoint).map(|url| (idx, url)))
-        .take(MAX_VERIFY_PROBES)
         .collect();
+    if eligible.len() > MAX_VERIFY_PROBES {
+        report.warnings.push(format!(
+            "verification capped at {MAX_VERIFY_PROBES} endpoints; skipped {} additional endpoints",
+            eligible.len() - MAX_VERIFY_PROBES
+        ));
+    }
+    let targets: Vec<(usize, String)> = eligible.into_iter().take(MAX_VERIFY_PROBES).collect();
 
     let results: Vec<_> = stream::iter(targets)
         .map(|(idx, url)| {
