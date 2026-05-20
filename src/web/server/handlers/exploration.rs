@@ -167,7 +167,7 @@ pub(crate) async fn endpoints(
     )
     .await
     .map(Json)
-    .map_err(|err| HttpError::new(StatusCode::BAD_GATEWAY, "upstream", err.to_string()))
+    .map_err(HttpError::from_box_send_sync)
 }
 
 #[utoipa::path(

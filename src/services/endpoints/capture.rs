@@ -138,7 +138,11 @@ where
         if page_loaded && tokio::time::Instant::now() >= idle_deadline {
             break;
         }
-        let next_deadline = deadline.min(idle_deadline);
+        let next_deadline = if page_loaded {
+            deadline.min(idle_deadline)
+        } else {
+            deadline
+        };
         let Some(frame) = tokio::time::timeout_at(next_deadline, rx.next())
             .await
             .ok()
@@ -177,7 +181,11 @@ where
 fn captured_request_from_event(value: &serde_json::Value) -> Option<CapturedRequest> {
     let request = value.get("params")?.get("request")?;
     let url = request.get("url")?.as_str()?;
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
+    if !(url.starts_with("http://")
+        || url.starts_with("https://")
+        || url.starts_with("ws://")
+        || url.starts_with("wss://"))
+    {
         return None;
     }
     Some(CapturedRequest {

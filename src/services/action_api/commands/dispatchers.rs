@@ -337,7 +337,7 @@ pub async fn dispatch_endpoints(
         ClientActionError::new(
             "internal",
             format!("serialize endpoints result: {err}"),
-            true,
+            false,
             None,
         )
     })

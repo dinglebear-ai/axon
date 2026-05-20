@@ -127,8 +127,9 @@ pub fn extract_endpoints(
     let mut seen = BTreeSet::new();
     let mut remaining = options.max_scan_bytes.max(1);
 
+    let html_scan = bounded_slice(html, &mut remaining, &mut report);
     scan_text(
-        html,
+        html_scan,
         EndpointSourceKind::InlineScript,
         Some(base_url),
         base.as_ref(),
@@ -137,11 +138,10 @@ pub fn extract_endpoints(
         &mut report,
         &mut hosts,
         &mut seen,
-        &mut remaining,
         options,
     );
     scan_html_attributes(
-        html,
+        html_scan,
         base.as_ref(),
         base_origin.as_ref(),
         &base_host,
@@ -158,8 +158,9 @@ pub fn extract_endpoints(
         }
         report.bundles_scanned += 1;
         report.truncated |= bundle.truncated;
+        let bundle_scan = bounded_slice(&bundle.text, &mut remaining, &mut report);
         scan_text(
-            &bundle.text,
+            bundle_scan,
             EndpointSourceKind::ScriptBundle,
             Some(&bundle.url),
             base.as_ref(),
@@ -168,7 +169,6 @@ pub fn extract_endpoints(
             &mut report,
             &mut hosts,
             &mut seen,
-            &mut remaining,
             options,
         );
     }
@@ -189,15 +189,13 @@ fn scan_text(
     report: &mut EndpointReport,
     hosts: &mut BTreeSet<String>,
     seen: &mut BTreeSet<String>,
-    remaining: &mut usize,
     options: &EndpointExtractOptions,
 ) {
-    let slice = bounded_slice(text, remaining, report);
-    if slice.is_empty() {
+    if text.is_empty() {
         return;
     }
 
-    for captures in REL_PATH_RE.captures_iter(slice) {
+    for captures in REL_PATH_RE.captures_iter(text) {
         let Some(value) = captures.get(1).map(|m| m.as_str()) else {
             continue;
         };
@@ -217,7 +215,7 @@ fn scan_text(
         );
     }
 
-    for captures in GRAPHQL_WORD_RE.captures_iter(slice) {
+    for captures in GRAPHQL_WORD_RE.captures_iter(text) {
         let Some(value) = captures.get(1).map(|m| m.as_str().trim()) else {
             continue;
         };
@@ -247,7 +245,7 @@ fn scan_text(
         }
     }
 
-    for found in WS_URL_RE.find_iter(slice) {
+    for found in WS_URL_RE.find_iter(text) {
         push_endpoint(
             found.as_str(),
             EndpointKind::Websocket,
@@ -263,7 +261,7 @@ fn scan_text(
         );
     }
 
-    for found in ABS_URL_RE.find_iter(slice) {
+    for found in ABS_URL_RE.find_iter(text) {
         let value = found.as_str();
         push_endpoint(
             value,
@@ -425,7 +423,7 @@ fn host_is_first_party(candidate: Option<&str>, base_host: &str) -> bool {
 }
 
 fn endpoint_first_party(value: &str, normalized_url: Option<&str>, base_host: &str) -> bool {
-    if value.starts_with('/') {
+    if value.starts_with('/') && !value.starts_with("//") {
         return true;
     }
     let Some(url) = normalized_url else {

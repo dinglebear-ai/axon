@@ -2,12 +2,15 @@ use crate::core::config::Config;
 use crate::core::content::{
     EndpointExtractOptions, PrefetchedBundle, discover_script_sources, extract_endpoints,
 };
-use crate::core::http::{axon_ua, build_client, normalize_url, validate_url_with_dns};
+use crate::core::http::{
+    axon_ua, build_client, build_client_no_redirect, normalize_url, validate_url_with_dns,
+};
 use crate::services::types::{
     DiscoveredEndpoint, EndpointKind, EndpointOptions, EndpointReport, EndpointSourceKind,
     EndpointVerification,
 };
 use futures_util::{StreamExt, stream};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::future::Future;
 use std::time::{Duration, Instant};
@@ -90,7 +93,8 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     validate_url_with_dns_timeout(&normalized).await?;
 
     let client = build_client(timeout_secs(cfg, BUNDLE_TIMEOUT_SECS), Some(axon_ua()))?;
-    let html = fetch_bounded_text(&client, &normalized, options.max_scan_bytes, true).await?;
+    let (html, html_truncated) =
+        fetch_bounded_text(&client, &normalized, options.max_scan_bytes, true).await?;
     let (script_sources, script_truncated) =
         discover_script_sources(&html, &normalized, options.max_scripts);
     let bundle_sources: Vec<_> = if options.include_bundles {
@@ -126,10 +130,18 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
         },
     );
     report.truncated |= script_truncated;
+    report.truncated |= html_truncated;
     report.warnings.extend(warnings);
 
     if options.capture_network {
-        merge_network_capture(cfg, &normalized, &mut report, capture_provider).await?;
+        merge_network_capture(
+            cfg,
+            &normalized,
+            &mut report,
+            capture_provider,
+            options.first_party_only,
+        )
+        .await?;
     }
     if options.first_party_only {
         report.endpoints.retain(|endpoint| endpoint.first_party);
@@ -215,14 +227,12 @@ async fn fetch_bounded_text(
     url: &str,
     max_bytes: usize,
     require_success: bool,
-) -> Result<String, EndpointError> {
+) -> Result<(String, bool), EndpointError> {
     let response = client.get(url).send().await?;
     if require_success {
         response.error_for_status_ref()?;
     }
-    fetch_response_text(response, max_bytes)
-        .await
-        .map(|(text, _)| text)
+    fetch_response_text(response, max_bytes).await
 }
 
 async fn fetch_response_text(
@@ -255,19 +265,40 @@ async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
     url: &str,
     report: &mut EndpointReport,
     capture_provider: &P,
+    first_party_only: bool,
 ) -> Result<(), EndpointError> {
     let captured = capture_provider
         .capture(cfg, url, CAPTURE_MAX_REQUESTS)
         .await?;
+    let mut validation_cache: BTreeMap<String, Option<String>> = BTreeMap::new();
     for request in captured {
         if report.endpoints.len() >= crate::core::content::DEFAULT_MAX_ENDPOINTS {
             report.truncated = true;
             break;
         }
-        if !first_party_for_url(url, &request.url) {
+        let first_party = first_party_for_url(url, &request.url);
+        if first_party_only && !first_party {
             continue;
         }
-        if let Err(err) = validate_url_with_dns_timeout(&request.url).await {
+        let Some(validation_url) = capture_validation_url(&request.url) else {
+            report.warnings.push(format!(
+                "network capture skipped {}: unsupported URL",
+                request.url
+            ));
+            continue;
+        };
+        let validation_err = match validation_cache.get(&validation_url) {
+            Some(cached) => cached.clone(),
+            None => {
+                let result = validate_url_with_dns_timeout(&validation_url)
+                    .await
+                    .err()
+                    .map(|err| err.to_string());
+                validation_cache.insert(validation_url, result.clone());
+                result
+            }
+        };
+        if let Some(err) = validation_err {
             report
                 .warnings
                 .push(format!("network capture skipped {}: {err}", request.url));
@@ -291,7 +322,7 @@ async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
             value: request.url.clone(),
             normalized_url: Some(request.url.clone()),
             kind,
-            first_party: first_party_for_url(url, &request.url),
+            first_party,
             source: EndpointSourceKind::NetworkCapture,
             source_url: Some(url.to_string()),
             verified: None,
@@ -302,15 +333,16 @@ async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
 }
 
 async fn verify_endpoints(cfg: &Config, page_url: &str, report: &mut EndpointReport) {
-    let client = match build_client(timeout_secs(cfg, VERIFY_TIMEOUT_SECS), Some(axon_ua())) {
-        Ok(client) => client,
-        Err(err) => {
-            report
-                .warnings
-                .push(format!("verification client unavailable: {err}"));
-            return;
-        }
-    };
+    let client =
+        match build_client_no_redirect(timeout_secs(cfg, VERIFY_TIMEOUT_SECS), Some(axon_ua())) {
+            Ok(client) => client,
+            Err(err) => {
+                report
+                    .warnings
+                    .push(format!("verification client unavailable: {err}"));
+                return;
+            }
+        };
     let targets: Vec<(usize, String)> = report
         .endpoints
         .iter()
@@ -429,6 +461,20 @@ fn first_party_for_url(page_url: &str, candidate: &str) -> bool {
         .and_then(|url| url.host_str().map(|host| host.to_ascii_lowercase()))
         .map(|host| host == page_host || host.ends_with(&format!(".{page_host}")))
         .unwrap_or(true)
+}
+
+fn capture_validation_url(value: &str) -> Option<String> {
+    let mut url = Url::parse(value).ok()?;
+    match url.scheme() {
+        "http" | "https" => {}
+        "ws" => url.set_scheme("http").ok()?,
+        "wss" => url.set_scheme("https").ok()?,
+        _ => return None,
+    }
+    url.set_path("/");
+    url.set_query(None);
+    url.set_fragment(None);
+    Some(url.to_string())
 }
 
 #[cfg(test)]
