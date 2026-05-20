@@ -36,6 +36,7 @@ fn assert_help_snapshot(args: &[&str], fixture: &str) {
 fn run_help_with_env(args: &[&str], envs: &[(&str, &str)]) -> String {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_axon"));
     cmd.args(args);
+    cmd.env("NO_COLOR", "1");
     for (key, value) in envs {
         cmd.env(key, value);
     }
@@ -52,6 +53,7 @@ fn run_help_with_env(args: &[&str], envs: &[(&str, &str)]) -> String {
 fn run_error(args: &[&str]) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
         .args(args)
+        .env("NO_COLOR", "1")
         .output()
         .expect("failed to execute axon binary");
     assert!(
