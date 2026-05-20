@@ -27,7 +27,10 @@ impl EnvGuard {
     pub(super) fn set_key(key: &'static str, value: Option<&str>) -> Self {
         let prev = std::env::var(key).ok();
         match value {
+            // SAFETY: EnvGuard is test-only. Tests that use it must be marked
+            // #[serial] so no other env-mutating test runs concurrently.
             Some(v) => unsafe { std::env::set_var(key, v) },
+            // SAFETY: see the set_var safety note above.
             None => unsafe { std::env::remove_var(key) },
         }
         Self { key, prev }
@@ -37,7 +40,9 @@ impl EnvGuard {
 impl Drop for EnvGuard {
     fn drop(&mut self) {
         match self.prev.take() {
+            // SAFETY: EnvGuard is test-only and callers serialize env mutation.
             Some(v) => unsafe { std::env::set_var(self.key, v) },
+            // SAFETY: EnvGuard is test-only and callers serialize env mutation.
             None => unsafe { std::env::remove_var(self.key) },
         }
     }
