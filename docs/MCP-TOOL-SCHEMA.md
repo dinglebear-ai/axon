@@ -37,7 +37,7 @@ Incoming request map is parsed strictly with serde:
 ## Preferred Client Actions
 Use CLI-identical top-level actions:
 - Lifecycle families: `artifacts`, `crawl`, `embed`, `extract`, `ingest`
-- Direct actions: `ask`, `doctor`, `domains`, `elicit_demo`, `endpoints`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`
+- Direct actions: `ask`, `doctor`, `domains`, `elicit_demo`, `endpoints`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`, `summarize`
 
 For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canonical families with `subaction`:
 
@@ -77,6 +77,7 @@ These actions do not require `subaction`:
 | `stats` | -- | `response_mode` |
 | `status` | -- | `response_mode` |
 | `suggest` | -- | `focus` (aliases: `query`), `limit`, `collection`, `response_mode` |
+| `summarize` | -- | `url`, `urls`, `render_mode`, `root_selector`, `exclude_selector`, `response_mode` |
 
 Note: `graph` is a deprecated compatibility field. `false`/unset is accepted as a no-op; `true` is rejected because graph retrieval is not wired in production.
 

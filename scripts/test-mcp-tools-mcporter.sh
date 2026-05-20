@@ -73,8 +73,8 @@ search
 sources
 stats
 status
-suggest
 summarize
+suggest
 EOF
 )"
 
@@ -102,8 +102,8 @@ search
 sources
 stats
 status
-suggest
 summarize
+suggest
 EOF
 )"
 

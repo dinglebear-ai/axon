@@ -160,7 +160,7 @@ Use CLI-identical action names:
 - `doctor`, `domains`, `sources`, `stats`
 - `search`, `map`
 - `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
-- `scrape`, `research`, `ask`, `evaluate`, `suggest`, `screenshot`, `help`, `status`, `elicit_demo`
+- `scrape`, `summarize`, `research`, `ask`, `evaluate`, `suggest`, `screenshot`, `help`, `status`, `elicit_demo`
 
 Examples:
 - `action: "ingest", subaction: "start"`
