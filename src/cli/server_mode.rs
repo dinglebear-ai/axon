@@ -2,7 +2,8 @@ mod plan;
 mod render;
 
 use crate::cli;
-use crate::core::config::{CommandKind, Config};
+use crate::cli::route::{CommandRoute, plan_command_route};
+use crate::core::config::Config;
 use std::error::Error;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -22,29 +23,14 @@ enum ServerJobFamily {
 }
 
 pub(crate) fn client_server_dispatch(cfg: &Config) -> ClientServerDispatch {
-    if cfg.local_mode || cfg.server_url.is_none() {
-        return ClientServerDispatch::Local;
-    }
-    if is_server_routed_command(cfg.command) {
+    if matches!(
+        plan_command_route(cfg, &cfg.positional),
+        Ok(plan) if plan.route == CommandRoute::PreferServer
+    ) {
         ClientServerDispatch::Server
     } else {
         ClientServerDispatch::Local
     }
-}
-
-fn is_server_routed_command(command: CommandKind) -> bool {
-    matches!(
-        command,
-        CommandKind::Status
-            | CommandKind::Scrape
-            | CommandKind::Summarize
-            | CommandKind::Crawl
-            | CommandKind::Extract
-            | CommandKind::Embed
-            | CommandKind::Ingest
-            | CommandKind::Sessions
-            | CommandKind::Screenshot
-    )
 }
 
 pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -76,6 +62,10 @@ async fn request_server_rest(
             .map_err(|err| server_client_error(plan.label, err)),
         "POST" => client
             .post_json(&plan.path, &plan.body, plan.label)
+            .await
+            .map_err(|err| server_client_error(plan.label, err)),
+        "DELETE" => client
+            .delete_json(&plan.path, plan.label)
             .await
             .map_err(|err| server_client_error(plan.label, err)),
         method => Err(format!("unsupported server mode method: {method}").into()),

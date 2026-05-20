@@ -18,11 +18,11 @@ fn crawl_start_can_fallback_local() {
 }
 
 #[test]
-fn migrate_never_silently_fallbacks() {
+fn migrate_remains_local_until_server_mode_plan_support_exists() {
     let cfg = cfg(CommandKind::Migrate);
     let plan = plan_command_route(&cfg, &[]).expect("route plan");
 
-    assert_eq!(plan.route, CommandRoute::PreferServer);
+    assert_eq!(plan.route, CommandRoute::LocalOnly);
     assert_eq!(plan.fallback_policy, FallbackPolicy::Disallow);
 }
 

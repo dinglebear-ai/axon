@@ -175,6 +175,7 @@ fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState>
         )
 }
 
+#[cfg(test)]
 pub(crate) fn documented_rest_paths_for_tests() -> Vec<String> {
     [
         "GET /v1/crawl",

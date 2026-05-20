@@ -67,9 +67,13 @@ pub fn resolve_host_endpoint(
 }
 
 fn uses_container_dns(url: &str) -> bool {
-    ["axon-qdrant", "axon-tei", "axon-chrome"]
-        .iter()
-        .any(|host| url.contains(host))
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    ["axon-qdrant", "axon-tei", "axon-chrome"].contains(&host)
 }
 
 fn localhost_default(kind: EndpointKind) -> Option<&'static str> {

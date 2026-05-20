@@ -1,4 +1,5 @@
 use super::*;
+use crate::core::config::CommandKind;
 use crate::core::config::RenderMode;
 use crate::services::types::ServiceJob;
 use chrono::Utc;
@@ -23,7 +24,6 @@ fn client_server_dispatch_routes_stateful_commands_to_server_client() {
         CommandKind::Embed,
         CommandKind::Ingest,
         CommandKind::Sessions,
-        CommandKind::Screenshot,
     ] {
         let cfg = cfg(command, &["https://example.com"]);
         assert_eq!(
@@ -35,11 +35,41 @@ fn client_server_dispatch_routes_stateful_commands_to_server_client() {
 }
 
 #[test]
+fn client_server_dispatch_keeps_screenshot_local_without_rest_endpoint() {
+    let cfg = cfg(CommandKind::Screenshot, &["https://example.com"]);
+
+    assert_eq!(client_server_dispatch(&cfg), ClientServerDispatch::Local);
+}
+
+#[test]
 fn client_server_dispatch_explicit_local_mode_uses_local_paths() {
     let mut cfg = cfg(CommandKind::Crawl, &["https://example.com"]);
     cfg.local_mode = true;
 
     assert_eq!(client_server_dispatch(&cfg), ClientServerDispatch::Local);
+}
+
+#[test]
+fn scrape_server_mode_uses_rest_contract_body() {
+    let mut cfg = cfg(CommandKind::Scrape, &["https://example.com"]);
+    cfg.embed = true;
+    cfg.render_mode = RenderMode::Chrome;
+
+    let plan = plan::server_rest_plan(&cfg).expect("scrape plan");
+
+    assert_eq!(plan.path, "/v1/scrape");
+    assert_eq!(plan.body, json!({ "url": "https://example.com" }));
+}
+
+#[test]
+fn extract_lifecycle_subcommands_route_to_rest_lifecycle_paths() {
+    let job_id = "11111111-1111-1111-1111-111111111111";
+    let cfg = cfg(CommandKind::Extract, &["cancel", job_id]);
+
+    let plan = plan::server_rest_plan(&cfg).expect("extract cancel plan");
+
+    assert_eq!(plan.method, "POST");
+    assert_eq!(plan.path, format!("/v1/extract/{job_id}/cancel"));
 }
 
 #[test]
