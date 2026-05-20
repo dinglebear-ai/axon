@@ -72,7 +72,7 @@ pub struct ElicitDemoRequest {
 
 /// Subaction for the `vertical_scrape` action.
 ///
-/// - `run` — invoke the named extractor; does NOT fall through to generic scrape
+/// - `run` — deprecated; returns an error directing callers to `action=scrape`
 /// - `list` — return the extractor catalog (id, label, description, url_patterns)
 /// - `capabilities` — per-extractor auth_required + rate_limit info
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
@@ -87,15 +87,15 @@ pub enum VerticalScrapeSubaction {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct VerticalScrapeRequest {
-    /// Which operation to perform (default: run).
+    /// Which operation to perform (default: run for backward-compatible error handling).
     #[serde(default)]
     pub subaction: VerticalScrapeSubaction,
-    /// Extractor name — required for `run` and `capabilities`.
+    /// Extractor name — optional filter for `capabilities`; ignored by `list`.
     /// One of: github_repo, github_release, reddit, pypi, npm, crates_io,
     /// docker_hub, huggingface_model, dev_to, shopify, youtube_video, amazon, ebay.
     /// Use `list` to discover the full catalog.
     pub extractor: Option<String>,
-    /// URL to extract (required for `run`).
+    /// Deprecated with `subaction=run`; use `action=scrape` with this URL instead.
     pub url: Option<String>,
     /// Whether to embed the result into Qdrant after extraction.
     pub embed: Option<bool>,
