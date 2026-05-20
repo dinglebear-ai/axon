@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Page Scraper Clipboard",
+  "version": "0.1.0",
+  "description": "Scrape the current page text and copy it to the clipboard.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Scrape page"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "permissions": ["activeTab", "clipboardWrite", "scripting", "sidePanel", "storage"],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}

@@ -28,8 +28,12 @@ type OpsResponse = {
 
 type StackCheck = {
   label: string;
-  status: 'ok' | 'warn' | 'error' | string;
+  status: 'ok' | 'warn' | 'error' | 'skipped' | string;
   detail: string;
+};
+
+type StackUrlCheck = StackCheck & {
+  url: string;
 };
 
 type StackResponse = {
@@ -38,6 +42,7 @@ type StackResponse = {
   mcp_url: string;
   log_dir: string;
   compose_file: string;
+  urls: StackUrlCheck[];
   checks: StackCheck[];
 };
 
@@ -263,11 +268,16 @@ export default function Page() {
           </button>
         </div>
         {stackStatus && <p className="error">{stackStatus}</p>}
+        <div className="url-grid" aria-label="Service URL reachability">
+          {(stack?.urls ?? []).map((urlCheck) => (
+            <UrlCard check={urlCheck} key={urlCheck.label} />
+          ))}
+        </div>
         <div className="check-grid">
           {(stack?.checks ?? []).map((check) => (
             <div className={`check-card ${check.status}`} key={check.label}>
               <span>{check.label}</span>
-              <strong>{check.status}</strong>
+              <StatusBadge status={check.status} />
               <p>{check.detail}</p>
             </div>
           ))}
@@ -322,4 +332,21 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function UrlCard({ check }: { check: StackUrlCheck }) {
+  return (
+    <div className={`url-card ${check.status}`}>
+      <div>
+        <span>{check.label}</span>
+        <StatusBadge status={check.status} />
+      </div>
+      {check.url ? <strong>{check.url}</strong> : <strong>Not configured</strong>}
+      <p>{check.detail}</p>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return <strong className={`status-badge ${status}`}>{status}</strong>;
 }

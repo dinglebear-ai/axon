@@ -1,1 +1,6 @@
-{"worktree":{}}
+{
+  "worktree": {},
+  "env": {
+    "CLAUDE_ENV_FILE": "/home/jmagar/workspace/axon_rust/.claude/claude-env.sh"
+  }
+}

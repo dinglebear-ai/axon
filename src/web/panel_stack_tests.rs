@@ -1,6 +1,6 @@
 use super::{
-    StackResponse, StackRuntimeMode, browser_display_host, host_prerequisite_checks,
-    qwen3_model_reported, tei_check,
+    HttpExpectation, StackResponse, StackRuntimeMode, browser_display_host,
+    host_prerequisite_checks, http_url_check, qwen3_model_reported, tei_check,
 };
 use httpmock::Method::GET;
 use httpmock::MockServer;
@@ -23,6 +23,12 @@ fn stack_response_json_shape_includes_runtime_and_checks() {
         mcp_url: "http://127.0.0.1:8001/mcp".to_string(),
         log_dir: "/tmp/axon/logs".to_string(),
         compose_file: "/tmp/axon/compose/docker-compose.yaml".to_string(),
+        urls: vec![super::url_check(
+            "Panel / readyz",
+            "http://127.0.0.1:8001/readyz",
+            "ok",
+            "HTTP 200 OK",
+        )],
         checks: vec![super::check("Qdrant", "ok", "ready")],
     };
 
@@ -30,6 +36,15 @@ fn stack_response_json_shape_includes_runtime_and_checks() {
     assert_eq!(value["runtime_mode"], "host");
     assert_eq!(value["server_url"], "http://127.0.0.1:8001");
     assert_eq!(value["mcp_url"], "http://127.0.0.1:8001/mcp");
+    assert_eq!(
+        value["urls"][0],
+        json!({
+            "label": "Panel / readyz",
+            "url": "http://127.0.0.1:8001/readyz",
+            "status": "ok",
+            "detail": "HTTP 200 OK",
+        })
+    );
     assert_eq!(
         value["checks"][0],
         json!({
@@ -61,6 +76,47 @@ async fn container_mode_skips_host_prerequisite_failures() {
             .iter()
             .all(|check| check.detail.contains("container-served panel"))
     );
+}
+
+#[tokio::test]
+async fn url_check_treats_any_http_response_as_reachable_when_requested() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/mcp");
+            then.status(401).body("unauthorized");
+        })
+        .await;
+
+    let check = http_url_check(
+        "MCP endpoint",
+        &format!("{}/mcp", server.base_url()),
+        HttpExpectation::AnyResponse,
+    )
+    .await;
+    assert_eq!(check.status, "ok");
+    assert!(check.detail.contains("reachable"));
+    assert!(check.detail.contains("401"));
+}
+
+#[tokio::test]
+async fn url_check_requires_success_for_health_urls() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/readyz");
+            then.status(503).body("warming");
+        })
+        .await;
+
+    let check = http_url_check(
+        "Panel / readyz",
+        &format!("{}/readyz", server.base_url()),
+        HttpExpectation::Success,
+    )
+    .await;
+    assert_eq!(check.status, "error");
+    assert!(check.detail.contains("503"));
 }
 
 #[test]
