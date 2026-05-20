@@ -97,7 +97,12 @@ impl Palette {
             return;
         }
 
-        if action.arg_mode != ArgMode::None && arg.is_empty() {
+        if action.subcommand == "settings" {
+            self.open_settings(cx);
+            return;
+        }
+
+        if matches!(action.arg_mode, ArgMode::Single | ArgMode::Split) && arg.is_empty() {
             self.command_output = Some(CommandOutput::notice(
                 OutputKind::Warning,
                 "Argument required",

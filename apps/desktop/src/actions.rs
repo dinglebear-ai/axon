@@ -17,6 +17,7 @@ pub(crate) struct CommandAction {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ArgMode {
     None,
+    OptionalSingle,
     Single,
     Split,
 }
@@ -47,12 +48,52 @@ pub(crate) const ACTIONS: &[CommandAction] = &[
         example: "map https://code.claude.com/docs",
     },
     CommandAction {
+        label: "Summarize URL",
+        subcommand: "summarize",
+        arg_mode: ArgMode::Split,
+        aliases: &["summarize", "summary", "brief"],
+        description: "Scrape one or more URLs and synthesize a concise summary.",
+        example: "summarize https://docs.rs/serde",
+    },
+    CommandAction {
         label: "Ask question",
         subcommand: "ask",
         arg_mode: ArgMode::Single,
         aliases: &["ask", "answer", "rag"],
         description: "Run RAG over the configured collection and synthesize an answer.",
         example: "ask why did OpenClaw rank above Claude docs?",
+    },
+    CommandAction {
+        label: "Query knowledge base",
+        subcommand: "query",
+        arg_mode: ArgMode::Single,
+        aliases: &["query", "vector", "semantic"],
+        description: "Search indexed chunks semantically and return ranked source snippets.",
+        example: "query gpui menu rendering",
+    },
+    CommandAction {
+        label: "Retrieve document",
+        subcommand: "retrieve",
+        arg_mode: ArgMode::Split,
+        aliases: &["retrieve", "chunks", "document"],
+        description: "Fetch stored document content for an indexed URL.",
+        example: "retrieve https://docs.rs/serde",
+    },
+    CommandAction {
+        label: "Suggest URLs",
+        subcommand: "suggest",
+        arg_mode: ArgMode::OptionalSingle,
+        aliases: &["suggest", "recommend", "discover-more"],
+        description: "Suggest additional documentation URLs worth crawling.",
+        example: "suggest gpui",
+    },
+    CommandAction {
+        label: "Evaluate answer",
+        subcommand: "evaluate",
+        arg_mode: ArgMode::Single,
+        aliases: &["evaluate", "eval", "judge"],
+        description: "Compare RAG and baseline answers with an independent LLM judge.",
+        example: "evaluate how does gpui menu routing work?",
     },
     CommandAction {
         label: "Search the web",
@@ -71,12 +112,36 @@ pub(crate) const ACTIONS: &[CommandAction] = &[
         example: "research qdrant hybrid search tuning",
     },
     CommandAction {
+        label: "Embed input",
+        subcommand: "embed",
+        arg_mode: ArgMode::Single,
+        aliases: &["embed", "index", "vectorize"],
+        description: "Embed a URL, file, directory, or text input into the collection.",
+        example: "embed https://docs.rs/serde",
+    },
+    CommandAction {
+        label: "Extract data",
+        subcommand: "extract",
+        arg_mode: ArgMode::Split,
+        aliases: &["extract", "structured", "parse"],
+        description: "Queue structured extraction for one or more URLs.",
+        example: "extract https://example.com/pricing",
+    },
+    CommandAction {
         label: "Ingest target",
         subcommand: "ingest",
         arg_mode: ArgMode::Split,
         aliases: &["ingest", "import", "repo", "youtube", "reddit"],
         description: "Ingest GitHub, Reddit, or YouTube targets into the collection.",
         example: "ingest https://github.com/zed-industries/zed",
+    },
+    CommandAction {
+        label: "Settings",
+        subcommand: "settings",
+        arg_mode: ArgMode::None,
+        aliases: &["settings", "config", "preferences"],
+        description: "Configure Axon URLs, secrets, and config.toml options.",
+        example: "settings",
     },
     CommandAction {
         label: "Reset ask conversation",
@@ -98,6 +163,30 @@ pub(crate) const ACTIONS: &[CommandAction] = &[
         example: "status",
     },
     CommandAction {
+        label: "List sources",
+        subcommand: "sources",
+        arg_mode: ArgMode::None,
+        aliases: &["sources", "urls", "indexed"],
+        description: "List indexed source URLs in the configured collection.",
+        example: "sources",
+    },
+    CommandAction {
+        label: "List domains",
+        subcommand: "domains",
+        arg_mode: ArgMode::None,
+        aliases: &["domains", "sites", "facets"],
+        description: "Show indexed domains and vector counts.",
+        example: "domains",
+    },
+    CommandAction {
+        label: "Collection stats",
+        subcommand: "stats",
+        arg_mode: ArgMode::None,
+        aliases: &["stats", "collection", "qdrant"],
+        description: "Show vector collection statistics.",
+        example: "stats",
+    },
+    CommandAction {
         label: "Doctor",
         subcommand: "doctor",
         arg_mode: ArgMode::None,
@@ -109,7 +198,10 @@ pub(crate) const ACTIONS: &[CommandAction] = &[
 
 impl CommandAction {
     pub(crate) fn accepts_direct_url(self) -> bool {
-        matches!(self.subcommand, "scrape" | "crawl" | "map")
+        matches!(
+            self.subcommand,
+            "scrape" | "crawl" | "map" | "summarize" | "retrieve" | "embed" | "extract"
+        )
     }
 }
 

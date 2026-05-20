@@ -8,12 +8,16 @@
 //! The palette calls the configured Axon server directly.
 
 mod actions;
+#[cfg(test)]
 mod anim;
+mod assets;
 mod layout;
 mod markdown;
 mod output;
 mod render;
 mod rest_client;
+mod settings;
+mod settings_view;
 mod theme;
 mod ui;
 
@@ -29,6 +33,7 @@ use gpui::{
     WindowOptions, actions, prelude::*, px, size,
 };
 
+use crate::assets::AxonAssets;
 use crate::layout::WINDOW_CHROME_HEIGHT;
 use crate::theme::register_bundled_fonts;
 use crate::ui::Palette;
@@ -87,65 +92,67 @@ fn main() -> Result<()> {
         }
     });
 
-    build_application().run(move |cx: &mut App| {
-        register_bundled_fonts(cx);
+    build_application()
+        .with_assets(AxonAssets)
+        .run(move |cx: &mut App| {
+            register_bundled_fonts(cx);
 
-        cx.bind_keys([
-            KeyBinding::new("enter", Submit, Some("Palette")),
-            KeyBinding::new("down", MoveDown, Some("Palette")),
-            KeyBinding::new("up", MoveUp, Some("Palette")),
-            KeyBinding::new("tab", TabComplete, Some("Palette")),
-            KeyBinding::new("ctrl+k", ToggleActionMenu, Some("Palette")),
-            KeyBinding::new("ctrl+e", ToggleErrors, Some("Palette")),
-        ]);
+            cx.bind_keys([
+                KeyBinding::new("enter", Submit, Some("Palette")),
+                KeyBinding::new("down", MoveDown, Some("Palette")),
+                KeyBinding::new("up", MoveUp, Some("Palette")),
+                KeyBinding::new("tab", TabComplete, Some("Palette")),
+                KeyBinding::new("ctrl+k", ToggleActionMenu, Some("Palette")),
+                KeyBinding::new("ctrl+e", ToggleErrors, Some("Palette")),
+            ]);
 
-        // Launch height is the prompt-only minimum plus our custom title/menu strip.
-        // The window then grows on demand as the user types, runs commands,
-        // and produces output. See `Palette::sync_window_height`.
-        let launch_height = crate::layout::MIN_WINDOW_HEIGHT + WINDOW_CHROME_HEIGHT;
-        let bounds = Bounds::centered(None, size(px(720.0), px(launch_height)), cx);
-        let window = cx
-            .open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some("Axon Palette".into()),
-                        appears_transparent: true,
+            // Launch height is the prompt-only minimum plus our custom title/menu strip.
+            // The window then grows on demand as the user types, runs commands,
+            // and produces output. See `Palette::sync_window_height`.
+            let launch_height = crate::layout::MIN_WINDOW_HEIGHT + WINDOW_CHROME_HEIGHT;
+            let bounds = Bounds::centered(None, size(px(720.0), px(launch_height)), cx);
+            let window = cx
+                .open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        titlebar: Some(TitlebarOptions {
+                            title: Some("Axon Palette".into()),
+                            appears_transparent: true,
+                            ..Default::default()
+                        }),
+                        focus: true,
+                        show: true,
+                        is_movable: true,
+                        is_resizable: true,
+                        kind: WindowKind::Normal,
+                        window_min_size: Some(size(px(560.0), px(launch_height))),
                         ..Default::default()
-                    }),
-                    focus: true,
-                    show: true,
-                    is_movable: true,
-                    is_resizable: true,
-                    kind: WindowKind::Normal,
-                    window_min_size: Some(size(px(560.0), px(launch_height))),
-                    ..Default::default()
-                },
-                |window, cx| {
-                    let view = cx.new(Palette::new);
-                    let handle = view.focus_handle(cx);
-                    window.focus(&handle, cx);
-                    view
-                },
-            )
-            .expect("failed to open window");
+                    },
+                    |window, cx| {
+                        let view = cx.new(Palette::new);
+                        let handle = view.focus_handle(cx);
+                        window.focus(&handle, cx);
+                        view
+                    },
+                )
+                .expect("failed to open window");
 
-        // Bridge global hotkey events into the GPUI main thread.
-        cx.spawn(async move |cx| {
-            while rx.recv().await.is_ok() {
-                let _ = window.update(cx, |_root, window, _cx| {
-                    window.activate_window();
-                });
-            }
-        })
-        .detach();
+            // Bridge global hotkey events into the GPUI main thread.
+            cx.spawn(async move |cx| {
+                while rx.recv().await.is_ok() {
+                    let _ = window.update(cx, |_root, window, _cx| {
+                        window.activate_window();
+                    });
+                }
+            })
+            .detach();
 
-        // Keep the GlobalHotKeyManager alive for the lifetime of the process.
-        // The crate unregisters the hotkey on Drop, while GPUI does not expose
-        // a simple process-lifetime state slot here. This intentionally leaks
-        // one manager so Ctrl+Shift+Space remains registered until exit.
-        let _hotkey_manager = ManuallyDrop::new(manager);
-    });
+            // Keep the GlobalHotKeyManager alive for the lifetime of the process.
+            // The crate unregisters the hotkey on Drop, while GPUI does not expose
+            // a simple process-lifetime state slot here. This intentionally leaks
+            // one manager so Ctrl+Shift+Space remains registered until exit.
+            let _hotkey_manager = ManuallyDrop::new(manager);
+        });
 
     Ok(())
 }

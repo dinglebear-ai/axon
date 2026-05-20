@@ -31,6 +31,13 @@ pub(super) struct ConfigResponse {
 }
 
 #[derive(Serialize)]
+pub(super) struct EnvConfigResponse {
+    pub(super) path: String,
+    pub(super) raw_env: String,
+    pub(super) restart_required: bool,
+}
+
+#[derive(Serialize)]
 pub(super) struct SaveConfigResponse {
     pub(super) ok: bool,
     pub(super) restart_required: bool,
@@ -40,6 +47,35 @@ pub(super) struct SaveConfigResponse {
 #[derive(Deserialize)]
 pub(super) struct SaveConfigRequest {
     pub(super) raw_toml: String,
+}
+
+#[derive(Deserialize)]
+pub(super) struct SaveEnvConfigRequest {
+    pub(super) raw_env: String,
+}
+
+#[derive(Deserialize)]
+pub(super) struct PanelCommandRequest {
+    pub(super) command: String,
+}
+
+#[derive(Serialize)]
+pub(super) struct PanelCommandResponse {
+    pub(super) command: String,
+    pub(super) action: serde_json::Value,
+    pub(super) result: serde_json::Value,
+}
+
+#[derive(Serialize)]
+pub(super) struct PanelStatusResponse {
+    pub(super) payload: serde_json::Value,
+    pub(super) text: String,
+    pub(super) totals: crate::services::types::StatusTotals,
+}
+
+#[derive(Serialize)]
+pub(super) struct PanelDoctorResponse {
+    pub(super) payload: serde_json::Value,
 }
 
 #[derive(Serialize)]

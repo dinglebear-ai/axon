@@ -6,6 +6,7 @@ fn snap(actions: usize, footer: bool, body: bool) -> HeightSnapshot {
         empty_placeholder_visible: false,
         footer_visible: footer,
         output_body_visible: body,
+        settings_visible: false,
     }
 }
 
@@ -44,11 +45,21 @@ fn empty_placeholder_reserves_one_row() {
         empty_placeholder_visible: true,
         footer_visible: false,
         output_body_visible: false,
+        settings_visible: false,
     });
     assert!(with_placeholder > bare);
     // Should be roughly one row's worth larger.
     let one_row = compute_desired_height(snap(1, false, false));
     assert!((with_placeholder - one_row).abs() < 0.01);
+}
+
+#[test]
+fn settings_view_uses_max_height() {
+    let h = compute_desired_height(HeightSnapshot {
+        settings_visible: true,
+        ..Default::default()
+    });
+    assert!((h - MAX_WINDOW_HEIGHT).abs() < 0.01);
 }
 
 #[test]

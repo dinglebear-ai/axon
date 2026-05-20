@@ -7,7 +7,7 @@ name: axon
 
 x-common-service: &common-service
   networks:
-    - axon
+    - jakenet
   restart: unless-stopped
   extra_hosts:
     - "host.docker.internal:host-gateway"
@@ -188,6 +188,6 @@ services:
       start_period: 20s
 
 networks:
-  axon:
-    driver: bridge
-    name: axon
+  jakenet:
+    name: jakenet
+    external: true

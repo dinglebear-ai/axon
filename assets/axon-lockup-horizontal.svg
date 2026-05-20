@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="180" viewBox="0 0 560 180" fill="none">
+  
+  
+
+  
+  <g transform="translate(8 8) scale(0.32)">
+    <g stroke="#1d3d4e" stroke-width="2" fill="none" stroke-linecap="round">
+      <path d="M 196 88 Q 222 116 244 138"></path>
+      <path d="M 256 76 L 256 134"></path>
+      <path d="M 316 88 Q 290 116 268 138"></path>
+    </g>
+    <circle cx="196" cy="88" r="4" fill="#1d3d4e"></circle>
+    <circle cx="256" cy="76" r="4" fill="#1d3d4e"></circle>
+    <circle cx="316" cy="88" r="4" fill="#1d3d4e"></circle>
+
+    <line x1="256" y1="180" x2="256" y2="332" stroke="#1d3d4e" stroke-width="2" stroke-dasharray="6 8"></line>
+
+    <circle cx="256" cy="156" r="22" fill="#24536c" stroke="#67cbfa" stroke-width="2.5"></circle>
+    <g fill="#67cbfa">
+      <circle cx="246" cy="156" r="2.5"></circle>
+      <circle cx="256" cy="156" r="2.5"></circle>
+      <circle cx="266" cy="156" r="2.5"></circle>
+    </g>
+
+    <circle cx="256" cy="220" r="22" fill="#1c7fac" stroke="#67cbfa" stroke-width="2.5"></circle>
+    <path d="M 244 214 L 268 214 M 244 220 L 264 220 M 244 226 L 268 226" stroke="#67cbfa" stroke-width="2" stroke-linecap="round"></path>
+
+    <circle cx="256" cy="284" r="22" fill="#29b6f6" stroke="#67cbfa" stroke-width="2.5"></circle>
+    <g fill="#0c1a24">
+      <circle cx="248" cy="276" r="2.2"></circle><circle cx="256" cy="276" r="2.2"></circle><circle cx="264" cy="276" r="2.2"></circle>
+      <circle cx="248" cy="284" r="2.2"></circle><circle cx="256" cy="284" r="2.2"></circle><circle cx="264" cy="284" r="2.2"></circle>
+      <circle cx="248" cy="292" r="2.2"></circle><circle cx="256" cy="292" r="2.2"></circle><circle cx="264" cy="292" r="2.2"></circle>
+    </g>
+
+    <circle cx="256" cy="356" r="22" fill="#67cbfa"></circle>
+    <circle cx="256" cy="356" r="32" fill="none" stroke="#67cbfa" stroke-width="1.5" opacity="0.45"></circle>
+
+    <g stroke="#67cbfa" stroke-width="2" fill="none" stroke-linecap="round">
+      <path d="M 240 374 Q 220 396 200 422"></path>
+      <path d="M 256 380 L 256 432"></path>
+      <path d="M 272 374 Q 292 396 312 422"></path>
+    </g>
+    <g fill="#67cbfa">
+      <circle cx="200" cy="422" r="5"></circle>
+      <circle cx="256" cy="432" r="5"></circle>
+      <circle cx="312" cy="422" r="5"></circle>
+    </g>
+  </g>
+
+  <text x="200" y="118" class="ax">
+    <tspan class="pri">Ax</tspan><tspan class="acc">on</tspan>
+  </text>
+</svg>

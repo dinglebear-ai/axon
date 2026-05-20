@@ -38,6 +38,24 @@ pub fn read_env_entries(path: &Path) -> io::Result<BTreeMap<String, String>> {
     }
 }
 
+pub fn read_env_text(path: &Path) -> io::Result<String> {
+    match std::fs::read_to_string(path) {
+        Ok(raw) => Ok(raw),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(String::new()),
+        Err(err) => Err(err),
+    }
+}
+
+pub fn write_env_text(path: &Path, raw_env: &str) -> io::Result<()> {
+    parse_env_pairs_from_str(raw_env)?;
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    write_private_file_atomic(path, raw_env)
+}
+
 pub fn write_env_entries(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()

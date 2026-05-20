@@ -335,3 +335,66 @@ fn output_section_keeps_raw_command_without_markdown_cache() {
     assert!(section.markdown.is_none());
     assert_eq!(section.rendered_lines.len(), 1);
 }
+
+#[test]
+fn rest_ask_output_renders_answer_only() {
+    let input = r#"{
+        "query": "what is axon?",
+        "answer": "Axon is the local RAG service.",
+        "timing_ms": { "total": 10 }
+    }"#;
+
+    assert_eq!(
+        rest_output_text("ask", input),
+        "Axon is the local RAG service."
+    );
+}
+
+#[test]
+fn rest_query_output_renders_ranked_hits() {
+    let input = r#"{
+        "results": [
+            {
+                "rank": 1,
+                "score": 0.8712,
+                "url": "https://docs.example.com/a",
+                "snippet": "Relevant source text."
+            }
+        ]
+    }"#;
+
+    assert_eq!(
+        rest_output_text("query", input),
+        "1. score 0.871\nhttps://docs.example.com/a\nRelevant source text."
+    );
+}
+
+#[test]
+fn rest_evaluate_output_renders_comparison_sections() {
+    let input = r#"{
+        "query": "which answer is better?",
+        "rag_answer": "RAG answer.",
+        "baseline_answer": "Baseline answer.",
+        "analysis_answer": "RAG wins.",
+        "source_urls": ["https://docs.example.com/a"]
+    }"#;
+
+    assert_eq!(
+        rest_output_text("evaluate", input),
+        "Question\nwhich answer is better?\nJudge\nRAG wins.\nRAG\nRAG answer.\nBaseline\nBaseline answer.\nSources\nhttps://docs.example.com/a"
+    );
+}
+
+#[test]
+fn rest_job_start_output_points_to_status() {
+    let input = r#"{
+        "disposition": "enqueued",
+        "execution_mode": "enqueued",
+        "result": { "job_id": "018f-job" }
+    }"#;
+
+    assert_eq!(
+        rest_output_text("embed", input),
+        "embed enqueued\nmode: enqueued\njob: 018f-job\nNext: status"
+    );
+}

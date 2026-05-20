@@ -138,11 +138,14 @@ fn render_status_group(
 fn render_text_group(title: String, detail: &str) -> impl IntoElement {
     div()
         .flex_1()
+        .min_w_0()
         .flex()
         .flex_col()
         .gap_px()
         .child(
             div()
+                .overflow_hidden()
+                .text_ellipsis()
                 .font_weight(FontWeight(620.0))
                 .text_size(px(12.0))
                 .text_color(rgb(AURORA_TEXT_PRIMARY))
@@ -150,6 +153,8 @@ fn render_text_group(title: String, detail: &str) -> impl IntoElement {
         )
         .child(
             div()
+                .overflow_hidden()
+                .text_ellipsis()
                 .font_family(AURORA_FONT_MONO)
                 .font_weight(FontWeight(480.0))
                 .text_size(px(11.0))

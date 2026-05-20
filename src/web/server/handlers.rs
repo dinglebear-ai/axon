@@ -23,5 +23,8 @@ pub mod setup;
 
 pub use ask::v1_ask;
 pub use auth::{login, panel_state};
-pub use config::{get_config, ops, save_config};
+pub use config::{
+    get_config, get_env_config, ops, panel_command, panel_doctor, panel_status, save_config,
+    save_env_config,
+};
 pub use setup::setup_targets;

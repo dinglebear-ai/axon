@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::process::ExitStatus;
 
 use gpui::SharedString;
@@ -8,11 +9,12 @@ mod tests;
 
 mod formatting;
 
+#[cfg(test)]
 use formatting::{
-    actionable_error_text, ask_answer, command_title, crawl_summary, drop_cli_scaffolding,
-    format_exit_status, map_url_listing, palette_output_text, scrape_body, strip_ansi,
-    truncate_output,
+    actionable_error_text, ask_answer, crawl_summary, drop_cli_scaffolding, format_exit_status,
+    palette_output_text, scrape_body, strip_ansi,
 };
+use formatting::{command_title, map_url_listing, rest_output_text, truncate_output};
 
 use crate::actions::CommandAction;
 use crate::markdown::MarkdownDocument;
@@ -57,6 +59,7 @@ pub(crate) struct OutputSection {
     pub(crate) markdown: Option<MarkdownDocument>,
 }
 
+#[cfg(test)]
 pub(crate) struct BoundedProcessOutput {
     pub(crate) status: ExitStatus,
     pub(crate) stdout: Vec<u8>,
@@ -104,12 +107,16 @@ impl CommandOutput {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn from_process(
         command_line: &str,
         subcommand: &str,
         output: BoundedProcessOutput,
     ) -> Self {
-        let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
+        let use_markdown = matches!(
+            subcommand,
+            "scrape" | "ask" | "research" | "summarize" | "retrieve"
+        );
         let stdout = OutputSection::from_bytes_for_command(
             "stdout",
             subcommand,
@@ -148,14 +155,18 @@ impl CommandOutput {
     }
 
     pub(crate) fn from_rest(command_line: &str, subcommand: &str, output: RestOutput) -> Self {
-        let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
+        let use_markdown = matches!(
+            subcommand,
+            "scrape" | "ask" | "research" | "summarize" | "retrieve"
+        );
         let stdout = output.stdout.as_deref().and_then(|text| {
-            OutputSection::from_text_for_command("stdout", subcommand, text, use_markdown)
+            let text = rest_output_text(subcommand, text);
+            OutputSection::from_text_for_command("stdout", subcommand, &text, use_markdown)
         });
-        let stderr = output
-            .stderr
-            .as_deref()
-            .and_then(|text| OutputSection::from_text("errors", text, false));
+        let stderr = output.stderr.as_deref().and_then(|text| {
+            let text = rest_output_text(subcommand, text);
+            OutputSection::from_text("errors", &text, false)
+        });
         let title = if output.ok {
             format!("{} completed", command_title(subcommand))
         } else {
@@ -214,6 +225,7 @@ impl OutputSection {
         }
     }
 
+    #[cfg(test)]
     fn from_bytes_for_command(
         label: &'static str,
         subcommand: &str,
@@ -239,6 +251,7 @@ impl OutputSection {
         })
     }
 
+    #[cfg(test)]
     fn from_bytes(label: &'static str, bytes: &[u8]) -> Option<Self> {
         if bytes.is_empty() {
             return None;
@@ -283,12 +296,14 @@ impl OutputSection {
     }
 }
 
+#[cfg(test)]
 struct BoundedByteBuffer {
     bytes: Vec<u8>,
     limit: usize,
     truncated: bool,
 }
 
+#[cfg(test)]
 impl BoundedByteBuffer {
     fn new(limit: usize) -> Self {
         Self {
@@ -321,6 +336,7 @@ impl BoundedByteBuffer {
     }
 }
 
+#[cfg(test)]
 fn valid_utf8_boundary(bytes: &[u8]) -> usize {
     match std::str::from_utf8(bytes) {
         Ok(_) => bytes.len(),

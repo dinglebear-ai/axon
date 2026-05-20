@@ -1,16 +1,31 @@
 {
   "manifest_version": 3,
-  "name": "Page Scraper Clipboard",
+  "name": "Axon Page Scraper",
   "version": "0.1.0",
-  "description": "Scrape the current page text and copy it to the clipboard.",
+  "description": "Scrape pages, run Axon commands, and ask indexed context from the browser.",
+  "options_page": "options.html",
+  "icons": {
+    "16": "assets/png/axon-icon-16.png",
+    "32": "assets/png/axon-icon-32.png",
+    "48": "assets/png/axon-icon-48.png",
+    "128": "assets/png/axon-icon-128.png"
+  },
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Scrape page"
+    "default_title": "Open Axon",
+    "default_icon": {
+      "16": "assets/png/axon-icon-16.png",
+      "32": "assets/png/axon-icon-32.png",
+      "48": "assets/png/axon-icon-48.png",
+      "128": "assets/png/axon-icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "side_panel": {
     "default_path": "sidepanel.html"
   },
-  "permissions": ["activeTab", "clipboardWrite", "scripting", "sidePanel", "storage"],
+  "permissions": ["activeTab", "clipboardWrite", "sidePanel", "storage", "tabs"],
   "host_permissions": [
     "http://*/*",
     "https://*/*"

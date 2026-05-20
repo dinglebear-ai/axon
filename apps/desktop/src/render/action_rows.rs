@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Div, FontWeight, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, SharedString, Stateful, Styled, Window, div, ease_in_out,
-    prelude::*, px, rgb,
+    MouseDownEvent, ParentElement, ScrollHandle, SharedString, Stateful, Styled, Window, div,
+    ease_in_out, prelude::*, px, rgb,
 };
 
 use crate::actions::{ArgMode, CommandAction};
@@ -18,6 +18,7 @@ pub(crate) fn render_action_rows_interactive<F, L, H, R>(
     selected: usize,
     running_subcommand: Option<&'static str>,
     hide_list: bool,
+    action_scroll: &ScrollHandle,
     mut make_on_click: F,
     mut make_on_hover: H,
 ) -> impl IntoElement
@@ -50,9 +51,15 @@ where
         .collect();
 
     div()
+        .id("action-rows")
         .flex()
         .flex_col()
         .py_1()
+        .max_h(px(360.0))
+        .overflow_scroll()
+        .scrollbar_width(px(10.0))
+        .track_scroll(action_scroll)
+        .block_mouse_except_scroll()
         .when(is_empty && !hide_list, |el| el.child(render_empty_row()))
         .when(!is_empty, |el| el.children(rows))
 }
@@ -77,17 +84,20 @@ fn render_action_row(
 ) -> Stateful<Div> {
     let meta = if is_running {
         "running"
-    } else if action.arg_mode == ArgMode::None {
-        action.subcommand
     } else {
-        "argument"
+        match action.arg_mode {
+            ArgMode::None => action.subcommand,
+            ArgMode::OptionalSingle => "optional",
+            ArgMode::Single | ArgMode::Split => "argument",
+        }
     };
     let meta_color = if is_running {
         AURORA_ACCENT_PRIMARY
-    } else if action.arg_mode == ArgMode::None {
-        AURORA_TEXT_MUTED
     } else {
-        AURORA_ACCENT_STRONG
+        match action.arg_mode {
+            ArgMode::None | ArgMode::OptionalSingle => AURORA_TEXT_MUTED,
+            ArgMode::Single | ArgMode::Split => AURORA_ACCENT_STRONG,
+        }
     };
 
     let base_bg = if is_selected {

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, FocusHandle, FontWeight, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, SharedString, Styled, div, prelude::*, pulsating_between, px, rgb,
+    ParentElement, SharedString, Styled, div, prelude::*, pulsating_between, px, rgb, svg,
 };
 
 use crate::actions::CommandAction;
@@ -49,6 +49,10 @@ fn render_brand_button(action_menu_open: bool) -> impl IntoElement {
         .rounded_sm()
         .px_1()
         .py_1()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_1()
         .hover(|el| el.bg(rgb(AURORA_NAV_BG)))
         .on_mouse_down(MouseButton::Left, |_: &MouseDownEvent, window, cx| {
             window.dispatch_action(Box::new(ToggleActionMenu), cx);
@@ -61,6 +65,7 @@ fn render_brand_button(action_menu_open: bool) -> impl IntoElement {
         } else {
             rgb(AURORA_TEXT_PRIMARY)
         })
+        .child(svg().path("axon-glyph.svg").w(px(17.0)).h(px(17.0)))
         .child("axon ▾")
 }
 
