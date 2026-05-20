@@ -63,6 +63,8 @@ pub async fn route_request(
             "crawl",
             req.subaction.unwrap_or(CrawlSubaction::Start),
             req.job_id.as_deref(),
+            req.limit,
+            req.offset,
             rest_body_allowed(
                 req,
                 &[
@@ -82,6 +84,8 @@ pub async fn route_request(
             "extract",
             req.subaction.unwrap_or(ExtractSubaction::Start),
             req.job_id.as_deref(),
+            req.limit,
+            req.offset,
             rest_body_allowed(
                 req,
                 &["urls", "prompt", "max_pages", "render_mode", "embed"],
@@ -91,12 +95,16 @@ pub async fn route_request(
             "embed",
             req.subaction.unwrap_or(EmbedSubaction::Start),
             req.job_id.as_deref(),
+            req.limit,
+            req.offset,
             rest_body_allowed(req, &["input"])?,
         )?,
         AxonRequest::Ingest(req) => async_route(
             "ingest",
             req.subaction.unwrap_or(IngestSubaction::Start),
             req.job_id.as_deref(),
+            req.limit,
+            req.offset,
             rest_body_allowed(
                 req,
                 &["source_type", "target", "include_source", "sessions"],
@@ -226,11 +234,17 @@ fn async_route<S: AsyncSubaction>(
     family: &str,
     subaction: S,
     job_id: Option<&str>,
+    list_limit: Option<i64>,
+    list_offset: Option<usize>,
     body: Value,
 ) -> Result<Route, ThinClientError> {
     match subaction.route_name() {
         "start" => Ok(Route::post(format!("/v1/{family}"), body)),
-        "list" => Ok(Route::get(format!("/v1/{family}"))),
+        "list" => Ok(Route::get(page_path_i64(
+            &format!("/v1/{family}"),
+            list_limit,
+            list_offset,
+        ))),
         "cleanup" => Ok(Route::post(format!("/v1/{family}/cleanup"), Value::Null)),
         "clear" => Ok(Route::delete(format!("/v1/{family}"))),
         "recover" => Ok(Route::post(format!("/v1/{family}/recover"), Value::Null)),
@@ -274,6 +288,14 @@ fn page_path(base: &str, limit: Option<usize>, offset: Option<usize>) -> String 
     } else {
         format!("{base}?{}", pairs.join("&"))
     }
+}
+
+pub(crate) fn page_path_i64(base: &str, limit: Option<i64>, offset: Option<usize>) -> String {
+    page_path(
+        base,
+        limit.and_then(|value| usize::try_from(value).ok()),
+        offset,
+    )
 }
 
 fn rest_body_allowed<T: serde::Serialize>(

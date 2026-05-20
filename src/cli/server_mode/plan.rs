@@ -23,14 +23,14 @@ pub(crate) fn status_path_for_family(family: ServerJobFamily, job_id: &str) -> S
 }
 
 pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
+    if let Some(plan) = discovery_rest_plan(cfg) {
+        return Ok(plan);
+    }
+    if let Some(plan) = query_rest_plan(cfg)? {
+        return Ok(plan);
+    }
+
     match cfg.command {
-        CommandKind::Status => Ok(ServerRestPlan {
-            method: "GET",
-            path: "/v1/status".to_string(),
-            body: serde_json::Value::Null,
-            label: "status",
-            poll_family: None,
-        }),
         CommandKind::Scrape => {
             let url = single_url(cfg, "scrape")?;
             Ok(ServerRestPlan {
@@ -61,6 +61,137 @@ pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn E
         CommandKind::Sessions => ingest_server_rest_plan(cfg, true),
         _ => Err(format!("{} is not routed through server mode", cfg.command).into()),
     }
+}
+
+fn discovery_rest_plan(cfg: &Config) -> Option<ServerRestPlan> {
+    match cfg.command {
+        CommandKind::Status => Some(ServerRestPlan {
+            method: "GET",
+            path: "/v1/status".to_string(),
+            body: serde_json::Value::Null,
+            label: "status",
+            poll_family: None,
+        }),
+        CommandKind::Doctor => Some(ServerRestPlan {
+            method: "GET",
+            path: "/v1/doctor".to_string(),
+            body: serde_json::Value::Null,
+            label: "doctor",
+            poll_family: None,
+        }),
+        CommandKind::Sources => Some(ServerRestPlan {
+            method: "GET",
+            path: page_path("/v1/sources", Some(cfg.search_limit), None),
+            body: serde_json::Value::Null,
+            label: "sources",
+            poll_family: None,
+        }),
+        CommandKind::Domains => Some(ServerRestPlan {
+            method: "GET",
+            path: page_path("/v1/domains", Some(cfg.search_limit), None),
+            body: serde_json::Value::Null,
+            label: "domains",
+            poll_family: None,
+        }),
+        CommandKind::Stats => Some(ServerRestPlan {
+            method: "GET",
+            path: "/v1/stats".to_string(),
+            body: serde_json::Value::Null,
+            label: "stats",
+            poll_family: None,
+        }),
+        _ => None,
+    }
+}
+
+fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, Box<dyn Error>> {
+    let plan = match cfg.command {
+        CommandKind::Map => {
+            let url = single_url(cfg, "map")?;
+            ServerRestPlan {
+                method: "POST",
+                path: "/v1/map".to_string(),
+                body: serde_json::json!({
+                    "url": url,
+                    "limit": cfg.search_limit,
+                    "offset": 0,
+                }),
+                label: "map",
+                poll_family: None,
+            }
+        }
+        CommandKind::Query => {
+            let query = query_text(cfg, "query")?;
+            ServerRestPlan {
+                method: "POST",
+                path: "/v1/query".to_string(),
+                body: serde_json::json!({
+                    "query": query,
+                    "limit": cfg.search_limit,
+                    "offset": 0,
+                }),
+                label: "query",
+                poll_family: None,
+            }
+        }
+        CommandKind::Retrieve => {
+            let url = single_url(cfg, "retrieve")?;
+            ServerRestPlan {
+                method: "POST",
+                path: "/v1/retrieve".to_string(),
+                body: serde_json::json!({
+                    "url": url,
+                    "max_points": cfg.retrieve_max_points,
+                }),
+                label: "retrieve",
+                poll_family: None,
+            }
+        }
+        CommandKind::Ask => {
+            let query = query_text(cfg, "ask")?;
+            ServerRestPlan {
+                method: "POST",
+                path: "/v1/ask".to_string(),
+                body: serde_json::json!({
+                    "query": query,
+                    "diagnostics": cfg.ask_diagnostics,
+                    "explain": cfg.ask_explain,
+                    "collection": cfg.collection,
+                }),
+                label: "ask",
+                poll_family: None,
+            }
+        }
+        CommandKind::Evaluate => {
+            let question = query_text(cfg, "evaluate")?;
+            ServerRestPlan {
+                method: "POST",
+                path: "/v1/evaluate".to_string(),
+                body: serde_json::json!({ "question": question }),
+                label: "evaluate",
+                poll_family: None,
+            }
+        }
+        CommandKind::Suggest => ServerRestPlan {
+            method: "POST",
+            path: "/v1/suggest".to_string(),
+            body: serde_json::json!({
+                "focus": cfg.query,
+            }),
+            label: "suggest",
+            poll_family: None,
+        },
+        CommandKind::Search => {
+            let query = query_text(cfg, "search")?;
+            search_like_plan("search", "/v1/search", query, cfg)
+        }
+        CommandKind::Research => {
+            let query = query_text(cfg, "research")?;
+            search_like_plan("research", "/v1/research", query, cfg)
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(plan))
 }
 
 fn crawl_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, Box<dyn Error>> {
@@ -191,6 +322,49 @@ fn single_url(cfg: &Config, command: &str) -> Result<String, Box<dyn Error>> {
         [] => Err(format!("{command} requires a URL").into()),
         [url] => Ok(url.clone()),
         _ => Err(format!("{command} accepts exactly one URL in server mode").into()),
+    }
+}
+
+fn query_text(cfg: &Config, command: &str) -> Result<String, Box<dyn Error>> {
+    cfg.query
+        .as_deref()
+        .map(str::trim)
+        .filter(|query| !query.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("{command} requires text").into())
+}
+
+fn search_like_plan(
+    label: &'static str,
+    path: &'static str,
+    query: String,
+    cfg: &Config,
+) -> ServerRestPlan {
+    ServerRestPlan {
+        method: "POST",
+        path: path.to_string(),
+        body: serde_json::json!({
+            "query": query,
+            "limit": cfg.search_limit,
+            "offset": 0,
+        }),
+        label,
+        poll_family: None,
+    }
+}
+
+fn page_path(base: &str, limit: Option<usize>, offset: Option<usize>) -> String {
+    let mut pairs = Vec::new();
+    if let Some(limit) = limit {
+        pairs.push(format!("limit={limit}"));
+    }
+    if let Some(offset) = offset {
+        pairs.push(format!("offset={offset}"));
+    }
+    if pairs.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?{}", pairs.join("&"))
     }
 }
 

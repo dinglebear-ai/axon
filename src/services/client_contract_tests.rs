@@ -42,3 +42,15 @@ fn crawl_request_serializes_all_routing_knobs() {
     assert_eq!(json["render_mode"], "http");
     assert_eq!(json["route_preference"], "server_required");
 }
+
+#[test]
+fn crawl_request_deserializes_missing_transport_fields_as_defaults() {
+    let req: ClientCrawlRequest = serde_json::from_value(serde_json::json!({
+        "urls": ["https://example.com"],
+        "max_pages": 1
+    }))
+    .expect("deserialize crawl request");
+
+    assert!(req.headers.is_empty());
+    assert_eq!(req.route_preference, ClientRoutePreference::Default);
+}

@@ -63,15 +63,20 @@ impl AxonScope {
 #[allow(dead_code)]
 pub fn scope_for_action(action: &str, subaction: Option<&str>) -> Option<&'static str> {
     let scope = match action {
+        "help" => return None,
         "crawl" | "extract" | "embed" | "ingest" => match subaction.unwrap_or("start") {
             "status" | "list" => AxonScope::Read,
             _ => AxonScope::Write,
         },
-        "query" | "retrieve" | "sources" | "domains" | "stats" | "status" | "doctor" => {
-            AxonScope::Read
-        }
+        "scrape" | "summarize" => AxonScope::Write,
+        "artifacts" => match subaction.unwrap_or("list") {
+            "delete" | "clean" => AxonScope::Write,
+            _ => AxonScope::Read,
+        },
+        "query" | "retrieve" | "sources" | "domains" | "stats" | "status" | "doctor" | "search"
+        | "map" | "evaluate" | "suggest" | "research" | "ask" | "screenshot" => AxonScope::Read,
         "migrate" | "dedupe" => AxonScope::Admin,
-        _ => AxonScope::Write,
+        _ => return Some("__deny__"),
     };
     Some(scope.as_str())
 }

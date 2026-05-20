@@ -7,7 +7,3 @@ pub mod logging;
 pub mod paths;
 pub mod structured;
 pub mod ui;
-
-#[cfg(test)]
-#[path = "core/endpoints_tests.rs"]
-mod endpoints_tests;
