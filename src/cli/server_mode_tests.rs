@@ -1,6 +1,6 @@
 use super::*;
+use crate::core::config::CommandKind;
 use crate::core::config::RenderMode;
-use crate::mcp::schema::{AxonRequest, McpRenderMode};
 use crate::services::types::ServiceJob;
 use chrono::Utc;
 use serde_json::json;
@@ -18,13 +18,24 @@ fn cfg(command: CommandKind, positional: &[&str]) -> Config {
 fn client_server_dispatch_routes_stateful_commands_to_server_client() {
     for command in [
         CommandKind::Status,
+        CommandKind::Map,
         CommandKind::Scrape,
+        CommandKind::Search,
+        CommandKind::Research,
         CommandKind::Crawl,
         CommandKind::Extract,
         CommandKind::Embed,
         CommandKind::Ingest,
         CommandKind::Sessions,
-        CommandKind::Screenshot,
+        CommandKind::Query,
+        CommandKind::Retrieve,
+        CommandKind::Sources,
+        CommandKind::Domains,
+        CommandKind::Stats,
+        CommandKind::Doctor,
+        CommandKind::Ask,
+        CommandKind::Evaluate,
+        CommandKind::Suggest,
     ] {
         let cfg = cfg(command, &["https://example.com"]);
         assert_eq!(
@@ -36,6 +47,13 @@ fn client_server_dispatch_routes_stateful_commands_to_server_client() {
 }
 
 #[test]
+fn client_server_dispatch_keeps_screenshot_local_without_rest_endpoint() {
+    let cfg = cfg(CommandKind::Screenshot, &["https://example.com"]);
+
+    assert_eq!(client_server_dispatch(&cfg), ClientServerDispatch::Local);
+}
+
+#[test]
 fn client_server_dispatch_explicit_local_mode_uses_local_paths() {
     let mut cfg = cfg(CommandKind::Crawl, &["https://example.com"]);
     cfg.local_mode = true;
@@ -44,23 +62,26 @@ fn client_server_dispatch_explicit_local_mode_uses_local_paths() {
 }
 
 #[test]
-fn client_server_dispatch_query_only_commands_remain_local() {
-    for command in [
-        CommandKind::Query,
-        CommandKind::Retrieve,
-        CommandKind::Search,
-        CommandKind::Research,
-        CommandKind::Sources,
-        CommandKind::Domains,
-        CommandKind::Stats,
-    ] {
-        let cfg = cfg(command, &["test"]);
-        assert_eq!(
-            client_server_dispatch(&cfg),
-            ClientServerDispatch::Local,
-            "{command:?} should remain local"
-        );
-    }
+fn scrape_server_mode_uses_rest_contract_body() {
+    let mut cfg = cfg(CommandKind::Scrape, &["https://example.com"]);
+    cfg.embed = true;
+    cfg.render_mode = RenderMode::Chrome;
+
+    let plan = plan::server_rest_plan(&cfg).expect("scrape plan");
+
+    assert_eq!(plan.path, "/v1/scrape");
+    assert_eq!(plan.body, json!({ "url": "https://example.com" }));
+}
+
+#[test]
+fn extract_lifecycle_subcommands_route_to_rest_lifecycle_paths() {
+    let job_id = "11111111-1111-1111-1111-111111111111";
+    let cfg = cfg(CommandKind::Extract, &["cancel", job_id]);
+
+    let plan = plan::server_rest_plan(&cfg).expect("extract cancel plan");
+
+    assert_eq!(plan.method, "POST");
+    assert_eq!(plan.path, format!("/v1/extract/{job_id}/cancel"));
 }
 
 #[tokio::test]
@@ -109,7 +130,7 @@ fn embed_server_mode_allows_url_and_text_inputs() {
 fn embed_server_mode_plan_fails_clearly_for_host_local_path() {
     let cfg = cfg(CommandKind::Embed, &["./README.md"]);
 
-    let err = plan::embed_server_action_plan(&cfg).expect_err("local path should fail");
+    let err = plan::server_rest_plan(&cfg).expect_err("local path should fail");
     assert!(
         err.to_string()
             .contains("server mode does not accept host-local embed paths yet"),
@@ -125,19 +146,56 @@ fn extract_server_mode_plan_preserves_extract_overrides() {
     cfg.render_mode = RenderMode::Http;
     cfg.embed = false;
 
-    let plan = plan::server_action_plan(&cfg).expect("extract plan should build");
-    let AxonRequest::Extract(request) = plan.action else {
-        panic!("expected extract request");
-    };
+    let plan = plan::server_rest_plan(&cfg).expect("extract plan should build");
 
-    assert_eq!(
-        request.urls,
-        Some(vec!["https://example.com/docs".to_string()])
-    );
-    assert_eq!(request.prompt.as_deref(), Some("extract facts"));
-    assert_eq!(request.max_pages, Some(7));
-    assert!(matches!(request.render_mode, Some(McpRenderMode::Http)));
-    assert_eq!(request.embed, Some(false));
+    assert_eq!(plan.path, "/v1/extract");
+    assert_eq!(plan.body["urls"][0], "https://example.com/docs");
+    assert_eq!(plan.body["prompt"], "extract facts");
+    assert_eq!(plan.body["max_pages"], 7);
+    assert_eq!(plan.body["render_mode"], "http");
+    assert_eq!(plan.body["embed"], false);
+}
+
+#[test]
+fn extract_server_mode_uses_direct_rest_path() {
+    let mut cfg = cfg(CommandKind::Extract, &["https://example.com/docs"]);
+    cfg.query = Some("extract title".to_string());
+    cfg.max_pages = 1;
+    cfg.embed = false;
+
+    let plan = plan::server_rest_plan(&cfg).expect("server rest plan");
+
+    assert_eq!(plan.method, "POST");
+    assert_eq!(plan.path, "/v1/extract");
+    assert_eq!(plan.body["urls"][0], "https://example.com/docs");
+    assert_eq!(plan.body["max_pages"], 1);
+    assert_eq!(plan.body["embed"], false);
+}
+
+#[test]
+fn query_server_mode_uses_direct_rest_path() {
+    let mut cfg = cfg(CommandKind::Query, &[]);
+    cfg.query = Some("routing contract".to_string());
+    cfg.search_limit = 7;
+
+    let plan = plan::server_rest_plan(&cfg).expect("query plan");
+
+    assert_eq!(plan.method, "POST");
+    assert_eq!(plan.path, "/v1/query");
+    assert_eq!(plan.body["query"], "routing contract");
+    assert_eq!(plan.body["limit"], 7);
+    assert_eq!(plan.body["collection"], "axon");
+}
+
+#[test]
+fn sources_server_mode_preserves_limit_query() {
+    let mut cfg = cfg(CommandKind::Sources, &[]);
+    cfg.search_limit = 25;
+
+    let plan = plan::server_rest_plan(&cfg).expect("sources plan");
+
+    assert_eq!(plan.method, "GET");
+    assert_eq!(plan.path, "/v1/sources?limit=25");
 }
 
 #[test]

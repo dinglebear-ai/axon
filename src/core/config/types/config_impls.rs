@@ -179,6 +179,7 @@ impl Default for Config {
             local_mode: false,
             server_url: None,
             job_wait_timeout_secs: 300,
+            doctor_diagnose: false,
 
             // ── Webclaw port (axon_rust-zehr) ─────────────────────────────
             enable_verticals: true,
@@ -444,6 +445,7 @@ impl fmt::Debug for Config {
             )
             .field("quiet", &self.quiet)
             .field("job_wait_timeout_secs", &self.job_wait_timeout_secs)
+            .field("doctor_diagnose", &self.doctor_diagnose)
             .field("client_mode", &self.client_mode)
             .field("local_mode", &self.local_mode)
             .field(

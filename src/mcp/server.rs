@@ -22,6 +22,7 @@ mod services_migration_tests;
 
 use super::auth::AuthPolicy;
 use super::schema::{AxonRequest, parse_axon_request};
+use super::thin_client;
 use crate::authz::scope_satisfies;
 use crate::core::config::Config;
 use crate::services::context::ServiceContext;
@@ -153,6 +154,13 @@ impl AxonMcpServer {
             tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
             invalid_params(format!("invalid request: {e}"))
         })?;
+        if let Some(response) = thin_client::route_request(self.cfg.as_ref(), &request)
+            .await
+            .map_err(map_thin_client_error)?
+        {
+            return serde_json::to_string(&response)
+                .map_err(|e| internal_error(format!("serialize {action} response: {e}")));
+        }
         let response = match request {
             AxonRequest::Status(req) => self.handle_status(req).await?,
             AxonRequest::Crawl(req) => self.handle_crawl(req).await?,
@@ -191,6 +199,13 @@ impl AxonMcpServer {
         };
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
+    }
+}
+
+fn map_thin_client_error(err: thin_client::ThinClientError) -> ErrorData {
+    match err {
+        thin_client::ThinClientError::InvalidRequest(message) => invalid_params(message),
+        other => internal_error(format!("MCP thin client route failed: {other}")),
     }
 }
 

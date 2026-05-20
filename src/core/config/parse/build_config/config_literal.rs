@@ -71,6 +71,7 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.retrieve_max_points = inputs.dispatched.retrieve_max_points;
     cfg.train_best_rank = inputs.dispatched.train_best_rank;
     cfg.train_notes = inputs.dispatched.train_notes.clone();
+    cfg.doctor_diagnose = inputs.dispatched.doctor_diagnose;
     cfg.max_pages = g.max_pages;
     cfg.max_depth = g.max_depth;
     cfg.include_subdomains = g.include_subdomains;

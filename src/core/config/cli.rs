@@ -1,9 +1,11 @@
+mod config_args;
 mod global_args;
 mod setup_args;
 
 use super::types::{EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
+pub(super) use config_args::{ConfigArgs, ConfigSubcommand, SyncArgs, SyncSubcommand};
 pub(super) use global_args::{DEFAULT_OUTPUT_DIR, GlobalArgs};
 pub(super) use setup_args::{SetupAuthMode, SetupInitArgs, StackArgs, StackSubcommand};
 
@@ -44,7 +46,7 @@ pub(super) enum CliCommand {
     /// Run doctor diagnostics plus LLM-assisted troubleshooting
     Debug(TextArg),
     /// Check connectivity to all required services
-    Doctor,
+    Doctor(DoctorArgs),
     /// Semantic vector search over the Qdrant index
     Query(QueryArgs),
     /// Fetch stored document chunks from Qdrant by URL
@@ -94,64 +96,20 @@ pub(super) enum CliCommand {
     Migrate(MigrateArgs),
     /// Read or write entries in ~/.axon/.env and ~/.axon/config.toml
     Config(ConfigArgs),
+    /// Reconcile locally produced server-mode artifacts
+    Sync(SyncArgs),
 }
 
 #[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
-pub(super) struct ConfigArgs {
+pub(super) struct DoctorArgs {
     #[command(subcommand)]
-    pub(super) action: Option<ConfigSubcommand>,
+    pub(super) action: Option<DoctorSubcommand>,
 }
 
 #[derive(Debug, Subcommand)]
-pub(super) enum ConfigSubcommand {
-    /// List every entry from .env and config.toml (secrets redacted)
-    List {
-        /// Restrict listing to .env entries
-        #[arg(long, action = ArgAction::SetTrue)]
-        env: bool,
-        /// Restrict listing to config.toml entries
-        #[arg(long, action = ArgAction::SetTrue)]
-        toml: bool,
-        /// Reveal secret values instead of showing `***`
-        #[arg(long, action = ArgAction::SetTrue)]
-        reveal: bool,
-    },
-    /// Print a single value (auto-detects file by key shape)
-    Get {
-        /// UPPER_SNAKE for .env, dotted lowercase for config.toml
-        key: String,
-        /// Force read from .env regardless of key shape
-        #[arg(long, action = ArgAction::SetTrue)]
-        env: bool,
-        /// Force read from config.toml regardless of key shape
-        #[arg(long, action = ArgAction::SetTrue)]
-        toml: bool,
-        /// Reveal secret values instead of showing `***`
-        #[arg(long, action = ArgAction::SetTrue)]
-        reveal: bool,
-    },
-    /// Write a value. Auto-detects file: UPPER_SNAKE → .env, dotted lowercase → config.toml
-    Set {
-        key: String,
-        value: String,
-        /// Force write to .env regardless of key shape
-        #[arg(long, action = ArgAction::SetTrue)]
-        env: bool,
-        /// Force write to config.toml regardless of key shape
-        #[arg(long, action = ArgAction::SetTrue)]
-        toml: bool,
-    },
-    /// Remove a value from .env or config.toml
-    Unset {
-        key: String,
-        #[arg(long, action = ArgAction::SetTrue)]
-        env: bool,
-        #[arg(long, action = ArgAction::SetTrue)]
-        toml: bool,
-    },
-    /// Print resolved paths to .env and config.toml
-    Path,
+pub(super) enum DoctorSubcommand {
+    /// Print doctor output plus LLM diagnosis when configured
+    Diagnose,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

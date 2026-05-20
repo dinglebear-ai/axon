@@ -14,7 +14,7 @@ use crate::services::{migrate as migrate_svc, watch as watch_svc};
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
@@ -104,12 +104,17 @@ pub(crate) struct DedupeBody {
 
 pub(crate) async fn v1_dedupe(
     State(state): State<RestState>,
-    body: Option<Json<DedupeBody>>,
+    headers: HeaderMap,
+    body: String,
 ) -> Response {
     let mut req_cfg = (*state.cfg).clone();
-    if let Some(Json(DedupeBody {
+    let body = match parse_optional_json_body::<DedupeBody>(&headers, &body) {
+        Ok(body) => body,
+        Err((status, kind, message)) => return rest_error(status, kind, message),
+    };
+    if let Some(DedupeBody {
         collection: Some(col),
-    })) = body
+    }) = body
     {
         if let Err(e) = crate::core::config::validate_collection_name(&col) {
             return rest_error(
@@ -129,6 +134,48 @@ pub(crate) async fn v1_dedupe(
         .into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }
+}
+
+fn parse_optional_json_body<T>(
+    headers: &HeaderMap,
+    body: &str,
+) -> Result<Option<T>, (StatusCode, &'static str, String)>
+where
+    T: serde::de::DeserializeOwned,
+{
+    if body.is_empty() {
+        return Ok(None);
+    }
+    if !has_json_content_type(headers) {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+            "non-empty request body must use application/json".to_string(),
+        ));
+    }
+    serde_json::from_str(body).map(Some).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            format!("invalid JSON request body: {e}"),
+        )
+    })
+}
+
+fn has_json_content_type(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            let media_type = value
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+            media_type == "application/json" || media_type.ends_with("+json")
+        })
+        .unwrap_or(false)
 }
 
 // ── watch ────────────────────────────────────────────────────────────────
