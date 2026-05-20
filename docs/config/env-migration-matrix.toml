@@ -800,7 +800,7 @@ url_or_path = false
 container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
-reason = "Global HTTP User-Agent override. Kept in env with Chrome fallback until a typed config.toml field is wired."
+reason = "Global HTTP User-Agent override for browser and structured API clients. Kept in env for operator/runtime wrappers."
 
 [[env]]
 key = "AXON_COLLECTION"

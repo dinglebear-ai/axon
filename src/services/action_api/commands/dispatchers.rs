@@ -1,18 +1,20 @@
 use crate::core::config::{Config, ConfigOverrides};
 use crate::core::content::url_to_filename;
 use crate::mcp::schema::{
-    CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, ExtractRequest, ExtractSubaction,
-    IngestRequest, IngestSubaction, ScrapeRequest, ScreenshotRequest, SummarizeRequest,
+    CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, EndpointsRequest, ExtractRequest,
+    ExtractSubaction, IngestRequest, IngestSubaction, ScrapeRequest, ScreenshotRequest,
+    SummarizeRequest,
 };
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_svc;
 use crate::services::embed as embed_svc;
+use crate::services::endpoints as endpoints_svc;
 use crate::services::extract as extract_svc;
 use crate::services::ingest as ingest_svc;
 use crate::services::scrape as scrape_svc;
 use crate::services::screenshot as screenshot_svc;
 use crate::services::summarize as summarize_svc;
-use crate::services::types::ClientActionError;
+use crate::services::types::{ClientActionError, EndpointOptions};
 use uuid::Uuid;
 
 use super::super::internal_error;
@@ -307,6 +309,38 @@ pub async fn dispatch_ingest(
             job_recover(service_context, crate::jobs::backend::JobKind::Ingest).await
         }
     }
+}
+
+pub async fn dispatch_endpoints(
+    service_context: &ServiceContext,
+    req: EndpointsRequest,
+) -> Result<serde_json::Value, ClientActionError> {
+    let url = req
+        .url
+        .ok_or_else(|| ClientActionError::new("invalid_request", "url is required", false, None))?;
+    let result = endpoints_svc::discover(
+        service_context.cfg.as_ref(),
+        &url,
+        EndpointOptions {
+            include_bundles: req.include_bundles.unwrap_or(true),
+            first_party_only: req.first_party_only.unwrap_or(false),
+            unique_only: req.unique_only.unwrap_or(true),
+            max_scripts: req.max_scripts.unwrap_or(40),
+            max_scan_bytes: req.max_scan_bytes.unwrap_or(8 * 1024 * 1024),
+            verify: req.verify.unwrap_or(false),
+            capture_network: req.capture_network.unwrap_or(false),
+        },
+    )
+    .await
+    .map_err(|err| ClientActionError::new("internal", err.to_string(), true, None))?;
+    serde_json::to_value(result).map_err(|err| {
+        ClientActionError::new(
+            "internal",
+            format!("serialize endpoints result: {err}"),
+            true,
+            None,
+        )
+    })
 }
 
 pub async fn dispatch_scrape(

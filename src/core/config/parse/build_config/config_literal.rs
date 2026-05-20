@@ -84,6 +84,13 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.discover_sitemaps = scrape.discover_sitemaps.unwrap_or(true);
     cfg.sitemap_since_days = scrape.sitemap_since_days.unwrap_or(0);
     cfg.map_fallback = inputs.dispatched.map_fallback;
+    cfg.endpoints_include_bundles = inputs.dispatched.endpoints_include_bundles;
+    cfg.endpoints_first_party_only = inputs.dispatched.endpoints_first_party_only;
+    cfg.endpoints_unique_only = inputs.dispatched.endpoints_unique_only;
+    cfg.endpoints_max_scripts = inputs.dispatched.endpoints_max_scripts;
+    cfg.endpoints_max_scan_bytes = inputs.dispatched.endpoints_max_scan_bytes;
+    cfg.endpoints_verify = inputs.dispatched.endpoints_verify;
+    cfg.endpoints_capture_network = inputs.dispatched.endpoints_capture_network;
     cfg.max_sitemaps = scrape.max_sitemaps.unwrap_or(512);
     cfg.cache = g.cache;
     cfg.cache_http_only = g.cache_http_only;

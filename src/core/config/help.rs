@@ -13,6 +13,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "scrape",
             "crawl",
             "map",
+            "endpoints",
             "search",
             "research",
             "extract",

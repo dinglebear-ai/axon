@@ -6,13 +6,15 @@ use super::common::{
 };
 use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{
-    AskRequest, AxonToolResponse, EvaluateRequest, MapRequest, QueryRequest, ResearchRequest,
-    RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest, SummarizeRequest,
+    AskRequest, AxonToolResponse, EndpointsRequest, EvaluateRequest, MapRequest, QueryRequest,
+    ResearchRequest, RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest,
+    SummarizeRequest,
 };
+use crate::services::types::EndpointOptions;
 use crate::services::{document as document_svc, types::DocumentBackend};
 use crate::services::{
-    map as map_svc, query as query_svc, scrape as scrape_svc, search as search_svc,
-    search_crawl as search_crawl_svc, summarize as summarize_svc,
+    endpoints as endpoints_svc, map as map_svc, query as query_svc, scrape as scrape_svc,
+    search as search_svc, search_crawl as search_crawl_svc, summarize as summarize_svc,
 };
 use rmcp::ErrorData;
 
@@ -127,6 +129,39 @@ impl AxonMcpServer {
                 "total_urls": total_urls,
                 "urls": result.urls,
             }),
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    pub(super) async fn handle_endpoints(
+        &self,
+        req: EndpointsRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let url = req
+            .url
+            .ok_or_else(|| invalid_params("url is required for endpoints"))?;
+        validate_mcp_url(&url)?;
+        let response_mode = req.response_mode;
+        let options = EndpointOptions {
+            include_bundles: req.include_bundles.unwrap_or(true),
+            first_party_only: req.first_party_only.unwrap_or(false),
+            unique_only: req.unique_only.unwrap_or(true),
+            max_scripts: req.max_scripts.unwrap_or(40),
+            max_scan_bytes: req.max_scan_bytes.unwrap_or(8 * 1024 * 1024),
+            verify: req.verify.unwrap_or(false),
+            capture_network: req.capture_network.unwrap_or(false),
+        };
+        let result = endpoints_svc::discover(self.cfg.as_ref(), &url, options)
+            .await
+            .map_err(|e| logged_internal_error(&format!("endpoints '{url}'"), e.as_ref()))?;
+        respond_with_mode(
+            "endpoints",
+            "endpoints",
+            response_mode,
+            &format!("endpoints-{}", slugify(&url, 56)),
+            serde_json::to_value(result)
+                .map_err(|e| internal_error(format!("serialize endpoints result: {e}")))?,
             InlineHint::Default,
         )
         .await
