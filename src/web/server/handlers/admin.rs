@@ -42,6 +42,12 @@ pub(crate) struct MigrateRequest {
     pub to: String,
 }
 
+#[derive(Debug, Deserialize, Default, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DedupeRequest {
+    collection: Option<String>,
+}
+
 // migrate_router is unused — migrate is wired directly in routing.rs
 #[allow(dead_code)]
 pub(crate) fn migrate_router<S: Clone + Send + Sync + 'static>() -> Router<S>
@@ -94,8 +100,17 @@ pub(crate) async fn migrate(
 )]
 pub(crate) async fn dedupe(
     State((_state, cfg)): State<WebState>,
+    body: Option<Json<DedupeRequest>>,
 ) -> Result<Json<services::types::DedupeResult>, HttpError> {
-    services::system::dedupe(&cfg, None)
+    let mut req_cfg = (*cfg).clone();
+    if let Some(Json(req)) = body
+        && let Some(collection) = req.collection
+    {
+        crate::core::config::validate_collection_name(&collection)
+            .map_err(|e| HttpError::bad_request(format!("collection: {e}").as_str()))?;
+        req_cfg.collection = collection;
+    }
+    services::system::dedupe(&req_cfg, None)
         .await
         .map(Json)
         .map_err(HttpError::from_box)

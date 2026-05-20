@@ -8,8 +8,8 @@
 //!   - [`scope_guard`] — honors `auth_required=false` (LoopbackDev) and lets
 //!     unauthenticated requests through. Used for non-destructive surfaces.
 //!   - [`unconditional_scope_guard`] — always requires a valid `AuthContext`
-//!     regardless of policy. Used for destructive admin routes (migrate,
-//!     dedupe) per the invariant documented at
+//!     regardless of policy. Used for destructive admin routes (dedupe) per
+//!     the invariant documented at
 //!     `src/web/actions.rs:authorize_action`.
 
 use super::error::rest_error;
@@ -26,7 +26,7 @@ pub(crate) fn scope_for_rest_route(method: &str, path: &str) -> Option<&'static 
     let scope = match (method, path) {
         ("GET", p) if p.starts_with("/v1/") => crate::mcp::auth::AxonScope::Read,
         ("POST", "/v1/query" | "/v1/retrieve" | "/v1/map") => crate::mcp::auth::AxonScope::Read,
-        ("POST", "/v1/migrate" | "/v1/dedupe") => crate::mcp::auth::AxonScope::Write,
+        ("POST", "/v1/dedupe") => crate::mcp::auth::AxonScope::Write,
         ("POST", p) if p.starts_with("/v1/") => crate::mcp::auth::AxonScope::Write,
         ("DELETE", p) if p.starts_with("/v1/") => crate::mcp::auth::AxonScope::Write,
         _ => return None,

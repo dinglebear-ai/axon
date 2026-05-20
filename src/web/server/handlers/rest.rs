@@ -204,15 +204,12 @@ pub(crate) fn documented_rest_paths_for_tests() -> Vec<String> {
     .collect()
 }
 
-/// migrate/dedupe carry `admin_write` (unconditional auth even in LoopbackDev).
+/// Dedupe carries `admin_write` (unconditional auth even in LoopbackDev).
 /// Watch list is read; watch create lives at /create so list and create can
-/// carry distinct scope guards.
+/// carry distinct scope guards. Migrate remains CLI-only until it has a
+/// dedicated async job family.
 fn family_4_admin(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> {
     Router::new()
-        .route(
-            "/v1/migrate",
-            guarded(post(admin::v1_migrate), ScopeGuard::admin_write()),
-        )
         .route(
             "/v1/dedupe",
             guarded(post(admin::v1_dedupe), ScopeGuard::admin_write()),
