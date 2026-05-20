@@ -112,13 +112,6 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     };
 
     let bundles = fetch_bundles(&client, &bundle_sources, options.max_scan_bytes).await;
-    if options.include_bundles {
-        emit_endpoint_log(
-            &tx,
-            format!("endpoint discovery fetched {} bundles", bundles.len()),
-        )
-        .await;
-    }
     let mut warnings = Vec::new();
     let mut prefetched = Vec::new();
     for item in bundles {
@@ -126,6 +119,17 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
             Ok(bundle) => prefetched.push(bundle),
             Err(message) => warnings.push(message),
         }
+    }
+    if options.include_bundles {
+        emit_endpoint_log(
+            &tx,
+            format!(
+                "endpoint discovery fetched {} of {} bundles",
+                prefetched.len(),
+                bundle_sources.len()
+            ),
+        )
+        .await;
     }
 
     let mut report = extract_endpoints(
