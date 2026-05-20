@@ -533,6 +533,28 @@ async fn admin_routes_accept_valid_bearer() {
     );
 }
 
+#[tokio::test]
+#[serial]
+async fn admin_dedupe_rejects_body_without_json_content_type() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) = spawn(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/dedupe"))
+        .header("authorization", "Bearer secret")
+        .body(r#"{"collection":"invalid/name"}"#)
+        .send()
+        .await
+        .expect("dedupe request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(body["kind"], "unsupported_media_type");
+}
+
 /// F4: POST /v1/dedupe requires auth EVEN in LoopbackDev (admin_write guard).
 /// Migrate is intentionally not exposed as REST.
 #[tokio::test]
