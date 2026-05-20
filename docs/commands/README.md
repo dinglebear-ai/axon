@@ -19,6 +19,7 @@ Use `--local` to bypass server mode for one command.
 - [doctor](./doctor.md)
 - [domains](./domains.md)
 - [embed](./embed.md)
+- [endpoints](./endpoints.md)
 - [evaluate](./evaluate.md)
 - [extract](./extract.md)
 - [ingest](./ingest.md)

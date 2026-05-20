@@ -14,6 +14,7 @@ pub enum AxonRequest {
     Retrieve(RetrieveRequest),
     Search(SearchRequest),
     Map(MapRequest),
+    Endpoints(EndpointsRequest),
     Evaluate(EvaluateRequest),
     Suggest(SuggestRequest),
     Doctor(DoctorRequest),
@@ -307,6 +308,20 @@ pub struct MapRequest {
     pub url: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EndpointsRequest {
+    pub url: Option<String>,
+    pub include_bundles: Option<bool>,
+    pub first_party_only: Option<bool>,
+    pub unique_only: Option<bool>,
+    pub max_scripts: Option<usize>,
+    pub max_scan_bytes: Option<usize>,
+    pub verify: Option<bool>,
+    pub capture_network: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
 

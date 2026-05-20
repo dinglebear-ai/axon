@@ -154,7 +154,7 @@ Lifecycle pattern when needed:
 ## Preferred Action Names (Top-Level)
 Use CLI-identical action names:
 - `ingest`, `extract`, `embed`, `crawl`
-- `query`, `retrieve`
+- `query`, `retrieve`, `endpoints`
 - `doctor`, `domains`, `sources`, `stats`
 - `search`, `map`
 - `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
@@ -167,6 +167,29 @@ Examples:
 - `action: "evaluate"`
 - `action: "suggest"`
 - `action: "doctor"`
+
+## Endpoint Discovery
+
+Endpoint discovery is a transient read-scoped action:
+
+```json
+{
+  "action": "endpoints",
+  "url": "https://example.com",
+  "include_bundles": true,
+  "first_party_only": false,
+  "unique_only": true,
+  "max_scripts": 40,
+  "max_scan_bytes": 8388608,
+  "verify": false,
+  "capture_network": false
+}
+```
+
+Static discovery does not execute JavaScript, store reports, embed documents, or
+enqueue jobs. `verify` performs unauthenticated safe probes without cookies or
+user-supplied auth headers. `capture_network` is opt-in because it executes page
+code and can trigger real network calls.
 
 ## Parser Rules
 The server uses strict deserialization:

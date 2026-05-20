@@ -53,6 +53,13 @@ pub(super) struct DispatchOutput {
     pub mcp_transport: Option<McpTransport>,
     pub mcp_transport_default: McpTransport,
     pub map_fallback: MapFallback,
+    pub endpoints_include_bundles: bool,
+    pub endpoints_first_party_only: bool,
+    pub endpoints_unique_only: bool,
+    pub endpoints_max_scripts: usize,
+    pub endpoints_max_scan_bytes: usize,
+    pub endpoints_verify: bool,
+    pub endpoints_capture_network: bool,
     pub retrieve_max_points: Option<usize>,
     pub train_best_rank: Option<usize>,
     pub train_notes: Option<String>,
@@ -89,6 +96,13 @@ impl DispatchOutput {
             mcp_transport: None,
             mcp_transport_default: McpTransport::Http,
             map_fallback: MapFallback::Structure,
+            endpoints_include_bundles: true,
+            endpoints_first_party_only: false,
+            endpoints_unique_only: true,
+            endpoints_max_scripts: 40,
+            endpoints_max_scan_bytes: 8 * 1024 * 1024,
+            endpoints_verify: false,
+            endpoints_capture_network: false,
             retrieve_max_points: None,
             train_best_rank: None,
             train_notes: None,
@@ -128,6 +142,17 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             }
             out.command = CommandKind::Map;
             out.positional = args.value.into_iter().collect();
+        }
+        CliCommand::Endpoints(args) => {
+            out.command = CommandKind::Endpoints;
+            out.positional = vec![args.url];
+            out.endpoints_include_bundles = args.include_bundles;
+            out.endpoints_first_party_only = args.first_party_only;
+            out.endpoints_unique_only = args.unique_only;
+            out.endpoints_max_scripts = args.max_scripts;
+            out.endpoints_max_scan_bytes = args.max_scan_bytes;
+            out.endpoints_verify = args.verify;
+            out.endpoints_capture_network = args.capture_network;
         }
         CliCommand::Extract(args) => {
             out.command = CommandKind::Extract;

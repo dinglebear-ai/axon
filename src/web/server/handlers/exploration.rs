@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::services;
-use crate::services::types::{MapOptions, SearchOptions, ServiceTimeRange};
+use crate::services::types::{EndpointOptions, MapOptions, SearchOptions, ServiceTimeRange};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use serde_json::json;
@@ -30,6 +30,18 @@ pub(crate) struct MapRequest {
     url: String,
     limit: Option<usize>,
     offset: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct EndpointsRequest {
+    url: String,
+    include_bundles: Option<bool>,
+    first_party_only: Option<bool>,
+    unique_only: Option<bool>,
+    max_scripts: Option<usize>,
+    max_scan_bytes: Option<usize>,
+    verify: Option<bool>,
+    capture_network: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -122,6 +134,40 @@ pub(crate) async fn map(
         .await
         .map(Json)
         .map_err(HttpError::from_box)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/endpoints",
+    request_body = EndpointsRequest,
+    responses(
+        (status = 200, description = "Discovered endpoint report", body = services::types::EndpointReport),
+        (status = 400, description = "Invalid endpoint discovery request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream fetch or verification service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
+pub(crate) async fn endpoints(
+    State((_state, cfg)): State<WebState>,
+    Json(req): Json<EndpointsRequest>,
+) -> Result<Json<services::types::EndpointReport>, HttpError> {
+    let url = required_text(&req.url, "url")?;
+    services::endpoints::discover(
+        &cfg,
+        url,
+        EndpointOptions {
+            include_bundles: req.include_bundles.unwrap_or(true),
+            first_party_only: req.first_party_only.unwrap_or(false),
+            unique_only: req.unique_only.unwrap_or(true),
+            max_scripts: req.max_scripts.unwrap_or(40),
+            max_scan_bytes: req.max_scan_bytes.unwrap_or(8 * 1024 * 1024),
+            verify: req.verify.unwrap_or(false),
+            capture_network: req.capture_network.unwrap_or(false),
+        },
+    )
+    .await
+    .map(Json)
+    .map_err(|err| HttpError::new(StatusCode::BAD_GATEWAY, "upstream", err.to_string()))
 }
 
 #[utoipa::path(

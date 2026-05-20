@@ -40,7 +40,8 @@ pub(super) fn router(
         .route("/v1/status", get(handlers::discovery::status))
         .route("/v1/doctor", get(handlers::discovery::doctor))
         .route("/v1/query", post(handlers::rag::query))
-        .route("/v1/retrieve", post(handlers::rag::retrieve));
+        .route("/v1/retrieve", post(handlers::rag::retrieve))
+        .route("/v1/endpoints", post(handlers::exploration::endpoints));
     let write_routes = Router::new()
         .merge(ask_router)
         .route("/v1/evaluate", post(handlers::rag::evaluate))

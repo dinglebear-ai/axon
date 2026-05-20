@@ -12,6 +12,7 @@ fn help_fixture(name: &str) -> String {
 fn run_help(args: &[&str]) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
         .args(args)
+        .env("NO_COLOR", "1")
         .output()
         .expect("failed to execute axon binary");
     assert!(
@@ -80,6 +81,25 @@ fn top_level_help_describes_http_mcp_runtime() {
         !stdout.contains("Start MCP stdio server"),
         "top-level help still advertises stdio MCP runtime:\n{stdout}"
     );
+}
+
+#[test]
+fn endpoints_help_describes_discovery_flags() {
+    let stdout = run_help(&["endpoints", "--help"]);
+    for expected in [
+        "Discover API endpoints",
+        "--include-bundles",
+        "--first-party-only",
+        "--max-scripts",
+        "--max-scan-bytes",
+        "--verify",
+        "--capture-network",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "endpoints help missing {expected}:\n{stdout}"
+        );
+    }
 }
 
 #[test]

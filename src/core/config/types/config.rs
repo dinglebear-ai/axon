@@ -97,6 +97,27 @@ pub struct Config {
     /// Fallback strategy for `map` when no sitemap documents are found. Flag: `--map-fallback`.
     pub map_fallback: MapFallback,
 
+    /// Fetch and scan first-party JavaScript bundles during endpoint discovery.
+    pub endpoints_include_bundles: bool,
+
+    /// Filter endpoint discovery results to first-party endpoints only.
+    pub endpoints_first_party_only: bool,
+
+    /// Deduplicate endpoint discovery results by normalized endpoint URL.
+    pub endpoints_unique_only: bool,
+
+    /// Maximum script bundle URLs considered for endpoint discovery.
+    pub endpoints_max_scripts: usize,
+
+    /// Maximum HTML + JavaScript bytes scanned by endpoint discovery.
+    pub endpoints_max_scan_bytes: usize,
+
+    /// Run safe unauthenticated endpoint verification probes after static discovery.
+    pub endpoints_verify: bool,
+
+    /// Capture browser network requests for endpoint discovery.
+    pub endpoints_capture_network: bool,
+
     /// Maximum number of sitemap documents to parse per map/backfill operation
     /// (0 = unlimited). TOML: `scrape.max-sitemaps`.
     pub max_sitemaps: usize,
