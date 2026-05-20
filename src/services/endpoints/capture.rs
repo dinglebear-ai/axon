@@ -163,15 +163,11 @@ where
         } else {
             deadline
         };
-        let Some(frame) = tokio::time::timeout_at(next_deadline, rx.next())
-            .await
-            .ok()
-            .flatten()
-        else {
-            if page_loaded {
-                break;
-            }
-            continue;
+        let frame = match tokio::time::timeout_at(next_deadline, rx.next()).await {
+            Ok(Some(frame)) => frame,
+            Ok(None) => break,
+            Err(_) if page_loaded => break,
+            Err(_) => continue,
         };
         let frame = frame.map_err(|err| format!("Chrome WebSocket read failed: {err}"))?;
         let Message::Text(text) = frame else {

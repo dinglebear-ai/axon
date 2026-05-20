@@ -282,11 +282,6 @@ async fn fetch_response_text(
     response: reqwest::Response,
     max_bytes: usize,
 ) -> Result<(String, bool), EndpointError> {
-    if let Some(content_length) = response.content_length()
-        && content_length > max_bytes as u64
-    {
-        return Err(format!("response body exceeds cap {max_bytes} bytes").into());
-    }
     let mut stream = response.bytes_stream();
     let mut bytes = Vec::new();
     let mut truncated = false;

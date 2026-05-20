@@ -61,6 +61,17 @@ The post-review local full gate passed with `2276 passed, 6 skipped`.
 
 After the second review-fix wave, repeat verification was run before the final push; see the final response for the exact command results and GitHub check status.
 
+After rebasing onto the updated `origin/main` head `52d4ff65`, another review wave was addressed:
+
+- Added endpoint discovery defaults to `Config` debug output.
+- Updated the CommandKind local contract note to include the new `Endpoints` command.
+- Added `--unique-only` to CLI help contract assertions.
+- Made endpoint HTML body reads truncate consistently instead of erroring solely because `Content-Length` exceeded the scan cap.
+- Broke out of the CDP capture loop when the WebSocket stream closes before page load.
+- Moved endpoint service result types into `src/services/types/endpoints.rs` and re-exported them from `src/services/types.rs`.
+
+The MCP schema request-model split suggested by review was tested and reverted because `scripts/generate_mcp_schema_doc.py` intentionally parses request structs from `src/mcp/schema.rs`; splitting `EndpointsRequest` without first changing that generator breaks schema-doc sync.
+
 ## Review And CI
 
 CodeRabbit completed on PR #114. The first CI run exposed MCP schema doc drift, which was fixed by wiring endpoint discovery into the schema doc generator. The next CI run exposed ANSI color drift in CLI help snapshots, which was fixed by forcing `NO_COLOR=1` in the help contract test harness.
@@ -70,6 +81,8 @@ The final-head `mcp-smoke` run then exposed MCP help/tool-description parity dri
 Named work-it review agents were not all available in this Codex session. Substitutions used were local full verification, GitHub CI, CodeRabbit, clippy, monolith checks, and direct PR comment inspection.
 
 The GitHub review wave surfaced actionable Cubic, Copilot, and Codex comments after the first green CI run. Those comments were addressed in code and tests in a follow-up commit before the final push.
+
+The final CodeRabbit wave added a mix of quick fixes and broader refactor suggestions. Quick fixes were applied. The MCP schema split was left as a generator-aware follow-up because the current docs generator contract requires request structs to remain in `src/mcp/schema.rs`.
 
 ## Open Questions
 

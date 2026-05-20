@@ -90,6 +90,7 @@ fn endpoints_help_describes_discovery_flags() {
         "Discover API endpoints",
         "--include-bundles",
         "--first-party-only",
+        "--unique-only",
         "--max-scripts",
         "--max-scan-bytes",
         "--verify",

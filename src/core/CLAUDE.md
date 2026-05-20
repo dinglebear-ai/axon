@@ -97,7 +97,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 
 ## CommandKind Enum (`config/types/enums.rs`)
 
-28 variants (verify against `src/core/config/types/enums.rs:5-34`):
+35 variants (verify against `src/core/config/types/enums.rs:5-39`):
 `Scrape`, `Crawl`, `Watch`, `Map`, `Extract`, `Search`, `Embed`, `Debug`, `Doctor`, `Query`, `Retrieve`, `Ask`, `Evaluate`, `Suggest`, `Sources`, `Domains`, `Stats`, `Status`, `Dedupe`, `Ingest`, `Sessions`, `Research`, `Screenshot`, `Completions`, `Mcp`, `Serve`, `Setup`, `Migrate`.
 
 The legacy `Refresh`, `Github`, `Reddit`, `Youtube` variants were removed: GitHub/Reddit/YouTube are now subtypes routed through `CommandKind::Ingest` and the auto-classifier in `src/ingest/classify.rs`.
