@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate docs/MCP-TOOL-SCHEMA.md from src/mcp/schema.rs.
 
-Parses the Rust source for struct/enum definitions and produces a markdown
-document that stays in sync with the actual wire contract. Run with --check
-in CI to detect drift.
+Parses the Rust source for struct/enum definitions across the schema module and
+produces a markdown document that stays in sync with the actual wire contract.
+Run with --check in CI to detect drift.
 
 Exit codes:
     0 — success (or --check passed)
@@ -80,8 +80,10 @@ def main() -> int:
         print(f"ERROR: Schema file not found: {schema_path}", file=sys.stderr)
         return 2
 
-    # Parse
-    source = schema_path.read_text(encoding="utf-8")
+    # Parse. The schema module keeps AxonRequest in schema.rs and request models
+    # in child files to stay under the Rust file-size policy, so concatenate the
+    # module sources before feeding the lightweight parser.
+    source = read_schema_sources(schema_path)
     structs, enums = parse_schema(source)
 
     errors = validate_parsed(structs, enums)
@@ -128,6 +130,15 @@ def main() -> int:
     doc_path.write_text(generated, encoding="utf-8")
     print(f"Wrote {doc_path.relative_to(repo_root)} ({len(generated)} bytes)")
     return 0
+
+
+def read_schema_sources(schema_path: Path) -> str:
+    schema_dir = schema_path.with_suffix("")
+    parts = [schema_path.read_text(encoding="utf-8")]
+    if schema_dir.is_dir():
+        for child in sorted(schema_dir.glob("*.rs")):
+            parts.append(child.read_text(encoding="utf-8"))
+    return "\n\n".join(parts)
 
 
 def _normalize_for_check(text: str) -> str:

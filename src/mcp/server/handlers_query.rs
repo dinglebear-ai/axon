@@ -6,13 +6,14 @@ use super::common::{
 };
 use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{
-    AskRequest, AxonToolResponse, EvaluateRequest, MapRequest, QueryRequest, ResearchRequest,
-    RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest, SummarizeRequest,
+    AskRequest, AxonToolResponse, EndpointsRequest, EvaluateRequest, MapRequest, QueryRequest,
+    ResearchRequest, RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest,
+    SummarizeRequest,
 };
 use crate::services::{document as document_svc, types::DocumentBackend};
 use crate::services::{
-    map as map_svc, query as query_svc, scrape as scrape_svc, search as search_svc,
-    search_crawl as search_crawl_svc, summarize as summarize_svc,
+    endpoints as endpoints_svc, map as map_svc, query as query_svc, scrape as scrape_svc,
+    search as search_svc, search_crawl as search_crawl_svc, summarize as summarize_svc,
 };
 use rmcp::ErrorData;
 
@@ -127,6 +128,52 @@ impl AxonMcpServer {
                 "total_urls": total_urls,
                 "urls": result.urls,
             }),
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    pub(super) async fn handle_endpoints(
+        &self,
+        req: EndpointsRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let url = req
+            .url
+            .ok_or_else(|| invalid_params("url is required for endpoints"))?;
+        validate_mcp_url(&url)?;
+        let response_mode = req.response_mode;
+        let mut options = endpoints_svc::options_from_config(self.cfg.as_ref());
+        if let Some(value) = req.include_bundles {
+            options.include_bundles = value;
+        }
+        if let Some(value) = req.first_party_only {
+            options.first_party_only = value;
+        }
+        if let Some(value) = req.unique_only {
+            options.unique_only = value;
+        }
+        if let Some(value) = req.max_scripts {
+            options.max_scripts = value;
+        }
+        if let Some(value) = req.max_scan_bytes {
+            options.max_scan_bytes = value;
+        }
+        if let Some(value) = req.verify {
+            options.verify = value;
+        }
+        if let Some(value) = req.capture_network {
+            options.capture_network = value;
+        }
+        let result = endpoints_svc::discover(self.cfg.as_ref(), &url, options, None)
+            .await
+            .map_err(|e| logged_internal_error(&format!("endpoints '{url}'"), e.as_ref()))?;
+        respond_with_mode(
+            "endpoints",
+            "endpoints",
+            response_mode,
+            &format!("endpoints-{}", slugify(&url, 56)),
+            serde_json::to_value(result)
+                .map_err(|e| internal_error(format!("serialize endpoints result: {e}")))?,
             InlineHint::Default,
         )
         .await

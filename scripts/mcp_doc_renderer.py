@@ -361,6 +361,7 @@ def _emit_error_semantics(emit) -> None:
 
 HANDLER_REQUIRED_FIELDS: dict[str, set[str]] = {
     "ask": {"query"},
+    "endpoints": {"url"},
     "evaluate": {"query"},
     "map": {"url"},
     "query": {"query"},

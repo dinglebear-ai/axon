@@ -6,6 +6,7 @@ pub mod crawl_sync;
 pub mod debug;
 pub mod document;
 pub mod embed;
+pub mod endpoints;
 pub mod error;
 pub mod events;
 pub mod extract;

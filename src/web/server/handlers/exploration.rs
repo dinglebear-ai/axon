@@ -1,4 +1,5 @@
 use crate::core::config::Config;
+use crate::core::http::validate_url;
 use crate::services;
 use crate::services::types::{MapOptions, SearchOptions, ServiceTimeRange};
 use axum::{Json, extract::State, http::StatusCode};
@@ -30,6 +31,18 @@ pub(crate) struct MapRequest {
     url: String,
     limit: Option<usize>,
     offset: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct EndpointsRequest {
+    url: String,
+    include_bundles: Option<bool>,
+    first_party_only: Option<bool>,
+    unique_only: Option<bool>,
+    max_scripts: Option<usize>,
+    max_scan_bytes: Option<usize>,
+    verify: Option<bool>,
+    capture_network: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -122,6 +135,52 @@ pub(crate) async fn map(
         .await
         .map(Json)
         .map_err(HttpError::from_box)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/endpoints",
+    request_body = EndpointsRequest,
+    responses(
+        (status = 200, description = "Discovered endpoint report", body = services::types::EndpointReport),
+        (status = 400, description = "Invalid endpoint discovery request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream fetch or verification service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
+pub(crate) async fn endpoints(
+    State((_state, cfg)): State<WebState>,
+    Json(req): Json<EndpointsRequest>,
+) -> Result<Json<services::types::EndpointReport>, HttpError> {
+    let url = required_text(&req.url, "url")?;
+    validate_url(url)
+        .map_err(|err| HttpError::new(StatusCode::BAD_REQUEST, "bad_request", err.to_string()))?;
+    let mut options = services::endpoints::options_from_config(&cfg);
+    if let Some(value) = req.include_bundles {
+        options.include_bundles = value;
+    }
+    if let Some(value) = req.first_party_only {
+        options.first_party_only = value;
+    }
+    if let Some(value) = req.unique_only {
+        options.unique_only = value;
+    }
+    if let Some(value) = req.max_scripts {
+        options.max_scripts = value;
+    }
+    if let Some(value) = req.max_scan_bytes {
+        options.max_scan_bytes = value;
+    }
+    if let Some(value) = req.verify {
+        options.verify = value;
+    }
+    if let Some(value) = req.capture_network {
+        options.capture_network = value;
+    }
+    services::endpoints::discover(&cfg, url, options, None)
+        .await
+        .map(Json)
+        .map_err(HttpError::from_box_send_sync)
 }
 
 #[utoipa::path(

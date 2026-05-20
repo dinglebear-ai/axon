@@ -1,12 +1,14 @@
 use crate::core::config::{Config, ConfigOverrides};
 use crate::core::content::url_to_filename;
 use crate::mcp::schema::{
-    CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, ExtractRequest, ExtractSubaction,
-    IngestRequest, IngestSubaction, ScrapeRequest, ScreenshotRequest, SummarizeRequest,
+    CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, EndpointsRequest, ExtractRequest,
+    ExtractSubaction, IngestRequest, IngestSubaction, ScrapeRequest, ScreenshotRequest,
+    SummarizeRequest,
 };
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_svc;
 use crate::services::embed as embed_svc;
+use crate::services::endpoints as endpoints_svc;
 use crate::services::extract as extract_svc;
 use crate::services::ingest as ingest_svc;
 use crate::services::scrape as scrape_svc;
@@ -307,6 +309,48 @@ pub async fn dispatch_ingest(
             job_recover(service_context, crate::jobs::backend::JobKind::Ingest).await
         }
     }
+}
+
+pub async fn dispatch_endpoints(
+    service_context: &ServiceContext,
+    req: EndpointsRequest,
+) -> Result<serde_json::Value, ClientActionError> {
+    let url = req
+        .url
+        .ok_or_else(|| ClientActionError::new("invalid_request", "url is required", false, None))?;
+    let mut options = endpoints_svc::options_from_config(service_context.cfg.as_ref());
+    if let Some(value) = req.include_bundles {
+        options.include_bundles = value;
+    }
+    if let Some(value) = req.first_party_only {
+        options.first_party_only = value;
+    }
+    if let Some(value) = req.unique_only {
+        options.unique_only = value;
+    }
+    if let Some(value) = req.max_scripts {
+        options.max_scripts = value;
+    }
+    if let Some(value) = req.max_scan_bytes {
+        options.max_scan_bytes = value;
+    }
+    if let Some(value) = req.verify {
+        options.verify = value;
+    }
+    if let Some(value) = req.capture_network {
+        options.capture_network = value;
+    }
+    let result = endpoints_svc::discover(service_context.cfg.as_ref(), &url, options, None)
+        .await
+        .map_err(|err| ClientActionError::new("internal", err.to_string(), true, None))?;
+    serde_json::to_value(result).map_err(|err| {
+        ClientActionError::new(
+            "internal",
+            format!("serialize endpoints result: {err}"),
+            false,
+            None,
+        )
+    })
 }
 
 pub async fn dispatch_scrape(

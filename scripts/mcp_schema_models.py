@@ -110,6 +110,7 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Retrieve": "retrieve",
     "Search": "search",
     "Map": "map",
+    "Endpoints": "endpoints",
     "Evaluate": "evaluate",
     "Suggest": "suggest",
     "Doctor": "doctor",

@@ -127,7 +127,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo.",
         meta = axon_tool_meta()
     )]
     async fn axon<'a>(
@@ -163,6 +163,7 @@ impl AxonMcpServer {
             AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
             AxonRequest::Search(req) => self.handle_search(req).await?,
             AxonRequest::Map(req) => self.handle_map(req).await?,
+            AxonRequest::Endpoints(req) => self.handle_endpoints(req).await?,
             AxonRequest::Evaluate(req) => self.handle_evaluate(req).await?,
             AxonRequest::Suggest(req) => self.handle_suggest(req).await?,
             AxonRequest::Doctor(req) => self.handle_doctor(req).await?,
@@ -317,8 +318,9 @@ fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
             _ => Some("axon:read"),
         },
         // Read / query operations require axon:read.
-        "status" | "query" | "retrieve" | "search" | "map" | "evaluate" | "suggest" | "doctor"
-        | "domains" | "sources" | "stats" | "research" | "ask" | "screenshot" => Some("axon:read"),
+        "status" | "query" | "retrieve" | "search" | "map" | "endpoints" | "evaluate"
+        | "suggest" | "doctor" | "domains" | "sources" | "stats" | "research" | "ask"
+        | "screenshot" => Some("axon:read"),
         // Unknown actions are explicitly denied (fail-conservative). Add an
         // explicit mapping above for any new action before shipping.
         _ => Some("__deny__"),
@@ -426,6 +428,7 @@ impl ServerHandler for AxonMcpServer {
             "- `embed` — index file, directory, or URL into Qdrant\n",
             "- `ingest` — GitHub/Reddit/YouTube source ingestion\n",
             "- `query` — dense + BM42 hybrid semantic search\n",
+            "- `endpoints` — static endpoint discovery with optional verification\n",
             "- `ask` — RAG: retrieve context + LLM answer\n",
             "- `summarize` — scrape URL context + configured LLM summary\n",
             "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",

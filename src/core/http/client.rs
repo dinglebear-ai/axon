@@ -56,7 +56,14 @@ pub fn build_client(
     timeout_secs: u64,
     user_agent: Option<&str>,
 ) -> Result<reqwest::Client, HttpError> {
-    build_client_with_options(timeout_secs, user_agent, true)
+    build_client_with_options(timeout_secs, user_agent, true, true)
+}
+
+pub(crate) fn build_client_no_redirect(
+    timeout_secs: u64,
+    user_agent: Option<&str>,
+) -> Result<reqwest::Client, HttpError> {
+    build_client_with_options(timeout_secs, user_agent, true, false)
 }
 
 #[cfg(not(test))]
@@ -64,13 +71,14 @@ fn build_client_without_ssrf_resolver(
     timeout_secs: u64,
     user_agent: Option<&str>,
 ) -> Result<reqwest::Client, HttpError> {
-    build_client_with_options(timeout_secs, user_agent, false)
+    build_client_with_options(timeout_secs, user_agent, false, true)
 }
 
 fn build_client_with_options(
     timeout_secs: u64,
     user_agent: Option<&str>,
     ssrf_dns_guard: bool,
+    follow_redirects: bool,
 ) -> Result<reqwest::Client, HttpError> {
     #[cfg(test)]
     let _ = ssrf_dns_guard;
@@ -83,8 +91,9 @@ fn build_client_with_options(
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
         .pool_max_idle_per_host(50)
-        .pool_idle_timeout(Some(Duration::from_secs(60)))
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+        .pool_idle_timeout(Some(Duration::from_secs(60)));
+    builder = if follow_redirects {
+        builder.redirect(reqwest::redirect::Policy::custom(|attempt| {
             let url_string = attempt.url().as_str().to_owned();
             match validate_url(&url_string) {
                 Ok(()) => attempt.follow(),
@@ -93,7 +102,10 @@ fn build_client_with_options(
                     format!("SSRF: redirect to blocked URL {url_string}"),
                 )),
             }
-        }));
+        }))
+    } else {
+        builder.redirect(reqwest::redirect::Policy::none())
+    };
     // Wire the SSRF-blocking DNS resolver in production builds to close the
     // DNS rebinding TOCTOU window at connect time. Test builds skip only the
     // custom resolver so httpmock servers on 127.0.0.1 remain reachable;

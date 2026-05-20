@@ -1,0 +1,100 @@
+use super::common::start_url_from_cfg;
+use crate::core::config::Config;
+use crate::core::logging::log_done;
+use crate::core::ui::{Spinner, muted, primary, print_option, print_phase};
+use crate::services::endpoints;
+use crate::services::types::EndpointOptions;
+use std::error::Error;
+
+pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let url_owned = start_url_from_cfg(cfg);
+    let url = url_owned.trim();
+    if url.is_empty() {
+        return Err("url is required for endpoints".into());
+    }
+    let options = EndpointOptions {
+        include_bundles: cfg.endpoints_include_bundles,
+        first_party_only: cfg.endpoints_first_party_only,
+        unique_only: cfg.endpoints_unique_only,
+        max_scripts: cfg.endpoints_max_scripts,
+        max_scan_bytes: cfg.endpoints_max_scan_bytes,
+        verify: cfg.endpoints_verify,
+        capture_network: cfg.endpoints_capture_network,
+    };
+
+    if !cfg.json_output {
+        print_phase("◐", "Discovering endpoints", url);
+        println!("  {}", primary("Options:"));
+        print_option("includeBundles", &options.include_bundles.to_string());
+        print_option("firstPartyOnly", &options.first_party_only.to_string());
+        print_option("verify", &options.verify.to_string());
+        print_option("captureNetwork", &options.capture_network.to_string());
+        println!();
+    }
+    let spinner = if cfg.json_output {
+        None
+    } else {
+        Some(Spinner::new("endpoint discovery in progress"))
+    };
+
+    let report = endpoints::discover(cfg, url, options, None)
+        .await
+        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+    if let Some(spinner) = spinner {
+        spinner.finish(&format!(
+            "endpoint discovery complete (endpoints={} scripts={} bundles={})",
+            report.endpoints.len(),
+            report.scripts_discovered,
+            report.bundles_scanned
+        ));
+    }
+
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("{}", primary(&format!("Endpoint Results for {url}")));
+        println!(
+            "{} {} endpoints, {} hosts, {} bundles scanned",
+            muted("Found"),
+            report.endpoints.len(),
+            report.hosts.len(),
+            report.bundles_scanned
+        );
+        for warning in &report.warnings {
+            println!("{} {}", muted("Warning:"), warning);
+        }
+        println!();
+        for endpoint in &report.endpoints {
+            let verified = endpoint
+                .verified
+                .as_ref()
+                .map(|v| {
+                    v.status
+                        .map(|status| format!(" status={status}"))
+                        .unwrap_or_else(|| " unreachable".to_string())
+                })
+                .unwrap_or_default();
+            println!(
+                "  {} {} ({:?}, {:?}{})",
+                if endpoint.first_party { "•" } else { "◦" },
+                endpoint
+                    .normalized_url
+                    .as_deref()
+                    .unwrap_or(endpoint.value.as_str()),
+                endpoint.kind,
+                endpoint.source,
+                verified
+            );
+        }
+    }
+
+    log_done(&format!(
+        "command=endpoints endpoints={} hosts={} bundles_scanned={} truncated={} elapsed_ms={}",
+        report.endpoints.len(),
+        report.hosts.len(),
+        report.bundles_scanned,
+        report.truncated,
+        report.elapsed_ms
+    ));
+    Ok(())
+}
