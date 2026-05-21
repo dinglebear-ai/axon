@@ -14,6 +14,7 @@ use crate::core::content::{
     LadderThresholds, LadderTier, extract_with_ladder, url_to_stable_filename,
 };
 use crate::crawl::manifest::ManifestEntry;
+use crate::services::error::ChallengeVendor;
 
 pub struct CollectorConfig {
     pub markdown_dir: PathBuf,
@@ -48,7 +49,7 @@ pub enum PageOutcome {
     /// Page is skipped — not embedded, not saved to disk.
     /// Cookie-warmup retry is a follow-up (TODO: thread CookieJar through collector).
     Challenged {
-        vendor: String,
+        vendor: ChallengeVendor,
     },
     Reused {
         filename: String,
@@ -94,9 +95,7 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
             akamai_recoverable = cd.akamai_warmup_recoverable,
             "antibot.detected: challenge page, skipping"
         );
-        return PageOutcome::Challenged {
-            vendor: cd.vendor.as_str().to_string(),
-        };
+        return PageOutcome::Challenged { vendor: cd.vendor };
     }
 
     if trimmed.is_empty() {

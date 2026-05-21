@@ -94,7 +94,10 @@ pub fn to_llm_text(markdown: &str, url: &str) -> String {
     } else {
         let mut s = "\n\n## Links\n".to_string();
         for (label, dest) in &links {
-            s.push_str(&format!("- {}: {dest}\n", label.replace(['\n', '\r'], " ")));
+            s.push_str(&format!(
+                "- {}: {dest}\n",
+                label.replace(['\n', '\r', '\u{2028}', '\u{2029}'], " ")
+            ));
         }
         if overflow > 0 {
             s.push_str(&format!("... and {overflow} more links\n"));
