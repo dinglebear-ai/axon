@@ -176,43 +176,46 @@ fn promoted_fields_not_in_git_meta_blob() {
         "gh_line_end must be a top-level key"
     );
 
-    // git_meta assertions — promoted fields must NOT be duplicated there.
-    // After the fix, git_meta should NOT contain these keys (they must be null/absent).
-    let meta = &payload["git_meta"];
+    // git_meta assertions — git_meta exists (lower-priority extras) but must NOT
+    // contain the promoted fields. Use as_object() to fail loudly if git_meta is
+    // not a JSON object (which would indicate a structural regression).
+    let meta = payload["git_meta"]
+        .as_object()
+        .expect("git_meta must be a JSON object");
     assert!(
-        meta.is_null() || meta["stars"].is_null(),
-        "stars must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("stars"),
+        "stars must not be stored in git_meta (found: {meta:?})"
     );
     assert!(
-        meta.is_null() || meta["forks"].is_null(),
-        "forks must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("forks"),
+        "forks must not be stored in git_meta (found: {meta:?})"
     );
     assert!(
-        meta.is_null() || meta["language"].is_null(),
-        "language must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("language"),
+        "language must not be stored in git_meta (found: {meta:?})"
     );
     assert!(
-        meta.is_null() || meta["topics"].is_null(),
-        "topics must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("topics"),
+        "topics must not be stored in git_meta (found: {meta:?})"
     );
     assert!(
-        meta.is_null() || meta["is_fork"].is_null(),
-        "is_fork must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("is_fork"),
+        "is_fork must not be stored in git_meta (found: {meta:?})"
     );
     assert!(
-        meta.is_null() || meta["is_archived"].is_null(),
-        "is_archived must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("is_archived"),
+        "is_archived must not be stored in git_meta (found: {meta:?})"
     );
     assert!(
-        meta.is_null() || meta["gh_file_type"].is_null(),
-        "gh_file_type must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("gh_file_type"),
+        "gh_file_type must not be stored in git_meta (found: {meta:?})"
     );
     assert!(
-        meta.is_null() || meta["gh_line_start"].is_null(),
-        "gh_line_start must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("gh_line_start"),
+        "gh_line_start must not be stored in git_meta (found: {meta:?})"
     );
     assert!(
-        meta.is_null() || meta["gh_line_end"].is_null(),
-        "gh_line_end must not be stored in git_meta (found: {meta})"
+        !meta.contains_key("gh_line_end"),
+        "gh_line_end must not be stored in git_meta (found: {meta:?})"
     );
 }
