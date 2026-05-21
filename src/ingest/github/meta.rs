@@ -97,24 +97,19 @@ pub fn build_github_payload(params: &GitHubPayloadParams) -> Value {
         file_path: params.file_path.clone(),
         file_language: params.file_language.clone(),
         meta: Some(json!({
-            "stars": params.stars,
-            "forks": params.forks,
-            "open_issues": params.open_issues,
-            "language": params.language,
-            "topics": params.topics,
-            "is_fork": params.is_fork,
-            "is_archived": params.is_archived,
-            "is_private": params.is_private,
-            "default_branch": params.default_branch,
-            "repo_description": params.repo_description,
-            "pushed_at": params.pushed_at,
-            "gh_file_type": params.file_type,
-            "gh_is_test": params.is_test,
+            // Lower-priority extras kept in git_meta (not indexed in Qdrant).
+            // Promoted fields (gh_stars, gh_forks, gh_language, gh_topics,
+            // gh_is_fork, gh_is_archived, gh_file_type, gh_line_start, gh_line_end)
+            // are emitted as flat top-level keys below for Qdrant indexing.
+            "open_issues":        params.open_issues,
+            "is_private":         params.is_private,
+            "default_branch":     params.default_branch,
+            "repo_description":   params.repo_description,
+            "pushed_at":          params.pushed_at,
+            "gh_is_test":         params.is_test,
             "gh_file_size_bytes": params.file_size_bytes,
-            "gh_line_start": params.gh_line_start,
-            "gh_line_end": params.gh_line_end,
-            "gh_comment_count": params.comment_count,
-            "gh_is_pr": params.is_pr,
+            "gh_comment_count":   params.comment_count,
+            "gh_is_pr":           params.is_pr,
         })),
     });
     let mut payload = git;

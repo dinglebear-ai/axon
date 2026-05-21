@@ -13,6 +13,10 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "domain",
     "source_type",
     "gh_file_language",
+    // GitHub-specific indexed fields (top-level, not deprecated).
+    "gh_language",
+    "gh_file_type",
+    "gh_topics",
     "chunking_method",
     "extractor_name",
     // Shared git provider schema (all git-backed ingest sources).
@@ -54,7 +58,8 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
         cfg.collection
     );
 
-    let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(KEYWORD_INDEX_FIELDS.len() + 5);
+    // keyword(N) + integer(8) + datetime(1) + bool(2) = N + 11
+    let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(KEYWORD_INDEX_FIELDS.len() + 11);
 
     for field in KEYWORD_INDEX_FIELDS {
         let url = index_url.clone();
@@ -78,13 +83,18 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
     Ok(())
 }
 
-/// Appends integer and datetime index futures to the shared futures vec.
+/// Appends integer, datetime, and bool index futures to the shared futures vec.
 fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str) {
     let integer_fields = [
         ("chunk_index", index_url.to_string()),
         ("git_number", index_url.to_string()),
         ("so_question_id", index_url.to_string()),
         ("payload_schema_version", index_url.to_string()),
+        // GitHub-specific integer indexes (top-level, not deprecated).
+        ("gh_stars", index_url.to_string()),
+        ("gh_forks", index_url.to_string()),
+        ("gh_line_start", index_url.to_string()),
+        ("gh_line_end", index_url.to_string()),
     ];
     let client = match internal_service_http_client() {
         Ok(c) => c,
@@ -111,4 +121,21 @@ fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str
             .error_for_status()?;
         Ok(())
     }));
+    // Boolean indexes for GitHub flag fields (gh_is_fork, gh_is_archived).
+    // Qdrant has a native "bool" index type — booleans must not use "keyword".
+    let bool_fields = [
+        ("gh_is_fork", index_url.to_string()),
+        ("gh_is_archived", index_url.to_string()),
+    ];
+    for (field, url) in bool_fields {
+        futures.push(Box::pin(async move {
+            client
+                .put(&url)
+                .json(&serde_json::json!({"field_name": field, "field_schema": "bool"}))
+                .send()
+                .await?
+                .error_for_status()?;
+            Ok(())
+        }));
+    }
 }
