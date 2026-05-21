@@ -35,13 +35,14 @@ fn test_extracts_fonts() {
     </style></head><body></body></html>"#;
 
     let brand = extract_brand_from_html(html, None);
+    // Font names are normalized to lowercase to prevent case-variant duplicates.
     assert!(
-        brand.fonts.contains(&"Inter".to_string()),
-        "should find Inter"
+        brand.fonts.contains(&"inter".to_string()),
+        "should find inter (lowercase-normalized)"
     );
     assert!(
-        brand.fonts.contains(&"Fira Code".to_string()),
-        "should find Fira Code"
+        brand.fonts.contains(&"fira code".to_string()),
+        "should find fira code (lowercase-normalized)"
     );
     assert!(
         !brand.fonts.contains(&"sans-serif".to_string()),

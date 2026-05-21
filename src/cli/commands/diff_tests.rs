@@ -39,8 +39,8 @@ fn test_format_same_result_human() {
     let result = make_same_result();
     let output = format_diff_summary(&result);
     assert!(
-        output.contains("same") || output.contains("Same") || output.contains("no changes"),
-        "same result should indicate no changes, got: {output}"
+        output.contains("same (no changes)"),
+        "same result should contain 'same (no changes)', got: {output}"
     );
 }
 
@@ -49,8 +49,8 @@ fn test_format_changed_result_human() {
     let result = make_changed_result();
     let output = format_diff_summary(&result);
     assert!(
-        output.contains("changed") || output.contains("Changed"),
-        "changed result should indicate changes, got: {output}"
+        output.starts_with("changed "),
+        "changed result should start with 'changed ', got: {output}"
     );
 }
 
@@ -59,7 +59,7 @@ fn test_format_diff_shows_word_count_delta() {
     let result = make_changed_result();
     let output = format_diff_summary(&result);
     assert!(
-        output.contains('+') || output.contains("word"),
-        "output should mention word count delta, got: {output}"
+        output.contains("word_count_delta=+1"),
+        "output should contain exact word_count_delta=+1, got: {output}"
     );
 }

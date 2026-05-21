@@ -1,3 +1,4 @@
+use crate::cli::commands::common_urls::start_url_from_cfg;
 use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info};
 use crate::core::ui::{accent, muted, primary, print_option, print_phase};
@@ -23,13 +24,11 @@ pub async fn run_brand(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 fn parse_brand_url(cfg: &Config) -> Result<String, Box<dyn Error>> {
-    if let Some(url) = cfg.positional.first().cloned() {
-        return Ok(url);
+    let url = start_url_from_cfg(cfg);
+    if url.is_empty() {
+        return Err("brand requires a URL: axon brand <url>".into());
     }
-    if !cfg.start_url.is_empty() {
-        return Ok(cfg.start_url.clone());
-    }
-    Err("brand requires a URL: axon brand <url>".into())
+    Ok(url)
 }
 
 pub(crate) fn emit_brand_result(cfg: &Config, result: &BrandResult) -> Result<(), Box<dyn Error>> {

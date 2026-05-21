@@ -111,8 +111,8 @@ pub async fn brand(
     )
     .await;
 
-    let mut result = extract_brand_from_html(&html, Some(url));
-    result.url = url.to_string();
+    let mut result = extract_brand_from_html(&html, Some(normalized.as_ref()));
+    result.url = normalized.into_owned();
     Ok(result)
 }
 

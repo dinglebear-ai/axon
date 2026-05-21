@@ -43,8 +43,8 @@ fn test_format_brand_summary_contains_color_count() {
     let result = make_brand_result();
     let output = format_brand_summary(&result);
     assert!(
-        output.contains('2') || output.contains("color"),
-        "should mention color count, got: {output}"
+        output.contains("colors=2"),
+        "should mention exact color count as 'colors=2', got: {output}"
     );
 }
 
