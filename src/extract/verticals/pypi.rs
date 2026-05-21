@@ -106,6 +106,7 @@ fn build_pypi_markdown(d: &PypiMarkdownData<'_>) -> String {
     md
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_extra(
     name: &str,
     version: &str,
@@ -114,6 +115,7 @@ fn build_extra(
     keywords: &[&str],
     home_page: &str,
     requires_python: &str,
+    downloads_last_month: Option<u64>,
 ) -> serde_json::Value {
     let mut obj = serde_json::json!({
         "pkg_registry": "pypi",
@@ -135,6 +137,9 @@ fn build_extra(
     }
     if !requires_python.is_empty() {
         obj["pypi_requires_python"] = serde_json::Value::String(requires_python.to_string());
+    }
+    if let Some(dl) = downloads_last_month {
+        obj["pkg_downloads"] = serde_json::json!(dl);
     }
     obj
 }
@@ -264,6 +269,12 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         url,
     });
 
+    // PyPI's public API returns -1 for download counts in `info.downloads.*`.
+    // Only emit `pkg_downloads` when the API returns a usable positive value.
+    let downloads_last_month = info["downloads"]["last_month"]
+        .as_i64()
+        .filter(|&n| n > 0)
+        .map(|n| n as u64);
     let extra = build_extra(
         pkg_name,
         version,
@@ -272,6 +283,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         &keywords,
         home_page,
         requires_python,
+        downloads_last_month,
     );
 
     Ok(ScrapedDoc {

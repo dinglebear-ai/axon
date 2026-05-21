@@ -41,14 +41,18 @@ pub fn matches(url: &str) -> bool {
     segs.len() >= 2 && segs[0] == "crates"
 }
 
-fn build_extra(data: &serde_json::Value) -> serde_json::Value {
+fn build_extra(data: &serde_json::Value, explicit_version: Option<&str>) -> serde_json::Value {
     let krate = &data["crate"];
     let ver = &data["versions"][0];
     let name = krate["name"].as_str().unwrap_or("");
-    let max_version = krate["max_stable_version"]
-        .as_str()
-        .or_else(|| krate["newest_version"].as_str())
-        .unwrap_or("");
+    // Use the explicitly requested URL version (e.g. /crates/serde/1.0.219) when present;
+    // fall back to the latest stable or newest version from the API.
+    let pkg_version = explicit_version.unwrap_or_else(|| {
+        krate["max_stable_version"]
+            .as_str()
+            .or_else(|| krate["newest_version"].as_str())
+            .unwrap_or("")
+    });
     let license = ver["license"].as_str().unwrap_or("");
     let downloads = krate["downloads"].as_u64().unwrap_or(0);
     let homepage = krate["homepage"].as_str().unwrap_or("");
@@ -62,7 +66,7 @@ fn build_extra(data: &serde_json::Value) -> serde_json::Value {
     let mut obj = serde_json::json!({
         "pkg_registry": "crates_io",
         "pkg_name": name,
-        "pkg_version": max_version,
+        "pkg_version": pkg_version,
         "pkg_language": "rust"
     });
     if !license.is_empty() {
@@ -113,8 +117,11 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let data = fetch_crate_json(client, name, url, ua).await?;
     // If the URL specifies an explicit version (e.g. /crates/serde/1.0.219),
     // use it for README and rustdoc lookups so we fetch the right release.
-    let url_version = segs.get(2).filter(|v| !v.is_empty()).map(|v| v.to_string());
-    let version = url_version.unwrap_or_else(|| resolve_version(&data, name));
+    let url_version: Option<String> = segs.get(2).filter(|v| !v.is_empty()).map(|v| v.to_string());
+    let version = url_version
+        .as_deref()
+        .map(str::to_string)
+        .unwrap_or_else(|| resolve_version(&data, name));
 
     // Fetch README and rustdoc JSON concurrently — both non-fatal.
     let (readme_text, rustdoc_text) = tokio::join!(
@@ -130,7 +137,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         rustdoc_text.as_deref(),
     );
 
-    let extra = build_extra(&data);
+    let extra = build_extra(&data, url_version.as_deref());
 
     Ok(ScrapedDoc {
         url: url.to_string(),

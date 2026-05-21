@@ -28,6 +28,7 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "git_state",
     "git_author",
     "git_file_language",
+    "git_file_path",
     // Vertical extractor fields.
     "pkg_registry",
     "pkg_name",
@@ -98,7 +99,10 @@ fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str
     ];
     let client = match internal_service_http_client() {
         Ok(c) => c,
-        Err(_) => return,
+        Err(e) => {
+            tracing::warn!("push_non_keyword_indexes: failed to build HTTP client: {e}");
+            return;
+        }
     };
     for (field, url) in integer_fields {
         futures.push(Box::pin(async move {
