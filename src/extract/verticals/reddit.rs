@@ -139,6 +139,30 @@ async fn wait_for_rate_slot() {
     state.last_request_at = Some(Instant::now());
 }
 
+// ── Extra payload ─────────────────────────────────────────────────────────────
+
+/// Build the flat `reddit_*` extra payload for embedding.
+///
+/// Mirrors `build_reddit_post_extra_payload` in `src/ingest/reddit/meta.rs`.
+/// `post_data` is the `post["data"]` object from the Reddit API JSON response.
+fn build_extra(post_data: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "reddit_author": post_data["author"].as_str().unwrap_or("[deleted]"),
+        // Reddit API returns `created_utc` as a float (e.g. 1710000000.0).
+        // `as_u64()` returns `None` for JSON floats, so parse as f64 then cast.
+        "reddit_created_utc": post_data["created_utc"].as_f64().map(|f| f as u64).unwrap_or(0),
+        "reddit_score": post_data["score"].as_i64().unwrap_or(0),
+        "reddit_num_comments": post_data["num_comments"].as_u64().unwrap_or(0),
+        "reddit_upvote_ratio": post_data["upvote_ratio"].as_f64().unwrap_or(0.0),
+        "reddit_subreddit": post_data["subreddit"].as_str().unwrap_or(""),
+        "reddit_domain": post_data["domain"].as_str().unwrap_or(""),
+        "reddit_is_video": post_data["is_video"].as_bool().unwrap_or(false),
+        "reddit_distinguished": post_data["distinguished"].as_str(),
+        "reddit_gilded": post_data["gilded"].as_u64().unwrap_or(0),
+        "reddit_flair": post_data["link_flair_text"].as_str(),
+    })
+}
+
 // ── URL matching ─────────────────────────────────────────────────────────────
 
 pub fn matches(url: &str) -> bool {
@@ -211,7 +235,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         extractor_version: 2,
         structured: Some(data),
         follow_crawl_urls: vec![],
-        extra: None,
+        extra: Some(build_extra(&post_data)),
     })
 }
 
@@ -284,3 +308,7 @@ fn parse_retry_after(resp: &reqwest::Response) -> Option<Duration> {
         .and_then(|s| s.parse::<u64>().ok())?;
     Some(Duration::from_secs(secs.min(120)))
 }
+
+#[cfg(test)]
+#[path = "reddit_tests.rs"]
+mod tests;
