@@ -18,8 +18,10 @@ services/
 ├── error.rs                # service error types
 ├── events.rs               # ServiceEvent enum + emit() — async channel helper
 ├── extract.rs              # extract start/status/cancel/list
-├── ingest.rs               # ingest start/status/cancel/list
+├── ingest.rs               # ingest start/status/cancel/list; re-exports classify_target, ingest_generic_git_with_progress, ingest_gitea_with_progress, source_from_mcp_request, validate_ingest_source
 ├── ingest/classify.rs      # ingest classification helpers (services-layer wrapper)
+├── ingest/git_services.rs  # ingest_generic_git_with_progress(), ingest_gitea_with_progress() — thin orchestration wrappers
+├── ingest/request.rs       # source_from_mcp_request(), validate_ingest_source() — MCP request → IngestSource mapping (factored out of handlers_embed_ingest.rs)
 ├── jobs.rs                 # shared job status helpers
 ├── map.rs                  # map
 ├── migrate.rs              # collection migration (unnamed → named mode)
