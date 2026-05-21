@@ -4,7 +4,8 @@ use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{AxonToolResponse, BrandRequest, DiffRequest};
 use crate::mcp::server::AxonMcpServer;
 use crate::mcp::server::common::{
-    internal_error, invalid_params, logged_internal_error, map_render_mode, validate_mcp_url,
+    InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
+    respond_with_mode, slugify, validate_mcp_url,
 };
 use crate::services::{brand as brand_svc, diff as diff_svc};
 use rmcp::ErrorData;
@@ -26,6 +27,7 @@ impl AxonMcpServer {
         validate_mcp_url(&url_a)?;
         validate_mcp_url(&url_b)?;
 
+        let response_mode = req.response_mode;
         let cfg = self.cfg.apply_overrides(&ConfigOverrides {
             render_mode: req.render_mode.map(map_render_mode),
             ..ConfigOverrides::default()
@@ -38,7 +40,15 @@ impl AxonMcpServer {
         let data = serde_json::to_value(&result)
             .map_err(|e| internal_error(format!("serialize diff result: {e}")))?;
 
-        Ok(AxonToolResponse::ok("diff", "diff", data))
+        respond_with_mode(
+            "diff",
+            "diff",
+            response_mode,
+            &format!("diff-{}", slugify(&format!("{url_a}-{url_b}"), 48)),
+            data,
+            InlineHint::Default,
+        )
+        .await
     }
 
     pub(in crate::mcp::server) async fn handle_brand(
@@ -52,6 +62,7 @@ impl AxonMcpServer {
 
         validate_mcp_url(&url)?;
 
+        let response_mode = req.response_mode;
         let result = brand_svc::brand(self.cfg.as_ref(), &url, None)
             .await
             .map_err(|e| logged_internal_error("brand", e.as_ref()))?;
@@ -59,6 +70,14 @@ impl AxonMcpServer {
         let data = serde_json::to_value(&result)
             .map_err(|e| internal_error(format!("serialize brand result: {e}")))?;
 
-        Ok(AxonToolResponse::ok("brand", "brand", data))
+        respond_with_mode(
+            "brand",
+            "brand",
+            response_mode,
+            &format!("brand-{}", slugify(&url, 56)),
+            data,
+            InlineHint::Default,
+        )
+        .await
     }
 }
