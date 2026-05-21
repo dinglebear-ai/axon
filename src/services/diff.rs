@@ -86,7 +86,11 @@ pub(crate) fn compute_diff(
     let word_count_b = markdown_b.split_whitespace().count() as i64;
     let word_count_delta = word_count_b - word_count_a;
 
-    let status = if text_diff.is_none() && metadata_changes.is_empty() {
+    let status = if text_diff.is_none()
+        && metadata_changes.is_empty()
+        && links_added.is_empty()
+        && links_removed.is_empty()
+    {
         DiffStatus::Same
     } else {
         DiffStatus::Changed

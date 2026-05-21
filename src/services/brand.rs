@@ -19,7 +19,7 @@ use tokio::sync::mpsc;
 use url::Url;
 
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::{http_client, normalize_url, parse_custom_headers, validate_url};
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::types::{BrandResult, LogoVariant};
 
@@ -82,14 +82,24 @@ pub async fn brand(
     )
     .await;
 
+    let normalized = normalize_url(url);
+    validate_url(&normalized)
+        .map_err(|e| -> Box<dyn Error> { format!("invalid brand url {normalized}: {e}").into() })?;
+
+    let custom_headers = parse_custom_headers(&cfg.custom_headers);
     let client = http_client()?;
-    let mut req = client.get(url);
-    for header_str in &cfg.custom_headers {
-        if let Some((k, v)) = header_str.split_once(": ") {
-            req = req.header(k, v);
-        }
+    let response = client
+        .get(normalized.as_ref())
+        .headers(custom_headers)
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "brand fetch failed for {normalized}: HTTP {}",
+            response.status()
+        )
+        .into());
     }
-    let response = req.send().await?;
     let html = response.text().await?;
 
     emit(
@@ -264,20 +274,35 @@ fn find_logo(doc: &Html, base_url: Option<&Url>) -> Option<String> {
         let class = el.value().attr("class").unwrap_or("");
         let id = el.value().attr("id").unwrap_or("");
         let alt = el.value().attr("alt").unwrap_or("");
-        let src = el.value().attr("src")?;
+        // Do not use `?` here — an img without src should be skipped, not abort the search.
+        let Some(src) = el.value().attr("src") else {
+            continue;
+        };
         if ci_contains(class, "logo") || ci_contains(id, "logo") || ci_contains(alt, "logo") {
             return Some(resolve_url(src, base_url));
         }
     }
 
+    // Walk ancestors to find the enclosing <a> so logos nested inside wrappers
+    // (e.g. <a href="/"><div><img src="logo.svg"></div></a>) are still detected.
     for el in doc.select(sel!("a[href='/'] img, a[href] img")) {
-        if let Some(parent) = el.parent().and_then(|p| p.value().as_element()) {
-            let href = parent.attr("href").unwrap_or("");
-            if (href == "/" || href.ends_with(".com") || href.ends_with(".com/"))
-                && let Some(src) = el.value().attr("src")
+        let Some(src) = el.value().attr("src") else {
+            continue;
+        };
+        let mut node = el.parent();
+        while let Some(n) = node {
+            if let Some(elem) = n.value().as_element()
+                && elem.name() == "a"
             {
-                return Some(resolve_url(src, base_url));
+                let href = elem.attr("href").unwrap_or("");
+                if href == "/" || href.ends_with(".com") || href.ends_with(".com/") {
+                    return Some(resolve_url(src, base_url));
+                }
+                // Found an <a> but href doesn't match — stop climbing.
+                break;
             }
+            // Non-element or non-anchor node — keep climbing.
+            node = n.parent();
         }
     }
 
@@ -285,14 +310,16 @@ fn find_logo(doc: &Html, base_url: Option<&Url>) -> Option<String> {
 }
 
 fn find_favicon(doc: &Html, base_url: Option<&Url>) -> Option<String> {
-    doc.select(sel!("link[rel]"))
-        .find(|el| {
-            el.value()
-                .attr("rel")
-                .is_some_and(|r| r.to_lowercase().contains("icon"))
-        })
-        .and_then(|el| el.value().attr("href"))
-        .map(|href| resolve_url(href, base_url))
+    // Use find_map so icon links without an href attribute are skipped rather
+    // than short-circuiting the search.
+    doc.select(sel!("link[rel]")).find_map(|el| {
+        let rel = el.value().attr("rel")?;
+        if !rel.to_lowercase().contains("icon") {
+            return None;
+        }
+        let href = el.value().attr("href")?;
+        Some(resolve_url(href, base_url))
+    })
 }
 
 fn find_og_image(doc: &Html, base_url: Option<&Url>) -> Option<String> {

@@ -110,28 +110,35 @@ pub(super) fn parse_colors_from_value(value: &str) -> Vec<String> {
     }
 
     for cap in RGB_COLOR.captures_iter(value) {
-        let r: u8 = cap[1].parse().unwrap_or(0);
-        let g: u8 = cap[2].parse().unwrap_or(0);
-        let b: u8 = cap[3].parse().unwrap_or(0);
+        let r = parse_u8_clamp(&cap[1]);
+        let g = parse_u8_clamp(&cap[2]);
+        let b = parse_u8_clamp(&cap[3]);
         colors.push(format!("#{r:02X}{g:02X}{b:02X}"));
     }
 
     for cap in RGBA_COLOR.captures_iter(value) {
-        let r: u8 = cap[1].parse().unwrap_or(0);
-        let g: u8 = cap[2].parse().unwrap_or(0);
-        let b: u8 = cap[3].parse().unwrap_or(0);
+        let r = parse_u8_clamp(&cap[1]);
+        let g = parse_u8_clamp(&cap[2]);
+        let b = parse_u8_clamp(&cap[3]);
         colors.push(format!("#{r:02X}{g:02X}{b:02X}"));
     }
 
     for cap in HSL_COLOR.captures_iter(value) {
-        let h: f64 = cap[1].parse().unwrap_or(0.0);
-        let s: f64 = cap[2].parse::<f64>().unwrap_or(0.0) / 100.0;
-        let l: f64 = cap[3].parse::<f64>().unwrap_or(0.0) / 100.0;
+        // Hue wraps modulo 360 per CSS spec; saturation and lightness clamp to [0,1].
+        let h = cap[1].parse::<f64>().unwrap_or(0.0).rem_euclid(360.0);
+        let s = (cap[2].parse::<f64>().unwrap_or(0.0) / 100.0).clamp(0.0, 1.0);
+        let l = (cap[3].parse::<f64>().unwrap_or(0.0) / 100.0).clamp(0.0, 1.0);
         let (r, g, b) = hsl_to_rgb(h, s, l);
         colors.push(format!("#{r:02X}{g:02X}{b:02X}"));
     }
 
     colors
+}
+
+/// Parse a CSS component string as a u8, clamping out-of-range values to 255
+/// instead of silently wrapping to 0 via `parse::<u8>().unwrap_or(0)`.
+fn parse_u8_clamp(s: &str) -> u8 {
+    s.parse::<u16>().map(|v| v.min(255) as u8).unwrap_or(0)
 }
 
 fn expand_short_hex(s: &str) -> String {

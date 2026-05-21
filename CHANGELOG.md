@@ -5,22 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.3.0] - 2026-05-21
-
-### Added
-
-- `axon diff <url-a> <url-b>` — port of webclaw's diff tool. Fetches two URLs,
-  compares their markdown content with a unified diff, reports metadata changes
-  (title, description, author, etc.), added/removed links, and word-count delta.
-  Exposes a matching `diff` MCP action and service function (`services::diff::diff`).
-- `axon brand <url>` — port of webclaw's brand tool. Analyzes a URL's HTML/CSS
-  for brand identity: up to 10 dominant colors (with usage classification), brand
-  font families, primary logo URL, favicon URL, og:image, and all logo variants.
-  Pure DOM/CSS extraction (no LLM), exposes a matching `brand` MCP action and
-  service function (`services::brand::brand`).
-- New dependencies: `similar = "2"` (unified diff), `scraper = "0.22"` (HTML DOM/CSS parsing),
-  `once_cell = "1"` (lazy regex compilation).
-
 ## [Unreleased]
 
 ### BREAKING CHANGES
@@ -68,64 +52,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added config parsing coverage for `--skip-embed` mapping to
   `Config::embed = false`.
 
-## [4.4.1] - 2026-05-21
-
-### Fixed
-
-- Fixed `BUNDLE_FETCH_SEMAPHORE` to acquire one permit per individual bundle
-  HTTP fetch rather than one permit per endpoint-discovery session. Previously
-  the cap limited concurrent *bundle-fetch phases* (sessions), allowing up to
-  `cap × 8` total concurrent bundle requests across the process. Now
-  `AXON_ENDPOINT_BUNDLE_CONCURRENCY` (default 8) is a true global cap on
-  simultaneous bundle HTTP fetches process-wide.
-
-## [4.4.0] - 2026-05-21
-
-### Added
-
-- Added global process-wide semaphores for bundle fetches (default 8), Chrome
-  capture (default 1), and verification probes (default 16) to limit
-  concurrent outbound I/O across all simultaneous endpoint discovery requests.
-  Override via `AXON_ENDPOINT_BUNDLE_CONCURRENCY`, `AXON_ENDPOINT_CHROME_CONCURRENCY`,
-  and `AXON_ENDPOINT_VERIFY_CONCURRENCY`.
-- Added CDP `Fetch.enable` pre-dispatch SSRF blocking for Chrome network capture.
-  Private, loopback, link-local, `.local`, and `.internal` targets are now
-  rejected at the network level before Chrome dispatches them, not filtered
-  from results after capture.
-
-### Fixed
-
-- Fixed MCP scope: `endpoints` action now requires `axon:write` (was incorrectly
-  mapped to `axon:read`). Endpoint discovery performs active outbound network I/O
-  and must not be accessible with read-only tokens.
-- Fixed REST routing: `/v1/endpoints` moved from `read_routes` to `write_routes`
-  to match the MCP scope change.
-- Fixed verification constants to match bead w2wf.4 acceptance criteria:
-  `MAX_VERIFY_PROBES` corrected from 40 to 100, `VERIFY_TIMEOUT_SECS` from 4s
-  to 2s, `VERIFY_CONCURRENCY` from 5 to 4.
-
-### Documentation
-
-- Added `## Security and Scope` section to `docs/commands/endpoints.md` covering
-  `axon:write` scope requirement, anonymous probe behavior, and CDP pre-dispatch
-  blocking.
-- Added `## Resource Controls` table to `docs/commands/endpoints.md` with exact
-  constants, semaphore defaults, and environment override knobs.
-
 ## [4.3.0] - 2026-05-21
 
 ### Added
 
-- Added first-class GitLab ingest for project metadata, repository files, issues,
-  merge requests, and wiki pages.
-- Added Gitea/Forgejo ingest for repository metadata, files, issues, and pull
-  requests.
-- Added explicit generic HTTPS Git ingest for repository file indexing.
-
-### Changed
-
-- Extended CLI, async job, MCP, service, config, status, and docs surfaces for
-  `gitlab`, `gitea`, and `git` ingest source types.
+- `axon diff <url-a> <url-b>` — port of webclaw's diff tool. Fetches two URLs,
+  compares their markdown content with a unified diff, reports metadata changes
+  (title, description, author, etc.), added/removed links, and word-count delta.
+  Status is now `Changed` when links differ even if text is identical.
+  Exposes a matching `diff` MCP action and service function (`services::diff::diff`).
+- `axon brand <url>` — port of webclaw's brand tool. Analyzes a URL's HTML/CSS
+  for brand identity: up to 10 dominant colors (with usage classification), brand
+  font families, primary logo URL, favicon URL, og:image, and all logo variants.
+  Pure DOM/CSS extraction (no LLM), with SSRF guard and HTTP status validation.
+  Exposes a matching `brand` MCP action and service function (`services::brand::brand`).
+- New dependencies: `similar = "2"` (unified diff), `scraper = "0.22"` (HTML DOM/CSS parsing),
+  `once_cell = "1"` (lazy regex compilation).
 
 ## [4.2.0] - 2026-05-19
 

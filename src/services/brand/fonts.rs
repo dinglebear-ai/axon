@@ -76,7 +76,8 @@ pub(super) fn extract_fonts(decls: &[CssDecl], brand_name: Option<&str>) -> Vec<
     }
 
     let mut fonts: Vec<(String, usize)> = freq.into_iter().collect();
-    fonts.sort_by_key(|f| std::cmp::Reverse(f.1));
+    // Secondary sort by name ensures stable ordering for equal-frequency fonts.
+    fonts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     fonts.into_iter().map(|(name, _)| name).collect()
 }
 
@@ -132,7 +133,12 @@ fn split_font_families(value: &str) -> Vec<String> {
 
 pub(super) fn extract_font_name_from_url(url: &str) -> Option<String> {
     let filename = url.rsplit('/').next()?;
-    let stem = filename.split('.').next()?;
+    // Strip only the last extension segment (e.g. "Inter-Regular.woff2" → "Inter-Regular",
+    // "inter.latin.woff2" → "inter.latin") to preserve multi-dot font names.
+    let stem = filename
+        .rsplit_once('.')
+        .map(|(s, _)| s)
+        .unwrap_or(filename);
     let clean = stem
         .split('-')
         .take_while(|p| {
