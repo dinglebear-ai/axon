@@ -43,9 +43,12 @@ pub(super) fn router(
         .route("/v1/doctor", get(handlers::discovery::doctor))
         .route("/v1/query", post(handlers::rag::query))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
-        .route("/v1/endpoints", post(handlers::exploration::endpoints))
         .route("/v1/map", post(handlers::exploration::map));
     let write_routes = Router::new()
+        // Active-network operations require axon:write. Endpoint discovery
+        // fetches pages, bundles, probes endpoints, and may execute Chrome
+        // capture — it must not be accessible with read-only tokens.
+        .route("/v1/endpoints", post(handlers::exploration::endpoints))
         .merge(ask_router)
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))

@@ -89,14 +89,14 @@ pub(super) async fn capture_requests_with_chrome(
     capture_result
 }
 
-async fn capture_session_requests<Tx, Rx>(
+/// Enable Network, Page, and Fetch CDP domains for a session.
+/// Fetch.enable with `requestStage: Request` intercepts all requests before
+/// dispatch so the event loop can SSRF-check and block unsafe targets.
+async fn enable_capture_domains<Tx, Rx>(
     tx: &mut Tx,
     rx: &mut Rx,
     session_id: &str,
-    page_url: &str,
-    max_requests: usize,
-    network_idle_secs: u64,
-) -> Result<Vec<CapturedRequest>, String>
+) -> Result<(), String>
 where
     Tx: SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
     Rx: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
@@ -122,6 +122,34 @@ where
         None,
     )
     .await?;
+    // Intercept every request BEFORE Chrome dispatches it (satisfies bead w2wf.5).
+    send_capture_cdp_cmd(
+        tx,
+        rx,
+        Some(session_id),
+        "Fetch.enable",
+        serde_json::json!({ "patterns": [{ "urlPattern": "*", "requestStage": "Request" }] }),
+        cmd_timeout,
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn capture_session_requests<Tx, Rx>(
+    tx: &mut Tx,
+    rx: &mut Rx,
+    session_id: &str,
+    page_url: &str,
+    max_requests: usize,
+    network_idle_secs: u64,
+) -> Result<Vec<CapturedRequest>, String>
+where
+    Tx: SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
+    Rx: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    enable_capture_domains(tx, rx, session_id).await?;
+    let cmd_timeout = Duration::from_secs(CAPTURE_CDP_TIMEOUT_SECS);
     let mut captured = Vec::new();
     let mut last_network_event = tokio::time::Instant::now();
     let mut page_loaded = false;
@@ -186,6 +214,15 @@ where
             continue;
         }
         match value.get("method").and_then(|method| method.as_str()) {
+            Some("Fetch.requestPaused") => {
+                // Pre-dispatch interception: validate URL before Chrome sends the request.
+                // IMPORTANT: Fetch.continueRequest and Fetch.failRequest are
+                // fire-and-forget by CDP design — no response id is returned.
+                // Do NOT use send_capture_cdp_cmd (which blocks waiting for a
+                // response) — that would stall the event loop and cause Chrome to
+                // timeout the paused request. Send directly through tx instead.
+                send_fetch_intercept_reply(tx, session_id, &value).await;
+            }
             Some("Network.requestWillBeSent") => {
                 if let Some(request) = captured_request_from_event(&value) {
                     captured.push(request);
@@ -199,6 +236,44 @@ where
         }
     }
     Ok(captured)
+}
+
+/// Handle a `Fetch.requestPaused` CDP event: validate the URL and either
+/// continue or fail the request. Fire-and-forget — no response is expected.
+async fn send_fetch_intercept_reply<Tx>(tx: &mut Tx, session_id: &str, event: &serde_json::Value)
+where
+    Tx: SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
+{
+    let params = event.get("params").cloned().unwrap_or_default();
+    let request_id = params
+        .get("requestId")
+        .and_then(|id| id.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let url = params
+        .get("request")
+        .and_then(|r| r.get("url"))
+        .and_then(|u| u.as_str())
+        .unwrap_or_default()
+        .to_string();
+    // SSRF check: block private/loopback/link-local targets before dispatch.
+    let is_blocked = validate_url_with_dns_timeout(&url).await.is_err();
+    let id = CAPTURE_CDP_ID.fetch_add(1, Ordering::Relaxed);
+    let (cdp_method, cdp_params) = if is_blocked {
+        (
+            "Fetch.failRequest",
+            serde_json::json!({ "requestId": request_id, "errorReason": "AccessDenied" }),
+        )
+    } else {
+        (
+            "Fetch.continueRequest",
+            serde_json::json!({ "requestId": request_id }),
+        )
+    };
+    let mut msg = serde_json::json!({ "id": id, "method": cdp_method, "params": cdp_params });
+    msg["sessionId"] = serde_json::Value::String(session_id.to_string());
+    // Fire-and-forget: ignore send errors (page may already be navigated away).
+    let _ = tx.send(Message::Text(msg.to_string().into())).await;
 }
 
 fn captured_request_from_event(value: &serde_json::Value) -> Option<CapturedRequest> {

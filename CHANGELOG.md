@@ -52,6 +52,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added config parsing coverage for `--skip-embed` mapping to
   `Config::embed = false`.
 
+## [4.4.0] - 2026-05-21
+
+### Added
+
+- Added global process-wide semaphores for bundle fetches (default 8), Chrome
+  capture (default 1), and verification probes (default 16) to limit
+  concurrent outbound I/O across all simultaneous endpoint discovery requests.
+  Override via `AXON_ENDPOINT_BUNDLE_CONCURRENCY`, `AXON_ENDPOINT_CHROME_CONCURRENCY`,
+  and `AXON_ENDPOINT_VERIFY_CONCURRENCY`.
+- Added CDP `Fetch.enable` pre-dispatch SSRF blocking for Chrome network capture.
+  Private, loopback, link-local, `.local`, and `.internal` targets are now
+  rejected at the network level before Chrome dispatches them, not filtered
+  from results after capture.
+
+### Fixed
+
+- Fixed MCP scope: `endpoints` action now requires `axon:write` (was incorrectly
+  mapped to `axon:read`). Endpoint discovery performs active outbound network I/O
+  and must not be accessible with read-only tokens.
+- Fixed REST routing: `/v1/endpoints` moved from `read_routes` to `write_routes`
+  to match the MCP scope change.
+- Fixed verification constants to match bead w2wf.4 acceptance criteria:
+  `MAX_VERIFY_PROBES` corrected from 40 to 100, `VERIFY_TIMEOUT_SECS` from 4s
+  to 2s, `VERIFY_CONCURRENCY` from 5 to 4.
+
+### Documentation
+
+- Added `## Security and Scope` section to `docs/commands/endpoints.md` covering
+  `axon:write` scope requirement, anonymous probe behavior, and CDP pre-dispatch
+  blocking.
+- Added `## Resource Controls` table to `docs/commands/endpoints.md` with exact
+  constants, semaphore defaults, and environment override knobs.
+
 ## [4.3.0] - 2026-05-21
 
 ### Added

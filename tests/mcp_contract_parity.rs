@@ -11,6 +11,7 @@ use axon::mcp::schema::{
 use axon::mcp::server::common::{
     to_map_options, to_pagination, to_retrieve_options, to_search_options, to_service_time_range,
 };
+use axon::mcp::server::required_scope_for;
 use axon::services::query::map_retrieve_result;
 use axon::services::types::{
     AskResult, AskTiming, DoctorResult, DomainFacet, DomainsResult, MapOptions, Pagination,
@@ -471,5 +472,27 @@ fn mcp_screenshot_payload_contains_path_size_and_viewport() {
     assert_eq!(
         payload["viewport"], "1280x720",
         "viewport must be present and correct"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 8: Scope contract for endpoints action
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Endpoints requires axon:write because it fetches pages, bundles, probes
+/// endpoints, and may execute Chrome capture — all active outbound network I/O.
+#[test]
+fn endpoints_action_scope_is_write_not_read() {
+    assert_eq!(
+        required_scope_for("endpoints", ""),
+        Some("axon:write"),
+        "endpoints must require axon:write — it performs active outbound network I/O"
+    );
+    // Scope is per-action, not per-flag. Once axon:write is required, any
+    // read-scoped token is denied regardless of verify or capture_network flags.
+    assert_ne!(
+        required_scope_for("endpoints", ""),
+        Some("axon:read"),
+        "endpoints must NOT be axon:read — that would allow read tokens to use Axon as an outbound scanner"
     );
 }
