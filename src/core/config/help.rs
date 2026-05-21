@@ -18,6 +18,8 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "research",
             "extract",
             "screenshot",
+            "diff",
+            "brand",
         ],
     ),
     (
@@ -451,7 +453,7 @@ fn command_options(command: &Command) -> Vec<(String, String)> {
 
 fn relevant_global_options(command_name: &str) -> Vec<(String, String)> {
     let specs: &[(&str, &str)] = match command_name {
-        "scrape" | "crawl" | "extract" | "map" | "screenshot" => WEB_OPTIONS,
+        "scrape" | "crawl" | "extract" | "map" | "screenshot" | "diff" | "brand" => WEB_OPTIONS,
         "search" => SEARCH_OPTIONS,
         "research" => &[
             ("--limit <n>", "Maximum number of search results"),

@@ -53,6 +53,8 @@ MCP docs:
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
 | `ask <question>` | RAG: search + LLM answer. | No |
 | `summarize <url>...` | Scrape URL content and summarize it with the configured LLM | No |
+| `diff <url-a> <url-b>` | Compare two URLs, show content/metadata/link changes | No |
+| `brand <url>` | Extract brand identity: colors, fonts, logos, favicon | No |
 | `evaluate <question>` | RAG vs baseline + independent LLM judge (accuracy, relevance, completeness, specificity, verdict) | No |
 | `suggest [focus]` | Suggest new docs URLs to crawl | No |
 | `ingest <target>` | Ingest external source (GitHub repo, GitLab project URL, Gitea/Forgejo repo, generic HTTPS Git repo, Reddit subreddit/thread, YouTube video/playlist/channel) — auto-detects source type from target where possible. Git providers: source code indexed by default; use `--no-source` to skip. | Yes (default) |
@@ -347,7 +349,7 @@ Jobs are stored in SQLite and workers run in-process inside the same tokio runti
 axon scrape https://example.com           # SQLite/in-process runtime (only mode)
 ```
 
-**Supported commands:** scrape, summarize, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
+**Supported commands:** scrape, summarize, diff, brand, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
 
 **Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch.rs` and work today. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
 

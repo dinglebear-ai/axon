@@ -48,6 +48,8 @@ fn is_server_mode_rest_command(command: CommandKind) -> bool {
             | CommandKind::Endpoints
             | CommandKind::Scrape
             | CommandKind::Summarize
+            | CommandKind::Diff
+            | CommandKind::Brand
             | CommandKind::Search
             | CommandKind::Research
             | CommandKind::Crawl
@@ -80,6 +82,8 @@ fn fallback_policy_for(command: CommandKind, positional: &[String]) -> FallbackP
         }
         CommandKind::Scrape
         | CommandKind::Summarize
+        | CommandKind::Diff
+        | CommandKind::Brand
         | CommandKind::Map
         | CommandKind::Endpoints
         | CommandKind::Query

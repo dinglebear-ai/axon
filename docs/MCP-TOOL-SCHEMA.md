@@ -37,7 +37,7 @@ Incoming request map is parsed strictly with serde:
 ## Preferred Client Actions
 Use CLI-identical top-level actions:
 - Lifecycle families: `artifacts`, `crawl`, `embed`, `extract`, `ingest`
-- Direct actions: `ask`, `doctor`, `domains`, `elicit_demo`, `endpoints`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`, `summarize`
+- Direct actions: `ask`, `brand`, `diff`, `doctor`, `domains`, `elicit_demo`, `endpoints`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`, `summarize`
 
 For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canonical families with `subaction`:
 
@@ -60,6 +60,8 @@ These actions do not require `subaction`:
 | Action | Required Fields | Optional Fields |
 |--------|----------------|-----------------|
 | `ask` | `query` (string) | `diagnostics`, `explain`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
+| `brand` | `url` (string) | `render_mode`, `response_mode` |
+| `diff` | `url_a` (string), `url_b` (string) | `render_mode`, `response_mode` |
 | `doctor` | -- | `response_mode` |
 | `domains` | -- | `limit`, `offset`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |

@@ -1,3 +1,6 @@
+#[path = "handlers_query/brand_diff.rs"]
+mod brand_diff;
+
 use super::AxonMcpServer;
 use super::common::{
     InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
