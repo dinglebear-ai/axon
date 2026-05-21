@@ -11,9 +11,33 @@ use futures_util::{StreamExt, stream};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::future::Future;
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
+use tokio::sync::{Semaphore, mpsc};
 use url::Url;
+
+/// Process-wide semaphore limiting concurrent individual bundle HTTP fetches.
+/// Caps total simultaneous bundle requests across all endpoint discovery sessions.
+/// Default cap: 8. Override with `AXON_ENDPOINT_BUNDLE_CONCURRENCY`.
+static BUNDLE_FETCH_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
+    let cap = std::env::var("AXON_ENDPOINT_BUNDLE_CONCURRENCY")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(8)
+        .max(1);
+    Semaphore::new(cap)
+});
+
+/// Process-wide semaphore limiting concurrent Chrome capture sessions.
+/// Default cap: 1 (Chrome is a scarce resource).
+static CHROME_CAPTURE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
+    let cap = std::env::var("AXON_ENDPOINT_CHROME_CONCURRENCY")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(1)
+        .max(1);
+    Semaphore::new(cap)
+});
 
 mod capture;
 use capture::capture_requests_with_chrome;
@@ -226,6 +250,10 @@ async fn fetch_bundles(
 ) -> Vec<Result<PrefetchedBundle, String>> {
     stream::iter(sources.iter().cloned())
         .map(|source| async move {
+            let _permit = BUNDLE_FETCH_SEMAPHORE
+                .acquire()
+                .await
+                .map_err(|err| format!("bundle fetch semaphore closed: {err}"))?;
             fetch_script_bundle(client, &source.url, max_scan_bytes)
                 .await
                 .map_err(|err| format!("bundle fetch skipped {}: {err}", source.url))
@@ -309,9 +337,14 @@ async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
     capture_provider: &P,
     first_party_only: bool,
 ) -> Result<(), EndpointError> {
+    let _chrome_permit = CHROME_CAPTURE_SEMAPHORE
+        .acquire()
+        .await
+        .map_err(|err| format!("Chrome capture semaphore closed: {err}"))?;
     let captured = capture_provider
         .capture(cfg, url, CAPTURE_MAX_REQUESTS)
         .await?;
+    drop(_chrome_permit);
     let mut pending = Vec::with_capacity(CAPTURE_VALIDATION_CONCURRENCY);
     for request in captured {
         if report.endpoints.len() >= crate::core::content::DEFAULT_MAX_ENDPOINTS {
