@@ -1,5 +1,5 @@
-use crate::core::config::Config;
-use crate::core::content::build_selector_config;
+use crate::core::config::{Config, ScrapeFormat};
+use crate::core::content::{build_selector_config, to_llm_text};
 use crate::core::http::normalize_url;
 use crate::crawl::scrape::{build_scrape_website, fetch_single_page, select_output};
 use crate::extract::{VerticalContext, dispatch_by_url};
@@ -94,8 +94,10 @@ pub async fn scrape(
                     extractor = doc.extractor_name,
                     "vertical.dispatched: extractor handled scrape"
                 );
-                // v1: LLM format is only applied on the generic HTTP scrape path.
-                // Vertical extractors return structured markdown that should not be post-processed.
+                if cfg.format == ScrapeFormat::Llm {
+                    let llm_text = to_llm_text(&scrape_result.output, &normalized);
+                    scrape_result.output = llm_text;
+                }
                 return Ok(scrape_result);
             }
             Ok(None) => {} // no extractor claimed the URL — fall through to generic scrape
