@@ -12,7 +12,7 @@ mod sync_crawl_migration_tests;
 
 use super::common::parse_urls;
 use crate::cli::commands::CommandFuture;
-use crate::core::config::Config;
+use crate::core::config::{Config, ScrapeFormat};
 use crate::core::http::validate_url;
 use crate::core::logging::{log_info, log_warn};
 use crate::core::ui::{accent, muted, primary, success, warning};
@@ -31,6 +31,11 @@ pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
     Box::pin(async move {
         if subcommands::maybe_handle_subcommand(cfg, service_context).await? {
             return Ok(());
+        }
+        if cfg.format == ScrapeFormat::Llm {
+            return Err(
+                "--format llm is not yet supported for crawl; use `axon scrape --format llm <url>` for single-URL LLM format".into(),
+            );
         }
         let urls = parse_urls(cfg);
         if urls.is_empty() {
