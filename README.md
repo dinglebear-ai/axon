@@ -1,6 +1,6 @@
 # Axon
 
-Version: 4.4.1
+Version: 4.3.0
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -96,9 +96,7 @@ For local bearer-token operation, no manual env values are required. `setup init
 defaults to loopback MCP HTTP, writes `AXON_MCP_AUTH_MODE=bearer`, and generates
 `AXON_MCP_HTTP_TOKEN`. Optional features need credentials: Gemini auth under
 `~/.gemini` for LLM features, `TAVILY_API_KEY` for search/research,
-`GITHUB_TOKEN` for higher-rate GitHub ingest, `GITLAB_TOKEN` for private GitLab
-projects or higher-rate GitLab ingest, `GITEA_TOKEN` for Gitea/Forgejo API
-ingest, and `REDDIT_CLIENT_ID` plus
+`GITHUB_TOKEN` for higher-rate GitHub ingest, and `REDDIT_CLIENT_ID` plus
 `REDDIT_CLIENT_SECRET` for Reddit ingest. OAuth mode also requires
 `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`,
 `AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`.
@@ -166,7 +164,7 @@ CLI flags > environment variables > ~/.axon/config.toml > built-in defaults
 Keep in `.env`:
 
 - URLs: `AXON_SERVER_URL`, `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`.
-- Secrets: `AXON_MCP_HTTP_TOKEN`, `TAVILY_API_KEY`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, Reddit credentials, OAuth credentials, `HF_TOKEN`.
+- Secrets: `AXON_MCP_HTTP_TOKEN`, `TAVILY_API_KEY`, `GITHUB_TOKEN`, Reddit credentials, OAuth credentials, `HF_TOKEN`.
 - Docker/runtime bootstrap: `AXON_HOME`, `AXON_DATA_DIR`, `AXON_IMAGE`, `AXON_MCP_HTTP_PUBLISH`, `TEI_HTTP_PORT`, GPU device values.
 - Gemini runtime pointers when needed: `AXON_HEADLESS_GEMINI_CMD`, `AXON_HEADLESS_GEMINI_HOME`.
 
