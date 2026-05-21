@@ -336,6 +336,8 @@ impl AxonMcpServer {
                     "sources": ["sources"],
                     "stats": ["stats"],
                     "artifacts": ["head", "grep", "wc", "read", "list", "delete", "clean", "search"],
+                    "diff": ["diff"],
+                    "brand": ["brand"],
                     "elicit_demo": []
                 },
                 "resources": [

@@ -48,6 +48,8 @@ pub async fn dispatch_action(
         AxonRequest::Scrape(req) => commands::dispatch_scrape(service_context, req).await,
         AxonRequest::Summarize(req) => commands::dispatch_summarize(service_context, req).await,
         AxonRequest::Screenshot(req) => commands::dispatch_screenshot(service_context, req).await,
+        AxonRequest::Diff(req) => commands::dispatch_diff(service_context, req).await,
+        AxonRequest::Brand(req) => commands::dispatch_brand(service_context, req).await,
         other => Err(unsupported_action(action_name(&other))),
     }
 }
@@ -114,6 +116,7 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         },
         AxonRequest::Scrape(_) | AxonRequest::Screenshot(_) => Some("axon:write"),
         AxonRequest::VerticalScrape(_) => Some("axon:write"),
+        AxonRequest::Diff(_) | AxonRequest::Brand(_) => Some("axon:read"),
         // NOTE: no wildcard arm — the match must be exhaustive.
         // Adding a new AxonRequest variant without a required_scope arm is a compile error,
         // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
@@ -158,7 +161,9 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Ask(_) => "ask",
         AxonRequest::Summarize(_) => "summarize",
         AxonRequest::Screenshot(_) => "screenshot",
+        AxonRequest::Brand(_) => "brand",
         AxonRequest::Debug(_) => "debug",
+        AxonRequest::Diff(_) => "diff",
         AxonRequest::Dedupe(_) => "dedupe",
         AxonRequest::Migrate(_) => "migrate",
         AxonRequest::Watch(_) => "watch",

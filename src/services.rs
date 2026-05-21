@@ -1,11 +1,13 @@
 pub mod action_api;
 pub mod artifacts;
+pub mod brand;
 pub mod client_contract;
 pub mod config;
 pub mod context;
 pub mod crawl;
 pub mod crawl_sync;
 pub mod debug;
+pub mod diff;
 pub mod document;
 pub mod embed;
 pub mod endpoints;

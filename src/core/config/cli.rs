@@ -43,8 +43,12 @@ pub(super) enum CliCommand {
     Research(TextArg),
     /// Embed file, directory, or URL into Qdrant
     Embed(EmbedArgs),
+    /// Analyze a URL's brand identity: colors, fonts, logos, favicon
+    Brand(ScrapeArgs),
     /// Run doctor diagnostics plus LLM-assisted troubleshooting
     Debug(TextArg),
+    /// Diff two URLs — show what changed between them
+    Diff(DiffArgs),
     /// Check connectivity to all required services
     Doctor(DoctorArgs),
     /// Semantic vector search over the Qdrant index
@@ -182,6 +186,16 @@ pub(super) struct MigrateArgs {
 pub(super) struct ScrapeArgs {
     #[arg(value_name = "URL")]
     pub(super) positional_urls: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct DiffArgs {
+    /// First URL (baseline)
+    #[arg(value_name = "URL_A")]
+    pub(super) url_a: String,
+    /// Second URL (comparison)
+    #[arg(value_name = "URL_B")]
+    pub(super) url_b: String,
 }
 
 #[derive(Debug, Args)]

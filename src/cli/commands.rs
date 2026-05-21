@@ -1,4 +1,5 @@
 pub mod ask;
+pub mod brand;
 pub mod common;
 mod common_jobs;
 pub mod common_urls;
@@ -7,6 +8,7 @@ pub mod config;
 pub mod crawl;
 pub mod debug;
 pub mod dedupe;
+pub mod diff;
 pub mod doctor;
 pub mod domains;
 pub mod embed;
@@ -42,12 +44,14 @@ pub mod watch;
 mod services_migration_tests;
 
 pub use ask::run_ask;
+pub use brand::run_brand;
 pub use common::start_url_from_cfg;
 pub use completions::run_completions;
 pub use config::run_config;
 pub use crawl::run_crawl;
 pub use debug::run_debug;
 pub use dedupe::run_dedupe;
+pub use diff::run_diff;
 pub use doctor::run_doctor;
 pub use domains::run_domains;
 pub use embed::run_embed;

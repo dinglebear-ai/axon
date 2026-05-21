@@ -53,6 +53,8 @@ MCP docs:
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
 | `ask <question>` | RAG: search + LLM answer. | No |
 | `summarize <url>...` | Scrape URL content and summarize it with the configured LLM | No |
+| `diff <url-a> <url-b>` | Compare two URLs, show content/metadata/link changes | No |
+| `brand <url>` | Extract brand identity: colors, fonts, logos, favicon | No |
 | `evaluate <question>` | RAG vs baseline + independent LLM judge (accuracy, relevance, completeness, specificity, verdict) | No |
 | `suggest [focus]` | Suggest new docs URLs to crawl | No |
 | `ingest <target>` | Ingest external source (GitHub repo, GitLab project URL, Gitea/Forgejo repo, generic HTTPS Git repo, Reddit subreddit/thread, YouTube video/playlist/channel) — auto-detects source type from target where possible. Git providers: source code indexed by default; use `--no-source` to skip. | Yes (default) |
