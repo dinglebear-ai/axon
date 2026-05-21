@@ -279,15 +279,6 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         DeleteOnMigration,
         false,
     ),
-    // move-toml candidates not yet in config.example.toml
-    spec(
-        "AXON_ASK_AUTHORITATIVE_DOMAINS",
-        MoveToml,
-        NotRuntime,
-        Some("ask.authoritative-domains"),
-        WarnEnvOverride,
-        false,
-    ),
     spec(
         "AXON_CHROME_USER_AGENT",
         MoveToml,
