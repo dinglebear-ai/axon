@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_FILES = ("docker-compose.yaml", "docker-compose.yml")
+DEFAULT_FILES = ("docker-compose.prod.yaml", "docker-compose.yaml", "docker-compose.yml")
 
 
 def strip_inline_comment(value: str) -> str:

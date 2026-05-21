@@ -227,6 +227,18 @@ compatibility = "canonical"
 reason = "Docker Compose image override."
 
 [[env]]
+key = "AXON_DEV_TARGET_DIR"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Development Compose bind-mount source for the locally built Axon binary directory."
+
+[[env]]
 key = "GEMINI_HOME"
 classification = "compose-env"
 runtime_placement = "compose-interpolation"

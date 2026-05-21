@@ -10,7 +10,9 @@ use crate::mcp::schema::{
     AxonRequest, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction, ResponseMode,
     ScrapeRequest, StatusRequest,
 };
-use crate::services::{action_api, config as config_service, query as query_service, setup, system};
+use crate::services::{
+    action_api, config as config_service, query as query_service, setup, system,
+};
 use axum::{
     Json,
     extract::State,
@@ -70,7 +72,10 @@ pub async fn get_env_config(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     let Some(path) = config_service::resolve_env_path() else {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "HOME unset; cannot resolve ~/.axon/.env")
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "HOME unset; cannot resolve ~/.axon/.env",
+        )
             .into_response();
     };
     match config_service::read_env_text(&path) {
@@ -93,7 +98,10 @@ pub async fn save_env_config(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     let Some(path) = config_service::resolve_env_path() else {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "HOME unset; cannot resolve ~/.axon/.env")
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "HOME unset; cannot resolve ~/.axon/.env",
+        )
             .into_response();
     };
     match config_service::write_env_text(&path, &req.raw_env) {
@@ -187,16 +195,17 @@ pub async fn panel_command(
             Ok(result) => Json(PanelCommandResponse {
                 command: command.to_string(),
                 action: serde_json::json!({ "action": "ask", "query": query }),
-                result: serde_json::to_value(result).unwrap_or_else(|err| {
-                    serde_json::json!({ "serialization_error": err.to_string() })
-                }),
+                result: serde_json::to_value(result).unwrap_or_else(
+                    |err| serde_json::json!({ "serialization_error": err.to_string() }),
+                ),
             })
             .into_response(),
             Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
         },
         Ok(ParsedPanelCommand::Action(action)) => {
-            let action_json = serde_json::to_value(&action)
-                .unwrap_or_else(|err| serde_json::json!({ "serialization_error": err.to_string() }));
+            let action_json = serde_json::to_value(&action).unwrap_or_else(
+                |err| serde_json::json!({ "serialization_error": err.to_string() }),
+            );
             match action_api::dispatch_action(&state.service_context, action).await {
                 Ok(result) => Json(PanelCommandResponse {
                     command: command.to_string(),
@@ -318,7 +327,10 @@ fn sanitize_status_payload(mut value: serde_json::Value) -> serde_json::Value {
         "local_embed_jobs",
         "local_ingest_jobs",
     ] {
-        let Some(jobs) = object.get_mut(key).and_then(serde_json::Value::as_array_mut) else {
+        let Some(jobs) = object
+            .get_mut(key)
+            .and_then(serde_json::Value::as_array_mut)
+        else {
             continue;
         };
         for job in jobs {

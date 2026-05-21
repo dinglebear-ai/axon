@@ -63,7 +63,7 @@ Infrastructure (Qdrant + TEI + Chrome) only:
 ```bash
 just services-up
 # equivalent to:
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
 ```
 
 Foreground dev loop (builds binary, starts infra, runs `axon mcp` in-process):
@@ -285,7 +285,7 @@ restart from `pending`.
 
 ## Backup and restore — Qdrant
 
-Qdrant data is persisted at the host bind mount declared in `docker-compose.yaml`:
+Qdrant data is persisted at the host bind mount declared in `docker-compose.prod.yaml`:
 
 ```bash
 ${AXON_HOME:-$HOME/.axon}/qdrant
@@ -303,7 +303,7 @@ curl -s -X POST "${QDRANT_URL}/collections/${AXON_COLLECTION:-cortex}/snapshots"
 curl -s "${QDRANT_URL}/collections/${AXON_COLLECTION:-cortex}/snapshots"
 
 # Download (path returned by the create call lives under /qdrant/snapshots)
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml \
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml \
     exec axon-qdrant ls /qdrant/snapshots
 docker cp axon-qdrant:/qdrant/snapshots/<file> ./backup/
 ```
@@ -353,11 +353,11 @@ RUST_LOG=info,axon::jobs=debug just dev
 ### Container logs
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml logs -f axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml logs -f axon-qdrant axon-tei axon-chrome
 ```
 
 Container logs are JSON-formatted, capped at 10 MB × 3 files (see
-`docker-compose.yaml:21-25`).
+`docker-compose.prod.yaml:21-25`).
 
 ### Chrome diagnostics
 
@@ -469,7 +469,7 @@ The `to` collection is created if missing; re-running is idempotent.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `axon doctor` shows `tei.ok=false` | TEI container down or model still loading | `docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps`; wait for healthcheck (`start_period: 20s`); check `docker logs axon-tei` for CUDA OOM |
+| `axon doctor` shows `tei.ok=false` | TEI container down or model still loading | `docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps`; wait for healthcheck (`start_period: 20s`); check `docker logs axon-tei` for CUDA OOM |
 | `tei` returns `503` mid-run | Model overload / CUDA pressure | Reduce `TEI_MAX_BATCH_TOKENS` / `TEI_MAX_CONCURRENT_REQUESTS` in `~/.axon/.env`; lower `--batch-concurrency`; TEI client auto-retries on 429/5xx (see CLAUDE.md "TEI retries") |
 | `qdrant connection refused` | Qdrant not started or `QDRANT_URL` wrong | `just services-up`; verify `curl ${QDRANT_URL}/readyz` |
 | `queue cap exceeded` on submit | `AXON_MAX_PENDING_*` reached | Run `axon <kind> list` to inspect; `axon <kind> cleanup` removes terminal rows; raise the cap or set to `0` |
@@ -477,7 +477,7 @@ The `to` collection is created if missing; re-running is idempotent.
 | Job stuck `running` past 10 min | Worker hang | Heartbeat watchdog will mark `failed` automatically; or run `axon <kind> recover` |
 | Hybrid search returns dense-only results | Collection is in legacy unnamed mode | `axon doctor` will surface `mode_mismatch_warning`; run `axon migrate --from <old> --to <new>` and restart |
 | Most pages flagged as thin | Site is JS-rendered | `--render-mode chrome` or `auto-switch`; do NOT change `readability: false` in `src/core/content.rs` (confirmed regression) |
-| `Chrome` probe fails in doctor | `axon-chrome` container down | `docker compose --env-file ~/.axon/.env -f docker-compose.yaml restart axon-chrome` |
+| `Chrome` probe fails in doctor | `axon-chrome` container down | `docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml restart axon-chrome` |
 | Streaming `ask` panics on multibyte char | Out-of-date binary | Pull `main`, rebuild — `src/vector/ops/commands/ask/context/retrieval.rs` uses `.get(i..)` |
 
 ---
@@ -508,7 +508,7 @@ Volumes (`${AXON_HOME:-$HOME/.axon}/{qdrant,tei,...}`) are bind-mounted on the h
 
 | Path | Purpose |
 |------|---------|
-| `docker-compose.yaml` | Infra services (qdrant, tei, chrome) |
+| `docker-compose.prod.yaml` | Infra services (qdrant, tei, chrome) |
 | `Justfile` | `services-up`, `services-down`, `stop`, `dev` |
 | `scripts/axon` | Wrapper that auto-sources `~/.axon/.env` and runs `cargo run --bin axon` |
 | `scripts/dev-setup.sh` | First-run bootstrap |

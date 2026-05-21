@@ -62,7 +62,8 @@ axon_rust/
 ├── renovate.json                    # Dependency update bot
 ├── rust-toolchain.toml              # Rust 1.94.0 pinned toolchain
 │
-├── docker-compose.yaml                 # Axon server + infrastructure services
+├── docker-compose.prod.yaml         # Axon server + infrastructure services
+├── docker-compose.yaml              # Local development stack
 ├── .env.example                     # Environment variable template
 │
 ├── CLAUDE.md                        # Project instructions for Claude Code
@@ -129,4 +130,5 @@ landing the change and add the new module under the standard `foo.rs` plus
 
 | File | Contents | Network |
 |------|----------|---------|
-| `docker-compose.yaml` | Axon server, Qdrant, TEI, Chrome | `axon` bridge |
+| `docker-compose.prod.yaml` | Axon server, Qdrant, TEI, Chrome | `axon` bridge |
+| `docker-compose.yaml` | Local development stack with bind-mounted Axon debug binary | `axon` bridge |

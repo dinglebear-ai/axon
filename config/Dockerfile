@@ -7,6 +7,7 @@ WORKDIR /web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci
 COPY apps/web ./
+COPY assets ./public/assets
 RUN npm run build
 
 # ── Builder ───────────────────────────────────────────────────────────────────
@@ -101,4 +102,37 @@ ENV HOME=/home/axon \
 EXPOSE 8001
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/axon"]
+CMD ["serve"]
+
+# ── Dev runtime ───────────────────────────────────────────────────────────────
+# Runs the host-built debug binary bind-mounted by docker-compose.yaml.
+# Use a newer libc than the production image so the host binary can run without
+# rebuilding the full container for ordinary Rust code changes.
+FROM node:24-trixie-slim AS dev-runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libsqlite3-0 \
+        curl \
+        git \
+        tini \
+    && npm install -g @google/gemini-cli@0.41.2 \
+    && mkdir -p /home/axon \
+    && chown 1000:1000 /home/axon \
+    && rm -rf /var/lib/apt/lists/* /root/.npm
+
+USER 1000:1000
+WORKDIR /home/axon
+
+ENV HOME=/home/axon \
+    AXON_HOME=/home/axon/.axon \
+    AXON_DATA_DIR=/home/axon/.axon \
+    AXON_IN_CONTAINER=1 \
+    AXON_MCP_HTTP_HOST=0.0.0.0 \
+    CLICOLOR_FORCE=1 \
+    RUST_LOG=info
+
+EXPOSE 8001
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/home/axon/.axon/dev/axon"]
 CMD ["serve"]

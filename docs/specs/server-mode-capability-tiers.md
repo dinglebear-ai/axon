@@ -384,7 +384,7 @@ Services
   + gemini_headless command validation passed
 
 Recommendations
-  1. Start embeddings: docker compose --env-file ~/.axon/.env up -d axon-tei
+  1. Start embeddings: docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei
   2. Reconcile local backlog: axon sync pending --server http://127.0.0.1:8001
 ```
 
@@ -533,8 +533,8 @@ Current `scripts/axon` behavior:
 
 - Builds host debug binary: `target/debug/axon`.
 - Symlinks it into `~/.local/bin/axon`.
-- Copies the debug binary to `${AXON_HOME:-~/.axon}/dev/axon`, which is visible inside the dev container at `/home/axon/.axon/dev/axon`.
-- `docker-compose.dev.yaml` runs the dev container through `/home/axon/.axon/dev/axon`.
+- Exposes the debug target directory to the dev container through `AXON_DEV_TARGET_DIR` (default: `target/debug`), mounted at `/home/axon/.axon/dev`.
+- `docker-compose.yaml` runs the dev container through `/home/axon/.axon/dev/axon`.
 - If the debug binary changed and the `axon` container exists, restarts/recreates the dev container with `--no-build`.
 - If image-level inputs changed, starts a background `docker compose build axon && docker compose up -d axon --no-deps`.
 
@@ -550,9 +550,8 @@ Implemented path:
 ```text
 Rust-only edit:
   cargo build --bin axon
-  install -m 0755 target/debug/axon ~/.axon/dev/axon
-  docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d axon --no-deps --no-build
-  docker compose -f docker-compose.yaml -f docker-compose.dev.yaml restart axon
+  docker compose -f docker-compose.yaml up -d axon --no-deps --no-build
+  docker compose -f docker-compose.yaml restart axon
 
 Image-input edit:
   docker compose build axon

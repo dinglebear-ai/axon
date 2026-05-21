@@ -196,21 +196,29 @@ High-level subsystem map:
 
 ### Docker Compose
 
-The stack uses one compose file for the Axon server plus infrastructure services on the `axon` bridge network:
+The production stack and local development stack are split:
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `docker-compose.yaml` | Axon server, Qdrant, Chrome, TEI | `~/.axon/.env` |
+| `docker-compose.prod.yaml` | Axon server, Qdrant, Chrome, TEI | `~/.axon/.env` |
+| `docker-compose.yaml` | Local dev stack; extends production services and runs `axon` from the bind-mounted local debug binary in `target/debug` | `~/.axon/.env` |
 
-**GPU acceleration:** On NVIDIA hosts, `docker-compose.yaml` includes NVIDIA reservations for `axon-tei`.
+**GPU acceleration:** On NVIDIA hosts, `docker-compose.prod.yaml` includes NVIDIA reservations for `axon-tei`.
 
 ```bash
-docker compose --env-file ~/.axon/.env up -d
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
+```
+
+For local dev:
+
+```bash
+cargo build --bin axon
+docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon
 ```
 
 CPU-only hosts should override the TEI image/settings or run an external TEI endpoint.
 
-### Infrastructure Services (`docker-compose.yaml`)
+### Infrastructure Services (`docker-compose.prod.yaml`)
 
 | Service | Image | Exposed Port | Purpose |
 |---------|-------|-------------|---------|
@@ -221,7 +229,7 @@ CPU-only hosts should override the TEI image/settings or run an external TEI end
 ```bash
 # Start infrastructure (qdrant, tei, chrome)
 just services-up
-# or: docker compose --env-file ~/.axon/.env up -d axon-qdrant axon-tei axon-chrome
+# or: docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome
 
 # Check infra health
 docker compose --env-file ~/.axon/.env ps

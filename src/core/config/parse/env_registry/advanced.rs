@@ -61,6 +61,14 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_DEV_TARGET_DIR",
+        ComposeEnv,
+        ComposeInterpolation,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "AXON_LOG_COLOR",
         ComposeEnv,
         ComposeInterpolation,

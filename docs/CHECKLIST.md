@@ -35,7 +35,7 @@ Pre-release quality checklist. Complete all items before tagging a release.
 
 ## Infrastructure
 
-- [ ] `docker-compose.yaml` starts cleanly with `--env-file ~/.axon/.env` (Axon server, Qdrant, TEI, Chrome)
+- [ ] `docker-compose.prod.yaml` starts cleanly with `--env-file ~/.axon/.env` (Axon server, Qdrant, TEI, Chrome)
 - [ ] `axon serve` starts and owns in-process crawl/embed/extract/ingest workers
 - [ ] SQLite schema migrations apply under `src/jobs/migrations/`
 

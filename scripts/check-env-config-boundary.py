@@ -14,7 +14,7 @@ SCAN_GLOBS = [
     "src/**/*.rs",
     "tests/**/*.rs",
     "scripts/**",
-    "docker-compose.yaml",
+    "docker-compose.prod.yaml",
     ".env.example",
     "config.example.toml",
     "docs/CONFIG.md",

@@ -73,7 +73,7 @@ just services-up
 
 TEI benefits from GPU acceleration for embedding generation:
 - NVIDIA GPU with CUDA drivers
-- `docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d`
+- `docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d`
 - CPU-only: use an external `TEI_URL` or override the TEI image/settings to remove
   the NVIDIA device reservation before starting the default services compose file.
 

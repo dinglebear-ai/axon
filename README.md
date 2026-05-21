@@ -134,11 +134,17 @@ Stop:
 docker compose --env-file ~/.axon/.env -f ~/.axon/compose/docker-compose.yaml down
 ```
 
-Development local-build override:
+Development stack:
 
 ```bash
-docker compose --env-file .env.example -f docker-compose.yaml -f docker-compose.dev.yaml build
+cargo build --bin axon
+docker compose --env-file .env.example -f docker-compose.yaml build axon
+docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon
 ```
+
+The development stack uses the production infrastructure definitions but runs
+`axon` from the bind-mounted local debug binary under `target/debug`, inside the
+newer `axon:dev-runtime` image.
 
 ## Configuration
 
@@ -283,7 +289,7 @@ cargo test --test cli_help_contract -- --nocapture
 cargo test parse_setup -- --nocapture
 cargo test env_file_ -- --nocapture
 python3 scripts/generate_mcp_schema_doc.py --check
-docker compose --env-file .env.example -f docker-compose.yaml config --quiet
+docker compose --env-file .env.example -f docker-compose.prod.yaml config --quiet
 ```
 
 Module layout policy:
@@ -339,8 +345,8 @@ Common failures:
 ## Related Files
 
 - `install.sh` — verified one-line installer bootstrapper.
-- `docker-compose.yaml` — production Compose stack.
-- `docker-compose.dev.yaml` — local build override.
+- `docker-compose.prod.yaml` — production Compose stack.
+- `docker-compose.yaml` — local development stack.
 - `.env.example` — production environment template.
 - `config.example.toml` — non-secret tuning template.
 - `.claude-plugin/plugin.json` — Claude plugin manifest.

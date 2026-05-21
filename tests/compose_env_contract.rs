@@ -7,24 +7,24 @@ use std::process::Command;
 
 #[test]
 fn services_compose_reads_canonical_axon_home_env() {
-    let compose = fs::read_to_string("docker-compose.yaml")
-        .expect("docker-compose.yaml should be readable at repo root");
+    let compose = fs::read_to_string("docker-compose.prod.yaml")
+        .expect("docker-compose.prod.yaml should be readable at repo root");
 
     assert!(
         compose.contains("${AXON_HOME:-${HOME}/.axon}/.env"),
-        "docker-compose.yaml must reference ~/.axon/.env so the canonical env file is used"
+        "docker-compose.prod.yaml must reference ~/.axon/.env so the canonical env file is used"
     );
     assert!(
         compose.contains("${AXON_HOME:-${HOME}/.axon}/qdrant"),
-        "docker-compose.yaml must keep qdrant data under the canonical ~/.axon appdata root"
+        "docker-compose.prod.yaml must keep qdrant data under the canonical ~/.axon appdata root"
     );
     assert!(
         compose.contains("${AXON_HOME:-${HOME}/.axon}/tei"),
-        "docker-compose.yaml must keep TEI data under the canonical ~/.axon appdata root"
+        "docker-compose.prod.yaml must keep TEI data under the canonical ~/.axon appdata root"
     );
     assert!(
         compose.contains("${AXON_MCP_HTTP_PUBLISH:-8001}:8001"),
-        "docker-compose.yaml must use short port syntax without a host/interface prefix"
+        "docker-compose.prod.yaml must use short port syntax without a host/interface prefix"
     );
     assert!(
         compose.contains("TEI_SERVER_MAX_CLIENT_BATCH_SIZE"),
@@ -36,15 +36,42 @@ fn services_compose_reads_canonical_axon_home_env() {
     );
     assert!(
         compose.contains("http://127.0.0.1:8001/healthz"),
-        "docker-compose.yaml healthcheck must work in bearer and OAuth-only auth modes"
+        "docker-compose.prod.yaml healthcheck must work in bearer and OAuth-only auth modes"
     );
     assert!(
         compose.contains("AXON_HOME: /home/axon/.axon"),
-        "docker-compose.yaml must override host AXON_HOME inside the container"
+        "docker-compose.prod.yaml must override host AXON_HOME inside the container"
     );
     assert!(
         compose.contains("AXON_ENV_FILE: \"\"") && compose.contains("AXON_CONFIG_PATH: \"\""),
-        "docker-compose.yaml must clear host-only bootstrap overrides in the container"
+        "docker-compose.prod.yaml must clear host-only bootstrap overrides in the container"
+    );
+}
+
+#[test]
+fn dev_compose_mounts_local_debug_binary_runtime() {
+    let compose = fs::read_to_string("docker-compose.yaml")
+        .expect("docker-compose.yaml should be readable at repo root");
+
+    assert!(
+        compose.contains("target: dev-runtime"),
+        "docker-compose.yaml should build the dev runtime target, not the full production image"
+    );
+    assert!(
+        compose.contains("${AXON_DEV_TARGET_DIR:-./target/debug}"),
+        "docker-compose.yaml should bind-mount the local debug target directory"
+    );
+    assert!(
+        compose.contains("target: /home/axon/.axon/dev"),
+        "docker-compose.yaml should mount the debug target where the dev entrypoint expects it"
+    );
+    assert!(
+        compose.contains("/home/axon/.axon/dev/axon"),
+        "docker-compose.yaml should run the bind-mounted axon binary"
+    );
+    assert!(
+        !compose.contains("docker-compose.dev.yaml"),
+        "docker-compose.yaml should be the dev stack directly, not an overlay requiring docker-compose.dev.yaml"
     );
 }
 
@@ -233,7 +260,7 @@ fn services_up_starts_only_infrastructure_services() {
         "just services-down should stop only infrastructure services"
     );
     assert!(
-        !justfile.contains("-f docker-compose.yaml down"),
+        !justfile.contains("-f docker-compose.prod.yaml down"),
         "just services-down must not tear down the whole compose project"
     );
 }
