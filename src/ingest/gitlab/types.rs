@@ -123,8 +123,10 @@ pub fn parse_gitlab_target(input: &str) -> Result<GitLabTarget> {
         .cloned()
         .ok_or_else(|| anyhow!("invalid GitLab target '{input}': missing project"))?;
     let namespace_path = parts.join("/");
+    // web_url preserves the user-supplied scheme (display/browser use only — no auth).
+    // clone_url and api_base always use https so auth tokens are never sent over plaintext.
     let web_url = format!("{scheme}://{host}/{namespace_path}");
-    let clone_url = format!("{web_url}.git");
+    let clone_url = format!("https://{host}/{namespace_path}.git");
     validate_url(&web_url)?;
     validate_url(&clone_url)?;
     let encoded_project_path = percent_encode_path(&namespace_path);
@@ -134,7 +136,7 @@ pub fn parse_gitlab_target(input: &str) -> Result<GitLabTarget> {
         project,
         web_url,
         clone_url,
-        api_base: format!("{scheme}://{host}/api/v4"),
+        api_base: format!("https://{host}/api/v4"),
         encoded_project_path,
     })
 }
