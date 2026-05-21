@@ -99,21 +99,20 @@ The `gh_*` fields are deprecated and will be removed after a full re-index.
 ## Reddit Ingest Fields
 
 Points from `source_type = "reddit"` carry these fields (from `src/ingest/reddit/meta.rs`).
-None are currently Qdrant-indexed; add indexes here and in `payload_indexes.rs` together.
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `reddit_author` | string | Post author login (`[deleted]` when removed) |
-| `reddit_created_utc` | integer | Unix timestamp (float cast to u64) |
-| `reddit_score` | integer | Net upvotes |
-| `reddit_num_comments` | integer | |
-| `reddit_upvote_ratio` | float | 0.0–1.0 |
-| `reddit_subreddit` | string | e.g. `"rust"` (without the `r/` prefix) |
-| `reddit_domain` | string | Domain of linked content |
-| `reddit_is_video` | bool | |
-| `reddit_distinguished` | string\|null | `"moderator"`, `"admin"`, or absent |
-| `reddit_gilded` | integer | Number of gold awards |
-| `reddit_flair` | string\|null | Link flair text |
+| Field | Type | Indexed | Notes |
+|-------|------|---------|-------|
+| `reddit_author` | string | no | Post author login (`[deleted]` when removed) |
+| `reddit_created_utc` | integer | no | Unix timestamp (float cast to u64) |
+| `reddit_score` | integer | no | Net upvotes |
+| `reddit_num_comments` | integer | no | |
+| `reddit_upvote_ratio` | float | no | 0.0–1.0 |
+| `reddit_subreddit` | string | yes | e.g. `"rust"` (without the `r/` prefix) |
+| `reddit_domain` | string | no | Domain of linked content |
+| `reddit_is_video` | bool | no | |
+| `reddit_distinguished` | string\|null | no | `"moderator"`, `"admin"`, or absent |
+| `reddit_gilded` | integer | no | Number of gold awards |
+| `reddit_flair` | string\|null | no | Link flair text |
 
 The reddit **vertical extractor** (not ingest) uses `extractor_name = "reddit"` and `source_type = "scrape"`.
 It stores a `structured_blob` with raw post JSON but does **not** emit the flat `reddit_*` fields above.
@@ -123,21 +122,20 @@ It stores a `structured_blob` with raw post JSON but does **not** emit the flat 
 ## YouTube Ingest Fields
 
 Points from `source_type = "youtube"` carry these fields (from `src/ingest/youtube/meta.rs`).
-None are currently Qdrant-indexed.
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `yt_video_id` | string | 11-character YouTube video ID |
-| `yt_thumbnail` | string | Thumbnail URL |
-| `yt_channel` | string | Channel display name |
-| `yt_channel_url` | string | Channel page URL |
-| `yt_uploader_id` | string | Channel handle or user ID |
-| `yt_upload_date` | string | `YYYYMMDD` format |
-| `yt_duration` | string | Human-readable duration (e.g. `"12:34"`) |
-| `yt_view_count` | integer\|null | |
-| `yt_like_count` | integer\|null | |
-| `yt_tags` | string[] | Video tags |
-| `yt_categories` | string[] | Video categories |
+| Field | Type | Indexed | Notes |
+|-------|------|---------|-------|
+| `yt_video_id` | string | no | 11-character YouTube video ID |
+| `yt_thumbnail` | string | no | Thumbnail URL |
+| `yt_channel` | string | yes | Channel display name |
+| `yt_channel_url` | string | no | Channel page URL |
+| `yt_uploader_id` | string | no | Channel handle or user ID |
+| `yt_upload_date` | string | no | `YYYYMMDD` format |
+| `yt_duration` | string | no | Human-readable duration (e.g. `"12:34"`) |
+| `yt_view_count` | integer\|null | no | |
+| `yt_like_count` | integer\|null | no | |
+| `yt_tags` | string[] | no | Video tags |
+| `yt_categories` | string[] | no | Video categories |
 
 YouTube ingest embeds two `PreparedDoc`s per video: one for the VTT transcript
 (`url = "https://youtube.com/watch?v=<id>"`) and one for the description
