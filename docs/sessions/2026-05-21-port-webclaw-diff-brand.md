@@ -2,7 +2,7 @@
 date: 2026-05-21 04:21:01 EST
 repo: git@github.com:jmagar/axon.git
 branch: feature/port-webclaw-diff-brand
-head: 59c9782d
+head: eb51be46
 plan: docs/plans/2026-05-21-port-webclaw-diff-brand.md
 agent: Claude (claude-sonnet-4-6)
 working directory: /home/jmagar/workspace/axon_rust/.worktrees/port-webclaw-diff-brand
@@ -16,7 +16,7 @@ Invoke the `/work-it` skill to execute the plan at `docs/plans/2026-05-21-port-w
 
 ## Session Overview
 
-Successfully implemented `axon diff <url-a> <url-b>` and `axon brand <url>` from scratch, following the plan's established summarize pattern. Both commands are fully wired through the CLI, CommandKind, lib.rs, MCP schema, action_api, and MCP handlers. 2056 lib tests pass, clippy clean, fmt clean, pre-commit hooks pass. PR #122 created and pushed. Pre-existing CI failures (apps/web/out RustEmbed) fixed by cherry-picking commit 5c7f18ed from feature/gitlab-ingest.
+Successfully implemented `axon diff <url-a> <url-b>` and `axon brand <url>` from scratch, following the plan's established summarize pattern. Both commands are fully wired through the CLI, CommandKind, lib.rs, MCP schema, action_api, and MCP handlers. PR #122 created. 22 reviewer comments from Copilot, cubic-dev, and Codex addressed in a follow-up commit covering: required_scope_for() fix (P1), DiffStatus link changes, SSRF guard + parse_custom_headers for brand, HTTP status validation, find_favicon find_map fix, find_logo src=? bug, ancestor traversal for logo detection, respond_with_mode for diff/brand handlers, RGB/RGBA clamping, HSL hue normalization, font sorting stability, font URL stem parsing, and CHANGELOG ordering. Additional CI fixes: apps/web/package.json + README.md version bumps, mcp_schema_models.py VARIANT_TO_ACTION updated for diff/brand.
 
 ## Sequence of Events
 
