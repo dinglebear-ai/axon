@@ -393,6 +393,28 @@ fn parse_ingest_start_github() {
     }
 }
 
+#[test]
+fn parse_ingest_start_gitlab() {
+    let raw = obj(json!({
+        "action": "ingest",
+        "subaction": "start",
+        "source_type": "gitlab",
+        "target": "https://gitlab.com/group/project"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "ingest start gitlab should parse");
+    if let Ok(AxonRequest::Ingest(i)) = result {
+        assert!(matches!(i.subaction, Some(IngestSubaction::Start)));
+        assert!(matches!(i.source_type, Some(IngestSourceType::Gitlab)));
+        assert_eq!(
+            i.target.as_deref(),
+            Some("https://gitlab.com/group/project")
+        );
+    } else {
+        panic!("expected Ingest variant");
+    }
+}
+
 // --- unknown action -> error ---
 
 #[test]
@@ -637,7 +659,9 @@ fn serde_search_time_range_variants() {
 
 #[test]
 fn serde_ingest_source_type_variants() {
-    for src in ["github", "reddit", "youtube", "sessions"] {
+    for src in [
+        "github", "gitlab", "gitea", "git", "reddit", "youtube", "sessions",
+    ] {
         let raw = obj(json!({
             "action": "ingest",
             "subaction": "start",

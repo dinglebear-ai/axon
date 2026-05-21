@@ -253,6 +253,8 @@ temporary overrides and legacy scripts.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GITHUB_TOKEN` | -- | GitHub PAT for private repos and rate limits |
+| `GITLAB_TOKEN` | -- | GitLab personal, project, or group access token for private projects and rate limits |
+| `GITEA_TOKEN` | -- | Gitea/Forgejo access token for private repos and rate limits |
 | `REDDIT_CLIENT_ID` | -- | Reddit OAuth2 client ID |
 | `REDDIT_CLIENT_SECRET` | -- | Reddit OAuth2 client secret |
 

@@ -111,6 +111,9 @@ Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 | Source Type | Description |
 |------------|-------------|
 | `github` | Ingest GitHub repo (code, issues, PRs, wiki) |
+| `gitlab` | Ingest GitLab project (code, issues, merge requests, wiki) |
+| `gitea` | Ingest Gitea/Forgejo repo (code, issues, pull requests) |
+| `git` | Ingest generic HTTPS Git repo files |
 | `reddit` | Ingest subreddit posts/comments |
 | `youtube` | Ingest YouTube video transcript via yt-dlp |
 | `sessions` | Ingest AI session exports (Claude/Codex/Gemini) |
@@ -145,7 +148,7 @@ Values: `http|chrome|auto_switch`
 Values: `day|week|month|year`
 
 ### `IngestSourceType`
-Values: `github|reddit|youtube|sessions`
+Values: `github|gitlab|gitea|git|reddit|youtube|sessions`
 
 ## Pagination Defaults
 List/search style endpoints default to low limits and accept `limit` + `offset`.

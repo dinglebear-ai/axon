@@ -140,6 +140,9 @@ pub enum IngestSubaction {
 #[serde(rename_all = "snake_case")]
 pub enum IngestSourceType {
     Github,
+    Gitlab,
+    Gitea,
+    Git,
     Reddit,
     Youtube,
     Sessions,

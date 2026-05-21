@@ -47,6 +47,76 @@ fn github_url_with_subpath() {
 }
 
 #[test]
+fn gitlab_url() {
+    let r = classify_target("https://gitlab.com/gitlab-org/gitlab-runner", false).unwrap();
+    if let IngestSource::Gitlab { target, .. } = r {
+        assert_eq!(target, "gitlab.com/gitlab-org/gitlab-runner");
+    } else {
+        panic!("expected Gitlab variant");
+    }
+}
+
+#[test]
+fn gitlab_nested_namespace_url() {
+    let r = classify_target("https://gitlab.com/group/subgroup/project", true).unwrap();
+    if let IngestSource::Gitlab {
+        target,
+        include_source,
+    } = r
+    {
+        assert_eq!(target, "gitlab.com/group/subgroup/project");
+        assert!(include_source);
+    } else {
+        panic!("expected Gitlab variant");
+    }
+}
+
+#[test]
+fn gitlab_explicit_target() {
+    let r = classify_target("gitlab:gitlab.com/group/subgroup/project", false).unwrap();
+    if let IngestSource::Gitlab { target, .. } = r {
+        assert_eq!(target, "gitlab.com/group/subgroup/project");
+    } else {
+        panic!("expected Gitlab variant");
+    }
+}
+
+#[test]
+fn gitea_explicit_target() {
+    let r = classify_target("gitea:gitea.example.com/org/repo", false).unwrap();
+    if let IngestSource::Gitea { target, .. } = r {
+        assert_eq!(target, "gitea.example.com/org/repo");
+    } else {
+        panic!("expected Gitea variant");
+    }
+}
+
+#[test]
+fn forgejo_codeberg_url() {
+    let r = classify_target("https://codeberg.org/forgejo/forgejo", true).unwrap();
+    if let IngestSource::Gitea {
+        target,
+        include_source,
+    } = r
+    {
+        assert_eq!(target, "codeberg.org/forgejo/forgejo");
+        assert!(include_source);
+    } else {
+        panic!("expected Gitea variant");
+    }
+}
+
+#[test]
+fn generic_git_explicit_target() {
+    let r = classify_target("git:https://example.com/org/repo.git", false).unwrap();
+    if let IngestSource::GenericGit { target, .. } = r {
+        assert_eq!(target, "https://example.com/org/repo.git");
+    } else {
+        panic!("expected GenericGit variant");
+    }
+}
+
+#[test]
 fn github_include_source_propagated() {
     let r = classify_target("jmagar/axon", true).unwrap();
     if let IngestSource::Github { include_source, .. } = r {

@@ -43,6 +43,6 @@ services:
       service: axon-chrome
 
 networks:
-  jakenet:
-    name: jakenet
+  axon:
+    name: ${DOCKER_NETWORK:-axon}
     external: true

@@ -1,5 +1,8 @@
 pub mod classify;
+pub mod generic_git;
+pub mod gitea;
 pub mod github;
+pub mod gitlab;
 pub mod progress;
 pub mod reddit;
 pub mod sessions;

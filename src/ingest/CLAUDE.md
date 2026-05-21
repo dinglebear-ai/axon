@@ -1,7 +1,7 @@
 # src/ingest — Source Ingestion Handlers
-Last Modified: 2026-05-09
+Last Modified: 2026-05-21
 
-Ingests external sources (GitHub, Reddit, YouTube, AI sessions) into Qdrant.
+Ingests external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube, AI sessions) into Qdrant.
 
 ## Module Layout
 
@@ -9,13 +9,21 @@ Ingests external sources (GitHub, Reddit, YouTube, AI sessions) into Qdrant.
 ingest/
 ├── classify.rs    # classify_target(): auto-detect IngestSource from raw user input
 ├── progress.rs    # Progress reporting helpers shared across ingest sources
-├── subprocess.rs  # Subprocess launch helpers (used by youtube + github wiki paths)
+├── subprocess.rs  # Subprocess launch helpers (used by youtube + git clone paths)
 ├── github.rs      # module root + orchestration
 ├── github/        # GitHub repo ingestion (code, issues, PRs, wiki)
 │   ├── files.rs   # file tree fetch + raw content via reqwest
 │   ├── issues.rs  # octocrab paginated issues + PRs
 │   ├── meta.rs    # GitHubPayloadParams unified builder → gh_* fields per chunk
 │   └── wiki.rs    # git clone --depth=1 subprocess; no wiki = Ok(0)
+├── gitlab.rs      # module root + orchestration (gitlab.com + self-hosted)
+├── gitlab/        # GitLab repo ingestion (metadata, files, issues, MRs, wiki)
+│   ├── client.rs  # build_gitlab_client(), fetch_project(), fetch_paginated()
+│   ├── embed.rs   # embed_metadata/issues/merge_requests/wiki + gitlab_payload() builder
+│   ├── files.rs   # git clone --depth=1 + file traversal + embed_files()
+│   └── types.rs   # GitLabTarget, parse_gitlab_target(), normalize_gitlab_target()
+├── gitea.rs       # Gitea/Forgejo repo ingestion (metadata, files, issues, PRs)
+├── generic_git.rs # explicit HTTPS git clone ingest for repository files
 ├── reddit.rs      # module root — ingest_reddit, ingest_subreddit, ingest_thread
 ├── reddit/        # Reddit ingest submodules
 │   ├── client.rs  # OAuth2 access token + JSON fetch helper
@@ -34,6 +42,38 @@ ingest/
 ```
 
 ## Source-Specific Patterns
+
+### GitLab (`gitlab.rs` + `gitlab/`)
+- Uses raw `reqwest` for all API calls — no third-party GitLab SDK
+- `GITLAB_TOKEN` is **optional** but strongly recommended — unauthenticated rate limit is much lower; token is sent as `PRIVATE-TOKEN` header
+- Supports **gitlab.com and any self-hosted GitLab instance** — host is parsed from the URL; no hardcoded hostname
+- **Target formats accepted by `parse_gitlab_target()`:**
+  - Full HTTPS URL: `https://gitlab.com/group/project`
+  - `gitlab:` prefix for self-hosted: `gitlab:gitlab.example.com/group/project.git`
+  - Nested namespaces: `https://gitlab.com/group/subgroup/project/-/issues/1` (the `/-/…` suffix is stripped)
+  - `.git` suffix is stripped; path segments after the `-` marker are discarded
+  - Must have ≥2 path segments (host + at minimum `group/project`) — rejects bare group URLs
+- **5 sequential phases** run by `ingest_gitlab()`, each independently error-tolerant:
+  1. **metadata** — repo description, visibility, stars, forks
+  2. **files** — `git clone --depth=1` subprocess; reuses `is_indexable_doc_path` and `is_indexable_source_path` from `src/ingest/github`; token injected as `Authorization: Basic base64("oauth2:<token>")`; requires `git` in PATH
+  3. **issues** — paginated REST via `/projects/:id/issues`, sorted by `updated_at desc`; skipped if `issues_enabled == false`
+  4. **merge_requests** — paginated REST via `/projects/:id/merge_requests`, sorted by `updated_at desc`; skipped if `merge_requests_enabled == false`
+  5. **wiki** — fetched with `with_content=1` via `/projects/:id/wikis`; skipped if `wiki_enabled == false`
+- **403/404 graceful degradation:** `is_missing_or_forbidden()` returns `Ok(0)` for any phase that 403s or 404s — private features just silently produce no chunks
+- **Pagination:** `fetch_paginated()` in `client.rs` follows `x-next-page` response header, `per_page=100`; respects `max_items` cap (reuses `cfg.github_max_issues` / `cfg.github_max_prs`)
+- **Payload schema:** `source_type = "gitlab"`. Every chunk carries `provider`, `host`, `namespace_path`, `project`, `content_kind` (`"repo_metadata"` / `"file"` / `"issue"` / `"merge_request"` / `"wiki"`), `default_branch`, `visibility`, `last_activity_at`, plus a `gitlab` nested object with type-specific fields
+- **No file-level chunking strategy selection** — all file content uses `chunk_text()` (prose chunking); tree-sitter code chunking is not yet applied to GitLab files (unlike GitHub)
+
+### Gitea/Forgejo (`gitea.rs`)
+- Uses the Gitea-compatible REST API for repository metadata, issues, and pull requests.
+- `GITEA_TOKEN` is optional for public repositories and is sent as `Authorization: token <token>` when present.
+- Known public hosts (`gitea.com`, `codeberg.org`) auto-classify from URL; self-hosted instances should use `gitea:<host>/<owner>/<repo>` or `forgejo:<host>/<owner>/<repo>`.
+- File ingest delegates to the shared generic Git clone path but preserves `source_type = "gitea"` and `provider = "gitea"` in Qdrant payloads.
+
+### Generic Git (`generic_git.rs`)
+- Explicit-only target form: `git:https://host/path/repo.git`.
+- HTTPS-only by design; SSH and local filesystem paths are rejected.
+- Indexes repository docs by default and source files when source inclusion is enabled. It does not call provider APIs, so it does not ingest issues, PRs, wiki pages, releases, or repository metadata beyond clone-derived file metadata.
 
 ### GitHub (`github/`)
 - Uses raw `reqwest` for file content fetching; `octocrab` for issues/PRs pagination
@@ -71,15 +111,18 @@ ingest/
 
 ```bash
 cargo test ingest         # all ingest unit tests
-cargo test classify       # classify_target() auto-detection (17 tests)
+cargo test classify       # classify_target() auto-detection
 cargo test parse_vtt      # VTT subtitle parsing
 cargo test extract_video  # YouTube video ID extraction
 cargo test parse_github   # GitHub repo name/URL parsing
+cargo test gitlab         # GitLab target parsing and classification
+cargo test gitea          # Gitea/Forgejo target parsing and classification
+cargo test generic_git    # generic HTTPS Git target parsing and classification
 cargo test session        # session export format parsers
 cargo test -- --nocapture # show parsed output
 ```
 
-All ingest unit tests run without live services (pure logic: parsing, classification, ID extraction). Tests for `ingest_github`, `ingest_reddit`, `ingest_youtube` that hit real APIs require credentials set in env.
+All ingest unit tests run without live services (pure logic: parsing, classification, ID extraction). Tests for `ingest_github`, `ingest_gitlab`, `ingest_gitea`, `ingest_generic_git`, `ingest_reddit`, `ingest_youtube` that hit real APIs require credentials set in env and/or running Qdrant + TEI.
 
 ## Embedding Pattern
 
@@ -90,9 +133,9 @@ All ingest sources use the unified `embed_prepared_docs` pipeline via `PreparedD
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `url` | `String` | Yes | Stable identifier for this document — used to derive the deterministic UUID v5 point ID. For code chunks, append `#L{start}-L{end}` for direct GitHub linking. |
-| `domain` | `String` | Yes | Hostname only — `"github.com"`, `"reddit.com"`, `"youtube.com"`. Use `url_to_domain(url)` from `src/core/content.rs` to extract. |
+| `domain` | `String` | Yes | Hostname only — `"github.com"`, `"gitlab.com"`, `"codeberg.org"`, `"reddit.com"`, `"youtube.com"`. Use `url_to_domain(url)` from `src/core/content.rs` to extract. |
 | `chunks` | `Vec<String>` | Yes | Pre-chunked content. Pipeline expects chunks **already split** — do not pass the full raw text. |
-| `source_type` | `String` | Yes | Ingest payloads use `"github"` / `"reddit"` / `"youtube"` / `"sessions"`. Session parsers may write more specific Qdrant payload values such as `"claude_session"` or `"codex_session"`. |
+| `source_type` | `String` | Yes | Ingest payloads use `"github"` / `"gitlab"` / `"gitea"` / `"git"` / `"reddit"` / `"youtube"` / `"sessions"`. Session parsers may write more specific Qdrant payload values such as `"claude_session"` or `"codex_session"`. |
 | `content_type` | `&'static str` | Yes | `"text"` or `"markdown"`. Stored in Qdrant payload — affects nothing in the embed pipeline itself, but is queryable. |
 | `title` | `Option<String>` | No | Human-readable label (file path, video title, issue title). Stored in Qdrant payload. |
 | `extra` | `Option<Value>` | No | Source-specific metadata as a flat JSON object. All keys stored in Qdrant payload and queryable. Use `gh_*` / `reddit_*` / `yt_*` prefixes per source. |

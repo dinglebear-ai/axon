@@ -55,7 +55,7 @@ MCP docs:
 | `summarize <url>...` | Scrape URL content and summarize it with the configured LLM | No |
 | `evaluate <question>` | RAG vs baseline + independent LLM judge (accuracy, relevance, completeness, specificity, verdict) | No |
 | `suggest [focus]` | Suggest new docs URLs to crawl | No |
-| `ingest <target>` | Ingest external source (GitHub repo, Reddit subreddit/thread, YouTube video/playlist/channel) — auto-detects source type from target. GitHub: source code indexed by default with tree-sitter AST chunking; use `--no-source` to skip. | Yes (default) |
+| `ingest <target>` | Ingest external source (GitHub repo, GitLab project URL, Gitea/Forgejo repo, generic HTTPS Git repo, Reddit subreddit/thread, YouTube video/playlist/channel) — auto-detects source type from target where possible. Git providers: source code indexed by default; use `--no-source` to skip. | Yes (default) |
 | `sessions [format]` | Ingest AI session exports (Claude/Codex/Gemini) into Qdrant | No |
 | `sources` | List all indexed URLs + chunk counts | No |
 | `domains` | List indexed domains + stats | No |
@@ -301,8 +301,10 @@ AXON_COLLECTION=axon
 # Search and research (required for search/research commands)
 TAVILY_API_KEY=your-tavily-api-key
 
-# Ingest credentials (Reddit required; GitHub optional for higher rate limits)
+# Ingest credentials (Reddit required; Git providers optional for private repos and higher rate limits)
 GITHUB_TOKEN=                       # optional — raises GitHub rate limits
+GITLAB_TOKEN=                       # optional — private GitLab projects / higher rate limits
+GITEA_TOKEN=                        # optional — private Gitea/Forgejo repos / higher rate limits
 REDDIT_CLIENT_ID=                   # required for Reddit ingest targets
 REDDIT_CLIENT_SECRET=               # required for Reddit ingest targets
 
@@ -547,7 +549,7 @@ Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Schema lives 
 
 All tables share: `created_at`, `updated_at`, `started_at`, `finished_at`, `error_text`.
 
-`axon_ingest_jobs` differs from the others: it uses `source_type` (`github`/`reddit`/`youtube`) + `target` instead of `url` or `urls_json` to identify the ingest target.
+`axon_ingest_jobs` differs from the others: it uses `source_type` (`github`/`gitlab`/`gitea`/`git`/`reddit`/`youtube`) + `target` instead of `url` or `urls_json` to identify the ingest target.
 
 ## Code Style
 
