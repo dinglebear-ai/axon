@@ -453,10 +453,10 @@ pub struct ScrapeRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DiffRequest {
-    /// First (baseline) URL
-    pub url_a: Option<String>,
-    /// Second (comparison) URL
-    pub url_b: Option<String>,
+    /// First (baseline) URL (required)
+    pub url_a: String,
+    /// Second (comparison) URL (required)
+    pub url_b: String,
     /// Rendering engine override (http | chrome | auto_switch)
     pub render_mode: Option<McpRenderMode>,
     pub response_mode: Option<ResponseMode>,

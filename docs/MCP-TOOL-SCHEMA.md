@@ -60,8 +60,8 @@ These actions do not require `subaction`:
 | Action | Required Fields | Optional Fields |
 |--------|----------------|-----------------|
 | `ask` | `query` (string) | `diagnostics`, `explain`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
-| `brand` | -- | `url`, `render_mode`, `response_mode` |
-| `diff` | -- | `url_a`, `url_b`, `render_mode`, `response_mode` |
+| `brand` | `url` (string) | `render_mode`, `response_mode` |
+| `diff` | `url_a` (string), `url_b` (string) | `render_mode`, `response_mode` |
 | `doctor` | -- | `response_mode` |
 | `domains` | -- | `limit`, `offset`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |

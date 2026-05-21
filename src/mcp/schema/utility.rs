@@ -71,8 +71,8 @@ pub struct ElicitDemoRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BrandRequest {
-    /// URL to analyze
-    pub url: Option<String>,
+    /// URL to analyze (required)
+    pub url: String,
     /// Rendering engine override. Currently accepted but not applied — brand uses
     /// a direct HTTP fetch and ignores the render_mode field. Reserved for a
     /// future Chrome-backed extraction path.

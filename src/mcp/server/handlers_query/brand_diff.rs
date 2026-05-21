@@ -4,8 +4,8 @@ use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{AxonToolResponse, BrandRequest, DiffRequest};
 use crate::mcp::server::AxonMcpServer;
 use crate::mcp::server::common::{
-    InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
-    respond_with_mode, slugify, validate_mcp_url,
+    InlineHint, internal_error, logged_internal_error, map_render_mode, respond_with_mode, slugify,
+    validate_mcp_url,
 };
 use crate::services::{brand as brand_svc, diff as diff_svc};
 use rmcp::ErrorData;
@@ -15,14 +15,8 @@ impl AxonMcpServer {
         &self,
         req: DiffRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let url_a = req
-            .url_a
-            .clone()
-            .ok_or_else(|| invalid_params("url_a is required for diff"))?;
-        let url_b = req
-            .url_b
-            .clone()
-            .ok_or_else(|| invalid_params("url_b is required for diff"))?;
+        let url_a = req.url_a.clone();
+        let url_b = req.url_b.clone();
 
         validate_mcp_url(&url_a)?;
         validate_mcp_url(&url_b)?;
@@ -55,10 +49,7 @@ impl AxonMcpServer {
         &self,
         req: BrandRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let url = req
-            .url
-            .clone()
-            .ok_or_else(|| invalid_params("url is required for brand"))?;
+        let url = req.url.clone();
 
         validate_mcp_url(&url)?;
 
