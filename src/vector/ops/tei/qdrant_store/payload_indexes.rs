@@ -37,6 +37,9 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "hn_author",
     "arxiv_id",
     "devto_author",
+    // Ingest source fields promoted to indexes for per-source filtering.
+    "reddit_subreddit",
+    "yt_channel",
 ];
 
 /// Creates keyword payload indexes on commonly-queried fields.
