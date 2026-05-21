@@ -43,7 +43,15 @@ pub fn matches(url: &str) -> bool {
 
 fn build_extra(data: &serde_json::Value, explicit_version: Option<&str>) -> serde_json::Value {
     let krate = &data["crate"];
-    let ver = &data["versions"][0];
+    // When the URL specifies an explicit version, find the matching version entry so
+    // license/MSRV/edition are consistent with the requested version, not versions[0].
+    let ver = explicit_version
+        .and_then(|v| {
+            data["versions"]
+                .as_array()
+                .and_then(|vers| vers.iter().find(|ver| ver["num"].as_str() == Some(v)))
+        })
+        .unwrap_or(&data["versions"][0]);
     let name = krate["name"].as_str().unwrap_or("");
     // Use the explicitly requested URL version (e.g. /crates/serde/1.0.219) when present;
     // fall back to the latest stable or newest version from the API.
@@ -133,6 +141,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         &data,
         name,
         url,
+        &version,
         readme_text.as_deref(),
         rustdoc_text.as_deref(),
     );
@@ -292,26 +301,27 @@ fn build_markdown(
     data: &serde_json::Value,
     name: &str,
     url: &str,
+    version: &str,
     readme: Option<&str>,
     rustdoc: Option<&str>,
 ) -> (String, Option<String>) {
     let krate = &data["crate"];
     let crate_name = krate["name"].as_str().unwrap_or(name);
-    let max_version = krate["max_stable_version"]
-        .as_str()
-        .or_else(|| krate["newest_version"].as_str())
-        .unwrap_or("unknown");
     let description = krate["description"].as_str().unwrap_or("").trim();
-    let ver = &data["versions"][0];
+    // Use the version entry matching the requested version for consistent metadata.
+    let ver = data["versions"]
+        .as_array()
+        .and_then(|vers| vers.iter().find(|v| v["num"].as_str() == Some(version)))
+        .unwrap_or(&data["versions"][0]);
 
-    let title = Some(format!("{crate_name} {max_version}"));
-    let mut md = format!("# {crate_name} {max_version}\n\n");
+    let title = Some(format!("{crate_name} {version}"));
+    let mut md = format!("# {crate_name} {version}\n\n");
     if !description.is_empty() {
         md.push_str(description);
         md.push_str("\n\n");
     }
     md.push_str("## Crate Metadata\n\n");
-    append_metadata(&mut md, krate, ver, max_version, url);
+    append_metadata(&mut md, krate, ver, version, url);
 
     append_tags(&mut md, data, ver);
 
