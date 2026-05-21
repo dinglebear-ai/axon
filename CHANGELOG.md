@@ -52,6 +52,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added config parsing coverage for `--skip-embed` mapping to
   `Config::embed = false`.
 
+## [4.4.1] - 2026-05-21
+
+### Fixed
+
+- Fixed `BUNDLE_FETCH_SEMAPHORE` to acquire one permit per individual bundle
+  HTTP fetch rather than one permit per endpoint-discovery session. Previously
+  the cap limited concurrent *bundle-fetch phases* (sessions), allowing up to
+  `cap × 8` total concurrent bundle requests across the process. Now
+  `AXON_ENDPOINT_BUNDLE_CONCURRENCY` (default 8) is a true global cap on
+  simultaneous bundle HTTP fetches process-wide.
+
 ## [4.4.0] - 2026-05-21
 
 ### Added
