@@ -78,6 +78,8 @@ These actions do not require `subaction`:
 | `status` | -- | `response_mode` |
 | `suggest` | -- | `focus` (aliases: `query`), `limit`, `collection`, `response_mode` |
 | `summarize` | -- | `url`, `urls`, `render_mode`, `root_selector`, `exclude_selector`, `response_mode` |
+| `diff` | `url_a`, `url_b` (strings) | `render_mode`, `response_mode` |
+| `brand` | `url` (string) | `render_mode`, `response_mode` |
 
 Note: `graph` is a deprecated compatibility field. `false`/unset is accepted as a no-op; `true` is rejected because graph retrieval is not wired in production.
 

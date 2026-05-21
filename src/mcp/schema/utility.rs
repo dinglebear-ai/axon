@@ -68,6 +68,18 @@ pub struct ElicitDemoRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BrandRequest {
+    /// URL to analyze
+    pub url: Option<String>,
+    /// Rendering engine override. Currently accepted but not applied — brand uses
+    /// a direct HTTP fetch and ignores the render_mode field. Reserved for a
+    /// future Chrome-backed extraction path.
+    pub render_mode: Option<McpRenderMode>,
+    pub response_mode: Option<ResponseMode>,
+}
+
 // ── vertical_scrape ─────────────────────────────────────────────────────────
 
 /// Subaction for the `vertical_scrape` action.

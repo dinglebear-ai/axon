@@ -187,6 +187,8 @@ impl AxonMcpServer {
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Summarize(req) => self.handle_summarize(req).await?,
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
+            AxonRequest::Diff(req) => self.handle_diff(req).await?,
+            AxonRequest::Brand(req) => self.handle_brand(req).await?,
             AxonRequest::Debug(_)
             | AxonRequest::Dedupe(_)
             | AxonRequest::Migrate(_)

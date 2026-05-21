@@ -80,6 +80,8 @@ fn fallback_policy_for(command: CommandKind, positional: &[String]) -> FallbackP
         }
         CommandKind::Scrape
         | CommandKind::Summarize
+        | CommandKind::Diff
+        | CommandKind::Brand
         | CommandKind::Map
         | CommandKind::Endpoints
         | CommandKind::Query

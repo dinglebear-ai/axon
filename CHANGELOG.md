@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - 2026-05-21
+
+### Added
+
+- `axon diff <url-a> <url-b>` — port of webclaw's diff tool. Fetches two URLs,
+  compares their markdown content with a unified diff, reports metadata changes
+  (title, description, author, etc.), added/removed links, and word-count delta.
+  Exposes a matching `diff` MCP action and service function (`services::diff::diff`).
+- `axon brand <url>` — port of webclaw's brand tool. Analyzes a URL's HTML/CSS
+  for brand identity: up to 10 dominant colors (with usage classification), brand
+  font families, primary logo URL, favicon URL, og:image, and all logo variants.
+  Pure DOM/CSS extraction (no LLM), exposes a matching `brand` MCP action and
+  service function (`services::brand::brand`).
+- New dependencies: `similar = "2"` (unified diff), `scraper = "0.22"` (HTML DOM/CSS parsing),
+  `once_cell = "1"` (lazy regex compilation).
+
 ## [Unreleased]
 
 ### BREAKING CHANGES
