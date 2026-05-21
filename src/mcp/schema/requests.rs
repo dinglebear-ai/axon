@@ -449,3 +449,15 @@ pub struct ScrapeRequest {
     /// Maximum tokens to return in a single response slice. Default: 10,000.
     pub token_budget: Option<usize>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DiffRequest {
+    /// First (baseline) URL (required)
+    pub url_a: String,
+    /// Second (comparison) URL (required)
+    pub url_b: String,
+    /// Rendering engine override (http | chrome | auto_switch)
+    pub render_mode: Option<McpRenderMode>,
+    pub response_mode: Option<ResponseMode>,
+}

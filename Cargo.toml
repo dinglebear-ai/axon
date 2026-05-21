@@ -18,7 +18,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "4.4.1"
+version = "4.4.2"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -120,6 +120,9 @@ utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 regex = "1"
+similar = "2"
+scraper = "0.22"
+once_cell = "1"
 sha2 = "0.11"
 hex = "0.4"
 reflink-copy = "0.1"

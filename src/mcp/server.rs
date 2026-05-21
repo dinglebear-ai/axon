@@ -128,7 +128,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff.",
         meta = axon_tool_meta()
     )]
     async fn axon<'a>(
@@ -187,6 +187,8 @@ impl AxonMcpServer {
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Summarize(req) => self.handle_summarize(req).await?,
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
+            AxonRequest::Diff(req) => self.handle_diff(req).await?,
+            AxonRequest::Brand(req) => self.handle_brand(req).await?,
             AxonRequest::Debug(_)
             | AxonRequest::Dedupe(_)
             | AxonRequest::Migrate(_)
@@ -321,7 +323,7 @@ fn check_scope(auth: &AuthContext, required_scope: &str, action: &str) -> Result
 ///
 /// Note on `"scrape"` and `"summarize"`: both scrape pages and may store
 /// content through the scrape service path, so they require `axon:write`.
-pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
+fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
     match action {
         // Informational — AuthContext required when Mounted, but no scope gate.
         "help" => None,
@@ -333,13 +335,9 @@ pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str>
             _ => Some("axon:read"),
         },
         // Read / query operations require axon:read.
-        "status" | "query" | "retrieve" | "search" | "map" | "evaluate" | "suggest" | "doctor"
-        | "domains" | "sources" | "stats" | "research" | "ask" | "screenshot" => Some("axon:read"),
-        // Active-network operations: endpoint discovery fetches pages, bundles,
-        // probes endpoints, and may execute Chrome capture. All require axon:write.
-        // Scope is per-action: once axon:write is required, read-scoped tokens
-        // cannot reach the handler regardless of verify or capture_network flags.
-        "endpoints" => Some("axon:write"),
+        "status" | "query" | "retrieve" | "search" | "map" | "endpoints" | "evaluate"
+        | "suggest" | "doctor" | "domains" | "sources" | "stats" | "research" | "ask"
+        | "screenshot" | "diff" | "brand" => Some("axon:read"),
         // Unknown actions are explicitly denied (fail-conservative). Add an
         // explicit mapping above for any new action before shipping.
         _ => Some("__deny__"),

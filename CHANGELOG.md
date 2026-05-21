@@ -52,6 +52,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added config parsing coverage for `--skip-embed` mapping to
   `Config::embed = false`.
 
+## [4.4.2] - 2026-05-21
+
+### Fixed
+
+- `brand` and `diff` MCP actions: promote `url` (brand), `url_a`, `url_b` (diff)
+  from `Option<String>` to `String` in the request schema so MCP clients receive
+  accurate required-field information. Serde now enforces presence at parse time;
+  the now-redundant `ok_or_else` runtime guards in both the MCP handler
+  (`handlers_query/brand_diff.rs`) and the action-API dispatcher
+  (`dispatchers_brand_diff.rs`) have been removed. Schema doc regenerated.
+
 ## [4.4.1] - 2026-05-21
 
 ### Fixed
@@ -100,16 +111,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added first-class GitLab ingest for project metadata, repository files, issues,
-  merge requests, and wiki pages.
-- Added Gitea/Forgejo ingest for repository metadata, files, issues, and pull
-  requests.
-- Added explicit generic HTTPS Git ingest for repository file indexing.
-
-### Changed
-
-- Extended CLI, async job, MCP, service, config, status, and docs surfaces for
-  `gitlab`, `gitea`, and `git` ingest source types.
+- `axon diff <url-a> <url-b>` — port of webclaw's diff tool. Fetches two URLs,
+  compares their markdown content with a unified diff, reports metadata changes
+  (title, description, author, etc.), added/removed links, and word-count delta.
+  Status is now `Changed` when links differ even if text is identical.
+  Exposes a matching `diff` MCP action and service function (`services::diff::diff`).
+- `axon brand <url>` — port of webclaw's brand tool. Analyzes a URL's HTML/CSS
+  for brand identity: up to 10 dominant colors (with usage classification), brand
+  font families, primary logo URL, favicon URL, og:image, and all logo variants.
+  Pure DOM/CSS extraction (no LLM), with SSRF guard and HTTP status validation.
+  Exposes a matching `brand` MCP action and service function (`services::brand::brand`).
+- New dependencies: `similar = "2"` (unified diff), `scraper = "0.22"` (HTML DOM/CSS parsing),
+  `once_cell = "1"` (lazy regex compilation).
 
 ## [4.2.0] - 2026-05-19
 

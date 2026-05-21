@@ -175,7 +175,15 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
                 args.input.into_iter().collect()
             };
         }
+        CliCommand::Brand(args) => {
+            out.command = CommandKind::Brand;
+            out.positional = args.positional_urls;
+        }
         CliCommand::Debug(args) => set_simple(&mut out, CommandKind::Debug, args.value),
+        CliCommand::Diff(args) => {
+            out.command = CommandKind::Diff;
+            out.positional = vec![args.url_a, args.url_b];
+        }
         CliCommand::Doctor(args) => {
             out.command = CommandKind::Doctor;
             out.doctor_diagnose = matches!(args.action, Some(DoctorSubcommand::Diagnose));

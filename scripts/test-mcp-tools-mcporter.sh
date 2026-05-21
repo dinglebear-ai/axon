@@ -29,6 +29,7 @@ artifacts:read
 artifacts:search
 artifacts:wc
 ask
+brand
 crawl:cancel
 crawl:cleanup
 crawl:clear
@@ -36,6 +37,7 @@ crawl:list
 crawl:recover
 crawl:start
 crawl:status
+diff
 doctor
 domains
 elicit_demo
@@ -78,11 +80,13 @@ suggest
 EOF
 )"
 
-DIRECT_ACTIONS_JSON='["ask","doctor","domains","elicit_demo","endpoints","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
+DIRECT_ACTIONS_JSON='["ask","brand","diff","doctor","domains","elicit_demo","endpoints","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
 artifacts
 ask
+brand
 crawl
+diff
 doctor
 domains
 elicit_demo
