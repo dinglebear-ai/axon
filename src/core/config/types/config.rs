@@ -188,6 +188,12 @@ pub struct Config {
     /// GitHub personal access token for authenticated API requests. Env: `GITHUB_TOKEN`. **Secret.**
     pub github_token: Option<String>,
 
+    /// GitLab personal/project/group access token for authenticated API requests. Env: `GITLAB_TOKEN`. **Secret.**
+    pub gitlab_token: Option<String>,
+
+    /// Gitea/Forgejo access token for authenticated API requests. Env: `GITEA_TOKEN`. **Secret.**
+    pub gitea_token: Option<String>,
+
     /// Also index source code files when ingesting a GitHub repository. Flag: `--include-source`.
     pub github_include_source: bool,
 

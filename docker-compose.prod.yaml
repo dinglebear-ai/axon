@@ -7,7 +7,7 @@ name: axon
 
 x-common-service: &common-service
   networks:
-    - jakenet
+    - axon
   restart: unless-stopped
   extra_hosts:
     - "host.docker.internal:host-gateway"
@@ -188,6 +188,6 @@ services:
       start_period: 20s
 
 networks:
-  jakenet:
-    name: jakenet
+  axon:
+    name: ${DOCKER_NETWORK:-axon}
     external: true

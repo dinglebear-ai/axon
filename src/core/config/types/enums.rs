@@ -133,6 +133,7 @@ pub enum ScrapeFormat {
     #[serde(rename = "rawHtml")]
     RawHtml,
     Json,
+    Llm,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

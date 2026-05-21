@@ -337,6 +337,10 @@ pub fn select_output(
             status_code,
             selector_config,
         ))?),
+        ScrapeFormat::Llm => {
+            let md = to_markdown(html, selector_config);
+            Ok(crate::core::content::to_llm_text(&md, url))
+        }
     }
 }
 

@@ -1,0 +1,294 @@
+# Re-index Guide: Schema v3 Payload Upgrade
+
+This guide explains what changed in Qdrant payload schema version 3, who needs to
+re-index existing points, and how to do it efficiently and safely.
+
+---
+
+## What Changed in Schema v3
+
+Schema v3 was introduced on 2026-05-21. Every point written by `axon` since that date
+carries `payload_schema_version = 3`. Points written before that date are version 1 or 2
+and do not have the new fields.
+
+### New: canonical `git_*` provider fields
+
+All git-backed ingest sources (`github`, `gitlab`, `gitea`, `git`) now emit a uniform set
+of flat, indexed fields. Previously, GitHub ingest used ad-hoc `gh_*` fields; GitLab,
+Gitea, and generic git had their own inconsistent layouts.
+
+| Field | Indexed | Example values |
+|-------|---------|----------------|
+| `provider` | yes | `"github"` \| `"gitlab"` \| `"gitea"` \| `"git"` |
+| `git_host` | yes | `"github.com"`, `"gitlab.com"`, `"codeberg.org"` |
+| `git_owner` | yes | org/user/namespace |
+| `git_repo` | yes | repository name |
+| `git_content_kind` | yes | `"file"` \| `"issue"` \| `"pr"` \| `"release"` \| `"wiki"` \| `"repo_metadata"` |
+| `git_state` | yes | `"open"` \| `"closed"` \| `"merged"` \| absent |
+| `git_number` | yes | issue or PR number |
+| `git_author` | yes | login/username |
+| `git_file_language` | yes | file language/extension for file chunks |
+| `git_branch` | no | default or cloned branch |
+| `git_labels` | no | labels array |
+| `git_is_draft` | no | PR draft status |
+| `git_created_at` | no | ISO8601 creation timestamp |
+| `git_updated_at` | no | ISO8601 update timestamp |
+| `git_merged_at` | no | ISO8601 merge timestamp |
+| `git_file_path` | no | relative file path for file chunks |
+| `git_meta` | no | provider-specific extras (not indexed) |
+
+Queries that were previously GitHub-only (`gh_*`) can now target all git providers
+uniformly. For example, filtering `git_content_kind = "issue"` returns issues from
+GitHub, GitLab, and Gitea in a single search.
+
+The legacy `gh_*` fields on existing GitHub points are backwards-compatible aliases and
+will be removed after a confirmed full re-index.
+
+### New: vertical extractor `extra` payload fields
+
+Vertical extractors (`github_repo`, `npm`, `pypi`, `crates_io`, `huggingface_model`,
+`stackoverflow`, `hackernews`, `arxiv`, `dev_to`, `reddit`, etc.) now emit additional
+indexed fields that enable source-specific filtering:
+
+| Field | Extractors |
+|-------|------------|
+| `pkg_registry`, `pkg_name`, `pkg_language`, `pkg_license`, `pkg_author` | npm, pypi, crates_io, docs_rs |
+| `hf_task`, `hf_library` | huggingface_model |
+| `so_question_id`, `so_is_answered` | stackoverflow |
+| `hn_type`, `hn_author` | hackernews |
+| `arxiv_id` | arxiv |
+| `devto_author` | dev_to |
+
+These fields are absent on points written before schema v3.
+
+---
+
+## Who Needs to Re-index
+
+Re-indexing is **optional but recommended** for anyone who wants to filter or facet on
+the new v3 fields against data that was indexed before 2026-05-21.
+
+You specifically benefit from re-indexing if you:
+
+- Query GitHub, GitLab, Gitea, or generic git ingest points and want to filter by
+  `git_content_kind`, `git_file_language`, `git_author`, `git_state`, or `git_owner`.
+- Query vertical extractor points (npm, PyPI, Crates.io, HuggingFace, etc.) and want to
+  filter by package or model metadata fields.
+- Run any query that would return mixed results and you want to scope to a specific
+  provider or content kind.
+
+If you only do semantic similarity search (`axon query` / `axon ask`) without payload
+filters, existing points are unaffected and re-indexing has no impact on result quality.
+
+---
+
+## How to Identify Stale Points
+
+### Check the version distribution
+
+```bash
+axon sources --by-schema-version
+```
+
+This scrolls the entire collection and counts points per `payload_schema_version`. Output
+example:
+
+```
+Schema version breakdown:
+  v1 (pre-lu6a, no version field): 2,841,200 points
+  v2 (lu6a – extractor_name, structured_*): 612,400 points
+  v3 (2026-05-21 – git_*, vertical extras): 340,000 points
+  Total: 3,793,600 points
+```
+
+This is an O(N) full scroll — on a 3.79M-point collection it takes a few minutes. Run
+it once to get your bearings, not on every startup.
+
+### Check a specific source type
+
+```bash
+# Count GitHub ingest points without git_content_kind
+axon query "repo" --filter 'source_type = "github"' --limit 5
+```
+
+If you see results lacking `git_content_kind` in their payload, those points are pre-v3.
+
+---
+
+## Re-indexing by Source Type
+
+Re-ingesting a source overwrites existing points via Qdrant's upsert semantics — point
+IDs are deterministic UUID v5 hashes of `(url, chunk_index)`, so the same content
+always produces the same ID. **No manual cleanup is needed**: new points replace old ones
+in place, and any chunks that no longer exist are pruned automatically via stale-tail
+cleanup.
+
+### Crawl and embed points
+
+Re-crawl the original source URL:
+
+```bash
+axon crawl https://example.com/docs --wait true
+```
+
+Or for single pages:
+
+```bash
+axon scrape https://example.com/page
+```
+
+Crawl re-embeds every page it visits. Points for pages that no longer exist are not
+removed automatically — run `axon dedupe` after if you want to clean those up.
+
+### GitHub repositories
+
+```bash
+axon ingest https://github.com/org/repo --wait true
+```
+
+This re-ingests source files, issues, PRs, releases, and wiki pages. Each re-embedded
+point carries the full v3 `git_*` field set and replaces the corresponding v1/v2 point.
+
+### GitLab projects
+
+```bash
+axon ingest https://gitlab.com/group/project --wait true
+```
+
+Same semantics as GitHub. v3 `git_*` fields are written by the GitLab ingest path
+(`src/ingest/gitlab/`).
+
+### Gitea / Forgejo / generic git
+
+```bash
+# Gitea/Forgejo
+axon ingest https://codeberg.org/owner/repo --wait true
+
+# Generic HTTPS git (bare clone, source files only)
+axon ingest https://git.example.com/owner/repo.git --wait true
+```
+
+### Reddit subreddits and threads
+
+```bash
+axon ingest r/rust --wait true
+axon ingest https://www.reddit.com/r/rust/comments/abc123/post_title/ --wait true
+```
+
+Reddit ingest writes flat `reddit_*` fields. These haven't changed between v2 and v3, but
+re-ingesting is the only way to get `payload_schema_version = 3` stamped on those points.
+
+### YouTube videos, playlists, and channels
+
+```bash
+axon ingest https://www.youtube.com/watch?v=VIDEO_ID --wait true
+axon ingest https://www.youtube.com/channel/CHANNEL_ID --wait true
+```
+
+YouTube ingest writes flat `yt_*` fields. Same situation as Reddit — unchanged fields,
+but re-ingest updates the schema version stamp.
+
+### AI session exports
+
+```bash
+axon sessions --wait true
+```
+
+Sessions are re-indexed from the export files in your configured sessions directory.
+Session points (`claude_session`, `codex_session`, `sessions`) have no v3-specific fields,
+so re-indexing these is low priority.
+
+---
+
+## Prioritization
+
+Re-indexing takes time — on a 3.79M-point collection, a full re-index is a multi-hour
+background operation. Focus on the highest-value sources first.
+
+| Priority | Source | Reason |
+|----------|--------|--------|
+| **Highest** | GitHub / GitLab repos you actively query by content kind, file language, or author | `git_content_kind`, `git_file_language`, `git_state` filters require v3 |
+| **High** | npm / PyPI / Crates.io / HuggingFace verticals | Package metadata filters (`pkg_name`, `pkg_language`, `hf_task`) require v3 |
+| **Medium** | Reddit / Hacker News ingest | Per-community faceting; fields unchanged but version stamp is wrong |
+| **Low** | Generic crawl/embed points | No new filterable fields; re-crawl only if content has changed |
+| **Skip** | AI session exports | No v3-specific fields; version stamp only |
+
+Run re-indexing with `--wait false` (the default) to enqueue jobs in the background and
+continue working:
+
+```bash
+axon ingest https://github.com/org/repo-a
+axon ingest https://github.com/org/repo-b
+axon ingest https://github.com/org/repo-c
+axon status  # monitor job queue
+```
+
+---
+
+## Upsert Semantics: No Orphan Cleanup Needed
+
+Point IDs in axon are **deterministic UUID v5** hashes derived from `url` and
+`chunk_index`. Re-ingesting the same source always produces the same point IDs — Qdrant's
+upsert operation overwrites the old payload in place.
+
+This means:
+
+- **No duplicates.** A re-ingest of `github.com/org/repo` overwrites every existing
+  chunk for that repo. You will not end up with two copies.
+- **No manual delete step.** There is no need to delete old points before re-ingesting.
+- **Stale-tail cleanup is automatic.** If a file that previously had 10 chunks now has 6
+  (because content was removed), the 4 orphan chunks (`chunk_index 6–9`) are deleted
+  automatically after a successful upsert. This is handled by `qdrant_delete_stale_tail()`
+  in the embed pipeline.
+- **`axon dedupe` is optional.** Run it after crawl re-indexing if you suspect
+  near-duplicate chunks from page reorganizations, but it is not required for correctness.
+
+---
+
+## Estimated Scope
+
+The user collection has approximately **3.79M points** as of 2026-05-21.
+
+| Scenario | Estimated time |
+|----------|---------------|
+| Single GitHub repo (small, ~500 files, ~50 issues) | 2–5 minutes |
+| Single GitHub repo (large, ~5,000 files, ~2,000 issues) | 20–40 minutes |
+| Full crawl of a mid-size docs site (~2,000 pages) | 10–30 minutes |
+| All priority GitHub/GitLab repos (10–20 repos) | 2–8 hours (background) |
+| Full collection re-index (all sources) | Multi-day background task |
+
+The full collection re-index is not blocking and does not need to be done all at once.
+Newly indexed points are immediately queryable with v3 filters; old points continue to
+serve semantic search results without interruption. The collection is always live — there
+is no maintenance window or read blackout during re-indexing.
+
+---
+
+## Quick-Start Checklist
+
+```bash
+# 1. See your current version distribution
+axon sources --by-schema-version
+
+# 2. Re-index your highest-priority GitHub repos (background jobs)
+axon ingest https://github.com/org/repo-1
+axon ingest https://github.com/org/repo-2
+
+# 3. Monitor progress
+axon status
+
+# 4. Verify v3 points are appearing
+axon sources --by-schema-version   # v3 count should grow
+
+# 5. Optionally clean up near-duplicates after crawl re-indexing
+axon dedupe
+```
+
+---
+
+## Reference
+
+- Payload contract: [`docs/contracts/qdrant-payload-schema.md`](contracts/qdrant-payload-schema.md)
+- Schema version constant: `src/vector/ops/qdrant/utils.rs` — `PAYLOAD_SCHEMA_VERSION`
+- Git provider field builder: `src/ingest/git_payload.rs`
+- Collection vector mode upgrade (unnamed → named): [`README.md`](../README.md) — `axon migrate`

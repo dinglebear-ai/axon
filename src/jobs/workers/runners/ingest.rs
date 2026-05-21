@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -5,7 +7,9 @@ use tokio_util::sync::CancellationToken;
 use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, lift_err};
 use crate::jobs::config_snapshot::decode_ingest_job_config;
+use crate::jobs::ingest::IngestSource;
 use crate::jobs::ops::update_result_json_for_attempt;
+use crate::services::types::IngestResult;
 
 use super::JobResult;
 
@@ -38,75 +42,74 @@ pub async fn run_ingest_job(
             .flatten();
     let (progress_tx, progress_task) = spawn_ingest_progress_persister(pool, id, attempt_id);
 
-    // The ingest service functions return `Box<dyn Error>` (not Send+Sync), so we
-    // can't easily wrap them in a generic helper. Each branch races its own
-    // source-specific future against the cancel token. Reddit consumes the token
-    // natively (mid-loop), the others are cooperatively canceled at this
-    // boundary — any in-flight HTTP request continues but its result is dropped.
-    let result = match source {
-        crate::jobs::ingest::IngestSource::Github {
+    let result = execute_ingest_source(
+        source,
+        &effective_cfg,
+        progress_tx.clone(),
+        cancel_token.clone(),
+    )
+    .await?;
+    drop(progress_tx);
+    if let Err(e) = progress_task.await {
+        tracing::warn!(job_id = %id, error = %e, "ingest progress persister task failed");
+    }
+
+    Ok(Some(result.payload))
+}
+
+async fn execute_ingest_source(
+    source: IngestSource,
+    cfg: &Config,
+    progress_tx: mpsc::Sender<serde_json::Value>,
+    cancel_token: Option<CancellationToken>,
+) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
+    match source {
+        IngestSource::Github {
             repo,
             include_source,
-        } => {
-            let (owner, repo_name) = crate::ingest::github::parse_github_repo(&repo).ok_or_else(
-                || -> Box<dyn std::error::Error + Send + Sync> {
-                    format!("invalid github target: {repo}").into()
-                },
-            )?;
-            let mut github_cfg = effective_cfg.clone();
-            github_cfg.github_include_source = include_source;
-            let fut = crate::services::ingest::ingest_github_with_progress(
-                &github_cfg,
-                &owner,
-                &repo_name,
-                None,
-                Some(progress_tx.clone()),
-            );
-            match cancel_token.as_ref() {
-                Some(token) => tokio::select! {
-                    _ = token.cancelled() => return Err("ingest canceled".into()),
-                    r = fut => r.map_err(lift_err)?,
-                },
-                None => fut.await.map_err(lift_err)?,
-            }
-        }
-        crate::jobs::ingest::IngestSource::Reddit { target } => {
+        } => run_github_ingest(cfg, repo, include_source, progress_tx, cancel_token).await,
+        IngestSource::Gitlab {
+            target,
+            include_source,
+        } => run_gitlab_ingest(cfg, target, include_source, progress_tx, cancel_token).await,
+        IngestSource::Gitea {
+            target,
+            include_source,
+        } => run_gitea_ingest(cfg, target, include_source, progress_tx, cancel_token).await,
+        IngestSource::GenericGit {
+            target,
+            include_source,
+        } => run_generic_git_ingest(cfg, target, include_source, progress_tx, cancel_token).await,
+        IngestSource::Reddit { target } => {
             let options = cancel_token
-                .clone()
                 .map(crate::ingest::reddit::RedditIngestOptions::with_cancel_token)
                 .unwrap_or_default();
             crate::services::ingest::ingest_reddit_with_progress_and_options(
-                &effective_cfg,
+                cfg,
                 &target,
                 None,
-                Some(progress_tx.clone()),
+                Some(progress_tx),
                 &options,
             )
             .await
-            .map_err(lift_err)?
+            .map_err(lift_err)
         }
-        crate::jobs::ingest::IngestSource::Youtube { target } => {
+        IngestSource::Youtube { target } => {
             let fut = crate::services::ingest::ingest_youtube_with_progress(
-                &effective_cfg,
+                cfg,
                 &target,
                 None,
-                Some(progress_tx.clone()),
+                Some(progress_tx),
             );
-            match cancel_token.as_ref() {
-                Some(token) => tokio::select! {
-                    _ = token.cancelled() => return Err("ingest canceled".into()),
-                    r = fut => r.map_err(lift_err)?,
-                },
-                None => fut.await.map_err(lift_err)?,
-            }
+            cancelable(fut, cancel_token.as_ref()).await
         }
-        crate::jobs::ingest::IngestSource::Sessions {
+        IngestSource::Sessions {
             sessions_claude,
             sessions_codex,
             sessions_gemini,
             sessions_project,
         } => {
-            let mut sessions_cfg = effective_cfg.clone();
+            let mut sessions_cfg = cfg.clone();
             sessions_cfg.sessions_claude = sessions_claude;
             sessions_cfg.sessions_codex = sessions_codex;
             sessions_cfg.sessions_gemini = sessions_gemini;
@@ -114,23 +117,105 @@ pub async fn run_ingest_job(
             let fut = crate::services::ingest::ingest_sessions_with_progress(
                 &sessions_cfg,
                 None,
-                Some(progress_tx.clone()),
+                Some(progress_tx),
             );
-            match cancel_token.as_ref() {
-                Some(token) => tokio::select! {
-                    _ = token.cancelled() => return Err("ingest canceled".into()),
-                    r = fut => r.map_err(lift_err)?,
-                },
-                None => fut.await.map_err(lift_err)?,
-            }
+            cancelable(fut, cancel_token.as_ref()).await
         }
-    };
-    drop(progress_tx);
-    if let Err(e) = progress_task.await {
-        tracing::warn!(job_id = %id, error = %e, "ingest progress persister task failed");
     }
+}
 
-    Ok(Some(result.payload))
+async fn run_github_ingest(
+    cfg: &Config,
+    repo: String,
+    include_source: bool,
+    progress_tx: mpsc::Sender<serde_json::Value>,
+    cancel_token: Option<CancellationToken>,
+) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
+    let (owner, repo_name) = crate::ingest::github::parse_github_repo(&repo).ok_or_else(
+        || -> Box<dyn std::error::Error + Send + Sync> {
+            format!("invalid github target: {repo}").into()
+        },
+    )?;
+    let mut github_cfg = cfg.clone();
+    github_cfg.github_include_source = include_source;
+    let fut = crate::services::ingest::ingest_github_with_progress(
+        &github_cfg,
+        &owner,
+        &repo_name,
+        None,
+        Some(progress_tx),
+    );
+    cancelable(fut, cancel_token.as_ref()).await
+}
+
+async fn run_gitlab_ingest(
+    cfg: &Config,
+    target: String,
+    include_source: bool,
+    progress_tx: mpsc::Sender<serde_json::Value>,
+    cancel_token: Option<CancellationToken>,
+) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
+    let mut gitlab_cfg = cfg.clone();
+    gitlab_cfg.github_include_source = include_source;
+    let fut = crate::services::ingest::ingest_gitlab_with_progress(
+        &gitlab_cfg,
+        &target,
+        None,
+        Some(progress_tx),
+    );
+    cancelable(fut, cancel_token.as_ref()).await
+}
+
+async fn run_gitea_ingest(
+    cfg: &Config,
+    target: String,
+    include_source: bool,
+    progress_tx: mpsc::Sender<serde_json::Value>,
+    cancel_token: Option<CancellationToken>,
+) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
+    let mut gitea_cfg = cfg.clone();
+    gitea_cfg.github_include_source = include_source;
+    let fut = crate::services::ingest::ingest_gitea_with_progress(
+        &gitea_cfg,
+        &target,
+        None,
+        Some(progress_tx),
+    );
+    cancelable(fut, cancel_token.as_ref()).await
+}
+
+async fn run_generic_git_ingest(
+    cfg: &Config,
+    target: String,
+    include_source: bool,
+    progress_tx: mpsc::Sender<serde_json::Value>,
+    cancel_token: Option<CancellationToken>,
+) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
+    let mut git_cfg = cfg.clone();
+    git_cfg.github_include_source = include_source;
+    let fut = crate::services::ingest::ingest_generic_git_with_progress(
+        &git_cfg,
+        &target,
+        None,
+        Some(progress_tx),
+    );
+    cancelable(fut, cancel_token.as_ref()).await
+}
+
+async fn cancelable<F>(
+    fut: F,
+    cancel_token: Option<&CancellationToken>,
+) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>>
+where
+    F: Future<Output = Result<IngestResult, Box<dyn std::error::Error>>>,
+{
+    match cancel_token {
+        Some(token) => tokio::select! {
+            _ = token.cancelled() => Err("ingest canceled".into()),
+            r = fut => r.map_err(lift_err),
+        },
+        None => fut.await.map_err(lift_err),
+    }
 }
 
 fn spawn_ingest_progress_persister(

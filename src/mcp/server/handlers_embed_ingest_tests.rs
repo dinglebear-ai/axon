@@ -35,6 +35,66 @@ fn parse_ingest_source_rejects_invalid_github_target() {
 }
 
 #[test]
+fn parse_ingest_source_normalizes_gitlab_url() {
+    let cfg = Config::default();
+    let source = parse_ingest_source(
+        Some(IngestSourceType::Gitlab),
+        Some("https://gitlab.com/group/subgroup/project/-/issues/1".to_string()),
+        None,
+        Some(false),
+        &cfg,
+    )
+    .expect("valid gitlab target");
+    assert!(matches!(
+        source,
+        IngestSource::Gitlab {
+            target,
+            include_source: false,
+        } if target == "gitlab.com/group/subgroup/project"
+    ));
+}
+
+#[test]
+fn parse_ingest_source_normalizes_gitea_target() {
+    let cfg = Config::default();
+    let source = parse_ingest_source(
+        Some(IngestSourceType::Gitea),
+        Some("gitea:gitea.example.com/org/repo.git".to_string()),
+        None,
+        Some(false),
+        &cfg,
+    )
+    .expect("valid gitea target");
+    assert!(matches!(
+        source,
+        IngestSource::Gitea {
+            target,
+            include_source: false,
+        } if target == "gitea.example.com/org/repo"
+    ));
+}
+
+#[test]
+fn parse_ingest_source_normalizes_generic_git_target() {
+    let cfg = Config::default();
+    let source = parse_ingest_source(
+        Some(IngestSourceType::Git),
+        Some("git:https://example.com/org/repo.git".to_string()),
+        None,
+        Some(false),
+        &cfg,
+    )
+    .expect("valid generic git target");
+    assert!(matches!(
+        source,
+        IngestSource::GenericGit {
+            target,
+            include_source: false,
+        } if target == "https://example.com/org/repo.git"
+    ));
+}
+
+#[test]
 fn parse_ingest_source_rejects_non_reddit_comments_url() {
     let cfg = Config::default();
     let err = parse_ingest_source(

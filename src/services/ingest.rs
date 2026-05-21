@@ -19,7 +19,11 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 pub mod classify;
+pub mod git_services;
+pub mod request;
 pub use classify::classify_target;
+pub use git_services::{ingest_generic_git_with_progress, ingest_gitea_with_progress};
+pub use request::{source_from_mcp_request, validate_ingest_source};
 
 // --- Pure mapping helper (no I/O, testable without live services) ---
 
@@ -33,126 +37,6 @@ pub fn map_ingest_start_result(job_id: String) -> IngestStartResult {
 
 pub fn map_ingest_job_result(payload: serde_json::Value) -> IngestJobResult {
     IngestJobResult { payload }
-}
-
-pub fn source_from_mcp_request(
-    req: &crate::mcp::schema::IngestRequest,
-    cfg: &Config,
-) -> Result<IngestSource, String> {
-    use crate::mcp::schema::IngestSourceType;
-
-    let source_type = req
-        .source_type
-        .clone()
-        .ok_or_else(|| "source_type is required for ingest.start".to_string())?;
-    match source_type {
-        IngestSourceType::Github => {
-            let repo = validate_github_ingest_target(&required_ingest_target(req, "target repo")?)?;
-            Ok(IngestSource::Github {
-                repo,
-                include_source: req.include_source.unwrap_or(cfg.github_include_source),
-            })
-        }
-        IngestSourceType::Reddit => {
-            let target = required_ingest_target(req, "target")?;
-            validate_reddit_ingest_target(&target)?;
-            Ok(IngestSource::Reddit { target })
-        }
-        IngestSourceType::Youtube => {
-            let target = required_ingest_target(req, "target")?;
-            validate_youtube_ingest_target(&target)?;
-            Ok(IngestSource::Youtube { target })
-        }
-        IngestSourceType::Sessions => {
-            let sessions =
-                req.sessions
-                    .clone()
-                    .unwrap_or(crate::mcp::schema::SessionsIngestOptions {
-                        claude: None,
-                        codex: None,
-                        gemini: None,
-                        project: None,
-                    });
-            Ok(IngestSource::Sessions {
-                sessions_claude: sessions.claude.unwrap_or(false),
-                sessions_codex: sessions.codex.unwrap_or(false),
-                sessions_gemini: sessions.gemini.unwrap_or(false),
-                sessions_project: sessions.project,
-            })
-        }
-    }
-}
-
-pub fn validate_ingest_source(source: &IngestSource) -> Result<(), String> {
-    match source {
-        IngestSource::Github { repo, .. } => {
-            validate_github_ingest_target(repo)?;
-        }
-        IngestSource::Reddit { target } => {
-            validate_reddit_ingest_target(target)?;
-        }
-        IngestSource::Youtube { target } => {
-            validate_youtube_ingest_target(target)?;
-        }
-        IngestSource::Sessions { .. } => {}
-    }
-    Ok(())
-}
-
-fn validate_github_ingest_target(target: &str) -> Result<String, String> {
-    let (owner, repo) = ingest::github::parse_github_repo(target).ok_or_else(|| {
-        "invalid GitHub target; expected owner/repo or github.com/owner/repo".to_string()
-    })?;
-    Ok(format!("{owner}/{repo}"))
-}
-
-fn validate_reddit_ingest_target(target: &str) -> Result<(), String> {
-    match ingest::reddit::classify_target(target).map_err(|err| err.to_string())? {
-        ingest::reddit::RedditTarget::Subreddit(name) => {
-            let len = name.len();
-            let valid = (3..=21).contains(&len)
-                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-            if valid {
-                Ok(())
-            } else {
-                Err(
-                    "invalid subreddit target; expected 3-21 ASCII letters, digits, or '_'"
-                        .to_string(),
-                )
-            }
-        }
-        ingest::reddit::RedditTarget::Thread(url) => {
-            if url.starts_with("/r/") && url.contains("/comments/") {
-                Ok(())
-            } else {
-                Err(
-                    "invalid Reddit thread target; expected reddit.com comments URL or canonical /r/... permalink"
-                        .to_string(),
-                )
-            }
-        }
-    }
-}
-
-fn validate_youtube_ingest_target(target: &str) -> Result<(), String> {
-    ingest::youtube::classify_youtube_target(target)
-        .map(|_| ())
-        .map_err(|err| format!("invalid YouTube target: {err}"))
-}
-
-fn required_ingest_target(
-    req: &crate::mcp::schema::IngestRequest,
-    field: &'static str,
-) -> Result<String, String> {
-    let Some(value) = req
-        .target
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    else {
-        return Err(format!("{field} is required"));
-    };
-    Ok(value.to_string())
 }
 
 // --- Service lifecycle wrappers ---
@@ -321,6 +205,49 @@ pub async fn ingest_github_with_progress(
     let payload = serde_json::json!({
         "source": "github",
         "repo": repo_slug,
+        "chunks": chunks,
+    });
+    Ok(map_ingest_result(payload))
+}
+
+/// Ingest a GitLab project with an optional structured progress sink.
+#[must_use = "ingest_gitlab_with_progress returns a Result that should be handled"]
+pub async fn ingest_gitlab_with_progress(
+    cfg: &Config,
+    target: &str,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
+) -> Result<IngestResult, Box<dyn Error>> {
+    emit(
+        &tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: format!("ingesting gitlab project: {target}"),
+        },
+    )
+    .await;
+
+    let chunks = ingest::gitlab::ingest_gitlab(
+        cfg,
+        target,
+        cfg.github_include_source,
+        PhaseReporter::new(progress_tx),
+    )
+    .await
+    .map_err(|e| -> Box<dyn Error> { format!("gitlab ingest failed for {target}: {e}").into() })?;
+
+    emit(
+        &tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: format!("gitlab ingest complete: {chunks} chunks"),
+        },
+    )
+    .await;
+
+    let payload = serde_json::json!({
+        "source": "gitlab",
+        "target": target,
         "chunks": chunks,
     });
     Ok(map_ingest_result(payload))

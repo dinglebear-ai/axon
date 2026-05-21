@@ -133,7 +133,7 @@ When the runner exits with `Err("<kind> canceled")`, the worker loop calls `mark
 - `axon crawl recover` subcommand: reclaims all stale jobs (re-queues them as `pending`).
 
 ## ingest_jobs Schema Difference
-`axon_ingest_jobs` uses `source_type` + `target` columns instead of `url`/`urls_json` used by all other job tables. When querying or listing ingest jobs, join/filter on `source_type` (`github`/`reddit`/`youtube`) not on `url`.
+`axon_ingest_jobs` uses `source_type` + `target` columns instead of `url`/`urls_json` used by all other job tables. When querying or listing ingest jobs, join/filter on `source_type` (`github`/`gitlab`/`gitea`/`git`/`reddit`/`youtube`/`sessions`) not on `url`.
 
 ## Testing
 

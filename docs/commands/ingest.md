@@ -1,11 +1,11 @@
 # axon ingest
 Last Modified: 2026-03-25
 
-Ingest external sources (GitHub, Reddit, YouTube) into Qdrant. Source type is auto-detected from the target — no need to choose the right command.
+Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube) into Qdrant. Source type is auto-detected from the target where possible.
 
 > For implementation details and troubleshooting see [`docs/ingest/ingest.md`](../ingest/ingest.md).
 >
-> Per-source deep-dives: [`docs/ingest/github.md`](../ingest/github.md) · [`docs/ingest/reddit.md`](../ingest/reddit.md) · [`docs/ingest/youtube.md`](../ingest/youtube.md)
+> Per-source deep-dives: [`docs/ingest/github.md`](../ingest/github.md) · [`docs/ingest/gitlab.md`](../ingest/gitlab.md) · [`docs/ingest/reddit.md`](../ingest/reddit.md) · [`docs/ingest/youtube.md`](../ingest/youtube.md)
 
 ## Synopsis
 
@@ -24,6 +24,11 @@ The source type is inferred from `<TARGET>` in this order:
 | `@handle` | YouTube (expanded to `youtube.com/@handle`) |
 | `youtube.com/*`, `youtu.be/*` | YouTube |
 | Bare 11-character video ID | YouTube |
+| `gitlab.com/group/project` or `gitlab.com/group/subgroup/project` | GitLab |
+| `gitlab:<host>/<group>/<project>` | GitLab |
+| `gitea.com/owner/repo` or `codeberg.org/owner/repo` | Gitea/Forgejo |
+| `gitea:<host>/<owner>/<repo>` or `forgejo:<host>/<owner>/<repo>` | Gitea/Forgejo |
+| `git:https://host/path/repo.git` | Generic Git HTTPS clone |
 | `github.com/owner/repo` | GitHub |
 | `owner/repo` slug | GitHub |
 
@@ -31,13 +36,15 @@ The source type is inferred from `<TARGET>` in this order:
 
 | Argument | Description |
 |----------|-------------|
-| `<TARGET>` | GitHub slug (`owner/repo`), YouTube URL / `@handle`, or Reddit subreddit (`r/name`) or URL |
+| `<TARGET>` | GitHub slug (`owner/repo`), GitLab URL or `gitlab:` target, Gitea/Forgejo URL or prefix target, `git:` HTTPS clone URL, YouTube URL / `@handle`, or Reddit subreddit (`r/name`) or URL |
 
 ## Required Environment Variables
 
 | Variable | Required for | Description |
 |----------|-------------|-------------|
 | `GITHUB_TOKEN` | GitHub (optional) | Raises API rate limit from 60 to 5000 req/hr |
+| `GITLAB_TOKEN` | GitLab (optional) | Authenticates private projects and raises API limits |
+| `GITEA_TOKEN` | Gitea/Forgejo (optional) | Authenticates API requests to Gitea-compatible servers |
 | `REDDIT_CLIENT_ID` | Reddit | OAuth2 app credentials |
 | `REDDIT_CLIENT_SECRET` | Reddit | OAuth2 app credentials |
 
@@ -65,14 +72,14 @@ With `--wait false`, `ingest` writes a SQLite job row and exits without draining
 unrelated ingest rows. Use `--wait true` to run ingestion synchronously and block
 until it finishes.
 
-### GitHub-specific flags
+### GitHub/GitLab/Gitea flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--no-source` | `false` | Skip source-code file indexing. Source code is included by default with tree-sitter AST-aware chunking for supported languages (Rust, Python, JavaScript, TypeScript, Go, Bash). |
+| `--no-source` | `false` | Skip source-code file indexing. Source code is included by default. |
 | `--include-source` | `false` | Explicitly include source code files (redundant when source is already on by default; useful to make intent explicit). |
-| `--max-issues <n>` | `100` | Maximum issues to fetch per repository (0 = unlimited). |
-| `--max-prs <n>` | `100` | Maximum pull requests to fetch per repository (0 = unlimited). |
+| `--max-issues <n>` | `100` | Maximum issues to fetch per repository/project (0 = unlimited). |
+| `--max-prs <n>` | `100` | Maximum pull requests or merge requests to fetch per repository/project (0 = unlimited). Applies to GitHub pull requests, GitLab merge requests, and Gitea/Forgejo pull requests. |
 
 ### Reddit-specific flags
 

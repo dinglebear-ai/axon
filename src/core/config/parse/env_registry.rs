@@ -4,6 +4,8 @@ pub(crate) enum EnvClassification {
     ComposeEnv,
     MoveToml,
     TrustedOperatorBootstrap,
+    /// Stale or removed env var — should be stripped from live environments.
+    Delete,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +22,8 @@ pub(crate) enum LegacyBehavior {
     Canonical,
     WarnEnvOverride,
     Advanced,
+    /// Key should be deleted from the environment during migration (setup repair).
+    DeleteOnMigration,
 }
 
 #[derive(Debug, Clone, Copy)]
