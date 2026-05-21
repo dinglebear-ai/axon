@@ -1,5 +1,6 @@
 use crate::core::config::Config;
 use crate::core::content::url_to_domain;
+use crate::core::http::validate_url;
 use crate::jobs::backend::JobKind;
 use crate::jobs::config_snapshot::config_snapshot_json;
 use crate::services::context::ServiceContext;
@@ -210,6 +211,7 @@ pub async fn crawl_start_with_context(
 
     let mut jobs = Vec::with_capacity(urls.len());
     for url in urls {
+        validate_url(url).map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
         let job_id = service_context
             .jobs
             .enqueue(crate::jobs::backend::JobPayload::Crawl {

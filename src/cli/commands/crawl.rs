@@ -13,7 +13,6 @@ mod sync_crawl_migration_tests;
 use super::common::parse_urls;
 use crate::cli::commands::CommandFuture;
 use crate::core::config::{Config, ScrapeFormat};
-use crate::core::http::validate_url;
 use crate::core::logging::{log_info, log_warn};
 use crate::core::ui::{accent, muted, primary, success, warning};
 use crate::services::context::ServiceContext;
@@ -44,7 +43,6 @@ pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
             );
         }
         for url in &urls {
-            validate_url(url)?;
             warn_if_url_looks_like_local_file(url).await;
         }
         let start_url = urls.first().map(String::as_str).unwrap_or("");
