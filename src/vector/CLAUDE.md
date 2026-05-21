@@ -201,7 +201,7 @@ All TEI, Qdrant, and sparse tests run without live services (`httpmock` for netw
 
 ## TEI Service (External — steamy-wsl)
 
-TEI runs on `steamy-wsl` (RTX 4070), not localhost. Reachable via `axon network (Tailscale)` (Tailscale).
+TEI runs on `steamy-wsl` (RTX 4070), not localhost. Reachable via Tailscale.
 
 ```
 TEI_URL=http://steamy-wsl:52000
@@ -226,7 +226,7 @@ TEI_URL=http://steamy-wsl:52000
 **If you switch models:** check whether the new model is asymmetric (instruction-aware). If not, remove `QUERY_INSTRUCTION` from the three query callers.
 
 ### Connectivity
-- TEI is on `axon network (Tailscale)` (external Docker network, Tailscale-accessible)
+- TEI is on the `axon` Docker network (Tailscale-accessible)
 - It is **never** on `127.0.0.1` — `axon doctor` will fail on TEI if run without Tailscale connectivity
 - The `axon` Docker service reaches TEI through the container-internal `TEI_URL` env var.
 
