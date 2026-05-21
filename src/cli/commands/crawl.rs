@@ -32,9 +32,9 @@ pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         if subcommands::maybe_handle_subcommand(cfg, service_context).await? {
             return Ok(());
         }
-        if cfg.format == ScrapeFormat::Llm {
+        if cfg.format == ScrapeFormat::Llm && !cfg.wait {
             return Err(
-                "--format llm is not yet supported for crawl; use `axon scrape --format llm <url>` for single-URL LLM format".into(),
+                "--format llm requires --wait true for crawl: the LLM-transformed output is streamed to stdout after the crawl completes.\n  Example: axon crawl --format llm --wait true <url> > out.txt".into(),
             );
         }
         let urls = parse_urls(cfg);
