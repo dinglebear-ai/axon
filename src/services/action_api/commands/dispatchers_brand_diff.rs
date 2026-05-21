@@ -13,12 +13,8 @@ pub async fn dispatch_diff(
     service_context: &ServiceContext,
     req: DiffRequest,
 ) -> Result<serde_json::Value, ClientActionError> {
-    let url_a = req.url_a.ok_or_else(|| {
-        ClientActionError::new("invalid_request", "url_a is required for diff", false, None)
-    })?;
-    let url_b = req.url_b.ok_or_else(|| {
-        ClientActionError::new("invalid_request", "url_b is required for diff", false, None)
-    })?;
+    let url_a = req.url_a;
+    let url_b = req.url_b;
 
     let cfg = service_context.cfg.apply_overrides(&ConfigOverrides {
         render_mode: req.render_mode.map(map_render_mode),
@@ -43,9 +39,7 @@ pub async fn dispatch_brand(
     service_context: &ServiceContext,
     req: BrandRequest,
 ) -> Result<serde_json::Value, ClientActionError> {
-    let url = req.url.ok_or_else(|| {
-        ClientActionError::new("invalid_request", "url is required for brand", false, None)
-    })?;
+    let url = req.url;
 
     let result = brand_svc::brand(service_context.cfg.as_ref(), &url, None)
         .await
