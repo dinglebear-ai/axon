@@ -3,6 +3,7 @@ use reqwest::Client;
 use reqwest::StatusCode;
 
 use crate::core::config::Config;
+use crate::ingest::git_payload::{GitPayload, build_git_payload};
 use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 
 use super::client::fetch_paginated;
@@ -10,23 +11,115 @@ use super::types::{
     GitLabIssue, GitLabMergeRequest, GitLabProject, GitLabTarget, GitLabUser, GitLabWikiPage,
 };
 
+/// Build the canonical `git_*` payload for a GitLab chunk, plus GitLab-specific fields.
+///
+/// ## Owner convention for GitLab
+/// `git_owner` = `namespace_path` minus the final project segment
+/// (e.g. `"group/subgroup"` for `group/subgroup/project`).
+/// `git_repo` = `target.project` (the final segment only).
 pub(crate) fn gitlab_payload(
     target: &GitLabTarget,
     project: &GitLabProject,
-    content_kind: &str,
-    extra: serde_json::Value,
+    content_kind: &'static str,
+    kind_extra: serde_json::Value,
 ) -> serde_json::Value {
-    serde_json::json!({
-        "provider": "gitlab",
-        "host": target.host,
-        "namespace_path": target.namespace_path,
-        "project": target.project,
-        "content_kind": content_kind,
-        "default_branch": project.default_branch,
-        "visibility": project.visibility,
-        "last_activity_at": project.last_activity_at,
-        "gitlab": extra,
+    let owner: Option<String> = {
+        let path = &target.namespace_path;
+        path.rfind('/').map(|i| path[..i].to_string())
+    };
+    // Canonical content_kind: GitLab uses "merge_request", normalise to "pr".
+    let git_content_kind: &'static str = if content_kind == "merge_request" {
+        "pr"
+    } else {
+        content_kind
+    };
+
+    let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) =
+        extract_kind_fields(&kind_extra, content_kind);
+
+    let file_path = kind_extra
+        .get("path")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let branch = kind_extra
+        .get("branch")
+        .and_then(|v| v.as_str())
+        .or(project.default_branch.as_deref())
+        .map(str::to_string);
+
+    build_git_payload(&GitPayload {
+        provider: "gitlab".to_string(),
+        host: target.host.clone(),
+        owner,
+        repo: target.project.clone(),
+        content_kind: git_content_kind,
+        branch,
+        state,
+        number,
+        author,
+        labels: labels.unwrap_or_default(),
+        is_draft,
+        merged_at,
+        created_at,
+        updated_at,
+        file_path,
+        file_language: None,
+        meta: Some(serde_json::json!({
+            "namespace_path": target.namespace_path,
+            "visibility": project.visibility,
+            "last_activity_at": project.last_activity_at,
+            "default_branch": project.default_branch,
+            "gitlab": kind_extra,
+        })),
     })
+}
+
+/// Decomposed fields extracted from a GitLab issue or merge request payload.
+/// Tuple: (state, number, author, labels, is_draft, merged_at, created_at, updated_at)
+type KindFields = (
+    Option<String>,
+    Option<u64>,
+    Option<String>,
+    Option<Vec<String>>,
+    Option<bool>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+fn extract_kind_fields(extra: &serde_json::Value, content_kind: &str) -> KindFields {
+    match content_kind {
+        "issue" | "merge_request" => (
+            extra
+                .get("state")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            extra.get("iid").and_then(|v| v.as_u64()),
+            extra
+                .get("author")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            extra.get("labels").and_then(|v| v.as_array()).map(|a| {
+                a.iter()
+                    .filter_map(|s| s.as_str().map(str::to_string))
+                    .collect()
+            }),
+            extra.get("is_draft").and_then(|v| v.as_bool()),
+            extra
+                .get("merged_at")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            extra
+                .get("created_at")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            extra
+                .get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+        ),
+        _ => (None, None, None, None, None, None, None, None),
+    }
 }
 
 pub(crate) async fn embed_docs(cfg: &Config, docs: Vec<PreparedDoc>) -> Result<usize> {
