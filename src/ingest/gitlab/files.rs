@@ -124,9 +124,8 @@ pub(crate) async fn embed_files(
             .to_ascii_lowercase();
         let chunks = {
             let content_clone = content.clone();
-            let ext_clone = ext.clone();
             match tokio::task::spawn_blocking(move || {
-                chunk_code(&content_clone, &ext_clone).unwrap_or_else(|| chunk_text(&content_clone))
+                chunk_code(&content_clone, &ext).unwrap_or_else(|| chunk_text(&content_clone))
             })
             .await
             {
