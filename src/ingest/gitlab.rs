@@ -33,48 +33,55 @@ pub async fn ingest_gitlab(
         }))
         .await;
 
+    // Run each phase sequentially and report progress after each one completes.
+    // (The previous array-literal approach evaluated all futures before iteration,
+    // delaying all progress updates until the final phase finished.)
     let mut total = 0usize;
-    for (done, (label, result)) in [
-        ("metadata", embed_metadata(cfg, &target, &project).await),
-        (
-            "files",
-            embed_files(cfg, &target, &project, include_source, &reporter).await,
-        ),
-        (
-            "issues",
-            embed_issues(cfg, &client, &target, &project).await,
-        ),
-        (
-            "merge_requests",
-            embed_merge_requests(cfg, &client, &target, &project).await,
-        ),
-        ("wiki", embed_wiki(cfg, &client, &target, &project).await),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        match result {
-            Ok(chunks) => {
-                total += chunks;
-                log_info(&format!(
-                    "gitlab task_done task={label} target={} chunks={chunks}",
+    let mut tasks_done = 0usize;
+    const TASKS_TOTAL: usize = 5;
+
+    macro_rules! run_phase {
+        ($label:expr, $fut:expr) => {{
+            reporter
+                .report(
+                    serde_json::json!({"phase": $label, "tasks_done": tasks_done, "tasks_total": TASKS_TOTAL}),
+                )
+                .await;
+            match $fut.await {
+                Ok(chunks) => {
+                    total += chunks;
+                    log_info(&format!(
+                        "gitlab task_done task={} target={} chunks={chunks}",
+                        $label,
+                        target.namespace_path
+                    ));
+                }
+                Err(err) => log_warn(&format!(
+                    "gitlab task_failed task={} target={} err={err}",
+                    $label,
                     target.namespace_path
-                ));
+                )),
             }
-            Err(err) => log_warn(&format!(
-                "gitlab task_failed task={label} target={} err={err}",
-                target.namespace_path
-            )),
-        }
-        reporter
-            .report(serde_json::json!({"tasks_done": done + 1, "tasks_total": 5}))
-            .await;
+            tasks_done += 1;
+        }};
     }
+
+    run_phase!("metadata", embed_metadata(cfg, &target, &project));
+    run_phase!(
+        "files",
+        embed_files(cfg, &target, &project, include_source, &reporter)
+    );
+    run_phase!("issues", embed_issues(cfg, &client, &target, &project));
+    run_phase!(
+        "merge_requests",
+        embed_merge_requests(cfg, &client, &target, &project)
+    );
+    run_phase!("wiki", embed_wiki(cfg, &client, &target, &project));
 
     reporter
         .report(serde_json::json!({
-            "tasks_done": 5,
-            "tasks_total": 5,
+            "tasks_done": tasks_done,
+            "tasks_total": TASKS_TOTAL,
             "chunks_embedded": total,
             "phase": "completed",
         }))

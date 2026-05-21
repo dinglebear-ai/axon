@@ -52,7 +52,7 @@ impl fmt::Debug for ServiceUrls {
 /// TODO(A-M-07): Wrap `github_token`, `gitlab_token`, `gitea_token`, and `reddit_client_secret` with
 /// `Secret<String>` after migration is complete.
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct IngestConfig {
     pub github_token: Option<String>, // TODO(A-M-07): Option<Secret<String>>
     pub gitlab_token: Option<String>,
@@ -66,6 +66,26 @@ pub struct IngestConfig {
     pub reddit_min_score: i32,
     pub reddit_depth: usize,
     pub reddit_scrape_links: bool,
+}
+
+impl std::fmt::Debug for IngestConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let redact = |opt: &Option<String>| opt.as_deref().map(|_| "[REDACTED]");
+        f.debug_struct("IngestConfig")
+            .field("github_token", &redact(&self.github_token))
+            .field("gitlab_token", &redact(&self.gitlab_token))
+            .field("gitea_token", &redact(&self.gitea_token))
+            .field("github_include_source", &self.github_include_source)
+            .field("github_max_issues", &self.github_max_issues)
+            .field("github_max_prs", &self.github_max_prs)
+            .field("reddit_client_id", &redact(&self.reddit_client_id))
+            .field("reddit_client_secret", &redact(&self.reddit_client_secret))
+            .field("reddit_max_posts", &self.reddit_max_posts)
+            .field("reddit_min_score", &self.reddit_min_score)
+            .field("reddit_depth", &self.reddit_depth)
+            .field("reddit_scrape_links", &self.reddit_scrape_links)
+            .finish()
+    }
 }
 
 impl Default for IngestConfig {

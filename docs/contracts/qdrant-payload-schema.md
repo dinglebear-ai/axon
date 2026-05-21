@@ -82,7 +82,7 @@ in addition to their source-type-specific fields. See `src/ingest/git_payload.rs
 | `git_merged_at` | raw string | no | ISO8601 merge timestamp. |
 | `git_created_at` | raw string | no | ISO8601 creation timestamp. |
 | `git_updated_at` | raw string | no | ISO8601 update timestamp. |
-| `git_file_path` | keyword | yes | Relative file path for `git_content_kind = "file"`. |
+| `git_file_path` | keyword | no | Relative file path for `git_content_kind = "file"`. Not currently indexed — use `git_file_language` for filterable file queries. |
 | `git_file_language` | keyword | yes | File language/extension for file chunks. |
 | `git_meta` | raw JSON | no | Provider-specific extras (stars, visibility, clone_url, …). Not indexed. |
 
@@ -232,9 +232,14 @@ Used by maintenance operations (deduplication, explicit removal). Uses `wait=tru
 
 ## Design Rules
 
-1. **Absent beats null.** Do not write `"field": null` for optional fields that aren't applicable.
-   Qdrant equality filters on absent fields produce no results, same as `null`, but absent fields
-   don't bloat the payload.
+1. **Absent beats null (target rule; see exception below).** Do not write `"field": null`
+   for optional fields that aren't applicable. Qdrant equality filters on absent fields
+   produce no results, same as `null`, but absent fields don't bloat the payload.
+   **Exception:** `build_git_payload()` in `src/ingest/git_payload.rs` currently serializes
+   `None` as JSON `null` because `serde_json::json!()` macro has no `skip_if_none` option and
+   the struct is not `#[serde(skip_serializing_if)]`-annotated. New code should follow this
+   rule; a cleanup pass to remove null writes from `build_git_payload()` is tracked as a
+   follow-up improvement.
 
 2. **Flat beats nested for indexed fields.** Fields you want to filter or facet on must be flat
    top-level keys. Nested blobs (`git_meta`, `structured_blob`, `gitlab: {...}`) are stored for
