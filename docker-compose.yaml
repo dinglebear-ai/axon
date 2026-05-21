@@ -45,4 +45,3 @@ services:
 networks:
   axon:
     name: ${DOCKER_NETWORK:-axon}
-    external: true
