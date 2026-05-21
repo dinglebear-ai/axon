@@ -68,8 +68,8 @@ pub struct IngestConfig {
     pub reddit_scrape_links: bool,
 }
 
-impl std::fmt::Debug for IngestConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for IngestConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redact = |opt: &Option<String>| opt.as_deref().map(|_| "[REDACTED]");
         f.debug_struct("IngestConfig")
             .field("github_token", &redact(&self.github_token))
