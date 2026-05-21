@@ -7,6 +7,7 @@ use crate::core::config::Config;
 use crate::ingest::github::{is_indexable_doc_path, is_indexable_source_path};
 use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
+use crate::vector::ops::input::code::chunk_code;
 use crate::vector::ops::{PreparedDoc, chunk_text};
 
 use super::embed::{embed_docs, gitlab_payload};
@@ -116,7 +117,23 @@ pub(crate) async fn embed_files(
         let Ok(content) = tokio::fs::read_to_string(&file).await else {
             continue;
         };
-        let chunks = chunk_text(&content);
+        let ext = Path::new(&rel)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let chunks = {
+            let content_clone = content.clone();
+            let ext_clone = ext.clone();
+            match tokio::task::spawn_blocking(move || {
+                chunk_code(&content_clone, &ext_clone).unwrap_or_else(|| chunk_text(&content_clone))
+            })
+            .await
+            {
+                Ok(chunks) => chunks,
+                Err(_) => chunk_text(&content),
+            }
+        };
         if !chunks.is_empty() {
             docs.push(PreparedDoc {
                 url: format!("{}/-/blob/{}/{}", target.web_url, branch, rel),
