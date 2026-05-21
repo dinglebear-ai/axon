@@ -72,14 +72,14 @@ With `--wait false`, `ingest` writes a SQLite job row and exits without draining
 unrelated ingest rows. Use `--wait true` to run ingestion synchronously and block
 until it finishes.
 
-### GitHub/GitLab flags
+### GitHub/GitLab/Gitea flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--no-source` | `false` | Skip source-code file indexing. Source code is included by default. |
 | `--include-source` | `false` | Explicitly include source code files (redundant when source is already on by default; useful to make intent explicit). |
 | `--max-issues <n>` | `100` | Maximum issues to fetch per repository/project (0 = unlimited). |
-| `--max-prs <n>` | `100` | Maximum GitHub pull requests or GitLab merge requests to fetch per repository/project (0 = unlimited). |
+| `--max-prs <n>` | `100` | Maximum pull requests or merge requests to fetch per repository/project (0 = unlimited). Applies to GitHub pull requests, GitLab merge requests, and Gitea/Forgejo pull requests. |
 
 ### Reddit-specific flags
 

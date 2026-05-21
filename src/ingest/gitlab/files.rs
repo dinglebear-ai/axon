@@ -25,10 +25,16 @@ async fn clone_repo(
         .as_deref()
         .filter(|token| !token.is_empty())
     {
+        // Pass auth via env vars so the token is never visible in `ps` output.
+        // Mirrors the pattern used for GitHub wiki clones.
         let encoded = base64::engine::general_purpose::STANDARD.encode(format!("oauth2:{token}"));
         command
-            .arg("-c")
-            .arg(format!("http.extraHeader=Authorization: Basic {encoded}"));
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "http.extraHeader")
+            .env(
+                "GIT_CONFIG_VALUE_0",
+                format!("Authorization: Basic {encoded}"),
+            );
     }
     command
         .args([

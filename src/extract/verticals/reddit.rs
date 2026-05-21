@@ -82,16 +82,18 @@ async fn get_oauth_token() -> Option<String> {
         .ok()
         .filter(|s| !s.is_empty())?;
 
-    let mut state = rate_state().lock().await;
-
-    // Return cached token if still valid (with a 60-second safety margin).
-    if let Some(ref cached) = state.cached_token
-        && cached.expires_at > Instant::now() + Duration::from_secs(60)
+    // Check cache with a short-lived lock — drop the guard before any network I/O
+    // to avoid holding the mutex across .await (serializes all Reddit calls on slow responses).
     {
-        return Some(cached.token.clone());
-    }
+        let state = rate_state().lock().await;
+        if let Some(ref cached) = state.cached_token
+            && cached.expires_at > Instant::now() + Duration::from_secs(60)
+        {
+            return Some(cached.token.clone());
+        }
+    } // lock released here
 
-    // Fetch a fresh token.
+    // Fetch a fresh token outside the mutex.
     let client = http_client().ok()?;
     let resp = client
         .post("https://www.reddit.com/api/v1/access_token")
@@ -111,6 +113,8 @@ async fn get_oauth_token() -> Option<String> {
     let expires_in = body["expires_in"].as_u64().unwrap_or(86400);
     let expires_at = Instant::now() + Duration::from_secs(expires_in);
 
+    // Re-acquire to write the new token back.
+    let mut state = rate_state().lock().await;
     state.cached_token = Some(CachedToken {
         token: token.clone(),
         expires_at,

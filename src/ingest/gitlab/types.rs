@@ -93,8 +93,9 @@ pub fn parse_gitlab_target(input: &str) -> Result<GitLabTarget> {
     };
 
     if parsed.scheme() != "https" && parsed.scheme() != "http" {
-        bail!("invalid GitLab target '{input}': expected https URL");
+        bail!("invalid GitLab target '{input}': expected http:// or https:// URL");
     }
+    let scheme = parsed.scheme();
     let host = parsed
         .host_str()
         .ok_or_else(|| anyhow!("invalid GitLab target '{input}': missing host"))?
@@ -122,7 +123,7 @@ pub fn parse_gitlab_target(input: &str) -> Result<GitLabTarget> {
         .cloned()
         .ok_or_else(|| anyhow!("invalid GitLab target '{input}': missing project"))?;
     let namespace_path = parts.join("/");
-    let web_url = format!("https://{host}/{namespace_path}");
+    let web_url = format!("{scheme}://{host}/{namespace_path}");
     let clone_url = format!("{web_url}.git");
     validate_url(&web_url)?;
     validate_url(&clone_url)?;
@@ -133,7 +134,7 @@ pub fn parse_gitlab_target(input: &str) -> Result<GitLabTarget> {
         project,
         web_url,
         clone_url,
-        api_base: format!("https://{host}/api/v4"),
+        api_base: format!("{scheme}://{host}/api/v4"),
         encoded_project_path,
     })
 }
