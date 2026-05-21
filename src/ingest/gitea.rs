@@ -7,6 +7,7 @@ use crate::core::config::Config;
 use crate::core::http::validate_url;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::ingest::generic_git::ingest_git_repository;
+use crate::ingest::git_payload::{GitPayload, build_git_payload};
 use crate::ingest::progress::PhaseReporter;
 use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 
@@ -203,17 +204,67 @@ async fn embed_docs(cfg: &Config, docs: Vec<PreparedDoc>) -> Result<usize> {
 fn payload(
     target: &GiteaTarget,
     repo: &GiteaRepo,
-    kind: &str,
-    extra: serde_json::Value,
+    kind: &'static str,
+    kind_extra: serde_json::Value,
 ) -> serde_json::Value {
-    serde_json::json!({
-        "provider": "gitea",
-        "host": target.host,
-        "owner": target.owner,
-        "repo": target.repo,
-        "content_kind": kind,
-        "default_branch": repo.default_branch,
-        "gitea": extra,
+    // Normalise Gitea "pull_request" to canonical "pr".
+    let git_content_kind: &'static str = if kind == "pull_request" { "pr" } else { kind };
+
+    let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) = match kind {
+        "issue" | "pull_request" => (
+            kind_extra
+                .get("state")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            kind_extra.get("number").and_then(|v| v.as_u64()),
+            kind_extra
+                .get("author")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            kind_extra
+                .get("labels")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|s| s.as_str().map(str::to_string))
+                        .collect()
+                }),
+            None::<bool>,
+            None::<String>,
+            kind_extra
+                .get("created_at")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            kind_extra
+                .get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+        ),
+        _ => (None, None, None, None, None, None, None, None),
+    };
+
+    build_git_payload(&GitPayload {
+        provider: "gitea".to_string(),
+        host: target.host.clone(),
+        owner: Some(target.owner.clone()),
+        repo: target.repo.clone(),
+        content_kind: git_content_kind,
+        branch: repo.default_branch.clone(),
+        state,
+        number,
+        author,
+        labels: labels.unwrap_or_default(),
+        is_draft,
+        merged_at,
+        created_at,
+        updated_at,
+        file_path: None,
+        file_language: None,
+        meta: Some(serde_json::json!({
+            "default_branch": repo.default_branch,
+            "private": repo.private,
+            "gitea": kind_extra,
+        })),
     })
 }
 

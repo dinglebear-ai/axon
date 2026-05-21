@@ -29,6 +29,15 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
         // Indexed so `/facet` and term-match filters work; absent fields are
         // tolerated by Qdrant (point simply won't match an equality filter).
         "extractor_name",
+        // Shared git provider schema (all git-backed ingest sources).
+        "provider",
+        "git_host",
+        "git_owner",
+        "git_repo",
+        "git_content_kind",
+        "git_state",
+        "git_author",
+        "git_file_language",
     ];
     let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(keyword_fields.len() + 3);
 
@@ -54,6 +63,20 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
             .put(&chunk_index_url)
             .json(&serde_json::json!({
                 "field_name": "chunk_index",
+                "field_schema": "integer"
+            }))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }));
+
+    let git_number_url = index_url.clone();
+    futures.push(Box::pin(async move {
+        client
+            .put(&git_number_url)
+            .json(&serde_json::json!({
+                "field_name": "git_number",
                 "field_schema": "integer"
             }))
             .send()

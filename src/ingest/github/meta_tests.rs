@@ -11,11 +11,16 @@ fn make_common_params() -> GitHubPayloadParams {
 }
 
 #[test]
-fn payload_has_32_keys() {
+fn payload_has_gh_and_git_keys() {
     let params = make_common_params();
     let payload = build_github_payload(&params);
     let obj = payload.as_object().expect("payload is an object");
-    assert_eq!(obj.len(), 32, "expected 32 gh_* keys, got {}", obj.len());
+    // Backwards-compat gh_* keys (32) plus canonical git_* keys and provider.
+    let gh_count = obj.keys().filter(|k| k.starts_with("gh_")).count();
+    let git_count = obj.keys().filter(|k| k.starts_with("git_")).count();
+    assert_eq!(gh_count, 32, "expected 32 gh_* keys, got {gh_count}");
+    assert!(git_count > 0, "expected git_* keys to be present");
+    assert!(obj.contains_key("provider"), "expected provider key");
 }
 
 #[test]
@@ -103,11 +108,15 @@ fn payload_issue_params_produce_correct_values() {
 }
 
 #[test]
-fn payload_all_keys_start_with_gh_prefix() {
+fn payload_keys_use_known_prefixes() {
     let params = make_common_params();
     let payload = build_github_payload(&params);
     let obj = payload.as_object().unwrap();
     for key in obj.keys() {
-        assert!(key.starts_with("gh_"), "key {key} missing gh_ prefix");
+        let valid = key.starts_with("gh_") || key.starts_with("git_") || key == "provider";
+        assert!(
+            valid,
+            "unexpected key '{key}' — expected gh_*, git_*, or provider"
+        );
     }
 }

@@ -23,4 +23,3 @@ pub mod pypi;
 pub mod reddit;
 pub mod shopify;
 pub mod stackoverflow;
-pub mod youtube_video;

@@ -26,3 +26,4 @@ vendor/lab-auth/src/authorize.rs  # expires: 2026-06-15 | owner: jmagar | split:
 vendor/lab-auth/src/sqlite.rs     # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
 vendor/lab-auth/src/google.rs     # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
 vendor/lab-auth/src/middleware.rs  # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
+src/ingest/gitea.rs  # expires: 2026-06-20 | owner: jmagar | split: gitea/{client,embed,pulls}.rs

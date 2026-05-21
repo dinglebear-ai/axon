@@ -4,6 +4,7 @@ mod engine;
 mod extract_ladder;
 mod extraction;
 mod filename;
+pub mod llm;
 pub(crate) mod markdown;
 mod url_parsing;
 
@@ -24,6 +25,7 @@ pub use engine::{ExtractWebConfig, run_extract_with_engine};
 pub use extract_ladder::{LadderResult, LadderThresholds, LadderTier, extract_with_ladder};
 pub use extraction::{extract_anchor_hrefs, extract_links, extract_meta_description, find_between};
 pub use filename::{url_to_domain, url_to_filename, url_to_stable_filename};
+pub use llm::to_llm_text;
 pub use markdown::{
     BOILERPLATE_SELECTORS, build_selector_config, build_transform_config, bytes_to_markdown,
     clean_markdown_whitespace, redact_url, to_markdown,

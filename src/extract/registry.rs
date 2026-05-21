@@ -35,13 +35,14 @@ pub fn list() -> Vec<ExtractorInfo> {
         verticals::huggingface_model::INFO,
         verticals::dev_to::INFO,
         verticals::shopify::INFO,
-        verticals::youtube_video::INFO,
         verticals::hackernews::INFO,
         verticals::stackoverflow::INFO,
         verticals::arxiv::INFO,
         // auto_dispatch: false — explicit opt-in only
         verticals::amazon::INFO,
         verticals::ebay::INFO,
+        // youtube_video removed: HTML scraping of ytInitialPlayerResponse is fragile
+        // and produces no transcript. Use `axon ingest <youtube-url>` (yt-dlp path) instead.
     ]
 }
 
@@ -96,9 +97,6 @@ pub async fn dispatch_by_url(
     }
     if verticals::shopify::INFO.auto_dispatch && verticals::shopify::matches(url) {
         return Some(verticals::shopify::extract(url, ctx).await);
-    }
-    if verticals::youtube_video::INFO.auto_dispatch && verticals::youtube_video::matches(url) {
-        return Some(verticals::youtube_video::extract(url, ctx).await);
     }
     if verticals::hackernews::INFO.auto_dispatch && verticals::hackernews::matches(url) {
         return Some(verticals::hackernews::extract(url, ctx).await);
@@ -166,7 +164,6 @@ pub async fn dispatch_by_name(
         "huggingface_model" => dispatch!(huggingface_model),
         "dev_to" => dispatch!(dev_to),
         "shopify" => dispatch!(shopify),
-        "youtube_video" => dispatch!(youtube_video),
         "hackernews" => dispatch!(hackernews),
         "stackoverflow" => dispatch!(stackoverflow),
         "arxiv" => dispatch!(arxiv),

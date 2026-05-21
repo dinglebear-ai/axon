@@ -6,6 +6,7 @@ use reqwest::Url;
 use crate::core::config::Config;
 use crate::core::http::validate_url;
 use crate::core::logging::{log_done, log_info};
+use crate::ingest::git_payload::{GitPayload, build_git_payload};
 use crate::ingest::github::{is_indexable_doc_path, is_indexable_source_path};
 use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
@@ -198,6 +199,17 @@ async fn file_doc(
     if chunks.is_empty() {
         return Ok(None);
     }
+    let extra = build_git_payload(&GitPayload {
+        provider: provider.to_string(),
+        host: target.host.clone(),
+        owner: None,
+        repo: target.name.clone(),
+        content_kind: "file",
+        branch: Some(branch.to_string()),
+        file_path: Some(rel.clone()),
+        meta: Some(serde_json::json!({ "clone_url": target.clone_url })),
+        ..GitPayload::default()
+    });
     Ok(Some(PreparedDoc {
         url: format!("{}#{}:{}", target.web_url, branch, rel),
         domain: target.host.clone(),
@@ -205,15 +217,7 @@ async fn file_doc(
         source_type: source_type.to_string(),
         content_type: "text",
         title: Some(rel.clone()),
-        extra: Some(serde_json::json!({
-            "provider": provider,
-            "host": target.host,
-            "repo": target.name,
-            "content_kind": "file",
-            "branch": branch,
-            "path": rel,
-            "clone_url": target.clone_url,
-        })),
+        extra: Some(extra),
         extractor_name: None,
         structured: None,
     }))

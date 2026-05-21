@@ -124,19 +124,6 @@ fn docker_hub_matches_repository_paths() {
 }
 
 #[test]
-fn youtube_video_matches_video_page_urls() {
-    assert!(verticals::youtube_video::matches(
-        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    ));
-    assert!(verticals::youtube_video::matches(
-        "https://youtu.be/dQw4w9WgXcQ"
-    ));
-    assert!(!verticals::youtube_video::matches(
-        "https://youtube.com/channel/UCtest"
-    ));
-}
-
-#[test]
 fn dev_to_matches_article_paths() {
     assert!(verticals::dev_to::matches(
         "https://dev.to/username/my-cool-article"
