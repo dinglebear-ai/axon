@@ -13,7 +13,7 @@ use super::client::{
 pub(crate) async fn embed_docs(cfg: &Config, docs: Vec<PreparedDoc>) -> Result<usize> {
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(|e| anyhow!("{}", e))?;
     Ok(summary.chunks_embedded)
 }
 
