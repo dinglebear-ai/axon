@@ -473,4 +473,12 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Advanced,
         false,
     ),
+    spec(
+        "AXON_TEST_QDRANT_URL",
+        Delete,
+        NotRuntime,
+        None,
+        DeleteOnMigration,
+        false,
+    ),
 ];

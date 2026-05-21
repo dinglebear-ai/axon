@@ -59,10 +59,10 @@ Read `src/mcp/server.rs` lines 309–343 to confirm the current placement.
 
 - [ ] **Step 2: Make `required_scope_for` testable and write a failing test**
 
-First, change `fn required_scope_for` to `pub(crate) fn required_scope_for` so the integration test can call it directly:
+First, change `fn required_scope_for` to `pub fn required_scope_for` so the integration test can call it directly from `tests/` (integration tests live outside the crate boundary and need `pub`, not `pub(crate)`):
 
 ```rust
-pub(crate) fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
+pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
 ```
 
 Then add this test to `tests/mcp_contract_parity.rs`. Note that `axon` re-exports the MCP server module:
@@ -550,25 +550,32 @@ async fn fake_capture_proves_blocked_urls_never_dispatched() {
                 ("http://10.0.0.1/admin", true),         // private, blocked
             ];
 
-            let mut dispatched = self.dispatched.lock().unwrap();
-            let mut captured = Vec::new();
-            for (url, expect_blocked) in candidates {
+            // Run all async validation BEFORE taking the lock — holding a
+            // std::sync::MutexGuard across .await makes the future non-Send.
+            let mut results: Vec<(String, bool)> = Vec::new();
+            for (url, expect_blocked) in &candidates {
                 let blocked = validate_url_with_dns_timeout(url).await.is_err();
                 assert_eq!(
-                    blocked, expect_blocked,
+                    blocked, *expect_blocked,
                     "pre-dispatch check for {url} returned blocked={blocked}, expected={expect_blocked}"
                 );
                 if !blocked {
-                    // Only urls that pass pre-dispatch validation are dispatched.
-                    dispatched.push(url.to_string());
-                    captured.push(CapturedRequest {
-                        url: url.to_string(),
-                        method: Some("GET".to_string()),
-                    });
+                    results.push((url.to_string(), false));
                 }
                 // Blocked URLs are NEVER added to `dispatched` — this is the
                 // pre-dispatch contract. If this code were wrong and added them,
                 // the assertions below would catch it.
+            }
+
+            // Lock only after all .await calls complete.
+            let mut dispatched = self.dispatched.lock().unwrap();
+            let mut captured = Vec::new();
+            for (url, _) in results {
+                dispatched.push(url.clone());
+                captured.push(CapturedRequest {
+                    url,
+                    method: Some("GET".to_string()),
+                });
             }
             Ok(captured)
         }

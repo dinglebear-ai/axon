@@ -6,6 +6,9 @@ use crate::services::types::{CorpusHealthDiagnostic, CorpusHealthKind};
 mod context;
 mod normalize;
 mod output;
+#[cfg(test)]
+#[path = "ask_stream_correction_tests.rs"]
+mod stream_correction_tests;
 pub(crate) mod synthesis_prompt;
 #[cfg(test)]
 #[path = "ask_tests.rs"]
@@ -149,13 +152,11 @@ fn build_diagnostics_json(enabled: bool, cfg: &Config, ctx: &AskContext) -> serd
 }
 
 fn print_normalized_stream_correction(answer: &str) {
-    if answer.starts_with("Insufficient evidence in indexed sources") {
-        println!("\n\n{answer}");
-    } else if let Some(idx) = answer.find("\n## Citation Validation Failed\n") {
-        println!("{}", &answer[idx..]);
-    } else {
-        println!("\n\n---\n\n{answer}");
-    }
+    println!("{}", normalized_stream_correction_text(answer));
+}
+
+fn normalized_stream_correction_text(answer: &str) -> String {
+    format!("\n\n---\n\nNormalized answer (stored for JSON and follow-up sessions):\n\n{answer}")
 }
 
 fn ask_context_with_follow_up(cfg: &Config, context: &str) -> String {
