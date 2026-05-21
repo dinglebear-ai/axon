@@ -4,7 +4,7 @@
 //! sitemap backfill, embed queueing, audit diff, and manifest finalization.
 //! All business logic lives here; the CLI command is a thin formatting wrapper.
 
-use crate::core::config::{Config, RenderMode};
+use crate::core::config::{Config, RenderMode, ScrapeFormat};
 use crate::core::content::url_to_domain;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::Spinner;
@@ -83,6 +83,10 @@ pub async fn crawl_sync(cfg: &Config, start_url: &str) -> Result<CrawlSyncResult
         &final_summary,
     )
     .await?;
+
+    if cfg.format == ScrapeFormat::Llm {
+        stream_llm_output(cfg, &manifest_path).await;
+    }
 
     Ok(CrawlSyncResult {
         pages_seen: final_summary.pages_seen,
@@ -481,3 +485,65 @@ async fn finalize_crawl(
     ));
     Ok(())
 }
+
+// ─── LLM stream pass ──────────────────────────────────────────────────────
+
+/// Read the crawl manifest and apply `to_llm_text()` to each markdown file,
+/// streaming the results to stdout with `---` page delimiters.
+///
+/// Called when `cfg.format == ScrapeFormat::Llm` after the crawl completes.
+/// Raw markdown on disk is left untouched — the embed pipeline continues to
+/// read `output_dir/markdown/` and embeds the original text, not the LLM form.
+///
+/// Errors during individual page reads are logged and skipped so a single
+/// unreadable file does not abort the entire stream.
+async fn stream_llm_output(cfg: &Config, manifest_path: &std::path::Path) {
+    let manifest = match read_manifest_data(manifest_path).await {
+        Ok(m) => m,
+        Err(err) => {
+            log_warn(&format!(
+                "crawl --format llm: failed to read manifest for LLM stream: {err}"
+            ));
+            return;
+        }
+    };
+    if manifest.is_empty() {
+        return;
+    }
+
+    // Sort by URL for deterministic output order.
+    let mut entries: Vec<_> = manifest.values().collect();
+    entries.sort_by(|a, b| a.url.cmp(&b.url));
+
+    let markdown_dir = cfg.output_dir.join("markdown");
+    let mut first = true;
+
+    for entry in entries {
+        let rel = std::path::Path::new(&entry.relative_path);
+        // relative_path is stored as "markdown/<filename>" — strip the prefix.
+        let rel_file = rel.strip_prefix("markdown").unwrap_or(rel);
+        let path = markdown_dir.join(rel_file);
+
+        let markdown = match tokio::fs::read_to_string(&path).await {
+            Ok(md) => md,
+            Err(err) => {
+                log_warn(&format!(
+                    "crawl --format llm: skipping unreadable file {}: {err}",
+                    path.display()
+                ));
+                continue;
+            }
+        };
+
+        let llm_text = crate::core::content::to_llm_text(&markdown, &entry.url);
+        if !first {
+            println!("\n---");
+        }
+        println!("{llm_text}");
+        first = false;
+    }
+}
+
+#[cfg(test)]
+#[path = "crawl_sync_tests.rs"]
+mod tests;
