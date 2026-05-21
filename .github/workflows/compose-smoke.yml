@@ -16,11 +16,13 @@ jobs:
             config
             apps/web
 
+      # Docker Compose v5 validates external networks exist even during config --quiet.
+      # Create the network so both prod and dev compose files pass static validation.
+      - name: Create Docker network
+        run: docker network create ${DOCKER_NETWORK:-axon} || true
+
       - name: Validate production compose
         run: docker compose --env-file .env.example -f docker-compose.prod.yaml config --quiet
-
-      - name: Create Docker network for dev compose
-        run: docker network create ${DOCKER_NETWORK:-axon} || true
 
       - name: Validate development compose
         run: docker compose --env-file .env.example -f docker-compose.yaml config --quiet
