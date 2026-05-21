@@ -69,6 +69,8 @@ impl Default for Config {
             sessions_gemini: false,
             sessions_project: None,
             github_token: None,
+            gitlab_token: None,
+            gitea_token: None,
             github_include_source: true,
             github_max_issues: 100,
             github_max_prs: 100,
@@ -314,6 +316,8 @@ impl fmt::Debug for Config {
             .field("sessions_gemini", &self.sessions_gemini)
             .field("sessions_project", &self.sessions_project)
             .field("github_token", &"[REDACTED]")
+            .field("gitlab_token", &"[REDACTED]")
+            .field("gitea_token", &"[REDACTED]")
             .field("github_include_source", &self.github_include_source)
             .field("github_max_issues", &self.github_max_issues)
             .field("github_max_prs", &self.github_max_prs)

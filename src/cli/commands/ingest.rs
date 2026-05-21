@@ -49,6 +49,9 @@ pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> C
             "ingest requires a target. Examples:\n\
                  \n\
                  GitHub:   axon ingest owner/repo\n\
+                 GitLab:   axon ingest https://gitlab.com/group/project\n\
+                 Gitea:    axon ingest gitea:gitea.example.com/org/repo\n\
+                 Git:      axon ingest git:https://example.com/org/repo.git\n\
                  Reddit:   axon ingest r/rust\n\
                            axon ingest https://reddit.com/r/rust/comments/...\n\
                  YouTube:  axon ingest https://youtube.com/watch?v=...\n\

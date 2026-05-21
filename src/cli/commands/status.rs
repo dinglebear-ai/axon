@@ -78,16 +78,24 @@ pub(crate) fn render_status_payload(value: &serde_json::Value) -> Result<String,
         local_ingest_jobs: Vec<ServiceJob>,
     }
 
+    // Unwrap the StatusResult envelope ({payload, text, totals}) if the server
+    // returned the full struct rather than just the inner payload JSON.
+    let inner = value
+        .get("payload")
+        .filter(|p| p.get("local_crawl_jobs").is_some())
+        .unwrap_or(value);
+
     // Defensive: clamp negative totals to 0 so a malformed payload can't
     // either suppress the truncation note or panic the formatter.
-    let crawl_total = value
+    let crawl_total = inner
         .get("totals")
+        .or_else(|| value.get("totals"))
         .and_then(|t| t.get("crawl"))
         .and_then(|v| v.as_i64())
         .unwrap_or(0)
         .max(0);
 
-    let parsed: StatusPayload = serde_json::from_value(value.clone())?;
+    let parsed: StatusPayload = serde_json::from_value(inner.clone())?;
     let crawl_note = crawl_truncation_note(parsed.local_crawl_jobs.len(), crawl_total);
     Ok(render_status_jobs_from_slices(
         &parsed.local_crawl_jobs,

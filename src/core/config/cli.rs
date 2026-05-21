@@ -71,7 +71,7 @@ pub(super) enum CliCommand {
     Status,
     /// Remove duplicate points from the Qdrant collection
     Dedupe,
-    /// Ingest external sources (GitHub repo, Reddit, YouTube)
+    /// Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube)
     Ingest(IngestArgs),
     /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
     Sessions(SessionsArgs),
@@ -411,7 +411,7 @@ pub(super) struct IngestArgs {
     #[command(subcommand)]
     pub(super) job: Option<JobSubcommand>,
 
-    /// Ingest target: GitHub slug (owner/repo), YouTube URL/@handle, or Reddit subreddit (r/name)
+    /// Ingest target: GitHub slug, GitLab/Gitea URL, git:https URL, YouTube URL/@handle, or Reddit target
     #[arg(value_name = "TARGET")]
     pub(super) target: Option<String>,
 

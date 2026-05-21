@@ -335,6 +335,30 @@ compatibility = "canonical"
 reason = "GitHub API token for ingest rate limits."
 
 [[env]]
+key = "GITLAB_TOKEN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "GitLab API token for private project ingest and rate limits."
+
+[[env]]
+key = "GITEA_TOKEN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Gitea/Forgejo API token for private repo ingest and rate limits."
+
+[[env]]
 key = "REDDIT_CLIENT_ID"
 classification = "keep-env"
 runtime_placement = "both"

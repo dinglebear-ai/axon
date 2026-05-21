@@ -60,6 +60,8 @@ Generated: 2026-05-15 from source-derived inventory.
 |-----|-------|-----------|-----------|--------|--------|
 | `TAVILY_API_KEY` | keep-env | both | — | **yes** | runtime.rs |
 | `GITHUB_TOKEN` | keep-env | both | — | **yes** | runtime.rs |
+| `GITLAB_TOKEN` | keep-env | both | — | **yes** | runtime.rs |
+| `GITEA_TOKEN` | keep-env | both | — | **yes** | runtime.rs |
 | `REDDIT_CLIENT_ID` | keep-env | both | — | no | runtime.rs |
 | `REDDIT_CLIENT_SECRET` | keep-env | both | — | **yes** | runtime.rs |
 | `HF_TOKEN` | keep-env | compose-interp | — | **yes** | runtime.rs |

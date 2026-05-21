@@ -144,7 +144,7 @@ authoritative domains are allowed through config.
 The **adaptive full-doc fetch skip gate** (bd axon_rust-30y) elides `fetch_full_docs(...)` when the reranked top-K already covers >= `ask_fulldoc_skip_min_urls` unique URLs, >= `ask_fulldoc_skip_min_chars` chunk-text bytes, and every score satisfies the mode-specific floor above. The gate defaults to **disabled** because `ask` is normally a Gemini-backed one-shot synthesis path with a large context window, so recall is more valuable than minimizing context assembly. It can be enabled with `[ask.adaptive] fulldoc-skip-enabled = true` in `~/.axon/config.toml` after `axon evaluate` proves no quality regression on the target corpus. The decision is exposed in ask diagnostics as `full_doc_fetch_skipped: bool` and `full_doc_fetch_skip_reason: "ok_skip" | "disabled" | "insufficient_urls" | "insufficient_chars" | "low_top_scores" | "empty_top_k"`. The cosine `score_delta` knob is intentionally ignored on the RRF row because rank-fusion output is unitless — the rank-based gate uses P75 across the full reranked set instead.
 
 ### Collection Naming
-Default collection: `cortex` (set via `AXON_COLLECTION` or `--collection`). The legacy `firecrawl` alias resolves to `cortex` — GET returns 200, `ensure_collection()` exits early. Do not hardcode `cortex` in new code; always read from `cfg.collection`.
+Default collection: `axon` (set via `AXON_COLLECTION` or `--collection`). Do not hardcode the collection name in new code; always read from `cfg.collection`.
 
 The dispatch entry validates `cfg.collection` against `[A-Za-z0-9_.-]{1,255}` with no leading/trailing dot and no `..`. The validator is a path-injection guard — Qdrant URLs interpolate the collection name without percent-encoding, so a malicious value like `../etc/passwd` would otherwise escape the path.
 
@@ -189,7 +189,7 @@ All TEI, Qdrant, and sparse tests run without live services (`httpmock` for netw
 | Var | Default | Effect |
 |-----|---------|--------|
 | `TEI_MAX_CLIENT_BATCH_SIZE` | 64 (max 128) | Batch size before auto-split on 413 |
-| `AXON_COLLECTION` | `cortex` | Qdrant collection name. Validated at dispatch: `[A-Za-z0-9_.-]`, 1–255 chars, no leading/trailing dot, no `..`. |
+| `AXON_COLLECTION` | `axon` | Qdrant collection name. Validated at dispatch: `[A-Za-z0-9_.-]`, 1–255 chars, no leading/trailing dot, no `..`. |
 | `AXON_HYBRID_SEARCH` | `true` | Master switch for hybrid RRF search on Named collections. `false` forces dense-only on every query (used by `axon evaluate --no-hybrid-search` for A/B comparison). |
 | `AXON_HYBRID_CANDIDATES` | `100` | Prefetch window per arm (dense + sparse) before RRF fusion for `query`. Maps to `cfg.hybrid_search_candidates`. |
 | `AXON_SOURCES_FACET_LIMIT` | 100,000 | Max URLs returned by `sources` command via facet |

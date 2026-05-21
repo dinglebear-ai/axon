@@ -49,12 +49,14 @@ impl fmt::Debug for ServiceUrls {
 ///
 /// Default values match [`Config::default()`] exactly.
 ///
-/// TODO(A-M-07): Wrap `github_token` and `reddit_client_secret` with
+/// TODO(A-M-07): Wrap `github_token`, `gitlab_token`, `gitea_token`, and `reddit_client_secret` with
 /// `Secret<String>` after migration is complete.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct IngestConfig {
     pub github_token: Option<String>, // TODO(A-M-07): Option<Secret<String>>
+    pub gitlab_token: Option<String>,
+    pub gitea_token: Option<String>,
     pub github_include_source: bool,
     pub github_max_issues: usize,
     pub github_max_prs: usize,
@@ -70,6 +72,8 @@ impl Default for IngestConfig {
     fn default() -> Self {
         Self {
             github_token: None,
+            gitlab_token: None,
+            gitea_token: None,
             github_include_source: true,
             github_max_issues: 100,
             github_max_prs: 100,

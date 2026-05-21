@@ -42,6 +42,36 @@ fn parse_ingest_source(
                 include_source: include_source.unwrap_or(cfg.github_include_source),
             })
         }
+        IngestSourceType::Gitlab => {
+            let target = target
+                .ok_or_else(|| invalid_params("target project is required for gitlab ingest"))?;
+            let target = crate::ingest::gitlab::normalize_gitlab_target(&target)
+                .map_err(|e| invalid_params(format!("invalid GitLab target: {e}")))?;
+            Ok(IngestSource::Gitlab {
+                target,
+                include_source: include_source.unwrap_or(cfg.github_include_source),
+            })
+        }
+        IngestSourceType::Gitea => {
+            let target =
+                target.ok_or_else(|| invalid_params("target repo is required for gitea ingest"))?;
+            let target = crate::ingest::gitea::normalize_gitea_target(&target)
+                .map_err(|e| invalid_params(format!("invalid Gitea target: {e}")))?;
+            Ok(IngestSource::Gitea {
+                target,
+                include_source: include_source.unwrap_or(cfg.github_include_source),
+            })
+        }
+        IngestSourceType::Git => {
+            let target =
+                target.ok_or_else(|| invalid_params("target repo is required for git ingest"))?;
+            let target = crate::ingest::generic_git::normalize_generic_git_target(&target)
+                .map_err(|e| invalid_params(format!("invalid git target: {e}")))?;
+            Ok(IngestSource::GenericGit {
+                target,
+                include_source: include_source.unwrap_or(cfg.github_include_source),
+            })
+        }
         IngestSourceType::Reddit => {
             let target =
                 target.ok_or_else(|| invalid_params("target is required for reddit ingest"))?;

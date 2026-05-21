@@ -7,7 +7,10 @@ use std::error::Error;
 /// Routing rules (checked in order):
 ///   1. Reddit: `r/` prefix or reddit.com host
 ///   2. YouTube: `@handle` (expanded to full URL), youtube.com/youtu.be host, or bare 11-char video ID
-///   3. GitHub: github.com host or `owner/repo` slug (exactly one `/`)
+///   3. GitLab: gitlab.com URL or explicit `gitlab:` target
+///   4. Gitea/Forgejo: known public hosts or explicit `gitea:` / `forgejo:` target
+///   5. Generic Git: explicit `git:` HTTPS clone URL
+///   6. GitHub: github.com host or `owner/repo` slug (exactly one `/`)
 pub fn classify_target(input: &str, include_source: bool) -> Result<IngestSource, Box<dyn Error>> {
     let s = input.trim();
 
@@ -39,7 +42,43 @@ pub fn classify_target(input: &str, include_source: bool) -> Result<IngestSource
         });
     }
 
-    // 3. GitHub: URL or owner/repo slug
+    // 3. GitLab: URL or explicit prefix. Bare nested paths are ambiguous, so
+    // keep `owner/repo` reserved for the existing GitHub shorthand.
+    if is_host(s, &["gitlab.com", "www.gitlab.com"]) || s.starts_with("gitlab:") {
+        let target = crate::ingest::gitlab::normalize_gitlab_target(s)?;
+        return Ok(IngestSource::Gitlab {
+            target,
+            include_source,
+        });
+    }
+
+    if is_host(
+        s,
+        &[
+            "gitea.com",
+            "www.gitea.com",
+            "codeberg.org",
+            "www.codeberg.org",
+        ],
+    ) || s.starts_with("gitea:")
+        || s.starts_with("forgejo:")
+    {
+        let target = crate::ingest::gitea::normalize_gitea_target(s)?;
+        return Ok(IngestSource::Gitea {
+            target,
+            include_source,
+        });
+    }
+
+    if s.starts_with("git:") {
+        let target = crate::ingest::generic_git::normalize_generic_git_target(s)?;
+        return Ok(IngestSource::GenericGit {
+            target,
+            include_source,
+        });
+    }
+
+    // 6. GitHub: URL or owner/repo slug
     if is_host(s, &["github.com", "www.github.com"]) {
         let repo = extract_github_repo_from_url(s)?;
         return Ok(IngestSource::Github {
@@ -57,6 +96,9 @@ pub fn classify_target(input: &str, include_source: bool) -> Result<IngestSource
     Err(format!(
         "cannot determine ingest source from '{s}': \
          use a GitHub slug (owner/repo) or URL, \
+         GitLab URL or gitlab:<host>/<namespace>/<project>, \
+         Gitea/Forgejo URL or gitea:<host>/<owner>/<repo>, \
+         git:https://host/path/repo.git, \
          YouTube URL or @handle, \
          or Reddit subreddit (r/name) or URL"
     )
