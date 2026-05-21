@@ -165,6 +165,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: axon-windows
+      - name: create web assets placeholder
+        run: mkdir -p apps/web/out
+        shell: bash
       - name: cargo build --release -p axon
         run: cargo build --release --locked -p axon
       - name: Windows AXON_DATA_DIR path regression
@@ -734,6 +737,9 @@ jobs:
             echo "HF_TOKEN="
           } > "$HOME/.axon/.env"
           docker compose --env-file "$HOME/.axon/.env" -f docker-compose.prod.yaml config >/dev/null
+
+      - name: Create Docker network for compose
+        run: docker network create ${DOCKER_NETWORK:-axon} || true
 
       - name: Start Axon infra
         run: docker compose --env-file "$HOME/.axon/.env" -f docker-compose.prod.yaml up -d axon-qdrant
