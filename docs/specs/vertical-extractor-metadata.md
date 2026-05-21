@@ -324,21 +324,21 @@ disk-write path.
 
 | Component | Status |
 |-----------|--------|
-| `extra` field on `ScrapedDoc` | pending |
-| `extra` on `ScrapeResult` | pending |
-| Scrape CLI PreparedDoc path | pending |
-| GitHub verticals (`git_*`) | pending (foundation in git_payload.rs exists) |
-| npm | pending |
-| pypi | pending |
-| crates_io | pending |
-| docs_rs | pending |
-| docker_hub | pending |
-| huggingface_model | pending |
-| dev_to | pending |
-| shopify | pending |
-| hackernews | pending |
-| stackoverflow | pending |
-| arxiv | pending |
-| amazon | pending |
-| ebay | pending |
-| Payload indexes | pending |
+| `extra` field on `ScrapedDoc` | done |
+| `extra` on `ScrapeResult` | done |
+| Scrape CLI PreparedDoc path | done |
+| GitHub verticals (`git_*`) | done |
+| npm | done |
+| pypi | done |
+| crates_io | done |
+| docs_rs | done |
+| docker_hub | done |
+| huggingface_model | done |
+| dev_to | done |
+| shopify | done |
+| hackernews | done |
+| stackoverflow | done |
+| arxiv | done |
+| amazon | done |
+| ebay | done |
+| Payload indexes | done |
