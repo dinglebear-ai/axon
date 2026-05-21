@@ -17,7 +17,7 @@ pub fn qdrant_base(cfg: &Config) -> &str {
 ///
 /// Existing points indexed before this constant was introduced have no
 /// `payload_schema_version` field; treat them as implicit version `1`. New
-/// upserts carry version `2` (this constant). Retrieval may filter
+/// upserts carry the current version (this constant). Retrieval may filter
 /// `payload_schema_version >= N` to scope queries to vertical-aware fields
 /// (see `build_schema_version_filter` in `qdrant/filter.rs`).
 ///

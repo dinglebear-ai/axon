@@ -191,8 +191,13 @@ fn build_extra(jsonld: Option<&serde_json::Value>, item_id: Option<&str>) -> ser
         if let Some(brand) = j["brand"]["name"].as_str() {
             obj["ebay_brand"] = serde_json::Value::String(brand.to_string());
         }
-        if let Some(price) = j["offers"]["price"].as_str() {
-            obj["ebay_price"] = serde_json::Value::String(price.to_string());
+        let price_val = &j["offers"]["price"];
+        let price_str = price_val
+            .as_str()
+            .map(|s| s.to_string())
+            .or_else(|| price_val.as_f64().map(|n| n.to_string()));
+        if let Some(price) = price_str {
+            obj["ebay_price"] = serde_json::Value::String(price);
         }
         if let Some(condition) = j["offers"]["itemCondition"].as_str() {
             let clean = condition

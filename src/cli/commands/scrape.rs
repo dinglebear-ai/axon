@@ -8,7 +8,7 @@ use crate::core::http::validate_url;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_option, print_phase};
 use crate::services::scrape as scrape_service;
-use crate::vector::ops::input::chunk_markdown;
+use crate::vector::ops::input::{chunk_markdown, chunk_text};
 use crate::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
 use futures::stream::{self, StreamExt};
 use spider::url::Url as SpiderUrl;
@@ -49,7 +49,15 @@ pub(crate) fn scrape_result_to_prepared_doc(
     PreparedDoc {
         url: result.url.clone(),
         domain,
-        chunks: chunk_markdown(&result.markdown),
+        chunks: if result
+            .markdown
+            .chars()
+            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+        {
+            chunk_text(&result.markdown)
+        } else {
+            chunk_markdown(&result.markdown)
+        },
         source_type: "scrape".to_string(),
         content_type: "markdown",
         title: result.title.clone(),

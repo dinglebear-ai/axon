@@ -20,7 +20,7 @@ fn crates_io_extra_fields() {
             { "keyword": "serde" },
         ],
     });
-    let extra = build_extra(&data);
+    let extra = build_extra(&data, None);
     assert_eq!(extra["pkg_registry"], "crates_io");
     assert_eq!(extra["pkg_name"], "serde");
     assert_eq!(extra["pkg_language"], "rust");
@@ -41,7 +41,7 @@ fn crates_io_extra_empty_optional_fields_absent() {
         "versions": [{}],
         "keywords": [],
     });
-    let extra = build_extra(&data);
+    let extra = build_extra(&data, None);
     assert!(extra.get("pkg_license").is_none());
     assert!(extra.get("pkg_keywords").is_none());
     assert!(extra.get("pkg_downloads").is_none());

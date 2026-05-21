@@ -307,8 +307,8 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "gh_language",
     "gh_file_type",
     "gh_topics",
-    "gh_is_fork",
-    "gh_is_archived",
+    // NOTE: gh_is_fork and gh_is_archived use Qdrant's native "bool" index type,
+    // not "keyword" — see push_non_keyword_indexes(). Do NOT add them here.
     "chunking_method",
     "extractor_name",
     // ... rest unchanged
