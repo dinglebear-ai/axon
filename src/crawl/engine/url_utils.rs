@@ -139,14 +139,21 @@ pub(crate) fn derive_auto_whitelist_pattern(
     let host = parsed.host_str()?;
     let path = parsed.path();
 
-    // Find the directory prefix: everything up to and including the last `/`
-    // before a filename, or the path itself when it ends with `/`.
+    // Find the directory prefix. A segment with a '.' is a file (e.g. `os.path.html`);
+    // use its parent. An extension-less segment is a directory endpoint (e.g. `/docs/registry`,
+    // `/api/GenerativeModel`); use the full path including that segment.
     let dir_prefix = if path.ends_with('/') {
         path.to_string()
     } else {
-        // rfind('/') always finds at least the leading '/' for absolute paths.
-        let slash_pos = path.rfind('/')?;
-        path[..=slash_pos].to_string()
+        let last_segment = path.rsplit('/').next().unwrap_or("");
+        if last_segment.contains('.') {
+            // Looks like a file — scope to its containing directory.
+            let slash_pos = path.rfind('/')?;
+            format!("{}/", &path[..slash_pos])
+        } else {
+            // Extension-less segment is a directory endpoint — scope to the full path.
+            format!("{}/", path)
+        }
     };
 
     // Count meaningful segments (non-empty parts after splitting on '/').
