@@ -263,8 +263,6 @@ impl Palette {
                 } else if self.locked_command.is_some() {
                     // Unlock but preserve typed argument so user can reselect a command.
                     self.locked_command = None;
-                } else if self.command_output.is_some() {
-                    self.command_output = None;
                 } else if !self.query.is_empty() {
                     self.query.clear();
                 } else {
@@ -296,7 +294,7 @@ impl Palette {
             };
         }
         let selected_action = actions.get(self.selected).copied();
-        let footer_visible = selected_action.is_some();
+        let footer_visible = selected_action.is_some() || self.running.is_some() || self.command_output.is_some();
         // Only `has_body()` outputs are actually rendered (see `ui_render.rs`
         // line ~127); a body-less notice produces no card and therefore no
         // height contribution. Tracking only the body case avoids reserving
