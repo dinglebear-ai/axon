@@ -16,8 +16,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, mpsc};
 use url::Url;
 
-/// Process-wide semaphore limiting concurrent bundle fetches across all
-/// concurrent endpoint discovery requests. Default cap: 8.
+/// Process-wide semaphore limiting concurrent individual bundle HTTP fetches.
+/// Caps total simultaneous bundle requests across all endpoint discovery sessions.
+/// Default cap: 8. Override with `AXON_ENDPOINT_BUNDLE_CONCURRENCY`.
 static BUNDLE_FETCH_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
     let cap = std::env::var("AXON_ENDPOINT_BUNDLE_CONCURRENCY")
         .ok()
@@ -134,12 +135,7 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
         Vec::new()
     };
 
-    let _bundle_permit = BUNDLE_FETCH_SEMAPHORE
-        .acquire()
-        .await
-        .map_err(|err| format!("bundle fetch semaphore closed: {err}"))?;
     let bundles = fetch_bundles(&client, &bundle_sources, options.max_scan_bytes).await;
-    drop(_bundle_permit);
     let mut warnings = Vec::new();
     let mut prefetched = Vec::new();
     for item in bundles {
@@ -254,6 +250,10 @@ async fn fetch_bundles(
 ) -> Vec<Result<PrefetchedBundle, String>> {
     stream::iter(sources.iter().cloned())
         .map(|source| async move {
+            let _permit = BUNDLE_FETCH_SEMAPHORE
+                .acquire()
+                .await
+                .map_err(|err| format!("bundle fetch semaphore closed: {err}"))?;
             fetch_script_bundle(client, &source.url, max_scan_bytes)
                 .await
                 .map_err(|err| format!("bundle fetch skipped {}: {err}", source.url))
