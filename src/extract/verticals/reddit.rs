@@ -85,10 +85,10 @@ async fn get_oauth_token() -> Option<String> {
     let mut state = rate_state().lock().await;
 
     // Return cached token if still valid (with a 60-second safety margin).
-    if let Some(ref cached) = state.cached_token {
-        if cached.expires_at > Instant::now() + Duration::from_secs(60) {
-            return Some(cached.token.clone());
-        }
+    if let Some(ref cached) = state.cached_token
+        && cached.expires_at > Instant::now() + Duration::from_secs(60)
+    {
+        return Some(cached.token.clone());
     }
 
     // Fetch a fresh token.
@@ -166,7 +166,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let token = get_oauth_token().await;
 
-    let data = fetch_with_retry(&client, &json_url, token.as_ref().map(String::as_str), url).await?;
+    let data = fetch_with_retry(client, &json_url, token.as_deref(), url).await?;
 
     let post_data = if data.is_array() {
         data[0]["data"]["children"][0]["data"].clone()
