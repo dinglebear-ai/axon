@@ -165,7 +165,7 @@ Same semantics as GitHub. v3 `git_*` fields are written by the GitLab ingest pat
 axon ingest https://codeberg.org/owner/repo --wait true
 
 # Generic HTTPS git (bare clone, source files only)
-axon ingest https://git.example.com/owner/repo.git --wait true
+axon ingest git:https://git.example.com/owner/repo.git --wait true
 ```
 
 ### Reddit subreddits and threads

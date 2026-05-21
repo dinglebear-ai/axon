@@ -5,13 +5,42 @@ use crate::services::types::{
     DiscoveredEndpoint, EndpointKind, EndpointReport, EndpointVerification,
 };
 use futures_util::{StreamExt, stream};
+use std::sync::LazyLock;
+use tokio::sync::Semaphore;
 use url::Url;
 
-const VERIFY_TIMEOUT_SECS: u64 = 4;
-const MAX_VERIFY_PROBES: usize = 40;
-const VERIFY_CONCURRENCY: usize = 5;
+/// Maximum number of endpoints to probe. Per bead w2wf.4: 100.
+const MAX_VERIFY_PROBES: usize = 100;
+/// Per-probe timeout in seconds. Per bead w2wf.4: 2s.
+const VERIFY_TIMEOUT_SECS: u64 = 2;
+/// Maximum concurrent verification probes per request. Per bead w2wf.4: 4.
+const VERIFY_CONCURRENCY: usize = 4;
+
+/// Process-wide semaphore limiting concurrent verification *sessions*.
+/// Each session independently probes up to VERIFY_CONCURRENCY=4 endpoints
+/// in parallel via buffer_unordered, so the effective probe ceiling is
+/// cap × VERIFY_CONCURRENCY. Set the cap to control session-level parallelism,
+/// not individual probe counts.
+/// Default cap: 16. Override with AXON_ENDPOINT_VERIFY_CONCURRENCY env var.
+static VERIFY_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
+    let cap = std::env::var("AXON_ENDPOINT_VERIFY_CONCURRENCY")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(16)
+        .max(1);
+    Semaphore::new(cap)
+});
 
 pub(super) async fn verify_endpoints(cfg: &Config, page_url: &str, report: &mut EndpointReport) {
+    let _permit = match VERIFY_SEMAPHORE.acquire().await {
+        Ok(permit) => permit,
+        Err(err) => {
+            report
+                .warnings
+                .push(format!("verification semaphore closed: {err}"));
+            return;
+        }
+    };
     let client =
         match build_client_no_redirect(timeout_secs(cfg, VERIFY_TIMEOUT_SECS), Some(axon_ua())) {
             Ok(client) => client,
