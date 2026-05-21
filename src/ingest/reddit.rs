@@ -1,6 +1,6 @@
 mod client;
 mod comments;
-mod meta;
+pub(crate) mod meta;
 mod types;
 
 pub use client::get_access_token;
