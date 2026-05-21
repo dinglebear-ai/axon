@@ -37,7 +37,7 @@ Incoming request map is parsed strictly with serde:
 ## Preferred Client Actions
 Use CLI-identical top-level actions:
 - Lifecycle families: `artifacts`, `crawl`, `embed`, `extract`, `ingest`
-- Direct actions: `ask`, `doctor`, `domains`, `elicit_demo`, `endpoints`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`, `summarize`
+- Direct actions: `ask`, `brand`, `diff`, `doctor`, `domains`, `elicit_demo`, `endpoints`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`, `summarize`
 
 For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canonical families with `subaction`:
 
@@ -60,6 +60,8 @@ These actions do not require `subaction`:
 | Action | Required Fields | Optional Fields |
 |--------|----------------|-----------------|
 | `ask` | `query` (string) | `diagnostics`, `explain`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
+| `brand` | -- | `url`, `render_mode`, `response_mode` |
+| `diff` | -- | `url_a`, `url_b`, `render_mode`, `response_mode` |
 | `doctor` | -- | `response_mode` |
 | `domains` | -- | `limit`, `offset`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |
@@ -78,8 +80,6 @@ These actions do not require `subaction`:
 | `status` | -- | `response_mode` |
 | `suggest` | -- | `focus` (aliases: `query`), `limit`, `collection`, `response_mode` |
 | `summarize` | -- | `url`, `urls`, `render_mode`, `root_selector`, `exclude_selector`, `response_mode` |
-| `diff` | `url_a`, `url_b` (strings) | `render_mode`, `response_mode` |
-| `brand` | `url` (string) | `render_mode`, `response_mode` |
 
 Note: `graph` is a deprecated compatibility field. `false`/unset is accepted as a no-op; `true` is rejected because graph retrieval is not wired in production.
 

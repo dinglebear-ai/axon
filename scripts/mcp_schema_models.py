@@ -124,6 +124,8 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Ask": "ask",
     "Summarize": "summarize",
     "Screenshot": "screenshot",
+    "Diff": "diff",
+    "Brand": "brand",
     "ElicitDemo": "elicit_demo",
 }
 
