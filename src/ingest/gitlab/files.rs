@@ -7,6 +7,7 @@ use crate::core::config::Config;
 use crate::ingest::github::{is_indexable_doc_path, is_indexable_source_path};
 use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
+use crate::vector::ops::input::code::chunk_code;
 use crate::vector::ops::{PreparedDoc, chunk_text};
 
 use super::embed::{embed_docs, gitlab_payload};
@@ -116,7 +117,24 @@ pub(crate) async fn embed_files(
         let Ok(content) = tokio::fs::read_to_string(&file).await else {
             continue;
         };
-        let chunks = chunk_text(&content);
+        let ext = Path::new(&rel)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        // Move content into spawn_blocking — avoids cloning large files.
+        // On JoinError (panic/cancellation) log a warning and skip the file.
+        let chunks = match tokio::task::spawn_blocking(move || {
+            chunk_code(&content, &ext).unwrap_or_else(|| chunk_text(&content))
+        })
+        .await
+        {
+            Ok(chunks) => chunks,
+            Err(e) => {
+                tracing::warn!(path = %rel, error = %e, "spawn_blocking panicked during code chunking; skipping file");
+                vec![]
+            }
+        };
         if !chunks.is_empty() {
             docs.push(PreparedDoc {
                 url: format!("{}/-/blob/{}/{}", target.web_url, branch, rel),

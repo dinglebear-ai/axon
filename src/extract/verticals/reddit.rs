@@ -21,6 +21,7 @@ use crate::core::http::http_client;
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
+use crate::ingest::reddit::meta::build_reddit_post_extra_payload;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "reddit",
@@ -139,6 +140,8 @@ async fn wait_for_rate_slot() {
     state.last_request_at = Some(Instant::now());
 }
 
+// ── Extra payload — delegates to the shared ingest helper to prevent drift ─────
+
 // ── URL matching ─────────────────────────────────────────────────────────────
 
 pub fn matches(url: &str) -> bool {
@@ -211,7 +214,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         extractor_version: 2,
         structured: Some(data),
         follow_crawl_urls: vec![],
-        extra: None,
+        extra: Some(build_reddit_post_extra_payload(&post_data)),
     })
 }
 
@@ -284,3 +287,7 @@ fn parse_retry_after(resp: &reqwest::Response) -> Option<Duration> {
         .and_then(|s| s.parse::<u64>().ok())?;
     Some(Duration::from_secs(secs.min(120)))
 }
+
+#[cfg(test)]
+#[path = "reddit_tests.rs"]
+mod tests;
