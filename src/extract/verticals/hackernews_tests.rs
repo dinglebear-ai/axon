@@ -1,6 +1,66 @@
 use super::*;
 
 #[test]
+fn infer_hn_type_job() {
+    assert_eq!(infer_hn_type(Some("job"), "Acme is hiring"), "job");
+}
+
+#[test]
+fn infer_hn_type_ask_hn() {
+    assert_eq!(
+        infer_hn_type(None, "Ask HN: What is your favorite editor?"),
+        "ask_hn"
+    );
+}
+
+#[test]
+fn infer_hn_type_show_hn() {
+    assert_eq!(
+        infer_hn_type(Some("story"), "Show HN: My new project"),
+        "show_hn"
+    );
+}
+
+#[test]
+fn infer_hn_type_default_story() {
+    assert_eq!(infer_hn_type(None, "Some interesting article"), "story");
+    assert_eq!(infer_hn_type(Some("story"), "Another post"), "story");
+}
+
+#[test]
+fn build_extra_sets_required_fields() {
+    let extra = build_extra(
+        42,
+        "story",
+        "testuser",
+        100,
+        50,
+        "2024-01-01T00:00:00Z",
+        None,
+    );
+    assert_eq!(extra["hn_id"], 42u64);
+    assert_eq!(extra["hn_type"], "story");
+    assert_eq!(extra["hn_author"], "testuser");
+    assert_eq!(extra["hn_points"], 100u64);
+    assert_eq!(extra["hn_comment_count"], 50u64);
+    assert_eq!(extra["hn_created_at"], "2024-01-01T00:00:00Z");
+    assert!(extra["hn_external_url"].is_null());
+}
+
+#[test]
+fn build_extra_with_external_url() {
+    let extra = build_extra(99, "story", "user", 5, 2, "", Some("https://example.com"));
+    assert_eq!(extra["hn_external_url"], "https://example.com");
+    assert!(extra.get("hn_created_at").is_none());
+}
+
+#[test]
+fn build_extra_empty_created_at_omitted() {
+    let extra = build_extra(1, "ask_hn", "foo", 0, 0, "", None);
+    assert!(extra.get("hn_created_at").is_none());
+}
+
+#[test]
 fn matches_ycombinator_item() {
     assert!(matches("https://news.ycombinator.com/item?id=12345"));
     assert!(matches("https://news.ycombinator.com/item?id=99999999"));

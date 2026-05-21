@@ -8,6 +8,10 @@ use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 
+#[cfg(test)]
+#[path = "docker_hub_tests.rs"]
+mod tests;
+
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "docker_hub",
     label: "Docker Hub Image",
@@ -34,6 +38,29 @@ pub fn matches(url: &str) -> bool {
         return false;
     }
     segs[0] == "r" || segs[0] == "_"
+}
+
+fn build_extra(
+    namespace: &str,
+    img_name: &str,
+    full_name: &str,
+    pull_count: u64,
+    star_count: u64,
+    is_official: bool,
+    last_updated: &str,
+) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "docker_namespace": namespace,
+        "docker_image": img_name,
+        "docker_full_name": full_name,
+        "docker_pulls": pull_count,
+        "docker_stars": star_count,
+        "docker_is_official": is_official,
+    });
+    if !last_updated.is_empty() {
+        obj["docker_last_updated"] = serde_json::Value::String(last_updated.to_string());
+    }
+    obj
 }
 
 pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
@@ -113,6 +140,16 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let is_official = data["is_official"].as_bool().unwrap_or(false);
     let last_updated = data["last_updated"].as_str().unwrap_or("");
 
+    let extra = build_extra(
+        namespace,
+        img_name,
+        full_name,
+        pull_count,
+        star_count,
+        is_official,
+        last_updated,
+    );
+
     let title = Some(full_name.to_string());
     let mut md = format!("# {full_name}\n\n");
     if is_official {
@@ -140,8 +177,9 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 2,
+        extractor_version: 3,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }

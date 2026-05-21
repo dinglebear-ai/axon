@@ -41,6 +41,66 @@ pub fn matches(url: &str) -> bool {
     segs.len() >= 2 && segs[0] == "crates"
 }
 
+fn build_extra(data: &serde_json::Value, explicit_version: Option<&str>) -> serde_json::Value {
+    let krate = &data["crate"];
+    // When the URL specifies an explicit version, find the matching version entry so
+    // license/MSRV/edition are consistent with the requested version, not versions[0].
+    let ver = explicit_version
+        .and_then(|v| {
+            data["versions"]
+                .as_array()
+                .and_then(|vers| vers.iter().find(|ver| ver["num"].as_str() == Some(v)))
+        })
+        .unwrap_or(&data["versions"][0]);
+    let name = krate["name"].as_str().unwrap_or("");
+    // Use the explicitly requested URL version (e.g. /crates/serde/1.0.219) when present;
+    // fall back to the latest stable or newest version from the API.
+    let pkg_version = explicit_version.unwrap_or_else(|| {
+        krate["max_stable_version"]
+            .as_str()
+            .or_else(|| krate["newest_version"].as_str())
+            .unwrap_or("")
+    });
+    let license = ver["license"].as_str().unwrap_or("");
+    let downloads = krate["downloads"].as_u64().unwrap_or(0);
+    let homepage = krate["homepage"].as_str().unwrap_or("");
+    let repository = krate["repository"].as_str().unwrap_or("");
+    let msrv = ver["rust_version"].as_str().unwrap_or("");
+    let edition = ver["edition"].as_str().unwrap_or("");
+    let keywords: Vec<&str> = data["keywords"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|k| k["keyword"].as_str()).collect())
+        .unwrap_or_default();
+    let mut obj = serde_json::json!({
+        "pkg_registry": "crates_io",
+        "pkg_name": name,
+        "pkg_version": pkg_version,
+        "pkg_language": "rust"
+    });
+    if !license.is_empty() {
+        obj["pkg_license"] = serde_json::Value::String(license.to_string());
+    }
+    if !keywords.is_empty() {
+        obj["pkg_keywords"] = serde_json::json!(keywords);
+    }
+    if downloads > 0 {
+        obj["pkg_downloads"] = serde_json::json!(downloads);
+    }
+    if !homepage.is_empty() {
+        obj["pkg_homepage"] = serde_json::Value::String(homepage.to_string());
+    }
+    if !repository.is_empty() {
+        obj["pkg_repo_url"] = serde_json::Value::String(repository.to_string());
+    }
+    if !msrv.is_empty() {
+        obj["crate_msrv"] = serde_json::Value::String(msrv.to_string());
+    }
+    if !edition.is_empty() {
+        obj["crate_edition"] = serde_json::Value::String(edition.to_string());
+    }
+    obj
+}
+
 pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
@@ -65,8 +125,11 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let data = fetch_crate_json(client, name, url, ua).await?;
     // If the URL specifies an explicit version (e.g. /crates/serde/1.0.219),
     // use it for README and rustdoc lookups so we fetch the right release.
-    let url_version = segs.get(2).filter(|v| !v.is_empty()).map(|v| v.to_string());
-    let version = url_version.unwrap_or_else(|| resolve_version(&data, name));
+    let url_version: Option<String> = segs.get(2).filter(|v| !v.is_empty()).map(|v| v.to_string());
+    let version = url_version
+        .as_deref()
+        .map(str::to_string)
+        .unwrap_or_else(|| resolve_version(&data, name));
 
     // Fetch README and rustdoc JSON concurrently — both non-fatal.
     let (readme_text, rustdoc_text) = tokio::join!(
@@ -78,9 +141,12 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         &data,
         name,
         url,
+        &version,
         readme_text.as_deref(),
         rustdoc_text.as_deref(),
     );
+
+    let extra = build_extra(&data, url_version.as_deref());
 
     Ok(ScrapedDoc {
         url: url.to_string(),
@@ -90,6 +156,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         extractor_version: 3,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
 
@@ -234,26 +301,27 @@ fn build_markdown(
     data: &serde_json::Value,
     name: &str,
     url: &str,
+    version: &str,
     readme: Option<&str>,
     rustdoc: Option<&str>,
 ) -> (String, Option<String>) {
     let krate = &data["crate"];
     let crate_name = krate["name"].as_str().unwrap_or(name);
-    let max_version = krate["max_stable_version"]
-        .as_str()
-        .or_else(|| krate["newest_version"].as_str())
-        .unwrap_or("unknown");
     let description = krate["description"].as_str().unwrap_or("").trim();
-    let ver = &data["versions"][0];
+    // Use the version entry matching the requested version for consistent metadata.
+    let ver = data["versions"]
+        .as_array()
+        .and_then(|vers| vers.iter().find(|v| v["num"].as_str() == Some(version)))
+        .unwrap_or(&data["versions"][0]);
 
-    let title = Some(format!("{crate_name} {max_version}"));
-    let mut md = format!("# {crate_name} {max_version}\n\n");
+    let title = Some(format!("{crate_name} {version}"));
+    let mut md = format!("# {crate_name} {version}\n\n");
     if !description.is_empty() {
         md.push_str(description);
         md.push_str("\n\n");
     }
     md.push_str("## Crate Metadata\n\n");
-    append_metadata(&mut md, krate, ver, max_version, url);
+    append_metadata(&mut md, krate, ver, version, url);
 
     append_tags(&mut md, data, ver);
 

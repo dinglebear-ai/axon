@@ -8,6 +8,10 @@ use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 
+#[cfg(test)]
+#[path = "dev_to_tests.rs"]
+mod tests;
+
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "dev_to",
     label: "DEV Community Article",
@@ -15,6 +19,27 @@ pub const INFO: ExtractorInfo = ExtractorInfo {
     url_patterns: &["https://dev.to/{username}/{slug}"],
     auto_dispatch: true,
 };
+
+fn build_extra(
+    username: &str,
+    tags: &[&str],
+    reactions: u64,
+    reading_time_mins: u64,
+    published_at: &str,
+) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "devto_author": username,
+        "devto_reactions": reactions,
+        "devto_reading_time_mins": reading_time_mins,
+    });
+    if !tags.is_empty() {
+        obj["devto_tags"] = serde_json::json!(tags);
+    }
+    if !published_at.is_empty() {
+        obj["devto_published_at"] = serde_json::Value::String(published_at.to_string());
+    }
+    obj
+}
 
 pub fn matches(url: &str) -> bool {
     let Ok(parsed) = url::Url::parse(url) else {
@@ -139,6 +164,9 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         description
     };
 
+    let published_at = data["published_at"].as_str().unwrap_or("");
+    let extra = build_extra(username, &tags, reactions, reading_time, published_at);
+
     let title = Some(title_str.to_string());
     let mut md = format!("# {title_str}\n\n");
     md.push_str(&format!("**Author:** {username} | **Reading time:** {reading_time} min | **Reactions:** {reactions}\n\n"));
@@ -156,8 +184,9 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 2,
+        extractor_version: 3,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }

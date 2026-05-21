@@ -22,7 +22,7 @@ Every point in every collection carries these fields, regardless of source.
 | `chunk_index` | integer | yes | 0-based position within the document. |
 | `chunk_text` | raw string | no | The stored text chunk. Never truncated. |
 | `scraped_at` | datetime | yes | RFC3339 timestamp at embed time. |
-| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `3`. |
+| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `4`. |
 
 ### Conditional Universal Fields
 
@@ -86,34 +86,74 @@ in addition to their source-type-specific fields. See `src/ingest/git_payload.rs
 | `git_file_language` | keyword | yes | File language/extension for file chunks. |
 | `git_meta` | raw JSON | no | Provider-specific extras (stars, visibility, clone_url, …). Not indexed. |
 
-### GitHub backwards-compat fields
+### GitHub-specific fields (top-level, indexed)
 
-GitHub ingest also emits 32 flat `gh_*` fields (e.g. `gh_repo`, `gh_owner`, `gh_stars`) for
-backwards compatibility with existing indexed points. New code should query `git_*` fields.
-The `gh_*` fields are deprecated and will be removed after a full re-index.
+These fields carry GitHub-specific metadata with no `git_*` equivalent. They are **not** deprecated —
+they are the canonical place to query GitHub-only data. All are indexed for Qdrant filtering.
 
-`gh_file_language` is indexed (keyword) — it is a backwards-compat alias for `git_file_language`.
+| Field | Qdrant type | Indexed | Notes |
+|-------|-------------|---------|-------|
+| `gh_language` | keyword | yes | Primary repo language (e.g. `"Rust"`, `"Python"`). |
+| `gh_file_type` | keyword | yes | File classification: `"source"` \| `"test"` \| `"config"` \| `"doc"`. From `classify_file_type()`. |
+| `gh_topics` | keyword[] | yes | GitHub topics array (e.g. `["cli", "rag"]`). |
+| `gh_is_fork` | bool | yes | Whether the repo is a fork. |
+| `gh_is_archived` | bool | yes | Whether the repo is archived. |
+| `gh_stars` | integer | yes | Stargazer count at ingest time. |
+| `gh_forks` | integer | yes | Fork count at ingest time. |
+| `gh_line_start` | integer | yes | First line of the code chunk (1-indexed, inclusive). For code attribution. |
+| `gh_line_end` | integer | yes | Last line of the code chunk (1-indexed, inclusive). |
+
+### GitHub backwards-compat fields (deprecated)
+
+GitHub ingest also emits additional flat `gh_*` fields that duplicate `git_*` canonical fields
+for backwards compatibility with existing indexed points. **New code should query `git_*` fields.**
+The `gh_*` duplicates will be removed after a full re-index.
+
+| `gh_*` field | Duplicates | Indexed |
+|---|---|---|
+| `gh_repo` | `git_repo` | no |
+| `gh_owner` | `git_owner` | no |
+| `gh_content_kind` | `git_content_kind` | no |
+| `gh_branch` | `git_branch` | no |
+| `gh_state` | `git_state` | no |
+| `gh_issue_number` | `git_number` | no |
+| `gh_author` | `git_author` | no |
+| `gh_labels` | `git_labels` | no |
+| `gh_is_draft` | `git_is_draft` | no |
+| `gh_merged_at` | `git_merged_at` | no |
+| `gh_created_at` | `git_created_at` | no |
+| `gh_updated_at` | `git_updated_at` | no |
+| `gh_file_path` | `git_file_path` | no |
+| `gh_file_language` | `git_file_language` | yes (keyword) |
+| `gh_default_branch` | `git_branch` | no |
+| `gh_repo_description` | *(no git_* equivalent — in git_meta)* | no |
+| `gh_pushed_at` | *(no git_* equivalent — in git_meta)* | no |
+| `gh_is_private` | *(no git_* equivalent — in git_meta)* | no |
+| `gh_open_issues` | *(no git_* equivalent — in git_meta)* | no |
+
+**`git_meta` blob contents (not indexed):** `open_issues`, `is_private`, `default_branch`,
+`repo_description`, `pushed_at`, `gh_is_test`, `gh_file_size_bytes`, `gh_comment_count`, `gh_is_pr`.
+These are available for reference but cannot be efficiently filtered in Qdrant.
 
 ---
 
 ## Reddit Ingest Fields
 
 Points from `source_type = "reddit"` carry these fields (from `src/ingest/reddit/meta.rs`).
-None are currently Qdrant-indexed; add indexes here and in `payload_indexes.rs` together.
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `reddit_author` | string | Post author login (`[deleted]` when removed) |
-| `reddit_created_utc` | integer | Unix timestamp (float cast to u64) |
-| `reddit_score` | integer | Net upvotes |
-| `reddit_num_comments` | integer | |
-| `reddit_upvote_ratio` | float | 0.0–1.0 |
-| `reddit_subreddit` | string | e.g. `"rust"` (without the `r/` prefix) |
-| `reddit_domain` | string | Domain of linked content |
-| `reddit_is_video` | bool | |
-| `reddit_distinguished` | string\|null | `"moderator"`, `"admin"`, or absent |
-| `reddit_gilded` | integer | Number of gold awards |
-| `reddit_flair` | string\|null | Link flair text |
+| Field | Type | Indexed | Notes |
+|-------|------|---------|-------|
+| `reddit_author` | string | no | Post author login (`[deleted]` when removed) |
+| `reddit_created_utc` | integer | no | Unix timestamp (float cast to u64) |
+| `reddit_score` | integer | no | Net upvotes |
+| `reddit_num_comments` | integer | no | |
+| `reddit_upvote_ratio` | float | no | 0.0–1.0 |
+| `reddit_subreddit` | string | yes | e.g. `"rust"` (without the `r/` prefix) |
+| `reddit_domain` | string | no | Domain of linked content |
+| `reddit_is_video` | bool | no | |
+| `reddit_distinguished` | string\|null | no | `"moderator"`, `"admin"`, or absent |
+| `reddit_gilded` | integer | no | Number of gold awards |
+| `reddit_flair` | string\|null | no | Link flair text |
 
 The reddit **vertical extractor** (not ingest) uses `extractor_name = "reddit"` and `source_type = "scrape"`.
 It stores a `structured_blob` with raw post JSON but does **not** emit the flat `reddit_*` fields above.
@@ -123,21 +163,20 @@ It stores a `structured_blob` with raw post JSON but does **not** emit the flat 
 ## YouTube Ingest Fields
 
 Points from `source_type = "youtube"` carry these fields (from `src/ingest/youtube/meta.rs`).
-None are currently Qdrant-indexed.
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `yt_video_id` | string | 11-character YouTube video ID |
-| `yt_thumbnail` | string | Thumbnail URL |
-| `yt_channel` | string | Channel display name |
-| `yt_channel_url` | string | Channel page URL |
-| `yt_uploader_id` | string | Channel handle or user ID |
-| `yt_upload_date` | string | `YYYYMMDD` format |
-| `yt_duration` | string | Human-readable duration (e.g. `"12:34"`) |
-| `yt_view_count` | integer\|null | |
-| `yt_like_count` | integer\|null | |
-| `yt_tags` | string[] | Video tags |
-| `yt_categories` | string[] | Video categories |
+| Field | Type | Indexed | Notes |
+|-------|------|---------|-------|
+| `yt_video_id` | string | no | 11-character YouTube video ID |
+| `yt_thumbnail` | string | no | Thumbnail URL |
+| `yt_channel` | string | yes | Channel display name |
+| `yt_channel_url` | string | no | Channel page URL |
+| `yt_uploader_id` | string | no | Channel handle or user ID |
+| `yt_upload_date` | string | no | `YYYYMMDD` format |
+| `yt_duration` | string | no | Human-readable duration (e.g. `"12:34"`) |
+| `yt_view_count` | integer\|null | no | |
+| `yt_like_count` | integer\|null | no | |
+| `yt_tags` | string[] | no | Video tags |
+| `yt_categories` | string[] | no | Video categories |
 
 YouTube ingest embeds two `PreparedDoc`s per video: one for the VTT transcript
 (`url = "https://youtube.com/watch?v=<id>"`) and one for the description
@@ -180,6 +219,7 @@ flat fields. The full per-extractor schema is defined in
 | 1 | (implicit) | All points before lu6a. No version field. |
 | 2 | axon_rust-lu6a | Added `payload_schema_version`, `extractor_name`, `structured_*` fields. |
 | 3 | 2026-05-21 | Added canonical git_* provider fields (git_host, git_owner, git_repo, git_content_kind, etc.) and vertical extractor extra payload fields. |
+| 4 | 2026-05-21 | Promoted gh_stars, gh_forks, gh_language, gh_topics, gh_is_fork, gh_is_archived, gh_file_type, gh_line_start, gh_line_end from git_meta blob to indexed top-level fields. Removed these keys from git_meta. |
 
 Points without `payload_schema_version` are treated as version 1. Retrieval applies no version
 filter by default — all points are queryable. Use

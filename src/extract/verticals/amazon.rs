@@ -193,6 +193,35 @@ fn extract_asin(url: &str) -> Option<String> {
     None
 }
 
+fn build_extra(jsonld: Option<&serde_json::Value>, asin: Option<&str>) -> serde_json::Value {
+    let mut obj = serde_json::json!({});
+    if let Some(j) = jsonld {
+        if let Some(brand) = j["brand"]["name"].as_str() {
+            obj["amz_brand"] = serde_json::Value::String(brand.to_string());
+        }
+        if let Some(price) = j["offers"]["price"].as_str() {
+            obj["amz_price"] = serde_json::Value::String(price.to_string());
+        }
+        if let Some(currency) = j["offers"]["priceCurrency"].as_str() {
+            obj["amz_currency"] = serde_json::Value::String(currency.to_string());
+        }
+        if let Some(avail) = j["offers"]["availability"].as_str() {
+            let short = avail.split('/').next_back().unwrap_or(avail);
+            obj["amz_availability"] = serde_json::Value::String(short.to_string());
+        }
+        if let Some(r) = j["aggregateRating"]["ratingValue"].as_f64() {
+            obj["amz_rating"] = serde_json::json!(r);
+        }
+        if let Some(rc) = j["aggregateRating"]["reviewCount"].as_u64() {
+            obj["amz_review_count"] = serde_json::json!(rc);
+        }
+    }
+    if let Some(a) = asin {
+        obj["amz_asin"] = serde_json::Value::String(a.to_string());
+    }
+    obj
+}
+
 fn build_scraped_doc(
     url: &str,
     jsonld: Option<serde_json::Value>,
@@ -249,6 +278,8 @@ fn build_scraped_doc(
     }
     md.push_str(&format!("\n**Amazon:** {url}\n"));
 
+    let extra = build_extra(jsonld.as_ref(), asin.as_deref());
+
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
@@ -257,8 +288,13 @@ fn build_scraped_doc(
         extractor_version: 2,
         structured: jsonld,
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
+
+#[cfg(test)]
+#[path = "amazon_tests.rs"]
+mod tests;
 
 fn extract_jsonld(html: &str) -> Option<serde_json::Value> {
     let mut remaining = html;

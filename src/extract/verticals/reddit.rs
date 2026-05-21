@@ -91,9 +91,9 @@ async fn get_oauth_token() -> Option<String> {
         {
             return Some(cached.token.clone());
         }
-    } // lock released here
+    } // lock released here before any async I/O
 
-    // Fetch a fresh token outside the mutex.
+    // Fetch a fresh token (no lock held during network calls).
     let client = http_client().ok()?;
     let resp = client
         .post("https://www.reddit.com/api/v1/access_token")
@@ -113,12 +113,14 @@ async fn get_oauth_token() -> Option<String> {
     let expires_in = body["expires_in"].as_u64().unwrap_or(86400);
     let expires_at = Instant::now() + Duration::from_secs(expires_in);
 
-    // Re-acquire to write the new token back.
-    let mut state = rate_state().lock().await;
-    state.cached_token = Some(CachedToken {
-        token: token.clone(),
-        expires_at,
-    });
+    // Re-acquire lock only to update the cache.
+    {
+        let mut state = rate_state().lock().await;
+        state.cached_token = Some(CachedToken {
+            token: token.clone(),
+            expires_at,
+        });
+    }
     Some(token)
 }
 
@@ -209,6 +211,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         extractor_version: 2,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: None,
     })
 }
 

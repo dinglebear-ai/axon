@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn docs_rs_extra_fields() {
+    let extra = build_extra("tokio", "1.38.0", 42);
+    assert_eq!(extra["pkg_registry"], "docs_rs");
+    assert_eq!(extra["pkg_name"], "tokio");
+    assert_eq!(extra["pkg_version"], "1.38.0");
+    assert_eq!(extra["pkg_language"], "rust");
+    assert_eq!(extra["docrs_item_count"], 42);
+}
+
+#[test]
+fn docs_rs_extra_zero_item_count_absent() {
+    let extra = build_extra("tiny", "0.1.0", 0);
+    assert!(extra.get("docrs_item_count").is_none());
+}
+
+#[test]
 fn matches_crate_only() {
     assert!(matches("https://docs.rs/serde"));
 }

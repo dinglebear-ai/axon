@@ -128,6 +128,39 @@ fn build_npm_markdown(d: &NpmMarkdownData<'_>) -> String {
     md
 }
 
+fn build_extra(
+    name: &str,
+    version: &str,
+    license: &str,
+    author: &str,
+    keywords: &[&str],
+    homepage: &str,
+    repo_url: Option<&str>,
+) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "pkg_registry": "npm",
+        "pkg_name": name,
+        "pkg_version": version,
+        "pkg_language": "javascript"
+    });
+    if !license.is_empty() {
+        obj["pkg_license"] = serde_json::Value::String(license.to_string());
+    }
+    if !author.is_empty() {
+        obj["pkg_author"] = serde_json::Value::String(author.to_string());
+    }
+    if !keywords.is_empty() {
+        obj["pkg_keywords"] = serde_json::json!(keywords);
+    }
+    if !homepage.is_empty() {
+        obj["pkg_homepage"] = serde_json::Value::String(homepage.to_string());
+    }
+    if let Some(r) = repo_url {
+        obj["pkg_repo_url"] = serde_json::Value::String(r.to_string());
+    }
+    obj
+}
+
 pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
@@ -237,13 +270,28 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         url,
     });
 
+    let extra = build_extra(
+        name,
+        latest_version,
+        license,
+        &author,
+        &keywords,
+        homepage,
+        repo_url.as_deref(),
+    );
+
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 2,
+        extractor_version: 3,
         structured: Some(data),
         follow_crawl_urls,
+        extra: Some(extra),
     })
 }
+
+#[cfg(test)]
+#[path = "npm_tests.rs"]
+mod tests;

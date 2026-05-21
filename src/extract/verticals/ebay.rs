@@ -185,6 +185,45 @@ fn extract_item_id(url: &str) -> Option<String> {
     None
 }
 
+fn build_extra(jsonld: Option<&serde_json::Value>, item_id: Option<&str>) -> serde_json::Value {
+    let mut obj = serde_json::json!({});
+    if let Some(j) = jsonld {
+        if let Some(brand) = j["brand"]["name"].as_str() {
+            obj["ebay_brand"] = serde_json::Value::String(brand.to_string());
+        }
+        let price_val = &j["offers"]["price"];
+        let price_str = price_val
+            .as_str()
+            .map(|s| s.to_string())
+            .or_else(|| price_val.as_f64().map(|n| n.to_string()));
+        if let Some(price) = price_str {
+            obj["ebay_price"] = serde_json::Value::String(price);
+        }
+        if let Some(condition) = j["offers"]["itemCondition"].as_str() {
+            let clean = condition
+                .split('/')
+                .next_back()
+                .unwrap_or(condition)
+                .trim_end_matches("Condition");
+            obj["ebay_condition"] = serde_json::Value::String(clean.to_string());
+        }
+        if let Some(avail) = j["offers"]["availability"].as_str() {
+            let short = avail.split('/').next_back().unwrap_or(avail);
+            obj["ebay_availability"] = serde_json::Value::String(short.to_string());
+        }
+        if let Some(r) = j["aggregateRating"]["ratingValue"].as_f64() {
+            obj["ebay_rating"] = serde_json::json!(r);
+        }
+        if let Some(rc) = j["aggregateRating"]["reviewCount"].as_u64() {
+            obj["ebay_review_count"] = serde_json::json!(rc);
+        }
+    }
+    if let Some(id) = item_id {
+        obj["ebay_item_id"] = serde_json::Value::String(id.to_string());
+    }
+    obj
+}
+
 fn build_scraped_doc(
     url: &str,
     jsonld: Option<serde_json::Value>,
@@ -252,6 +291,8 @@ fn build_scraped_doc(
     }
     md.push_str(&format!("\n**eBay:** {url}\n"));
 
+    let extra = build_extra(jsonld.as_ref(), item_id.as_deref());
+
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
@@ -260,8 +301,13 @@ fn build_scraped_doc(
         extractor_version: 2,
         structured: jsonld,
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
+
+#[cfg(test)]
+#[path = "ebay_tests.rs"]
+mod tests;
 
 fn extract_jsonld(html: &str) -> Option<serde_json::Value> {
     let mut remaining = html;

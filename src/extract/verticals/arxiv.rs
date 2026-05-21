@@ -172,6 +172,29 @@ fn extract_entry_block(xml: &str) -> Option<&str> {
     Some(&after[..end])
 }
 
+fn build_extra(
+    arxiv_id: &str,
+    authors: &[String],
+    categories: &[String],
+    published: &str,
+    pdf_url: &str,
+) -> serde_json::Value {
+    let mut obj = serde_json::json!({ "arxiv_id": arxiv_id });
+    if !authors.is_empty() {
+        obj["arxiv_authors"] = serde_json::json!(authors);
+    }
+    if !categories.is_empty() {
+        obj["arxiv_categories"] = serde_json::json!(categories);
+    }
+    if !published.is_empty() {
+        obj["arxiv_published"] = serde_json::Value::String(published.to_string());
+    }
+    if !pdf_url.is_empty() {
+        obj["arxiv_pdf_url"] = serde_json::Value::String(pdf_url.to_string());
+    }
+    obj
+}
+
 fn build_scraped_doc(
     url: &str,
     arxiv_id: &str,
@@ -216,14 +239,17 @@ fn build_scraped_doc(
         "pdf_url": pdf_url,
     });
 
+    let extra = build_extra(arxiv_id, &authors, &categories, &published, &pdf_url);
+
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
         title: Some(title),
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(structured),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
 

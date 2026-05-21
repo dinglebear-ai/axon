@@ -157,6 +157,38 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     build_scraped_doc(url, item_id, &item)
 }
 
+fn infer_hn_type(item_type: Option<&str>, title: &str) -> &'static str {
+    if item_type == Some("job") {
+        return "job";
+    }
+    if title.starts_with("Ask HN:") {
+        return "ask_hn";
+    }
+    if title.starts_with("Show HN:") {
+        return "show_hn";
+    }
+    "story"
+}
+
+fn build_extra(
+    item_id: u64,
+    hn_type: &str,
+    author: &str,
+    points: u64,
+    comment_count: u64,
+    created_at: &str,
+    external_url: Option<&str>,
+) -> serde_json::Value {
+    let mut obj = serde_json::json!({ "hn_id": item_id, "hn_type": hn_type, "hn_author": author, "hn_points": points, "hn_comment_count": comment_count });
+    if !created_at.is_empty() {
+        obj["hn_created_at"] = serde_json::Value::String(created_at.to_string());
+    }
+    if let Some(u) = external_url {
+        obj["hn_external_url"] = serde_json::Value::String(u.to_string());
+    }
+    obj
+}
+
 fn build_scraped_doc(url: &str, item_id: u64, item: &HnItem) -> Result<ScrapedDoc, VerticalError> {
     let title = item
         .title
@@ -166,6 +198,16 @@ fn build_scraped_doc(url: &str, item_id: u64, item: &HnItem) -> Result<ScrapedDo
     let points = item.points.unwrap_or(0);
     let comment_count = count_comments(item);
     let created_at = item.created_at.as_deref().unwrap_or("");
+    let hn_type = infer_hn_type(item.item_type.as_deref(), &title);
+    let extra = build_extra(
+        item_id,
+        hn_type,
+        author,
+        points,
+        comment_count as u64,
+        created_at,
+        item.url.as_deref(),
+    );
     let hn_url = format!("https://news.ycombinator.com/item?id={item_id}");
 
     let mut md = format!("# {title}\n\n");
@@ -228,9 +270,10 @@ fn build_scraped_doc(url: &str, item_id: u64, item: &HnItem) -> Result<ScrapedDo
         markdown: md,
         title: Some(title),
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(structured),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
 
