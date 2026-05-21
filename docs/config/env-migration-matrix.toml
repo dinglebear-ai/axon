@@ -2409,3 +2409,39 @@ container_allowed = false
 toml_destination = ""
 compatibility = "external"
 reason = "Not part of the Axon runtime. Referenced only by standalone helper scripts and tests that assert removed OpenAI runtime env is ignored."
+
+[[env]]
+key = "AXON_ENDPOINT_BUNDLE_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "stable"
+reason = "Process-wide semaphore cap for concurrent endpoint bundle fetches (default 8). Operator-tunable."
+
+[[env]]
+key = "AXON_ENDPOINT_CHROME_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "stable"
+reason = "Process-wide semaphore cap for concurrent Chrome capture sessions (default 1). Operator-tunable."
+
+[[env]]
+key = "AXON_ENDPOINT_VERIFY_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "stable"
+reason = "Process-wide semaphore cap for concurrent endpoint verification sessions (default 16). Operator-tunable."
