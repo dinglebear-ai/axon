@@ -7,6 +7,7 @@ use crate::core::http::http_client;
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
+use crate::ingest::git_payload::{GitPayload, build_git_payload};
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_release",
@@ -106,6 +107,17 @@ fn format_release_markdown(
     md.push_str(&format!("\n**GitHub:** {url}\n"));
     (md, title)
 }
+fn build_extra(owner: &str, repo: &str) -> serde_json::Value {
+    build_git_payload(&GitPayload {
+        provider: "github".to_string(),
+        host: "github.com".to_string(),
+        owner: Some(owner.to_string()),
+        repo: repo.to_string(),
+        content_kind: "release",
+        ..Default::default()
+    })
+}
+
 pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
@@ -186,14 +198,20 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
             })?;
 
     let (md, title) = format_release_markdown(owner, repo, url, &data);
+    let extra = build_extra(owner, repo);
 
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
+
+#[cfg(test)]
+#[path = "github_release_tests.rs"]
+mod tests;

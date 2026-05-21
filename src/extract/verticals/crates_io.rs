@@ -41,6 +41,54 @@ pub fn matches(url: &str) -> bool {
     segs.len() >= 2 && segs[0] == "crates"
 }
 
+fn build_extra(data: &serde_json::Value) -> serde_json::Value {
+    let krate = &data["crate"];
+    let ver = &data["versions"][0];
+    let name = krate["name"].as_str().unwrap_or("");
+    let max_version = krate["max_stable_version"]
+        .as_str()
+        .or_else(|| krate["newest_version"].as_str())
+        .unwrap_or("");
+    let license = ver["license"].as_str().unwrap_or("");
+    let downloads = krate["downloads"].as_u64().unwrap_or(0);
+    let homepage = krate["homepage"].as_str().unwrap_or("");
+    let repository = krate["repository"].as_str().unwrap_or("");
+    let msrv = ver["rust_version"].as_str().unwrap_or("");
+    let edition = ver["edition"].as_str().unwrap_or("");
+    let keywords: Vec<&str> = data["keywords"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|k| k["keyword"].as_str()).collect())
+        .unwrap_or_default();
+    let mut obj = serde_json::json!({
+        "pkg_registry": "crates_io",
+        "pkg_name": name,
+        "pkg_version": max_version,
+        "pkg_language": "rust"
+    });
+    if !license.is_empty() {
+        obj["pkg_license"] = serde_json::Value::String(license.to_string());
+    }
+    if !keywords.is_empty() {
+        obj["pkg_keywords"] = serde_json::json!(keywords);
+    }
+    if downloads > 0 {
+        obj["pkg_downloads"] = serde_json::json!(downloads);
+    }
+    if !homepage.is_empty() {
+        obj["pkg_homepage"] = serde_json::Value::String(homepage.to_string());
+    }
+    if !repository.is_empty() {
+        obj["pkg_repo_url"] = serde_json::Value::String(repository.to_string());
+    }
+    if !msrv.is_empty() {
+        obj["crate_msrv"] = serde_json::Value::String(msrv.to_string());
+    }
+    if !edition.is_empty() {
+        obj["crate_edition"] = serde_json::Value::String(edition.to_string());
+    }
+    obj
+}
+
 pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
@@ -82,6 +130,8 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         rustdoc_text.as_deref(),
     );
 
+    let extra = build_extra(&data);
+
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown,
@@ -90,6 +140,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         extractor_version: 3,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
 

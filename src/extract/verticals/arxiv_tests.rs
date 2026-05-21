@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn build_extra_arxiv_sets_fields() {
+    let authors = vec!["Alice".to_string(), "Bob".to_string()];
+    let cats = vec!["cs.LG".to_string(), "stat.ML".to_string()];
+    let extra = build_extra(
+        "2301.00001",
+        &authors,
+        &cats,
+        "2023-01-01T00:00:00Z",
+        "https://arxiv.org/pdf/2301.00001",
+    );
+    assert_eq!(extra["arxiv_id"], "2301.00001");
+    assert_eq!(extra["arxiv_published"], "2023-01-01T00:00:00Z");
+    assert_eq!(extra["arxiv_pdf_url"], "https://arxiv.org/pdf/2301.00001");
+    let a = extra["arxiv_authors"].as_array().unwrap();
+    assert_eq!(a.len(), 2);
+    let c = extra["arxiv_categories"].as_array().unwrap();
+    assert_eq!(c.len(), 2);
+}
+
+#[test]
+fn build_extra_arxiv_empty_fields_omitted() {
+    let extra = build_extra("1234.5678", &[], &[], "", "");
+    assert_eq!(extra["arxiv_id"], "1234.5678");
+    assert!(extra.get("arxiv_authors").is_none());
+    assert!(extra.get("arxiv_categories").is_none());
+    assert!(extra.get("arxiv_published").is_none());
+    assert!(extra.get("arxiv_pdf_url").is_none());
+}
+
+#[test]
 fn matches_abs_url() {
     assert!(matches("https://arxiv.org/abs/2301.00001"));
     assert!(matches("https://arxiv.org/abs/cs.LG/2301.00001"));

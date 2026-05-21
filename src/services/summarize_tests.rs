@@ -14,6 +14,9 @@ fn scrape(url: &str, markdown: &str) -> ScrapeResult {
         remaining_tokens_estimate: None,
         backend: None,
         follow_crawl_urls: vec![],
+        extra: None,
+        extractor_name: None,
+        title: None,
     }
 }
 
