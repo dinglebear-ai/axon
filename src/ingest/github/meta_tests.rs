@@ -120,3 +120,99 @@ fn payload_keys_use_known_prefixes() {
         );
     }
 }
+
+#[test]
+fn promoted_fields_not_in_git_meta_blob() {
+    // gh_stars, gh_forks, gh_language, gh_topics, gh_is_fork, gh_is_archived,
+    // gh_file_type, gh_line_start, gh_line_end must live at the TOP LEVEL of the
+    // payload — not inside git_meta — so Qdrant can index and filter them.
+    let params = GitHubPayloadParams {
+        repo: "axon_rust".into(),
+        owner: "jmagar".into(),
+        content_kind: "file".into(),
+        stars: Some(42),
+        forks: Some(7),
+        language: Some("Rust".into()),
+        topics: Some(vec!["cli".into(), "rag".into()]),
+        is_fork: Some(false),
+        is_archived: Some(false),
+        file_type: Some("source".into()),
+        gh_line_start: Some(10),
+        gh_line_end: Some(50),
+        ..Default::default()
+    };
+    let payload = build_github_payload(&params);
+
+    // Top-level assertions — these must exist as flat keys.
+    assert_eq!(payload["gh_stars"], 42, "gh_stars must be a top-level key");
+    assert_eq!(payload["gh_forks"], 7, "gh_forks must be a top-level key");
+    assert_eq!(
+        payload["gh_language"], "Rust",
+        "gh_language must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_topics"],
+        json!(["cli", "rag"]),
+        "gh_topics must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_is_fork"], false,
+        "gh_is_fork must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_is_archived"], false,
+        "gh_is_archived must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_file_type"], "source",
+        "gh_file_type must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_line_start"], 10,
+        "gh_line_start must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_line_end"], 50,
+        "gh_line_end must be a top-level key"
+    );
+
+    // git_meta assertions — promoted fields must NOT be duplicated there.
+    // After the fix, git_meta should NOT contain these keys (they must be null/absent).
+    let meta = &payload["git_meta"];
+    assert!(
+        meta.is_null() || meta["stars"].is_null(),
+        "stars must not be stored in git_meta (found: {meta})"
+    );
+    assert!(
+        meta.is_null() || meta["forks"].is_null(),
+        "forks must not be stored in git_meta (found: {meta})"
+    );
+    assert!(
+        meta.is_null() || meta["language"].is_null(),
+        "language must not be stored in git_meta (found: {meta})"
+    );
+    assert!(
+        meta.is_null() || meta["topics"].is_null(),
+        "topics must not be stored in git_meta (found: {meta})"
+    );
+    assert!(
+        meta.is_null() || meta["is_fork"].is_null(),
+        "is_fork must not be stored in git_meta (found: {meta})"
+    );
+    assert!(
+        meta.is_null() || meta["is_archived"].is_null(),
+        "is_archived must not be stored in git_meta (found: {meta})"
+    );
+    assert!(
+        meta.is_null() || meta["gh_file_type"].is_null(),
+        "gh_file_type must not be stored in git_meta (found: {meta})"
+    );
+    assert!(
+        meta.is_null() || meta["gh_line_start"].is_null(),
+        "gh_line_start must not be stored in git_meta (found: {meta})"
+    );
+    assert!(
+        meta.is_null() || meta["gh_line_end"].is_null(),
+        "gh_line_end must not be stored in git_meta (found: {meta})"
+    );
+}
