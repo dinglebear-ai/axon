@@ -106,6 +106,39 @@ fn build_pypi_markdown(d: &PypiMarkdownData<'_>) -> String {
     md
 }
 
+fn build_extra(
+    name: &str,
+    version: &str,
+    license: &str,
+    author: &str,
+    keywords: &[&str],
+    home_page: &str,
+    requires_python: &str,
+) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "pkg_registry": "pypi",
+        "pkg_name": name,
+        "pkg_version": version,
+        "pkg_language": "python"
+    });
+    if !license.is_empty() {
+        obj["pkg_license"] = serde_json::Value::String(license.to_string());
+    }
+    if !author.is_empty() {
+        obj["pkg_author"] = serde_json::Value::String(author.to_string());
+    }
+    if !keywords.is_empty() {
+        obj["pkg_keywords"] = serde_json::json!(keywords);
+    }
+    if !home_page.is_empty() {
+        obj["pkg_homepage"] = serde_json::Value::String(home_page.to_string());
+    }
+    if !requires_python.is_empty() {
+        obj["pypi_requires_python"] = serde_json::Value::String(requires_python.to_string());
+    }
+    obj
+}
+
 /// Fetch PyPI JSON data for `name` (optionally pinned to `version`).
 async fn fetch_pypi_data(
     name: &str,
@@ -231,6 +264,16 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         url,
     });
 
+    let extra = build_extra(
+        pkg_name,
+        version,
+        license,
+        author,
+        &keywords,
+        home_page,
+        requires_python,
+    );
+
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
@@ -239,5 +282,10 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         extractor_version: 2,
         structured: Some(data),
         follow_crawl_urls,
+        extra: Some(extra),
     })
 }
+
+#[cfg(test)]
+#[path = "pypi_tests.rs"]
+mod tests;

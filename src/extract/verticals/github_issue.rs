@@ -10,6 +10,7 @@ use crate::core::http::http_client;
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
+use crate::ingest::git_payload::{GitPayload, build_git_payload};
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_issue",
@@ -135,6 +136,42 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     build_scraped_doc(url, &owner, &repo, number, &data)
 }
 
+fn build_extra(
+    owner: &str,
+    repo: &str,
+    number: u64,
+    state: &str,
+    author: &str,
+    labels: &[&str],
+    created_at: &str,
+) -> serde_json::Value {
+    build_git_payload(&GitPayload {
+        provider: "github".to_string(),
+        host: "github.com".to_string(),
+        owner: Some(owner.to_string()),
+        repo: repo.to_string(),
+        content_kind: "issue",
+        state: if state.is_empty() {
+            None
+        } else {
+            Some(state.to_string())
+        },
+        number: Some(number),
+        author: if author.is_empty() {
+            None
+        } else {
+            Some(author.to_string())
+        },
+        labels: labels.iter().map(|s| s.to_string()).collect(),
+        created_at: if created_at.is_empty() {
+            None
+        } else {
+            Some(created_at.to_string())
+        },
+        ..Default::default()
+    })
+}
+
 fn build_scraped_doc(
     url: &str,
     owner: &str,
@@ -196,14 +233,17 @@ fn build_scraped_doc(
         "html_url": html_url,
     });
 
+    let extra = build_extra(owner, repo, number, state, author, &labels, created_at);
+
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
         title: Some(title),
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(structured),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
 

@@ -20,6 +20,11 @@ pub struct ScrapedDoc {
     /// URLs the caller should crawl after embedding this doc (e.g. the docs
     /// site for a crate). Empty for most verticals. Propagated to `ScrapeResult`.
     pub follow_crawl_urls: Vec<String>,
+    /// Curated per-extractor metadata fields to merge flat into the Qdrant payload.
+    /// Every key becomes a top-level payload field when embedded.
+    /// Keys must follow the prefix convention: `pkg_*`, `git_*`, `hf_*`, etc.
+    /// Absent beats null — only set keys that have actual values.
+    pub extra: Option<serde_json::Value>,
 }
 
 /// Catalog entry for one registered vertical extractor.

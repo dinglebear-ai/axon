@@ -154,6 +154,36 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     build_scraped_doc(url, question, answers)
 }
 
+fn build_extra(question: &serde_json::Value, date_str: &str) -> serde_json::Value {
+    let question_id = question["question_id"].as_u64().unwrap_or(0);
+    let score = question["score"].as_i64().unwrap_or(0);
+    let view_count = question["view_count"].as_u64().unwrap_or(0);
+    let is_answered = question["is_answered"].as_bool().unwrap_or(false);
+    let answer_count = question["answer_count"].as_u64().unwrap_or(0);
+    let author = question["owner"]["display_name"].as_str().unwrap_or("");
+    let tags: Vec<&str> = question["tags"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    let mut obj = serde_json::json!({
+        "so_question_id": question_id,
+        "so_score": score,
+        "so_view_count": view_count,
+        "so_is_answered": if is_answered { "true" } else { "false" },
+        "so_answer_count": answer_count,
+    });
+    if !tags.is_empty() {
+        obj["so_tags"] = serde_json::json!(tags);
+    }
+    if !author.is_empty() {
+        obj["so_author"] = serde_json::Value::String(author.to_string());
+    }
+    if !date_str.is_empty() {
+        obj["so_created_at"] = serde_json::Value::String(date_str.to_string());
+    }
+    obj
+}
+
 fn build_scraped_doc(
     url: &str,
     question: &serde_json::Value,
@@ -222,14 +252,17 @@ fn build_scraped_doc(
         "author": q_author,
     });
 
+    let extra = build_extra(question, &date_str);
+
     Ok(ScrapedDoc {
         url: url.to_string(),
         markdown: md,
         title: Some(title),
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: Some(structured),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
 

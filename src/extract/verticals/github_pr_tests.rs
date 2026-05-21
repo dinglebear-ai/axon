@@ -1,6 +1,45 @@
 use super::*;
 
 #[test]
+fn build_extra_open_pr() {
+    let data = serde_json::json!({
+        "state": "open", "user": {"login": "alice"},
+        "labels": [{"name": "bug"}], "draft": false,
+        "merged_at": null, "created_at": "2024-01-01T00:00:00Z",
+    });
+    let extra = build_extra("owner", "repo", 42, &data);
+    assert_eq!(extra["provider"], "github");
+    assert_eq!(extra["git_content_kind"], "pr");
+    assert_eq!(extra["git_state"], "open");
+    assert_eq!(extra["git_number"], 42);
+    assert_eq!(extra["git_author"], "alice");
+    assert_eq!(extra["git_is_draft"], false);
+    assert!(extra["git_merged_at"].is_null());
+}
+
+#[test]
+fn build_extra_merged_pr_state() {
+    let data = serde_json::json!({
+        "state": "closed", "user": {"login": "bob"},
+        "labels": [], "draft": false,
+        "merged_at": "2024-06-01T00:00:00Z", "created_at": "2024-05-01T00:00:00Z",
+    });
+    let extra = build_extra("owner", "repo", 10, &data);
+    assert_eq!(extra["git_state"], "merged");
+    assert_eq!(extra["git_merged_at"], "2024-06-01T00:00:00Z");
+}
+
+#[test]
+fn build_extra_draft_pr() {
+    let data = serde_json::json!({
+        "state": "open", "user": {"login": "carol"},
+        "labels": [], "draft": true, "merged_at": null, "created_at": "",
+    });
+    let extra = build_extra("owner", "repo", 5, &data);
+    assert_eq!(extra["git_is_draft"], true);
+}
+
+#[test]
 fn matches_pr_url() {
     assert!(matches("https://github.com/rust-lang/rust/pull/12345"));
     assert!(matches("https://github.com/tokio-rs/tokio/pull/1"));

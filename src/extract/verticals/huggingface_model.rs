@@ -8,6 +8,10 @@ use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 
+#[cfg(test)]
+#[path = "huggingface_model_tests.rs"]
+mod tests;
+
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "huggingface_model",
     label: "HuggingFace Model",
@@ -72,6 +76,33 @@ async fn fetch_model_card(model_id: &str) -> Option<String> {
     // Truncate to 30_000 chars
     let truncated: String = text.chars().take(30_000).collect();
     Some(truncated)
+}
+
+fn build_extra(
+    model_id: &str,
+    org: &str,
+    pipeline_tag: &str,
+    library_name: &str,
+    downloads: u64,
+    likes: u64,
+    tags: &[&str],
+) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "hf_model_id": model_id,
+        "hf_org": org,
+        "hf_downloads": downloads,
+        "hf_likes": likes,
+    });
+    if !pipeline_tag.is_empty() {
+        obj["hf_task"] = serde_json::Value::String(pipeline_tag.to_string());
+    }
+    if !library_name.is_empty() {
+        obj["hf_library"] = serde_json::Value::String(library_name.to_string());
+    }
+    if !tags.is_empty() {
+        obj["hf_tags"] = serde_json::json!(tags);
+    }
+    obj
 }
 
 /// Aggregated data for building HuggingFace model markdown.
@@ -197,6 +228,8 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
 
+    let extra = build_extra(id, org, pipeline_tag, library_name, downloads, likes, &tags);
+
     let title = Some(id.to_string());
     let md = build_hf_markdown(&HfMarkdownData {
         id,
@@ -214,8 +247,9 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 2,
+        extractor_version: 3,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }

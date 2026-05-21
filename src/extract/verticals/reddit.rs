@@ -209,6 +209,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         extractor_version: 2,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: None,
     })
 }
 

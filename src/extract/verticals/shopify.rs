@@ -8,6 +8,10 @@ use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
 
+#[cfg(test)]
+#[path = "shopify_tests.rs"]
+mod tests;
+
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "shopify",
     label: "Shopify Product",
@@ -32,6 +36,20 @@ const NON_SHOPIFY_HOSTS: &[&str] = &[
     "amazon.com",
     "ebay.com",
 ];
+
+fn build_extra(host: &str, vendor: &str, product_type: &str, handle: &str) -> serde_json::Value {
+    let mut obj = serde_json::json!({ "shop_host": host });
+    if !vendor.is_empty() {
+        obj["shop_vendor"] = serde_json::Value::String(vendor.to_string());
+    }
+    if !product_type.is_empty() {
+        obj["shop_product_type"] = serde_json::Value::String(product_type.to_string());
+    }
+    if !handle.is_empty() {
+        obj["shop_handle"] = serde_json::Value::String(handle.to_string());
+    }
+    obj
+}
 
 pub fn matches(url: &str) -> bool {
     let Ok(parsed) = url::Url::parse(url) else {
@@ -182,6 +200,8 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let body_html = product["body_html"].as_str().unwrap_or("");
     let body_text = strip_html(body_html);
 
+    let extra = build_extra(&host, vendor, product_type, &handle);
+
     let title = Some(title_str.to_string());
     let mut md = format!("# {title_str}\n\n");
     if !vendor.is_empty() {
@@ -206,8 +226,9 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 2,
+        extractor_version: 3,
         structured: Some(data),
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
