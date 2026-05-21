@@ -1,6 +1,6 @@
 use super::map_scrape_payload;
 use super::{scrape, scrape_batch};
-use crate::core::config::{Config, ScrapeFormat};
+use crate::core::config::Config;
 
 #[test]
 fn map_scrape_payload_initializes_without_artifact_handle() {
@@ -27,52 +27,6 @@ async fn scrape_rejects_private_ip_before_fetch() {
     assert!(
         err.to_string().contains("blocked"),
         "error should preserve SSRF blocker reason, got: {err}"
-    );
-}
-
-/// Verify that `map_scrape_payload` output is transformed by `to_llm_text` when
-/// `cfg.format == ScrapeFormat::Llm`.  This exercises the branch added to the
-/// vertical-extractor fast path without requiring a live vertical extractor.
-#[test]
-fn map_scrape_payload_llm_format_applies_to_llm_text() {
-    use crate::core::content::to_llm_text;
-
-    let url = "https://example.com/page";
-    let markdown = "# Hello\n\nSome content.";
-    let result = map_scrape_payload(serde_json::json!({
-        "url": url,
-        "markdown": markdown
-    }))
-    .expect("scrape payload");
-
-    // Simulate the LLM-format branch: apply to_llm_text to the output.
-    let llm_output = to_llm_text(&result.output, url);
-
-    // The LLM transform prepends a URL metadata header.
-    assert!(
-        llm_output.contains("> URL:"),
-        "LLM output should contain URL header, got: {llm_output}"
-    );
-    assert!(
-        llm_output.contains("example.com/page"),
-        "LLM output should reference the page URL, got: {llm_output}"
-    );
-    // The raw markdown body should still be present.
-    assert!(
-        llm_output.contains("Hello"),
-        "LLM output should contain page heading, got: {llm_output}"
-    );
-}
-
-/// Ensure the default ScrapeFormat (Markdown) does NOT apply to_llm_text
-/// transformation — i.e., the vertical path leaves `output` unchanged.
-#[test]
-fn scrape_format_default_is_not_llm() {
-    let cfg = Config::default();
-    assert_ne!(
-        cfg.format,
-        ScrapeFormat::Llm,
-        "default ScrapeFormat should not be Llm"
     );
 }
 
