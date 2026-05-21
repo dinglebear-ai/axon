@@ -122,15 +122,17 @@ pub(crate) async fn embed_files(
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let chunks = {
-            let content_clone = content.clone();
-            match tokio::task::spawn_blocking(move || {
-                chunk_code(&content_clone, &ext).unwrap_or_else(|| chunk_text(&content_clone))
-            })
-            .await
-            {
-                Ok(chunks) => chunks,
-                Err(_) => chunk_text(&content),
+        // Move content into spawn_blocking — avoids cloning large files.
+        // On JoinError (panic/cancellation) log a warning and skip the file.
+        let chunks = match tokio::task::spawn_blocking(move || {
+            chunk_code(&content, &ext).unwrap_or_else(|| chunk_text(&content))
+        })
+        .await
+        {
+            Ok(chunks) => chunks,
+            Err(e) => {
+                tracing::warn!(path = %rel, error = %e, "spawn_blocking panicked during code chunking; skipping file");
+                vec![]
             }
         };
         if !chunks.is_empty() {
