@@ -29,7 +29,7 @@ artifacts:read
 artifacts:search
 artifacts:wc
 ask
-brand:brand
+brand
 crawl:cancel
 crawl:cleanup
 crawl:clear
@@ -37,7 +37,7 @@ crawl:list
 crawl:recover
 crawl:start
 crawl:status
-diff:diff
+diff
 doctor
 domains
 elicit_demo
