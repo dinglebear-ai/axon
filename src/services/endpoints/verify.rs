@@ -16,7 +16,11 @@ const VERIFY_TIMEOUT_SECS: u64 = 2;
 /// Maximum concurrent verification probes per request. Per bead w2wf.4: 4.
 const VERIFY_CONCURRENCY: usize = 4;
 
-/// Process-wide semaphore limiting concurrent verification probe sessions.
+/// Process-wide semaphore limiting concurrent verification *sessions*.
+/// Each session independently probes up to VERIFY_CONCURRENCY=4 endpoints
+/// in parallel via buffer_unordered, so the effective probe ceiling is
+/// cap × VERIFY_CONCURRENCY. Set the cap to control session-level parallelism,
+/// not individual probe counts.
 /// Default cap: 16. Override with AXON_ENDPOINT_VERIFY_CONCURRENCY env var.
 static VERIFY_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
     let cap = std::env::var("AXON_ENDPOINT_VERIFY_CONCURRENCY")

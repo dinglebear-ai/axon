@@ -50,7 +50,7 @@ Indexes on status/source fields speed up worker claim and list queries.
 | Variable | Required for | Description |
 |----------|-------------|-------------|
 | `TEI_URL` | All targets | TEI embedding service endpoint |
-| `AXON_COLLECTION` | All targets | Qdrant collection name (default: `cortex`) |
+| `AXON_COLLECTION` | All targets | Qdrant collection name (default: `axon`) |
 | `GITHUB_TOKEN` | GitHub (optional) | Raises GitHub API rate limit from 60 to 5000 req/hr |
 | `GITLAB_TOKEN` | GitLab (optional) | Authenticates private projects and raises API limits |
 | `GITEA_TOKEN` | Gitea/Forgejo (optional) | Authenticates Gitea-compatible API requests |

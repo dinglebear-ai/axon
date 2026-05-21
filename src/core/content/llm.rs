@@ -69,6 +69,7 @@ pub fn to_llm_text(markdown: &str, url: &str) -> String {
             Event::End(TagEnd::Heading(_)) => body.push('\n'),
             Event::Start(Tag::CodeBlock(_)) => body.push_str("```\n"),
             Event::End(TagEnd::CodeBlock) => body.push_str("```\n"),
+            Event::End(TagEnd::Paragraph) => body.push('\n'),
             // Table/BlockQuote structural events: text content still emitted via Event::Text
             Event::Html(_) | Event::InlineHtml(_) => {}
             Event::Code(span) => body.push_str(&format!("`{span}`")),
