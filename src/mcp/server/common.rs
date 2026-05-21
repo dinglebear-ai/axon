@@ -312,6 +312,7 @@ pub(super) fn map_scrape_format(f: McpScrapeFormat) -> ScrapeFormat {
         McpScrapeFormat::Html => ScrapeFormat::Html,
         McpScrapeFormat::RawHtml => ScrapeFormat::RawHtml,
         McpScrapeFormat::Json => ScrapeFormat::Json,
+        McpScrapeFormat::Llm => ScrapeFormat::Llm,
     }
 }
 

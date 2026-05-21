@@ -58,6 +58,7 @@ pub enum McpScrapeFormat {
     Html,
     RawHtml,
     Json,
+    Llm,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
