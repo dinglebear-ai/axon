@@ -48,6 +48,8 @@ fn is_server_mode_rest_command(command: CommandKind) -> bool {
             | CommandKind::Endpoints
             | CommandKind::Scrape
             | CommandKind::Summarize
+            | CommandKind::Diff
+            | CommandKind::Brand
             | CommandKind::Search
             | CommandKind::Research
             | CommandKind::Crawl

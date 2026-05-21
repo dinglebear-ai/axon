@@ -25,7 +25,12 @@ pub async fn run_diff(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 fn parse_diff_urls(cfg: &Config) -> Result<(String, String), Box<dyn Error>> {
     match cfg.positional.as_slice() {
-        [a, b, ..] => Ok((a.clone(), b.clone())),
+        [a, b] => Ok((a.clone(), b.clone())),
+        [_, _, _, ..] => Err(format!(
+            "diff takes exactly two URLs but {} were given: axon diff <url-a> <url-b>",
+            cfg.positional.len()
+        )
+        .into()),
         [_] => Err("diff requires two URLs: axon diff <url-a> <url-b>".into()),
         [] => Err("diff requires two URLs: axon diff <url-a> <url-b>".into()),
     }

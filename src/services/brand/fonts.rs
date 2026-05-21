@@ -70,7 +70,8 @@ pub(super) fn extract_fonts(decls: &[CssDecl], brand_name: Option<&str>) -> Vec<
                 && !is_junk_font(&lower)
                 && (!brand.contains("google") || !lower.contains("google sans"))
             {
-                *freq.entry(font).or_insert(0) += 1;
+                // Key on lowercase to avoid counting "Inter" and "inter" separately.
+                *freq.entry(lower).or_insert(0) += 1;
             }
         }
     }
