@@ -1,6 +1,8 @@
 use octocrab::models;
 use serde_json::{Value, json};
 
+use crate::ingest::git_payload::{GitPayload, build_git_payload};
+
 pub(crate) fn issue_state_str(state: &models::IssueState) -> &'static str {
     match state {
         models::IssueState::Open => "open",
@@ -64,54 +66,96 @@ pub struct GitHubPayloadParams {
     pub gh_line_end: Option<u32>,
 }
 
-/// Build a Qdrant extra payload with all 32 `gh_*` keys.
+/// Build a Qdrant extra payload with `gh_*` keys (backwards compat) and the
+/// canonical `git_*` keys shared across all git providers.
 ///
 /// Null `Option` fields become JSON `null`, ensuring every chunk has the same
 /// schema regardless of content kind.
 pub fn build_github_payload(params: &GitHubPayloadParams) -> Value {
-    json!({
-        // Common
-        "gh_repo": params.repo,
-        "gh_owner": params.owner,
-        "gh_content_kind": params.content_kind,
-        "gh_branch": params.branch,
-        "gh_default_branch": params.default_branch,
-        "gh_repo_description": params.repo_description,
-        "gh_pushed_at": params.pushed_at,
-        "gh_is_private": params.is_private,
-
-        // Repo metadata
-        "gh_stars": params.stars,
-        "gh_forks": params.forks,
-        "gh_open_issues": params.open_issues,
-        "gh_language": params.language,
-        "gh_topics": params.topics,
-        "gh_is_fork": params.is_fork,
-        "gh_is_archived": params.is_archived,
-
-        // Issue / PR
-        "gh_issue_number": params.issue_number,
-        "gh_state": params.state,
-        "gh_author": params.author,
-        "gh_created_at": params.created_at,
-        "gh_updated_at": params.updated_at,
-        "gh_comment_count": params.comment_count,
-        "gh_labels": params.labels,
-        "gh_is_pr": params.is_pr,
-        "gh_merged_at": params.merged_at,
-        "gh_is_draft": params.is_draft,
-
-        // File
-        "gh_file_path": params.file_path,
-        "gh_file_language": params.file_language,
-        "gh_file_type": params.file_type,
-        "gh_is_test": params.is_test,
-        "gh_file_size_bytes": params.file_size_bytes,
-
-        // Chunk line range (1-indexed, inclusive)
-        "gh_line_start": params.gh_line_start,
-        "gh_line_end": params.gh_line_end,
-    })
+    let content_kind: &'static str = match params.content_kind.as_str() {
+        "issue" => "issue",
+        "pr" => "pr",
+        "wiki" => "wiki",
+        "repo_metadata" => "repo_metadata",
+        _ => "file",
+    };
+    let git = build_git_payload(&GitPayload {
+        provider: "github".to_string(),
+        host: "github.com".to_string(),
+        owner: Some(params.owner.clone()),
+        repo: params.repo.clone(),
+        content_kind,
+        branch: params.branch.clone(),
+        state: params.state.clone(),
+        number: params.issue_number,
+        author: params.author.clone(),
+        labels: params.labels.clone().unwrap_or_default(),
+        is_draft: params.is_draft,
+        merged_at: params.merged_at.clone(),
+        created_at: params.created_at.clone(),
+        updated_at: params.updated_at.clone(),
+        file_path: params.file_path.clone(),
+        file_language: params.file_language.clone(),
+        meta: Some(json!({
+            "stars": params.stars,
+            "forks": params.forks,
+            "open_issues": params.open_issues,
+            "language": params.language,
+            "topics": params.topics,
+            "is_fork": params.is_fork,
+            "is_archived": params.is_archived,
+            "is_private": params.is_private,
+            "default_branch": params.default_branch,
+            "repo_description": params.repo_description,
+            "pushed_at": params.pushed_at,
+            "gh_file_type": params.file_type,
+            "gh_is_test": params.is_test,
+            "gh_file_size_bytes": params.file_size_bytes,
+            "gh_line_start": params.gh_line_start,
+            "gh_line_end": params.gh_line_end,
+            "gh_comment_count": params.comment_count,
+            "gh_is_pr": params.is_pr,
+        })),
+    });
+    let mut payload = git;
+    // Backwards-compat: also emit flat gh_* fields so existing Qdrant
+    // queries and filters continue to work on already-indexed points.
+    let obj = payload
+        .as_object_mut()
+        .expect("git payload is always an object");
+    obj.insert("gh_repo".into(), json!(params.repo));
+    obj.insert("gh_owner".into(), json!(params.owner));
+    obj.insert("gh_content_kind".into(), json!(params.content_kind));
+    obj.insert("gh_branch".into(), json!(params.branch));
+    obj.insert("gh_default_branch".into(), json!(params.default_branch));
+    obj.insert("gh_repo_description".into(), json!(params.repo_description));
+    obj.insert("gh_pushed_at".into(), json!(params.pushed_at));
+    obj.insert("gh_is_private".into(), json!(params.is_private));
+    obj.insert("gh_stars".into(), json!(params.stars));
+    obj.insert("gh_forks".into(), json!(params.forks));
+    obj.insert("gh_open_issues".into(), json!(params.open_issues));
+    obj.insert("gh_language".into(), json!(params.language));
+    obj.insert("gh_topics".into(), json!(params.topics));
+    obj.insert("gh_is_fork".into(), json!(params.is_fork));
+    obj.insert("gh_is_archived".into(), json!(params.is_archived));
+    obj.insert("gh_issue_number".into(), json!(params.issue_number));
+    obj.insert("gh_state".into(), json!(params.state));
+    obj.insert("gh_author".into(), json!(params.author));
+    obj.insert("gh_created_at".into(), json!(params.created_at));
+    obj.insert("gh_updated_at".into(), json!(params.updated_at));
+    obj.insert("gh_comment_count".into(), json!(params.comment_count));
+    obj.insert("gh_labels".into(), json!(params.labels));
+    obj.insert("gh_is_pr".into(), json!(params.is_pr));
+    obj.insert("gh_merged_at".into(), json!(params.merged_at));
+    obj.insert("gh_is_draft".into(), json!(params.is_draft));
+    obj.insert("gh_file_path".into(), json!(params.file_path));
+    obj.insert("gh_file_language".into(), json!(params.file_language));
+    obj.insert("gh_file_type".into(), json!(params.file_type));
+    obj.insert("gh_is_test".into(), json!(params.is_test));
+    obj.insert("gh_file_size_bytes".into(), json!(params.file_size_bytes));
+    obj.insert("gh_line_start".into(), json!(params.gh_line_start));
+    obj.insert("gh_line_end".into(), json!(params.gh_line_end));
+    payload
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

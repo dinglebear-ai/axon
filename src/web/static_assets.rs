@@ -3,7 +3,10 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use rust_embed::RustEmbed;
+// Embed trait must be in scope for WebAssets::get() when apps/web/out/ is empty (CI).
+// The allow is needed when the folder has content and rust-embed generates inherent methods.
+#[allow(unused_imports)]
+use rust_embed::{Embed as _, RustEmbed};
 
 #[derive(RustEmbed)]
 #[folder = "apps/web/out/"]

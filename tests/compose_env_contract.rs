@@ -428,6 +428,8 @@ fn env_example_only_contains_production_runtime_keys() {
         "HF_TOKEN",
         "TAVILY_API_KEY",
         "GITHUB_TOKEN",
+        "GITLAB_TOKEN",
+        "GITEA_TOKEN",
         "REDDIT_CLIENT_ID",
         "REDDIT_CLIENT_SECRET",
     ]

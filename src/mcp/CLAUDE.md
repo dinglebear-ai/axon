@@ -132,6 +132,8 @@ This split means clients that want to discover what URL patterns Axon supports q
 ### `ingest`
 - `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
 - Integration: `src/jobs/ingest.rs`
+- Supported `source_type` values: `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube`, `sessions`
+- MCP request validation and `IngestSource` construction factored into `src/services/ingest/request.rs` (`source_from_mcp_request`)
 
 ### `ask`
 - Direct action (no subaction)

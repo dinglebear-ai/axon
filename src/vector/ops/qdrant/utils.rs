@@ -22,7 +22,7 @@ pub fn qdrant_base(cfg: &Config) -> &str {
 /// (see `build_schema_version_filter` in `qdrant/filter.rs`).
 ///
 /// Bumped when a new required payload field lands. See bead `axon_rust-lu6a`.
-pub const PAYLOAD_SCHEMA_VERSION: u32 = 2;
+pub const PAYLOAD_SCHEMA_VERSION: u32 = 3;
 
 pub(crate) fn validate_collection_name(name: &str) -> Result<(), CollectionNameError> {
     crate::core::config::validate_collection_name(name)

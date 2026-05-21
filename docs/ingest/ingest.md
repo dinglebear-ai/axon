@@ -3,7 +3,7 @@ Last Modified: 2026-03-10
 
 > CLI reference (flags, subcommands, examples): [`docs/commands/ingest.md`](../commands/ingest.md)
 
-The `axon ingest` command ingests external sources — GitHub repositories, Reddit subreddits/threads, and YouTube videos/playlists/channels — into Qdrant. Source type is auto-detected from the target argument.
+The `axon ingest` command ingests external sources — GitHub repositories, GitLab projects, Gitea/Forgejo repositories, generic HTTPS Git repositories, Reddit subreddits/threads, and YouTube videos/playlists/channels — into Qdrant. Source type is auto-detected from the target argument where possible.
 
 ## Ingest Docs Index
 
@@ -11,6 +11,8 @@ The `axon ingest` command ingests external sources — GitHub repositories, Redd
 |-----|-------|
 | [`docs/ingest/ingest.md`](ingest.md) | Shared ingest job schema, dependencies, and environment variables. |
 | [`docs/ingest/github.md`](github.md) | GitHub repository ingestion. |
+| [`docs/ingest/gitlab.md`](gitlab.md) | GitLab project ingestion. |
+| Gitea/Forgejo and generic Git | See `docs/commands/ingest.md` for target forms and shared flags. |
 | [`docs/ingest/reddit.md`](reddit.md) | Reddit subreddit and thread ingestion. |
 | [`docs/ingest/youtube.md`](youtube.md) | YouTube video, playlist, and channel ingestion. |
 | [`docs/ingest/sessions.md`](sessions.md) | AI session export ingestion. |
@@ -24,7 +26,7 @@ Ingest jobs are persisted in the SQLite `axon_ingest_jobs` table. The table is c
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `TEXT` | Job identifier |
-| `source_type` | `TEXT` | One of `github`, `reddit`, `youtube` |
+| `source_type` | `TEXT` | One of `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube` |
 | `target` | `TEXT` | The original target string (slug, URL, handle, etc.) |
 | `status` | `TEXT` | `pending`, `running`, `completed`, `failed`, or `canceled` |
 | `config_json` | `TEXT` | Serialized job configuration (flags at submission time) |
@@ -50,5 +52,7 @@ Indexes on status/source fields speed up worker claim and list queries.
 | `TEI_URL` | All targets | TEI embedding service endpoint |
 | `AXON_COLLECTION` | All targets | Qdrant collection name (default: `cortex`) |
 | `GITHUB_TOKEN` | GitHub (optional) | Raises GitHub API rate limit from 60 to 5000 req/hr |
+| `GITLAB_TOKEN` | GitLab (optional) | Authenticates private projects and raises API limits |
+| `GITEA_TOKEN` | Gitea/Forgejo (optional) | Authenticates Gitea-compatible API requests |
 | `REDDIT_CLIENT_ID` | Reddit | OAuth2 app client ID |
 | `REDDIT_CLIENT_SECRET` | Reddit | OAuth2 app client secret |

@@ -78,19 +78,34 @@ pub async fn scrape(
     // machine-readable error code (e.g. VerticalBlockedAntibot) rather than
     // silently falling back to HTML that looks like a CAPTCHA page.
     if cfg.enable_verticals {
+        const VERTICAL_TIMEOUT: Duration = Duration::from_secs(120);
         let ctx = VerticalContext::new(Arc::new(cfg.clone()));
-        if let Some(result) = dispatch_by_url(&normalized, &ctx).await {
-            let doc = result.map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
-            let payload = serde_json::json!({ "url": doc.url, "markdown": doc.markdown });
-            let mut scrape_result = map_scrape_payload(payload)?;
-            scrape_result.backend = Some(DocumentBackend::LiveScrape);
-            scrape_result.follow_crawl_urls = doc.follow_crawl_urls;
-            tracing::debug!(
-                url = %normalized,
-                extractor = doc.extractor_name,
-                "vertical.dispatched: extractor handled scrape"
-            );
-            return Ok(scrape_result);
+        let vertical_result =
+            tokio::time::timeout(VERTICAL_TIMEOUT, dispatch_by_url(&normalized, &ctx)).await;
+        match vertical_result {
+            Ok(Some(result)) => {
+                let doc = result.map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+                let payload = serde_json::json!({ "url": doc.url, "markdown": doc.markdown });
+                let mut scrape_result = map_scrape_payload(payload)?;
+                scrape_result.backend = Some(DocumentBackend::LiveScrape);
+                scrape_result.follow_crawl_urls = doc.follow_crawl_urls;
+                tracing::debug!(
+                    url = %normalized,
+                    extractor = doc.extractor_name,
+                    "vertical.dispatched: extractor handled scrape"
+                );
+                // v1: LLM format is only applied on the generic HTTP scrape path.
+                // Vertical extractors return structured markdown that should not be post-processed.
+                return Ok(scrape_result);
+            }
+            Ok(None) => {} // no extractor claimed the URL — fall through to generic scrape
+            Err(_) => {
+                tracing::warn!(
+                    url = %normalized,
+                    timeout_secs = VERTICAL_TIMEOUT.as_secs(),
+                    "vertical extractor timed out — falling through to generic scrape"
+                );
+            }
         }
     }
 

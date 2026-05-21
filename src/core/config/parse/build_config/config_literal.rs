@@ -142,6 +142,8 @@ fn populate_perf_and_credentials(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.sessions_gemini = d.sessions_gemini;
     cfg.sessions_project = d.sessions_project.clone();
     cfg.github_token = env::var("GITHUB_TOKEN").ok();
+    cfg.gitlab_token = env::var("GITLAB_TOKEN").ok();
+    cfg.gitea_token = env::var("GITEA_TOKEN").ok();
     cfg.github_include_source = d.github_include_source;
     cfg.github_max_issues = d.github_max_issues;
     cfg.github_max_prs = d.github_max_prs;

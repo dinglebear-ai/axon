@@ -313,6 +313,33 @@ pub async fn run_ingest_sync(cfg: &Config, source: IngestSource) -> Result<(), B
                 as usize;
             (n, "github", repo.clone())
         }
+        IngestSource::Gitlab { target, .. } => {
+            let result =
+                ingest_service::ingest_gitlab_with_progress(cfg, target, None, None).await?;
+            let n = result.payload["chunks"]
+                .as_u64()
+                .ok_or("ingest: service payload missing 'chunks' field")?
+                as usize;
+            (n, "gitlab", target.clone())
+        }
+        IngestSource::Gitea { target, .. } => {
+            let result =
+                ingest_service::ingest_gitea_with_progress(cfg, target, None, None).await?;
+            let n = result.payload["chunks"]
+                .as_u64()
+                .ok_or("ingest: service payload missing 'chunks' field")?
+                as usize;
+            (n, "gitea", target.clone())
+        }
+        IngestSource::GenericGit { target, .. } => {
+            let result =
+                ingest_service::ingest_generic_git_with_progress(cfg, target, None, None).await?;
+            let n = result.payload["chunks"]
+                .as_u64()
+                .ok_or("ingest: service payload missing 'chunks' field")?
+                as usize;
+            (n, "git", target.clone())
+        }
         IngestSource::Reddit { target } => {
             let result = ingest_service::ingest_reddit(cfg, target, None).await?;
             let n = result.payload["chunks"]

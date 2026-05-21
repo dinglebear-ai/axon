@@ -270,4 +270,37 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         WarnEnvOverride,
         false,
     ),
+    // Stale alias; superseded by AXON_CHROME_REMOTE_URL.
+    spec(
+        "CHROME_URL",
+        Delete,
+        NotRuntime,
+        None,
+        DeleteOnMigration,
+        false,
+    ),
+    spec(
+        "AXON_CHROME_USER_AGENT",
+        MoveToml,
+        NotRuntime,
+        Some("chrome.user-agent"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_JOB_WAIT_TIMEOUT_SECS",
+        MoveToml,
+        NotRuntime,
+        Some("workers.job-wait-timeout-secs"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_LOG_MAX_BYTES",
+        MoveToml,
+        NotRuntime,
+        Some("logging.max-bytes"),
+        WarnEnvOverride,
+        false,
+    ),
 ];

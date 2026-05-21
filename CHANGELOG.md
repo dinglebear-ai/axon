@@ -52,6 +52,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added config parsing coverage for `--skip-embed` mapping to
   `Config::embed = false`.
 
+## [4.3.0] - 2026-05-21
+
+### Added
+
+- Added first-class GitLab ingest for project metadata, repository files, issues,
+  merge requests, and wiki pages.
+- Added Gitea/Forgejo ingest for repository metadata, files, issues, and pull
+  requests.
+- Added explicit generic HTTPS Git ingest for repository file indexing.
+
+### Changed
+
+- Extended CLI, async job, MCP, service, config, status, and docs surfaces for
+  `gitlab`, `gitea`, and `git` ingest source types.
+
 ## [4.2.0] - 2026-05-19
 
 ### Added

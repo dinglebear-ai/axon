@@ -12,6 +12,18 @@ pub enum IngestSource {
         repo: String,
         include_source: bool,
     },
+    Gitlab {
+        target: String,
+        include_source: bool,
+    },
+    Gitea {
+        target: String,
+        include_source: bool,
+    },
+    GenericGit {
+        target: String,
+        include_source: bool,
+    },
     Reddit {
         target: String,
     },
@@ -69,6 +81,9 @@ impl IngestJob {
 pub(crate) fn source_type_label(source: &IngestSource) -> &'static str {
     match source {
         IngestSource::Github { .. } => "github",
+        IngestSource::Gitlab { .. } => "gitlab",
+        IngestSource::Gitea { .. } => "gitea",
+        IngestSource::GenericGit { .. } => "git",
         IngestSource::Reddit { .. } => "reddit",
         IngestSource::Youtube { .. } => "youtube",
         IngestSource::Sessions { .. } => "sessions",
@@ -78,6 +93,9 @@ pub(crate) fn source_type_label(source: &IngestSource) -> &'static str {
 pub(crate) fn target_label(source: &IngestSource) -> String {
     match source {
         IngestSource::Github { repo, .. } => repo.clone(),
+        IngestSource::Gitlab { target, .. } => target.clone(),
+        IngestSource::Gitea { target, .. } => target.clone(),
+        IngestSource::GenericGit { target, .. } => target.clone(),
         IngestSource::Reddit { target } => target.clone(),
         IngestSource::Youtube { target } => target.clone(),
         IngestSource::Sessions {

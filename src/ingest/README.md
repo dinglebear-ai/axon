@@ -5,10 +5,13 @@ Source-specific ingestion pipelines for non-crawl content.
 
 ## Purpose
 - Fetch and normalize external source content into a form suitable for embedding.
-- Support ingestion from GitHub, Reddit, YouTube, and AI session exports.
+- Support ingestion from GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube, and AI session exports.
 
 ## Responsibilities
 - GitHub ingest for repository files/issues/wiki.
+- GitLab ingest for project files/issues/merge requests/wiki.
+- Gitea/Forgejo ingest for repository files/issues/pull requests.
+- Generic HTTPS Git ingest for repository files.
 - Reddit ingest for subreddit posts/comments.
 - YouTube transcript ingest.
 - Session ingest parsers for Claude, Codex, and Gemini exports.
@@ -18,6 +21,9 @@ Source-specific ingestion pipelines for non-crawl content.
 - `progress.rs`: shared progress reporting helpers.
 - `subprocess.rs`: shared subprocess launch helpers (yt-dlp, git clone).
 - `github.rs` + `github/{files,issues,meta,wiki}.rs`: GitHub source ingest.
+- `gitlab.rs` + `gitlab/{client,embed,files,types}.rs`: GitLab source ingest.
+- `gitea.rs`: Gitea/Forgejo source ingest.
+- `generic_git.rs`: Generic HTTPS Git clone ingest.
 - `reddit.rs` + `reddit/{client,comments,meta,types}.rs`: Reddit source ingest.
 - `youtube.rs` + `youtube/{meta,vtt}.rs`: YouTube transcript ingest.
 - `sessions.rs` + `sessions/{claude,codex,gemini}.rs`: AI session export parsers.

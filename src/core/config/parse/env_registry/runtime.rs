@@ -67,6 +67,8 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
     ),
     spec("TAVILY_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec("GITHUB_TOKEN", KeepEnv, Both, None, Canonical, true),
+    spec("GITLAB_TOKEN", KeepEnv, Both, None, Canonical, true),
+    spec("GITEA_TOKEN", KeepEnv, Both, None, Canonical, true),
     spec("REDDIT_CLIENT_ID", KeepEnv, Both, None, Canonical, false),
     spec("REDDIT_CLIENT_SECRET", KeepEnv, Both, None, Canonical, true),
     spec(
@@ -110,6 +112,7 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec("GEMINI_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec("GOOGLE_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec(
         "AXON_WEB_API_TOKEN",
         KeepEnv,
