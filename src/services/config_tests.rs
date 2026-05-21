@@ -50,8 +50,11 @@ fn raw_env_text_validates_before_write() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join(".env");
 
-    write_env_text(&path, "QDRANT_URL=http://localhost:53333\nTAVILY_API_KEY='secret value'\n")
-        .unwrap();
+    write_env_text(
+        &path,
+        "QDRANT_URL=http://localhost:53333\nTAVILY_API_KEY='secret value'\n",
+    )
+    .unwrap();
     assert_eq!(
         read_env_entries(&path)
             .unwrap()

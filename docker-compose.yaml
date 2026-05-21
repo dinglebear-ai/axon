@@ -1,191 +1,46 @@
 name: axon
 
-# Full axon stack: axon (HTTP), qdrant, tei, chrome.
-#   docker compose --env-file ~/.axon/.env up -d
-# ~/.axon is the canonical host appdata root. Override AXON_HOME only when
-# relocating the full Axon appdata tree to another absolute path.
-
-x-common-service: &common-service
-  networks:
-    - jakenet
-  restart: unless-stopped
-  extra_hosts:
-    - "host.docker.internal:host-gateway"
-  ulimits:
-    nofile:
-      soft: 65535
-      hard: 65535
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
-      compress: "true"
-
-x-gpu-service: &gpu-service
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-
+# Local development stack.
+#
+# Uses the production service definitions for infra, but runs axon in a newer
+# dev runtime with the local debug target directory bind-mounted. Normal Rust
+# code changes only need `cargo build --bin axon` plus an axon service restart.
+#
+#   ./scripts/axon doctor
+#   docker compose up -d axon
+#
 services:
   axon:
-    <<: *common-service
-    image: ${AXON_IMAGE:-ghcr.io/jmagar/axon:latest}
-    container_name: axon
-    user: "1000:1000"
-    env_file:
-      - path: ${AXON_HOME:-${HOME}/.axon}/.env
-        required: false
-    environment:
-      # Host-bleed guards: container user is `axon` — override host paths.
-      # The shared ~/.axon/.env has these set to the host's $HOME, which
-      # doesn't exist inside the container. env_file values override Dockerfile
-      # ENV, so we must re-override here.
-      AXON_HOME: /home/axon/.axon
-      AXON_DATA_DIR: /home/axon/.axon
-      # Pin service URLs to container-internal DNS so the axon container always
-      # reaches its siblings regardless of what host-side URLs are in ~/.axon/.env.
-      # Without these overrides the container would inherit whatever loopback or
-      # external addresses the host ~/.axon/.env uses and fail to connect.
-      QDRANT_URL: http://axon-qdrant:6333
-      TEI_URL: http://axon-tei:80
-      AXON_CHROME_REMOTE_URL: http://axon-chrome:6000
-      # AXON_SERVER_URL is a client-side switch. The shared ~/.axon/.env may
-      # set it for host CLI commands, but the server container must not inherit
-      # it or container-local maintenance commands will route back through HTTP.
-      AXON_SERVER_URL: ""
-      # Host-only bootstrap overrides must not leak from the shared env file
-      # into the container and change config/env loading paths.
-      AXON_ENV_FILE: ""
-      AXON_CONFIG_PATH: ""
-      TZ: ${TZ:-America/New_York}
+    extends:
+      file: docker-compose.prod.yaml
+      service: axon
+    image: axon:dev-runtime
+    build:
+      context: .
+      dockerfile: config/Dockerfile
+      target: dev-runtime
     volumes:
-      # Persist config + secrets + jobs.db + output + logs + artifacts on the host.
-      - ${AXON_HOME:-${HOME}/.axon}:/home/axon/.axon
-      # Persist OAuth client registrations, refresh tokens, and JWT signing key
-      # across container recreates so upstream gateways don't hold stale client IDs.
-      - ${AXON_HOME:-${HOME}/.axon}/lab-auth:/home/axon/.lab
-      # Gemini CLI auth files — headless ask/evaluate/research synthesis reads
-      # oauth_creds.json, gemini-credentials.json, google_accounts.json from here.
-      # Prerequisite: run `gemini auth login` on the host before starting the container
-      # so ${HOME}/.gemini exists and contains valid credentials. If the directory is
-      # absent, Docker will create it as root-owned — run `mkdir -p ~/.gemini` first.
-      - ${GEMINI_HOME:-${HOME}/.gemini}:/home/axon/.gemini:ro
-    ports:
-      - "${AXON_MCP_HTTP_PUBLISH:-8001}:8001"
+      - type: bind
+        source: ${AXON_DEV_TARGET_DIR:-./target/debug}
+        target: /home/axon/.axon/dev
+        read_only: true
+    entrypoint: ["/usr/bin/tini", "--", "/home/axon/.axon/dev/axon"]
     command: ["serve"]
-    depends_on:
-      axon-qdrant:
-        condition: service_healthy
-      axon-tei:
-        condition: service_healthy
-      axon-chrome:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS --max-time 4 http://127.0.0.1:8001/healthz >/dev/null || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
 
   axon-qdrant:
-    <<: *common-service
-    image: qdrant/qdrant:v1.13.1
-    container_name: axon-qdrant
-    ports:
-      - "53333:6333"
-      - "53334:6334"  # gRPC
-    volumes:
-      - ${AXON_HOME:-${HOME}/.axon}/qdrant:/qdrant/storage
-      - ./config/qdrant/production.yaml:/qdrant/config/production.yaml:ro
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 12G
-        reservations:
-          cpus: '0.5'
-          memory: 1G
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "/usr/bin/bash",
-          "-ec",
-          "exec 3<>/dev/tcp/127.0.0.1/6333; printf \"GET /readyz HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n\" >&3; head -n 1 <&3 | grep -q \"200\"",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 120s
+    extends:
+      file: docker-compose.prod.yaml
+      service: axon-qdrant
 
   axon-tei:
-    <<: [*common-service, *gpu-service]
-    image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
-    container_name: axon-tei
-    environment:
-      # Container-internal path — not suitable for shared .env.
-      HF_HUB_CACHE: /data/cache
-      # TEI-specific filter — would suppress axon's logs if in shared .env.
-      RUST_LOG: text_embeddings_router=info
-    ports:
-      - "${TEI_HTTP_PORT:-52000}:80"
-    volumes:
-      - ${AXON_HOME:-${HOME}/.axon}/tei:/data
-    command:
-      - --model-id
-      - ${TEI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
-      - --dtype
-      - float16
-      - --max-concurrent-requests
-      - "${TEI_MAX_CONCURRENT_REQUESTS:-32}"
-      - --max-batch-tokens
-      - "${TEI_MAX_BATCH_TOKENS:-65536}"
-      - --max-batch-requests
-      - "${TEI_MAX_BATCH_REQUESTS:-64}"
-      - --max-client-batch-size
-      - "${TEI_SERVER_MAX_CLIENT_BATCH_SIZE:-96}"
-      - --pooling
-      - ${TEI_POOLING:-last-token}
-      - --tokenization-workers
-      - "${TEI_TOKENIZATION_WORKERS:-8}"
-      - --auto-truncate
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+    extends:
+      file: docker-compose.prod.yaml
+      service: axon-tei
 
   axon-chrome:
-    # headless_browser manager + chrome-headless-shell
-    # Port 6000: management API (GET / → "healthy", /fork, /shutdown)
-    # Port 9222: CDP proxy — pointed at by AXON_CHROME_REMOTE_URL
-    # Security: no built-in auth on CDP/headless_browser. Keep external exposure
-    # controlled at the firewall, reverse proxy, or tunnel layer. Do not add
-    # host-qualified port bindings; pre-commit rejects them.
-    <<: *common-service
-    container_name: axon-chrome
-    build:
-      context: ./config
-      dockerfile: chrome/Dockerfile
-    shm_size: "2gb"
-    ports:
-      - "9222:9222"  # CDP proxy
-      - "9223:9223"  # raw Chrome DevTools
-      - "6000:6000"  # management API
-    environment:
-      HOSTNAME_OVERRIDE: axon-chrome
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsSL --max-time 4 http://127.0.0.1:9222/json/version > /dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 20s
+    extends:
+      file: docker-compose.prod.yaml
+      service: axon-chrome
 
 networks:
   jakenet:

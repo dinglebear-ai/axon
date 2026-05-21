@@ -49,7 +49,7 @@ just services-up
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `docker-compose.yaml` | Axon server, Qdrant, TEI, Chrome | `~/.axon/.env` |
+| `docker-compose.prod.yaml` | Axon server, Qdrant, TEI, Chrome | `~/.axon/.env` |
 
 The compose file creates the `axon` bridge network. Pass `--env-file ~/.axon/.env`
 when running it directly so the canonical appdata env file is used for `${VAR}`
@@ -60,7 +60,7 @@ interpolation.
 For NVIDIA hosts with GPU-accelerated TEI:
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
 ```
 
 CPU-only hosts should override the TEI image/settings or point `TEI_URL` at an
@@ -76,7 +76,7 @@ unified HTTP API, MCP HTTP endpoint, web panel, and in-process workers directly.
 
 ```bash
 # Build Chrome image
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml build axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml build axon-chrome
 ```
 
 Run compose commands from the repo root. Host-side state defaults to
@@ -87,7 +87,7 @@ Run compose commands from the repo root. Host-side state defaults to
 
 ```bash
 # Infrastructure
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps
 
 # Service connectivity
 ./scripts/axon doctor

@@ -78,7 +78,7 @@ Docker images must not contain credentials at build time:
 docker inspect axon:local | jq '.[0].Config.Env'
 
 # Check container revision matches git SHA
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps
 ```
 
 ## Network security

@@ -24,7 +24,7 @@ This guide defines how to deploy and roll back Axon safely in self-hosted enviro
 
 ## Deployment Targets
 
-- Primary: compose stack defined in `docker-compose.yaml`
+- Primary: compose stack defined in `docker-compose.prod.yaml`
 - Optional runtime clients: CLI (`./scripts/axon`) and MCP HTTP clients
 
 ## Prerequisites
@@ -60,7 +60,7 @@ It is idempotent — safe to re-run. What it does:
 7. Runs `npm ci` for `apps/web` using `apps/web/package-lock.json`.
 8. Creates `~/.axon/.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
 9. **Prompts for `AXON_HOME`** (default `~/.axon`, flat layout — no nested `axon/` subdir), derives `AXON_DATA_DIR="$AXON_HOME"`, and pre-creates all container volume directories under it.
-10. Starts production infrastructure (`docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome`).
+10. Starts production infrastructure (`docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome`).
 11. Installs git hooks via `scripts/install-git-hooks.sh`.
 
 **Optional flags:**
@@ -80,7 +80,7 @@ Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and 
 
 - `AXON_DATA_DIR` — root for all persistent volume data
 - `QDRANT_URL` — Qdrant vector store URL
-- `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.yaml`)
+- `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.prod.yaml`)
 - Gemini CLI auth plus `AXON_HEADLESS_GEMINI_CMD` — canonical LLM synthesis path
 
 The legacy `OPENAI_*` env vars were removed in 3.0.0; all LLM synthesis now runs through the Gemini headless backend (`AXON_HEADLESS_GEMINI_*`).
@@ -134,7 +134,7 @@ Ensure `.env` is never committed. `.env.example` remains tracked.
 1. Pull/build images:
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml build
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml build
 ```
 
 1. Start the stack:
@@ -142,13 +142,13 @@ docker compose --env-file ~/.axon/.env -f docker-compose.yaml build
 **Infrastructure only** (Qdrant, TEI, Chrome in Docker; `axon serve` run locally):
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
 ```
 
 To run the `axon` service through Compose, start the full stack:
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
 ```
 
 The Compose `axon` service publishes MCP HTTP on `127.0.0.1:8001` by default.
@@ -158,7 +158,7 @@ intentionally exposing it beyond the host and `AXON_MCP_HTTP_TOKEN` is set.
 **Local dev mode** (infra in Docker, Axon server run locally):
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
 
 # Start the local Axon HTTP server:
 cargo run --bin axon -- serve
@@ -174,7 +174,7 @@ debug binary, then runs the Axon server locally for development.
 1. Verify health:
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps
 ./scripts/axon doctor
 ```
 
@@ -190,7 +190,7 @@ docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps
 Workers run in-process locally — output is in the terminal directly. For infra logs:
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml logs --tail=200 axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml logs --tail=200 axon-qdrant axon-tei axon-chrome
 ```
 
 ## Validation Checklist
@@ -208,7 +208,7 @@ Rollback is compose-based and image-based.
 1. Stop current stack:
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml down
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml down
 ```
 
 2. Revert deployment inputs:
@@ -220,8 +220,8 @@ docker compose --env-file ~/.axon/.env -f docker-compose.yaml down
 3. Rebuild/restart:
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml build
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml build
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
 ```
 
 Restart `axon serve` locally as in the standard deploy procedure.
@@ -256,7 +256,7 @@ For code/config upgrades:
 
 ## Source Map
 
-- `docker-compose.yaml`
+- `docker-compose.prod.yaml`
 - `scripts/dev-setup.sh`
 - `README.md`
 - `docs/OPERATIONS.md`

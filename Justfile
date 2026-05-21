@@ -89,7 +89,7 @@ install:
     {{rust_dev_env}}; cargo build --release --locked
     just link-bin
 
-# Build the local axon image from this checkout using the dev compose overlay.
+# Build the local dev runtime image from this checkout.
 container-build:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -100,25 +100,27 @@ container-build:
     if [ -f "$env_file" ]; then
       compose+=(--env-file "$env_file")
     fi
-    compose+=(-f docker-compose.yaml -f docker-compose.dev.yaml)
+    compose+=(-f docker-compose.yaml)
     "${compose[@]}" build axon
 
-# Recreate the axon service with the locally built axon:local image.
+# Recreate the axon service with the locally built debug binary bind-mounted.
 container-up:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/lib/axon-env.sh
     repo="$(pwd)"
     env_file="$(resolve_axon_env_file "$repo")"
+    cargo build --locked --bin axon
     compose=(docker compose)
     if [ -f "$env_file" ]; then
       compose+=(--env-file "$env_file")
     fi
-    compose+=(-f docker-compose.yaml -f docker-compose.dev.yaml)
+    export AXON_DEV_TARGET_DIR="${CARGO_TARGET_DIR:-$repo/target}/debug"
+    compose+=(-f docker-compose.yaml)
     "${compose[@]}" up -d axon --no-deps
     "${compose[@]}" ps axon
 
-# Build release binary, sync PATH symlinks, rebuild local container image, restart container.
+# Build release binary, sync PATH symlinks, rebuild local dev runtime image, restart container.
 # Synchronous version of what `scripts/axon` does automatically in the background.
 sync-container:
     #!/usr/bin/env bash
@@ -149,7 +151,8 @@ sync-container:
     if [ -f "$env_file" ]; then
       compose+=(--env-file "$env_file")
     fi
-    compose+=(-f docker-compose.yaml -f docker-compose.dev.yaml)
+    export AXON_DEV_TARGET_DIR="$(dirname "$AXON_BIN")"
+    compose+=(-f docker-compose.yaml)
     "${compose[@]}" build axon
     "${compose[@]}" up -d axon --no-deps
     touch "${AXON_TARGET_DIR}/.container-built"
@@ -176,7 +179,7 @@ install-debug:
           stale=1
           break
         fi
-      done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo src config.example.toml docker-compose.yaml config migrations)
+      done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo src config.example.toml docker-compose.prod.yaml docker-compose.yaml config migrations)
     fi
     if [ "$stale" -eq 1 ]; then
       just debug

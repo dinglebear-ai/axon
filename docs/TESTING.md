@@ -91,8 +91,9 @@ Set these in `~/.axon/.env`:
 |----------|--------------------------|---------|
 | `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53335` | Qdrant integration tests |
 
-The tracked local compose file is `docker-compose.yaml`. It
-starts the dev infrastructure stack on loopback-bound host ports:
+The tracked development compose file is `docker-compose.yaml`. It extends the
+production infrastructure definitions and starts the infrastructure stack on
+loopback-bound host ports:
 
 | Service | Image | Test port |
 |---------|-------|-----------|
@@ -205,7 +206,7 @@ just verify
 - `test` job: standard Rust test lane (`cargo test --all --locked --features test-helpers -- --skip worker_e2e`) plus ignored CLI infra tests. The workflow still declares legacy Postgres/Redis/RabbitMQ service containers, but the current runtime does not require them.
 - `test-infra` job: scheduled/manual-only lane, triggered by schedule or `workflow_dispatch` input `run_infra_tests=true`. Runs `just test-infra`; current ignored worker tests should not add a non-SQLite job backend dependency.
 - `live-qdrant` job: scheduled/manual-only lane for ignored live-Qdrant tests.
-- `mcp-smoke` job: builds the release binary, starts `docker-compose.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
+- `mcp-smoke` job: builds the release binary, starts `docker-compose.prod.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
 - `security` job: explicit `cargo audit --deny warnings` and `cargo deny check` with pinned tool versions.
 - `msrv` job: validates declared MSRV separately.
 

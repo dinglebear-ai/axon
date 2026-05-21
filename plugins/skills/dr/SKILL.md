@@ -35,7 +35,7 @@ axon debug   # doctor + LLM-assisted troubleshooting
 
 **Qdrant unreachable** → check `QDRANT_URL` and that the container is running:
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps
 ```
 
 **TEI unreachable** → scrape/crawl will work but embed will fail. Check `TEI_URL`.

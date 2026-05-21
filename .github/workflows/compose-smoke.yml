@@ -17,10 +17,10 @@ jobs:
             apps/web
 
       - name: Validate production compose
-        run: docker compose --env-file .env.example -f docker-compose.yaml config --quiet
+        run: docker compose --env-file .env.example -f docker-compose.prod.yaml config --quiet
 
-      - name: Validate development compose override
-        run: docker compose --env-file .env.example -f docker-compose.yaml -f docker-compose.dev.yaml config --quiet
+      - name: Validate development compose
+        run: docker compose --env-file .env.example -f docker-compose.yaml config --quiet
 
   image-build-smoke:
     name: image-build-smoke

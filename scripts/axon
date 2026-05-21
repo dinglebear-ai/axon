@@ -11,11 +11,14 @@ load_axon_env_file "$REPO"
 AXON_ENV_FILE_RESOLVED="$(resolve_axon_env_file "$REPO")"
 
 AXON_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO/target}"
+case "$AXON_TARGET_DIR" in
+    /*) ;;
+    *) AXON_TARGET_DIR="$REPO/$AXON_TARGET_DIR" ;;
+esac
 AXON_BIN="$AXON_TARGET_DIR/debug/axon"
-AXON_HOME_DIR="${AXON_HOME:-$HOME/.axon}"
-AXON_DEV_BIN_DIR="$AXON_HOME_DIR/dev"
-AXON_DEV_BIN="$AXON_DEV_BIN_DIR/axon"
+AXON_DEV_TARGET_DIR="$(dirname "$AXON_BIN")"
 CONTAINER_SENTINEL="$AXON_TARGET_DIR/.container-built"
+CONTAINER_BINARY_SENTINEL="$AXON_TARGET_DIR/.container-binary-synced"
 CONTAINER_BUILD_LOG="${TMPDIR:-/tmp}/axon-container-build.log"
 CONTAINER_BUILD_LOCK="$AXON_TARGET_DIR/.container-build.lock"
 CONTAINER_SYNC_LOG="${TMPDIR:-/tmp}/axon-container-sync.log"
@@ -25,11 +28,17 @@ compose_cmd() {
     if [ -f "$AXON_ENV_FILE_RESOLVED" ]; then
         _compose+=(--env-file "$AXON_ENV_FILE_RESOLVED")
     fi
-    _compose+=(-f "$REPO/docker-compose.yaml" -f "$REPO/docker-compose.dev.yaml")
+    export AXON_DEV_TARGET_DIR
+    _compose+=(-f "$REPO/docker-compose.yaml")
 }
 
 # ── Build the debug binary (incremental; Cargo skips if nothing changed) ─────
 cargo build -q --locked --manifest-path "$REPO/Cargo.toml" --bin axon
+
+_dev_bin_changed=0
+if [ ! -e "$CONTAINER_BINARY_SENTINEL" ] || [ "$AXON_BIN" -nt "$CONTAINER_BINARY_SENTINEL" ]; then
+    _dev_bin_changed=1
+fi
 
 # ── Sync PATH symlinks (debug binary for both local and plugin cache slots) ───
 mkdir -p ~/.local/bin
@@ -39,14 +48,6 @@ while IFS= read -r -d '' _plugin_bin; do
 done < <(find "${HOME}/.claude/plugins/cache/jmagar-lab/axon" -maxdepth 3 \
              -name "axon" \( -type f -o -type l \) -print0 2>/dev/null)
 
-# ── Sync debug binary into the dev container's mounted data dir ───────────────
-_dev_bin_changed=0
-if [ ! -x "$AXON_DEV_BIN" ] || [ "$AXON_BIN" -nt "$AXON_DEV_BIN" ]; then
-    mkdir -p "$AXON_DEV_BIN_DIR"
-    install -m 0755 "$AXON_BIN" "$AXON_DEV_BIN"
-    _dev_bin_changed=1
-fi
-
 # ── Rebuild container image only when image-level inputs changed ──────────────
 _stale=0
 while IFS= read -r -d '' _f; do
@@ -55,8 +56,8 @@ while IFS= read -r -d '' _f; do
         break
     fi
 done < <(git -C "$REPO" ls-files -z -- \
-             config/Dockerfile docker-compose.yaml docker-compose.dev.yaml \
-             config/chrome apps/web/package.json apps/web/package-lock.json apps/web)
+             config/Dockerfile docker-compose.prod.yaml docker-compose.yaml \
+             config/chrome)
 
 if [ "$_stale" -eq 1 ]; then
     mkdir -p "$AXON_TARGET_DIR"
@@ -67,7 +68,7 @@ if [ "$_stale" -eq 1 ]; then
             compose_cmd
             "${_compose[@]}" build axon \
                 && "${_compose[@]}" up -d axon --no-deps \
-                && touch "$CONTAINER_SENTINEL" \
+                && touch "$CONTAINER_SENTINEL" "$CONTAINER_BINARY_SENTINEL" \
                 || echo "axon: container rebuild FAILED — check $CONTAINER_BUILD_LOG" >&2
         ) &>"$CONTAINER_BUILD_LOG" &
         disown
@@ -78,9 +79,9 @@ elif [ "$_dev_bin_changed" -eq 1 ] && command -v docker >/dev/null 2>&1; then
     (
         compose_cmd
         if docker container inspect axon >/dev/null 2>&1; then
-            echo "axon: debug binary updated — restarting dev container"
+            echo "axon: debug binary built — restarting dev container"
             "${_compose[@]}" up -d axon --no-deps --no-build
-            "${_compose[@]}" restart axon
+            "${_compose[@]}" restart axon && touch "$CONTAINER_BINARY_SENTINEL"
         fi
     ) &>"$CONTAINER_SYNC_LOG" &
     disown
