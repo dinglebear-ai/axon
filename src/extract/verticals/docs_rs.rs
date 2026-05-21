@@ -61,6 +61,19 @@ pub fn matches(url: &str) -> bool {
     !first.is_empty() && !RESERVED_PATHS.contains(&first)
 }
 
+fn build_extra(name: &str, version: &str, item_count: usize) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "pkg_registry": "docs_rs",
+        "pkg_name": name,
+        "pkg_version": version,
+        "pkg_language": "rust"
+    });
+    if item_count > 0 {
+        obj["docrs_item_count"] = serde_json::json!(item_count);
+    }
+    obj
+}
+
 pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let (name, version) =
         parse_crate_and_version(url).ok_or_else(|| VerticalError::VerticalUnsupportedUrl {
@@ -81,6 +94,10 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
             url: url.to_string(),
         })?;
 
+    // Approximate item count from the markdown (each public item becomes a ### heading).
+    let item_count = api_docs.matches("\n### ").count();
+    let extra = build_extra(&name, &version, item_count);
+
     // Pull the resolved version from the JSON itself for an accurate title.
     let (markdown, title) = build_markdown(&name, &api_docs, url);
 
@@ -89,9 +106,10 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         markdown,
         title,
         extractor_name: INFO.name,
-        extractor_version: 1,
+        extractor_version: 2,
         structured: None,
         follow_crawl_urls: vec![],
+        extra: Some(extra),
     })
 }
 

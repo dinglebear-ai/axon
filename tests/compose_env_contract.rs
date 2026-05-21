@@ -221,6 +221,9 @@ fn plugin_setup_smoke_delegates_to_shared_setup() {
             .env("PATH", &path)
             .env("CLAUDE_PLUGIN_ROOT", &plugin_root)
             .env("CLAUDE_PLUGIN_OPTION_API_TOKEN", token)
+            // Clear AXON_HOME so the script derives it from HOME, not the
+            // outer shell environment (which may have AXON_HOME set).
+            .env_remove("AXON_HOME")
             .status()
             .expect("plugin setup should run")
     };

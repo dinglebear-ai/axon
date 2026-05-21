@@ -3,16 +3,16 @@ mod scrape_migration_tests;
 
 use super::common::parse_urls;
 use crate::core::config::Config;
-use crate::core::content::url_to_filename;
 use crate::core::http::axon_ua;
 use crate::core::http::validate_url;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_option, print_phase};
-use crate::services::embed as embed_service;
 use crate::services::scrape as scrape_service;
+use crate::vector::ops::input::{chunk_markdown, chunk_text};
+use crate::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
 use futures::stream::{self, StreamExt};
+use spider::url::Url as SpiderUrl;
 use std::error::Error;
-use uuid::Uuid;
 
 pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {
     print_phase("◐", "Scraping", url);
@@ -34,6 +34,37 @@ pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {
     print_option("retryBackoffMs", &cfg.retry_backoff_ms.to_string());
     print_option("indexing", if cfg.embed { "enabled" } else { "skipped" });
     println!();
+}
+
+/// Convert a `ScrapeResult` into a `PreparedDoc` for direct embedding.
+/// Preserves `extra`, `extractor_name`, and `title` from vertical extractors —
+/// these are discarded if we go through the disk-write path instead.
+pub(crate) fn scrape_result_to_prepared_doc(
+    result: &crate::services::types::ScrapeResult,
+) -> PreparedDoc {
+    let domain = SpiderUrl::parse(&result.url)
+        .ok()
+        .and_then(|u| u.host_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "unknown".to_string());
+    PreparedDoc {
+        url: result.url.clone(),
+        domain,
+        chunks: if result
+            .markdown
+            .chars()
+            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+        {
+            chunk_text(&result.markdown)
+        } else {
+            chunk_markdown(&result.markdown)
+        },
+        source_type: "scrape".to_string(),
+        content_type: "markdown",
+        title: result.title.clone(),
+        extra: result.extra.clone(),
+        extractor_name: result.extractor_name.clone(),
+        structured: None,
+    }
 }
 
 pub(crate) fn emit_scrape_result(
@@ -125,7 +156,7 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     // Phase 1: scrape URLs concurrently, bounded by batch_concurrency.
     let concurrency = cfg.batch_concurrency.max(1);
-    let mut to_embed: Vec<(String, String)> = Vec::new();
+    let mut to_embed: Vec<PreparedDoc> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
     let results: Vec<_> = stream::iter(&urls)
         .map(|url| scrape_one(cfg, url))
@@ -134,7 +165,7 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .await;
     for result in results {
         match result {
-            Ok(Some(pair)) => to_embed.push(pair),
+            Ok(Some(doc)) => to_embed.push(doc),
             Ok(None) => {}
             Err(e) => {
                 log_warn(&format!("scrape error={e}"));
@@ -143,22 +174,13 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Phase 2: embed all collected markdowns in one batch.
-    // Important: write this run's files into an isolated directory so scrape only
-    // indexes current outputs, not every historical file in scrape-markdown.
+    // Phase 2: embed PreparedDocs directly — no disk write, no metadata loss.
+    // Vertical extractor fields (extra, extractor_name, title) flow through
+    // to Qdrant without being discarded.
     if cfg.embed && !to_embed.is_empty() {
-        let run_id = Uuid::new_v4().to_string();
-        let embed_dir = cfg
-            .output_dir
-            .join("scrape-markdown")
-            .join("runs")
-            .join(run_id);
-        tokio::fs::create_dir_all(&embed_dir).await?;
-        for (normalized, markdown) in &to_embed {
-            tokio::fs::write(embed_dir.join(url_to_filename(normalized, 1)), markdown).await?;
-        }
-        embed_service::embed_now_with_source(cfg, &embed_dir.to_string_lossy(), Some("scrape"))
-            .await?;
+        embed_prepared_docs(cfg, to_embed, None)
+            .await
+            .map_err(|e| -> Box<dyn Error> { format!("embed failed: {e}").into() })?;
     }
 
     if !errors.is_empty() {
@@ -173,24 +195,18 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Returns `Some((normalized_url, markdown))` when `cfg.embed` is true so the
-/// caller can batch-embed after all scrapes complete. Returns `None` otherwise.
-async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<(String, String)>, Box<dyn Error>> {
+/// Scrape one URL, returning `Some(PreparedDoc)` when `cfg.embed` is true.
+/// Preserves vertical extractor metadata (extra, extractor_name, title) in the doc.
+async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<PreparedDoc>, Box<dyn Error>> {
     print_scrape_preamble(cfg, url);
-
-    // SSRF guard: validate before creating Website — must run before any
-    // network activity so private-IP seeds are rejected immediately.
     validate_url(url)?;
     let result = scrape_service::scrape(cfg, url, None).await?;
     let normalized = result.url.clone();
-    let markdown = result.markdown.clone();
     let follow_crawl_urls = result.follow_crawl_urls.clone();
 
     emit_scrape_result(cfg, &result)?;
 
     // Enqueue follow-up crawl jobs (e.g. docs.rs crawl after crates.io scrape).
-    // Only when embed is on — no point crawling if we're not indexing.
-    // Deduplicate against the scraped URL itself and cap at 5 follow-ups.
     if cfg.embed && !follow_crawl_urls.is_empty() {
         let unique: Vec<&String> = follow_crawl_urls
             .iter()
@@ -212,7 +228,7 @@ async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<(String, String)>,
     }
 
     if cfg.embed {
-        Ok(Some((normalized, markdown)))
+        Ok(Some(scrape_result_to_prepared_doc(&result)))
     } else {
         Ok(None)
     }

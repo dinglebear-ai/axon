@@ -793,6 +793,15 @@ pub struct ScrapeResult {
     /// a crates.io crate). Empty for generic scrapes and most verticals.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub follow_crawl_urls: Vec<String>,
+    /// Curated per-extractor metadata (from `ScrapedDoc.extra`). None for generic scrapes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra: Option<serde_json::Value>,
+    /// Vertical extractor name (from `ScrapedDoc.extractor_name`). None for generic scrapes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extractor_name: Option<String>,
+    /// Page title from the vertical extractor. None for generic scrapes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -120,3 +120,102 @@ fn payload_keys_use_known_prefixes() {
         );
     }
 }
+
+#[test]
+fn promoted_fields_not_in_git_meta_blob() {
+    // gh_stars, gh_forks, gh_language, gh_topics, gh_is_fork, gh_is_archived,
+    // gh_file_type, gh_line_start, gh_line_end must live at the TOP LEVEL of the
+    // payload — not inside git_meta — so Qdrant can index and filter them.
+    let params = GitHubPayloadParams {
+        repo: "axon_rust".into(),
+        owner: "jmagar".into(),
+        content_kind: "file".into(),
+        stars: Some(42),
+        forks: Some(7),
+        language: Some("Rust".into()),
+        topics: Some(vec!["cli".into(), "rag".into()]),
+        is_fork: Some(false),
+        is_archived: Some(false),
+        file_type: Some("source".into()),
+        gh_line_start: Some(10),
+        gh_line_end: Some(50),
+        ..Default::default()
+    };
+    let payload = build_github_payload(&params);
+
+    // Top-level assertions — these must exist as flat keys.
+    assert_eq!(payload["gh_stars"], 42, "gh_stars must be a top-level key");
+    assert_eq!(payload["gh_forks"], 7, "gh_forks must be a top-level key");
+    assert_eq!(
+        payload["gh_language"], "Rust",
+        "gh_language must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_topics"],
+        json!(["cli", "rag"]),
+        "gh_topics must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_is_fork"], false,
+        "gh_is_fork must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_is_archived"], false,
+        "gh_is_archived must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_file_type"], "source",
+        "gh_file_type must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_line_start"], 10,
+        "gh_line_start must be a top-level key"
+    );
+    assert_eq!(
+        payload["gh_line_end"], 50,
+        "gh_line_end must be a top-level key"
+    );
+
+    // git_meta assertions — git_meta exists (lower-priority extras) but must NOT
+    // contain the promoted fields. Use as_object() to fail loudly if git_meta is
+    // not a JSON object (which would indicate a structural regression).
+    let meta = payload["git_meta"]
+        .as_object()
+        .expect("git_meta must be a JSON object");
+    assert!(
+        !meta.contains_key("stars"),
+        "stars must not be stored in git_meta (found: {meta:?})"
+    );
+    assert!(
+        !meta.contains_key("forks"),
+        "forks must not be stored in git_meta (found: {meta:?})"
+    );
+    assert!(
+        !meta.contains_key("language"),
+        "language must not be stored in git_meta (found: {meta:?})"
+    );
+    assert!(
+        !meta.contains_key("topics"),
+        "topics must not be stored in git_meta (found: {meta:?})"
+    );
+    assert!(
+        !meta.contains_key("is_fork"),
+        "is_fork must not be stored in git_meta (found: {meta:?})"
+    );
+    assert!(
+        !meta.contains_key("is_archived"),
+        "is_archived must not be stored in git_meta (found: {meta:?})"
+    );
+    assert!(
+        !meta.contains_key("gh_file_type"),
+        "gh_file_type must not be stored in git_meta (found: {meta:?})"
+    );
+    assert!(
+        !meta.contains_key("gh_line_start"),
+        "gh_line_start must not be stored in git_meta (found: {meta:?})"
+    );
+    assert!(
+        !meta.contains_key("gh_line_end"),
+        "gh_line_end must not be stored in git_meta (found: {meta:?})"
+    );
+}

@@ -40,6 +40,9 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
         remaining_tokens_estimate: None,
         backend: Some(DocumentBackend::LiveScrape),
         follow_crawl_urls: vec![],
+        extra: None,
+        extractor_name: None,
+        title: None,
     })
 }
 
@@ -89,9 +92,13 @@ pub async fn scrape(
                 let mut scrape_result = map_scrape_payload(payload)?;
                 scrape_result.backend = Some(DocumentBackend::LiveScrape);
                 scrape_result.follow_crawl_urls = doc.follow_crawl_urls;
+                scrape_result.extra = doc.extra;
+                scrape_result.extractor_name = Some(doc.extractor_name.to_string());
+                scrape_result.title = doc.title;
                 tracing::debug!(
                     url = %normalized,
                     extractor = doc.extractor_name,
+                    has_extra = scrape_result.extra.is_some(),
                     "vertical.dispatched: extractor handled scrape"
                 );
                 // v1: LLM format is only applied on the generic HTTP scrape path.

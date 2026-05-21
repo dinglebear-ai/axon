@@ -1,6 +1,54 @@
 use super::*;
 
 #[test]
+fn crates_io_extra_fields() {
+    let data = serde_json::json!({
+        "crate": {
+            "name": "serde",
+            "max_stable_version": "1.0.219",
+            "downloads": 500_000_000u64,
+            "homepage": "https://serde.rs",
+            "repository": "https://github.com/serde-rs/serde",
+        },
+        "versions": [{
+            "license": "MIT OR Apache-2.0",
+            "rust_version": "1.31",
+            "edition": "2018",
+        }],
+        "keywords": [
+            { "keyword": "serialization" },
+            { "keyword": "serde" },
+        ],
+    });
+    let extra = build_extra(&data, None);
+    assert_eq!(extra["pkg_registry"], "crates_io");
+    assert_eq!(extra["pkg_name"], "serde");
+    assert_eq!(extra["pkg_language"], "rust");
+    assert_eq!(extra["pkg_license"], "MIT OR Apache-2.0");
+    assert_eq!(extra["crate_msrv"], "1.31");
+    assert_eq!(extra["crate_edition"], "2018");
+    assert!(extra["pkg_downloads"].as_u64().unwrap_or(0) > 0);
+}
+
+#[test]
+fn crates_io_extra_empty_optional_fields_absent() {
+    let data = serde_json::json!({
+        "crate": {
+            "name": "tiny",
+            "max_stable_version": "0.1.0",
+            "downloads": 0u64,
+        },
+        "versions": [{}],
+        "keywords": [],
+    });
+    let extra = build_extra(&data, None);
+    assert!(extra.get("pkg_license").is_none());
+    assert!(extra.get("pkg_keywords").is_none());
+    assert!(extra.get("pkg_downloads").is_none());
+    assert!(extra.get("pkg_homepage").is_none());
+}
+
+#[test]
 fn matches_crate_root() {
     assert!(matches("https://crates.io/crates/serde"));
 }
