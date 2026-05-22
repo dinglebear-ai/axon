@@ -128,6 +128,12 @@ pub async fn qdrant_retrieve_by_url(
 /// for the corresponding URL; an empty inner Vec means no indexed content
 /// was found for that URL.
 ///
+/// The per-URL `limit` is `retrieve_max_points(max_points)` (ceiling 500).
+/// Unlike the scroll path ([`qdrant_retrieve_by_url`]), this function does
+/// NOT paginate — documents with more than 500 chunks are truncated at 500.
+/// For typical RAG full-doc context (ask pipeline, `doc_chunk_limit` ≤ 200)
+/// this ceiling is never reached.
+///
 /// On any transport or parse failure returns `Err`; callers MUST fall back
 /// to the per-URL scroll path ([`qdrant_retrieve_by_url`]) so a transient
 /// batch error does not silently elide the full-doc context.
@@ -142,14 +148,12 @@ pub async fn qdrant_batch_retrieve_by_urls(
     if urls.is_empty() {
         return Ok(Vec::new());
     }
-    let limit = retrieve_scroll_limit(max_points);
-    let date_filter = match super::super::filter::build_scraped_at_filter(
-        cfg.since.as_deref(),
-        cfg.before.as_deref(),
-    ) {
-        Ok(f) => f,
-        Err(err) => return Err(anyhow!("{err}")),
-    };
+    // Use the total-points ceiling (500), not the per-page scroll limit (256).
+    // The query endpoint returns all matches in one shot; no pagination loop.
+    let limit = super::super::utils::retrieve_max_points(max_points);
+    let date_filter =
+        super::super::filter::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref())
+            .map_err(|e| anyhow!(e))?;
     let searches: Vec<serde_json::Value> = urls
         .iter()
         .map(|url| {

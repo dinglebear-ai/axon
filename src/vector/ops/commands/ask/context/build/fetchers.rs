@@ -59,7 +59,6 @@ pub async fn fetch_full_docs(
                 log_warn(&format!(
                     "ask: batch doc fetch failed ({e}), falling back to concurrent per-URL scroll"
                 ));
-                fetched_docs.clear();
             }
         }
     }
