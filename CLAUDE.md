@@ -177,7 +177,7 @@ High-level subsystem map:
   - `src/jobs/runtime.rs` + `src/jobs/` (SQLite-backed enqueue/query/store/cancel)
   - `src/jobs/workers.rs` + `src/jobs/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
   - `src/jobs/{crawl,embed,extract,ingest}.rs` (per-family job payload + dispatch helpers)
-  - `src/jobs/crawl/` (manifest, processor, repo, sitemap, watchdog support)
+  - `src/jobs/crawl/sitemap.rs` (sitemap helpers; the former `processor`/`repo`/`watchdog`/`worker`/`runtime` files were consolidated into `src/jobs/workers.rs` + `workers/runners/`)
   - `src/jobs/watch.rs` (recurring task scheduler — list/create/run-now/history)
   - `src/jobs/backend.rs` (`JobBackend` trait + `SqliteJobBackend` only)
   - job states in `src/jobs/status.rs`
@@ -193,6 +193,10 @@ High-level subsystem map:
 - MCP server:
   - `src/mcp/` (schema, server routing, handler modules, config)
   - Single `axon` tool with `action`/`subaction` routing
+- HTTP server (`axon serve`):
+  - `src/web/` — Axum router, auth, health, first-run + stack panel UI, security headers
+  - `src/web/server/` — server bootstrap; `src/web/actions/` — `/v1/actions` handlers
+  - Shares the `ServiceContext` from `src/services/context.rs`; see `src/web/CLAUDE.md`
 
 ## Infrastructure
 
@@ -415,21 +419,6 @@ After a crawl, `append_sitemap_backfill()` discovers URLs via sitemap.xml that t
 
 
 The compose file sets `context: .` — run `docker compose build` from this directory, not from a parent workspace.
-
-### `spider_agent` path dep (CI / fresh environments)
-
-`Cargo.toml` uses `spider_agent = { path = "../spider/spider_agent", ... }` for local dev with a sibling `spider/` checkout. In CI or any environment without that sibling repo, switch to the registry version:
-
-```toml
-spider = { version = "2", default-features = false, features = [
-    "basic", "chrome", "regex", "sitemap", "adblock",
-    "chrome_stealth", "chrome_screenshot", "chrome_store_page",
-    "chrome_headless_new", "chrome_simd",
-    "simd", "inline-more", "cache_mem",
-    "ua_generator", "headers", "time", "control",
-] }
-spider_agent = { version = "2.45", default-features = false, features = ["search_tavily", "openai"] }
-```
 
 ### Spider feature flags with observable behavior
 - **`firewall`**: NOT enabled — `spider_firewall`'s build.rs fetches blocklists from `api.github.com` unauthenticated and panics when GitHub rate-limits the CI runner. It doesn't read `GITHUB_TOKEN`, so external auth isn't possible. `validate_url()` in `src/core/http/ssrf.rs` remains the primary SSRF guard; this was defense-in-depth on top. Re-enable when upstream supports an auth knob.
@@ -696,13 +685,9 @@ Bump type is determined by the commit message prefix:
 - `feat` or `feat(...)` → **minor** (X.Y+1.0)
 - Everything else (`fix`, `chore`, `refactor`, `test`, `docs`, etc.) → **patch** (X.Y.Z+1)
 
-**Files to update (if they exist in this repo):**
+**Files to update in this repo:**
 - `Cargo.toml` — `version = "X.Y.Z"` in `[package]`
-- `package.json` — `"version": "X.Y.Z"`
-- `pyproject.toml` — `version = "X.Y.Z"` in `[project]`
 - `.claude-plugin/plugin.json` — `"version": "X.Y.Z"`
-- `.codex-plugin/plugin.json` — `"version": "X.Y.Z"`
-- `gemini-extension.json` — `"version": "X.Y.Z"`
 - `README.md` — version badge or header
 - `CHANGELOG.md` — new entry under the bumped version
 
