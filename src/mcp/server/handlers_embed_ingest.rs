@@ -3,137 +3,18 @@ use super::common::{
     InlineHint, invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
     respond_with_mode, validate_mcp_embed_input,
 };
-use crate::core::config::Config;
 use crate::mcp::schema::{
-    AxonToolResponse, EmbedRequest, EmbedSubaction, IngestRequest, IngestSourceType,
-    IngestSubaction, ResponseMode, SessionsIngestOptions,
+    AxonToolResponse, EmbedRequest, EmbedSubaction, IngestRequest, IngestSubaction, ResponseMode,
 };
 use crate::services::embed::{
     embed_cancel, embed_cleanup, embed_clear, embed_list, embed_recover, embed_start_with_context,
     embed_status,
 };
 use crate::services::ingest::{
-    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
-    ingest_start_with_context, ingest_status,
+    ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
+    ingest_start_with_context, ingest_status, source_from_mcp_request,
 };
 use rmcp::ErrorData;
-
-fn parse_ingest_source(
-    source_type: Option<IngestSourceType>,
-    target: Option<String>,
-    sessions: Option<SessionsIngestOptions>,
-    include_source: Option<bool>,
-    cfg: &Config,
-) -> Result<IngestSource, ErrorData> {
-    let source_type =
-        source_type.ok_or_else(|| invalid_params("source_type is required for ingest.start"))?;
-    match source_type {
-        IngestSourceType::Github => {
-            let repo = target
-                .ok_or_else(|| invalid_params("target repo is required for github ingest"))?;
-            let (owner, name) =
-                crate::ingest::github::parse_github_repo(&repo).ok_or_else(|| {
-                    invalid_params(
-                        "invalid GitHub target; expected owner/repo or github.com/owner/repo",
-                    )
-                })?;
-            Ok(IngestSource::Github {
-                repo: format!("{owner}/{name}"),
-                include_source: include_source.unwrap_or(cfg.github_include_source),
-            })
-        }
-        IngestSourceType::Gitlab => {
-            let target = target
-                .ok_or_else(|| invalid_params("target project is required for gitlab ingest"))?;
-            let target = crate::ingest::gitlab::normalize_gitlab_target(&target)
-                .map_err(|e| invalid_params(format!("invalid GitLab target: {e}")))?;
-            Ok(IngestSource::Gitlab {
-                target,
-                include_source: include_source.unwrap_or(cfg.github_include_source),
-            })
-        }
-        IngestSourceType::Gitea => {
-            let target =
-                target.ok_or_else(|| invalid_params("target repo is required for gitea ingest"))?;
-            let target = crate::ingest::gitea::normalize_gitea_target(&target)
-                .map_err(|e| invalid_params(format!("invalid Gitea target: {e}")))?;
-            Ok(IngestSource::Gitea {
-                target,
-                include_source: include_source.unwrap_or(cfg.github_include_source),
-            })
-        }
-        IngestSourceType::Git => {
-            let target =
-                target.ok_or_else(|| invalid_params("target repo is required for git ingest"))?;
-            let target = crate::ingest::generic_git::normalize_generic_git_target(&target)
-                .map_err(|e| invalid_params(format!("invalid git target: {e}")))?;
-            Ok(IngestSource::GenericGit {
-                target,
-                include_source: include_source.unwrap_or(cfg.github_include_source),
-            })
-        }
-        IngestSourceType::Reddit => {
-            let target =
-                target.ok_or_else(|| invalid_params("target is required for reddit ingest"))?;
-            validate_mcp_reddit_target(&target)?;
-            Ok(IngestSource::Reddit { target })
-        }
-        IngestSourceType::Youtube => {
-            let target =
-                target.ok_or_else(|| invalid_params("target is required for youtube ingest"))?;
-            if crate::ingest::youtube::extract_video_id(&target).is_none()
-                && !crate::ingest::youtube::is_playlist_or_channel_url(&target)
-            {
-                return Err(invalid_params(
-                    "invalid YouTube target; expected video URL, bare video ID, playlist URL, or channel URL",
-                ));
-            }
-            Ok(IngestSource::Youtube { target })
-        }
-        IngestSourceType::Sessions => {
-            let sessions = sessions.unwrap_or(SessionsIngestOptions {
-                claude: None,
-                codex: None,
-                gemini: None,
-                project: None,
-            });
-            Ok(IngestSource::Sessions {
-                sessions_claude: sessions.claude.unwrap_or(false),
-                sessions_codex: sessions.codex.unwrap_or(false),
-                sessions_gemini: sessions.gemini.unwrap_or(false),
-                sessions_project: sessions.project,
-            })
-        }
-    }
-}
-
-fn validate_mcp_reddit_target(target: &str) -> Result<(), ErrorData> {
-    match crate::ingest::reddit::classify_target(target)
-        .map_err(|e| invalid_params(e.to_string()))?
-    {
-        crate::ingest::reddit::RedditTarget::Subreddit(name) => {
-            let len = name.len();
-            let valid = (3..=21).contains(&len)
-                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-            if valid {
-                Ok(())
-            } else {
-                Err(invalid_params(
-                    "invalid subreddit target; expected 3-21 ASCII letters, digits, or '_'",
-                ))
-            }
-        }
-        crate::ingest::reddit::RedditTarget::Thread(url) => {
-            if url.starts_with("/r/") && url.contains("/comments/") {
-                Ok(())
-            } else {
-                Err(invalid_params(
-                    "invalid Reddit thread target; expected reddit.com comments URL or canonical /r/... permalink",
-                ))
-            }
-        }
-    }
-}
 
 impl AxonMcpServer {
     async fn handle_embed_start(
@@ -277,17 +158,8 @@ impl AxonMcpServer {
         }
     }
 
-    async fn handle_ingest_start(
-        &self,
-        mut req: IngestRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let source = parse_ingest_source(
-            req.source_type.take(),
-            req.target.take(),
-            req.sessions.take(),
-            req.include_source,
-            self.cfg.as_ref(),
-        )?;
+    async fn handle_ingest_start(&self, req: IngestRequest) -> Result<AxonToolResponse, ErrorData> {
+        let source = source_from_mcp_request(&req, self.cfg.as_ref()).map_err(invalid_params)?;
         let service_context = self
             .base_service_context()
             .await
