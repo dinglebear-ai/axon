@@ -21,12 +21,53 @@ pub async fn fetch_full_docs(
     if context_char_count >= max_context_chars {
         return Ok(fetched_docs);
     }
+
+    // Fast path: when the doc cache is not in use (CLI one-shots, serve mode
+    // with cache disabled) and there are multiple URLs to fetch, send all URL
+    // filters in one /points/query/batch request instead of N sequential
+    // /points/scroll calls. Qdrant guarantees positional alignment of
+    // results, so no reordering is needed before returning. Falls back to
+    // the buffer_unordered path on any transport or parse error. (bd axon_rust-cmm)
+    let cache_enabled = cfg.ask_cache_enabled;
+    if !cache_enabled && top_full_doc_indices.len() > 1 {
+        let urls: Vec<String> = top_full_doc_indices
+            .iter()
+            .copied()
+            .map(|doc_idx| reranked[doc_idx].url.clone())
+            .collect();
+        match qdrant::qdrant_batch_retrieve_by_urls(cfg, &urls, Some(doc_chunk_limit)).await {
+            Ok(results) => {
+                for (order, (doc_idx, points)) in top_full_doc_indices
+                    .iter()
+                    .copied()
+                    .zip(results)
+                    .enumerate()
+                {
+                    let url = reranked[doc_idx].url.clone();
+                    if points.is_empty() {
+                        log_warn(&format!(
+                            "ask: no points found for full document {url}; continuing with remaining context"
+                        ));
+                    } else {
+                        fetched_docs.push((order, url, points));
+                    }
+                }
+                fetched_docs.sort_by_key(|(order, _, _)| *order);
+                return Ok(fetched_docs);
+            }
+            Err(e) => {
+                log_warn(&format!(
+                    "ask: batch doc fetch failed ({e}), falling back to concurrent per-URL scroll"
+                ));
+            }
+        }
+    }
+
     let cfg_arc = Arc::new(cfg.clone());
     // Cache enable gate. The cache itself is process-global; we only consult
     // it when `cfg.ask_cache_enabled`. Snapshot the per-collection generation
     // once for this fetch batch so all concurrent lookups in this stream see
     // a consistent key. (axon_rust-pmc)
-    let cache_enabled = cfg.ask_cache_enabled;
     let doc_cache = cache_enabled.then(|| ask_doc_cache(cfg));
     let collection = cfg.collection.clone();
     let generation = if cache_enabled {
