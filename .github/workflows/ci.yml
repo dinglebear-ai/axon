@@ -166,26 +166,6 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            Cargo.toml
-            Cargo.lock
-            .env.example
-            config.example.toml
-            docker-compose.prod.yaml
-            src
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo/config.toml
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
