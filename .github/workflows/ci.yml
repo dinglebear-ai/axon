@@ -85,9 +85,13 @@ jobs:
         with:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            Cargo.toml
-            Cargo.lock
+            .cargo/config.toml
+            .config/nextest.toml
+            .taplo.toml
             config.example.toml
+            deny.toml
+            rust-toolchain.toml
+            docs/config/env-migration-matrix.toml
             src
             xtask
             benches
@@ -99,12 +103,19 @@ jobs:
             scripts
             config
             vendor
-            .cargo/config.toml
       - uses: taiki-e/install-action@v2
         with:
           tool: taplo-cli
       - name: taplo fmt --check
-        run: taplo fmt --check
+        run: |
+          taplo fmt --check \
+            .cargo/config.toml \
+            .config/nextest.toml \
+            .taplo.toml \
+            config.example.toml \
+            deny.toml \
+            docs/config/env-migration-matrix.toml \
+            rust-toolchain.toml
 
   windows-check:
     name: windows-check (xtask only)
@@ -224,10 +235,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            scripts
       - name: Restore schema doc for drift comparison
         run: mkdir -p docs && git show HEAD:docs/MCP-TOOL-SCHEMA.md > docs/MCP-TOOL-SCHEMA.md 2>/dev/null || true
       - name: Enforce generated MCP schema docs are in sync
