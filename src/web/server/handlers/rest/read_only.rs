@@ -17,6 +17,7 @@ use serde_json::Value;
 
 const DEFAULT_LIMIT: usize = 25;
 const MAX_LIMIT: usize = 1000;
+const DOMAIN_SOURCES_MAX_LIMIT: usize = 10_000;
 
 #[derive(Deserialize, Default)]
 pub(crate) struct PageParams {
@@ -31,7 +32,11 @@ pub(crate) struct PageParams {
 }
 
 fn to_pagination(p: PageParams) -> Pagination {
-    let limit = p.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+    to_pagination_with_max(p, MAX_LIMIT)
+}
+
+fn to_pagination_with_max(p: PageParams, max_limit: usize) -> Pagination {
+    let limit = p.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, max_limit);
     let offset = p.offset.unwrap_or(0);
     Pagination { limit, offset }
 }
@@ -42,8 +47,8 @@ pub(crate) async fn v1_sources(
 ) -> Response {
     let domain = params.domain.clone();
     let cursor = params.cursor.clone();
-    let pagination = to_pagination(params);
     if let Some(domain) = domain.as_deref() {
+        let pagination = to_pagination_with_max(params, DOMAIN_SOURCES_MAX_LIMIT);
         return match system::sources_for_domain(
             state.cfg.as_ref(),
             domain,
@@ -56,6 +61,7 @@ pub(crate) async fn v1_sources(
             Err(err) => map_service_error(err.as_ref()),
         };
     }
+    let pagination = to_pagination(params);
     match system::sources(state.cfg.as_ref(), pagination).await {
         // Wire format intentionally matches the MCP `handle_sources` payload:
         // urls are emitted as a flat array of strings, without chunk counts.
@@ -125,5 +131,39 @@ pub(crate) async fn v1_status(State(state): State<RestState>) -> Response {
     match system::full_status(&ctx).await {
         Ok(result) => Json::<Value>(result.payload).into_response(),
         Err(err) => map_service_error(err.as_ref()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DOMAIN_SOURCES_MAX_LIMIT, PageParams, to_pagination, to_pagination_with_max};
+
+    #[test]
+    fn read_only_pagination_keeps_legacy_cap() {
+        let pagination = to_pagination(PageParams {
+            limit: Some(10_000),
+            offset: Some(2),
+            domain: None,
+            cursor: None,
+        });
+
+        assert_eq!(pagination.limit, 1000);
+        assert_eq!(pagination.offset, 2);
+    }
+
+    #[test]
+    fn read_only_domain_sources_pagination_allows_export_cap() {
+        let pagination = to_pagination_with_max(
+            PageParams {
+                limit: Some(10_000),
+                offset: Some(0),
+                domain: Some("example.com".to_string()),
+                cursor: None,
+            },
+            DOMAIN_SOURCES_MAX_LIMIT,
+        );
+
+        assert_eq!(pagination.limit, 10_000);
+        assert_eq!(pagination.offset, 0);
     }
 }
