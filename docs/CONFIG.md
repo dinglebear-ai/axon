@@ -349,7 +349,7 @@ password under `~/.axon/panel-password`. MCP and `/v1/actions` use
 | `AXON_MCP_PUBLIC_URL` | -- | Public origin used for OAuth metadata, e.g. `https://axon.example.com`. |
 | `AXON_MCP_GOOGLE_CLIENT_ID` | -- | Google OAuth client ID for MCP OAuth mode. |
 | `AXON_MCP_GOOGLE_CLIENT_SECRET` | -- | Google OAuth client secret for MCP OAuth mode. |
-| `AXON_MCP_AUTH_ADMIN_EMAIL` | -- | Admin email accepted by OAuth mode. |
+| `AXON_MCP_AUTH_ADMIN_EMAIL` | -- | Admin email accepted by OAuth mode; this account receives full Axon OAuth scopes. |
 | `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | Claude callback included | Additional comma-separated OAuth redirect URI allowlist. |
 | `AXON_MCP_ALLOWED_ORIGINS` | -- | Comma-separated allowed origins for MCP HTTP CORS |
 | `AXON_MCP_ARTIFACT_DIR` | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts |

@@ -56,22 +56,21 @@ pub fn build_client(
     timeout_secs: u64,
     user_agent: Option<&str>,
 ) -> Result<reqwest::Client, HttpError> {
-    build_client_with_options(timeout_secs, user_agent, true, true)
+    build_client_with_options(timeout_secs, user_agent, true, true, false)
 }
 
 pub(crate) fn build_client_no_redirect(
     timeout_secs: u64,
     user_agent: Option<&str>,
 ) -> Result<reqwest::Client, HttpError> {
-    build_client_with_options(timeout_secs, user_agent, true, false)
+    build_client_with_options(timeout_secs, user_agent, true, false, false)
 }
 
-#[cfg(not(test))]
-fn build_client_without_ssrf_resolver(
+pub(crate) fn build_client_without_ssrf_resolver(
     timeout_secs: u64,
     user_agent: Option<&str>,
 ) -> Result<reqwest::Client, HttpError> {
-    build_client_with_options(timeout_secs, user_agent, false, true)
+    build_client_with_options(timeout_secs, user_agent, false, true, true)
 }
 
 fn build_client_with_options(
@@ -79,6 +78,7 @@ fn build_client_with_options(
     user_agent: Option<&str>,
     ssrf_dns_guard: bool,
     follow_redirects: bool,
+    disable_proxy: bool,
 ) -> Result<reqwest::Client, HttpError> {
     #[cfg(test)]
     let _ = ssrf_dns_guard;
@@ -118,6 +118,9 @@ fn build_client_with_options(
     }
     if let Some(ua) = user_agent {
         builder = builder.user_agent(ua);
+    }
+    if disable_proxy {
+        builder = builder.no_proxy();
     }
     Ok(builder.build()?)
 }

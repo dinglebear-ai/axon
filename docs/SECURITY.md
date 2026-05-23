@@ -131,6 +131,10 @@ OAuth mode reads `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`,
 `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS`. The OAuth router exposes
 `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`,
 `/jwks`, `/authorize`, `/auth/google/callback`, `/token`, and `/register`.
+The account configured as `AXON_MCP_AUTH_ADMIN_EMAIL` is always granted the full
+configured Axon OAuth scope set (`axon:read axon:write`) after Google email
+verification. Other allowlisted users receive only the scope approved for their
+authorization request.
 
 ### 4.3 Startup policy
 

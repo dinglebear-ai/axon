@@ -16,22 +16,24 @@ mod handlers_system;
 mod handlers_vertical_scrape;
 #[path = "server/http.rs"]
 mod http;
+#[path = "server/authz.rs"]
+mod server_authz;
 #[cfg(test)]
 #[path = "server/services_migration_tests.rs"]
 mod services_migration_tests;
+#[path = "server/stdio.rs"]
+mod stdio_runner;
 
 use super::auth::AuthPolicy;
 use super::schema::{AxonRequest, parse_axon_request};
 use super::thin_client;
-use crate::authz::scope_satisfies;
 use crate::core::config::Config;
 use crate::services::context::ServiceContext;
 use crate::services::system;
 use common::{MCP_TOOL_SCHEMA_URI, internal_error, invalid_params};
 pub use http::run_unified_server;
-use lab_auth::AuthContext;
 use rmcp::{
-    ErrorData, RoleServer, ServerHandler, ServiceExt,
+    ErrorData, RoleServer, ServerHandler,
     handler::server::wrapper::Parameters,
     model::{
         AnnotateAble, CallToolRequestParams, CallToolResult, ExtensionCapabilities,
@@ -41,9 +43,11 @@ use rmcp::{
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
-    transport::stdio,
 };
+pub use server_authz::required_scope_for;
+use server_authz::required_scope_for_tool;
 use std::sync::{Arc, LazyLock};
+pub use stdio_runner::run_stdio_server;
 use tokio::sync::OnceCell;
 
 const STATUS_DASHBOARD_URI: &str = "ui://axon/status-dashboard";
@@ -128,8 +132,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff.",
-        meta = axon_tool_meta()
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff."
     )]
     async fn axon<'a>(
         &'a self,
@@ -202,6 +205,27 @@ impl AxonMcpServer {
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
     }
+
+    #[tool(
+        name = "axon_status_dashboard",
+        description = "Render Axon's interactive MCP Apps status dashboard. Use this when the user wants to inspect live crawl, embed, extract, ingest, worker, and service status visually.",
+        meta = status_dashboard_tool_meta()
+    )]
+    async fn axon_status_dashboard(&self) -> Result<CallToolResult, ErrorData> {
+        tracing::info!(
+            dashboard_uri = STATUS_DASHBOARD_URI,
+            "mcp_app dedicated status dashboard tool called"
+        );
+        let ctx = ServiceContext::new(self.cfg.clone())
+            .await
+            .map_err(|e| internal_error(format!("initialize status dashboard context: {e}")))?;
+        let status = system::full_status(&ctx)
+            .await
+            .map_err(|e| internal_error(format!("load status dashboard data: {e}")))?;
+        let structured = serde_json::to_value(&status.payload)
+            .map_err(|e| internal_error(format!("serialize status dashboard payload: {e}")))?;
+        Ok(CallToolResult::structured(structured))
+    }
 }
 
 fn map_thin_client_error(err: thin_client::ThinClientError) -> ErrorData {
@@ -215,7 +239,7 @@ fn mcp_tool_schema_markdown() -> &'static str {
     &MCP_TOOL_SCHEMA_MD
 }
 
-fn axon_tool_meta() -> Meta {
+fn status_dashboard_tool_meta() -> Meta {
     let mut m = Meta::new();
     // Nested form: _meta.ui.resourceUri (TypeScript SDK / MCP Apps convention).
     // The MCP host SDK normalizes this into a flat key internally; we only need
@@ -223,6 +247,23 @@ fn axon_tool_meta() -> Meta {
     m.insert(
         "ui".to_string(),
         serde_json::json!({ "resourceUri": STATUS_DASHBOARD_URI }),
+    );
+    m
+}
+
+fn status_dashboard_resource_meta() -> Meta {
+    let mut m = Meta::new();
+    m.insert(
+        "ui".to_string(),
+        serde_json::json!({
+            "csp": {
+                "connectDomains": [],
+                "resourceDomains": [],
+                "frameDomains": [],
+                "baseUriDomains": []
+            },
+            "permissions": {}
+        }),
     );
     m
 }
@@ -241,107 +282,6 @@ fn mcp_apps_server_capabilities() -> ServerCapabilities {
         .enable_resources()
         .enable_extensions_with(extensions)
         .build()
-}
-
-// ── Scope checking ────────────────────────────────────────────────────────────
-
-/// Extract and enforce the authentication context from the rmcp request.
-///
-/// - `AuthPolicy::LoopbackDev`: always returns `Ok(None)` — the loopback bind
-///   is the trust boundary; no per-request credential needed.
-/// - `AuthPolicy::Mounted(_)`: the middleware MUST have inserted an
-///   [`AuthContext`] into the request extensions. If it is absent, this
-///   returns a forbidden error immediately (fail-closed).
-///
-/// Returns `Ok(Some(&AuthContext))` for Mounted+present, `Ok(None)` for
-/// LoopbackDev.
-fn require_auth_context<'a>(
-    policy: &AuthPolicy,
-    ctx: &'a RequestContext<RoleServer>,
-) -> Result<Option<&'a AuthContext>, ErrorData> {
-    match policy {
-        AuthPolicy::LoopbackDev => Ok(None),
-        AuthPolicy::Mounted { .. } => {
-            let parts = ctx
-                .extensions
-                .get::<axum::http::request::Parts>()
-                .ok_or_else(|| {
-                    // Framework-level invariant violation: rmcp changed how it
-                    // propagates HTTP Parts, or middleware ordering is broken.
-                    tracing::error!(
-                        "rmcp HTTP Parts extension absent — middleware ordering may be broken"
-                    );
-                    ErrorData::invalid_request("forbidden: missing http context", None)
-                })?;
-            let auth = parts.extensions.get::<AuthContext>().ok_or_else(|| {
-                // AuthLayer should always insert AuthContext on the happy path.
-                tracing::warn!(
-                    "AuthContext absent from request extensions — \
-                     AuthLayer may not be mounted or rejected the request without inserting context"
-                );
-                ErrorData::invalid_request("forbidden: missing auth context", None)
-            })?;
-            Ok(Some(auth))
-        }
-    }
-}
-
-/// Enforce that `auth` carries `required_scope`.
-///
-/// Any valid Axon OAuth scope grants full Axon server access. OAuth email
-/// allowlisting is the access boundary; `axon:read`/`axon:write` are retained
-/// for client metadata and compatibility with existing tokens.
-fn check_scope(auth: &AuthContext, required_scope: &str, action: &str) -> Result<(), ErrorData> {
-    let satisfied = scope_satisfies(&auth.scopes, required_scope);
-    if satisfied {
-        return Ok(());
-    }
-    tracing::warn!(
-        subject = %auth.sub,
-        action = %action,
-        required_scope = %required_scope,
-        "MCP tool invocation denied: insufficient scope"
-    );
-    Err(ErrorData::invalid_request(
-        format!("forbidden: requires scope: {required_scope}"),
-        None,
-    ))
-}
-
-/// Map an axon tool action (and optional sub-action) to the minimum required scope.
-///
-/// Returns `None` for informational actions that need `AuthContext` (when
-/// Mounted) but no specific scope gate — e.g. `help`.
-/// Unknown actions return `Some("__deny__")` — a sentinel that `call_tool`
-/// treats as an explicit deny rather than skipping the check. This is
-/// fail-conservative: new actions added without a mapping entry are denied
-/// rather than accidentally permitted.
-///
-/// Note on `"artifacts"`: sub-actions `delete` and `clean` require
-/// `axon:write`; all others require `axon:read`. The caller passes the
-/// `subaction` field from the parsed request arguments.
-///
-/// Note on `"scrape"` and `"summarize"`: both scrape pages and may store
-/// content through the scrape service path, so they require `axon:write`.
-fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
-    match action {
-        // Informational — AuthContext required when Mounted, but no scope gate.
-        "help" => None,
-        // Write/mutating operations require axon:write.
-        "crawl" | "extract" | "embed" | "ingest" | "scrape" | "summarize" => Some("axon:write"),
-        // artifacts: write subactions need axon:write, read subactions need axon:read.
-        "artifacts" => match subaction {
-            "delete" | "clean" => Some("axon:write"),
-            _ => Some("axon:read"),
-        },
-        // Read / query operations require axon:read.
-        "status" | "query" | "retrieve" | "search" | "map" | "endpoints" | "evaluate"
-        | "suggest" | "doctor" | "domains" | "sources" | "stats" | "research" | "ask"
-        | "screenshot" | "diff" | "brand" => Some("axon:read"),
-        // Unknown actions are explicitly denied (fail-conservative). Add an
-        // explicit mapping above for any new action before shipping.
-        _ => Some("__deny__"),
-    }
 }
 
 #[tool_handler(router = Self::tool_router())]
@@ -369,8 +309,11 @@ impl ServerHandler for AxonMcpServer {
 
         // Fail-closed auth check: require AuthContext when Mounted, then scope.
         // LoopbackDev returns None — no scope enforcement applies.
-        let auth = require_auth_context(&self.auth_policy, &context)?;
-        match (auth, required_scope_for(&action, &subaction)) {
+        let auth = server_authz::require_auth_context(&self.auth_policy, &context)?;
+        match (
+            auth,
+            required_scope_for_tool(request.name.as_ref(), &action, &subaction),
+        ) {
             // Deny: sentinel returned for unknown actions — even with a valid
             // token, we refuse rather than accidentally granting access.
             (Some(_), Some("__deny__")) => {
@@ -387,7 +330,7 @@ impl ServerHandler for AxonMcpServer {
             (Some(_), None) => {}
             // Scope check required.
             (Some(auth_ctx), Some(required_scope)) => {
-                check_scope(auth_ctx, required_scope, &action)?;
+                server_authz::check_scope(auth_ctx, required_scope, &action)?;
             }
             // LoopbackDev — no enforcement.
             (None, _) => {}
@@ -493,7 +436,7 @@ impl ServerHandler for AxonMcpServer {
             mime_type: Some(MCP_APP_MIME_TYPE.to_string()),
             size: None,
             icons: None,
-            meta: None,
+            meta: Some(status_dashboard_resource_meta()),
         }
         .no_annotation();
 
@@ -532,7 +475,7 @@ impl ServerHandler for AxonMcpServer {
                     uri: STATUS_DASHBOARD_URI.to_string(),
                     mime_type: Some(MCP_APP_MIME_TYPE.to_string()),
                     text: html,
-                    meta: None,
+                    meta: Some(status_dashboard_resource_meta()),
                 },
             ]));
         }
@@ -551,16 +494,4 @@ impl ServerHandler for AxonMcpServer {
             },
         ]))
     }
-}
-
-pub async fn run_stdio_server(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
-    // Stdio always uses LoopbackDev: process isolation is the trust boundary.
-    let server = AxonMcpServer::new(cfg).with_auth_policy(AuthPolicy::LoopbackDev);
-    server
-        .base_service_context()
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error> { e.to_string().into() })?;
-    let service = server.serve(stdio()).await?;
-    service.waiting().await?;
-    Ok(())
 }

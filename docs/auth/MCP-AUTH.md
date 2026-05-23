@@ -114,7 +114,10 @@ OAuth mode also accepts `AXON_MCP_HTTP_TOKEN` when set, so existing bearer
 clients can continue working while OAuth clients use dynamic registration and
 JWT bearer tokens. OAuth/JWT callers are scope-checked by MCP action: write
 actions require `axon:write`, read actions require `axon:read`, and
-`axon:write` satisfies read.
+`axon:write` satisfies read. The Google account matching
+`AXON_MCP_AUTH_ADMIN_EMAIL` always receives the full configured Axon OAuth
+scope set (`axon:read axon:write`) even if a client asks for a narrower scope.
+Other allowlisted users keep the scope they requested.
 
 ### 4. Start the MCP server
 
@@ -146,7 +149,7 @@ The unified `axon serve` command (no subcommand) also starts MCP HTTP at
 | `AXON_MCP_PUBLIC_URL` | oauth | -- | Public origin used in OAuth metadata, e.g. `https://axon.example.com`. |
 | `AXON_MCP_GOOGLE_CLIENT_ID` | oauth | -- | Google OAuth client ID. |
 | `AXON_MCP_GOOGLE_CLIENT_SECRET` | oauth | -- | Google OAuth client secret. |
-| `AXON_MCP_AUTH_ADMIN_EMAIL` | oauth | -- | Admin email accepted by the auth layer. |
+| `AXON_MCP_AUTH_ADMIN_EMAIL` | oauth | -- | Admin email accepted by the auth layer; this account receives full Axon OAuth scopes. |
 | `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | no | Claude callback included | Additional comma-separated OAuth redirect URIs. |
 
 ---

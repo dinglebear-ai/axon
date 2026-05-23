@@ -173,6 +173,58 @@ fn extract_server_mode_uses_direct_rest_path() {
 }
 
 #[test]
+fn ingest_server_mode_uses_action_api_ingest_contract() {
+    let mut cfg = cfg(
+        CommandKind::Ingest,
+        &["https://github.com/MCPJam/inspector"],
+    );
+    cfg.github_include_source = true;
+
+    let plan = plan::server_rest_plan(&cfg).expect("ingest plan");
+
+    assert_eq!(plan.method, "POST");
+    assert_eq!(plan.path, "/v1/ingest");
+    assert_eq!(
+        plan.body,
+        json!({
+            "source_type": "github",
+            "target": "MCPJam/inspector",
+            "include_source": true
+        })
+    );
+    assert!(
+        plan.body.get("repo").is_none(),
+        "server-mode ingest must not emit the old repo field"
+    );
+}
+
+#[test]
+fn sessions_server_mode_uses_nested_action_api_sessions_contract() {
+    let mut cfg = cfg(CommandKind::Sessions, &[]);
+    cfg.sessions_claude = true;
+    cfg.sessions_codex = true;
+    cfg.sessions_gemini = false;
+    cfg.sessions_project = Some("axon_rust".to_string());
+
+    let plan = plan::server_rest_plan(&cfg).expect("sessions plan");
+
+    assert_eq!(plan.path, "/v1/ingest");
+    assert_eq!(
+        plan.body,
+        json!({
+            "source_type": "sessions",
+            "sessions": {
+                "claude": true,
+                "codex": true,
+                "gemini": false,
+                "project": "axon_rust"
+            }
+        })
+    );
+    assert!(plan.body.get("sessions_claude").is_none());
+}
+
+#[test]
 fn query_server_mode_uses_direct_rest_path() {
     let mut cfg = cfg(CommandKind::Query, &[]);
     cfg.query = Some("routing contract".to_string());

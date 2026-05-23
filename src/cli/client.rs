@@ -1,4 +1,4 @@
-use crate::core::http::build_client;
+use crate::core::http::build_client_without_ssrf_resolver;
 use reqwest::StatusCode;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -64,7 +64,7 @@ impl ServerClient {
         base_url: reqwest::Url,
         timeout_secs: u64,
     ) -> Result<Self, ServerClientError> {
-        let client = build_client(timeout_secs, None).map_err(|e| {
+        let client = build_client_without_ssrf_resolver(timeout_secs, None).map_err(|e| {
             ServerClientError::new(
                 ServerClientErrorKind::BuildClient,
                 format!("build server HTTP client: {e}"),
