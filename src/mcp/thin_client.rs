@@ -44,8 +44,20 @@ pub async fn route_request(
     let route = match request {
         AxonRequest::Status(_) => Route::get("/v1/status"),
         AxonRequest::Doctor(_) => Route::get("/v1/doctor"),
-        AxonRequest::Sources(req) => Route::get(page_path("/v1/sources", req.limit, req.offset)),
-        AxonRequest::Domains(req) => Route::get(page_path("/v1/domains", req.limit, req.offset)),
+        AxonRequest::Sources(req) => Route::get(page_path(
+            "/v1/sources",
+            req.limit,
+            req.offset,
+            req.domain.as_deref(),
+            req.cursor.as_deref(),
+        )),
+        AxonRequest::Domains(req) => Route::get(page_path(
+            "/v1/domains",
+            req.limit,
+            req.offset,
+            req.domain.as_deref(),
+            None,
+        )),
         AxonRequest::Stats(_) => Route::get("/v1/stats"),
         AxonRequest::Query(req) => Route::post(
             "/v1/query",
@@ -275,18 +287,34 @@ fn required_job_id<'a>(
     })
 }
 
-fn page_path(base: &str, limit: Option<usize>, offset: Option<usize>) -> String {
+fn page_path(
+    base: &str,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    domain: Option<&str>,
+    cursor: Option<&str>,
+) -> String {
     let mut pairs = Vec::new();
     if let Some(limit) = limit {
-        pairs.push(format!("limit={limit}"));
+        pairs.push(("limit".to_string(), limit.to_string()));
     }
     if let Some(offset) = offset {
-        pairs.push(format!("offset={offset}"));
+        pairs.push(("offset".to_string(), offset.to_string()));
+    }
+    if let Some(domain) = domain {
+        pairs.push(("domain".to_string(), domain.to_string()));
+    }
+    if let Some(cursor) = cursor {
+        pairs.push(("cursor".to_string(), cursor.to_string()));
     }
     if pairs.is_empty() {
         base.to_string()
     } else {
-        format!("{base}?{}", pairs.join("&"))
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        for (key, value) in pairs {
+            serializer.append_pair(&key, &value);
+        }
+        format!("{base}?{}", serializer.finish())
     }
 }
 
@@ -302,7 +330,7 @@ pub(crate) fn page_path_i64(
             })
         })
         .transpose()?;
-    Ok(page_path(base, limit, offset))
+    Ok(page_path(base, limit, offset, None, None))
 }
 
 fn rest_body_allowed<T: serde::Serialize>(

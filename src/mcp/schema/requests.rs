@@ -404,6 +404,7 @@ pub struct DoctorRequest {
 pub struct DomainsRequest {
     #[allow(dead_code)] // accepted for API compat but ignored by handlers
     pub subaction: Option<String>,
+    pub domain: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     #[allow(dead_code)] // accepted for API compat but response is always inline
@@ -415,6 +416,8 @@ pub struct DomainsRequest {
 pub struct SourcesRequest {
     #[allow(dead_code)] // accepted for API compat but ignored by handlers
     pub subaction: Option<String>,
+    pub domain: Option<String>,
+    pub cursor: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     #[allow(dead_code)] // accepted for API compat but response is always inline

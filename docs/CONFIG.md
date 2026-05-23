@@ -376,6 +376,7 @@ containing cached source text.
 | `AXON_NO_WIPE` | -- | Prevent destructive cache wipes |
 | `AXON_DOMAINS_DETAILED` | -- | Enable detailed per-domain breakdown in `axon domains` |
 | `AXON_SOURCES_FACET_LIMIT` | `100000` | Facet limit for `axon sources` |
+| `AXON_SOURCES_DOMAIN_LIMIT` | `10000` | Max URLs fetched for explicit `axon sources --domain <host> --all` exports |
 | `AXON_DOMAINS_FACET_LIMIT` | `100000` | Facet limit for `axon domains` |
 | `AXON_SESSION_INGEST_MAX_BYTES` | -- | Max bytes per session ingest payload |
 

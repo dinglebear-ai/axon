@@ -2,10 +2,15 @@
 
 use crate::core::config::Config;
 use crate::services::system::PayloadParseError;
-use crate::services::types::{Pagination, SourcesResult};
-use crate::vector::ops::qdrant::{qdrant_scroll_pages_selective, sources_payload};
+use crate::services::types::{DomainSourcesResult, Pagination, SourcesResult};
+use crate::vector::ops::qdrant::{
+    qdrant_scroll_pages_selective, qdrant_urls_for_domain_page, sources_payload,
+};
 use std::collections::BTreeMap;
 use std::error::Error;
+use url::Url;
+
+const DOMAIN_SOURCES_MAX_LIMIT: usize = 10_000;
 
 pub fn map_sources_payload(
     payload: &serde_json::Value,
@@ -50,6 +55,93 @@ pub fn map_sources_payload(
         urls,
         schema_version_breakdown: None,
     })
+}
+
+pub fn normalize_domain_query(input: &str) -> Result<String, PayloadParseError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(PayloadParseError::new("domain must not be empty"));
+    }
+    if trimmed.chars().any(char::is_control) {
+        return Err(PayloadParseError::new("domain contains invalid characters"));
+    }
+
+    let host = if trimmed.contains("://") {
+        Url::parse(trimmed)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string))
+    } else {
+        let candidate = trimmed.trim_end_matches('.').trim_end_matches('/');
+        candidate
+            .split_once('/')
+            .map(|(host, _)| host)
+            .or(Some(candidate))
+            .map(str::to_string)
+    }
+    .ok_or_else(|| PayloadParseError::new("invalid domain"))?;
+
+    let normalized = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    let normalized = if let Some((host, port)) = normalized.rsplit_once(':') {
+        if !host.contains(':') && port.chars().all(|c| c.is_ascii_digit()) {
+            host.to_string()
+        } else {
+            normalized
+        }
+    } else {
+        normalized
+    };
+    if normalized.is_empty()
+        || normalized == "unknown"
+        || normalized.contains('*')
+        || normalized.contains('/')
+        || normalized.contains(char::is_whitespace)
+    {
+        return Err(PayloadParseError::new("invalid domain"));
+    }
+    Ok(normalized)
+}
+
+pub fn domain_sources_from_urls(
+    domain: String,
+    urls: Vec<String>,
+    limit: usize,
+    cursor: Option<String>,
+    next_cursor: Option<String>,
+) -> DomainSourcesResult {
+    let truncated = next_cursor.is_some();
+    DomainSourcesResult {
+        domain,
+        count: urls.len(),
+        limit,
+        cursor,
+        next_cursor,
+        truncated,
+        urls,
+    }
+}
+
+#[must_use = "sources_for_domain returns a Result that should be handled"]
+pub async fn sources_for_domain(
+    cfg: &Config,
+    domain: &str,
+    pagination: Pagination,
+    cursor: Option<&str>,
+) -> Result<DomainSourcesResult, Box<dyn Error>> {
+    let normalized = normalize_domain_query(domain)?;
+    if pagination.offset > 0 {
+        return Err(PayloadParseError::new("domain sources use cursor, not offset").into());
+    }
+    let limit = pagination.limit.clamp(1, DOMAIN_SOURCES_MAX_LIMIT);
+    let (urls, next_cursor) = qdrant_urls_for_domain_page(cfg, &normalized, limit, cursor)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("domain sources scroll failed: {e}").into() })?;
+    Ok(domain_sources_from_urls(
+        normalized,
+        urls,
+        limit,
+        cursor.map(str::to_string),
+        next_cursor,
+    ))
 }
 
 /// Scroll the collection counting points per `payload_schema_version`.

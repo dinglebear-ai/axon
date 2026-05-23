@@ -27,6 +27,36 @@ fn parse_query_action_no_fields() {
 }
 
 #[test]
+fn parse_sources_action_with_domain() {
+    let raw = obj(json!({
+        "action": "sources",
+        "domain": "docs.rs",
+        "cursor": "\"next-id\"",
+        "limit": 25,
+        "offset": 50
+    }));
+    let Ok(AxonRequest::Sources(req)) = parse_axon_request(raw) else {
+        panic!("expected sources request");
+    };
+    assert_eq!(req.domain.as_deref(), Some("docs.rs"));
+    assert_eq!(req.cursor.as_deref(), Some("\"next-id\""));
+    assert_eq!(req.limit, Some(25));
+    assert_eq!(req.offset, Some(50));
+}
+
+#[test]
+fn parse_domains_action_with_domain() {
+    let raw = obj(json!({
+        "action": "domains",
+        "domain": "docs.rs"
+    }));
+    let Ok(AxonRequest::Domains(req)) = parse_axon_request(raw) else {
+        panic!("expected domains request");
+    };
+    assert_eq!(req.domain.as_deref(), Some("docs.rs"));
+}
+
+#[test]
 fn parse_rejects_removed_acp_action() {
     let raw = obj(json!({
         "action": "acp",
