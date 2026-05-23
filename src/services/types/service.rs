@@ -56,6 +56,17 @@ pub struct SourcesResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DomainSourcesResult {
+    pub domain: String,
+    pub count: usize,
+    pub limit: usize,
+    pub cursor: Option<String>,
+    pub next_cursor: Option<String>,
+    pub truncated: bool,
+    pub urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DomainFacet {
     pub domain: String,
     pub vectors: usize,
@@ -66,6 +77,12 @@ pub struct DomainsResult {
     pub domains: Vec<DomainFacet>,
     pub limit: usize,
     pub offset: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DomainIndexedResult {
+    pub domain: String,
+    pub indexed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

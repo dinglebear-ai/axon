@@ -66,9 +66,9 @@ pub(super) enum CliCommand {
     /// Suggest new documentation URLs to crawl
     Suggest(TextArg),
     /// List all indexed source URLs with chunk counts
-    Sources,
+    Sources(SourcesArgs),
     /// List indexed domains with document statistics
-    Domains,
+    Domains(DomainsArgs),
     /// Show Qdrant collection and SQLite job statistics
     Stats,
     /// Show async job queue status and recent activity
@@ -108,6 +108,24 @@ pub(super) enum CliCommand {
 pub(super) struct DoctorArgs {
     #[command(subcommand)]
     pub(super) action: Option<DoctorSubcommand>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct SourcesArgs {
+    /// Filter source URLs by exact indexed domain/host.
+    #[arg(long)]
+    pub(super) domain: Option<String>,
+
+    /// Export every matching URL for --domain instead of the default bounded page.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) all: bool,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct DomainsArgs {
+    /// Check whether this exact indexed domain/host has any stored URLs.
+    #[arg(long)]
+    pub(super) domain: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]

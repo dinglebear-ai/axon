@@ -65,6 +65,9 @@ pub(super) struct DispatchOutput {
     pub train_best_rank: Option<usize>,
     pub train_notes: Option<String>,
     pub doctor_diagnose: bool,
+    pub sources_domain: Option<String>,
+    pub sources_domain_all: bool,
+    pub domains_domain: Option<String>,
 }
 
 impl DispatchOutput {
@@ -109,6 +112,9 @@ impl DispatchOutput {
             train_best_rank: None,
             train_notes: None,
             doctor_diagnose: false,
+            sources_domain: None,
+            sources_domain_all: false,
+            domains_domain: None,
         }
     }
 }
@@ -237,8 +243,15 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             set_simple(&mut out, CommandKind::Train, args.value);
         }
         CliCommand::Suggest(args) => set_simple(&mut out, CommandKind::Suggest, args.value),
-        CliCommand::Sources => out.command = CommandKind::Sources,
-        CliCommand::Domains => out.command = CommandKind::Domains,
+        CliCommand::Sources(args) => {
+            out.command = CommandKind::Sources;
+            out.sources_domain = args.domain;
+            out.sources_domain_all = args.all;
+        }
+        CliCommand::Domains(args) => {
+            out.command = CommandKind::Domains;
+            out.domains_domain = args.domain;
+        }
         CliCommand::Stats => out.command = CommandKind::Stats,
         CliCommand::Status => out.command = CommandKind::Status,
         CliCommand::Dedupe => out.command = CommandKind::Dedupe,

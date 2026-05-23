@@ -307,6 +307,9 @@ fn populate_misc(
     cfg.since = g.since.clone();
     cfg.before = g.before.clone();
     cfg.sources_by_schema_version = g.sources_by_schema_version;
+    cfg.sources_domain = inputs.dispatched.sources_domain.clone();
+    cfg.sources_domain_all = inputs.dispatched.sources_domain_all;
+    cfg.domains_domain = inputs.dispatched.domains_domain.clone();
     cfg.bypass_csp = inputs.toml.chrome.bypass_csp.unwrap_or(false);
     cfg.accept_invalid_certs = inputs.toml.chrome.accept_invalid_certs.unwrap_or(false);
     cfg.screenshot_full_page = g.screenshot_full_page;

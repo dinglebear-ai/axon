@@ -8,6 +8,10 @@ use std::error::Error;
 
 pub async fn run_sources(cfg: &Config) -> Result<(), Box<dyn Error>> {
     log_info("command=sources");
+    if let Some(domain) = cfg.sources_domain.as_deref() {
+        return run_domain_sources(cfg, domain).await;
+    }
+
     let facet_limit = env_usize_clamped("AXON_SOURCES_FACET_LIMIT", 100_000, 1, 1_000_000);
     let pagination = Pagination {
         limit: facet_limit,
@@ -63,6 +67,38 @@ pub async fn run_sources(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 );
             }
         }
+    }
+    Ok(())
+}
+
+async fn run_domain_sources(cfg: &Config, domain: &str) -> Result<(), Box<dyn Error>> {
+    let limit = if cfg.sources_domain_all {
+        env_usize_clamped("AXON_SOURCES_DOMAIN_LIMIT", 10_000, 1, 10_000)
+    } else {
+        cfg.search_limit.clamp(1, 10_000)
+    };
+    let result =
+        system::sources_for_domain(cfg, domain, Pagination { limit, offset: 0 }, None).await?;
+
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    println!("{}", primary(&format!("Sources for {}", result.domain)));
+    for url in &result.urls {
+        println!("  {}", accent(url));
+    }
+    if result.truncated {
+        println!(
+            "{}",
+            muted(&format!(
+                "Showing {} of at least {} matching sources. Use --limit {} or --all to fetch more.",
+                result.urls.len(),
+                result.urls.len() + 1,
+                result.limit.saturating_mul(2)
+            ))
+        );
     }
     Ok(())
 }

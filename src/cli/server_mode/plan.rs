@@ -108,14 +108,30 @@ fn discovery_rest_plan(cfg: &Config) -> Option<ServerRestPlan> {
         }),
         CommandKind::Sources => Some(ServerRestPlan {
             method: "GET",
-            path: page_path("/v1/sources", Some(cfg.search_limit), None),
+            path: page_path(
+                "/v1/sources",
+                Some(if cfg.sources_domain_all {
+                    10_000
+                } else {
+                    cfg.search_limit
+                }),
+                None,
+                cfg.sources_domain.as_deref(),
+                None,
+            ),
             body: serde_json::Value::Null,
             label: "sources",
             poll_family: None,
         }),
         CommandKind::Domains => Some(ServerRestPlan {
             method: "GET",
-            path: page_path("/v1/domains", Some(cfg.search_limit), None),
+            path: page_path(
+                "/v1/domains",
+                Some(cfg.search_limit),
+                None,
+                cfg.domains_domain.as_deref(),
+                None,
+            ),
             body: serde_json::Value::Null,
             label: "domains",
             poll_family: None,
@@ -352,18 +368,34 @@ fn search_like_plan(
     }
 }
 
-fn page_path(base: &str, limit: Option<usize>, offset: Option<usize>) -> String {
+fn page_path(
+    base: &str,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    domain: Option<&str>,
+    cursor: Option<&str>,
+) -> String {
     let mut pairs = Vec::new();
     if let Some(limit) = limit {
-        pairs.push(format!("limit={limit}"));
+        pairs.push(("limit".to_string(), limit.to_string()));
     }
     if let Some(offset) = offset {
-        pairs.push(format!("offset={offset}"));
+        pairs.push(("offset".to_string(), offset.to_string()));
+    }
+    if let Some(domain) = domain {
+        pairs.push(("domain".to_string(), domain.to_string()));
+    }
+    if let Some(cursor) = cursor {
+        pairs.push(("cursor".to_string(), cursor.to_string()));
     }
     if pairs.is_empty() {
         base.to_string()
     } else {
-        format!("{base}?{}", pairs.join("&"))
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        for (key, value) in pairs {
+            serializer.append_pair(&key, &value);
+        }
+        format!("{base}?{}", serializer.finish())
     }
 }
 

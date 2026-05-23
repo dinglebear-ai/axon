@@ -565,6 +565,15 @@ pub struct Config {
     /// Flag: `--by-schema-version`. See bead `axon_rust-lu6a`.
     pub sources_by_schema_version: bool,
 
+    /// Optional exact domain/host filter for `axon sources --domain`.
+    pub sources_domain: Option<String>,
+
+    /// Export all matching domain URLs for `axon sources --domain --all`.
+    pub sources_domain_all: bool,
+
+    /// Optional exact domain/host check for `axon domains --domain`.
+    pub domains_domain: Option<String>,
+
     // P5 — opt-in crawl safety/compat flags
     /// Bypass Content Security Policy in Chrome — helps on pages that block inline JS via CSP.
     /// Spider: `with_csp_bypass(true)`. Chrome only. Default: false. TOML: `chrome.bypass-csp`.

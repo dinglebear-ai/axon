@@ -16,6 +16,8 @@ type WebState = (super::super::state::AppState, Arc<Config>);
 pub(crate) struct PaginationQuery {
     limit: Option<usize>,
     offset: Option<usize>,
+    domain: Option<String>,
+    cursor: Option<String>,
 }
 
 impl PaginationQuery {
@@ -40,9 +42,26 @@ impl PaginationQuery {
 pub(crate) async fn sources(
     State((_state, cfg)): State<WebState>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<services::types::SourcesResult>, HttpError> {
+) -> Result<Json<serde_json::Value>, HttpError> {
+    if let Some(domain) = query.domain.as_deref() {
+        return services::system::sources_for_domain(
+            &cfg,
+            domain,
+            query.pagination(100),
+            query.cursor.as_deref(),
+        )
+        .await
+        .and_then(|result| {
+            serde_json::to_value(result).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+        })
+        .map(Json)
+        .map_err(HttpError::from_box);
+    }
     services::system::sources(&cfg, query.pagination(100))
         .await
+        .and_then(|result| {
+            serde_json::to_value(result).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+        })
         .map(Json)
         .map_err(HttpError::from_box)
 }
@@ -60,9 +79,22 @@ pub(crate) async fn sources(
 pub(crate) async fn domains(
     State((_state, cfg)): State<WebState>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<services::types::DomainsResult>, HttpError> {
+) -> Result<Json<serde_json::Value>, HttpError> {
+    if let Some(domain) = query.domain.as_deref() {
+        return services::system::domain_indexed(&cfg, domain)
+            .await
+            .and_then(|result| {
+                serde_json::to_value(result)
+                    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+            })
+            .map(Json)
+            .map_err(HttpError::from_box);
+    }
     services::system::domains(&cfg, query.pagination(100))
         .await
+        .and_then(|result| {
+            serde_json::to_value(result).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+        })
         .map(Json)
         .map_err(HttpError::from_box)
 }
