@@ -189,6 +189,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: axon-windows
       - name: create web assets placeholder
         run: mkdir -p apps/web/out
         shell: bash
