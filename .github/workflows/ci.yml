@@ -83,7 +83,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          sparse-checkout-cone-mode: false
           sparse-checkout: |
+            Cargo.toml
+            Cargo.lock
+            config.example.toml
             src
             xtask
             benches
@@ -95,7 +99,7 @@ jobs:
             scripts
             config
             vendor
-            .cargo
+            .cargo/config.toml
       - uses: taiki-e/install-action@v2
         with:
           tool: taplo-cli
@@ -112,6 +116,9 @@ jobs:
           sparse-checkout: |
             Cargo.toml
             Cargo.lock
+            .env.example
+            config.example.toml
+            docker-compose.prod.yaml
             src
             xtask
             benches
@@ -457,6 +464,9 @@ jobs:
           sparse-checkout: |
             Cargo.toml
             Cargo.lock
+            .env.example
+            config.example.toml
+            docker-compose.prod.yaml
             src
             xtask
             benches
