@@ -126,6 +126,51 @@ fn parse_completion_alias_is_accepted() {
     assert!(result.is_ok(), "completion alias should be accepted");
 }
 
+#[allow(unsafe_code)]
+#[test]
+fn parse_sources_domain_flags_into_config() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "sources",
+        "--domain",
+        "Docs.RS",
+        "--all",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("sources domain should parse");
+    assert!(matches!(cfg.command, CommandKind::Sources));
+    assert_eq!(cfg.sources_domain.as_deref(), Some("Docs.RS"));
+    assert!(cfg.sources_domain_all);
+    assert!(cfg.domains_domain.is_none());
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_domains_domain_flag_into_config() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "domains",
+        "--domain",
+        "docs.rs",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("domains domain should parse");
+    assert!(matches!(cfg.command, CommandKind::Domains));
+    assert_eq!(cfg.domains_domain.as_deref(), Some("docs.rs"));
+    assert!(cfg.sources_domain.is_none());
+    assert!(!cfg.sources_domain_all);
+}
+
 #[test]
 fn parse_retrieve_max_points_into_config() {
     let cli = super::Cli::parse_from([

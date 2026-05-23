@@ -169,12 +169,107 @@ pub async fn qdrant_indexed_urls(cfg: &Config, limit: Option<usize>) -> Result<V
         .map(|s| s.into_iter().collect())
 }
 
+fn domain_url_filter(domain: &str) -> serde_json::Value {
+    serde_json::json!({
+        "must": [
+            {"key": "domain", "match": {"value": domain}},
+            {"key": "chunk_index", "match": {"value": 0}}
+        ]
+    })
+}
+
 pub async fn qdrant_urls_for_domain(cfg: &Config, domain: &str) -> Result<HashSet<String>> {
+    scroll_url_set(cfg, domain_url_filter(domain), None).await
+}
+
+pub async fn qdrant_urls_for_domain_limited(
+    cfg: &Config,
+    domain: &str,
+    limit: usize,
+) -> Result<HashSet<String>> {
+    scroll_url_set(cfg, domain_url_filter(domain), Some(limit)).await
+}
+
+fn parse_scroll_cursor(cursor: Option<&str>) -> Option<serde_json::Value> {
+    cursor.map(|value| {
+        serde_json::from_str::<serde_json::Value>(value)
+            .unwrap_or_else(|_| serde_json::Value::String(value.to_string()))
+    })
+}
+
+fn encode_scroll_cursor(value: serde_json::Value) -> String {
+    value
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| value.to_string())
+}
+
+pub async fn qdrant_urls_for_domain_page(
+    cfg: &Config,
+    domain: &str,
+    limit: usize,
+    cursor: Option<&str>,
+) -> Result<(Vec<String>, Option<String>)> {
+    let client = internal_service_http_client()?;
+    let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
+    let mut body = serde_json::json!({
+        "limit": limit,
+        "with_payload": {"include": ["url"]},
+        "with_vector": false,
+        "filter": domain_url_filter(domain),
+    });
+    if let Some(offset) = parse_scroll_cursor(cursor) {
+        body["offset"] = offset;
+    }
+
+    let val = scroll_page_with_retry(client, &endpoint, &body).await?;
+    let points = val["result"]["points"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let mut seen = HashSet::new();
+    let mut urls = Vec::new();
+    for point in points {
+        if let Some(url) = point
+            .get("payload")
+            .and_then(|payload| payload.get("url"))
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+        {
+            let url = url.to_string();
+            if seen.insert(url.clone()) {
+                urls.push(url);
+            }
+        }
+    }
+    let next_cursor = val["result"]
+        .get("next_page_offset")
+        .cloned()
+        .filter(|value| !value.is_null())
+        .map(encode_scroll_cursor);
+    Ok((urls, next_cursor))
+}
+
+pub async fn qdrant_domain_has_indexed_url(cfg: &Config, domain: &str) -> Result<bool> {
+    let client = internal_service_http_client()?;
+    let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
     let filter = serde_json::json!({
         "must": [
             {"key": "domain", "match": {"value": domain}},
             {"key": "chunk_index", "match": {"value": 0}}
         ]
     });
-    scroll_url_set(cfg, filter, None).await
+    let body = serde_json::json!({
+        "limit": 1,
+        "with_payload": false,
+        "with_vector": false,
+        "filter": filter,
+    });
+    let mut found = false;
+    scroll_pages_raw(client, &endpoint, body, |points| {
+        found = !points.is_empty();
+        false
+    })
+    .await?;
+    Ok(found)
 }

@@ -16,7 +16,10 @@ pub mod scroll;
 pub use delete::{qdrant_delete_points, qdrant_delete_stale_domain_urls, qdrant_delete_stale_tail};
 pub use facets::{qdrant_domain_facets, qdrant_url_facets};
 pub use retrieve::{qdrant_retrieve_by_url, qdrant_retrieve_by_url_details};
-pub use scroll::{qdrant_indexed_urls, qdrant_scroll_pages_selective, qdrant_urls_for_domain};
+pub use scroll::{
+    qdrant_domain_has_indexed_url, qdrant_indexed_urls, qdrant_scroll_pages_selective,
+    qdrant_urls_for_domain, qdrant_urls_for_domain_limited, qdrant_urls_for_domain_page,
+};
 
 #[cfg(test)]
 pub(crate) use delete::qdrant_delete_by_url_filter;

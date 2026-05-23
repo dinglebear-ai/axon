@@ -10,7 +10,10 @@ mod tests;
 mod types;
 mod utils;
 
-pub use client::{qdrant_delete_stale_domain_urls, qdrant_indexed_urls, qdrant_urls_for_domain};
+pub use client::{
+    qdrant_delete_stale_domain_urls, qdrant_domain_has_indexed_url, qdrant_indexed_urls,
+    qdrant_urls_for_domain, qdrant_urls_for_domain_limited, qdrant_urls_for_domain_page,
+};
 pub(crate) use commands::{VectorSearchRequest, dispatch_vector_search_request};
 pub use commands::{dedupe_payload, domains_payload, retrieve_result, sources_payload};
 pub(crate) use dual_search::{DualSearchArm, DualSearchResult, qdrant_dual_search};

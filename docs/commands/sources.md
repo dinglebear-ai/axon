@@ -5,6 +5,7 @@ Version: 1.0.0
 Last Updated: 20:30:18 | 03/03/2026 EST
 
 List indexed source URLs in the active Qdrant collection with chunk counts.
+Pass `--domain <host>` to list indexed URLs for one exact indexed domain.
 
 ## Synopsis
 
@@ -31,7 +32,9 @@ All global flags apply. Key flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--collection <name>` | `cortex` | Qdrant collection to inspect. |
-| `--json` | `false` | Emits a JSON object with `count`, `limit`, `offset`, and `urls` (array of `[url, chunk_count]` pairs). |
+| `--json` | `false` | Emits a JSON object with `count`, `limit`, `offset`, and `urls` for unfiltered output. Domain-filtered JSON uses `cursor` / `next_cursor` instead of `offset`. |
+| `--domain <host-or-url>` | — | Filter indexed source URLs by exact domain/host. URL input is accepted and normalized to its host. |
+| `--all` | `false` | With `--domain`, export up to `AXON_SOURCES_DOMAIN_LIMIT` matching URLs instead of the normal `--limit` page. |
 
 ## Examples
 
@@ -44,6 +47,15 @@ axon sources --json
 
 # Different collection
 axon sources --collection docs-local
+
+# URLs indexed for one exact domain
+axon sources --domain docs.rs
+
+# JSON page for one exact domain
+axon sources --domain https://docs.rs/std --limit 50 --json
+
+# Explicit full-domain export, capped by AXON_SOURCES_DOMAIN_LIMIT
+axon sources --domain docs.rs --all --json
 ```
 
 ## Tuning Environment Variable
@@ -51,8 +63,13 @@ axon sources --collection docs-local
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_SOURCES_FACET_LIMIT` | `100000` | Max URL facets fetched from Qdrant (clamped 1..1,000,000). |
+| `AXON_SOURCES_DOMAIN_LIMIT` | `10000` | Max URLs fetched for `sources --domain --all` (clamped 1..10,000). |
 
 ## Notes
 
 - `sources` uses Qdrant facet aggregation on `url`.
 - If facet results hit the configured limit, human output prints a truncation hint.
+- `--domain` uses exact `payload.domain` matching. `example.com` does not include `docs.example.com`.
+- `--domain` output is bounded by default via `--limit`; use `--all` only for explicit export.
+- REST/MCP domain-filtered sources use `next_cursor` pagination. CLI `--domain` starts at the first page; `--all` raises the one-page cap for explicit exports.
+- Domain-filtered REST/MCP calls reject numeric `offset`; pass the returned `next_cursor` as `cursor` instead.

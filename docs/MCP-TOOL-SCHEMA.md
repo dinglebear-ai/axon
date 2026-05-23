@@ -63,7 +63,7 @@ These actions do not require `subaction`:
 | `brand` | `url` (string) | `render_mode`, `response_mode` |
 | `diff` | `url_a` (string), `url_b` (string) | `render_mode`, `response_mode` |
 | `doctor` | -- | `response_mode` |
-| `domains` | -- | `limit`, `offset`, `response_mode` |
+| `domains` | -- | `domain`, `limit`, `offset`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |
 | `endpoints` | `url` (string) | `include_bundles`, `first_party_only`, `unique_only`, `max_scripts`, `max_scan_bytes`, `verify`, `capture_network`, `response_mode` |
 | `evaluate` | `query` (aliases: `question`) (string) | `diagnostics`, `retrieval_ab`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
@@ -75,11 +75,13 @@ These actions do not require `subaction`:
 | `scrape` | `url` (string) | `render_mode`, `format`, `embed`, `response_mode`, `root_selector`, `exclude_selector`, `cursor`, `token_budget` |
 | `screenshot` | `url` (string) | `full_page`, `viewport`, `output`, `response_mode` |
 | `search` | `query` (string) | `limit`, `offset`, `search_time_range`, `response_mode` |
-| `sources` | -- | `limit`, `offset`, `response_mode` |
+| `sources` | -- | `domain`, `cursor`, `limit`, `offset`, `response_mode` |
 | `stats` | -- | `response_mode` |
 | `status` | -- | `response_mode` |
 | `suggest` | -- | `focus` (aliases: `query`), `limit`, `collection`, `response_mode` |
 | `summarize` | -- | `url`, `urls`, `render_mode`, `root_selector`, `exclude_selector`, `response_mode` |
+
+`sources.domain` and `domains.domain` accept a host or URL and normalize it to the host before matching. Matching is exact against indexed `payload.domain`; parent domains do not include subdomains. For domain-filtered `sources`, use `next_cursor` from the response as `cursor` to fetch the next Qdrant scroll page; `offset` is rejected for domain-filtered sources and remains for unfiltered sources.
 
 Note: `graph` is a deprecated compatibility field. `false`/unset is accepted as a no-op; `true` is rejected because graph retrieval is not wired in production.
 

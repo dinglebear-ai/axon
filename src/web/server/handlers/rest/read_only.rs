@@ -24,6 +24,10 @@ pub(crate) struct PageParams {
     pub limit: Option<usize>,
     #[serde(default)]
     pub offset: Option<usize>,
+    #[serde(default)]
+    pub domain: Option<String>,
+    #[serde(default)]
+    pub cursor: Option<String>,
 }
 
 fn to_pagination(p: PageParams) -> Pagination {
@@ -36,7 +40,22 @@ pub(crate) async fn v1_sources(
     State(state): State<RestState>,
     Query(params): Query<PageParams>,
 ) -> Response {
+    let domain = params.domain.clone();
+    let cursor = params.cursor.clone();
     let pagination = to_pagination(params);
+    if let Some(domain) = domain.as_deref() {
+        return match system::sources_for_domain(
+            state.cfg.as_ref(),
+            domain,
+            pagination,
+            cursor.as_deref(),
+        )
+        .await
+        {
+            Ok(result) => Json(result).into_response(),
+            Err(err) => map_service_error(err.as_ref()),
+        };
+    }
     match system::sources(state.cfg.as_ref(), pagination).await {
         // Wire format intentionally matches the MCP `handle_sources` payload:
         // urls are emitted as a flat array of strings, without chunk counts.
@@ -58,7 +77,18 @@ pub(crate) async fn v1_domains(
     State(state): State<RestState>,
     Query(params): Query<PageParams>,
 ) -> Response {
+    let domain = params.domain.clone();
     let pagination = to_pagination(params);
+    if let Some(domain) = domain.as_deref() {
+        return match system::domain_indexed(state.cfg.as_ref(), domain).await {
+            Ok(result) => Json(serde_json::json!({
+                "domain": result.domain,
+                "indexed": result.indexed,
+            }))
+            .into_response(),
+            Err(err) => map_service_error(err.as_ref()),
+        };
+    }
     match system::domains(state.cfg.as_ref(), pagination).await {
         Ok(result) => Json(serde_json::json!({
             "limit": result.limit,

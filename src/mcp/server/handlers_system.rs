@@ -404,6 +404,22 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let pagination = to_pagination(req.limit, req.offset, 25);
         let response_mode = req.response_mode;
+        if let Some(domain) = req.domain.as_deref() {
+            let result = system::domain_indexed(self.cfg.as_ref(), domain)
+                .await
+                .map_err(|e| logged_internal_error("domains", e.as_ref()))?;
+            let payload =
+                serde_json::to_value(result).map_err(|e| logged_internal_error("domains", &e))?;
+            return respond_with_mode(
+                "domains",
+                "domains",
+                response_mode,
+                "domains",
+                payload,
+                InlineHint::Default,
+            )
+            .await;
+        }
         let result = system::domains(self.cfg.as_ref(), pagination)
             .await
             .map_err(|e| logged_internal_error("domains", e.as_ref()))?;
@@ -432,6 +448,27 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let pagination = to_pagination(req.limit, req.offset, 25);
         let response_mode = req.response_mode;
+        if let Some(domain) = req.domain.as_deref() {
+            let result = system::sources_for_domain(
+                self.cfg.as_ref(),
+                domain,
+                pagination,
+                req.cursor.as_deref(),
+            )
+            .await
+            .map_err(|e| logged_internal_error("sources", e.as_ref()))?;
+            let payload =
+                serde_json::to_value(result).map_err(|e| logged_internal_error("sources", &e))?;
+            return respond_with_mode(
+                "sources",
+                "sources",
+                response_mode,
+                "sources",
+                payload,
+                InlineHint::Default,
+            )
+            .await;
+        }
         let result = system::sources(self.cfg.as_ref(), pagination)
             .await
             .map_err(|e| logged_internal_error("sources", e.as_ref()))?;
