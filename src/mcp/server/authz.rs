@@ -64,14 +64,16 @@ pub(super) fn check_scope(
 pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
     match action {
         "help" => None,
-        "crawl" | "extract" | "embed" | "ingest" | "scrape" | "summarize" => Some("axon:write"),
+        "crawl" | "extract" | "embed" | "ingest" | "scrape" | "summarize" | "endpoints" => {
+            Some("axon:write")
+        }
         "artifacts" => match subaction {
             "delete" | "clean" => Some("axon:write"),
             _ => Some("axon:read"),
         },
-        "status" | "query" | "retrieve" | "search" | "map" | "endpoints" | "evaluate"
-        | "suggest" | "doctor" | "domains" | "sources" | "stats" | "research" | "ask"
-        | "screenshot" | "diff" | "brand" => Some("axon:read"),
+        "status" | "query" | "retrieve" | "search" | "map" | "evaluate" | "suggest" | "doctor"
+        | "domains" | "sources" | "stats" | "research" | "ask" | "screenshot" | "diff"
+        | "brand" => Some("axon:read"),
         _ => Some("__deny__"),
     }
 }
