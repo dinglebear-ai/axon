@@ -22,8 +22,16 @@ pub(crate) struct PaginationQuery {
 
 impl PaginationQuery {
     pub(crate) fn pagination(&self, default_limit: usize) -> Pagination {
+        self.pagination_with_max(default_limit, 500)
+    }
+
+    pub(crate) fn domain_sources_pagination(&self, default_limit: usize) -> Pagination {
+        self.pagination_with_max(default_limit, 10_000)
+    }
+
+    fn pagination_with_max(&self, default_limit: usize, max_limit: usize) -> Pagination {
         Pagination {
-            limit: self.limit.unwrap_or(default_limit).clamp(1, 500),
+            limit: self.limit.unwrap_or(default_limit).clamp(1, max_limit),
             offset: self.offset.unwrap_or(0),
         }
     }
@@ -47,7 +55,7 @@ pub(crate) async fn sources(
         return services::system::sources_for_domain(
             &cfg,
             domain,
-            query.pagination(100),
+            query.domain_sources_pagination(100),
             query.cursor.as_deref(),
         )
         .await
@@ -151,4 +159,39 @@ pub(crate) async fn doctor(
         .await
         .map(Json)
         .map_err(HttpError::from_box)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PaginationQuery;
+
+    #[test]
+    fn unfiltered_pagination_keeps_legacy_500_cap() {
+        let query = PaginationQuery {
+            limit: Some(10_000),
+            offset: Some(3),
+            domain: None,
+            cursor: None,
+        };
+
+        let pagination = query.pagination(100);
+
+        assert_eq!(pagination.limit, 500);
+        assert_eq!(pagination.offset, 3);
+    }
+
+    #[test]
+    fn domain_sources_pagination_allows_export_cap() {
+        let query = PaginationQuery {
+            limit: Some(10_000),
+            offset: Some(0),
+            domain: Some("example.com".to_string()),
+            cursor: None,
+        };
+
+        let pagination = query.domain_sources_pagination(100);
+
+        assert_eq!(pagination.limit, 10_000);
+        assert_eq!(pagination.offset, 0);
+    }
 }
