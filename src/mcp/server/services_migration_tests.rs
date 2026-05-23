@@ -113,3 +113,68 @@ fn refresh_start_response_includes_all_job_ids() {
         "job_id must equal the last element of job_ids"
     );
 }
+
+#[test]
+fn mcp_apps_ui_metadata_is_on_dedicated_dashboard_tool_only() {
+    let tools = super::AxonMcpServer::tool_router().list_all();
+
+    let axon = tools
+        .iter()
+        .find(|tool| tool.name == "axon")
+        .expect("axon tool must be registered");
+    assert!(
+        axon.meta.is_none(),
+        "catch-all axon tool must not render the dashboard for every routed action"
+    );
+
+    let dashboard = tools
+        .iter()
+        .find(|tool| tool.name == "axon_status_dashboard")
+        .expect("dashboard tool must be registered");
+    let meta = dashboard
+        .meta
+        .as_ref()
+        .expect("dashboard tool must advertise MCP Apps metadata");
+    assert_eq!(
+        meta.get("ui")
+            .and_then(|ui| ui.get("resourceUri"))
+            .and_then(serde_json::Value::as_str),
+        Some(super::STATUS_DASHBOARD_URI)
+    );
+}
+
+#[test]
+fn mcp_apps_resource_meta_declares_locked_down_policy() {
+    let meta = super::status_dashboard_resource_meta();
+    let ui = meta
+        .get("ui")
+        .expect("resource metadata must include a ui object");
+
+    assert_eq!(ui["permissions"], serde_json::json!({}));
+    assert_eq!(ui["csp"]["connectDomains"], serde_json::json!([]));
+    assert_eq!(ui["csp"]["resourceDomains"], serde_json::json!([]));
+    assert_eq!(ui["csp"]["frameDomains"], serde_json::json!([]));
+    assert_eq!(ui["csp"]["baseUriDomains"], serde_json::json!([]));
+}
+
+#[test]
+fn mcp_apps_capabilities_advertise_html_app_mime_type() {
+    let capabilities =
+        serde_json::to_value(super::mcp_apps_server_capabilities()).expect("serialize caps");
+    assert_eq!(
+        capabilities["extensions"]["io.modelcontextprotocol/ui"]["mimeTypes"],
+        serde_json::json!([super::MCP_APP_MIME_TYPE])
+    );
+}
+
+#[test]
+fn dedicated_dashboard_tool_requires_read_scope() {
+    assert_eq!(
+        super::required_scope_for_tool("axon_status_dashboard", "", ""),
+        Some("axon:read")
+    );
+    assert_eq!(
+        super::required_scope_for_tool("axon", "crawl", ""),
+        Some("axon:write")
+    );
+}

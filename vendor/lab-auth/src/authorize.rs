@@ -7,6 +7,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest, Sha256};
 use tracing::{debug, info, warn};
 
+use crate::config::AuthConfig;
 use crate::error::AuthError;
 use crate::google::AuthorizeUrlRequest;
 use crate::session::{append_set_cookie, build_browser_session_cookie, create_browser_session};
@@ -59,6 +60,19 @@ fn check_email_allowlist(
     Err(AuthError::AuthFailed(
         "google account is not permitted to access this gateway".to_string(),
     ))
+}
+
+fn granted_scope_for_oauth_user(
+    config: &AuthConfig,
+    email: Option<&str>,
+    requested_scope: &str,
+) -> String {
+    if let Some(email) = email
+        && email.trim().eq_ignore_ascii_case(&config.admin_email)
+    {
+        return config.scopes_supported.join(" ");
+    }
+    requested_scope.to_string()
 }
 
 pub async fn browser_login(
@@ -333,6 +347,8 @@ pub async fn callback(
     }
 
     let subject_id = fingerprint(&google.subject);
+    let granted_scope =
+        granted_scope_for_oauth_user(&state.config, google.email.as_deref(), &request.scope);
     info!(
         client_id = %request.client_id,
         oauth_state_id = %oauth_state_id,
@@ -349,7 +365,7 @@ pub async fn callback(
             client_id: request.client_id,
             subject: google.subject,
             redirect_uri: request.redirect_uri.clone(),
-            scope: request.scope,
+            scope: granted_scope,
             code_challenge: request.code_challenge,
             code_challenge_method: request.code_challenge_method,
             provider_refresh_token: google.refresh_token,
@@ -598,7 +614,7 @@ pub mod tests {
     use base64::Engine;
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     use rsa::RsaPrivateKey;
-    use rsa::pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding};
+    use rsa::pkcs8::{EncodePrivateKey, LineEnding};
     use rsa::traits::PublicKeyParts;
     use serde_json::json;
     use tower::util::ServiceExt;
@@ -1430,7 +1446,9 @@ pub mod tests {
     mod merged_allowlist_callback_tests {
         use axum::body::Body;
         use axum::http::{Request, StatusCode, header};
+        use base64::Engine;
         use serde_json::json;
+        use sha2::{Digest, Sha256};
         use tower::util::ServiceExt;
         use url::Url;
         use wiremock::matchers::{method, path};
@@ -1443,8 +1461,15 @@ pub mod tests {
         use crate::google::GoogleProvider;
         use crate::routes::router;
         use crate::state::AuthState;
-        use crate::types::{AuthorizationRequestRow, BrowserLoginStateRow, RegisteredClient};
+        use crate::types::{
+            AuthorizationRequestRow, BrowserLoginStateRow, RegisteredClient, TokenResponse,
+        };
         use crate::util::now_unix;
+
+        fn pkce_challenge(code_verifier: &str) -> String {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .encode(Sha256::digest(code_verifier.as_bytes()))
+        }
 
         /// Helper that mounts Google mock endpoints on a fresh server and builds
         /// an `AuthState` with that mock, reusing an existing base state's store
@@ -1654,6 +1679,175 @@ pub mod tests {
                 !params.contains_key("error"),
                 "unexpected error in redirect: {location}"
             );
+        }
+
+        #[tokio::test]
+        async fn oauth_client_admin_email_gets_full_scope_even_when_client_requests_read_only() {
+            let mut config = test_auth_config();
+            config.admin_email = "user@example.com".to_string();
+            config.scopes_supported = vec!["axon:read".to_string(), "axon:write".to_string()];
+            config.default_scope = "axon:read axon:write".to_string();
+            let base_state = test_auth_state_with_config(config).await;
+
+            base_state
+                .store
+                .register_client(RegisteredClient {
+                    client_id: "client".to_string(),
+                    redirect_uris: vec!["http://127.0.0.1:7777/callback".to_string()],
+                    created_at: now_unix(),
+                })
+                .await
+                .unwrap();
+
+            let state = state_with_mock_google_from(&base_state).await;
+            state
+                .store
+                .insert_authorization_request(AuthorizationRequestRow {
+                    state: "admin-read-only-state".to_string(),
+                    client_id: "client".to_string(),
+                    redirect_uri: "http://127.0.0.1:7777/callback".to_string(),
+                    client_state: "client-admin".to_string(),
+                    scope: "axon:read".to_string(),
+                    provider_code_verifier: "provider-verifier".to_string(),
+                    code_challenge: pkce_challenge("verifier"),
+                    code_challenge_method: "S256".to_string(),
+                    created_at: now_unix(),
+                    expires_at: now_unix() + 300,
+                })
+                .await
+                .unwrap();
+
+            let app = router(state);
+            let callback = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/auth/google/callback?state=admin-read-only-state&code=upstream-code")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(callback.status(), StatusCode::SEE_OTHER);
+            let location = callback
+                .headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            let redirect = Url::parse(location).unwrap();
+            let code = redirect
+                .query_pairs()
+                .find_map(|(key, value)| (key == "code").then(|| value.into_owned()))
+                .expect("authorization code in redirect");
+
+            let token = app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/token")
+                        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                        .body(Body::from(format!(
+                            "grant_type=authorization_code&code={code}&client_id=client&redirect_uri=http://127.0.0.1:7777/callback&code_verifier=verifier"
+                        )))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(token.status(), StatusCode::OK);
+            let body = axum::body::to_bytes(token.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let response: TokenResponse = serde_json::from_slice(&body).unwrap();
+
+            assert_eq!(response.scope, "axon:read axon:write");
+        }
+
+        #[tokio::test]
+        async fn oauth_client_allowlisted_non_admin_keeps_requested_read_only_scope() {
+            let mut config = test_auth_config();
+            config.admin_email = "admin@example.com".to_string();
+            config.scopes_supported = vec!["axon:read".to_string(), "axon:write".to_string()];
+            config.default_scope = "axon:read axon:write".to_string();
+            let base_state = test_auth_state_with_config(config).await;
+
+            base_state
+                .store
+                .register_client(RegisteredClient {
+                    client_id: "client".to_string(),
+                    redirect_uris: vec!["http://127.0.0.1:7777/callback".to_string()],
+                    created_at: now_unix(),
+                })
+                .await
+                .unwrap();
+            base_state
+                .store
+                .add_allowed_user("user@example.com", "admin", now_unix())
+                .await
+                .unwrap();
+
+            let state = state_with_mock_google_from(&base_state).await;
+            state
+                .store
+                .insert_authorization_request(AuthorizationRequestRow {
+                    state: "non-admin-read-only-state".to_string(),
+                    client_id: "client".to_string(),
+                    redirect_uri: "http://127.0.0.1:7777/callback".to_string(),
+                    client_state: "client-non-admin".to_string(),
+                    scope: "axon:read".to_string(),
+                    provider_code_verifier: "provider-verifier".to_string(),
+                    code_challenge: pkce_challenge("verifier"),
+                    code_challenge_method: "S256".to_string(),
+                    created_at: now_unix(),
+                    expires_at: now_unix() + 300,
+                })
+                .await
+                .unwrap();
+
+            let app = router(state);
+            let callback = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/auth/google/callback?state=non-admin-read-only-state&code=upstream-code")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(callback.status(), StatusCode::SEE_OTHER);
+            let location = callback
+                .headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            let redirect = Url::parse(location).unwrap();
+            let code = redirect
+                .query_pairs()
+                .find_map(|(key, value)| (key == "code").then(|| value.into_owned()))
+                .expect("authorization code in redirect");
+
+            let token = app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/token")
+                        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                        .body(Body::from(format!(
+                            "grant_type=authorization_code&code={code}&client_id=client&redirect_uri=http://127.0.0.1:7777/callback&code_verifier=verifier"
+                        )))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(token.status(), StatusCode::OK);
+            let body = axum::body::to_bytes(token.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let response: TokenResponse = serde_json::from_slice(&body).unwrap();
+
+            assert_eq!(response.scope, "axon:read");
         }
 
         /// Email not in admin or allowed_users must be rejected in the browser-login

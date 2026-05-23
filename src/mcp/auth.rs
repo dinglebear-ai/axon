@@ -285,17 +285,7 @@ pub async fn build_auth_policy(
             );
         }
 
-        let auth_config = lab_auth::config::AuthConfigBuilder::new()
-            .env_prefix("AXON_MCP")
-            .session_cookie_name("axon_mcp_session")
-            .scopes_supported(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
-            .default_scope(AXON_FULL_ACCESS_SCOPE)
-            .resource_path("/mcp")
-            .static_token_scopes(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
-            .enable_dynamic_registration(true)
-            .disable_static_token_with_oauth(false) // static bearer keeps working alongside OAuth
-            .build_from_sources(vars)
-            .map_err(|e| format!("failed to build lab-auth AuthConfig: {e}"))?;
+        let auth_config = build_oauth_auth_config_from_sources(vars)?;
 
         let auth_state = AuthState::new(auth_config)
             .await
@@ -348,6 +338,22 @@ pub async fn build_auth_policy(
          or bind AXON_MCP_HTTP_HOST to 127.0.0.1/localhost"
     )
     .into())
+}
+
+fn build_oauth_auth_config_from_sources(
+    vars: Vec<(String, String)>,
+) -> Result<lab_auth::config::AuthConfig, Box<dyn std::error::Error>> {
+    lab_auth::config::AuthConfigBuilder::new()
+        .env_prefix("AXON_MCP")
+        .session_cookie_name("axon_mcp_session")
+        .scopes_supported(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
+        .default_scope(AXON_FULL_ACCESS_SCOPE)
+        .resource_path("/mcp")
+        .static_token_scopes(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
+        .enable_dynamic_registration(true)
+        .disable_static_token_with_oauth(false) // static bearer keeps working alongside OAuth
+        .build_from_sources(vars)
+        .map_err(|e| format!("failed to build lab-auth AuthConfig: {e}").into())
 }
 
 /// Build the `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` value.

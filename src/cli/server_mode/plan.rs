@@ -5,6 +5,10 @@ use std::fmt;
 
 use super::{ServerJobFamily, server_mode_rejects_host_local_embed_input};
 
+#[path = "plan_ingest.rs"]
+mod plan_ingest;
+use plan_ingest::ingest_server_rest_plan;
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ServerRestPlan {
     pub method: &'static str,
@@ -306,47 +310,6 @@ fn embed_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanErro
         }),
         label: "embed",
         poll_family: Some(ServerJobFamily::Embed),
-    })
-}
-
-fn ingest_server_rest_plan(
-    cfg: &Config,
-    sessions: bool,
-) -> Result<ServerRestPlan, ServerPlanError> {
-    if !sessions
-        && let Some(subaction) = cfg.positional.first().map(String::as_str)
-        && let Some(plan) =
-            async_job_lifecycle_plan("ingest", ServerJobFamily::Ingest, subaction, cfg)?
-    {
-        return Ok(plan);
-    }
-    if sessions {
-        return Ok(ServerRestPlan {
-            method: "POST",
-            path: "/v1/ingest".to_string(),
-            body: serde_json::json!({
-                "source_type": "sessions",
-                "sessions_claude": cfg.sessions_claude,
-                "sessions_codex": cfg.sessions_codex,
-                "sessions_gemini": cfg.sessions_gemini,
-                "sessions_project": cfg.sessions_project,
-            }),
-            label: "sessions",
-            poll_family: Some(ServerJobFamily::Ingest),
-        });
-    }
-    let target = cfg
-        .positional
-        .first()
-        .ok_or_else(|| ServerPlanError::new("ingest requires <target>"))?;
-    let source = crate::services::ingest::classify_target(target, cfg.github_include_source)
-        .map_err(|err| ServerPlanError::new(err.to_string()))?;
-    Ok(ServerRestPlan {
-        method: "POST",
-        path: "/v1/ingest".to_string(),
-        body: serde_json::to_value(source).map_err(|err| ServerPlanError::new(err.to_string()))?,
-        label: "ingest",
-        poll_family: Some(ServerJobFamily::Ingest),
     })
 }
 

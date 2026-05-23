@@ -44,7 +44,7 @@ MCP HTTP env vars:
 - `AXON_MCP_HTTP_PORT` (default `8001`)
 - `AXON_MCP_HTTP_TOKEN` (static bearer token; required for non-loopback binds unless OAuth mode is enabled)
 - `AXON_MCP_AUTH_MODE=oauth` (optional lab-auth Google OAuth/JWT mode)
-- `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, `AXON_MCP_AUTH_ADMIN_EMAIL` for OAuth mode
+- `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, `AXON_MCP_AUTH_ADMIN_EMAIL` for OAuth mode. The admin email receives full Axon OAuth scopes.
 
 ## Authentication
 
