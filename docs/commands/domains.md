@@ -7,6 +7,7 @@ Last Updated: 20:30:18 | 03/03/2026 EST
 List indexed domains for the active Qdrant collection.
 
 By default this runs in fast facet mode (`domain -> vector count`). Optional detailed mode performs a full scroll to add unique URL counts per domain.
+Pass `--domain <host>` to do an exact indexed/not-indexed check for one domain.
 
 ## Synopsis
 
@@ -34,6 +35,7 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--collection <name>` | `cortex` | Qdrant collection to inspect. |
 | `--json` | `false` | JSON output format. |
+| `--domain <host-or-url>` | — | Check whether one exact indexed domain/host has at least one stored URL. URL input is accepted and normalized to its host. |
 
 ## Examples
 
@@ -46,6 +48,12 @@ axon domains --json
 
 # Different collection
 axon domains --collection docs-local
+
+# Check whether one exact domain is indexed
+axon domains --domain docs.rs
+
+# Machine-readable exact domain check
+axon domains --domain https://docs.rs/std --json
 ```
 
 ## Domain Modes
@@ -65,3 +73,5 @@ axon domains --collection docs-local
 
 - If fast facet lookup fails, the command automatically falls back to detailed full-scroll mode.
 - Fast-mode output includes a tip for enabling detailed mode.
+- `--domain` uses a bounded Qdrant scroll with `limit=1`; it does not depend on the top-N domain facet cap.
+- `--domain` matches exact `payload.domain`. `example.com` does not include `docs.example.com`.

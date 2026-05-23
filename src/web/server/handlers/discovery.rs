@@ -16,12 +16,22 @@ type WebState = (super::super::state::AppState, Arc<Config>);
 pub(crate) struct PaginationQuery {
     limit: Option<usize>,
     offset: Option<usize>,
+    domain: Option<String>,
+    cursor: Option<String>,
 }
 
 impl PaginationQuery {
     pub(crate) fn pagination(&self, default_limit: usize) -> Pagination {
+        self.pagination_with_max(default_limit, 500)
+    }
+
+    pub(crate) fn domain_sources_pagination(&self, default_limit: usize) -> Pagination {
+        self.pagination_with_max(default_limit, 10_000)
+    }
+
+    fn pagination_with_max(&self, default_limit: usize, max_limit: usize) -> Pagination {
         Pagination {
-            limit: self.limit.unwrap_or(default_limit).clamp(1, 500),
+            limit: self.limit.unwrap_or(default_limit).clamp(1, max_limit),
             offset: self.offset.unwrap_or(0),
         }
     }
@@ -40,9 +50,26 @@ impl PaginationQuery {
 pub(crate) async fn sources(
     State((_state, cfg)): State<WebState>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<services::types::SourcesResult>, HttpError> {
+) -> Result<Json<serde_json::Value>, HttpError> {
+    if let Some(domain) = query.domain.as_deref() {
+        return services::system::sources_for_domain(
+            &cfg,
+            domain,
+            query.domain_sources_pagination(100),
+            query.cursor.as_deref(),
+        )
+        .await
+        .and_then(|result| {
+            serde_json::to_value(result).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+        })
+        .map(Json)
+        .map_err(HttpError::from_box);
+    }
     services::system::sources(&cfg, query.pagination(100))
         .await
+        .and_then(|result| {
+            serde_json::to_value(result).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+        })
         .map(Json)
         .map_err(HttpError::from_box)
 }
@@ -60,9 +87,22 @@ pub(crate) async fn sources(
 pub(crate) async fn domains(
     State((_state, cfg)): State<WebState>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<services::types::DomainsResult>, HttpError> {
+) -> Result<Json<serde_json::Value>, HttpError> {
+    if let Some(domain) = query.domain.as_deref() {
+        return services::system::domain_indexed(&cfg, domain)
+            .await
+            .and_then(|result| {
+                serde_json::to_value(result)
+                    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+            })
+            .map(Json)
+            .map_err(HttpError::from_box);
+    }
     services::system::domains(&cfg, query.pagination(100))
         .await
+        .and_then(|result| {
+            serde_json::to_value(result).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+        })
         .map(Json)
         .map_err(HttpError::from_box)
 }
@@ -119,4 +159,39 @@ pub(crate) async fn doctor(
         .await
         .map(Json)
         .map_err(HttpError::from_box)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PaginationQuery;
+
+    #[test]
+    fn unfiltered_pagination_keeps_legacy_500_cap() {
+        let query = PaginationQuery {
+            limit: Some(10_000),
+            offset: Some(3),
+            domain: None,
+            cursor: None,
+        };
+
+        let pagination = query.pagination(100);
+
+        assert_eq!(pagination.limit, 500);
+        assert_eq!(pagination.offset, 3);
+    }
+
+    #[test]
+    fn domain_sources_pagination_allows_export_cap() {
+        let query = PaginationQuery {
+            limit: Some(10_000),
+            offset: Some(0),
+            domain: Some("example.com".to_string()),
+            cursor: None,
+        };
+
+        let pagination = query.domain_sources_pagination(100);
+
+        assert_eq!(pagination.limit, 10_000);
+        assert_eq!(pagination.offset, 0);
+    }
 }

@@ -17,11 +17,12 @@ mod watchdog;
 pub use self::dedupe::dedupe;
 pub use self::doctor::{doctor, map_doctor_payload};
 pub use self::domains::{
-    detailed_domains, domains, map_domains_payload, summarize_detailed_domains,
+    detailed_domains, domain_indexed, domains, map_domains_payload, summarize_detailed_domains,
     summarize_detailed_domains_limited,
 };
 pub use self::sources::{
-    map_sources_payload, sources, sources_schema_version_breakdown, sources_with_breakdown,
+    domain_sources_from_urls, map_sources_payload, normalize_domain_query, sources,
+    sources_for_domain, sources_schema_version_breakdown, sources_with_breakdown,
 };
 pub use self::stats::{map_stats_payload, stats};
 pub use self::status::{StatusJobs, build_status_payload, full_status, load_status_jobs};

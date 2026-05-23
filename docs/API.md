@@ -10,7 +10,10 @@ Read routes:
 
 - `GET /v1/capabilities`
 - `GET /v1/sources?limit=100&offset=0`
+- `GET /v1/sources?domain=docs.rs&limit=100`
+- `GET /v1/sources?domain=docs.rs&limit=100&cursor=<next_cursor>`
 - `GET /v1/domains?limit=100&offset=0`
+- `GET /v1/domains?domain=docs.rs`
 - `GET /v1/stats`
 - `GET /v1/status`
 - `GET /v1/doctor`
@@ -30,6 +33,8 @@ Exploration routes:
 - `POST /v1/map` with `{ "url": "...", "limit": 100, "offset": 0 }`
 - `POST /v1/search` with `{ "query": "...", "limit": 10, "offset": 0, "time_range": "week" }`
 - `POST /v1/research` with the same body as search; HTTP requests time out after 35 seconds.
+
+Domain filters are exact host matches against indexed `payload.domain` values. `example.com` does not include `docs.example.com` unless that exact host is requested.
 
 Async job routes:
 

@@ -1,12 +1,14 @@
 //! Domains facet — indexed domains with vector / URL counts.
 
 use crate::core::config::Config;
-use crate::services::system::PayloadParseError;
+use crate::services::system::{PayloadParseError, normalize_domain_query};
 use crate::services::types::{
-    DetailedDomainFacet, DetailedDomainsResult, DomainFacet, DomainsResult, Pagination,
+    DetailedDomainFacet, DetailedDomainsResult, DomainFacet, DomainIndexedResult, DomainsResult,
+    Pagination,
 };
 use crate::vector::ops::qdrant::{
-    domains_payload, env_usize_clamped, payload_domain, payload_url, qdrant_scroll_pages_selective,
+    domains_payload, env_usize_clamped, payload_domain, payload_url, qdrant_domain_has_indexed_url,
+    qdrant_scroll_pages_selective,
 };
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -64,6 +66,21 @@ pub async fn domains(
         .await
         .map_err(|e| -> Box<dyn Error> { format!("domains facet query failed: {e}").into() })?;
     Ok(map_domains_payload(&payload)?)
+}
+
+#[must_use = "domain_indexed returns a Result that should be handled"]
+pub async fn domain_indexed(
+    cfg: &Config,
+    domain: &str,
+) -> Result<DomainIndexedResult, Box<dyn Error>> {
+    let normalized = normalize_domain_query(domain)?;
+    let indexed = qdrant_domain_has_indexed_url(cfg, &normalized)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("domain indexed check failed: {e}").into() })?;
+    Ok(DomainIndexedResult {
+        domain: normalized,
+        indexed,
+    })
 }
 
 pub fn summarize_detailed_domains(payloads: &[serde_json::Value]) -> DetailedDomainsResult {

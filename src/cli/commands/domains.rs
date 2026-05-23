@@ -9,12 +9,36 @@ use std::error::Error;
 
 pub async fn run_domains(cfg: &Config) -> Result<(), Box<dyn Error>> {
     log_info("command=domains");
+    if let Some(domain) = cfg.domains_domain.as_deref() {
+        return run_domain_check(cfg, domain).await;
+    }
+
     if !domains_detailed_mode() && try_fast_domains(cfg).await? {
         return Ok(());
     }
 
     let result = system::detailed_domains(cfg).await?;
     render_detailed_domains(cfg, result)
+}
+
+async fn run_domain_check(cfg: &Config, domain: &str) -> Result<(), Box<dyn Error>> {
+    let result = system::domain_indexed(cfg, domain).await?;
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    println!("{}", primary("Domain"));
+    println!(
+        "  {} {}",
+        accent(&result.domain),
+        muted(if result.indexed {
+            "indexed=true"
+        } else {
+            "indexed=false"
+        })
+    );
+    Ok(())
 }
 
 fn domains_detailed_mode() -> bool {
