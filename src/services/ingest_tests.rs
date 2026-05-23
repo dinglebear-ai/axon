@@ -149,6 +149,177 @@ fn source_from_mcp_request_rejects_invalid_youtube_target() {
     assert!(err.contains("YouTube"));
 }
 
+#[test]
+fn source_from_mcp_request_normalizes_supported_git_targets() {
+    let cfg = Config::test_default();
+
+    let gitlab = source_from_mcp_request(
+        &ingest_req(
+            IngestSourceType::Gitlab,
+            "https://gitlab.com/group/subgroup/project/-/issues/1",
+        ),
+        &cfg,
+    )
+    .expect("valid gitlab target");
+    assert!(matches!(
+        gitlab,
+        IngestSource::Gitlab {
+            target,
+            include_source,
+        } if target == "gitlab.com/group/subgroup/project"
+            && include_source == cfg.github_include_source
+    ));
+
+    let gitea = source_from_mcp_request(
+        &ingest_req(
+            IngestSourceType::Gitea,
+            "gitea:gitea.example.com/org/repo.git",
+        ),
+        &cfg,
+    )
+    .expect("valid gitea target");
+    assert!(matches!(
+        gitea,
+        IngestSource::Gitea {
+            target,
+            include_source,
+        } if target == "gitea.example.com/org/repo"
+            && include_source == cfg.github_include_source
+    ));
+
+    let generic = source_from_mcp_request(
+        &ingest_req(
+            IngestSourceType::Git,
+            "git:https://example.com/org/repo.git",
+        ),
+        &cfg,
+    )
+    .expect("valid generic git target");
+    assert!(matches!(
+        generic,
+        IngestSource::GenericGit {
+            target,
+            include_source,
+        } if target == "https://example.com/org/repo.git"
+            && include_source == cfg.github_include_source
+    ));
+}
+
+#[test]
+fn source_from_mcp_request_respects_include_source_override() {
+    let mut cfg = Config::test_default();
+    cfg.github_include_source = true;
+    let mut req = ingest_req(
+        IngestSourceType::Github,
+        "https://github.com/owner/repo.git",
+    );
+    req.include_source = Some(false);
+
+    let source = source_from_mcp_request(&req, &cfg).expect("valid github target");
+
+    assert!(matches!(
+        source,
+        IngestSource::Github {
+            repo,
+            include_source: false,
+        } if repo == "owner/repo"
+    ));
+}
+
+#[test]
+fn source_from_mcp_request_accepts_youtube_handle() {
+    let cfg = Config::test_default();
+    let source = source_from_mcp_request(
+        &ingest_req(
+            IngestSourceType::Youtube,
+            "https://www.youtube.com/@SpaceinvaderOne",
+        ),
+        &cfg,
+    )
+    .expect("valid youtube channel target");
+
+    assert!(
+        matches!(source, IngestSource::Youtube { target } if target.contains("@SpaceinvaderOne"))
+    );
+}
+
+#[test]
+fn source_from_mcp_request_accepts_youtube_playlist_url() {
+    let cfg = Config::test_default();
+    let source = source_from_mcp_request(
+        &ingest_req(
+            IngestSourceType::Youtube,
+            "https://www.youtube.com/playlist?list=PL1234567890abcdef",
+        ),
+        &cfg,
+    )
+    .expect("valid youtube playlist target");
+
+    assert!(matches!(source, IngestSource::Youtube { target } if target.contains("playlist")));
+}
+
+#[test]
+fn source_from_mcp_request_rejects_non_reddit_comments_url() {
+    let cfg = Config::test_default();
+    let err = source_from_mcp_request(
+        &ingest_req(
+            IngestSourceType::Reddit,
+            "https://example.com/r/rust/comments/abc/title",
+        ),
+        &cfg,
+    )
+    .expect_err("non-reddit thread URL should fail");
+
+    assert!(err.contains("Reddit") || err.contains("reddit"));
+}
+
+#[test]
+fn source_from_mcp_request_requires_source_type() {
+    let cfg = Config::test_default();
+    let req = IngestRequest {
+        target: Some("owner/repo".to_string()),
+        ..Default::default()
+    };
+
+    let err = source_from_mcp_request(&req, &cfg).expect_err("missing source type");
+
+    assert!(err.contains("source_type is required"));
+}
+
+#[test]
+fn source_from_mcp_request_requires_target_for_github() {
+    let cfg = Config::test_default();
+    let req = IngestRequest {
+        source_type: Some(IngestSourceType::Github),
+        ..Default::default()
+    };
+
+    let err = source_from_mcp_request(&req, &cfg).expect_err("missing github target");
+
+    assert!(err.contains("target repo is required"));
+}
+
+#[test]
+fn source_from_mcp_request_maps_default_sessions_options() {
+    let cfg = Config::test_default();
+    let req = IngestRequest {
+        source_type: Some(IngestSourceType::Sessions),
+        ..Default::default()
+    };
+
+    let source = source_from_mcp_request(&req, &cfg).expect("default sessions options");
+
+    assert!(matches!(
+        source,
+        IngestSource::Sessions {
+            sessions_claude: false,
+            sessions_codex: false,
+            sessions_gemini: false,
+            sessions_project: None,
+        }
+    ));
+}
+
 #[tokio::test]
 async fn ingest_start_with_context_enqueues_sessions_jobs_with_sqlite_backend() {
     let mut cfg = Config::test_default();
