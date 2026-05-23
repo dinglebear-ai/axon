@@ -189,6 +189,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: axon-windows
+          save-if: "false"
       - name: create web assets placeholder
         run: mkdir -p apps/web/out
         shell: bash
@@ -673,20 +677,6 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
       - name: Fetch MCP doc fixture for smoke test
         run: mkdir -p docs && git show HEAD:docs/MCP.md > docs/MCP.md
 
