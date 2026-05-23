@@ -341,11 +341,7 @@ fn single_url(cfg: &Config, command: &str) -> Result<String, ServerPlanError> {
 }
 
 fn query_text(cfg: &Config, command: &str) -> Result<String, ServerPlanError> {
-    cfg.query
-        .as_deref()
-        .map(str::trim)
-        .filter(|query| !query.is_empty())
-        .map(str::to_string)
+    cli::commands::resolve_input_text(cfg)
         .ok_or_else(|| ServerPlanError::new(format!("{command} requires text")))
 }
 

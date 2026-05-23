@@ -240,6 +240,18 @@ fn query_server_mode_uses_direct_rest_path() {
 }
 
 #[test]
+fn ask_server_mode_accepts_positional_text() {
+    let cfg = cfg(CommandKind::Ask, &["mcp", "primitive", "prompts"]);
+
+    let plan = plan::server_rest_plan(&cfg).expect("ask plan");
+
+    assert_eq!(plan.method, "POST");
+    assert_eq!(plan.path, "/v1/ask");
+    assert_eq!(plan.body["query"], "mcp primitive prompts");
+    assert_eq!(plan.body["collection"], "axon");
+}
+
+#[test]
 fn sources_server_mode_preserves_limit_query() {
     let mut cfg = cfg(CommandKind::Sources, &[]);
     cfg.search_limit = 25;
