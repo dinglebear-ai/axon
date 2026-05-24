@@ -354,6 +354,12 @@ pub async fn run_ingest_sync(cfg: &Config, source: IngestSource) -> Result<(), B
             )
             .into());
         }
+        IngestSource::PreparedSessions { .. } => {
+            return Err(anyhow::anyhow!(
+                "prepared sessions ingest is handled by the sessions command, not ingest"
+            )
+            .into());
+        }
     };
     print_ingest_sync_result(cfg, source_label, chunks, &target_label);
     Ok(())

@@ -60,6 +60,22 @@ export type components = {
             "kind": string;
             "message": string;
         };
+        "IngestSessionsPreparedRequest": {
+            "collection"?: string | null;
+            "docs": components['schemas']['PreparedSessionDoc'][];
+            "project"?: string | null;
+        };
+        "PreparedSessionDoc": {
+            "extra"?: unknown;
+            "session_date"?: string | null;
+            "session_file": string;
+            "session_platform": string;
+            "session_project"?: string | null;
+            "session_turn_count"?: number | null;
+            "text": string;
+            "title"?: string | null;
+            "url": string;
+        };
         "RenderMode": "http" | "chrome" | "auto-switch";
         "RestAskRequest": {
             "ask_authoritative_boost"?: number | null;

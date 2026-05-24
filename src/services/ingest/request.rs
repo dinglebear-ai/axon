@@ -53,23 +53,10 @@ pub fn source_from_mcp_request(
             validate_youtube_ingest_target(&target)?;
             Ok(IngestSource::Youtube { target })
         }
-        IngestSourceType::Sessions => {
-            let sessions =
-                req.sessions
-                    .clone()
-                    .unwrap_or(crate::mcp::schema::SessionsIngestOptions {
-                        claude: None,
-                        codex: None,
-                        gemini: None,
-                        project: None,
-                    });
-            Ok(IngestSource::Sessions {
-                sessions_claude: sessions.claude.unwrap_or(false),
-                sessions_codex: sessions.codex.unwrap_or(false),
-                sessions_gemini: sessions.gemini.unwrap_or(false),
-                sessions_project: sessions.project,
-            })
-        }
+        IngestSourceType::Sessions => Err(
+            "remote sessions ingest must use /v1/ingest/sessions/prepared; server-local session scanning is disabled"
+                .to_string(),
+        ),
     }
 }
 
@@ -94,6 +81,7 @@ pub fn validate_ingest_source(source: &IngestSource) -> Result<(), String> {
             validate_youtube_ingest_target(target)?;
         }
         IngestSource::Sessions { .. } => {}
+        IngestSource::PreparedSessions { .. } => {}
     }
     Ok(())
 }

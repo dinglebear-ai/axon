@@ -65,6 +65,10 @@ pub(crate) fn ingest_router(service_context: Arc<ServiceContext>) -> Router<WebS
         ))
 }
 
+pub(crate) fn prepared_sessions_router(_service_context: Arc<ServiceContext>) -> Router<WebState> {
+    Router::new().route("/", post(start_prepared_sessions_ingest))
+}
+
 /// Validate URLs for SSRF before enqueue — rejects private-IP targets with
 /// a 400 so callers learn immediately rather than after a worker run.
 fn validate_ssrf_urls(urls: &[String]) -> Result<(), HttpError> {
@@ -242,6 +246,31 @@ pub(crate) async fn start_ingest(
     let outcome = services::ingest::ingest_start_with_context(&cfg, source, &state.service_context)
         .await
         .map_err(HttpError::from_box)?;
+    accepted_job("/v1/ingest", outcome.result.job_id)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/ingest/sessions/prepared",
+    request_body = crate::ingest::sessions::IngestSessionsPreparedRequest,
+    responses(
+        (status = 202, description = "Prepared sessions ingest job accepted", body = AcceptedJob),
+        (status = 400, description = "Invalid prepared sessions request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream ingest service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "jobs"
+)]
+pub(crate) async fn start_prepared_sessions_ingest(
+    State((state, cfg)): State<(AppState, Arc<Config>)>,
+    Json(req): Json<crate::ingest::sessions::IngestSessionsPreparedRequest>,
+) -> Result<impl IntoResponse, HttpError> {
+    let outcome = services::ingest::ingest_sessions_prepared_start_with_context(
+        &cfg,
+        req,
+        &state.service_context,
+    )
+    .await
+    .map_err(HttpError::from_box)?;
     accepted_job("/v1/ingest", outcome.result.job_id)
 }
 

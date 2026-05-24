@@ -1109,6 +1109,56 @@
         }
       }
     },
+    "/v1/ingest/sessions/prepared": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "start_prepared_sessions_ingest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestSessionsPreparedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Prepared sessions ingest job accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid prepared sessions request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream ingest service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/ingest/{id}": {
       "get": {
         "tags": [
@@ -2099,6 +2149,84 @@
             "type": "string"
           }
         }
+      },
+      "IngestSessionsPreparedRequest": {
+        "type": "object",
+        "required": [
+          "docs"
+        ],
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "docs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreparedSessionDoc"
+            }
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PreparedSessionDoc": {
+        "type": "object",
+        "required": [
+          "url",
+          "text",
+          "session_platform",
+          "session_file"
+        ],
+        "properties": {
+          "extra": {},
+          "session_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_file": {
+            "type": "string"
+          },
+          "session_platform": {
+            "type": "string"
+          },
+          "session_project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_turn_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "RenderMode": {
         "type": "string",

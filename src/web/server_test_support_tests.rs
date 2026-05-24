@@ -7,6 +7,8 @@ use crate::services::context::ServiceContext;
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::types::ServiceJob;
 use async_trait::async_trait;
+use axum::http::StatusCode;
+use serial_test::serial;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::oneshot;
@@ -164,6 +166,44 @@ pub(super) async fn spawn_full_test_server(
 pub(super) async fn stop(shutdown: oneshot::Sender<()>, handle: tokio::task::JoinHandle<()>) {
     let _ = shutdown.send(());
     handle.await.expect("server task");
+}
+
+#[tokio::test]
+#[serial]
+async fn prepared_sessions_route_accepts_body_larger_than_default_rest_limit() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "docs": [{
+            "url": "file:///tmp/session.jsonl",
+            "title": null,
+            "text": "x".repeat(140 * 1024),
+            "session_platform": "codex",
+            "session_project": "axon_rust",
+            "session_date": null,
+            "session_turn_count": 1,
+            "session_file": "/tmp/session.jsonl",
+            "extra": {}
+        }],
+        "project": "axon_rust",
+        "collection": "axon_sessions"
+    });
+
+    let response = client
+        .post(format!("{base}/v1/ingest/sessions/prepared"))
+        .bearer_auth("secret")
+        .json(&body)
+        .send()
+        .await
+        .expect("prepared sessions request");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_ne!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_ne!(status, StatusCode::UNAUTHORIZED);
+    assert_ne!(status, StatusCode::NOT_FOUND);
 }
 
 async fn spawn_app(

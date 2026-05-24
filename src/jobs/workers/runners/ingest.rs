@@ -42,19 +42,79 @@ pub async fn run_ingest_job(
             .flatten();
     let (progress_tx, progress_task) = spawn_ingest_progress_persister(pool, id, attempt_id);
 
-    let result = execute_ingest_source(
-        source,
-        &effective_cfg,
-        progress_tx.clone(),
-        cancel_token.clone(),
-    )
-    .await?;
+    let result = match source {
+        IngestSource::PreparedSessions {} => {
+            execute_prepared_sessions_ingest(
+                pool,
+                id,
+                &effective_cfg,
+                progress_tx.clone(),
+                cancel_token.clone(),
+            )
+            .await?
+        }
+        source => {
+            execute_ingest_source(
+                source,
+                &effective_cfg,
+                progress_tx.clone(),
+                cancel_token.clone(),
+            )
+            .await?
+        }
+    };
     drop(progress_tx);
     if let Err(e) = progress_task.await {
         tracing::warn!(job_id = %id, error = %e, "ingest progress persister task failed");
     }
 
     Ok(Some(result.payload))
+}
+
+async fn execute_prepared_sessions_ingest(
+    pool: &SqlitePool,
+    id: uuid::Uuid,
+    cfg: &Config,
+    progress_tx: mpsc::Sender<serde_json::Value>,
+    cancel_token: Option<CancellationToken>,
+) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
+    let payload_json: Option<String> = sqlx::query_scalar(
+        "SELECT payload_json FROM axon_ingest_payloads \
+         WHERE job_id = ? AND payload_kind = 'prepared_sessions'",
+    )
+    .bind(id.to_string())
+    .fetch_optional(pool)
+    .await?;
+    let payload_json =
+        payload_json.ok_or_else(|| format!("prepared sessions payload missing for job {id}"))?;
+    if cancel_token
+        .as_ref()
+        .is_some_and(CancellationToken::is_cancelled)
+    {
+        return Err("ingest canceled".into());
+    }
+    let request: crate::ingest::sessions::IngestSessionsPreparedRequest =
+        serde_json::from_str(&payload_json)?;
+    let fut = crate::services::ingest::ingest_sessions_prepared_with_progress(
+        cfg,
+        request,
+        None,
+        Some(progress_tx),
+    );
+    let result = cancelable(fut, cancel_token.as_ref()).await?;
+
+    if let Err(e) = sqlx::query("DELETE FROM axon_ingest_payloads WHERE job_id = ?")
+        .bind(id.to_string())
+        .execute(pool)
+        .await
+    {
+        tracing::warn!(
+            job_id = %id,
+            error = %e,
+            "prepared sessions sidecar cleanup failed after successful ingest"
+        );
+    }
+    Ok(result)
 }
 
 async fn execute_ingest_source(
@@ -120,6 +180,9 @@ async fn execute_ingest_source(
                 Some(progress_tx),
             );
             cancelable(fut, cancel_token.as_ref()).await
+        }
+        IngestSource::PreparedSessions { .. } => {
+            Err("prepared sessions must be executed through sidecar loader".into())
         }
     }
 }

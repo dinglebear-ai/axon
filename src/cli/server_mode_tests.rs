@@ -366,6 +366,18 @@ fn sessions_server_mode_body_deserializes_as_rest_contract() {
 }
 
 #[test]
+fn sessions_lifecycle_subcommands_route_to_ingest_job_paths() {
+    let job_id = "11111111-1111-1111-1111-111111111111";
+    let cfg = cfg(CommandKind::Sessions, &["status", job_id]);
+
+    let plan = plan::server_rest_plan(&cfg).expect("sessions status plan");
+
+    assert_eq!(plan.method, "GET");
+    assert_eq!(plan.path, format!("/v1/ingest/{job_id}"));
+    assert_eq!(plan.label, "ingest");
+}
+
+#[test]
 fn query_server_mode_uses_direct_rest_path() {
     let mut cfg = cfg(CommandKind::Query, &[]);
     cfg.query = Some("routing contract".to_string());

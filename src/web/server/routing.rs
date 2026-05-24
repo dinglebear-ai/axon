@@ -34,6 +34,7 @@ pub(super) fn router(
     };
     let ask_router = ask_router::<(AppState, Arc<Config>)>(Arc::clone(&cfg));
     let rest_body_limit = DefaultBodyLimit::max(128 * 1024);
+    let prepared_sessions_body_limit = DefaultBodyLimit::max(96 * 1024 * 1024);
     let read_routes = Router::new()
         .route("/v1/capabilities", get(v1_capabilities))
         .route("/v1/sources", get(handlers::discovery::sources))
@@ -79,9 +80,23 @@ pub(super) fn router(
         )
         .route("/v1/watch/{id}/run", post(handlers::admin::run_watch))
         .layer(rest_body_limit);
-    let rest_routes = protect_routes(read_routes, &auth_policy, ScopeRequirement::Read).merge(
-        protect_routes(write_routes, &auth_policy, ScopeRequirement::Write),
-    );
+    let large_write_routes = Router::new()
+        .nest(
+            "/v1/ingest/sessions/prepared",
+            handlers::async_jobs::prepared_sessions_router(Arc::clone(&service_context)),
+        )
+        .layer(prepared_sessions_body_limit);
+    let rest_routes = protect_routes(read_routes, &auth_policy, ScopeRequirement::Read)
+        .merge(protect_routes(
+            write_routes,
+            &auth_policy,
+            ScopeRequirement::Write,
+        ))
+        .merge(protect_routes(
+            large_write_routes,
+            &auth_policy,
+            ScopeRequirement::Write,
+        ));
     Router::new()
         .route("/healthz", get(super::super::health::healthz))
         .route("/readyz", get(super::super::health::readyz))
@@ -216,6 +231,9 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
         else {
             continue;
         };
+        if *method == Method::POST && prefix == "/v1/ingest" {
+            return true;
+        }
         if *method == Method::POST
             && (remainder == "cleanup" || remainder == "recover" || remainder.ends_with("/cancel"))
         {

@@ -42,7 +42,7 @@ URL or query → discover → fetch + embed → query / ask
 | GitHub repo | — | `action: "ingest", source_type: "github", target: "owner/repo"` | `query` / `ask` |
 | Reddit thread or subreddit | — | `action: "ingest", source_type: "reddit", target: "r/name"` | `query` / `ask` |
 | YouTube video | — | `action: "ingest", source_type: "youtube", target: "<url>"` | `query` / `ask` |
-| Past Claude/Codex/Gemini sessions | — | `action: "ingest", source_type: "sessions", target: "<dir>"` | `query` / `ask` |
+| Past Claude/Codex/Gemini sessions | — | CLI only: `axon sessions` | `query` / `ask` |
 
 `scrape`, `crawl`, `embed`, and the `ingest` paths all auto-embed unless you set `embed: false`.
 
@@ -120,13 +120,11 @@ CLI: `axon extract <url> --query "…"` (the `--query` flag carries the extracti
 
 { "action": "ingest", "source_type": "youtube", "target": "https://youtube.com/watch?v=abc" }
 
-{ "action": "ingest", "source_type": "sessions",
-  "sessions": { "claude": true, "codex": true, "gemini": true, "project": "axon" } }
 ```
 
-`source_type` ∈ `github | reddit | youtube | sessions`. Lifecycle subactions (`status`, `cancel`, `list`, `cleanup`, `clear`, `recover`) work the same as crawl/embed/extract.
+`source_type` ∈ `github | reddit | youtube`. Lifecycle subactions (`status`, `cancel`, `list`, `cleanup`, `clear`, `recover`) work the same as crawl/embed/extract.
 
-CLI: `axon ingest <target>` with source-specific flags. GitHub: `--include-source`/`--no-source`, `--max-issues`, `--max-prs` (default 100; `0` = unlimited). Reddit: `--sort hot|top|new|rising`, `--time hour|…|all`, `--max-posts`, `--min-score`, `--depth`, `--scrape-links`.
+CLI: `axon ingest <target>` with source-specific flags. GitHub: `--include-source`/`--no-source`, `--max-issues`, `--max-prs` (default 100; `0` = unlimited). Reddit: `--sort hot|top|new|rising`, `--time hour|…|all`, `--max-posts`, `--min-score`, `--depth`, `--scrape-links`. Use `axon sessions` for Claude/Codex/Gemini local history; in server mode the CLI uploads prepared, redacted documents to the server-side async ingest queue. MCP legacy sessions ingest is rejected to avoid scanning server-local history paths.
 
 ## Query and RAG
 
