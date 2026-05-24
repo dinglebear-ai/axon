@@ -137,6 +137,16 @@ pub trait ServiceJobRuntime: Send + Sync {
     /// `open_sqlite_pool()` (which re-runs migrations on every call) and avoids
     /// bypassing `notify()` on enqueue.
     async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>>;
+
+    /// Per-status histogram for a single job kind. Missing statuses are
+    /// absent from the returned map; callers must treat absent as zero.
+    async fn count_jobs_by_status(
+        &self,
+        kind: JobKind,
+    ) -> Result<
+        std::collections::HashMap<crate::jobs::status::JobStatus, i64>,
+        Box<dyn Error + Send + Sync>,
+    >;
 }
 
 pub async fn resolve_runtime(
@@ -309,6 +319,16 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
 
     async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
         Ok(job_query::count_jobs(self.backend.pool(), kind).await?)
+    }
+
+    async fn count_jobs_by_status(
+        &self,
+        kind: JobKind,
+    ) -> Result<
+        std::collections::HashMap<crate::jobs::status::JobStatus, i64>,
+        Box<dyn Error + Send + Sync>,
+    > {
+        Ok(job_query::count_jobs_by_status(self.backend.pool(), kind).await?)
     }
 }
 

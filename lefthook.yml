@@ -1,55 +1,74 @@
+# Hook strategy:
+#   pre-commit — fast, staged-file-scoped checks only. Target <30s.
+#     Every command is wrapped with scripts/with_timeout.sh so a single
+#     misbehaving check can't wedge a commit indefinitely.
+#     Anything that requires a workspace compile (clippy, test) belongs on
+#     pre-push so it runs once before publishing, not on every WIP commit.
+#   pre-push — full workspace clippy + lib tests, serial. Runs once before
+#     a branch hits CI.
+#
+# Regressions are enforced two ways:
+#   - lefthook-speed hook below + scripts/check_lefthook_pre_commit_speed.py
+#     fail the moment anyone adds a `cargo … --workspace` (or similar) to
+#     pre-commit.
+#   - The same script runs in CI as a standalone job.
+
 pre-commit:
   parallel: true
   commands:
     compose-ports:
-      run: python3 scripts/check_compose_port_bindings.py --staged
-    secrets:
-      run: cargo xtask check-secrets
-    env-guard:
-      run: cargo xtask check-env-staged
-    claude-symlinks:
-      run: cargo xtask check-claude-symlinks
-    broken-symlinks:
-      run: cargo xtask check-broken-symlinks
-    mcp-http-only:
-      glob: "**/*.rs"
-      run: cargo xtask check-mcp-http
-    no-mod-rs:
-      glob: "**/*.rs"
-      run: cargo xtask check-no-mod-rs
-    unwrap-warn:
-      glob: "**/*.rs"
-      run: cargo xtask check-unwraps
+      glob: "{docker-compose,compose}*.{yaml,yml}"
+      run: scripts/with_timeout.sh 30 -- python3 scripts/check_compose_port_bindings.py --staged
+    xtask-check:
+      # Single Cargo invocation runs every check declared in
+      # xtask/src/checks.rs::check(). Each sub-check is already
+      # staged-file-aware internally, so combined wall time is small
+      # (~0.3s warm) even on a commit touching a couple of files.
+      # `glob: "**/*"` makes lefthook skip on empty commits.
+      glob: "**/*"
+      run: scripts/with_timeout.sh 60 -- cargo xtask check
     skills-ref:
       glob: "skills/**"
-      run: ./scripts/validate_skills_ref.sh
+      run: scripts/with_timeout.sh 30 -- ./scripts/validate_skills_ref.sh
     mcp-schema-doc:
-      glob: "crates/mcp/schema.rs"
-      run: python3 scripts/generate_mcp_schema_doc.py && git add docs/MCP-TOOL-SCHEMA.md
+      glob: "src/mcp/schema.rs"
+      run: scripts/with_timeout.sh 30 -- scripts/check_mcp_schema_doc.sh
     monolith:
+      glob: "**/*.rs"
       run: >
-        if [ -f "scripts/enforce_monoliths.py" ]; then
-          python3 "scripts/enforce_monoliths.py" --staged;
-        elif [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then
-          python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged;
-        else
-          echo "ERROR enforce_monoliths.py not found in scripts/ or ~/.claude/hooks/" >&2; exit 1;
-        fi
+        scripts/with_timeout.sh 30 --
+        bash -c '
+          if [ -f "scripts/enforce_monoliths.py" ]; then
+            python3 "scripts/enforce_monoliths.py" --staged;
+          elif [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then
+            python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged;
+          else
+            echo "ERROR enforce_monoliths.py not found in scripts/ or ~/.claude/hooks/" >&2; exit 1;
+          fi
+        '
     taplo:
+      # Hard-fail if taplo is missing — silently bypassing TOML formatting
+      # because the developer didn't install taplo defeats the purpose of
+      # the gate. Install via: cargo install --locked taplo-cli
       glob: "**/*.toml"
-      run: command -v taplo >/dev/null 2>&1 && taplo fmt --check {staged_files} || true
+      run: scripts/with_timeout.sh 30 -- taplo fmt --check {staged_files}
     rustfmt:
       glob: "**/*.rs"
-      run: cargo fmt -- --check
-    # clippy --all-targets already type-checks tests; we don't need a separate
-    # `cargo check`. Test coverage runs on pre-push / CI, not pre-commit:
-    # `cargo test --workspace` on this codebase takes minutes per commit and
-    # contends with clippy on the same target/ build lock.
+      run: scripts/with_timeout.sh 30 -- cargo fmt -- --check {staged_files}
+    lefthook-speed:
+      glob: "lefthook.yml"
+      run: scripts/with_timeout.sh 10 -- python3 scripts/check_lefthook_pre_commit_speed.py
+
+pre-push:
+  # Serial: clippy and test both compile the workspace and serialize on the
+  # same target/ build lock. Running them in parallel just causes contention
+  # without any wall-clock win — clippy --all-targets already type-checks
+  # everything test needs, so the second cargo invocation reuses the cache.
+  parallel: false
+  commands:
     clippy:
-      glob: "**/*.{rs,toml}"
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
     test:
-      glob: "**/*.{rs,toml}"
       run: >
         if command -v cargo-nextest >/dev/null 2>&1; then
           cargo nextest run --workspace --locked --lib -E 'not test(/worker_e2e/)';

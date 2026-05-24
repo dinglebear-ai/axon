@@ -117,6 +117,14 @@ jobs:
             docs/config/env-migration-matrix.toml \
             rust-toolchain.toml
 
+  lefthook-pre-commit-speed:
+    name: lefthook pre-commit speed guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: enforce pre-commit stays fast
+        run: python3 scripts/check_lefthook_pre_commit_speed.py
+
   windows-check:
     name: windows-check (xtask only)
     runs-on: windows-latest
