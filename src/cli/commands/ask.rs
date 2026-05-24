@@ -77,53 +77,7 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    if session_cfg.ask_explain {
-        println!("{}", primary("Ask Explain"));
-        println!("  {} {}", primary("Query:"), query);
-        println!("  {} {}", muted("Session:"), active_session);
-        println!(
-            "  {} reranked={} context_sources={} llm_skipped=true",
-            muted("Trace:"),
-            result
-                .explain
-                .as_ref()
-                .map(|e| e.candidates.len())
-                .unwrap_or(0),
-            result
-                .explain
-                .as_ref()
-                .map(|e| e.context.final_source_order.len())
-                .unwrap_or(0),
-        );
-        println!(
-            "  {} rerun with --json for the full explain trace",
-            muted("Hint:")
-        );
-        return Ok(());
-    }
-
-    if session_cfg.ask_stream {
-        println!();
-    } else {
-        println!("{}", primary("Conversation"));
-        println!("  {} {}", primary("You:"), query);
-        println!("  {}", primary("Assistant:"));
-        println!("{}", result.answer);
-    }
-
-    println!(
-        "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms",
-        muted("Timing:"),
-        result.timing_ms.retrieval,
-        result.timing_ms.context_build,
-        result.timing_ms.llm,
-        result.timing_ms.total,
-    );
-    println!("  {} {}", muted("Session:"), active_session);
-
-    if session_cfg.ask_diagnostics {
-        print_diagnostics(&result.diagnostics);
-    }
+    print_ask_human(&session_cfg, &query, &active_session, &result);
 
     record_successful_turn(&session_cfg, &query, &result);
 
@@ -247,6 +201,56 @@ fn record_successful_turn(cfg: &Config, query: &str, result: &AskResult) {
     }
     if let Err(err) = followup::update_latest_session(cfg) {
         log_warn(&format!("ask: failed to update latest ask session: {err}"));
+    }
+}
+
+pub(crate) fn print_ask_human(cfg: &Config, query: &str, active_session: &str, result: &AskResult) {
+    if cfg.ask_explain {
+        println!("{}", primary("Ask Explain"));
+        println!("  {} {}", primary("Query:"), query);
+        println!("  {} {}", muted("Session:"), active_session);
+        println!(
+            "  {} reranked={} context_sources={} llm_skipped=true",
+            muted("Trace:"),
+            result
+                .explain
+                .as_ref()
+                .map(|e| e.candidates.len())
+                .unwrap_or(0),
+            result
+                .explain
+                .as_ref()
+                .map(|e| e.context.final_source_order.len())
+                .unwrap_or(0),
+        );
+        println!(
+            "  {} rerun with --json for the full explain trace",
+            muted("Hint:")
+        );
+        return;
+    }
+
+    if cfg.ask_stream {
+        println!();
+    } else {
+        println!("{}", primary("Conversation"));
+        println!("  {} {}", primary("You:"), query);
+        println!("  {}", primary("Assistant:"));
+        println!("{}", result.answer);
+    }
+
+    println!(
+        "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms",
+        muted("Timing:"),
+        result.timing_ms.retrieval,
+        result.timing_ms.context_build,
+        result.timing_ms.llm,
+        result.timing_ms.total,
+    );
+    println!("  {} {}", muted("Session:"), active_session);
+
+    if cfg.ask_diagnostics {
+        print_diagnostics(&result.diagnostics);
     }
 }
 

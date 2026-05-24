@@ -45,6 +45,14 @@ pub(crate) struct UrlOnlyBody {
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct ScrapeBody {
+    pub url: String,
+    #[serde(default)]
+    pub embed: Option<bool>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct UrlsBody {
     #[serde(default)]
     pub url: Option<String>,

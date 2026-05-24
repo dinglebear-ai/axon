@@ -52,6 +52,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added config parsing coverage for `--skip-embed` mapping to
   `Config::embed = false`.
 
+## [4.5.0] - 2026-05-23
+
+### Added
+
+- New `apps/palette-tauri/` desktop palette: Tauri 2 + React/Vite frontend
+  with Aurora-styled UI components, axon HTTP client bindings, action
+  registry, and shell-quoted command parsing.
+
+### Fixed
+
+- `dev_to` vertical: fetch full article body via the per-article detail
+  endpoint (`/api/articles/{id}`) instead of falling back to the short
+  `description` returned by the author listing. Adds `get_json` helper,
+  `select_article_body`, and a debug trace for `body_markdown`/`description`
+  lengths. Coverage expanded in `dev_to_tests.rs`.
+
 ## [4.4.2] - 2026-05-21
 
 ### Fixed

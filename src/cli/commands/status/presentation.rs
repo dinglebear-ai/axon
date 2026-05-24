@@ -13,6 +13,8 @@ use crate::jobs::ingest::IngestJob;
 use crate::services::types::StatusTotals;
 use chrono::{DateTime, Utc};
 
+const STATUS_TEXT_DISPLAY_LIMIT: usize = 120;
+
 pub(super) fn emit_status_human(
     crawl_jobs: &[CrawlJob],
     extract_jobs: &[ExtractJob],
@@ -222,6 +224,7 @@ struct JobRow<'a> {
 }
 
 fn print_job_row(row: &JobRow<'_>) {
+    let target = truncate_status_text(row.target);
     let collection_suffix = row
         .collection
         .map(|c| format!("{}{}", subtle(" | "), accent(c)))
@@ -237,7 +240,7 @@ fn print_job_row(row: &JobRow<'_>) {
     println!(
         "{}{}{}{}{} {} {}",
         prefix,
-        primary(row.target),
+        primary(&target),
         row.metrics_suffix,
         collection_suffix,
         age,
@@ -247,6 +250,17 @@ fn print_job_row(row: &JobRow<'_>) {
     if let Some(err) = format_error(row.error_text) {
         println!("       {}", error(&format!("↳ {err}")));
     }
+}
+
+fn truncate_status_text(text: &str) -> String {
+    if text.chars().count() <= STATUS_TEXT_DISPLAY_LIMIT {
+        return text.to_string();
+    }
+    let prefix_limit = STATUS_TEXT_DISPLAY_LIMIT.saturating_sub(1);
+    format!(
+        "{}…",
+        crate::cli::commands::common::truncate_chars(text, prefix_limit)
+    )
 }
 
 fn print_extracts(extract_jobs: &[ExtractJob]) {

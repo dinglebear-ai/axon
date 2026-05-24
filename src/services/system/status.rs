@@ -1,6 +1,7 @@
 //! Job-queue status aggregation for the `axon status` command.
 
 use crate::core::config::Config;
+use crate::core::logging::log_warn;
 use crate::jobs::backend::JobKind;
 use crate::services::context::ServiceContext;
 use crate::services::jobs as job_service;
@@ -17,26 +18,35 @@ pub struct StatusJobs {
 
 #[must_use = "full_status returns a Result that should be handled"]
 pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResult, Box<dyn Error>> {
-    let (jobs, totals) = load_status_jobs(service_context).await?;
-    let payload = build_status_payload(
+    let (jobs, totals, errors) = load_status_jobs(service_context).await?;
+    let payload = build_status_payload_with_errors(
         &jobs.crawl,
         &jobs.extract,
         &jobs.embed,
         &jobs.ingest,
         &totals,
+        &errors,
     );
-    let text = [
+    let mut text = vec![
         "Axon Status".to_string(),
         format!("crawl jobs:   {} total", totals.crawl),
         format!("extract jobs: {} total", totals.extract),
         format!("embed jobs:   {} total", totals.embed),
         format!("ingest jobs:  {} total", totals.ingest),
-    ]
-    .join("\n");
+    ];
+    if !errors.is_empty() {
+        text.push(format!(
+            "degraded: {} status count error{}",
+            errors.len(),
+            if errors.len() == 1 { "" } else { "s" }
+        ));
+    }
     Ok(StatusResult {
         payload,
-        text,
+        text: text.join("\n"),
         totals,
+        degraded: !errors.is_empty(),
+        errors,
     })
 }
 
@@ -59,7 +69,7 @@ fn filter_and_view<T>(
 
 pub async fn load_status_jobs(
     service_context: &ServiceContext,
-) -> Result<(StatusJobs, StatusTotals), Box<dyn Error>> {
+) -> Result<(StatusJobs, StatusTotals, Vec<String>), Box<dyn Error>> {
     let cfg = service_context.cfg.as_ref();
     let (
         crawl_raw,
@@ -96,40 +106,28 @@ pub async fn load_status_jobs(
                 .jobs
                 .count_jobs(JobKind::Crawl)
                 .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!(kind = "crawl", error = %e, "status: count_jobs failed, defaulting to 0");
-                    0
-                })
+                .map_err(|e| format!("crawl: {e}"))
         },
         async {
             service_context
                 .jobs
                 .count_jobs(JobKind::Extract)
                 .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!(kind = "extract", error = %e, "status: count_jobs failed, defaulting to 0");
-                    0
-                })
+                .map_err(|e| format!("extract: {e}"))
         },
         async {
             service_context
                 .jobs
                 .count_jobs(JobKind::Embed)
                 .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!(kind = "embed", error = %e, "status: count_jobs failed, defaulting to 0");
-                    0
-                })
+                .map_err(|e| format!("embed: {e}"))
         },
         async {
             service_context
                 .jobs
                 .count_jobs(JobKind::Ingest)
                 .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!(kind = "ingest", error = %e, "status: count_jobs failed, defaulting to 0");
-                    0
-                })
+                .map_err(|e| format!("ingest: {e}"))
         },
     );
 
@@ -144,13 +142,31 @@ pub async fn load_status_jobs(
         embed: filter_and_view(cfg, embed_raw?, |j| &j.status, |j| j.error_text.as_deref()),
         ingest: filter_and_view(cfg, ingest_raw?, |j| &j.status, |j| j.error_text.as_deref()),
     };
+    let mut errors = Vec::new();
     let totals = StatusTotals {
-        crawl: crawl_total,
-        extract: extract_total,
-        embed: embed_total,
-        ingest: ingest_total,
+        crawl: count_or_degraded("crawl", crawl_total, &mut errors),
+        extract: count_or_degraded("extract", extract_total, &mut errors),
+        embed: count_or_degraded("embed", embed_total, &mut errors),
+        ingest: count_or_degraded("ingest", ingest_total, &mut errors),
     };
-    Ok((jobs, totals))
+    Ok((jobs, totals, errors))
+}
+
+fn count_or_degraded(
+    kind: &'static str,
+    result: Result<i64, String>,
+    errors: &mut Vec<String>,
+) -> i64 {
+    match result {
+        Ok(count) => count,
+        Err(error) => {
+            log_warn(&format!(
+                "status_count_jobs_degraded kind={kind} error={error}"
+            ));
+            errors.push(error);
+            0
+        }
+    }
 }
 
 pub fn build_status_payload(
@@ -159,6 +175,24 @@ pub fn build_status_payload(
     embed_jobs: &[ServiceJob],
     ingest_jobs: &[ServiceJob],
     totals: &StatusTotals,
+) -> serde_json::Value {
+    build_status_payload_with_errors(
+        crawl_jobs,
+        extract_jobs,
+        embed_jobs,
+        ingest_jobs,
+        totals,
+        &[],
+    )
+}
+
+pub fn build_status_payload_with_errors(
+    crawl_jobs: &[ServiceJob],
+    extract_jobs: &[ServiceJob],
+    embed_jobs: &[ServiceJob],
+    ingest_jobs: &[ServiceJob],
+    totals: &StatusTotals,
+    errors: &[String],
 ) -> serde_json::Value {
     serde_json::json!({
         "local_crawl_jobs": crawl_jobs,
@@ -171,6 +205,8 @@ pub fn build_status_payload(
             "embed": totals.embed,
             "ingest": totals.ingest,
         },
+        "degraded": !errors.is_empty(),
+        "errors": errors,
     })
 }
 

@@ -1,8 +1,12 @@
 use super::*;
-use crate::services::system::StatusJobs;
+use crate::services::system::{StatusJobs, build_status_payload};
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
+
+fn strip_ansi(s: &str) -> String {
+    console::strip_ansi_codes(s).into_owned()
+}
 
 fn job(status: &str) -> ServiceJob {
     ServiceJob {
@@ -141,5 +145,77 @@ fn render_status_payload_surfaces_reclaimed_running_crawl_rows() {
     assert!(
         rendered.contains("processing resumed"),
         "expected reclaim hint; got:\n{rendered}"
+    );
+}
+
+#[test]
+fn render_status_payload_truncates_long_labels_and_errors() {
+    let mut long = job("failed");
+    long.url = Some(format!("https://example.com/{}", "x".repeat(240)));
+    long.error_text = Some("error: ".to_string() + &"y".repeat(240));
+
+    let payload = build_status_payload(
+        &[long],
+        &[],
+        &[],
+        &[],
+        &crate::services::types::StatusTotals::default(),
+    );
+
+    let rendered = render_status_payload(&payload).expect("payload should render");
+
+    assert!(
+        !rendered.contains(&"x".repeat(180)),
+        "long URL label leaked without truncation:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains(&"y".repeat(180)),
+        "long error leaked without truncation:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('…'),
+        "expected truncation marker:\n{rendered}"
+    );
+    let visible = strip_ansi(&rendered);
+    assert!(
+        visible
+            .lines()
+            .all(|line| line.chars().count() <= STATUS_TEXT_DISPLAY_LIMIT),
+        "status output exceeded display cap:\n{rendered}"
+    );
+}
+
+#[test]
+fn render_status_payload_keeps_normal_rows_with_progress_under_display_cap() {
+    let mut crawl = job("completed");
+    crawl.url = Some(format!("https://example.com/{}", "long-path/".repeat(30)));
+    crawl.result_json = Some(json!({
+        "md_created": 222347,
+        "elapsed_ms": 375100,
+        "embed_job_id": "11111111-1111-1111-1111-111111111111"
+    }));
+    let mut embed = job("completed");
+    embed.result_json = Some(json!({
+        "docs_embedded": 222347,
+        "docs_total": 222347,
+        "chunks_embedded": 631679
+    }));
+
+    let payload = build_status_payload(
+        &[crawl],
+        &[],
+        &[embed],
+        &[],
+        &crate::services::types::StatusTotals::default(),
+    );
+
+    let rendered = render_status_payload(&payload).expect("payload should render");
+
+    let visible = strip_ansi(&rendered);
+    assert!(
+        visible
+            .lines()
+            .all(|line| line.chars().count() <= STATUS_TEXT_DISPLAY_LIMIT),
+        "status output exceeded display cap:\n{rendered}"
     );
 }

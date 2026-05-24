@@ -31,6 +31,8 @@ pub(super) enum CliCommand {
     Crawl(CrawlArgs),
     /// Manage recurring watch definitions and runs
     Watch(WatchArgs),
+    /// Monitor job lifecycle events as a line-oriented stream
+    Monitor(MonitorArgs),
     /// Discover all URLs on a site without scraping
     Map(MapArgs),
     /// Discover API endpoints from page HTML and JavaScript bundles
@@ -266,6 +268,37 @@ pub(super) enum WatchSubcommand {
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
+}
+
+#[derive(Debug, Args)]
+pub(super) struct MonitorArgs {
+    #[command(subcommand)]
+    pub(super) action: MonitorSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum MonitorSubcommand {
+    /// Emit crawl/extract/embed/ingest start, completion, and failure events
+    Jobs(MonitorJobsArgs),
+}
+
+#[derive(Debug, Args)]
+pub(super) struct MonitorJobsArgs {
+    /// Keep polling instead of emitting one batch and exiting.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) watch: bool,
+
+    /// Emit one compact JSON object per event.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) jsonl: bool,
+
+    /// Poll interval while --watch is active.
+    #[arg(long, default_value_t = 5)]
+    pub(super) interval_secs: u64,
+
+    /// State file used to suppress duplicate events.
+    #[arg(long)]
+    pub(super) state_file: Option<String>,
 }
 
 #[derive(Debug, Args)]

@@ -25,6 +25,90 @@ fn output_text(output: &Output) -> String {
 }
 
 #[test]
+fn ask_server_mode_renders_human_by_default() {
+    let server = MockServer::start();
+    let action = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/ask")
+            .body_includes("What is Axon?");
+        then.status(200).json_body(json!({
+            "answer": "Axon is a local RAG system.",
+            "query": "What is Axon?",
+            "session": "default",
+            "timing_ms": {
+                "retrieval": 1,
+                "context_build": 2,
+                "llm": 3,
+                "total": 6
+            }
+        }));
+    });
+    let home = TempDir::new().expect("temp home");
+
+    let output = axon_with_home(
+        &home,
+        &server.base_url(),
+        &["ask", "--no-stream", "What is Axon?"],
+    )
+    .output()
+    .expect("run axon");
+
+    assert!(
+        output.status.success(),
+        "ask should succeed\n{}",
+        output_text(&output)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Conversation"), "{stdout}");
+    assert!(stdout.contains("Axon is a local RAG system."), "{stdout}");
+    assert!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).is_err(),
+        "default ask output must be human-readable, not JSON: {stdout}"
+    );
+    action.assert_calls(1);
+}
+
+#[test]
+fn ask_server_mode_renders_json_only_with_json_flag() {
+    let server = MockServer::start();
+    let action = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/ask")
+            .body_includes("What is Axon?");
+        then.status(200).json_body(json!({
+            "answer": "Axon is a local RAG system.",
+            "query": "What is Axon?",
+            "session": "default",
+            "timing_ms": {
+                "retrieval": 1,
+                "context_build": 2,
+                "llm": 3,
+                "total": 6
+            }
+        }));
+    });
+    let home = TempDir::new().expect("temp home");
+
+    let output = axon_with_home(
+        &home,
+        &server.base_url(),
+        &["ask", "--no-stream", "--json", "What is Axon?"],
+    )
+    .output()
+    .expect("run axon");
+
+    assert!(
+        output.status.success(),
+        "ask --json should succeed\n{}",
+        output_text(&output)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("ask stdout json");
+    assert_eq!(value["answer"], "Axon is a local RAG system.");
+    assert_eq!(value["query"], "What is Axon?");
+    action.assert_calls(1);
+}
+
+#[test]
 fn status_uses_server_mode_and_renders_result_json() {
     let server = MockServer::start();
     let action = server.mock(|when, then| {

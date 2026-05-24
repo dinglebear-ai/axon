@@ -102,7 +102,7 @@ function isScrapableUrl(url) {
 async function wasScrapedWithinCooldown(urlKey) {
   const history = await loadAutoScrapeHistory();
   const previous = history[urlKey];
-  if (!previous?.at) {
+  if (!previous?.ok || !previous?.at) {
     return false;
   }
 

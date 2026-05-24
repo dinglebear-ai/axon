@@ -1,5 +1,8 @@
 use crate::core::ui::{accent, muted, primary, status_text};
 
+const STATS_TEXT_DISPLAY_LIMIT: usize = 120;
+const STATS_CONTINUATION_INDENT: usize = 4;
+
 fn fmt_count(v: &serde_json::Value) -> String {
     accent(
         &v.as_i64()
@@ -74,26 +77,66 @@ fn print_vector_stats(stats: &serde_json::Value) {
         fmt_count(&stats["payload_fields_count"])
     );
     if let Some(rendered) = render_payload_fields(stats) {
-        println!("  {} {}", muted("Field Names:"), rendered);
+        println!("  {}", muted("Field Names:"));
+        for line in rendered.lines() {
+            println!("    {}", line);
+        }
     }
 }
 
 fn render_payload_fields(stats: &serde_json::Value) -> Option<String> {
-    let rendered = stats["payload_fields"]
-        .as_array()
-        .map(|fields| {
-            fields
-                .iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .unwrap_or_default();
-    if rendered.is_empty() {
+    let fields = stats["payload_fields"]
+        .as_array()?
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect::<Vec<_>>();
+    if fields.is_empty() {
         None
     } else {
-        Some(rendered)
+        Some(wrap_comma_list(
+            &fields,
+            STATS_TEXT_DISPLAY_LIMIT.saturating_sub(STATS_CONTINUATION_INDENT),
+        ))
     }
+}
+
+fn wrap_comma_list(items: &[&str], max_chars: usize) -> String {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for item in items {
+        let rendered = truncate_stats_text(item, max_chars);
+        let separator = if current.is_empty() { "" } else { ", " };
+        let candidate_len =
+            current.chars().count() + separator.chars().count() + rendered.chars().count();
+        if !current.is_empty() && candidate_len > max_chars {
+            lines.push(current);
+            current = rendered;
+        } else {
+            current.push_str(separator);
+            current.push_str(&rendered);
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines.join("\n")
+}
+
+fn truncate_stats_text(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+    if max_chars == 1 {
+        return "…".to_string();
+    }
+    format!("{}…", truncate_chars(text, max_chars - 1))
+}
+
+fn truncate_chars(s: &str, max_chars: usize) -> &str {
+    s.char_indices().nth(max_chars).map_or(s, |(i, _)| &s[..i])
 }
 
 fn avg_stat_text(stats: &serde_json::Value, key: &str, suffix: &str) -> String {

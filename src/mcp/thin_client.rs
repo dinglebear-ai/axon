@@ -67,7 +67,9 @@ pub async fn route_request(
             "/v1/retrieve",
             rest_body_allowed(req, &["url", "max_points", "cursor", "token_budget"])?,
         ),
-        AxonRequest::Scrape(req) => Route::post("/v1/scrape", rest_body_allowed(req, &["url"])?),
+        AxonRequest::Scrape(req) => {
+            Route::post("/v1/scrape", rest_body_allowed(req, &["url", "embed"])?)
+        }
         AxonRequest::Summarize(req) => {
             Route::post("/v1/summarize", rest_body_allowed(req, &["url", "urls"])?)
         }

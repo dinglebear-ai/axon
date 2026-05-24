@@ -107,6 +107,32 @@ async fn post_json_attaches_bearer_token() {
 
 #[tokio::test]
 #[serial]
+async fn get_json_preserves_query_string() {
+    let _lo = LoopbackGuard::new();
+    let _t = EnvGuard::set(TOKEN_ENV, None);
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/v1/sources")
+            .query_param("limit", "3")
+            .query_param("domain", "example.com");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({"ok": true}));
+    });
+
+    let client = ServerClient::new(reqwest::Url::parse(&server.base_url()).unwrap()).unwrap();
+    let got: serde_json::Value = client
+        .get_json("/v1/sources?limit=3&domain=example.com", "sources response")
+        .await
+        .unwrap();
+
+    mock.assert();
+    assert_eq!(got, json!({"ok": true}));
+}
+
+#[tokio::test]
+#[serial]
 async fn post_json_classifies_auth_status() {
     let _lo = LoopbackGuard::new();
     let _t = EnvGuard::set(TOKEN_ENV, None);

@@ -1,0 +1,14 @@
+packages:
+  - "."
+
+overrides:
+  tldts: 7.0.30
+  tldts-core: 7.0.30
+
+onlyBuiltDependencies:
+  - esbuild
+  - msw
+
+allowBuilds:
+  esbuild: true
+  msw: true

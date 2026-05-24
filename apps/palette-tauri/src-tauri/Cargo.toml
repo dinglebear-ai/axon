@@ -1,0 +1,32 @@
+[package]
+name = "axon-palette-tauri"
+version = "4.5.0"
+description = "Tauri command palette for the Axon REST API"
+edition = "2024"
+rust-version = "1.94.0"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[lib]
+name = "axon_palette_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "axon-palette-tauri"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1"
+dirs = "6"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-http = "2"
+tokio = { version = "1", features = ["sync"] }

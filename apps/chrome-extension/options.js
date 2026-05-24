@@ -49,8 +49,9 @@ async function checkApi() {
   try {
     await saveConfig();
     await requestHealth();
+    await requestAuthProbe();
     setApiStatus("Online", "success");
-    setStatus("Axon API reachable.");
+    setStatus("Axon API reachable and token accepted.");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setApiStatus("Offline", "error");
@@ -78,6 +79,54 @@ async function requestHealth() {
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`${response.status} ${response.statusText}${body ? `: ${body}` : ""}`);
+  }
+}
+
+async function requestAuthProbe() {
+  const server = axonUrlInput.value.trim().replace(/\/+$/, "");
+  const token = axonTokenInput.value.trim();
+
+  if (!token && !isLoopbackServer(server)) {
+    throw new Error("Bearer token is required for this Axon server.");
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${server}/v1/scrape`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ url: "" })
+  });
+
+  const body = await response.text();
+  if (isExpectedScrapeProbeResponse(response, body)) {
+    return;
+  }
+
+  throw new Error(`${response.status} ${response.statusText}${body ? `: ${body}` : ""}`);
+}
+
+function isExpectedScrapeProbeResponse(response, body) {
+  if (response.status !== 400) {
+    return false;
+  }
+  try {
+    const payload = JSON.parse(body);
+    return payload?.kind === "bad_request" && payload?.message === "url or urls is required";
+  } catch {
+    return false;
+  }
+}
+
+function isLoopbackServer(server) {
+  try {
+    const hostname = new URL(server).hostname;
+    return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
+  } catch {
+    return false;
   }
 }
 

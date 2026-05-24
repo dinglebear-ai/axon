@@ -157,6 +157,8 @@ fn status_result_payload_and_text_are_both_present() {
         payload: payload.clone(),
         text: text.clone(),
         totals: StatusTotals::default(),
+        degraded: false,
+        errors: Vec::new(),
     };
     assert!(result.payload.get("local_crawl_jobs").is_some());
     assert!(result.text.contains("Axon Status"));

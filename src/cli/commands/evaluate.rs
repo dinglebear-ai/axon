@@ -28,7 +28,7 @@ pub async fn run_evaluate(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn print_evaluate_output(
+pub(crate) fn print_evaluate_output(
     cfg: &Config,
     payload: &serde_json::Value,
     question: &str,

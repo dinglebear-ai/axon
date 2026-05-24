@@ -43,6 +43,10 @@ fn client_server_dispatch_routes_stateful_commands_to_server_client() {
             ClientServerDispatch::Server,
             "{command:?} should use ServerClient"
         );
+        assert!(
+            render::server_human_renderer_available(command),
+            "{command:?} server route needs an explicit human renderer"
+        );
     }
 }
 
@@ -70,7 +74,23 @@ fn scrape_server_mode_uses_rest_contract_body() {
     let plan = plan::server_rest_plan(&cfg).expect("scrape plan");
 
     assert_eq!(plan.path, "/v1/scrape");
-    assert_eq!(plan.body, json!({ "url": "https://example.com" }));
+    assert_eq!(
+        plan.body,
+        json!({ "url": "https://example.com", "embed": true })
+    );
+}
+
+#[test]
+fn scrape_server_mode_forwards_skip_embed() {
+    let mut cfg = cfg(CommandKind::Scrape, &["https://example.com"]);
+    cfg.embed = false;
+
+    let plan = plan::server_rest_plan(&cfg).expect("scrape plan");
+
+    assert_eq!(
+        plan.body,
+        json!({ "url": "https://example.com", "embed": false })
+    );
 }
 
 #[test]
@@ -308,6 +328,37 @@ fn server_status_text_matches_local_status_renderer() {
     assert!(rendered.contains("Embed"));
     assert!(!rendered.contains("server mode"));
     assert!(rendered.contains("2 docs"));
+}
+
+#[test]
+fn server_renderer_metadata_helpers_keep_display_cap() {
+    let long = "x".repeat(500);
+
+    let line = render::server_line_text(&long, 9);
+    let continuation = render::server_continuation_text(&long, 4);
+
+    assert_eq!(line.chars().count(), 111);
+    assert!(line.ends_with('…'));
+    assert_eq!(line.chars().count() + 9, 120);
+    assert_eq!(continuation.chars().count(), 116);
+    assert!(continuation.ends_with('…'));
+    assert_eq!(continuation.chars().count() + 4, 120);
+}
+
+#[test]
+fn server_sources_renderer_accepts_rest_tuple_rows() {
+    let tuple = json!(["https://example.com/docs", 42]);
+    let bare = json!("https://example.com/bare");
+
+    assert_eq!(
+        render::source_url_from_value(&tuple),
+        Some("https://example.com/docs")
+    );
+    assert_eq!(
+        render::source_url_from_value(&bare),
+        Some("https://example.com/bare")
+    );
+    assert_eq!(render::source_url_from_value(&json!([42])), None);
 }
 
 #[test]

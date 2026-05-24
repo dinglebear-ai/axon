@@ -27,6 +27,21 @@ fn migrate_remains_local_until_server_mode_plan_support_exists() {
 }
 
 #[test]
+fn commands_without_rest_plans_remain_local() {
+    for command in [
+        CommandKind::Brand,
+        CommandKind::Diff,
+        CommandKind::Endpoints,
+    ] {
+        let cfg = cfg(command);
+        let plan =
+            plan_command_route(&cfg, &["https://example.com".to_string()]).expect("route plan");
+
+        assert_eq!(plan.route, CommandRoute::LocalOnly, "{command:?}");
+    }
+}
+
+#[test]
 fn rest_capable_read_and_llm_commands_prefer_server_mode() {
     for command in [
         CommandKind::Map,

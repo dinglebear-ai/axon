@@ -58,7 +58,7 @@ pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPla
             Ok(ServerRestPlan {
                 method: "POST",
                 path: "/v1/scrape".to_string(),
-                body: serde_json::json!({ "url": url }),
+                body: serde_json::json!({ "url": url, "embed": cfg.embed }),
                 label: "scrape",
                 poll_family: None,
             })

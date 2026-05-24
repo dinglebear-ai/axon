@@ -10,6 +10,8 @@ use uuid::Uuid;
 
 pub(crate) struct EnqueueCapture {
     payloads: Mutex<Vec<JobPayload>>,
+    waits: Mutex<Vec<Uuid>>,
+    wait_results: Mutex<Vec<Result<String, String>>>,
     fail: bool,
 }
 
@@ -17,6 +19,8 @@ impl EnqueueCapture {
     pub(crate) fn new() -> Self {
         Self {
             payloads: Mutex::new(Vec::new()),
+            waits: Mutex::new(Vec::new()),
+            wait_results: Mutex::new(Vec::new()),
             fail: false,
         }
     }
@@ -24,12 +28,34 @@ impl EnqueueCapture {
     pub(crate) fn failing() -> Self {
         Self {
             payloads: Mutex::new(Vec::new()),
+            waits: Mutex::new(Vec::new()),
+            wait_results: Mutex::new(Vec::new()),
             fail: true,
+        }
+    }
+
+    fn failing_wait() -> Self {
+        Self::with_wait_results(vec![
+            Err("wait timeout".to_string()),
+            Err("wait timeout".to_string()),
+        ])
+    }
+
+    fn with_wait_results(wait_results: Vec<Result<String, String>>) -> Self {
+        Self {
+            payloads: Mutex::new(Vec::new()),
+            waits: Mutex::new(Vec::new()),
+            wait_results: Mutex::new(wait_results),
+            fail: false,
         }
     }
 
     pub(crate) fn payloads(&self) -> Vec<JobPayload> {
         self.payloads.lock().unwrap().clone()
+    }
+
+    fn waits(&self) -> Vec<Uuid> {
+        self.waits.lock().unwrap().clone()
     }
 }
 
@@ -47,8 +73,20 @@ impl ServiceJobRuntime for EnqueueCapture {
         Ok(Uuid::new_v4())
     }
 
-    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
-        Ok("completed".to_string())
+    async fn wait_for_job(&self, id: Uuid, _kind: JobKind) -> BackendResult<String> {
+        self.waits.lock().unwrap().push(id);
+        let result = {
+            let mut results = self.wait_results.lock().unwrap();
+            if results.is_empty() {
+                Ok("completed".to_string())
+            } else {
+                results.remove(0)
+            }
+        };
+        match result {
+            Ok(status) => Ok(status),
+            Err(error) => Err(error.into()),
+        }
     }
 
     async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
@@ -180,6 +218,77 @@ async fn uses_hardened_bounded_crawl_config() {
 }
 
 #[tokio::test]
+async fn wait_mode_queues_all_search_results_before_waiting() {
+    let mut cfg = make_cfg("rust");
+    cfg.wait = true;
+    let runtime = Arc::new(EnqueueCapture::failing_wait());
+    let ctx = make_ctx(runtime.clone());
+    let results = vec![
+        serde_json::json!({
+            "url": "http://93.184.216.34/",
+            "title": "Example",
+            "position": 1,
+        }),
+        serde_json::json!({
+            "url": "http://1.1.1.1/",
+            "title": "Cloudflare",
+            "position": 2,
+        }),
+    ];
+
+    let output = enqueue_search_crawls(&cfg, &ctx, &results).await;
+
+    assert_eq!(output.jobs.len(), 2);
+    assert_eq!(runtime.payloads().len(), 2);
+    assert_eq!(runtime.waits().len(), 2);
+    assert_eq!(output.rejected.len(), 2);
+    assert!(
+        output.rejected.iter().all(|rejection| matches!(
+            rejection.kind,
+            SearchCrawlRejectionKind::WaitFailed
+        ) && rejection.reason.contains("wait timeout")),
+        "expected wait failures after both jobs were queued: {:?}",
+        output.rejected
+    );
+    assert_eq!(crawl_status(&results, &output), "wait_failed");
+}
+
+#[tokio::test]
+async fn wait_mode_reports_mixed_wait_outcomes_after_queueing_all_results() {
+    let mut cfg = make_cfg("rust");
+    cfg.wait = true;
+    let runtime = Arc::new(EnqueueCapture::with_wait_results(vec![
+        Ok("completed".to_string()),
+        Ok("failed".to_string()),
+    ]));
+    let ctx = make_ctx(runtime.clone());
+    let results = vec![
+        serde_json::json!({
+            "url": "http://93.184.216.34/",
+            "title": "Example",
+            "position": 1,
+        }),
+        serde_json::json!({
+            "url": "http://1.1.1.1/",
+            "title": "Cloudflare",
+            "position": 2,
+        }),
+    ];
+
+    let output = enqueue_search_crawls(&cfg, &ctx, &results).await;
+
+    assert_eq!(output.jobs.len(), 2);
+    assert_eq!(runtime.payloads().len(), 2);
+    assert_eq!(runtime.waits().len(), 2);
+    assert_eq!(output.rejected.len(), 1);
+    assert!(matches!(
+        output.rejected[0].kind,
+        SearchCrawlRejectionKind::WaitFailed
+    ));
+    assert_eq!(crawl_status(&results, &output), "partial_wait_failed");
+}
+
+#[tokio::test]
 async fn rejects_invalid_missing_and_duplicate_urls() {
     let cfg = make_cfg("rust");
     let runtime = Arc::new(EnqueueCapture::new());
@@ -214,11 +323,11 @@ async fn rejects_invalid_missing_and_duplicate_urls() {
 }
 
 #[tokio::test]
-async fn crawl_config_preserves_wait_mode() {
+async fn crawl_config_disables_wait_during_enqueue_phase() {
     let mut cfg = make_cfg("rust");
     cfg.wait = true;
     let c = crawl_config(&cfg);
-    assert!(c.wait);
+    assert!(!c.wait);
     assert_eq!(c.max_pages, 200);
     assert_eq!(c.max_depth, 10);
 }
@@ -254,4 +363,19 @@ fn crawl_status_variants() {
         )],
     };
     assert_eq!(crawl_status(&results, &partial), "partial");
+
+    let wait_failed = CrawlOutput {
+        jobs: vec![SearchCrawlJob {
+            url: "https://example.com".into(),
+            job_id: "abc".into(),
+        }],
+        rejected: vec![rejection(
+            Some("https://example.com"),
+            None,
+            None,
+            SearchCrawlRejectionKind::WaitFailed,
+            "wait timeout",
+        )],
+    };
+    assert_eq!(crawl_status(&results, &wait_failed), "wait_failed");
 }

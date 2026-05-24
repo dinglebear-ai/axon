@@ -1,4 +1,6 @@
-use crate::cli::commands::common::parse_service_time_range;
+use crate::cli::commands::common::{
+    parse_service_time_range, truncate_display_continuation, truncate_display_text,
+};
 use crate::cli::commands::resolve_input_text;
 use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info, log_warn};
@@ -10,6 +12,7 @@ use serde_json::Value;
 use std::error::Error;
 
 const HUMAN_SNIPPET_LIMIT: usize = 240;
+const SEARCH_ITEM_INDENT: usize = 3;
 
 pub async fn run_search(
     cfg: &Config,
@@ -101,7 +104,7 @@ fn log_crawl_summary(cfg: &Config, jobs: &[SearchCrawlJob], rejected: &[SearchCr
     }
 }
 
-fn print_search_results(query: &str, results: &[Value]) {
+pub(crate) fn print_search_results(query: &str, results: &[Value]) {
     println!("{}", primary(&format!("Search Results for \"{query}\"")));
     println!("{} {}\n", muted("Found"), results.len());
 
@@ -109,8 +112,19 @@ fn print_search_results(query: &str, results: &[Value]) {
         let position = result["position"].as_i64().unwrap_or(0);
         let title = result["title"].as_str().unwrap_or("");
         let url = result["url"].as_str().unwrap_or("");
-        println!("{}. {}", position, primary(title));
-        println!("   {}", muted(url));
+        let title_prefix_chars = position.to_string().chars().count() + 2;
+        println!(
+            "{}. {}",
+            position,
+            primary(&truncate_display_text(
+                title,
+                120usize.saturating_sub(title_prefix_chars)
+            ))
+        );
+        println!(
+            "   {}",
+            muted(&truncate_display_continuation(url, SEARCH_ITEM_INDENT))
+        );
         if let Some(s) = result["snippet"].as_str() {
             println!("   {}", summarize_snippet(s));
         }
@@ -121,13 +135,13 @@ fn print_search_results(query: &str, results: &[Value]) {
 fn summarize_snippet(snippet: &str) -> String {
     let compact = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
     if compact.len() <= HUMAN_SNIPPET_LIMIT {
-        return compact;
+        return truncate_display_continuation(&compact, SEARCH_ITEM_INDENT);
     }
 
     let boundary = compact.floor_char_boundary(HUMAN_SNIPPET_LIMIT);
     let mut truncated = compact[..boundary].trim_end().to_string();
     truncated.push_str("...");
-    truncated
+    truncate_display_continuation(&truncated, SEARCH_ITEM_INDENT)
 }
 
 #[cfg(test)]

@@ -5,9 +5,9 @@
 //! shim small and the 28-arm match arm in its own module. No behavior change.
 
 use super::super::super::cli::{
-    CliCommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand, IngestArgs, ServeArgs,
-    ServeSubcommand, SessionsArgs, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand,
-    StackArgs, StackSubcommand, SyncSubcommand,
+    CliCommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand, IngestArgs, MonitorSubcommand,
+    ServeArgs, ServeSubcommand, SessionsArgs, SetupArgs, SetupAuthMode, SetupInitArgs,
+    SetupSubcommand, StackArgs, StackSubcommand, SyncSubcommand,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -145,6 +145,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
                 vec!["list".to_string()]
             };
         }
+        CliCommand::Monitor(args) => apply_monitor(&mut out, args.action),
         CliCommand::Map(args) => {
             if let Some(fb) = args.map_fallback {
                 out.map_fallback = fb;
@@ -299,6 +300,28 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
 fn set_simple(out: &mut DispatchOutput, kind: CommandKind, positional: Vec<String>) {
     out.command = kind;
     out.positional = positional;
+}
+
+fn apply_monitor(out: &mut DispatchOutput, action: MonitorSubcommand) {
+    out.command = CommandKind::Monitor;
+    match action {
+        MonitorSubcommand::Jobs(args) => {
+            let mut positional = vec!["jobs".to_string()];
+            if args.watch {
+                positional.push("--watch".to_string());
+            }
+            if args.jsonl {
+                positional.push("--jsonl".to_string());
+            }
+            positional.push("--interval-secs".to_string());
+            positional.push(args.interval_secs.to_string());
+            if let Some(state_file) = args.state_file {
+                positional.push("--state-file".to_string());
+                positional.push(state_file);
+            }
+            out.positional = positional;
+        }
+    }
 }
 
 fn apply_ingest(out: &mut DispatchOutput, args: IngestArgs) {

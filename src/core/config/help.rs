@@ -42,7 +42,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     ),
     (
         "Jobs And Imports",
-        &["status", "ingest", "sessions", "watch", "sync"],
+        &["status", "ingest", "sessions", "watch", "monitor", "sync"],
     ),
     (
         "Runtime And Setup",
@@ -416,6 +416,7 @@ fn subcommand_description(parent_name: &str, command: &Command) -> String {
         ("watch", "delete") => "Delete a watch definition".to_string(),
         ("watch", "history") => "Show watch run history".to_string(),
         ("watch", "artifacts") => "List artifacts for a watch run".to_string(),
+        ("monitor", "jobs") => "Emit job lifecycle events".to_string(),
         _ => command_about(command),
     }
 }

@@ -131,7 +131,7 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 /// Render the human-readable research summary to stdout.
-fn print_human_research_output(
+pub(crate) fn print_human_research_output(
     payload: &ResearchPayload,
     total_ms: u128,
 ) -> Result<(), Box<dyn Error>> {
