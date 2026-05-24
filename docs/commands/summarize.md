@@ -37,7 +37,7 @@ All global scrape/config flags apply. Key flags:
 - Does not hardcode a model; the request goes through `services::llm_backend` and the configured headless LLM settings. The current implementation supports Gemini CLI.
 - Treats scraped page content as untrusted context in the LLM prompt.
 - Accepts at most 10 URLs per request.
-- In server mode (`AXON_SERVER_URL`), the CLI sends `action=summarize` through `/v1/actions`.
+- In server mode (`AXON_SERVER_URL`), the CLI calls the direct `POST /v1/summarize` route.
 
 ## Examples
 

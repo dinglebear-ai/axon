@@ -5,7 +5,11 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "openapi:export": "mkdir -p openapi && cargo run --quiet --manifest-path ../../Cargo.toml --bin axon-openapi > openapi/axon.json",
+    "openapi:types": "node scripts/generate-openapi-types.mjs openapi/axon.json lib/generated/axon-api.ts",
+    "openapi:generate": "npm run openapi:export && npm run openapi:types",
+    "openapi:check": "npm run openapi:generate && git diff --exit-code openapi/axon.json lib/generated/axon-api.ts"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",

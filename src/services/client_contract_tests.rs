@@ -1,7 +1,9 @@
 use super::client_contract::{
     ClientCrawlRequest, ClientExtractMode, ClientExtractRequest, ClientRoutePreference,
+    RestCrawlRequest, RestExtractRequest, RestIngestRequest,
 };
 use crate::core::config::RenderMode;
+use crate::mcp::schema::IngestRequest;
 
 #[test]
 fn extract_request_defaults_to_auto_mode() {
@@ -17,6 +19,51 @@ fn extract_request_defaults_to_auto_mode() {
     };
 
     assert_eq!(req.effective_mode(), ClientExtractMode::Auto);
+}
+
+#[test]
+fn rest_extract_request_rejects_unimplemented_modes() {
+    let err = serde_json::from_value::<RestExtractRequest>(serde_json::json!({
+        "urls": ["https://example.com"],
+        "mode": "deterministic"
+    }))
+    .expect_err("unsupported REST extract mode should not deserialize");
+
+    assert!(err.to_string().contains("unknown variant"));
+}
+
+#[test]
+fn rest_crawl_request_preserves_legacy_render_mode_aliases() {
+    for alias in ["auto", "autoswitch", "auto-switch"] {
+        let req: RestCrawlRequest = serde_json::from_value(serde_json::json!({
+            "urls": ["https://example.com"],
+            "render_mode": alias
+        }))
+        .unwrap_or_else(|err| panic!("deserialize render mode alias {alias}: {err}"));
+
+        assert_eq!(req.render_mode, Some(RenderMode::AutoSwitch));
+    }
+}
+
+#[test]
+fn rest_ingest_request_carries_sessions_options_to_mcp_request() {
+    let req: RestIngestRequest = serde_json::from_value(serde_json::json!({
+        "source_type": "sessions",
+        "sessions": {
+            "claude": true,
+            "codex": false,
+            "gemini": true,
+            "project": "axon_rust"
+        }
+    }))
+    .expect("deserialize REST ingest request");
+
+    let mcp_req = IngestRequest::from(req);
+    let sessions = mcp_req.sessions.expect("sessions payload");
+    assert_eq!(sessions.claude, Some(true));
+    assert_eq!(sessions.codex, Some(false));
+    assert_eq!(sessions.gemini, Some(true));
+    assert_eq!(sessions.project.as_deref(), Some("axon_rust"));
 }
 
 #[test]

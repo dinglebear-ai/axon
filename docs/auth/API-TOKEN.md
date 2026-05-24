@@ -18,7 +18,7 @@ created, when it is required, and what fails without it.
 | Token | Type | Surface | Required? | Section |
 |-------|------|---------|-----------|---------|
 | `AXON_MCP_HTTP_TOKEN` | Env-set bearer | `axon mcp --transport http` (`/mcp`) | Loopback: optional. Non-loopback: yes. | [MCP HTTP token](#mcp-http-token) |
-| MCP OAuth env | Google OAuth + JWT | `/mcp`, `/v1/actions` | OAuth mode only | [MCP OAuth](#mcp-oauth) |
+| MCP OAuth env | Google OAuth + JWT | `/mcp`, protected `/v1` routes | OAuth mode only | [MCP OAuth](#mcp-oauth) |
 | Web panel password | Auto-generated, file-backed | `axon serve` web panel (`/api/panel/*`) | Always (no anonymous access) | [Web panel password](#web-panel-password) |
 
 User-supplied third-party credentials (Tavily, OpenAI, GitHub, Reddit) are

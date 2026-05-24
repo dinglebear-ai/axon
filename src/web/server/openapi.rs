@@ -62,26 +62,28 @@ use super::{handlers, openapi_jobs};
         handlers::admin::run_watch
     ),
     components(schemas(
-        super::types::AskRequestBody,
+        crate::services::client_contract::RestAskRequest,
         super::error::ErrorBody,
-        handlers::rag::QueryRequest,
-        handlers::rag::RetrieveRequest,
-        handlers::rag::EvaluateRequest,
-        handlers::rag::SuggestRequest,
-        handlers::exploration::ScrapeRequest,
-        handlers::exploration::SummarizeRequest,
-        handlers::exploration::MapRequest,
+        crate::services::client_contract::RestQueryRequest,
+        crate::services::client_contract::RestRetrieveRequest,
+        crate::services::client_contract::RestEvaluateRequest,
+        crate::services::client_contract::RestSuggestRequest,
+        crate::services::client_contract::RestScrapeRequest,
+        crate::services::client_contract::RestSummarizeRequest,
+        crate::services::client_contract::RestMapRequest,
         handlers::exploration::EndpointsRequest,
-        handlers::exploration::SearchRequest,
-        handlers::exploration::ResearchRequest,
+        crate::services::client_contract::RestSearchRequest,
+        crate::services::client_contract::RestResearchRequest,
         crate::services::types::EndpointReport,
         crate::services::types::DiscoveredEndpoint,
         crate::services::types::EndpointVerification,
         crate::services::types::EndpointKind,
         crate::services::types::EndpointSourceKind,
-        handlers::async_jobs::CrawlStartRequest,
-        handlers::async_jobs::EmbedStartRequest,
-        handlers::async_jobs::ExtractStartRequest,
+        crate::services::client_contract::RestCrawlRequest,
+        crate::services::client_contract::RestEmbedRequest,
+        crate::services::client_contract::RestExtractRequest,
+        crate::services::client_contract::RestIngestRequest,
+        crate::services::client_contract::RestSessionsIngestOptions,
         handlers::async_jobs::AcceptedJob,
         handlers::admin::DedupeRequest,
         handlers::admin::WatchCreateRequest
@@ -97,11 +99,15 @@ use super::{handlers, openapi_jobs};
 )]
 struct ApiDoc;
 
+pub fn openapi_document() -> utoipa::openapi::OpenApi {
+    ApiDoc::openapi()
+}
+
 pub(super) fn docs_router<S>() -> axum::Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    let (_, openapi) = OpenApiRouter::<S>::with_openapi(ApiDoc::openapi()).split_for_parts();
+    let (_, openapi) = OpenApiRouter::<S>::with_openapi(openapi_document()).split_for_parts();
     SwaggerUi::new("/docs")
         .url("/api-docs/openapi.json", openapi)
         .into()

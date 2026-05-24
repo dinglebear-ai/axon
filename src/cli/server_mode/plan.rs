@@ -1,5 +1,10 @@
 use crate::cli;
 use crate::core::config::{CommandKind, Config};
+use crate::services::client_contract::{
+    RestAskRequest, RestCrawlRequest, RestEmbedRequest, RestEvaluateRequest, RestExtractRequest,
+    RestMapRequest, RestQueryRequest, RestRetrieveRequest, RestScrapeRequest, RestSearchRequest,
+    RestSuggestRequest, RestSummarizeRequest,
+};
 use std::error::Error;
 use std::fmt;
 
@@ -58,7 +63,17 @@ pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPla
             Ok(ServerRestPlan {
                 method: "POST",
                 path: "/v1/scrape".to_string(),
-                body: serde_json::json!({ "url": url, "embed": cfg.embed }),
+                body: json_body(RestScrapeRequest {
+                    url: Some(url),
+                    urls: None,
+                    render_mode: Some(cfg.render_mode),
+                    format: Some(cfg.format),
+                    embed: Some(cfg.embed),
+                    collection: Some(cfg.collection.clone()),
+                    root_selector: cfg.root_selector.clone(),
+                    exclude_selector: cfg.exclude_selector.clone(),
+                    headers: cfg.custom_headers.clone(),
+                })?,
                 label: "scrape",
                 poll_family: None,
             })
@@ -73,7 +88,14 @@ pub(crate) fn server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPla
             Ok(ServerRestPlan {
                 method: "POST",
                 path: "/v1/summarize".to_string(),
-                body: serde_json::json!({ "urls": urls }),
+                body: json_body(RestSummarizeRequest {
+                    url: None,
+                    urls: Some(urls),
+                    render_mode: Some(cfg.render_mode),
+                    root_selector: cfg.root_selector.clone(),
+                    exclude_selector: cfg.exclude_selector.clone(),
+                    headers: cfg.custom_headers.clone(),
+                })?,
                 label: "summarize",
                 poll_family: None,
             })
@@ -154,11 +176,11 @@ fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, ServerPlanErr
             ServerRestPlan {
                 method: "POST",
                 path: "/v1/map".to_string(),
-                body: serde_json::json!({
-                    "url": url,
-                    "limit": cfg.search_limit,
-                    "offset": 0,
-                }),
+                body: json_body(RestMapRequest {
+                    url,
+                    limit: Some(cfg.search_limit),
+                    offset: Some(0),
+                })?,
                 label: "map",
                 poll_family: None,
             }
@@ -168,12 +190,12 @@ fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, ServerPlanErr
             ServerRestPlan {
                 method: "POST",
                 path: "/v1/query".to_string(),
-                body: serde_json::json!({
-                    "query": query,
-                    "limit": cfg.search_limit,
-                    "offset": 0,
-                    "collection": cfg.collection,
-                }),
+                body: json_body(RestQueryRequest {
+                    query,
+                    collection: Some(cfg.collection.clone()),
+                    limit: Some(cfg.search_limit),
+                    offset: Some(0),
+                })?,
                 label: "query",
                 poll_family: None,
             }
@@ -183,10 +205,13 @@ fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, ServerPlanErr
             ServerRestPlan {
                 method: "POST",
                 path: "/v1/retrieve".to_string(),
-                body: serde_json::json!({
-                    "url": url,
-                    "max_points": cfg.retrieve_max_points,
-                }),
+                body: json_body(RestRetrieveRequest {
+                    url,
+                    collection: Some(cfg.collection.clone()),
+                    max_points: cfg.retrieve_max_points,
+                    cursor: None,
+                    token_budget: None,
+                })?,
                 label: "retrieve",
                 poll_family: None,
             }
@@ -196,12 +221,27 @@ fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, ServerPlanErr
             ServerRestPlan {
                 method: "POST",
                 path: "/v1/ask".to_string(),
-                body: serde_json::json!({
-                    "query": query,
-                    "diagnostics": cfg.ask_diagnostics,
-                    "explain": cfg.ask_explain,
-                    "collection": cfg.collection,
-                }),
+                body: json_body(RestAskRequest {
+                    query,
+                    collection: Some(cfg.collection.clone()),
+                    since: cfg.since.clone(),
+                    before: cfg.before.clone(),
+                    diagnostics: Some(cfg.ask_diagnostics),
+                    explain: Some(cfg.ask_explain),
+                    hybrid_search: Some(cfg.hybrid_search_enabled),
+                    ask_chunk_limit: Some(cfg.ask_chunk_limit),
+                    ask_full_docs: Some(cfg.ask_full_docs),
+                    ask_max_context_chars: Some(cfg.ask_max_context_chars),
+                    ask_hybrid_candidates: Some(cfg.ask_hybrid_candidates),
+                    ask_min_relevance_score: Some(cfg.ask_min_relevance_score),
+                    ask_doc_chunk_limit: Some(cfg.ask_doc_chunk_limit),
+                    ask_doc_fetch_concurrency: Some(cfg.ask_doc_fetch_concurrency),
+                    ask_backfill_chunks: Some(cfg.ask_backfill_chunks),
+                    ask_candidate_limit: Some(cfg.ask_candidate_limit),
+                    ask_min_citations_nontrivial: Some(cfg.ask_min_citations_nontrivial),
+                    ask_authoritative_domains: Some(cfg.ask_authoritative_domains.clone()),
+                    ask_authoritative_boost: Some(cfg.ask_authoritative_boost),
+                })?,
                 label: "ask",
                 poll_family: None,
             }
@@ -211,7 +251,10 @@ fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, ServerPlanErr
             ServerRestPlan {
                 method: "POST",
                 path: "/v1/evaluate".to_string(),
-                body: serde_json::json!({ "question": question }),
+                body: json_body(RestEvaluateRequest {
+                    question,
+                    collection: Some(cfg.collection.clone()),
+                })?,
                 label: "evaluate",
                 poll_family: None,
             }
@@ -219,9 +262,10 @@ fn query_rest_plan(cfg: &Config) -> Result<Option<ServerRestPlan>, ServerPlanErr
         CommandKind::Suggest => ServerRestPlan {
             method: "POST",
             path: "/v1/suggest".to_string(),
-            body: serde_json::json!({
-                "focus": cfg.query,
-            }),
+            body: json_body(RestSuggestRequest {
+                focus: cfg.query.clone(),
+                collection: Some(cfg.collection.clone()),
+            })?,
             label: "suggest",
             poll_family: None,
         },
@@ -254,18 +298,20 @@ fn crawl_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanErro
     Ok(ServerRestPlan {
         method: "POST",
         path: "/v1/crawl".to_string(),
-        body: serde_json::json!({
-            "urls": urls,
-            "max_pages": cfg.max_pages,
-            "max_depth": cfg.max_depth,
-            "render_mode": cfg.render_mode,
-            "include_subdomains": cfg.include_subdomains,
-            "respect_robots": cfg.respect_robots,
-            "discover_sitemaps": cfg.discover_sitemaps,
-            "max_sitemaps": cfg.max_sitemaps,
-            "sitemap_since_days": cfg.sitemap_since_days,
-            "delay_ms": cfg.delay_ms,
-        }),
+        body: json_body(RestCrawlRequest {
+            urls,
+            max_pages: Some(cfg.max_pages),
+            max_depth: Some(cfg.max_depth),
+            render_mode: Some(cfg.render_mode),
+            include_subdomains: Some(cfg.include_subdomains),
+            respect_robots: Some(cfg.respect_robots),
+            discover_sitemaps: Some(cfg.discover_sitemaps),
+            max_sitemaps: Some(cfg.max_sitemaps),
+            sitemap_since_days: Some(cfg.sitemap_since_days),
+            delay_ms: Some(cfg.delay_ms),
+            collection: Some(cfg.collection.clone()),
+            headers: cfg.custom_headers.clone(),
+        })?,
         label: "crawl",
         poll_family: Some(ServerJobFamily::Crawl),
     })
@@ -287,13 +333,16 @@ fn extract_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanEr
     Ok(ServerRestPlan {
         method: "POST",
         path: "/v1/extract".to_string(),
-        body: serde_json::json!({
-            "urls": urls,
-            "prompt": cfg.query,
-            "max_pages": cfg.max_pages,
-            "render_mode": cfg.render_mode,
-            "embed": cfg.embed,
-        }),
+        body: json_body(RestExtractRequest {
+            urls,
+            prompt: cfg.query.clone(),
+            mode: None,
+            max_pages: Some(cfg.max_pages),
+            render_mode: Some(cfg.render_mode),
+            embed: Some(cfg.embed),
+            collection: Some(cfg.collection.clone()),
+            headers: cfg.custom_headers.clone(),
+        })?,
         label: "extract",
         poll_family: Some(ServerJobFamily::Extract),
     })
@@ -320,10 +369,11 @@ fn embed_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanErro
     Ok(ServerRestPlan {
         method: "POST",
         path: "/v1/embed".to_string(),
-        body: serde_json::json!({
-            "input": input,
-            "collection": cfg.collection,
-        }),
+        body: json_body(RestEmbedRequest {
+            input,
+            source_type: None,
+            collection: Some(cfg.collection.clone()),
+        })?,
         label: "embed",
         poll_family: Some(ServerJobFamily::Embed),
     })
@@ -354,14 +404,23 @@ fn search_like_plan(
     ServerRestPlan {
         method: "POST",
         path: path.to_string(),
-        body: serde_json::json!({
-            "query": query,
-            "limit": cfg.search_limit,
-            "offset": 0,
-        }),
+        body: serde_json::to_value(RestSearchRequest {
+            query,
+            limit: Some(cfg.search_limit),
+            offset: Some(0),
+            time_range: None,
+        })
+        .unwrap_or(serde_json::Value::Null),
         label,
         poll_family: None,
     }
+}
+
+pub(super) fn json_body<T: serde::Serialize>(
+    value: T,
+) -> Result<serde_json::Value, ServerPlanError> {
+    serde_json::to_value(value)
+        .map_err(|err| ServerPlanError::new(format!("failed to serialize REST request: {err}")))
 }
 
 fn page_path(

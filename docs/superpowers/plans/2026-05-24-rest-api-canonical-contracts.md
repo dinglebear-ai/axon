@@ -290,6 +290,7 @@ Add a test in `src/web/server_tests.rs` that posts to active `/v1/embed` through
 ```rust
 #[tokio::test]
 #[serial]
+#[cfg(unix)]
 async fn active_embed_rejects_symlink_children_under_allowed_root() {
     use std::os::unix::fs::symlink;
 

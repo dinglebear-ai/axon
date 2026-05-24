@@ -20,6 +20,8 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 | `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes); set to 0 to disable | no |
 | `AXON_MCP_EMBED_ALLOWED_ROOTS` | no | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) | no |
 | `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | no | -- | Max bytes per local file embedding request via MCP (unset = no per-request size limit; only `AXON_MCP_EMBED_ALLOWED_ROOTS` gates access) | no |
+| `AXON_MCP_EMBED_MAX_LOCAL_DEPTH` | no | `8` | Max directory traversal depth for local directory embedding requests | no |
+| `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES` | no | `5000` | Max filesystem entries visited for local directory embedding requests | no |
 
 ## CLI server mode
 
@@ -28,7 +30,7 @@ These are not MCP transport variables, but they point the host CLI at the same
 
 | Variable | Required | Default | Description | Sensitive |
 |----------|----------|---------|-------------|-----------|
-| `AXON_SERVER_URL` | no | unset | Generic CLI server-mode endpoint, for example `http://127.0.0.1:8001`. Supported stateful CLI commands call `/v1/actions`. | no |
+| `AXON_SERVER_URL` | no | unset | Generic CLI server-mode endpoint, for example `http://127.0.0.1:8001`. Supported stateful CLI commands call direct `/v1` REST routes. | no |
 | `AXON_LOCAL_MODE` | no | `false` | Force local CLI execution even when `AXON_SERVER_URL` is configured. Equivalent to `--local`. | no |
 | `AXON_SERVER_INSECURE` | no | unset | Set to `1` to allow bearer-token auth over plaintext HTTP to non-loopback hosts. Prefer HTTPS instead. | no |
 

@@ -1,6 +1,11 @@
-use crate::core::config::Config;
+use crate::core::config::{Config, ConfigOverrides};
 use crate::core::http::validate_url;
 use crate::services;
+use crate::services::client_contract::{
+    RestMapRequest as MapRequest, RestResearchRequest as ResearchRequest,
+    RestScrapeRequest as ScrapeRequest, RestSearchRequest as SearchRequest,
+    RestSummarizeRequest as SummarizeRequest,
+};
 use crate::services::types::{MapOptions, SearchOptions, ServiceTimeRange};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
@@ -15,26 +20,6 @@ use super::rag::required_text;
 type WebState = (super::super::state::AppState, Arc<Config>);
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct ScrapeRequest {
-    url: Option<String>,
-    urls: Option<Vec<String>>,
-    embed: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct SummarizeRequest {
-    url: Option<String>,
-    urls: Option<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct MapRequest {
-    url: String,
-    limit: Option<usize>,
-    offset: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct EndpointsRequest {
     url: String,
     include_bundles: Option<bool>,
@@ -44,22 +29,6 @@ pub(crate) struct EndpointsRequest {
     max_scan_bytes: Option<usize>,
     verify: Option<bool>,
     capture_network: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct SearchRequest {
-    query: String,
-    limit: Option<usize>,
-    offset: Option<usize>,
-    time_range: Option<String>,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct ResearchRequest {
-    query: String,
-    limit: Option<usize>,
-    offset: Option<usize>,
-    time_range: Option<String>,
 }
 
 #[utoipa::path(
@@ -77,24 +46,11 @@ pub(crate) async fn scrape(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<ScrapeRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let embed = req.embed;
-    let urls = request_urls(req)?;
-    let mut cfg = cfg.as_ref().clone();
-    if let Some(embed) = embed {
-        cfg.embed = embed;
-    }
-    let results = services::scrape::scrape_batch(&cfg, &urls, None)
+    let urls = request_urls(&req)?;
+    let cfg = scrape_config(&cfg, &req)?;
+    let results = services::scrape::scrape_batch_with_optional_embed(&cfg, &urls, None)
         .await
         .map_err(HttpError::from_box)?;
-    if cfg.embed {
-        let docs = results
-            .iter()
-            .map(crate::cli::commands::scrape::scrape_result_to_prepared_doc)
-            .collect();
-        embed_scrape_docs_sync(&cfg, docs).map_err(|err| {
-            HttpError::new(StatusCode::BAD_GATEWAY, "upstream_error", err.to_string())
-        })?;
-    }
     if results.len() == 1 {
         Ok(Json(serde_json::to_value(&results[0]).map_err(|err| {
             HttpError::new(
@@ -106,19 +62,6 @@ pub(crate) async fn scrape(
     } else {
         Ok(Json(json!({ "results": results })))
     }
-}
-
-fn embed_scrape_docs_sync(
-    cfg: &Config,
-    docs: Vec<crate::vector::ops::PreparedDoc>,
-) -> Result<(), String> {
-    let handle = tokio::runtime::Handle::current();
-    tokio::task::block_in_place(|| {
-        handle
-            .block_on(crate::vector::ops::embed_prepared_docs(cfg, docs, None))
-            .map(|_| ())
-            .map_err(|err| err.to_string())
-    })
 }
 
 #[utoipa::path(
@@ -136,7 +79,8 @@ pub(crate) async fn summarize(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<SummarizeRequest>,
 ) -> Result<Json<services::types::SummarizeResult>, HttpError> {
-    let urls = summarize_request_urls(req)?;
+    let urls = summarize_request_urls(&req)?;
+    let cfg = summarize_config(&cfg, &req);
     services::summarize::summarize(&cfg, &urls, None)
         .await
         .map(Json)
@@ -270,12 +214,13 @@ pub(crate) async fn research(
     .map_err(HttpError::from_box)
 }
 
-fn request_urls(req: ScrapeRequest) -> Result<Vec<String>, HttpError> {
+fn request_urls(req: &ScrapeRequest) -> Result<Vec<String>, HttpError> {
     let urls: Vec<String> = req
         .urls
+        .clone()
         .unwrap_or_default()
         .into_iter()
-        .chain(req.url)
+        .chain(req.url.clone())
         .map(|url| url.trim().to_string())
         .filter(|url| !url.is_empty())
         .collect();
@@ -289,12 +234,32 @@ fn request_urls(req: ScrapeRequest) -> Result<Vec<String>, HttpError> {
         .collect())
 }
 
-fn summarize_request_urls(req: SummarizeRequest) -> Result<Vec<String>, HttpError> {
+fn scrape_config(cfg: &Config, req: &ScrapeRequest) -> Result<Config, HttpError> {
+    let cfg = cfg.apply_overrides(&ConfigOverrides {
+        render_mode: req.render_mode,
+        format: req.format,
+        embed: req.embed,
+        collection: req.collection.clone(),
+        root_selector: req.root_selector.clone(),
+        exclude_selector: req.exclude_selector.clone(),
+        custom_headers: if req.headers.is_empty() {
+            None
+        } else {
+            Some(req.headers.clone())
+        },
+        ..ConfigOverrides::default()
+    });
+    super::rag::validate_collection_name(&cfg.collection)?;
+    Ok(cfg)
+}
+
+fn summarize_request_urls(req: &SummarizeRequest) -> Result<Vec<String>, HttpError> {
     let urls: Vec<String> = req
         .urls
+        .clone()
         .unwrap_or_default()
         .into_iter()
-        .chain(req.url)
+        .chain(req.url.clone())
         .map(|url| url.trim().to_string())
         .filter(|url| !url.is_empty())
         .collect();
@@ -302,6 +267,20 @@ fn summarize_request_urls(req: SummarizeRequest) -> Result<Vec<String>, HttpErro
         return Err(HttpError::bad_request("url or urls is required"));
     }
     Ok(urls)
+}
+
+fn summarize_config(cfg: &Config, req: &SummarizeRequest) -> Config {
+    cfg.apply_overrides(&ConfigOverrides {
+        render_mode: req.render_mode,
+        root_selector: req.root_selector.clone(),
+        exclude_selector: req.exclude_selector.clone(),
+        custom_headers: if req.headers.is_empty() {
+            None
+        } else {
+            Some(req.headers.clone())
+        },
+        ..ConfigOverrides::default()
+    })
 }
 
 fn map_options(limit: Option<usize>, offset: Option<usize>) -> MapOptions {

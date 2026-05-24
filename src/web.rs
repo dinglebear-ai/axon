@@ -14,3 +14,7 @@ pub(crate) mod server;
 pub(crate) mod static_assets;
 
 pub(crate) use server::{PanelRuntimeState, router};
+
+pub fn openapi_document() -> utoipa::openapi::OpenApi {
+    server::openapi_document()
+}

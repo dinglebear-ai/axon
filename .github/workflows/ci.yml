@@ -246,6 +246,50 @@ jobs:
       - name: Enforce generated MCP schema docs are in sync
         run: python3 scripts/generate_mcp_schema_doc.py --check
 
+  rest-api-parity:
+    name: rest-api-parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
+            Cargo.toml
+            Cargo.lock
+            rust-toolchain.toml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rest-api-parity
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: create web assets placeholder
+        run: mkdir -p apps/web/out
+      - name: install web dependencies
+        run: npm ci --prefix apps/web
+      - name: REST route contract inventory
+        run: cargo test --locked --test http_api_parity_inventory
+      - name: Server-mode REST planner contract
+        run: cargo test --locked server_mode_post_bodies_match_canonical_rest_contract_fields --lib
+      - name: OpenAPI and generated client sync
+        run: npm --prefix apps/web run openapi:check
+
   mcp-oauth-smoke:
     name: mcp-oauth-smoke
     runs-on: ubuntu-latest

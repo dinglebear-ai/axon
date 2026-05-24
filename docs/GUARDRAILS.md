@@ -40,8 +40,8 @@ routes.
 | Token | Scope | Browser-visible |
 |-------|-------|-----------------|
 | `~/.axon/panel-password` | Gates `/api/panel/config`, `/api/panel/ops`, and setup routes | Returned only after `/api/panel/login` succeeds |
-| `AXON_MCP_HTTP_TOKEN` | Static bearer for `/mcp` and `/v1/actions` | Client-configured secret |
-| OAuth JWT (`AXON_MCP_AUTH_MODE=oauth`) | OAuth bearer for `/mcp` and `/v1/actions` | Client obtains through OAuth flow |
+| `AXON_MCP_HTTP_TOKEN` | Static bearer for `/mcp` and protected `/v1` routes | Client-configured secret |
+| OAuth JWT (`AXON_MCP_AUTH_MODE=oauth`) | OAuth bearer for `/mcp` and protected `/v1` routes | Client obtains through OAuth flow |
 
 Rules:
 - `~/.axon/panel-password` must stay mode `0600`.

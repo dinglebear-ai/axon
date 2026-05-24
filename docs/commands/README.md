@@ -6,7 +6,7 @@ Index of Axon CLI command docs.
 ## Client/server mode
 
 Set `AXON_SERVER_URL` to make supported stateful commands call a running
-`axon serve` process through `/v1/actions`.
+`axon serve` process through direct `/v1` REST routes.
 Server-mode commands use server-owned jobs, outputs, screenshots, and
 artifacts; the host CLI does not write local markdown as the source of truth.
 Use `--local` to bypass server mode for one command.

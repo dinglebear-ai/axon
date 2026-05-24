@@ -155,7 +155,7 @@ and the first-party HTTP API.
 | Embedded assets | TypeScript build output | Setup/config panel |
 | Axum routes | Rust | Panel state, login, config, setup, and ops APIs |
 | MCP route | rmcp + Axum | Streamable HTTP MCP endpoint |
-| Client/server route | Axum | `/v1/actions` for server-mode CLI commands |
+| Client/server routes | Axum | Direct `/v1` REST routes for server-mode CLI commands |
 
 The removed Next.js dashboard, command WebSocket bridge, shell WebSocket, and
 download routes are historical surfaces only.
@@ -163,7 +163,7 @@ download routes are historical surfaces only.
 ### Auth model
 
 The web panel uses local setup/session cookies for panel state. MCP and
-first-party server actions share the HTTP auth boundary controlled by
+first-party REST routes share the HTTP auth boundary controlled by
 `AXON_MCP_HTTP_TOKEN` or `AXON_MCP_AUTH_MODE=oauth`.
 
 ## Serve runtime
@@ -175,7 +175,7 @@ first-party server actions share the HTTP auth boundary controlled by
 | `/` and `/api/panel/*` | 8001 | Embedded setup/config panel |
 | `/mcp` | 8001 | MCP streamable HTTP |
 | `/v1/ask` | 8001 | Ask endpoint |
-| `/v1/capabilities`, `/v1/actions` | 8001 | CLI client/server mode |
+| `/v1/capabilities`, direct `/v1` routes | 8001 | CLI client/server mode |
 
 Jobs are stored in SQLite and drained by in-process workers when the service
 context is worker-enabled.

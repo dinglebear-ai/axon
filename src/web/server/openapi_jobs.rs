@@ -3,6 +3,7 @@
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct JobListQuery {
     limit: Option<i64>,
     offset: Option<i64>,

@@ -320,7 +320,7 @@ fn ingest_body(target: &str) -> Value {
     } else if lower.contains("reddit.com/") || lower.starts_with("/r/") || lower.starts_with("r/") {
         json!({ "source_type": "reddit", "target": target })
     } else {
-        json!({ "source_type": "github", "repo": target, "include_source": true })
+        json!({ "source_type": "github", "target": target, "include_source": true })
     }
 }
 
