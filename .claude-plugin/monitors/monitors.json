@@ -1,7 +1,7 @@
 [
   {
     "name": "axon-jobs",
-    "command": "mkdir -p \"${AXON_LOG_DIR:-${HOME}/.axon/logs}\" && axon monitor jobs --watch --jsonl --interval-secs 2 2>>\"${AXON_LOG_DIR:-${HOME}/.axon/logs}/claude-monitor-stderr.log\"",
+    "command": "mkdir -p \"${AXON_LOG_DIR:-${HOME}/.axon/logs}\" && axon monitor jobs --watch --jsonl --interval-secs 2 --state-file \"${AXON_LOG_DIR:-${HOME}/.axon/logs}/claude-monitor-jobs-${CLAUDE_SESSION_ID:-$$}.state.json\" 2>>\"${AXON_LOG_DIR:-${HOME}/.axon/logs}/claude-monitor-stderr.log\"",
     "description": "Axon crawl, extract, embed, and ingest job lifecycle events",
     "when": "always"
   }

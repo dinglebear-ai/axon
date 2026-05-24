@@ -141,3 +141,30 @@ fn emits_terminal_event_on_first_poll_when_job_started_after_monitor() {
     assert_eq!(events[0].event, "completed");
     assert_eq!(events[0].id, completed_crawl);
 }
+
+#[test]
+fn reports_canceled_jobs_separately_from_failed_jobs() {
+    let canceled_embed = Uuid::parse_str("ffffffff-ffff-ffff-ffff-ffffffffffff").unwrap();
+    let mut state = JobMonitorState::default();
+    state.remember("embed", canceled_embed, "running");
+
+    let events = detect_job_events(
+        &mut state,
+        &[],
+        &[(
+            "embed",
+            job(
+                canceled_embed,
+                "canceled",
+                "https://docs.example.com",
+                json!({}),
+            ),
+        )],
+        &[],
+    );
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event, "canceled");
+    assert_eq!(events[0].status, "canceled");
+    assert_eq!(state.status_of("embed", canceled_embed), Some("canceled"));
+}
