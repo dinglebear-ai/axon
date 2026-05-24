@@ -141,6 +141,16 @@ impl ServiceJobRuntime for EnqueueCapture {
     async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn StdError + Send + Sync>> {
         Ok(0)
     }
+
+    async fn count_jobs_by_status(
+        &self,
+        _kind: JobKind,
+    ) -> Result<
+        std::collections::HashMap<crate::jobs::status::JobStatus, i64>,
+        Box<dyn StdError + Send + Sync>,
+    > {
+        Ok(std::collections::HashMap::new())
+    }
 }
 
 fn make_cfg(query: &str) -> Config {

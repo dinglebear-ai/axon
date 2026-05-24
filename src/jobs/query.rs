@@ -42,6 +42,32 @@ pub async fn count_jobs(pool: &SqlitePool, kind: JobKind) -> Result<i64, sqlx::E
     Ok(count)
 }
 
+/// Per-status histogram for a single job kind.
+///
+/// Returns one entry per distinct `status` value present in the table. Missing
+/// statuses are absent from the map (callers must treat absent as zero).
+/// Unknown DB values (should never happen given the CHECK constraint) are
+/// folded into `JobStatus::Failed` to match `JobStatus::from_str`.
+pub async fn count_jobs_by_status(
+    pool: &SqlitePool,
+    kind: JobKind,
+) -> Result<std::collections::HashMap<JobStatus, i64>, sqlx::Error> {
+    let table = kind.table_name();
+    let rows: Vec<(String, i64)> = sqlx::query_as(&format!(
+        "SELECT status, COUNT(*) FROM {} GROUP BY status",
+        table
+    ))
+    .fetch_all(pool)
+    .await?;
+
+    let mut out: std::collections::HashMap<JobStatus, i64> = std::collections::HashMap::new();
+    for (raw_status, count) in rows {
+        let key = JobStatus::from_str(&raw_status);
+        *out.entry(key).or_insert(0) += count;
+    }
+    Ok(out)
+}
+
 /// List all jobs in a table as summary rows (most recent first).
 /// Returns at most 500 rows.
 pub async fn list_jobs(pool: &SqlitePool, kind: JobKind) -> Result<Vec<JobSummary>, sqlx::Error> {

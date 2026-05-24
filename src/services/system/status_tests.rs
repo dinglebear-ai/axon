@@ -96,6 +96,16 @@ impl ServiceJobRuntime for CountFailRuntime {
             _ => Ok(7),
         }
     }
+
+    async fn count_jobs_by_status(
+        &self,
+        _kind: JobKind,
+    ) -> Result<
+        std::collections::HashMap<crate::jobs::status::JobStatus, i64>,
+        Box<dyn Error + Send + Sync>,
+    > {
+        Ok(std::collections::HashMap::new())
+    }
 }
 
 #[tokio::test]

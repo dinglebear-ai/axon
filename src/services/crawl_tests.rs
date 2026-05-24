@@ -108,6 +108,16 @@ macro_rules! impl_noop_runtime_for {
                 Ok(0)
             }
 
+            async fn count_jobs_by_status(
+                &self,
+                _kind: JobKind,
+            ) -> Result<
+                std::collections::HashMap<crate::jobs::status::JobStatus, i64>,
+                Box<dyn std::error::Error + Send + Sync>,
+            > {
+                Ok(std::collections::HashMap::new())
+            }
+
             async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
                 $wait_result
             }
@@ -225,6 +235,16 @@ impl ServiceJobRuntime for CrawlWithDependentEmbedRuntime {
         _kind: JobKind,
     ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
         Ok(0)
+    }
+
+    async fn count_jobs_by_status(
+        &self,
+        _kind: JobKind,
+    ) -> Result<
+        std::collections::HashMap<crate::jobs::status::JobStatus, i64>,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
+        Ok(std::collections::HashMap::new())
     }
 }
 

@@ -2,6 +2,7 @@ use super::*;
 use crate::core::config::Config;
 use crate::jobs::backend::JobPayload;
 use crate::jobs::ops::enqueue_job;
+use crate::jobs::status::JobStatus;
 use crate::jobs::store::open_sqlite_pool;
 
 #[tokio::test]
@@ -141,4 +142,143 @@ async fn list_ingest_service_jobs_applies_source_filter_before_limit() {
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].source_type.as_deref(), Some("sessions"));
     assert_eq!(jobs[0].target.as_deref(), Some("sessions"));
+}
+
+#[tokio::test]
+async fn count_jobs_by_status_returns_histogram_per_kind() {
+    let pool = open_sqlite_pool(":memory:").await.unwrap();
+
+    // Seed one row per JobStatus variant so the full enum surface is
+    // covered in one shot — Pending twice to verify counting works.
+    for status in [
+        JobStatus::Pending,
+        JobStatus::Pending,
+        JobStatus::Running,
+        JobStatus::Completed,
+        JobStatus::Failed,
+        JobStatus::Canceled,
+    ] {
+        sqlx::query(
+            "INSERT INTO axon_crawl_jobs (id, url, status, config_json, created_at, updated_at) \
+             VALUES (?, 'https://example.com/', ?, '{}', 0, 0)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(status.as_str())
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let histogram = count_jobs_by_status(&pool, JobKind::Crawl).await.unwrap();
+    assert_eq!(histogram.get(&JobStatus::Pending).copied(), Some(2));
+    assert_eq!(histogram.get(&JobStatus::Running).copied(), Some(1));
+    assert_eq!(histogram.get(&JobStatus::Completed).copied(), Some(1));
+    assert_eq!(histogram.get(&JobStatus::Failed).copied(), Some(1));
+    assert_eq!(histogram.get(&JobStatus::Canceled).copied(), Some(1));
+}
+
+/// Empty tables must return an empty map — callers rely on "absent
+/// means zero", so a missing key and a `Some(0)` are NOT equivalent.
+#[tokio::test]
+async fn count_jobs_by_status_returns_empty_map_for_empty_table() {
+    let pool = open_sqlite_pool(":memory:").await.unwrap();
+    let histogram = count_jobs_by_status(&pool, JobKind::Crawl).await.unwrap();
+    assert!(histogram.is_empty());
+}
+
+/// Each JobKind maps to a different table with a different schema
+/// (notably ingest uses `source_type` + `target` instead of `url`). The
+/// `SELECT status, COUNT(*) FROM <table> GROUP BY status` shape works
+/// on all four today; this test locks that in so a future schema change
+/// breaks here loudly instead of silently returning empty.
+#[tokio::test]
+async fn count_jobs_by_status_works_for_every_job_kind() {
+    let pool = open_sqlite_pool(":memory:").await.unwrap();
+
+    let inserts: &[(JobKind, &str)] = &[
+        (
+            JobKind::Crawl,
+            "INSERT INTO axon_crawl_jobs (id, url, status, config_json, created_at, updated_at) \
+          VALUES (?, 'https://example.com/', 'completed', '{}', 0, 0)",
+        ),
+        (
+            JobKind::Embed,
+            "INSERT INTO axon_embed_jobs (id, input_text, config_json, status, created_at, updated_at) \
+          VALUES (?, 'some text', '{}', 'completed', 0, 0)",
+        ),
+        (
+            JobKind::Extract,
+            "INSERT INTO axon_extract_jobs (id, urls_json, status, created_at, updated_at) \
+          VALUES (?, '[]', 'completed', 0, 0)",
+        ),
+        (
+            JobKind::Ingest,
+            "INSERT INTO axon_ingest_jobs (id, source_type, target, config_json, status, created_at, updated_at) \
+          VALUES (?, 'github', 'owner/repo', '{}', 'completed', 0, 0)",
+        ),
+    ];
+    for (_, sql) in inserts {
+        sqlx::query(sql)
+            .bind(Uuid::new_v4().to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    for (kind, _) in inserts {
+        let histogram = count_jobs_by_status(&pool, *kind).await.unwrap();
+        assert_eq!(
+            histogram.get(&JobStatus::Completed).copied(),
+            Some(1),
+            "kind={kind:?} histogram={histogram:?}",
+        );
+    }
+}
+
+/// The helper folds unknown status strings into `JobStatus::Failed` via
+/// `JobStatus::from_str`. The CHECK constraint should prevent this in
+/// practice, but the fold is the documented behavior — exercise it so a
+/// refactor to `out.insert(...)` (instead of `+= count`) doesn't
+/// silently lose counts when a future schema variant slips through.
+#[tokio::test]
+async fn count_jobs_by_status_folds_unknown_status_into_failed() {
+    let pool = open_sqlite_pool(":memory:").await.unwrap();
+
+    // Drop and recreate the table without the CHECK constraint so we
+    // can insert a row with a status value the validator would reject.
+    sqlx::query("DROP TABLE axon_crawl_jobs")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "CREATE TABLE axon_crawl_jobs ( \
+            id TEXT PRIMARY KEY, \
+            url TEXT NOT NULL, \
+            status TEXT NOT NULL, \
+            config_json TEXT NOT NULL DEFAULT '{}', \
+            created_at INTEGER NOT NULL, \
+            updated_at INTEGER NOT NULL \
+        )",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // One legitimately-failed row + one row with an unknown status.
+    // Both should fold into JobStatus::Failed and sum to 2 — that
+    // verifies BOTH the from_str fold and the `+= count` accumulator.
+    for raw_status in ["failed", "totally-bogus"] {
+        sqlx::query(
+            "INSERT INTO axon_crawl_jobs (id, url, status, created_at, updated_at) \
+             VALUES (?, 'https://example.com/', ?, 0, 0)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(raw_status)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let histogram = count_jobs_by_status(&pool, JobKind::Crawl).await.unwrap();
+    assert_eq!(histogram.get(&JobStatus::Failed).copied(), Some(2));
 }
