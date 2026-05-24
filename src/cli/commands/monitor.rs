@@ -77,7 +77,15 @@ pub async fn run_monitor(
     state.mark_monitor_started_at(chrono::Utc::now());
 
     loop {
-        let (jobs, errors) = load_monitor_status_jobs(cfg, service_context).await?;
+        let (jobs, errors) = match load_monitor_status_jobs(cfg, service_context).await {
+            Ok(result) => result,
+            Err(err) if options.watch => {
+                eprintln!("monitor status failed: {err}; retrying");
+                tokio::time::sleep(Duration::from_secs(options.interval_secs.max(1))).await;
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
         for error in errors {
             eprintln!("monitor status degraded: {error}");
         }
@@ -202,14 +210,13 @@ fn detect_one(
     let event = match (previous.as_deref(), job.status.as_str()) {
         (Some("running"), "completed") | (Some("pending"), "completed") => "completed",
         (Some("running"), "failed") | (Some("pending"), "failed") => "failed",
-        (Some("running"), "canceled") | (Some("pending"), "canceled") => "failed",
+        (Some("running"), "canceled") | (Some("pending"), "canceled") => "canceled",
         (None, "completed") if state.initialized || job_started_after_monitor(state, job) => {
             "completed"
         }
-        (None, "failed" | "canceled")
-            if state.initialized || job_started_after_monitor(state, job) =>
-        {
-            "failed"
+        (None, "failed") if state.initialized || job_started_after_monitor(state, job) => "failed",
+        (None, "canceled") if state.initialized || job_started_after_monitor(state, job) => {
+            "canceled"
         }
         (prev, "running") if prev != Some("running") => "started",
         _ => return None,
@@ -365,7 +372,9 @@ fn write_state(path: &PathBuf, state: &JobMonitorState) -> Result<(), Box<dyn Er
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, serde_json::to_vec_pretty(state)?)?;
+    let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+    std::fs::write(&tmp_path, serde_json::to_vec_pretty(state)?)?;
+    std::fs::rename(&tmp_path, path)?;
     Ok(())
 }
 

@@ -278,7 +278,7 @@ pub(super) struct MonitorArgs {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum MonitorSubcommand {
-    /// Emit crawl/extract/embed/ingest start, completion, and failure events
+    /// Emit crawl/extract/embed/ingest start, completion, failure, and cancel events
     Jobs(MonitorJobsArgs),
 }
 
