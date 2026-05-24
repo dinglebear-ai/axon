@@ -44,6 +44,20 @@ fn extract_submit_body_accepts_cli_parity_knobs() {
 }
 
 #[test]
+fn scrape_body_accepts_embed_override() {
+    let body = serde_json::json!({
+        "url": "https://example.com",
+        "embed": false
+    });
+
+    let parsed: crate::web::server::handlers::rest::types::ScrapeBody =
+        serde_json::from_value(body).expect("parse scrape body");
+
+    assert_eq!(parsed.url, "https://example.com");
+    assert_eq!(parsed.embed, Some(false));
+}
+
+#[test]
 fn async_lifecycle_routes_are_declared_for_extract() {
     let routes = crate::web::server::handlers::rest::documented_rest_paths_for_tests();
     assert!(routes.contains(&"GET /v1/extract".to_string()));

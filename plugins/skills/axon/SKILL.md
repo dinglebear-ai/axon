@@ -14,6 +14,10 @@ axon is a self-hosted RAG engine. Two surfaces, same backend
 
 Both surfaces accept the same operations and parameters. This skill leads with MCP request shapes; CLI equivalents are listed alongside.
 
+## Parameter discipline (hard rule)
+
+Only pass parameters the user explicitly asked for. Defaults exist for a reason — do NOT add `max_pages`, `max_depth`, `render_mode`, `include_subdomains`, `since`, `before`, `hybrid_search`, `diagnostics`, `format`, `root_selector`, `exclude_selector`, `limit`, `collection`, or any other knob unless the user named it or the task literally cannot complete without it. The example JSON blocks below show what's *available*, not what to send by default. A bare `{ "action": "scrape", "url": "…" }` or `{ "action": "crawl", "urls": [...] }` is almost always the right call. Same rule for the CLI: never add flags the user didn't ask for.
+
 ## When to fall back to the CLI
 
 - The MCP server is offline (`mcp__axon__axon { "action": "doctor" }` fails or the tool is missing).

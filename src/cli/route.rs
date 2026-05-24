@@ -45,11 +45,8 @@ fn is_server_mode_rest_command(command: CommandKind) -> bool {
         command,
         CommandKind::Status
             | CommandKind::Map
-            | CommandKind::Endpoints
             | CommandKind::Scrape
             | CommandKind::Summarize
-            | CommandKind::Diff
-            | CommandKind::Brand
             | CommandKind::Search
             | CommandKind::Research
             | CommandKind::Crawl
@@ -102,6 +99,7 @@ fn fallback_policy_for(command: CommandKind, positional: &[String]) -> FallbackP
         | CommandKind::Suggest => FallbackPolicy::AllowDegradedLocal,
         CommandKind::Dedupe
         | CommandKind::Migrate
+        | CommandKind::Monitor
         | CommandKind::Watch
         | CommandKind::Config
         | CommandKind::Sync => FallbackPolicy::Disallow,

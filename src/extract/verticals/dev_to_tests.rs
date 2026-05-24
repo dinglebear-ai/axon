@@ -25,3 +25,26 @@ fn test_build_extra_fields() {
     assert!(extra_minimal.get("devto_tags").is_none());
     assert!(extra_minimal.get("devto_published_at").is_none());
 }
+
+#[test]
+fn test_article_detail_api_url_uses_numeric_id() {
+    assert_eq!(
+        article_detail_api_url(3348526),
+        "https://dev.to/api/articles/3348526"
+    );
+}
+
+#[test]
+fn test_select_article_body_prefers_full_markdown() {
+    let listing_shape = serde_json::json!({
+        "description": "Listing summary only",
+        "body_markdown": null
+    });
+    assert_eq!(select_article_body(&listing_shape), "Listing summary only");
+
+    let detail_shape = serde_json::json!({
+        "description": "Listing summary only",
+        "body_markdown": "Full article body"
+    });
+    assert_eq!(select_article_body(&detail_shape), "Full article body");
+}

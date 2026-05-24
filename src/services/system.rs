@@ -25,7 +25,10 @@ pub use self::sources::{
     sources_for_domain, sources_schema_version_breakdown, sources_with_breakdown,
 };
 pub use self::stats::{map_stats_payload, stats};
-pub use self::status::{StatusJobs, build_status_payload, full_status, load_status_jobs};
+pub use self::status::{
+    StatusJobs, build_status_payload, build_status_payload_with_errors, full_status,
+    load_status_jobs,
+};
 
 /// Error type for payload parsing failures shared across the `system`
 /// submodules (sources, domains, etc.).

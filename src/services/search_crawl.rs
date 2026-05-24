@@ -1,5 +1,6 @@
 use crate::core::config::Config;
 use crate::core::http::{normalize_url, validate_url_with_dns};
+use crate::jobs::backend::JobKind;
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_service;
 use crate::services::search::search_batch;
@@ -42,6 +43,7 @@ pub enum SearchCrawlRejectionKind {
     InvalidUrl,
     MissingUrl,
     QueueRejected,
+    WaitFailed,
 }
 
 /// Run a Tavily search and enqueue one bounded crawl job per result URL.
@@ -79,6 +81,10 @@ fn crawl_config(cfg: &Config) -> Config {
     // SECURITY: clear headers so auth meant for the search caller is never
     // replayed against URLs returned by Tavily.
     let mut c = cfg.clone();
+    // Search auto-indexing must kick off every accepted result URL before any
+    // optional wait phase. Waiting inside crawl_start_with_context would make
+    // result N block result N+1 from ever being queued.
+    c.wait = false;
     c.max_pages = 200;
     c.max_depth = 10;
     c.discover_sitemaps = false;
@@ -121,6 +127,10 @@ async fn enqueue_search_crawls(
             Ok(job) => output.jobs.push(job),
             Err(r) => output.rejected.push(r),
         }
+    }
+
+    if cfg.wait && !output.jobs.is_empty() {
+        wait_for_queued_crawls(service_context, &mut output).await;
     }
 
     output
@@ -179,6 +189,54 @@ async fn enqueue_one(
     }
 }
 
+async fn wait_for_queued_crawls(service_context: &ServiceContext, output: &mut CrawlOutput) {
+    for job in &output.jobs {
+        let Ok(job_id) = uuid::Uuid::parse_str(&job.job_id) else {
+            output.rejected.push(rejection(
+                Some(&job.url),
+                None,
+                None,
+                SearchCrawlRejectionKind::WaitFailed,
+                format!("crawl service returned invalid job id: {}", job.job_id),
+            ));
+            continue;
+        };
+
+        match service_context
+            .jobs
+            .wait_for_job(job_id, JobKind::Crawl)
+            .await
+        {
+            Ok(status) if status == "failed" || status == "canceled" => {
+                let mut reason = format!("crawl job {job_id} {status}");
+                if let Ok(Some(err)) = service_context
+                    .jobs
+                    .job_errors(job_id, JobKind::Crawl)
+                    .await
+                {
+                    reason.push_str(": ");
+                    reason.push_str(&err);
+                }
+                output.rejected.push(rejection(
+                    Some(&job.url),
+                    None,
+                    None,
+                    SearchCrawlRejectionKind::WaitFailed,
+                    reason,
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => output.rejected.push(rejection(
+                Some(&job.url),
+                None,
+                None,
+                SearchCrawlRejectionKind::WaitFailed,
+                e.to_string(),
+            )),
+        }
+    }
+}
+
 fn rejection(
     url: Option<&str>,
     position: Option<i64>,
@@ -214,6 +272,21 @@ fn crawl_status(results: &[Value], output: &CrawlOutput) -> &'static str {
         "no_results"
     } else if output.jobs.is_empty() {
         "failed"
+    } else if output
+        .rejected
+        .iter()
+        .any(|r| matches!(r.kind, SearchCrawlRejectionKind::WaitFailed))
+    {
+        let wait_failures = output
+            .rejected
+            .iter()
+            .filter(|r| matches!(r.kind, SearchCrawlRejectionKind::WaitFailed))
+            .count();
+        if wait_failures >= output.jobs.len() {
+            "wait_failed"
+        } else {
+            "partial_wait_failed"
+        }
     } else if output.rejected.is_empty() {
         "queued"
     } else {

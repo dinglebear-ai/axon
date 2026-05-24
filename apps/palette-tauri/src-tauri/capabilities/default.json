@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for the Axon Palette main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "global-shortcut:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://*" },
+        { "url": "http://*:*" },
+        { "url": "https://*" },
+        { "url": "https://*/*" }
+      ]
+    }
+  ]
+}

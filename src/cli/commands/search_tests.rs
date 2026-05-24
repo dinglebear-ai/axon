@@ -67,8 +67,8 @@ fn summarize_snippet_collapses_whitespace_and_truncates() {
 
     assert!(!got.contains('\n'));
     assert!(!got.contains('\t'));
-    assert!(got.len() <= HUMAN_SNIPPET_LIMIT + 3);
-    assert!(got.ends_with("..."));
+    assert!(got.chars().count() <= 117);
+    assert!(got.ends_with('…'));
 }
 
 #[test]

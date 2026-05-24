@@ -18,6 +18,7 @@ type WebState = (super::super::state::AppState, Arc<Config>);
 pub(crate) struct ScrapeRequest {
     url: Option<String>,
     urls: Option<Vec<String>>,
+    embed: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -76,10 +77,24 @@ pub(crate) async fn scrape(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<ScrapeRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
+    let embed = req.embed;
     let urls = request_urls(req)?;
+    let mut cfg = cfg.as_ref().clone();
+    if let Some(embed) = embed {
+        cfg.embed = embed;
+    }
     let results = services::scrape::scrape_batch(&cfg, &urls, None)
         .await
         .map_err(HttpError::from_box)?;
+    if cfg.embed {
+        let docs = results
+            .iter()
+            .map(crate::cli::commands::scrape::scrape_result_to_prepared_doc)
+            .collect();
+        embed_scrape_docs_sync(&cfg, docs).map_err(|err| {
+            HttpError::new(StatusCode::BAD_GATEWAY, "upstream_error", err.to_string())
+        })?;
+    }
     if results.len() == 1 {
         Ok(Json(serde_json::to_value(&results[0]).map_err(|err| {
             HttpError::new(
@@ -91,6 +106,19 @@ pub(crate) async fn scrape(
     } else {
         Ok(Json(json!({ "results": results })))
     }
+}
+
+fn embed_scrape_docs_sync(
+    cfg: &Config,
+    docs: Vec<crate::vector::ops::PreparedDoc>,
+) -> Result<(), String> {
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::block_in_place(|| {
+        handle
+            .block_on(crate::vector::ops::embed_prepared_docs(cfg, docs, None))
+            .map(|_| ())
+            .map_err(|err| err.to_string())
+    })
 }
 
 #[utoipa::path(

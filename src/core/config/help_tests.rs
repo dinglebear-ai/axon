@@ -9,6 +9,7 @@ fn top_level_help_commands_come_from_clap_surface() {
         "scrape",
         "crawl",
         "watch",
+        "monitor",
         "map",
         "extract",
         "search",

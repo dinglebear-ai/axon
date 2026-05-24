@@ -1,0 +1,39 @@
+{
+  "name": "axon-palette-tauri",
+  "version": "4.5.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "generate:api": "node scripts/generate-api.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "vite:dev": "vite --host 127.0.0.1",
+    "vite:build": "vite build"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tailwindcss/vite": "^4.1.18",
+    "@tauri-apps/api": "^2.10.0",
+    "@tauri-apps/plugin-http": "^2.5.9",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "openapi-fetch": "^0.17.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "tailwind-merge": "^3.4.0",
+    "tailwindcss": "^4.1.18"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "lucide-react": "^1.16.0",
+    "openapi-typescript": "^7.13.0",
+    "shadcn": "^4.8.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4"
+  }
+}

@@ -63,6 +63,59 @@ pub fn matches(url: &str) -> bool {
     )
 }
 
+async fn get_json(
+    client: &reqwest::Client,
+    url: &str,
+    ctx: &VerticalContext,
+) -> Result<serde_json::Value, VerticalError> {
+    let resp = client
+        .get(url)
+        .header("User-Agent", ctx.api_ua())
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
+
+    let status = resp.status().as_u16();
+    match status {
+        404 => Err(VerticalError::VerticalTargetNotFound {
+            vertical: INFO.name,
+            url: url.to_string(),
+        }),
+        429 => Err(VerticalError::VerticalRateLimited {
+            vertical: INFO.name,
+            retry_after: None,
+        }),
+        200 => resp
+            .json()
+            .await
+            .map_err(|_| VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            }),
+        _ => Err(VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status,
+        }),
+    }
+}
+
+fn article_detail_api_url(article_id: u64) -> String {
+    format!("https://dev.to/api/articles/{article_id}")
+}
+
+fn select_article_body(data: &serde_json::Value) -> &str {
+    let body_markdown = data["body_markdown"].as_str().unwrap_or("");
+    if !body_markdown.is_empty() {
+        body_markdown
+    } else {
+        data["description"].as_str().unwrap_or("")
+    }
+}
+
 pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
@@ -86,47 +139,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         status: 0,
     })?;
 
-    let resp = client
-        .get(&api_url)
-        .header("User-Agent", ctx.api_ua())
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status: 0,
-        })?;
-
-    let status = resp.status().as_u16();
-    match status {
-        404 => {
-            return Err(VerticalError::VerticalTargetNotFound {
-                vertical: INFO.name,
-                url: url.to_string(),
-            });
-        }
-        429 => {
-            return Err(VerticalError::VerticalRateLimited {
-                vertical: INFO.name,
-                retry_after: None,
-            });
-        }
-        200 => {}
-        _ => {
-            return Err(VerticalError::VerticalTargetUnavailable {
-                vertical: INFO.name,
-                status,
-            });
-        }
-    }
-
-    let articles: serde_json::Value =
-        resp.json()
-            .await
-            .map_err(|_| VerticalError::VerticalTargetUnavailable {
-                vertical: INFO.name,
-                status,
-            })?;
+    let articles = get_json(client, &api_url, ctx).await?;
 
     // Find the article matching our slug
     let article = articles
@@ -146,6 +159,20 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
             });
         }
     };
+    let article_id = data["id"]
+        .as_u64()
+        .ok_or(VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
+    let detail_api_url = article_detail_api_url(article_id);
+    let data = get_json(client, &detail_api_url, ctx).await?;
+    tracing::debug!(
+        article_id,
+        body_markdown_len = data["body_markdown"].as_str().map(str::len).unwrap_or(0),
+        description_len = data["description"].as_str().map(str::len).unwrap_or(0),
+        "dev_to.detail_fetched"
+    );
 
     let title_str = data["title"].as_str().unwrap_or("Unknown article");
     let reading_time = data["reading_time_minutes"].as_u64().unwrap_or(0);
@@ -155,14 +182,9 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
 
-    // Use body_markdown if available, fall back to description
-    let body_markdown = data["body_markdown"].as_str().unwrap_or("");
-    let description = data["description"].as_str().unwrap_or("");
-    let body = if !body_markdown.is_empty() {
-        body_markdown
-    } else {
-        description
-    };
+    // The author listing endpoint only includes `description`; the per-article
+    // endpoint includes the full `body_markdown`.
+    let body = select_article_body(&data);
 
     let published_at = data["published_at"].as_str().unwrap_or("");
     let extra = build_extra(username, &tags, reactions, reading_time, published_at);

@@ -126,6 +126,10 @@ pub struct StatusResult {
     pub payload: serde_json::Value,
     pub text: String,
     pub totals: StatusTotals,
+    #[serde(default)]
+    pub degraded: bool,
+    #[serde(default)]
+    pub errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

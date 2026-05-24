@@ -6,7 +6,7 @@ use crate::core::logging::log_info;
 use crate::core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
 use crate::jobs::store::RECLAIMED_ERROR_TEXT;
 use crate::services::context::ServiceContext;
-use crate::services::system::{build_status_payload, load_status_jobs};
+use crate::services::system::{build_status_payload_with_errors, load_status_jobs};
 use crate::services::types::ServiceJob;
 use std::collections::HashMap;
 use std::error::Error;
@@ -15,6 +15,8 @@ use std::fmt::Write as _;
 /// Maximum number of rows rendered per section in the human status output.
 /// The truncation note ("showing N of M") is sized against this cap.
 const SECTION_DISPLAY_LIMIT: usize = 10;
+const STATUS_TEXT_DISPLAY_LIMIT: usize = 120;
+const STATUS_CONTINUATION_INDENT: usize = 4;
 
 pub async fn run_status(
     cfg: &Config,
@@ -36,13 +38,14 @@ pub async fn status_snapshot(
     _cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
-    let (jobs, totals) = load_status_jobs(service_context).await?;
-    Ok(build_status_payload(
+    let (jobs, totals, errors) = load_status_jobs(service_context).await?;
+    Ok(build_status_payload_with_errors(
         &jobs.crawl,
         &jobs.extract,
         &jobs.embed,
         &jobs.ingest,
         &totals,
+        &errors,
     ))
 }
 
@@ -50,13 +53,20 @@ pub async fn status_text(
     _cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<String, Box<dyn Error>> {
-    let (_jobs, totals) = load_status_jobs(service_context).await?;
+    let (_jobs, totals, errors) = load_status_jobs(service_context).await?;
     let mut lines = Vec::new();
     lines.push("Axon Status".to_string());
     lines.push(format!("crawl jobs:   {} total", totals.crawl));
     lines.push(format!("extract jobs: {} total", totals.extract));
     lines.push(format!("embed jobs:   {} total", totals.embed));
     lines.push(format!("ingest jobs:  {} total", totals.ingest));
+    if !errors.is_empty() {
+        lines.push(format!(
+            "degraded: {} status count error{}",
+            errors.len(),
+            if errors.len() == 1 { "" } else { "s" }
+        ));
+    }
     Ok(lines.join("\n"))
 }
 
@@ -64,7 +74,21 @@ async fn run_status_impl(
     _cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let (jobs, totals) = load_status_jobs(service_context).await?;
+    let (jobs, totals, errors) = load_status_jobs(service_context).await?;
+    if !errors.is_empty() {
+        println!(
+            "{}",
+            muted(&format!(
+                "Status degraded: {} count query error{}",
+                errors.len(),
+                if errors.len() == 1 { "" } else { "s" }
+            ))
+        );
+        for error in &errors {
+            println!("  {}", muted(error));
+        }
+        println!();
+    }
     print!("{}", render_status_jobs(&jobs, totals.crawl));
     Ok(())
 }
@@ -377,36 +401,47 @@ fn write_status_section(
     }
 
     for job in jobs.iter().take(SECTION_DISPLAY_LIMIT) {
-        let label = label_for(job);
+        let status = human_status_text(&job.status);
+        let prefix = format!("  {} {} ", symbol_for_status(&job.status), status);
+        let label_limit = STATUS_TEXT_DISPLAY_LIMIT.saturating_sub(prefix.chars().count());
+        let label = truncate_status_text_to(&label_for(job), label_limit);
+        let _ = writeln!(out, "{prefix}{label}");
+        let _ = writeln!(out, "    {}", muted(&format!("id {}", job.id)));
         if let Some(p) = progress_for(job) {
-            let _ = writeln!(
-                out,
-                "  {} {} {} {}  {}",
-                symbol_for_status(&job.status),
-                human_status_text(&job.status),
-                label,
-                muted(&job.id.to_string()),
-                muted(&p),
-            );
-        } else {
-            let _ = writeln!(
-                out,
-                "  {} {} {} {}",
-                symbol_for_status(&job.status),
-                human_status_text(&job.status),
-                label,
-                muted(&job.id.to_string()),
-            );
+            let _ = writeln!(out, "    {}", muted(&truncate_status_continuation(&p)));
         }
         if let Some(err) = job
             .error_text
             .as_deref()
             .and_then(|err| job_error_hint(&job.status, err))
         {
-            let _ = writeln!(out, "    {}", muted(&err));
+            let _ = writeln!(out, "    {}", muted(&truncate_status_continuation(&err)));
         }
     }
     let _ = writeln!(out);
+}
+
+fn truncate_status_continuation(text: &str) -> String {
+    truncate_status_text_to(
+        text,
+        STATUS_TEXT_DISPLAY_LIMIT.saturating_sub(STATUS_CONTINUATION_INDENT),
+    )
+}
+
+fn truncate_status_text_to(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+    if max_chars == 1 {
+        return "…".to_string();
+    }
+    format!(
+        "{}…",
+        crate::cli::commands::common::truncate_chars(text, max_chars - 1)
+    )
 }
 
 fn job_error_hint(status: &str, error_text: &str) -> Option<String> {

@@ -15,7 +15,7 @@
 use super::error::{map_service_error, rest_error};
 use super::state::RestState;
 use super::types::{
-    MapBody, QueryBody, RetrieveBody, SearchBody, SuggestBody, UrlOnlyBody, UrlsBody,
+    MapBody, QueryBody, RetrieveBody, ScrapeBody, SearchBody, SuggestBody, UrlsBody,
 };
 use crate::services::query as query_svc;
 use crate::services::search as search_svc;
@@ -32,6 +32,23 @@ use axum::{
 
 const DEFAULT_LIMIT: usize = 10;
 const MAX_LIMIT: usize = 1000;
+
+fn embed_scrape_doc_sync(
+    cfg: &crate::core::config::Config,
+    doc: crate::vector::ops::PreparedDoc,
+) -> Result<(), String> {
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::block_in_place(|| {
+        handle
+            .block_on(crate::vector::ops::embed_prepared_docs(
+                cfg,
+                vec![doc],
+                None,
+            ))
+            .map(|_| ())
+            .map_err(|err| err.to_string())
+    })
+}
 
 fn pagination(limit: Option<usize>, offset: Option<usize>) -> Pagination {
     Pagination {
@@ -180,13 +197,28 @@ pub(crate) async fn v1_research(
 
 pub(crate) async fn v1_scrape(
     State(state): State<RestState>,
-    Json(req): Json<UrlOnlyBody>,
+    Json(req): Json<ScrapeBody>,
 ) -> Response {
     if let Err(r) = require_field(&req.url, "url") {
         return r;
     }
-    match scrape_svc::scrape(state.cfg.as_ref(), &req.url, None).await {
-        Ok(result) => Json(result).into_response(),
+    let mut cfg = state.cfg.as_ref().clone();
+    if let Some(embed) = req.embed {
+        cfg.embed = embed;
+    }
+    match scrape_svc::scrape(&cfg, &req.url, None).await {
+        Ok(result) => {
+            let doc = cfg
+                .embed
+                .then(|| crate::cli::commands::scrape::scrape_result_to_prepared_doc(&result));
+            if cfg.embed
+                && let Some(doc) = doc
+                && let Err(err) = embed_scrape_doc_sync(&cfg, doc)
+            {
+                return rest_error(StatusCode::BAD_GATEWAY, "upstream_error", err);
+            }
+            Json(result).into_response()
+        }
         Err(err) => map_service_error(err.as_ref()),
     }
 }

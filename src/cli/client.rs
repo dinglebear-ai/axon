@@ -153,8 +153,13 @@ impl ServerClient {
         if !base_path.is_empty() {
             base_path.push('/');
         }
-        base_path.push_str(path.trim_start_matches('/'));
+        let path = path.trim_start_matches('/');
+        let (path, query) = path
+            .split_once('?')
+            .map_or((path, None), |(path, query)| (path, Some(query)));
+        base_path.push_str(path);
         endpoint.set_path(&base_path);
+        endpoint.set_query(query.filter(|query| !query.is_empty()));
         endpoint
     }
 }
