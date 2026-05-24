@@ -2,7 +2,7 @@ use sqlx::{SqliteConnection, SqlitePool, pool::PoolConnection};
 use uuid::Uuid;
 
 use crate::core::config::Config;
-use crate::jobs::backend::{JobKind, JobPayload};
+use crate::jobs::backend::{JobKind, JobPayload, JobSidecarPayload};
 use crate::jobs::error::JobError;
 use crate::jobs::store::now_ms;
 
@@ -121,6 +121,50 @@ pub async fn enqueue_job(
     }
 }
 
+pub async fn enqueue_job_with_sidecar(
+    pool: &SqlitePool,
+    payload: &JobPayload,
+    sidecar: &JobSidecarPayload,
+    cfg: &Config,
+) -> Result<Uuid, JobError> {
+    let kind = payload.kind();
+    if sidecar.kind() != kind {
+        return Err(JobError::Other(format!(
+            "sidecar kind {:?} does not match job kind {:?}",
+            sidecar.kind(),
+            kind
+        )));
+    }
+
+    let id = Uuid::new_v4();
+    let now = now_ms();
+    let id_str = id.to_string();
+    let cap = cap_for(kind, cfg);
+
+    let mut conn = begin_immediate(pool).await?;
+
+    let result: Result<(), JobError> = async {
+        check_pending_cap_for(&mut *conn, kind, cap).await?;
+        insert_payload(&mut conn, &id_str, now, payload).await?;
+        insert_sidecar_payload(&mut conn, &id_str, now, sidecar).await
+    }
+    .await;
+
+    match result {
+        Ok(()) => match commit(&mut conn).await {
+            Ok(()) => Ok(id),
+            Err(commit_err) => {
+                rollback_best_effort(&mut conn).await;
+                Err(commit_err.into())
+            }
+        },
+        Err(e) => {
+            rollback_best_effort(&mut conn).await;
+            Err(e)
+        }
+    }
+}
+
 fn cap_for(kind: JobKind, cfg: &Config) -> u64 {
     match kind {
         JobKind::Crawl => cfg.max_pending_crawl_jobs as u64,
@@ -192,6 +236,28 @@ async fn insert_payload(
             .bind(source_type)
             .bind(config_json)
             .bind(now)
+            .bind(now)
+            .execute(&mut *conn)
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn insert_sidecar_payload(
+    conn: &mut SqliteConnection,
+    id_str: &str,
+    now: i64,
+    sidecar: &JobSidecarPayload,
+) -> Result<(), JobError> {
+    match sidecar {
+        JobSidecarPayload::IngestPreparedSessions { payload_json } => {
+            sqlx::query(
+                "INSERT INTO axon_ingest_payloads (job_id, payload_kind, payload_json, created_at) \
+                 VALUES (?, 'prepared_sessions', ?, ?)",
+            )
+            .bind(id_str)
+            .bind(payload_json)
             .bind(now)
             .execute(&mut *conn)
             .await?;

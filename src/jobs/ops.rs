@@ -2,7 +2,7 @@ mod enqueue;
 mod lifecycle;
 mod retry;
 
-pub use enqueue::enqueue_job;
+pub use enqueue::{enqueue_job, enqueue_job_with_sidecar};
 pub use lifecycle::{
     ClaimedJob, cancel_row, claim_next_pending, claim_next_pending_for_attempt, mark_completed,
     mark_completed_for_attempt, mark_failed, mark_failed_for_attempt, touch_heartbeat,

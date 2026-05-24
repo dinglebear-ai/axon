@@ -20,9 +20,13 @@ use uuid::Uuid;
 
 pub mod classify;
 pub mod git_services;
+mod prepared_sessions;
 pub mod request;
 pub use classify::classify_target;
 pub use git_services::{ingest_generic_git_with_progress, ingest_gitea_with_progress};
+pub use prepared_sessions::{
+    ingest_sessions_prepared_start_with_context, ingest_sessions_prepared_with_progress,
+};
 pub use request::{source_from_mcp_request, validate_ingest_source};
 
 // --- Pure mapping helper (no I/O, testable without live services) ---

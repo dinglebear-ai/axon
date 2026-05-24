@@ -3,7 +3,7 @@ mod render;
 
 use crate::cli;
 use crate::cli::route::{CommandRoute, plan_command_route};
-use crate::core::config::Config;
+use crate::core::config::{CommandKind, Config};
 use std::error::Error;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -38,6 +38,9 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
         .server_url
         .clone()
         .ok_or("server mode requires AXON_SERVER_URL")?;
+    if matches!(cfg.command, CommandKind::Sessions) && !has_async_job_lifecycle_subcommand(cfg) {
+        return run_server_mode_sessions(cfg, server_url).await;
+    }
     let plan = plan::server_rest_plan(cfg)?;
     let client = cli::client::ServerClient::new(server_url)?;
     let result = request_server_rest(&client, &plan).await?;
@@ -49,6 +52,49 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
         render::render_server_result(cfg, plan.label, &result)?;
     }
     Ok(())
+}
+
+fn has_async_job_lifecycle_subcommand(cfg: &Config) -> bool {
+    matches!(
+        cfg.positional.first().map(String::as_str),
+        Some("status" | "errors" | "list" | "cleanup" | "recover" | "clear" | "cancel" | "worker")
+    )
+}
+
+async fn run_server_mode_sessions(
+    cfg: &Config,
+    server_url: reqwest::Url,
+) -> Result<(), Box<dyn Error>> {
+    let client = cli::client::ServerClient::new(server_url)?;
+    let request = crate::ingest::sessions::prepare_sessions_request(cfg).await?;
+    if request.docs.is_empty() {
+        if cfg.json_output {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "status": "skipped",
+                    "reason": "no session documents matched",
+                    "chunks_embedded": 0,
+                }))?
+            );
+        } else {
+            eprintln!("sessions: no session documents matched; nothing to upload");
+        }
+        return Ok(());
+    }
+    let result = client
+        .post_json(
+            "/v1/ingest/sessions/prepared",
+            &serde_json::to_value(request)?,
+            "sessions",
+        )
+        .await
+        .map_err(|err| server_client_error("sessions", err))?;
+    if cfg.wait {
+        poll_server_jobs(cfg, &client, ServerJobFamily::Ingest, &result).await
+    } else {
+        render::render_server_result(cfg, "sessions", &result)
+    }
 }
 
 async fn request_server_rest(

@@ -376,11 +376,7 @@ run_suite() {
   fi
   run_json_case "${prefix}_embed_list" '.ok == true and .action == "embed" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:embed subaction:list limit:5 offset:0
 
-  run_json_case "${prefix}_ingest_start" '.ok == true and .action == "ingest" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json '{"action":"ingest","subaction":"start","source_type":"sessions","sessions":{"codex":true,"project":"axon_rust"}}'
-  local ingest_job_id
-  ingest_job_id="$(extract_json_field "$OUTDIR/${prefix}_ingest_start.log" '.data.job_id')"
-  run_json_case "${prefix}_ingest_status" '.ok == true and .action == "ingest" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:ingest subaction:status job_id:"$ingest_job_id"
-  run_json_case "${prefix}_ingest_cancel" '.ok == true and .action == "ingest" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:ingest subaction:cancel job_id:"$ingest_job_id"
+  run_error_case "${prefix}_ingest_start_sessions_unavailable" "/v1/ingest/sessions/prepared" call_tool_json '{"action":"ingest","subaction":"start","source_type":"sessions","sessions":{"codex":true,"project":"axon_rust"}}'
   run_json_case "${prefix}_ingest_list" '.ok == true and .action == "ingest" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:ingest subaction:list limit:5 offset:0
 
   echo "== $mode lifecycle maintenance ==" | tee -a "$SUMMARY"

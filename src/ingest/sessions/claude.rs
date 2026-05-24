@@ -159,7 +159,11 @@ async fn parse_claude_file(
         extractor_name: None,
         structured: None,
     };
-    Ok(Some(SessionDoc { doc, collection }))
+    Ok(Some(SessionDoc {
+        doc,
+        collection,
+        raw_text: parsed.text,
+    }))
 }
 
 fn clean_claude_project_name(dir_name: &str) -> String {

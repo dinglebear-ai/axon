@@ -39,6 +39,14 @@ Sessions defaults to **async queued execution** when `--wait false` (default): i
 
 Use `--wait true` for synchronous execution.
 
+## Server Mode
+
+When `AXON_SERVER_URL` is set, `axon sessions` still reads session files from the client machine. The client parses and redacts Claude, Codex, and Gemini transcripts locally, sends prepared documents to `POST /v1/ingest/sessions/prepared`, and the server persists that upload beside a SQLite ingest job before waking ingest workers.
+
+Prepared-session uploads are bounded by semantic limits: max document count, per-document text size, total text size, metadata size, supported platform names, and collection-name validation. The uploaded payload is deleted after successful worker completion and is included in ingest cleanup/clear behavior.
+
+The generic remote ingest shape `source_type="sessions"` is intentionally rejected over REST/MCP in this phase. That prevents remote callers from causing the server to scan server-local AI history directories.
+
 ## Git Enrichment (repo and branch fields)
 
 Session metadata includes project and repository context where it can be resolved. Claude project directories are decoded back to filesystem paths and the git `origin` remote is read once per project directory. The result is shared across all sessions within that project.

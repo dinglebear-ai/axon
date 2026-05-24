@@ -1,6 +1,6 @@
 use super::*;
 use crate::core::config::Config;
-use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
+use crate::jobs::backend::{BackendResult, JobKind, JobPayload, JobSidecarPayload};
 use crate::jobs::config_snapshot::decode_ingest_job_config;
 use crate::mcp::schema::{IngestRequest, IngestSourceType};
 use crate::services::context::ServiceContext;
@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 struct CaptureRuntime {
     payloads: Mutex<Vec<JobPayload>>,
+    sidecars: Mutex<Vec<JobSidecarPayload>>,
 }
 
 fn ingest_req(source_type: IngestSourceType, target: &str) -> IngestRequest {
@@ -31,6 +32,16 @@ impl ServiceJobRuntime for CaptureRuntime {
 
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {
         self.payloads.lock().expect("lock").push(payload);
+        Ok(Uuid::new_v4())
+    }
+
+    async fn enqueue_with_sidecar(
+        &self,
+        payload: JobPayload,
+        sidecar: JobSidecarPayload,
+    ) -> BackendResult<Uuid> {
+        self.payloads.lock().expect("lock").push(payload);
+        self.sidecars.lock().expect("lock").push(sidecar);
         Ok(Uuid::new_v4())
     }
 
@@ -300,24 +311,16 @@ fn source_from_mcp_request_requires_target_for_github() {
 }
 
 #[test]
-fn source_from_mcp_request_maps_default_sessions_options() {
+fn source_from_mcp_request_rejects_remote_sessions_scan() {
     let cfg = Config::test_default();
     let req = IngestRequest {
         source_type: Some(IngestSourceType::Sessions),
         ..Default::default()
     };
 
-    let source = source_from_mcp_request(&req, &cfg).expect("default sessions options");
+    let err = source_from_mcp_request(&req, &cfg).expect_err("remote sessions rejected");
 
-    assert!(matches!(
-        source,
-        IngestSource::Sessions {
-            sessions_claude: false,
-            sessions_codex: false,
-            sessions_gemini: false,
-            sessions_project: None,
-        }
-    ));
+    assert!(err.contains("/v1/ingest/sessions/prepared"));
 }
 
 #[tokio::test]
@@ -330,6 +333,7 @@ async fn ingest_start_with_context_enqueues_sessions_jobs_with_sqlite_backend() 
 
     let runtime = Arc::new(CaptureRuntime {
         payloads: Mutex::new(Vec::new()),
+        sidecars: Mutex::new(Vec::new()),
     });
     let service_context = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
     let source = IngestSource::Sessions {
@@ -375,4 +379,57 @@ async fn ingest_start_with_context_enqueues_sessions_jobs_with_sqlite_backend() 
     assert!(!effective_cfg.sessions_codex);
     assert!(effective_cfg.sessions_gemini);
     assert_eq!(effective_cfg.sessions_project.as_deref(), Some("axon-rust"));
+}
+
+#[tokio::test]
+async fn prepared_sessions_start_enqueues_ingest_job_with_sidecar_payload() {
+    let cfg = Config::test_default();
+    let runtime = Arc::new(CaptureRuntime {
+        payloads: Mutex::new(Vec::new()),
+        sidecars: Mutex::new(Vec::new()),
+    });
+    let service_context = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
+    let request = ingest::sessions::IngestSessionsPreparedRequest {
+        docs: vec![ingest::sessions::PreparedSessionDoc {
+            url: "file:///tmp/session.jsonl".to_string(),
+            title: None,
+            text: "### USER:\nhello".to_string(),
+            session_platform: "codex".to_string(),
+            session_project: Some("axon_rust".to_string()),
+            session_date: None,
+            session_turn_count: Some(1),
+            session_file: "/tmp/session.jsonl".to_string(),
+            extra: serde_json::json!({}),
+        }],
+        project: Some("axon_rust".to_string()),
+        collection: Some("axon_sessions".to_string()),
+    };
+
+    let outcome = ingest_sessions_prepared_start_with_context(&cfg, request, &service_context)
+        .await
+        .expect("enqueue prepared sessions");
+
+    assert_eq!(outcome.disposition, StartDisposition::Enqueued);
+    let payloads = runtime.payloads.lock().expect("lock");
+    let sidecars = runtime.sidecars.lock().expect("lock");
+    assert_eq!(payloads.len(), 1);
+    assert_eq!(sidecars.len(), 1);
+
+    let JobPayload::Ingest {
+        target,
+        source_type,
+        config_json,
+    } = &payloads[0]
+    else {
+        panic!("expected ingest payload");
+    };
+    assert_eq!(target, "prepared_sessions");
+    assert_eq!(source_type, "prepared_sessions");
+    let (decoded, _) = decode_ingest_job_config(&cfg, config_json).expect("decode config");
+    assert!(matches!(decoded, IngestSource::PreparedSessions {}));
+    assert!(matches!(
+        &sidecars[0],
+        JobSidecarPayload::IngestPreparedSessions { payload_json }
+            if payload_json.contains("session.jsonl")
+    ));
 }

@@ -5,7 +5,8 @@ use sqlx::SqlitePool;
 
 use crate::core::config::Config;
 use crate::jobs::backend::{
-    BackendResult, JobBackend, JobId, JobKind, JobPayload, JobStatusRow, JobSummary,
+    BackendResult, JobBackend, JobId, JobKind, JobPayload, JobSidecarPayload, JobStatusRow,
+    JobSummary,
 };
 use crate::jobs::{ops, query, store, workers};
 
@@ -147,6 +148,21 @@ impl JobBackend for SqliteJobBackend {
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<JobId> {
         let kind = payload.kind();
         let id = ops::enqueue_job(&self.pool, &payload, &self.cfg).await?;
+
+        if let Some(ref workers) = self.workers {
+            workers.notify(kind);
+        }
+
+        Ok(id)
+    }
+
+    async fn enqueue_with_sidecar(
+        &self,
+        payload: JobPayload,
+        sidecar: JobSidecarPayload,
+    ) -> BackendResult<JobId> {
+        let kind = payload.kind();
+        let id = ops::enqueue_job_with_sidecar(&self.pool, &payload, &sidecar, &self.cfg).await?;
 
         if let Some(ref workers) = self.workers {
             workers.notify(kind);

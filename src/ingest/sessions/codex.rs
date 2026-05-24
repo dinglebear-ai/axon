@@ -148,7 +148,11 @@ async fn parse_codex_file(
         extractor_name: None,
         structured: None,
     };
-    Ok(Some(SessionDoc { doc, collection }))
+    Ok(Some(SessionDoc {
+        doc,
+        collection,
+        raw_text: parsed.text,
+    }))
 }
 
 /// Extract session text and metadata from Codex JSONL (pure, no I/O).

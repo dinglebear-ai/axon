@@ -2,6 +2,7 @@ use super::{
     IngestResult, SessionDoc, flatten_session_result, matches_project_filter, resolve_collection,
 };
 use crate::core::config::Config;
+use crate::core::content::url_to_domain;
 use crate::core::logging::log_warn;
 use crate::vector::ops::{PreparedDoc, chunk_text};
 use futures_util::stream::{FuturesUnordered, StreamExt};
@@ -172,7 +173,7 @@ async fn process_gemini_file(
     collection: String,
     mtime: SystemTime,
 ) -> IngestResult<Option<SessionDoc>> {
-    let content = fs::read_to_string(&path).await?;
+    let content = super::read_session_file_limited(&path).await?;
     let session_text = parse_gemini_json(&content)?;
     if session_text.trim().is_empty() {
         return Ok(None);
@@ -197,17 +198,21 @@ async fn process_gemini_file(
         "session_date": mtime_chrono.to_rfc3339(),
     });
     let doc = PreparedDoc {
+        domain: url_to_domain(&url),
         url,
-        domain: "localhost".to_string(),
         chunks,
-        source_type: "sessions".to_string(),
+        source_type: "gemini_session".to_string(),
         content_type: "text",
         title,
         extra: Some(extra),
         extractor_name: None,
         structured: None,
     };
-    Ok(Some(SessionDoc { doc, collection }))
+    Ok(Some(SessionDoc {
+        doc,
+        collection,
+        raw_text: session_text,
+    }))
 }
 
 /// Parse Gemini chat JSON into session text (pure, no I/O).
@@ -229,7 +234,7 @@ pub(crate) fn parse_gemini_json(content: &str) -> IngestResult<String> {
                     session_text.push_str(&format!(
                         "\n\n### {}:\n{}",
                         role.to_uppercase(),
-                        combined
+                        super::redact_session_text(&combined)
                     ));
                 }
             }

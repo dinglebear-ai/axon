@@ -17,6 +17,9 @@ const DEFAULT_SESSION_INGEST_MAX_BYTES: u64 = 20 * 1024 * 1024;
 mod claude;
 mod codex;
 mod gemini;
+mod prepared;
+
+pub use prepared::{IngestSessionsPreparedRequest, PreparedSessionDoc};
 
 pub(crate) type IngestResult<T> = Result<T, anyhow::Error>;
 
@@ -24,6 +27,7 @@ pub(crate) type IngestResult<T> = Result<T, anyhow::Error>;
 pub(crate) struct SessionDoc {
     pub(crate) doc: PreparedDoc,
     pub(crate) collection: String,
+    pub(crate) raw_text: String,
 }
 
 pub(crate) fn expand_home(path: &str) -> PathBuf {
@@ -55,6 +59,10 @@ fn session_ingest_max_bytes() -> u64 {
         .and_then(|raw| raw.parse::<u64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_SESSION_INGEST_MAX_BYTES)
+}
+
+pub(crate) fn session_ingest_max_bytes_for_config(_cfg: &Config) -> usize {
+    usize::try_from(session_ingest_max_bytes()).unwrap_or(usize::MAX)
 }
 
 pub(crate) fn redact_session_text(input: &str) -> String {
@@ -139,6 +147,100 @@ pub async fn ingest_sessions(
     Ok(total_chunks)
 }
 
+pub async fn prepare_sessions_request(
+    cfg: &Config,
+) -> Result<IngestSessionsPreparedRequest, Box<dyn Error>> {
+    let multi = MultiProgress::new();
+    let all_platforms = !cfg.sessions_claude && !cfg.sessions_codex && !cfg.sessions_gemini;
+    let mut all_docs: Vec<SessionDoc> = Vec::new();
+
+    if cfg.sessions_claude || all_platforms {
+        all_docs.extend(claude::collect_claude_docs(cfg, &multi).await?);
+    }
+    if cfg.sessions_codex || all_platforms {
+        all_docs.extend(codex::collect_codex_docs(cfg, &multi).await?);
+    }
+    if cfg.sessions_gemini || all_platforms {
+        all_docs.extend(gemini::collect_gemini_docs(cfg, &multi).await?);
+    }
+
+    let collection = if cfg.collection != "axon" {
+        Some(cfg.collection.clone())
+    } else {
+        None
+    };
+    let docs = all_docs
+        .into_iter()
+        .map(prepared_session_doc_from_session_doc)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    let request = IngestSessionsPreparedRequest {
+        docs,
+        project: cfg.sessions_project.clone(),
+        collection,
+    };
+    if !request.docs.is_empty() {
+        request
+            .validate(cfg)
+            .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    }
+    Ok(request)
+}
+
+fn prepared_session_doc_from_session_doc(
+    session_doc: SessionDoc,
+) -> Result<PreparedSessionDoc, String> {
+    let platform = match session_doc.doc.source_type.as_str() {
+        "claude_session" => "claude",
+        "codex_session" => "codex",
+        "gemini_session" => "gemini",
+        other => return Err(format!("unsupported session source_type: {other}")),
+    }
+    .to_string();
+    let extra = session_doc
+        .doc
+        .extra
+        .clone()
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    let session_project = extra
+        .get("project_name")
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
+    let session_date = extra
+        .get("session_date")
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
+    let session_turn_count = extra
+        .get("turn_count")
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+    let session_file = extra
+        .get("session_file")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            session_doc
+                .doc
+                .url
+                .strip_prefix("file://")
+                .unwrap_or(&session_doc.doc.url)
+                .to_string()
+        });
+    let text = session_doc.raw_text;
+
+    Ok(PreparedSessionDoc {
+        url: session_doc.doc.url,
+        title: session_doc.doc.title,
+        text,
+        session_platform: platform,
+        session_project,
+        session_date,
+        session_turn_count,
+        session_file,
+        extra,
+    })
+}
+
 /// Groups collected docs by collection and calls `embed_prepared_docs` once per collection.
 async fn embed_all_session_docs(cfg: &Config, docs: Vec<SessionDoc>) -> usize {
     let mut by_collection: HashMap<String, Vec<PreparedDoc>> = HashMap::new();
@@ -170,6 +272,23 @@ async fn embed_all_session_docs(cfg: &Config, docs: Vec<SessionDoc>) -> usize {
         }
     }
     total
+}
+
+pub async fn ingest_prepared_sessions(
+    cfg: &Config,
+    request: IngestSessionsPreparedRequest,
+    reporter: &PhaseReporter,
+) -> Result<usize, Box<dyn Error>> {
+    log_info("command=ingest source=prepared_sessions");
+    reporter.report_phase(PHASE_EMBEDDING).await;
+    let docs = request
+        .into_session_docs(cfg)
+        .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    let total_chunks = embed_all_session_docs(cfg, docs).await;
+    log_done(&format!(
+        "command=ingest source=prepared_sessions total_chunk_count={total_chunks}"
+    ));
+    Ok(total_chunks)
 }
 
 pub(super) fn flatten_session_result(

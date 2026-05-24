@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::core::config::Config;
 use crate::jobs::SqliteJobBackend;
-use crate::jobs::backend::{BackendResult, JobBackend, JobKind, JobPayload};
+use crate::jobs::backend::{BackendResult, JobBackend, JobKind, JobPayload, JobSidecarPayload};
 use crate::jobs::query as job_query;
 use crate::jobs::store::reclaim_stale_running_jobs_for_table;
 use crate::services::types::ServiceJob;
@@ -50,6 +50,15 @@ pub trait ServiceJobRuntime: Send + Sync {
     }
 
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid>;
+    async fn enqueue_with_sidecar(
+        &self,
+        payload: JobPayload,
+        sidecar: JobSidecarPayload,
+    ) -> BackendResult<Uuid> {
+        let _ = payload;
+        let _ = sidecar;
+        Err("sidecar enqueue is not supported by this runtime".into())
+    }
     async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> BackendResult<String>;
     async fn job_errors(&self, id: Uuid, kind: JobKind) -> BackendResult<Option<String>>;
     async fn has_active_jobs(&self, kind: JobKind) -> BackendResult<bool>;
@@ -175,6 +184,14 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
 
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {
         self.backend.enqueue(payload).await
+    }
+
+    async fn enqueue_with_sidecar(
+        &self,
+        payload: JobPayload,
+        sidecar: JobSidecarPayload,
+    ) -> BackendResult<Uuid> {
+        self.backend.enqueue_with_sidecar(payload, sidecar).await
     }
 
     async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> BackendResult<String> {

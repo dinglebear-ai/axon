@@ -71,6 +71,20 @@ pub enum JobPayload {
     },
 }
 
+/// Sidecar payload persisted atomically with a job row.
+#[derive(Debug, Clone)]
+pub enum JobSidecarPayload {
+    IngestPreparedSessions { payload_json: String },
+}
+
+impl JobSidecarPayload {
+    pub fn kind(&self) -> JobKind {
+        match self {
+            Self::IngestPreparedSessions { .. } => JobKind::Ingest,
+        }
+    }
+}
+
 impl JobPayload {
     pub fn kind(&self) -> JobKind {
         match self {
@@ -124,6 +138,17 @@ pub type BackendResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 pub trait JobBackend: Send + Sync {
     /// Submit a new job. Returns the assigned JobId.
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<JobId>;
+
+    /// Submit a job and sidecar payload in one SQLite write transaction.
+    async fn enqueue_with_sidecar(
+        &self,
+        payload: JobPayload,
+        sidecar: JobSidecarPayload,
+    ) -> BackendResult<JobId> {
+        let _ = payload;
+        let _ = sidecar;
+        Err("sidecar enqueue is not supported by this backend".into())
+    }
 
     /// Fetch full status row for a job. Returns None if job not found.
     async fn job_status(&self, id: JobId, kind: JobKind) -> BackendResult<Option<JobStatusRow>>;

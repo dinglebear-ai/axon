@@ -32,6 +32,7 @@ use super::{handlers, openapi_jobs};
         handlers::async_jobs::start_embed,
         handlers::async_jobs::start_extract,
         handlers::async_jobs::start_ingest,
+        handlers::async_jobs::start_prepared_sessions_ingest,
         handlers::jobs::list_jobs,
         handlers::jobs::job_status,
         handlers::jobs::cancel_job,
@@ -85,6 +86,8 @@ use super::{handlers, openapi_jobs};
         crate::services::client_contract::RestIngestRequest,
         crate::services::client_contract::RestSessionsIngestOptions,
         handlers::async_jobs::AcceptedJob,
+        crate::ingest::sessions::PreparedSessionDoc,
+        crate::ingest::sessions::IngestSessionsPreparedRequest,
         handlers::admin::DedupeRequest,
         handlers::admin::WatchCreateRequest
     )),

@@ -31,7 +31,7 @@ All global flags apply. Sessions-specific and key flags:
 | `--gemini` | off | Include Gemini sessions. Presence flag — include to enable. |
 | `--project <name>` | — | Case-insensitive substring filter on project name. |
 | `--wait <bool>` | `false` | Block until ingestion completes; otherwise enqueue async ingest job. |
-| `--collection <name>` | `cortex` | Target Qdrant collection. |
+| `--collection <name>` | `axon` | Target Qdrant collection. |
 | `--json` | `false` | Machine-readable output. |
 
 Provider selection rule:
@@ -69,10 +69,47 @@ axon sessions status 550e8400-e29b-41d4-a716-446655440000
 
 # Enqueue through the canonical server
 AXON_SERVER_URL=http://127.0.0.1:8001 axon sessions --codex --json
+
+# Server mode: wait for prepared-session async ingest
+AXON_SERVER_URL=http://127.0.0.1:8001 axon sessions --claude --project axon-rust --wait true --json
+```
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AXON_SERVER_URL` | — | Routes supported commands, including `sessions`, through a running `axon serve` HTTP endpoint. |
+| `AXON_MCP_HTTP_TOKEN` | — | Bearer token sent to authenticated Axon HTTP servers. |
+| `AXON_SESSION_INGEST_MAX_BYTES` | `20971520` | Maximum bytes read from one session file before skipping it. |
+| `AXON_SESSION_INGEST_MAX_TOTAL_TEXT_BYTES` | `104857600` | Maximum total prepared text accepted in one server-mode sessions request. |
+| `AXON_COLLECTION` | `axon` | Default target collection when `--collection` is not supplied. |
+| `QDRANT_URL` | `http://127.0.0.1:53333` | Vector store endpoint used by local mode and by the server process. |
+| `TEI_URL` | — | Embedding endpoint used by local mode and by the server process. |
+
+## External Dependency Install Instructions
+
+Local `axon sessions` parsing/redaction uses the Axon binary only. Embedding still requires the normal Axon runtime services:
+
+```bash
+# Install/build axon from this repository
+cargo build --release --bin axon
+./target/release/axon --version
+
+# Start required local services
+just services-up
+./scripts/axon doctor
+```
+
+For server mode, start a server built from the same revision before running the client:
+
+```bash
+AXON_MCP_HTTP_HOST=127.0.0.1 AXON_MCP_HTTP_PORT=8001 axon serve mcp --transport http
+AXON_SERVER_URL=http://127.0.0.1:8001 axon sessions --codex --wait true
 ```
 
 ## Notes
 
-- Session ingest uses an incremental state tracker table: `axon_session_ingest_state`.
-- Job records for queued runs are stored in `axon_ingest_jobs` with `source_type='sessions'`.
-- In server mode (`AXON_SERVER_URL`), session ingest and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers.
+- Local session text is decoded and redacted before embedding.
+- Job records for local queued runs are stored in `axon_ingest_jobs` with `source_type='sessions'`.
+- In server mode (`AXON_SERVER_URL`), `axon sessions` decodes and redacts local files on the client, uploads a bounded prepared-session payload to `POST /v1/ingest/sessions/prepared`, and the server embeds it asynchronously through the ingest worker queue. `--wait true` polls server job state and does not spawn host-local workers.
+- Legacy remote `source_type="sessions"` ingest is rejected so an Axon server cannot scan its own `~/.claude`, `~/.codex`, or `~/.gemini` paths by accident.
