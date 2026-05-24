@@ -14,6 +14,7 @@ use uuid::Uuid;
 use super::super::error::HttpError;
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct JobListQuery {
     limit: Option<i64>,
     offset: Option<i64>,

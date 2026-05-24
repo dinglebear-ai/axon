@@ -136,9 +136,9 @@ Tuning strategy:
 
 ## Server-Mode HTTP Tuning
 
-`axon serve` exposes MCP, `/v1/ask`, `/v1/actions`, and the setup/config panel
-on one Axum listener. Stateful CLI server-mode commands run through
-`/v1/actions` and share the same service layer as local CLI/MCP execution.
+`axon serve` exposes MCP, `/v1/ask`, direct `/v1` REST routes, and the setup/config panel
+on one Axum listener. Stateful CLI server-mode commands run through direct
+REST routes and share the same service layer as local CLI/MCP execution.
 
 For high-latency LLM or embedding paths:
 

@@ -1,6 +1,6 @@
 use super::super::error::HttpError;
-use super::super::types::AskRequestBody;
 use crate::core::config::Config;
+use crate::services::client_contract::RestAskRequest as AskRequestBody;
 use crate::services::query as query_svc;
 use axum::{Extension, Json, response::IntoResponse};
 use std::sync::Arc;

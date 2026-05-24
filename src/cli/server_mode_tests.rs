@@ -1,9 +1,13 @@
 use super::*;
 use crate::core::config::CommandKind;
 use crate::core::config::RenderMode;
+use crate::services::client_contract::{
+    RestIngestRequest, RestRouteContract, RestSummarizeRequest, rest_route_contracts,
+};
 use crate::services::types::ServiceJob;
 use chrono::Utc;
 use serde_json::json;
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 fn cfg(command: CommandKind, positional: &[&str]) -> Config {
@@ -76,7 +80,17 @@ fn scrape_server_mode_uses_rest_contract_body() {
     assert_eq!(plan.path, "/v1/scrape");
     assert_eq!(
         plan.body,
-        json!({ "url": "https://example.com", "embed": true })
+        json!({
+            "url": "https://example.com",
+            "urls": null,
+            "render_mode": "chrome",
+            "format": "markdown",
+            "embed": true,
+            "collection": "axon",
+            "root_selector": null,
+            "exclude_selector": null,
+            "headers": [],
+        })
     );
 }
 
@@ -89,8 +103,108 @@ fn scrape_server_mode_forwards_skip_embed() {
 
     assert_eq!(
         plan.body,
-        json!({ "url": "https://example.com", "embed": false })
+        json!({
+            "url": "https://example.com",
+            "urls": null,
+            "render_mode": "auto-switch",
+            "format": "markdown",
+            "embed": false,
+            "collection": "axon",
+            "root_selector": null,
+            "exclude_selector": null,
+            "headers": [],
+        })
     );
+}
+
+#[test]
+fn server_mode_post_bodies_match_canonical_rest_contract_fields() {
+    for contract in rest_route_contracts() {
+        let actual = server_mode_body_fields(contract);
+        let expected = contract
+            .fields
+            .iter()
+            .map(|field| field.to_string())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            actual, expected,
+            "server-mode planner body drifted from canonical REST contract for {} {}",
+            contract.method, contract.path
+        );
+    }
+}
+
+fn server_mode_body_fields(contract: &RestRouteContract) -> BTreeSet<String> {
+    let plans = match contract.path {
+        "/v1/scrape" => vec![plan_for(CommandKind::Scrape, &["https://example.com"])],
+        "/v1/summarize" => vec![plan_for(CommandKind::Summarize, &["https://example.com"])],
+        "/v1/crawl" => vec![plan_for(CommandKind::Crawl, &["https://example.com"])],
+        "/v1/extract" => vec![plan_for(CommandKind::Extract, &["https://example.com"])],
+        "/v1/embed" => vec![plan_for(CommandKind::Embed, &["plain text"])],
+        "/v1/ingest" => vec![
+            plan_for(
+                CommandKind::Ingest,
+                &["https://github.com/MCPJam/inspector"],
+            ),
+            plan_for(CommandKind::Sessions, &[]),
+        ],
+        "/v1/ask" => vec![plan_with_query(CommandKind::Ask, "what is parity?")],
+        "/v1/query" => vec![plan_with_query(CommandKind::Query, "parity query")],
+        "/v1/retrieve" => vec![plan_for(CommandKind::Retrieve, &["https://example.com"])],
+        "/v1/evaluate" => vec![plan_with_query(CommandKind::Evaluate, "is parity intact?")],
+        "/v1/suggest" => vec![plan_with_query(CommandKind::Suggest, "rust docs")],
+        "/v1/map" => vec![plan_for(CommandKind::Map, &["https://example.com"])],
+        "/v1/search" => vec![plan_with_query(CommandKind::Search, "mcp rust")],
+        "/v1/research" => vec![plan_with_query(CommandKind::Research, "mcp rust")],
+        path => panic!("no server-mode sample for REST contract path {path}"),
+    };
+
+    plans
+        .iter()
+        .inspect(|plan| {
+            assert_eq!(plan.method, contract.method);
+            assert_eq!(plan.path, contract.path);
+        })
+        .flat_map(|plan| {
+            plan.body
+                .as_object()
+                .unwrap_or_else(|| panic!("{} {} body is not an object", plan.method, plan.path))
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn plan_for(command: CommandKind, positional: &[&str]) -> plan::ServerRestPlan {
+    let cfg = cfg(command, positional);
+    plan::server_rest_plan(&cfg).unwrap_or_else(|err| panic!("{command:?} plan: {err}"))
+}
+
+fn plan_with_query(command: CommandKind, query: &str) -> plan::ServerRestPlan {
+    let mut cfg = cfg(command, &[]);
+    cfg.query = Some(query.to_string());
+    plan::server_rest_plan(&cfg).unwrap_or_else(|err| panic!("{command:?} plan: {err}"))
+}
+
+#[test]
+fn summarize_server_mode_forwards_scrape_controls() {
+    let mut cfg = cfg(CommandKind::Summarize, &["https://example.com"]);
+    cfg.render_mode = RenderMode::Chrome;
+    cfg.root_selector = Some("article".to_string());
+    cfg.exclude_selector = Some("nav,.ads".to_string());
+    cfg.custom_headers = vec!["X-Test: 1".to_string()];
+
+    let plan = plan::server_rest_plan(&cfg).expect("summarize plan");
+    let req: RestSummarizeRequest =
+        serde_json::from_value(plan.body.clone()).expect("valid summarize REST request");
+
+    assert_eq!(plan.path, "/v1/summarize");
+    assert_eq!(req.urls, Some(vec!["https://example.com".to_string()]));
+    assert_eq!(req.render_mode, Some(RenderMode::Chrome));
+    assert_eq!(req.root_selector.as_deref(), Some("article"));
+    assert_eq!(req.exclude_selector.as_deref(), Some("nav,.ads"));
+    assert_eq!(req.headers, vec!["X-Test: 1".to_string()]);
 }
 
 #[test]
@@ -219,7 +333,7 @@ fn ingest_server_mode_uses_action_api_ingest_contract() {
 }
 
 #[test]
-fn sessions_server_mode_uses_nested_action_api_sessions_contract() {
+fn sessions_server_mode_body_deserializes_as_rest_contract() {
     let mut cfg = cfg(CommandKind::Sessions, &[]);
     cfg.sessions_claude = true;
     cfg.sessions_codex = true;
@@ -229,6 +343,13 @@ fn sessions_server_mode_uses_nested_action_api_sessions_contract() {
     let plan = plan::server_rest_plan(&cfg).expect("sessions plan");
 
     assert_eq!(plan.path, "/v1/ingest");
+    let req: RestIngestRequest =
+        serde_json::from_value(plan.body.clone()).expect("valid ingest REST request");
+    let sessions = req.sessions.expect("sessions options");
+    assert_eq!(sessions.claude, Some(true));
+    assert_eq!(sessions.codex, Some(true));
+    assert_eq!(sessions.gemini, Some(false));
+    assert_eq!(sessions.project.as_deref(), Some("axon_rust"));
     assert_eq!(
         plan.body,
         json!({

@@ -42,7 +42,7 @@ axon_rust/
 │   ├── vector/                      # Qdrant ops, TEI, hybrid search
 │   │   └── ops/                    # TEI embed, Qdrant upsert/search, ask
 │   ├── web.rs                       # Unified HTTP server module root
-│   └── web/                         # Static panel, /v1/ask, /v1/actions
+│   └── web/                         # Static panel, /v1/ask, direct /v1 REST routes
 │
 ├── docs/                            # Documentation (this directory)
 ├── migrations/                      # SQL migrations
@@ -87,7 +87,7 @@ Axon uses a flat module layout rooted at `src/`. Each module has a module root f
 | mcp | `src/mcp.rs` | MCP server schema definition and handler dispatch |
 | services | `src/services.rs` | Typed service layer consumed by CLI, MCP, and HTTP routes |
 | vector | `src/vector.rs` | Qdrant operations, TEI embedding, hybrid search |
-| web | `src/web.rs` | Unified HTTP server for panel, `/v1/ask`, and `/v1/actions` |
+| web | `src/web.rs` | Unified HTTP server for panel, `/v1/ask`, and direct `/v1` REST routes |
 
 ### Module layout convention (enforced)
 

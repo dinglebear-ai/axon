@@ -22,6 +22,7 @@ mod utils;
 
 // Re-export public types and state
 pub(super) use error::HttpError;
+pub(crate) use openapi::openapi_document;
 pub(super) use state::AppState;
 pub(crate) use state::PanelRuntimeState;
 pub(super) use utils::authorized;

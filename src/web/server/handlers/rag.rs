@@ -1,39 +1,16 @@
 use crate::core::config::Config;
 use crate::services;
+use crate::services::client_contract::{
+    RestEvaluateRequest as EvaluateRequest, RestQueryRequest as QueryRequest,
+    RestRetrieveRequest as RetrieveRequest, RestSuggestRequest as SuggestRequest,
+};
 use crate::services::types::{Pagination, RetrieveOptions};
 use axum::{Json, extract::State};
-use serde::Deserialize;
 use std::sync::Arc;
 
 use super::super::error::HttpError;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct QueryRequest {
-    query: String,
-    limit: Option<usize>,
-    offset: Option<usize>,
-    collection: Option<String>,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct RetrieveRequest {
-    url: String,
-    max_points: Option<usize>,
-    cursor: Option<String>,
-    token_budget: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct EvaluateRequest {
-    question: String,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct SuggestRequest {
-    focus: Option<String>,
-}
 
 #[utoipa::path(
     post,
@@ -74,6 +51,7 @@ pub(crate) async fn retrieve(
     Json(req): Json<RetrieveRequest>,
 ) -> Result<Json<services::types::RetrieveResult>, HttpError> {
     let url = required_text(&req.url, "url")?;
+    let cfg = with_collection_override(&cfg, req.collection)?;
     services::query::retrieve(
         &cfg,
         url,
@@ -104,6 +82,7 @@ pub(crate) async fn evaluate(
     Json(req): Json<EvaluateRequest>,
 ) -> Result<Json<services::types::EvaluateResult>, HttpError> {
     let question = required_text(&req.question, "question")?;
+    let cfg = with_collection_override(&cfg, req.collection)?;
     services::query::evaluate(&cfg, question)
         .await
         .map(Json)
@@ -129,6 +108,7 @@ pub(crate) async fn suggest(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty());
+    let cfg = with_collection_override(&cfg, req.collection)?;
     services::query::suggest(&cfg, focus)
         .await
         .map(Json)
@@ -144,7 +124,10 @@ pub(crate) fn required_text<'a>(value: &'a str, field: &'static str) -> Result<&
     }
 }
 
-fn with_collection_override(cfg: &Config, collection: Option<String>) -> Result<Config, HttpError> {
+pub(crate) fn with_collection_override(
+    cfg: &Config,
+    collection: Option<String>,
+) -> Result<Config, HttpError> {
     let Some(collection) = collection
         .as_deref()
         .map(str::trim)
@@ -152,11 +135,15 @@ fn with_collection_override(cfg: &Config, collection: Option<String>) -> Result<
     else {
         return Ok(cfg.clone());
     };
-    crate::core::config::validation::validate_collection_name(collection)
-        .map_err(|err| HttpError::bad_request(format!("invalid collection: {err}")))?;
+    validate_collection_name(collection)?;
     let mut cfg = cfg.clone();
     cfg.collection = collection.to_string();
     Ok(cfg)
+}
+
+pub(crate) fn validate_collection_name(collection: &str) -> Result<(), HttpError> {
+    crate::core::config::validation::validate_collection_name(collection)
+        .map_err(|err| HttpError::bad_request(format!("invalid collection: {err}")))
 }
 
 pub(crate) fn pagination(

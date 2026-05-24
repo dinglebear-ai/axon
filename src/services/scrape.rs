@@ -5,7 +5,10 @@ use crate::crawl::scrape::{build_scrape_website, fetch_single_page, select_outpu
 use crate::extract::{VerticalContext, dispatch_by_url};
 use crate::services::events::ServiceEvent;
 use crate::services::types::{ArtifactHandle, DocumentBackend, ScrapeResult};
+use crate::vector::ops::input::{chunk_markdown, chunk_text};
+use crate::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
 use futures_util::stream::{self, StreamExt};
+use spider::url::Url as SpiderUrl;
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
@@ -224,6 +227,51 @@ pub async fn scrape_batch(
         .map(|(_, result)| result)
         .collect();
     Ok(results)
+}
+
+/// Scrape a batch and embed it when `cfg.embed` is true.
+///
+/// This is the shared service entry point for REST/server-mode scrape calls.
+/// It embeds the in-memory scrape result instead of round-tripping through the
+/// output directory, so vertical metadata is preserved in Qdrant payloads.
+#[must_use = "scrape_batch_with_optional_embed returns a Result that should be handled"]
+pub async fn scrape_batch_with_optional_embed(
+    cfg: &Config,
+    urls: &[String],
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<Vec<ScrapeResult>, Box<dyn Error>> {
+    let results = scrape_batch(cfg, urls, tx).await?;
+    if cfg.embed {
+        let docs = results.iter().map(scrape_result_to_prepared_doc).collect();
+        embed_prepared_docs(cfg, docs, None).await?;
+    }
+    Ok(results)
+}
+
+pub(crate) fn scrape_result_to_prepared_doc(result: &ScrapeResult) -> PreparedDoc {
+    let domain = SpiderUrl::parse(&result.url)
+        .ok()
+        .and_then(|url| url.host_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| "unknown".to_string());
+    PreparedDoc {
+        url: result.url.clone(),
+        domain,
+        chunks: if result
+            .markdown
+            .chars()
+            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+        {
+            chunk_text(&result.markdown)
+        } else {
+            chunk_markdown(&result.markdown)
+        },
+        source_type: "scrape".to_string(),
+        content_type: "markdown",
+        title: result.title.clone(),
+        extra: result.extra.clone(),
+        extractor_name: result.extractor_name.clone(),
+        structured: None,
+    }
 }
 
 #[cfg(test)]

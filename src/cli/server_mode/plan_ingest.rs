@@ -1,8 +1,11 @@
 use crate::cli::server_mode::ServerJobFamily;
 use crate::core::config::Config;
 use crate::jobs::ingest::IngestSource;
+use crate::services::client_contract::{
+    RestIngestRequest, RestIngestSourceType, RestSessionsIngestOptions,
+};
 
-use super::{ServerPlanError, ServerRestPlan, async_job_lifecycle_plan};
+use super::{ServerPlanError, ServerRestPlan, async_job_lifecycle_plan, json_body};
 
 pub(super) fn ingest_server_rest_plan(
     cfg: &Config,
@@ -19,15 +22,17 @@ pub(super) fn ingest_server_rest_plan(
         return Ok(ServerRestPlan {
             method: "POST",
             path: "/v1/ingest".to_string(),
-            body: serde_json::json!({
-                "source_type": "sessions",
-                "sessions": {
-                    "claude": cfg.sessions_claude,
-                    "codex": cfg.sessions_codex,
-                    "gemini": cfg.sessions_gemini,
-                    "project": cfg.sessions_project,
-                },
-            }),
+            body: json_body(RestIngestRequest {
+                source_type: RestIngestSourceType::Sessions,
+                target: None,
+                include_source: None,
+                sessions: Some(RestSessionsIngestOptions {
+                    claude: Some(cfg.sessions_claude),
+                    codex: Some(cfg.sessions_codex),
+                    gemini: Some(cfg.sessions_gemini),
+                    project: cfg.sessions_project.clone(),
+                }),
+            })?,
             label: "sessions",
             poll_family: Some(ServerJobFamily::Ingest),
         });
@@ -48,60 +53,71 @@ pub(super) fn ingest_server_rest_plan(
 }
 
 fn ingest_source_action_body(source: IngestSource) -> serde_json::Value {
-    match source {
+    let req = match source {
         IngestSource::Github {
             repo,
             include_source,
-        } => serde_json::json!({
-            "source_type": "github",
-            "target": repo,
-            "include_source": include_source,
-        }),
+        } => RestIngestRequest {
+            source_type: RestIngestSourceType::Github,
+            target: Some(repo),
+            include_source: Some(include_source),
+            sessions: None,
+        },
         IngestSource::Gitlab {
             target,
             include_source,
-        } => serde_json::json!({
-            "source_type": "gitlab",
-            "target": target,
-            "include_source": include_source,
-        }),
+        } => RestIngestRequest {
+            source_type: RestIngestSourceType::Gitlab,
+            target: Some(target),
+            include_source: Some(include_source),
+            sessions: None,
+        },
         IngestSource::Gitea {
             target,
             include_source,
-        } => serde_json::json!({
-            "source_type": "gitea",
-            "target": target,
-            "include_source": include_source,
-        }),
+        } => RestIngestRequest {
+            source_type: RestIngestSourceType::Gitea,
+            target: Some(target),
+            include_source: Some(include_source),
+            sessions: None,
+        },
         IngestSource::GenericGit {
             target,
             include_source,
-        } => serde_json::json!({
-            "source_type": "git",
-            "target": target,
-            "include_source": include_source,
-        }),
-        IngestSource::Reddit { target } => serde_json::json!({
-            "source_type": "reddit",
-            "target": target,
-        }),
-        IngestSource::Youtube { target } => serde_json::json!({
-            "source_type": "youtube",
-            "target": target,
-        }),
+        } => RestIngestRequest {
+            source_type: RestIngestSourceType::Git,
+            target: Some(target),
+            include_source: Some(include_source),
+            sessions: None,
+        },
+        IngestSource::Reddit { target } => RestIngestRequest {
+            source_type: RestIngestSourceType::Reddit,
+            target: Some(target),
+            include_source: None,
+            sessions: None,
+        },
+        IngestSource::Youtube { target } => RestIngestRequest {
+            source_type: RestIngestSourceType::Youtube,
+            target: Some(target),
+            include_source: None,
+            sessions: None,
+        },
         IngestSource::Sessions {
             sessions_claude,
             sessions_codex,
             sessions_gemini,
             sessions_project,
-        } => serde_json::json!({
-            "source_type": "sessions",
-            "sessions": {
-                "claude": sessions_claude,
-                "codex": sessions_codex,
-                "gemini": sessions_gemini,
-                "project": sessions_project,
-            },
-        }),
-    }
+        } => RestIngestRequest {
+            source_type: RestIngestSourceType::Sessions,
+            target: None,
+            include_source: None,
+            sessions: Some(RestSessionsIngestOptions {
+                claude: Some(sessions_claude),
+                codex: Some(sessions_codex),
+                gemini: Some(sessions_gemini),
+                project: sessions_project,
+            }),
+        },
+    };
+    serde_json::to_value(req).unwrap_or(serde_json::Value::Null)
 }

@@ -1,3 +1,5 @@
+import type { components } from './generated/axon-api';
+
 type FetchLike = typeof fetch;
 
 export type JsonObject = Record<string, unknown>;
@@ -16,11 +18,25 @@ export type AxonClientOptions = {
   fetch?: FetchLike;
 };
 
-export type ErrorBody = {
-  kind: string;
-  message: string;
-  diagnostics?: JsonObject;
-};
+type Schemas = components['schemas'];
+type ErrorBodySchema = Schemas['ErrorBody'];
+type RestQueryRequestSchema = Schemas['RestQueryRequest'];
+type RestRetrieveRequestSchema = Schemas['RestRetrieveRequest'];
+type RestAskRequestSchema = Schemas['RestAskRequest'];
+type RestEvaluateRequestSchema = Schemas['RestEvaluateRequest'];
+type RestSuggestRequestSchema = Schemas['RestSuggestRequest'];
+type RestScrapeRequestSchema = Schemas['RestScrapeRequest'];
+type RestMapRequestSchema = Schemas['RestMapRequest'];
+type RestSearchRequestSchema = Schemas['RestSearchRequest'];
+type RestResearchRequestSchema = Schemas['RestResearchRequest'];
+type RestCrawlRequestSchema = Schemas['RestCrawlRequest'];
+type RestEmbedRequestSchema = Schemas['RestEmbedRequest'];
+type RestExtractRequestSchema = Schemas['RestExtractRequest'];
+type RestIngestRequestSchema = Schemas['RestIngestRequest'];
+type AcceptedJobSchema = Schemas['AcceptedJob'];
+type WatchCreateRequestSchema = Schemas['WatchCreateRequest'];
+
+export interface ErrorBody extends ErrorBodySchema {}
 
 export class AxonApiError extends Error {
   readonly status: number;
@@ -41,111 +57,21 @@ export type PaginationParams = {
   offset?: number;
 };
 
-export type QueryRequest = {
-  query: string;
-  limit?: number;
-  offset?: number;
-};
-
-export type RetrieveRequest = {
-  url: string;
-  max_points?: number;
-  offset?: number;
-  token_budget?: number;
-};
-
-export type AskRequest = {
-  query: string;
-  collection?: string;
-  since?: string;
-  before?: string;
-  diagnostics?: boolean;
-  explain?: boolean;
-  hybrid_search?: boolean;
-  graph?: boolean;
-  ask_chunk_limit?: number;
-  ask_full_docs?: number;
-  ask_max_context_chars?: number;
-  ask_hybrid_candidates?: number;
-  ask_min_relevance_score?: number;
-  ask_doc_chunk_limit?: number;
-  ask_doc_fetch_concurrency?: number;
-  ask_backfill_chunks?: number;
-  ask_candidate_limit?: number;
-  ask_min_citations_nontrivial?: number;
-  ask_authoritative_domains?: string[];
-  ask_authoritative_boost?: number;
-};
-
-export type EvaluateRequest = {
-  question: string;
-};
-
-export type SuggestRequest = {
-  focus?: string;
-};
-
-export type ScrapeRequest = {
-  url?: string;
-  urls?: string[];
-};
-
-export type MapRequest = {
-  url: string;
-  limit?: number;
-  offset?: number;
-};
-
-export type SearchRequest = {
-  query: string;
-  limit?: number;
-  include_raw?: boolean;
-  time_range?: string;
-};
-
-export type ResearchRequest = {
-  query: string;
-  limit?: number;
-  include_raw?: boolean;
-  time_range?: string;
-};
-
-export type CrawlStartRequest = {
-  urls: string[];
-  max_pages?: number;
-  max_depth?: number;
-  render_mode?: string;
-  include_subdomains?: boolean;
-  respect_robots?: boolean;
-  delay_ms?: number;
-};
-
-export type EmbedStartRequest = {
-  input: string;
-};
-
-export type ExtractStartRequest = {
-  urls: string[];
-  prompt?: string;
-  schema?: JsonObject;
-};
-
-export type IngestStartRequest = JsonObject;
-
-export type AcceptedJob = {
-  job_id: string;
-  status: 'pending';
-  status_url: string;
-};
-
-export type WatchCreateRequest = {
-  name: string;
-  task_type: string;
-  target: string;
-  schedule: string;
-  enabled?: boolean;
-  next_run_at?: string;
-};
+export interface QueryRequest extends RestQueryRequestSchema {}
+export interface RetrieveRequest extends RestRetrieveRequestSchema {}
+export interface AskRequest extends RestAskRequestSchema {}
+export interface EvaluateRequest extends RestEvaluateRequestSchema {}
+export interface SuggestRequest extends RestSuggestRequestSchema {}
+export interface ScrapeRequest extends RestScrapeRequestSchema {}
+export interface MapRequest extends RestMapRequestSchema {}
+export interface SearchRequest extends RestSearchRequestSchema {}
+export interface ResearchRequest extends RestResearchRequestSchema {}
+export interface CrawlStartRequest extends RestCrawlRequestSchema {}
+export interface EmbedStartRequest extends RestEmbedRequestSchema {}
+export interface ExtractStartRequest extends RestExtractRequestSchema {}
+export interface IngestStartRequest extends RestIngestRequestSchema {}
+export interface AcceptedJob extends AcceptedJobSchema {}
+export interface WatchCreateRequest extends WatchCreateRequestSchema {}
 
 export type JobKind = 'crawl' | 'embed' | 'extract' | 'ingest';
 

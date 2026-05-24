@@ -29,7 +29,7 @@ This document defines the current architecture of `axon_rust` across:
 - CLI command execution and dispatch
 - Crawl/extract/embed/ingest asynchronous pipelines
 - Vector storage and retrieval (Qdrant + TEI)
-- Unified HTTP runtime (`axon serve` web panel, MCP, `/v1/ask`, `/v1/actions`)
+- Unified HTTP runtime (`axon serve` web panel, MCP, `/v1/ask`, and direct `/v1` REST routes)
 - CLI client/server data flow
 
 It supersedes the previous architecture notes for the removed omnibox/Pulse web

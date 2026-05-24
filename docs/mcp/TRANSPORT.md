@@ -91,7 +91,7 @@ startup is limited to loopback hosts.
 |----------|--------|-------------|
 | `/mcp` | POST | MCP JSON-RPC streamable-HTTP transport |
 | `/v1/capabilities` | GET | First-party CLI server capability document, when served by `axon serve` |
-| `/v1/actions` | POST | First-party CLI action endpoint, when served by `axon serve` |
+| `/v1/*` | GET/POST/DELETE | First-party direct REST routes, when served by `axon serve` |
 
 The same listener also mounts the web panel and first-party HTTP routes. Use
 `/healthz` for server health and `/mcp` for MCP protocol checks.

@@ -36,9 +36,32 @@ fn client_server_response_includes_server_info() {
     assert!(
         response
             .server
+            .supported_routes
+            .contains(&"GET /v1/status".to_string())
+    );
+    assert!(
+        response
+            .server
             .supported_actions
             .contains(&"status".to_string())
     );
+}
+
+#[test]
+fn rest_capabilities_omit_legacy_action_contract() {
+    let info = ServerInfo::rest_capabilities();
+
+    assert!(info.required_request_fields.is_empty());
+    assert!(info.supported_actions.is_empty());
+    assert!(
+        info.supported_routes
+            .contains(&"POST /v1/scrape".to_string())
+    );
+
+    let value = serde_json::to_value(&info).expect("serialize server info");
+    assert!(value.get("supported_routes").is_some());
+    assert!(value.get("required_request_fields").is_none());
+    assert!(value.get("supported_actions").is_none());
 }
 
 #[test]

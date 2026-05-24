@@ -44,7 +44,7 @@ Behavior:
 
 ### Client/server smoke lane
 
-Use this when touching `AXON_SERVER_URL`, `/v1/actions`, artifact handles, or
+Use this when touching `AXON_SERVER_URL`, direct `/v1` REST routes, artifact handles, or
 Docker/systemd runtime wiring. The smoke must not edit `~/.axon/.env` or
 `~/.axon/config.toml`; pass temporary env overrides in the command invocation.
 
@@ -81,7 +81,7 @@ Integration suites currently covered:
 | `tests/client_server_mode.rs` | none | CLI server-mode planning and action contracts |
 | `tests/compose_env_contract.rs` | none | Compose/env contract shape |
 | `src/web/server/tests.rs` | none | Web panel/server route helpers |
-| `src/web/actions/tests.rs` | none | `/v1/actions` dispatch behavior |
+| `src/web/server/tests.rs` | none | Direct REST route, removed-route, and auth behavior |
 
 ## Test Infrastructure Environment Variables
 

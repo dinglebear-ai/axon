@@ -95,8 +95,14 @@ pub struct ConfigOverrides {
     /// Override `Config::sitemap_since_days`.
     pub sitemap_since_days: Option<u32>,
 
+    /// Override `Config::max_sitemaps`.
+    pub max_sitemaps: Option<usize>,
+
     /// Override `Config::delay_ms` (inter-request delay for polite crawling).
     pub delay_ms: Option<u64>,
+
+    /// Override `Config::custom_headers`.
+    pub custom_headers: Option<Vec<String>>,
 
     /// Override `Config::min_markdown_chars` (thin-page threshold).
     pub min_markdown_chars: Option<usize>,
@@ -203,8 +209,14 @@ impl Config {
         if let Some(v) = overrides.sitemap_since_days {
             cfg.sitemap_since_days = v;
         }
+        if let Some(v) = overrides.max_sitemaps {
+            cfg.max_sitemaps = v;
+        }
         if let Some(v) = overrides.delay_ms {
             cfg.delay_ms = v;
+        }
+        if let Some(ref v) = overrides.custom_headers {
+            cfg.custom_headers = v.clone();
         }
         if let Some(v) = overrides.min_markdown_chars {
             cfg.min_markdown_chars = v;

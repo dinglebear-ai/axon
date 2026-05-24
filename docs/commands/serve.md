@@ -21,7 +21,7 @@ Mounted surfaces:
 
 - `POST /mcp` - MCP streamable HTTP transport.
 - `GET /v1/capabilities` - first-party CLI client/server capability metadata.
-- `POST /v1/actions` - first-party CLI action dispatch for supported stateful commands.
+- Direct `/v1` REST routes - first-party CLI/server and web API surface.
 - `POST /v1/ask` - ask endpoint used by `axon ask` when `AXON_SERVER_URL` is set.
 - `/api/panel/*` - local setup/config panel APIs.
 - Static web panel assets.
@@ -67,6 +67,6 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
 ## Notes
 
 - Docker Compose publishes the server with `AXON_MCP_HTTP_PUBLISH` while the container binds `AXON_MCP_HTTP_HOST=0.0.0.0` internally.
-- `/mcp`, `/v1/actions`, and the web panel are mounted on the same listener.
+- `/mcp`, direct `/v1` REST routes, and the web panel are mounted on the same listener.
 - Server-owned jobs, output, screenshots, and artifacts live under the server process `AXON_DATA_DIR`.
 - The old port `49000` websocket bridge, `49010` Next.js dev server, `49011` shell server, `/download/*`, and `/ws*` routes are not part of the current `axon serve` runtime.

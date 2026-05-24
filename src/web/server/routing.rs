@@ -121,7 +121,7 @@ pub(super) fn router(
 }
 
 async fn v1_capabilities() -> Json<ServerInfo> {
-    Json(ServerInfo::current())
+    Json(ServerInfo::rest_capabilities())
 }
 
 async fn v1_actions_removed() -> HttpError {
