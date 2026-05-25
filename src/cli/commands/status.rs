@@ -24,7 +24,10 @@ pub async fn run_status(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     log_info(&format!("command=status json={}", cfg.json_output));
-    if cfg.watch_mode && !cfg.json_output {
+    // Watch mode is entirely progress output (MultiProgress + ProgressBar
+    // spinners), so suppress it under --quiet — the flag's contract is to
+    // hide spinners/progress for scripted use.
+    if cfg.watch_mode && !cfg.json_output && !cfg.quiet {
         return watch::run_status_watch(cfg, service_context).await;
     }
     if cfg.json_output {
