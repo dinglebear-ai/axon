@@ -4,7 +4,6 @@
 set -euo pipefail
 
 AXON_HOME="${AXON_HOME:-${HOME}/.axon}"
-INSTALL_URL="${AXON_INSTALL_URL:-https://raw.githubusercontent.com/jmagar/axon/v1.11.2/install.sh}"
 
 reject_unsafe_value() {
   local name="$1" value="${2:-}"
@@ -26,11 +25,16 @@ ensure_axon_binary() {
   if command -v axon >/dev/null 2>&1; then
     return 0
   fi
-  printf 'axon plugin setup: axon not found; running installer %s\n' "${INSTALL_URL}" >&2
-  curl -fsSL "${INSTALL_URL}" | sh
-  export PATH="${HOME}/.local/bin:${PATH}"
+
+  local bundled="${CLAUDE_PLUGIN_ROOT:-$(pwd)}/bin/axon"
+  if [[ -x "${bundled}" ]]; then
+    mkdir -p "${HOME}/.local/bin"
+    ln -sf "${bundled}" "${HOME}/.local/bin/axon"
+    export PATH="${HOME}/.local/bin:${PATH}"
+  fi
+
   command -v axon >/dev/null 2>&1 || {
-    printf 'axon plugin setup: installer completed but axon is still not on PATH\n' >&2
+    printf 'axon plugin setup: axon binary not found on PATH or at %s\n' "${bundled}" >&2
     exit 1
   }
 }
@@ -60,7 +64,7 @@ main() {
   chmod 700 "${AXON_HOME}" 2>/dev/null || true
   warn_stale_systemd_unit
   ensure_axon_binary
-  axon setup plugin-hook
+  axon setup plugin-hook "$@"
 }
 
 main "$@"
