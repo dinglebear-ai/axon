@@ -46,11 +46,34 @@ pub fn color_enabled_public() -> bool {
     color_enabled()
 }
 
+/// True iff the installed `--color` override is `Always`. Used by the tracing
+/// formatter so `--color=always` bypasses its writer-side TTY check.
+pub fn color_forced_always() -> bool {
+    COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) == 1
+}
+
 fn color_enabled() -> bool {
     match COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
-        1 => true,
-        2 => false,
-        _ => env::var_os("NO_COLOR").is_none(),
+        1 => true,  // --color=always — bypass everything
+        2 => false, // --color=never
+        _ => {
+            // --color=auto: NO_COLOR wins, then FORCE_COLOR/CLICOLOR_FORCE,
+            // then fall back to stderr-TTY detection so piped/redirected
+            // output is plain by default.
+            if env::var_os("NO_COLOR").is_some() {
+                return false;
+            }
+            let force = |v: &str| {
+                env::var_os(v)
+                    .map(|val| !val.is_empty() && val != "0")
+                    .unwrap_or(false)
+            };
+            if force("FORCE_COLOR") || force("CLICOLOR_FORCE") {
+                return true;
+            }
+            use std::io::IsTerminal;
+            std::io::stderr().is_terminal()
+        }
     }
 }
 
