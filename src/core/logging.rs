@@ -152,10 +152,15 @@ where
 /// - Falls back to the writer's own TTY detection
 fn should_use_ansi(writer: &Writer<'_>) -> bool {
     // Honor --color={always,never} from Config (installed at startup).
-    // Auto falls through to the legacy env + TTY detection.
     if !crate::core::ui::color_enabled_public() {
         return false;
     }
+    // --color=always must produce ANSI even in non-TTY contexts (CI, redirected
+    // logs). It bypasses the writer-side TTY detection completely.
+    if crate::core::ui::color_forced_always() {
+        return true;
+    }
+    // --color=auto: FORCE_COLOR/CLICOLOR_FORCE still wins over TTY detection.
     let force = |var: &str| {
         std::env::var_os(var)
             .map(|v| !v.is_empty() && v != "0")
