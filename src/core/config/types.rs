@@ -6,8 +6,8 @@ pub mod subconfigs;
 
 pub use config::Config;
 pub use enums::{
-    ClientMode, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
-    RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    ClientMode, ColorChoice, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
+    PerformanceProfile, RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 pub use overrides::ConfigOverrides;
 #[cfg(test)]

@@ -1,3 +1,13 @@
+mod hyperlinks;
+mod panel;
+mod sparkline;
+mod table;
+
+pub use hyperlinks::hyperlink;
+pub use panel::panel;
+pub use sparkline::sparkline;
+pub use table::aurora_table;
+
 use crate::core::config::Config;
 use dialoguer::{Confirm, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -16,8 +26,32 @@ const INFO_ANSI: &str = "\x1b[38;2;114;200;245m"; // --aurora-info              
 const MUTED_ANSI: &str = "\x1b[38;2;167;188;201m"; // --aurora-text-muted         #A7BCC9
 const SUBTLE_ANSI: &str = "\x1b[38;2;196;107;136m"; // --aurora-accent-pink-deep   #C46B88
 
+// Set once by `install_color_choice()` at startup. 0 = Auto, 1 = Always, 2 = Never.
+static COLOR_OVERRIDE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Install the runtime color choice. Called by `lib::run_once` once `Config`
+/// is parsed so the global helpers honor `--color=auto|always|never`.
+pub fn install_color_choice(choice: crate::core::config::ColorChoice) {
+    use crate::core::config::ColorChoice;
+    let val: u8 = match choice {
+        ColorChoice::Auto => 0,
+        ColorChoice::Always => 1,
+        ColorChoice::Never => 2,
+    };
+    COLOR_OVERRIDE.store(val, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Public test seam — same answer as the private `color_enabled()`.
+pub fn color_enabled_public() -> bool {
+    color_enabled()
+}
+
 fn color_enabled() -> bool {
-    env::var_os("NO_COLOR").is_none()
+    match COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => true,
+        2 => false,
+        _ => env::var_os("NO_COLOR").is_none(),
+    }
 }
 
 pub fn ansi_colorize(code: &str, text: &str) -> String {

@@ -118,6 +118,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         "startup"
     );
     let cfg = parse_args();
+    // Install the user's color choice before any colorized output runs.
+    core::ui::install_color_choice(cfg.color_choice);
     tracing::info!(
         command = cfg.command.as_str(),
         collection = %cfg.collection,

@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::core::logging::{log_info, log_warn};
-use crate::core::ui::{accent, muted, primary};
+use crate::core::ui::{accent, aurora_table, muted, primary};
 use crate::services::system;
 use crate::services::types::{DetailedDomainsResult, Pagination};
 use std::collections::BTreeMap;
@@ -91,13 +91,11 @@ fn render_fast_domain_results(
         return Ok(());
     }
     println!("{}", primary("Domains"));
+    let mut t = aurora_table(&["Domain", "Vectors"]);
     for (domain, vectors) in domains {
-        println!(
-            "  {} {}",
-            accent(&domain),
-            muted(&format!("vectors={vectors}"))
-        );
+        t.add_row(vec![domain, vectors.to_string()]);
     }
+    println!("{t}");
     println!(
         "{}",
         muted("Tip: set AXON_DOMAINS_DETAILED=1 for exact per-domain unique URL counts (slower).")
@@ -118,13 +116,15 @@ fn render_detailed_domains(
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         println!("{}", primary("Domains"));
+        let mut t = aurora_table(&["Domain", "URLs", "Vectors"]);
         for row in result.domains {
-            println!(
-                "  {} {}",
-                accent(&row.domain),
-                muted(&format!("urls={} vectors={}", row.urls, row.vectors))
-            );
+            t.add_row(vec![
+                row.domain,
+                row.urls.to_string(),
+                row.vectors.to_string(),
+            ]);
         }
+        println!("{t}");
     }
     Ok(())
 }

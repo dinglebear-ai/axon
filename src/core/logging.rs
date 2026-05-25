@@ -23,6 +23,19 @@ fn ansi_dim(text: &str) -> String {
     format!("\x1b[2m{text}\x1b[0m")
 }
 
+fn truecolor_bold(rgb: (u8, u8, u8), text: &str) -> String {
+    let (r, g, b) = rgb;
+    format!("\x1b[1;38;2;{r};{g};{b}m{text}\x1b[0m")
+}
+
+/// True iff the terminal advertises 24-bit color via COLORTERM.
+fn supports_truecolor() -> bool {
+    matches!(
+        std::env::var("COLORTERM").as_deref(),
+        Ok("truecolor") | Ok("24bit")
+    )
+}
+
 fn read_trimmed_env(var: &str) -> Option<String> {
     std::env::var(var)
         .ok()
@@ -73,10 +86,29 @@ impl Visit for EventVisitor {
 /// Write the log level to `writer`, with Aurora ANSI 256 colour when `ansi` is true.
 fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> fmt::Result {
     if ansi {
+        let tc = supports_truecolor();
         match level {
-            tracing::Level::ERROR => write!(writer, "{}  ", ansi256_bold(aurora::ERROR, "ERROR")),
-            tracing::Level::WARN => write!(writer, "{}  ", ansi256_bold(aurora::WARN, " WARN")),
-            tracing::Level::INFO => write!(writer, " INFO  "),
+            tracing::Level::ERROR => {
+                if tc {
+                    write!(writer, "{}  ", truecolor_bold(aurora::rgb::ERROR, "ERROR"))
+                } else {
+                    write!(writer, "{}  ", ansi256_bold(aurora::ERROR, "ERROR"))
+                }
+            }
+            tracing::Level::WARN => {
+                if tc {
+                    write!(writer, "{}  ", truecolor_bold(aurora::rgb::WARN, " WARN"))
+                } else {
+                    write!(writer, "{}  ", ansi256_bold(aurora::WARN, " WARN"))
+                }
+            }
+            tracing::Level::INFO => {
+                if tc {
+                    write!(writer, "{}  ", truecolor_bold(aurora::rgb::INFO, " INFO"))
+                } else {
+                    write!(writer, " INFO  ")
+                }
+            }
             tracing::Level::DEBUG => write!(writer, "{}  ", ansi_dim("DEBUG")),
             tracing::Level::TRACE => write!(writer, "{}  ", ansi_dim("TRACE")),
         }
@@ -119,7 +151,9 @@ where
 /// - `FORCE_COLOR` / `CLICOLOR_FORCE` — enables colors even without a TTY (Docker, CI)
 /// - Falls back to the writer's own TTY detection
 fn should_use_ansi(writer: &Writer<'_>) -> bool {
-    if std::env::var_os("NO_COLOR").is_some() {
+    // Honor --color={always,never} from Config (installed at startup).
+    // Auto falls through to the legacy env + TTY detection.
+    if !crate::core::ui::color_enabled_public() {
         return false;
     }
     let force = |var: &str| {
@@ -170,7 +204,12 @@ where
                     write!(writer, " ")?;
                 }
                 if i == 0 {
-                    write!(writer, "{}", ansi256_bold(aurora::SERVICE_NAME, token))?;
+                    let painted = if supports_truecolor() {
+                        truecolor_bold(aurora::rgb::SERVICE_NAME, token)
+                    } else {
+                        ansi256_bold(aurora::SERVICE_NAME, token)
+                    };
+                    write!(writer, "{painted}")?;
                 } else if let Some(eq) = token.find('=') {
                     // key=value — dim key, normal value
                     write!(

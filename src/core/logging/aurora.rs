@@ -31,3 +31,14 @@ pub const WARN: u8 = 180;
 
 /// Muted red — errors and HTTP 5xx. RGB (199, 132, 144).
 pub const ERROR: u8 = 174;
+
+/// Truecolor (24-bit) RGB triples for the same Aurora tokens. Preferred when
+/// `COLORTERM=truecolor|24bit` is set; falls back to the ANSI-256 constants.
+pub mod rgb {
+    pub const SERVICE_NAME: (u8, u8, u8) = (249, 168, 196); // #F9A8C4
+    pub const ACCENT_PRIMARY: (u8, u8, u8) = (41, 182, 246); // #29B6F6
+    pub const SUCCESS: (u8, u8, u8) = (125, 211, 199); // #7DD3C7
+    pub const WARN: (u8, u8, u8) = (198, 163, 107); // #C6A36B
+    pub const ERROR: (u8, u8, u8) = (199, 132, 144); // #C78490
+    pub const INFO: (u8, u8, u8) = (114, 200, 245); // #72C8F5
+}

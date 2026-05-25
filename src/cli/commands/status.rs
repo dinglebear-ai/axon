@@ -1,5 +1,6 @@
 mod failure_summary;
 pub(crate) mod metrics;
+mod watch;
 
 use crate::core::config::Config;
 use crate::core::logging::log_info;
@@ -23,6 +24,9 @@ pub async fn run_status(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     log_info(&format!("command=status json={}", cfg.json_output));
+    if cfg.watch_mode && !cfg.json_output {
+        return watch::run_status_watch(cfg, service_context).await;
+    }
     if cfg.json_output {
         // JSON path: route through the service layer for a stable payload shape.
         let result = crate::services::system::full_status(service_context).await?;
