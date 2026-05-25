@@ -1,13 +1,20 @@
 use crate::core::config::Config;
-use console::{Style, style};
 use dialoguer::{Confirm, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::env;
 use std::error::Error;
 use std::time::Duration;
 
-pub const PRIMARY_ANSI: &str = "\x1b[38;2;244;143;177m";
-pub const ACCENT_ANSI: &str = "\x1b[38;2;144;202;249m";
+// Aurora design tokens — keep in sync with
+// aurora-design-system/registry/aurora/styles/aurora.css
+pub const PRIMARY_ANSI: &str = "\x1b[38;2;249;168;196m"; // --aurora-accent-pink        #F9A8C4
+pub const ACCENT_ANSI: &str = "\x1b[38;2;41;182;246m"; // --aurora-accent-primary     #29B6F6
+const SUCCESS_ANSI: &str = "\x1b[38;2;125;211;199m"; // --aurora-success            #7DD3C7
+const WARN_ANSI: &str = "\x1b[38;2;198;163;107m"; // --aurora-warn               #C6A36B
+const ERROR_ANSI: &str = "\x1b[38;2;199;132;144m"; // --aurora-error              #C78490
+const INFO_ANSI: &str = "\x1b[38;2;114;200;245m"; // --aurora-info               #72C8F5
+const MUTED_ANSI: &str = "\x1b[38;2;167;188;201m"; // --aurora-text-muted         #A7BCC9
+const SUBTLE_ANSI: &str = "\x1b[38;2;196;107;136m"; // --aurora-accent-pink-deep   #C46B88
 
 fn color_enabled() -> bool {
     env::var_os("NO_COLOR").is_none()
@@ -37,6 +44,8 @@ impl Spinner {
     pub fn new(message: &str) -> Self {
         let bar = ProgressBar::new_spinner();
         bar.enable_steady_tick(Duration::from_millis(100));
+        // indicatif's template DSL only supports named/256 colors; cyan is the
+        // closest stand-in for Aurora's --aurora-accent-primary (#29B6F6).
         bar.set_style(
             ProgressStyle::with_template("{spinner:.cyan} {msg}")
                 .unwrap_or_else(|_| ProgressStyle::default_spinner()),
@@ -56,7 +65,7 @@ pub fn confirm_destructive(cfg: &Config, prompt: &str) -> Result<bool, Box<dyn E
     }
 
     let proceed = Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt(format!("{} {}", style("[confirm]").yellow().bold(), prompt))
+        .with_prompt(format!("{} {}", warning("[confirm]"), prompt))
         .default(false)
         .interact()?;
     Ok(proceed)
@@ -71,44 +80,39 @@ pub fn accent(text: &str) -> String {
 }
 
 pub fn success(text: &str) -> String {
-    Style::new().green().bold().apply_to(text).to_string()
+    ansi_bold(&ansi_colorize(SUCCESS_ANSI, text))
 }
 
 pub fn warning(text: &str) -> String {
-    Style::new().yellow().bold().apply_to(text).to_string()
+    ansi_bold(&ansi_colorize(WARN_ANSI, text))
 }
 
 pub fn muted(text: &str) -> String {
-    ansi_dim(text)
+    ansi_colorize(MUTED_ANSI, text)
 }
 
-/// Soft blue for secondary info (UUIDs, ages, separators) — visible but not dominant.
+/// Aurora rose-deep — secondary info (UUIDs, ages, separators).
 pub fn subtle(text: &str) -> String {
-    // #87afd7 — muted blue, more vibrant than the prior grayish periwinkle
-    Style::new().color256(110).apply_to(text).to_string()
+    ansi_colorize(SUBTLE_ANSI, text)
 }
 
 pub fn symbol_for_status(status: &str) -> String {
     match status {
-        "completed" => Style::new().green().apply_to("✓").to_string(),
-        "failed" | "error" => Style::new().red().apply_to("✗").to_string(),
-        "pending" | "running" | "processing" | "scraping" => {
-            Style::new().yellow().apply_to("◐").to_string()
-        }
-        "canceled" => Style::new().yellow().apply_to("⚠").to_string(),
-        _ => Style::new().cyan().apply_to("•").to_string(),
+        "completed" => ansi_colorize(SUCCESS_ANSI, "✓"),
+        "failed" | "error" => ansi_colorize(ERROR_ANSI, "✗"),
+        "pending" | "running" | "processing" | "scraping" => ansi_colorize(INFO_ANSI, "◐"),
+        "canceled" => ansi_colorize(WARN_ANSI, "⚠"),
+        _ => ansi_colorize(ACCENT_ANSI, "•"),
     }
 }
 
 pub fn status_text(status: &str) -> String {
     match status {
-        "completed" => Style::new().green().apply_to(status).to_string(),
-        "failed" | "error" => Style::new().red().apply_to(status).to_string(),
-        "pending" | "running" | "processing" | "scraping" => {
-            Style::new().yellow().apply_to(status).to_string()
-        }
-        "canceled" => Style::new().yellow().apply_to(status).to_string(),
-        _ => Style::new().cyan().apply_to(status).to_string(),
+        "completed" => ansi_colorize(SUCCESS_ANSI, status),
+        "failed" | "error" => ansi_colorize(ERROR_ANSI, status),
+        "pending" | "running" | "processing" | "scraping" => ansi_colorize(INFO_ANSI, status),
+        "canceled" => ansi_colorize(WARN_ANSI, status),
+        _ => ansi_colorize(ACCENT_ANSI, status),
     }
 }
 
@@ -128,17 +132,22 @@ pub fn metric(value: impl std::fmt::Display, label: &str) -> String {
 
 /// Red text for errors.
 pub fn error(text: &str) -> String {
-    Style::new().red().apply_to(text).to_string()
+    ansi_colorize(ERROR_ANSI, text)
 }
 
-/// "error: <msg>" in red/bold on stderr — for CLI user-facing errors.
+/// "error: <msg>" in Aurora rose-red on stderr — for CLI user-facing errors.
 pub fn report_error(msg: &str) {
-    eprintln!("{} {}", Style::new().red().bold().apply_to("error:"), msg);
+    eprintln!(
+        "{} {}",
+        ansi_bold(&ansi_colorize(ERROR_ANSI, "error:")),
+        msg
+    );
 }
 
-/// "hint: <msg>" in cyan/dim on stderr — companion to report_error.
+/// "hint: <msg>" in Aurora cyan/dim on stderr — companion to report_error.
 pub fn report_hint(msg: &str) {
-    eprintln!("{} {}", Style::new().cyan().dim().apply_to("hint:"), msg);
+    let label = ansi_dim(&ansi_colorize(ACCENT_ANSI, "hint:"));
+    eprintln!("{label} {msg}");
 }
 
 pub fn print_phase(symbol: &str, action: &str, subject: &str) {
