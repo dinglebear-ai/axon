@@ -70,6 +70,14 @@ fn client_server_dispatch_explicit_local_mode_uses_local_paths() {
 }
 
 #[test]
+fn client_server_dispatch_keeps_status_watch_local() {
+    let mut cfg = cfg(CommandKind::Status, &[]);
+    cfg.watch_mode = true;
+
+    assert_eq!(client_server_dispatch(&cfg), ClientServerDispatch::Local);
+}
+
+#[test]
 fn scrape_server_mode_uses_rest_contract_body() {
     let mut cfg = cfg(CommandKind::Scrape, &["https://example.com"]);
     cfg.embed = true;

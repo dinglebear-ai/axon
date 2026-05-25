@@ -146,13 +146,18 @@ where
     fields
 }
 
-/// Determine whether to emit ANSI escape codes, respecting the standard env vars:
-/// - `NO_COLOR` (https://no-color.org) — disables colors; wins over everything
+/// Determine whether to emit ANSI escape codes. Explicit `--color` choices win
+/// first, then standard env vars are applied for auto mode:
+/// - `NO_COLOR` (https://no-color.org) — disables auto-mode colors
 /// - `FORCE_COLOR` / `CLICOLOR_FORCE` — enables colors even without a TTY (Docker, CI)
 /// - Falls back to the writer's own TTY detection
 fn should_use_ansi(writer: &Writer<'_>) -> bool {
+    should_use_ansi_for_writer(writer.has_ansi_escapes())
+}
+
+fn should_use_ansi_for_writer(writer_supports_ansi: bool) -> bool {
     // Honor --color={always,never} from Config (installed at startup).
-    if !crate::core::ui::color_enabled_public() {
+    if crate::core::ui::color_forced_never() {
         return false;
     }
     // --color=always must produce ANSI even in non-TTY contexts (CI, redirected
@@ -160,16 +165,14 @@ fn should_use_ansi(writer: &Writer<'_>) -> bool {
     if crate::core::ui::color_forced_always() {
         return true;
     }
+    if crate::core::ui::color_env_disabled() {
+        return false;
+    }
     // --color=auto: FORCE_COLOR/CLICOLOR_FORCE still wins over TTY detection.
-    let force = |var: &str| {
-        std::env::var_os(var)
-            .map(|v| !v.is_empty() && v != "0")
-            .unwrap_or(false)
-    };
-    if force("FORCE_COLOR") || force("CLICOLOR_FORCE") {
+    if crate::core::ui::color_env_forced() {
         return true;
     }
-    writer.has_ansi_escapes()
+    writer_supports_ansi
 }
 
 struct CliFormat;
@@ -388,4 +391,31 @@ pub fn log_error(msg: &str) {
 
 pub fn log_debug(msg: &str) {
     debug!("{}", msg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_use_ansi_for_writer;
+    use crate::core::config::ColorChoice;
+    use crate::core::ui::{COLOR_OVERRIDE, COLOR_TEST_GUARD, install_color_choice};
+
+    #[test]
+    fn color_override_controls_logging_ansi() {
+        let _g = COLOR_TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed);
+
+        install_color_choice(ColorChoice::Never);
+        assert!(!should_use_ansi_for_writer(true));
+
+        install_color_choice(ColorChoice::Always);
+        assert!(should_use_ansi_for_writer(false));
+
+        install_color_choice(ColorChoice::Auto);
+        assert!(
+            !crate::core::ui::color_forced_always(),
+            "auto must clear the forced-always override"
+        );
+
+        COLOR_OVERRIDE.store(prev, std::sync::atomic::Ordering::Relaxed);
+    }
 }

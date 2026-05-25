@@ -1,6 +1,6 @@
 //! Unicode sparkline renderer — one char per data point at 8 levels.
 //!
-//! Used for inline "trend over the last N days" displays in stats output.
+//! Intended for future inline trend displays in stats-style output.
 
 use crate::core::ui::{ACCENT_ANSI, ansi_colorize, color_enabled_public};
 

@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::core::logging::{log_info, log_warn};
-use crate::core::ui::{accent, aurora_table, muted, primary};
+use crate::core::ui::{accent, muted, primary, print_aurora_table};
 use crate::services::system;
 use crate::services::types::{DetailedDomainsResult, Pagination};
 use std::collections::BTreeMap;
@@ -63,12 +63,10 @@ async fn try_fast_domains(cfg: &Config) -> Result<bool, Box<dyn Error>> {
     };
     match system::domains(cfg, pagination).await {
         Ok(result) => {
-            let pairs: Vec<(String, usize)> = result
-                .domains
-                .into_iter()
-                .map(|f| (f.domain, f.vectors))
-                .collect();
-            render_fast_domain_results(cfg, pairs)?;
+            render_fast_domain_results(
+                cfg,
+                result.domains.into_iter().map(|f| (f.domain, f.vectors)),
+            )?;
             Ok(true)
         }
         Err(err) => {
@@ -83,19 +81,21 @@ async fn try_fast_domains(cfg: &Config) -> Result<bool, Box<dyn Error>> {
 
 fn render_fast_domain_results(
     cfg: &Config,
-    domains: Vec<(String, usize)>,
+    domains: impl IntoIterator<Item = (String, usize)>,
 ) -> Result<(), Box<dyn Error>> {
+    let domains: Vec<(String, usize)> = domains.into_iter().collect();
     if cfg.json_output {
         let out: BTreeMap<String, usize> = domains.into_iter().collect();
         println!("{}", serde_json::to_string_pretty(&out)?);
         return Ok(());
     }
     println!("{}", primary("Domains"));
-    let mut t = aurora_table(&["Domain", "Vectors"]);
-    for (domain, vectors) in domains {
-        t.add_row(vec![domain, vectors.to_string()]);
-    }
-    println!("{t}");
+    print_aurora_table(
+        &["Domain", "Vectors"],
+        domains
+            .into_iter()
+            .map(|(domain, vectors)| vec![domain, vectors.to_string()]),
+    );
     println!(
         "{}",
         muted("Tip: set AXON_DOMAINS_DETAILED=1 for exact per-domain unique URL counts (slower).")
@@ -116,15 +116,13 @@ fn render_detailed_domains(
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         println!("{}", primary("Domains"));
-        let mut t = aurora_table(&["Domain", "URLs", "Vectors"]);
-        for row in result.domains {
-            t.add_row(vec![
-                row.domain,
-                row.urls.to_string(),
-                row.vectors.to_string(),
-            ]);
-        }
-        println!("{t}");
+        print_aurora_table(
+            &["Domain", "URLs", "Vectors"],
+            result
+                .domains
+                .into_iter()
+                .map(|row| vec![row.domain, row.urls.to_string(), row.vectors.to_string()]),
+        );
     }
     Ok(())
 }

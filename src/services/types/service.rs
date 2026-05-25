@@ -254,6 +254,10 @@ impl From<crate::jobs::ingest::IngestJob> for ServiceJob {
 // ── Named constructors ────────────────────────────────────────────────────────
 
 impl ServiceJob {
+    pub fn status_enum(&self) -> crate::jobs::status::JobStatus {
+        crate::jobs::status::JobStatus::from_str(&self.status)
+    }
+
     pub fn from_status_row(row: crate::jobs::backend::JobStatusRow) -> Self {
         Self {
             id: row.id,

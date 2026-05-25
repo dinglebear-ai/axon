@@ -8,6 +8,12 @@
 
 **Tech Stack:** Rust 2024 edition, `indicatif` 0.18 (already in Cargo.toml), `console` 0.16 (already), `tracing-subscriber` 0.3 (already), `comfy-table` 7.x (new dep), `clap` `ValueEnum` (already used), `supports-hyperlinks` 3.x (new dep for OSC 8 terminal detection).
 
+**Outcome note:** This document is the original implementation plan. The final
+PR intentionally deviated in a few places: stats sparkline integration stayed
+deferred, crawl completion panel wiring landed in `src/cli/commands/crawl/sync_crawl.rs`,
+job-list table polish landed in `src/cli/commands/common_jobs.rs`, and PR review
+follow-up added route/watch/color/OSC8 regression hardening.
+
 ---
 
 ## File Structure
@@ -31,14 +37,13 @@
 - `src/core/config/parse/build_config.rs` — wire the flag through
 - `src/core/logging.rs` — switch `aurora` palette + `should_use_ansi` to honor `ColorChoice`
 - `src/core/logging/aurora.rs` — add truecolor RGB constants beside the 256-color codes
-- `src/cli/commands/research.rs` + `search.rs` — add `color_choice` to inline `Config{..}` test literals (compile-time gate)
 - `src/cli/commands/sources.rs` — migrate to `aurora_table()`
 - `src/cli/commands/domains.rs` — migrate to `aurora_table()`
-- `src/cli/server_mode/render_jobs.rs` — migrate `crawl list` table to `aurora_table()`
-- `src/cli/commands/stats.rs` — sparkline + bordered panel for the summary
-- `src/services/crawl_sync.rs` — bordered completion panel
+- `src/cli/commands/common_jobs.rs` — migrate job-list tables to `aurora_table()`
+- `src/cli/commands/crawl/sync_crawl.rs` — bordered completion panel
 - `src/cli/commands/status.rs` — `--watch` dispatch
-- `src/cli/commands/status/presentation.rs` — wire `hyperlink()` on URLs
+- `src/cli/commands/status/watch.rs` — live watch loop and terminal outcome handling
+- `src/cli/route.rs` + `src/cli/server_mode.rs` tests — keep `status --watch` local when server mode is configured
 - `Cargo.toml` — add `comfy-table`, `supports-hyperlinks`
 
 ---

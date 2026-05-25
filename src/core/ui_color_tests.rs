@@ -4,10 +4,8 @@
 //! parallel with anything else that mutates it. They share one `#[test]`
 //! that exercises every atomic branch sequentially under a guard.
 //!
-//! Env-var precedence (`NO_COLOR`, `FORCE_COLOR`) is not exercised here
-//! because env mutation is `unsafe` under Rust 2024 and the workspace
-//! denies `unsafe-code`. Those code paths are covered by manual smoke
-//! testing documented in the PR description.
+//! Env-var precedence (`NO_COLOR`, `FORCE_COLOR`) is covered through
+//! subprocess regression tests so this module can avoid mutating process env.
 
 use super::*;
 use crate::core::config::ColorChoice;

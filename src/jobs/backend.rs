@@ -16,7 +16,7 @@ pub(crate) fn lift_err<E: std::fmt::Display>(e: E) -> Box<dyn std::error::Error 
 pub type JobId = Uuid;
 
 /// Which job table a job belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JobKind {
     Crawl,
     Embed,

@@ -6,7 +6,7 @@ mod table;
 pub use hyperlinks::hyperlink;
 pub use panel::panel;
 pub use sparkline::sparkline;
-pub use table::aurora_table;
+pub use table::{aurora_table, print_aurora_table};
 
 #[cfg(test)]
 #[path = "ui_color_tests.rs"]
@@ -30,8 +30,12 @@ const INFO_ANSI: &str = "\x1b[38;2;114;200;245m"; // --aurora-info              
 const MUTED_ANSI: &str = "\x1b[38;2;167;188;201m"; // --aurora-text-muted         #A7BCC9
 const SUBTLE_ANSI: &str = "\x1b[38;2;196;107;136m"; // --aurora-accent-pink-deep   #C46B88
 
+const COLOR_AUTO: u8 = 0;
+const COLOR_ALWAYS: u8 = 1;
+const COLOR_NEVER: u8 = 2;
+
 /// Set once by `install_color_choice()` at startup before any subscriber or
-/// helper reads it. 0 = Auto, 1 = Always, 2 = Never.
+/// helper reads it. Values are `COLOR_AUTO`, `COLOR_ALWAYS`, or `COLOR_NEVER`.
 ///
 /// Ordering rationale: `install_color_choice` is called from the main thread
 /// in `lib::run()` strictly before tokio spawns any workers; readers on other
@@ -51,59 +55,70 @@ pub(crate) static COLOR_OVERRIDE: std::sync::atomic::AtomicU8 = std::sync::atomi
 #[cfg(test)]
 pub(crate) static COLOR_TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// Install the runtime color choice. Called by `lib::run_once` once `Config`
+/// Install the runtime color choice. Called by `lib::run` once `Config`
 /// is parsed so the global helpers honor `--color=auto|always|never`.
 pub fn install_color_choice(choice: crate::core::config::ColorChoice) {
     use crate::core::config::ColorChoice;
     let val: u8 = match choice {
-        ColorChoice::Auto => 0,
-        ColorChoice::Always => 1,
-        ColorChoice::Never => 2,
+        ColorChoice::Auto => COLOR_AUTO,
+        ColorChoice::Always => COLOR_ALWAYS,
+        ColorChoice::Never => COLOR_NEVER,
     };
     COLOR_OVERRIDE.store(val, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Canonical public accessor for "should this surface emit ANSI?" — used by
-/// every Aurora helper module (`panel`, `hyperlinks`, `sparkline`, `table`)
-/// and by `core::logging::should_use_ansi`. Reads the runtime override
+/// Canonical public accessor for stdout UI surfaces. Reads the runtime override
 /// installed by `install_color_choice`.
 pub fn color_enabled_public() -> bool {
-    color_enabled()
+    use std::io::IsTerminal;
+    color_enabled_for_auto_tty(std::io::stdout().is_terminal())
 }
 
 /// True iff the installed `--color` override is `Always`. Used by the tracing
 /// formatter so `--color=always` bypasses its writer-side TTY check.
 pub fn color_forced_always() -> bool {
-    COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) == 1
+    COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) == COLOR_ALWAYS
 }
 
-fn color_enabled() -> bool {
+pub(crate) fn color_forced_never() -> bool {
+    COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) == COLOR_NEVER
+}
+
+pub(crate) fn color_env_forced() -> bool {
+    env_flag_enabled("FORCE_COLOR") || env_flag_enabled("CLICOLOR_FORCE")
+}
+
+pub(crate) fn color_env_disabled() -> bool {
+    env::var_os("NO_COLOR").is_some()
+}
+
+fn env_flag_enabled(var: &str) -> bool {
+    env::var_os(var)
+        .map(|val| !val.is_empty() && val != "0")
+        .unwrap_or(false)
+}
+
+fn color_enabled_for_auto_tty(is_terminal: bool) -> bool {
     match COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
-        1 => true,  // --color=always — bypass everything
-        2 => false, // --color=never
+        COLOR_ALWAYS => true, // --color=always — bypass everything
+        COLOR_NEVER => false, // --color=never
         _ => {
             // --color=auto: NO_COLOR wins, then FORCE_COLOR/CLICOLOR_FORCE,
-            // then fall back to stderr-TTY detection so piped/redirected
+            // then fall back to stream-specific TTY detection so redirected
             // output is plain by default.
-            if env::var_os("NO_COLOR").is_some() {
+            if color_env_disabled() {
                 return false;
             }
-            let force = |v: &str| {
-                env::var_os(v)
-                    .map(|val| !val.is_empty() && val != "0")
-                    .unwrap_or(false)
-            };
-            if force("FORCE_COLOR") || force("CLICOLOR_FORCE") {
+            if color_env_forced() {
                 return true;
             }
-            use std::io::IsTerminal;
-            std::io::stderr().is_terminal()
+            is_terminal
         }
     }
 }
 
 pub fn ansi_colorize(code: &str, text: &str) -> String {
-    if color_enabled() {
+    if color_enabled_public() {
         format!("{code}{text}\x1b[0m")
     } else {
         text.to_string()
