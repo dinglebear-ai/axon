@@ -8,6 +8,10 @@ pub use panel::panel;
 pub use sparkline::sparkline;
 pub use table::aurora_table;
 
+#[cfg(test)]
+#[path = "ui_color_tests.rs"]
+mod color_tests;
+
 use crate::core::config::Config;
 use dialoguer::{Confirm, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -26,8 +30,26 @@ const INFO_ANSI: &str = "\x1b[38;2;114;200;245m"; // --aurora-info              
 const MUTED_ANSI: &str = "\x1b[38;2;167;188;201m"; // --aurora-text-muted         #A7BCC9
 const SUBTLE_ANSI: &str = "\x1b[38;2;196;107;136m"; // --aurora-accent-pink-deep   #C46B88
 
-// Set once by `install_color_choice()` at startup. 0 = Auto, 1 = Always, 2 = Never.
-static COLOR_OVERRIDE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+/// Set once by `install_color_choice()` at startup before any subscriber or
+/// helper reads it. 0 = Auto, 1 = Always, 2 = Never.
+///
+/// Ordering rationale: `install_color_choice` is called from the main thread
+/// in `lib::run()` strictly before tokio spawns any workers; readers on other
+/// threads observe the store via the happens-before edge provided by the
+/// tokio runtime / thread-launch machinery. `Relaxed` is sufficient under
+/// that single-writer-before-readers contract; do not call `install_color_choice`
+/// after subscriber init or worker spawn or readers may observe stale values.
+///
+/// Visible to sibling test modules so they can stage state without going
+/// through the public `install_color_choice` API.
+pub(crate) static COLOR_OVERRIDE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Test-only mutex serializing any test that mutates `COLOR_OVERRIDE`.
+/// Sibling test modules (panel, hyperlinks, sparkline, table, color) MUST
+/// acquire this guard before changing the atomic so they don't race each
+/// other under `cargo test` (parallel by default).
+#[cfg(test)]
+pub(crate) static COLOR_TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Install the runtime color choice. Called by `lib::run_once` once `Config`
 /// is parsed so the global helpers honor `--color=auto|always|never`.
@@ -41,7 +63,10 @@ pub fn install_color_choice(choice: crate::core::config::ColorChoice) {
     COLOR_OVERRIDE.store(val, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Public test seam — same answer as the private `color_enabled()`.
+/// Canonical public accessor for "should this surface emit ANSI?" — used by
+/// every Aurora helper module (`panel`, `hyperlinks`, `sparkline`, `table`)
+/// and by `core::logging::should_use_ansi`. Reads the runtime override
+/// installed by `install_color_choice`.
 pub fn color_enabled_public() -> bool {
     color_enabled()
 }

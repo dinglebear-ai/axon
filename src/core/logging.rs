@@ -365,8 +365,8 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
 }
 
 // TODO(QUALITY): These wrapper functions lose the caller's `target` metadata -- tracing records
-// this module (`crates::core::logging`) as the target instead of the actual call site. This makes
-// filtering by target (e.g. `RUST_LOG=crates::jobs::crawl=debug`) miss log lines emitted through
+// this module (`axon::core::logging`) as the target instead of the actual call site. This makes
+// filtering by target (e.g. `RUST_LOG=axon::jobs::crawl=debug`) miss log lines emitted through
 // these wrappers. The proper fix is to replace them with macros (which expand at the call site and
 // preserve target) or remove them entirely in favor of direct `tracing::info!()` / `tracing::warn!()`
 // calls. Left as-is to avoid a large cross-crate refactor.
