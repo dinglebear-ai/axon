@@ -58,12 +58,11 @@ pub async fn run_status_watch(
         }
 
         bars.retain(|id, bar| {
-            if seen.contains(id) {
-                true
-            } else {
+            let keep = seen.contains(id);
+            if !keep {
                 bar.finish_and_clear();
-                false
             }
+            keep
         });
 
         if bars.is_empty() {
@@ -103,14 +102,14 @@ fn iter_jobs(
 }
 
 fn format_subject(job: &ServiceJob) -> String {
-    if let Some(url) = job.url.as_deref() {
-        return url.to_string();
+    match (
+        job.url.as_deref(),
+        job.source_type.as_deref(),
+        job.target.as_deref(),
+    ) {
+        (Some(url), _, _) => url.to_string(),
+        (None, Some(st), Some(tgt)) => format!("{st}: {tgt}"),
+        (None, _, Some(tgt)) => tgt.to_string(),
+        _ => job.id.to_string(),
     }
-    if let (Some(st), Some(tgt)) = (job.source_type.as_deref(), job.target.as_deref()) {
-        return format!("{st}: {tgt}");
-    }
-    if let Some(t) = job.target.as_deref() {
-        return t.to_string();
-    }
-    job.id.to_string()
 }
