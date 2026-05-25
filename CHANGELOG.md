@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-05-25
+
+### Added
+
+- CLI palette aligned with the Aurora design system (`src/core/ui.rs`). Primary
+  shifts to Aurora rose (#F9A8C4), accent to Aurora cyan (#29B6F6); success,
+  warn, error, info, muted, and subtle map to their `--aurora-*` semantic
+  token equivalents.
+- `--color=auto|always|never` global flag (`Config::color_choice`) that flows
+  through `core::ui::color_enabled()` and `core::logging::should_use_ansi()`.
+- `--watch` global flag and `axon status --watch` live MultiProgress view of
+  running/pending jobs.
+- OSC 8 hyperlinks helper (`core::ui::hyperlink`) — URLs in `sources` are now
+  clickable in supported terminals (kitty, iTerm2, wezterm, vscode, Windows
+  Terminal). Falls through to plain text otherwise.
+- Aurora bordered summary panel helper (`core::ui::panel`) used by
+  `crawl --wait` to render a final completion card.
+- `comfy-table`-backed Aurora table renderer (`core::ui::aurora_table`) used by
+  `sources`, `domains`, and the job list views.
+- Unicode sparkline helper (`core::ui::sparkline`) for future inline trend
+  displays.
+- Tracing-subscriber formatter now prefers 24-bit truecolor when
+  `COLORTERM=truecolor` is set, falling back to the existing ANSI-256 Aurora
+  palette otherwise.
+
 ### BREAKING CHANGES
 
 - Removed the legacy graph/Neo4j request surface and dead runtime code. The

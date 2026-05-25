@@ -261,6 +261,31 @@ impl fmt::Display for McpTransport {
     }
 }
 
+/// Terminal color override. Wired through `Config::color_choice` to both
+/// `core::ui::color_enabled()` and `core::logging::should_use_ansi()` so the
+/// runtime override is single-source.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum ColorChoice {
+    /// Detect TTY + honor NO_COLOR / FORCE_COLOR / CLICOLOR_FORCE (default).
+    #[default]
+    Auto,
+    /// Force ANSI color output regardless of TTY detection.
+    Always,
+    /// Suppress all ANSI escapes.
+    Never,
+}
+
+impl fmt::Display for ColorChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Auto => "auto",
+            Self::Always => "always",
+            Self::Never => "never",
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum EvaluateResponsesMode {

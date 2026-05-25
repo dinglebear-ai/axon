@@ -149,6 +149,12 @@ pub struct Config {
     /// Skip confirmation prompts (non-interactive mode). Flag: `--yes`.
     pub yes: bool,
 
+    /// Terminal color override. Flag: `--color=auto|always|never`.
+    pub color_choice: super::enums::ColorChoice,
+
+    /// Live-update mode for `axon status`. Flag: `--watch`.
+    pub watch_mode: bool,
+
     /// Concurrency/timeout preset. Profiles scale linearly with CPU count. Flag: `--performance-profile`.
     pub performance_profile: PerformanceProfile,
 

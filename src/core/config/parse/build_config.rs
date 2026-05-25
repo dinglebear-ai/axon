@@ -54,6 +54,8 @@ pub(super) fn into_config_with_sources(
             command: dispatched.command,
             positional: dispatched.positional,
             json_output: global.json,
+            color_choice: global.color,
+            watch_mode: global.watch,
             ..Config::default()
         });
     }

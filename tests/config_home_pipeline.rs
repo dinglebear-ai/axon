@@ -19,6 +19,11 @@ fn config_home_env_and_toml_are_loaded_before_command_parse() {
         .env_remove("AXON_CONFIG_PATH")
         .env_remove("QDRANT_URL")
         .env_remove("TEI_URL")
+        // Force in-process execution: this test verifies that ~/.axon/.env +
+        // config.toml are loaded during arg parsing — it does not require a
+        // running `axon serve` instance, and falling through to client/server
+        // mode causes spurious failures when port 8001 is unavailable or busy.
+        .arg("--local")
         .arg("status")
         .arg("--json")
         .output()

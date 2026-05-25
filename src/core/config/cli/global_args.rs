@@ -1,4 +1,4 @@
-use crate::core::config::types::{PerformanceProfile, RenderMode, ScrapeFormat};
+use crate::core::config::types::{ColorChoice, PerformanceProfile, RenderMode, ScrapeFormat};
 use clap::{ArgAction, Args};
 use std::path::PathBuf;
 
@@ -91,6 +91,14 @@ pub(in crate::core::config) struct GlobalArgs {
     /// Output results as machine-readable JSON
     #[arg(global = true, long, action = ArgAction::SetTrue)]
     pub(in crate::core::config) json: bool,
+
+    /// Color output: auto (TTY detect, default), always, never
+    #[arg(global = true, long, value_enum, default_value_t = ColorChoice::Auto)]
+    pub(in crate::core::config) color: ColorChoice,
+
+    /// Live-update mode (currently honored by `axon status`)
+    #[arg(global = true, long, action = ArgAction::SetTrue)]
+    pub(in crate::core::config) watch: bool,
 
     /// Status mode: show only watchdog-reclaimed jobs.
     #[arg(

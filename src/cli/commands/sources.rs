@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::core::logging::log_info;
-use crate::core::ui::{accent, muted, primary};
+use crate::core::ui::{accent, aurora_table, hyperlink, muted, primary};
 use crate::services::system;
 use crate::services::types::Pagination;
 use crate::vector::ops::qdrant::env_usize_clamped;
@@ -40,14 +40,12 @@ pub async fn run_sources(cfg: &Config) -> Result<(), Box<dyn Error>> {
         }
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
-        println!("{}", primary("Sources"));
+        let mut t = aurora_table(&["URL", "Chunks"]);
         for (url, chunks) in &result.urls {
-            println!(
-                "  {} {}",
-                accent(url),
-                muted(&format!("(chunks: {chunks})"))
-            );
+            t.add_row(vec![hyperlink(url, url), chunks.to_string()]);
         }
+        println!("{}", primary("Sources"));
+        println!("{t}");
         if url_count == facet_limit {
             println!(
                 "{}",
@@ -86,9 +84,11 @@ async fn run_domain_sources(cfg: &Config, domain: &str) -> Result<(), Box<dyn Er
     }
 
     println!("{}", primary(&format!("Sources for {}", result.domain)));
+    let mut t = aurora_table(&["URL"]);
     for url in &result.urls {
-        println!("  {}", accent(url));
+        t.add_row(vec![hyperlink(url, url)]);
     }
+    println!("{t}");
     if result.truncated {
         println!(
             "{}",

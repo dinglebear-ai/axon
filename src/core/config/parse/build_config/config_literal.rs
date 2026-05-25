@@ -128,6 +128,8 @@ fn populate_perf_and_credentials(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.wait = g.wait;
     cfg.sqlite_path = inputs.sqlite_path.clone();
     cfg.yes = g.yes;
+    cfg.color_choice = g.color;
+    cfg.watch_mode = g.watch;
     cfg.performance_profile = g.performance_profile;
     cfg.crawl_concurrency_limit = inputs.crawl_concurrency_limit;
     cfg.backfill_concurrency_limit = inputs.backfill_concurrency_limit;
