@@ -17,18 +17,12 @@ pub fn aurora_table(headers: &[&str]) -> Table {
         t.load_preset(presets::UTF8_FULL)
             .apply_modifier(modifiers::UTF8_ROUND_CORNERS)
             .set_content_arrangement(ContentArrangement::Dynamic);
-        t.set_header(
-            headers
-                .iter()
-                .map(|h| {
-                    Cell::new(h).fg(Color::Rgb {
-                        r: 41,
-                        g: 182,
-                        b: 246,
-                    })
-                })
-                .collect::<Vec<_>>(),
-        );
+        let cyan = Color::Rgb {
+            r: 41,
+            g: 182,
+            b: 246,
+        };
+        t.set_header(headers.iter().map(|h| Cell::new(h).fg(cyan)));
     } else {
         t.load_preset(presets::ASCII_FULL_CONDENSED);
         t.set_header(headers.to_vec());
