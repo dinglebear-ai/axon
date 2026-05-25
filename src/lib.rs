@@ -109,6 +109,11 @@ fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
+    // Parse CLI args first so the user's --color choice is installed before
+    // anything (including the tracing-subscriber writer) reads it. clap exits
+    // on --help/--version, so init_tracing's appender guard isn't needed yet.
+    let cfg = parse_args();
+    core::ui::install_color_choice(cfg.color_choice);
     // Hold the tracing-appender guard for the lifetime of run(): dropping it stops the
     // background flush thread and tail buffers can be lost from the rolling log file.
     let _log_guard = init_tracing();
@@ -117,9 +122,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         pid = std::process::id(),
         "startup"
     );
-    let cfg = parse_args();
-    // Install the user's color choice before any colorized output runs.
-    core::ui::install_color_choice(cfg.color_choice);
     tracing::info!(
         command = cfg.command.as_str(),
         collection = %cfg.collection,

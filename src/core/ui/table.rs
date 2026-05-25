@@ -4,6 +4,10 @@
 use crate::core::ui::color_enabled_public;
 use comfy_table::{Cell, Color, ContentArrangement, Table, modifiers, presets};
 
+#[cfg(test)]
+#[path = "table_tests.rs"]
+mod tests;
+
 /// Build a table pre-styled with Aurora colors. Caller fills headers + rows.
 ///
 /// ```ignore
