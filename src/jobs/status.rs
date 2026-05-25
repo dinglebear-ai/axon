@@ -68,6 +68,10 @@ impl JobStatus {
             }
         }
     }
+
+    pub fn is_active(self) -> bool {
+        matches!(self, Self::Pending | Self::Running)
+    }
 }
 
 impl fmt::Display for JobStatus {

@@ -1,5 +1,6 @@
 use super::*;
-use crate::core::ui::{COLOR_OVERRIDE, COLOR_TEST_GUARD};
+use crate::core::config::ColorChoice;
+use crate::core::ui::{COLOR_OVERRIDE, COLOR_TEST_GUARD, install_color_choice};
 
 #[test]
 fn aurora_table_renders_under_both_color_modes() {
@@ -9,7 +10,7 @@ fn aurora_table_renders_under_both_color_modes() {
     // Always — UTF-8 round-corner preset. Pin column width so dynamic
     // content arrangement (which depends on terminal width) doesn't
     // collapse the cells when stdout is not a TTY (the usual test env).
-    COLOR_OVERRIDE.store(1, std::sync::atomic::Ordering::Relaxed);
+    install_color_choice(ColorChoice::Always);
     let mut t = aurora_table(&["A", "B"]);
     t.set_width(80);
     t.add_row(vec!["x".to_string(), "y".to_string()]);
@@ -21,7 +22,7 @@ fn aurora_table_renders_under_both_color_modes() {
     );
 
     // Never — ASCII preset, no UTF-8 round corners.
-    COLOR_OVERRIDE.store(2, std::sync::atomic::Ordering::Relaxed);
+    install_color_choice(ColorChoice::Never);
     let mut t = aurora_table(&["A", "B"]);
     t.set_width(80);
     t.add_row(vec!["x".to_string(), "y".to_string()]);
@@ -30,6 +31,10 @@ fn aurora_table_renders_under_both_color_modes() {
     assert!(
         !out.contains('╭'),
         "no-color mode must not emit UTF-8 round corners, got: {out}"
+    );
+    assert!(
+        !out.contains("\x1b["),
+        "no-color mode must not emit ANSI escapes, got: {out:?}"
     );
 
     COLOR_OVERRIDE.store(prev, std::sync::atomic::Ordering::Relaxed);

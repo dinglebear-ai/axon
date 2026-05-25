@@ -250,15 +250,16 @@ pub fn handle_job_list<T: JobStatus + Clone>(
     if jobs.is_empty() {
         println!("  {}", muted(&format!("No {command_name} jobs found.")));
     } else {
-        let mut t = crate::core::ui::aurora_table(&["", "ID", "Status"]);
-        for job in &jobs {
-            t.add_row(vec![
-                symbol_for_status(job.status()),
-                job.id().to_string(),
-                status_text(job.status()),
-            ]);
-        }
-        println!("{t}");
+        crate::core::ui::print_aurora_table(
+            &["", "ID", "Status"],
+            jobs.iter().map(|job| {
+                vec![
+                    symbol_for_status(job.status()),
+                    job.id().to_string(),
+                    status_text(job.status()),
+                ]
+            }),
+        );
     }
 
     crate::cli::commands::common::print_list_footer(

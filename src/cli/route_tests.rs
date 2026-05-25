@@ -72,3 +72,13 @@ fn local_flag_forces_local() {
 
     assert_eq!(plan.route, CommandRoute::LocalOnly);
 }
+
+#[test]
+fn status_watch_stays_local_even_when_server_url_is_configured() {
+    let mut cfg = cfg(CommandKind::Status);
+    cfg.watch_mode = true;
+    let plan = plan_command_route(&cfg, &[]).expect("route plan");
+
+    assert_eq!(plan.route, CommandRoute::LocalOnly);
+    assert_eq!(plan.fallback_policy, FallbackPolicy::AllowEquivalentLocal);
+}

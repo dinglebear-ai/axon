@@ -25,9 +25,19 @@ pub fn hyperlink(url: &str, label: &str) -> String {
 
 /// Test seam — caller forces the support flag.
 pub(crate) fn hyperlink_for_test(url: &str, label: &str, supported: bool) -> String {
-    let visible = if label.is_empty() { url } else { label };
+    let clean_url = strip_terminal_controls(url);
+    let clean_label = strip_terminal_controls(label);
+    let visible = if clean_label.is_empty() {
+        clean_url.as_str()
+    } else {
+        clean_label.as_str()
+    };
     if !supported {
         return visible.to_string();
     }
-    format!("{OSC8}{url}{ST}{visible}{OSC8}{ST}")
+    format!("{OSC8}{clean_url}{ST}{visible}{OSC8}{ST}")
+}
+
+fn strip_terminal_controls(value: &str) -> String {
+    value.chars().filter(|ch| !ch.is_control()).collect()
 }

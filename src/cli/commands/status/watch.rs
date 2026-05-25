@@ -2,9 +2,9 @@
 //!
 //! Polls the same snapshot collector as the one-shot renderer every second
 //! and reconciles a `HashMap<(kind, JobId), ProgressBar>` to mirror the active
-//! set. Bars for jobs that leave the active set are emitted as a terminal
-//! status line (`✓ completed url=…` / `✗ failed`) before being dropped, so
-//! the user sees outcomes instead of bars silently vanishing.
+//! set. Bars for jobs that leave the active snapshot are resolved through a
+//! direct status lookup before removal, so terminal outcomes remain visible
+//! even when the first status page is saturated.
 //!
 //! Two failure modes are explicit:
 //! - Transient `load_status_jobs` errors log a warning and re-poll; the loop
@@ -17,19 +17,22 @@
 use crate::core::config::Config;
 use crate::core::logging::log_warn;
 use crate::core::ui::{accent, muted, primary, status_text, symbol_for_status};
+use crate::jobs::backend::JobKind;
 use crate::services::context::ServiceContext;
+use crate::services::jobs as job_service;
 use crate::services::system::load_status_jobs;
 use crate::services::types::ServiceJob;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::time::Duration;
+use uuid::Uuid;
 
 const TICK_MS: u64 = 100;
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 const IDLE_EXIT_TICKS: u8 = 5;
 
-type BarKey = (&'static str, String);
+type BarKey = (JobKind, Uuid);
 
 pub async fn run_status_watch(
     _cfg: &Config,
@@ -69,42 +72,57 @@ pub async fn run_status_watch(
 
         let mut active_count = 0usize;
         for (kind, job) in iter_jobs(&jobs) {
-            if !is_active(&job.status) {
+            if !is_active(job) {
                 continue;
             }
             active_count += 1;
-            let key: BarKey = (kind, job.id.to_string());
-            seen.insert(key.clone());
+            let key: BarKey = (kind, job.id);
+            seen.insert(key);
             let bar = bars.entry(key).or_insert_with(|| {
                 let pb = mp.add(ProgressBar::new_spinner());
                 pb.set_style(bar_style.clone());
                 pb.enable_steady_tick(Duration::from_millis(TICK_MS));
                 pb
             });
-            bar.set_prefix(kind.to_string());
+            bar.set_prefix(kind_label(kind).to_string());
             bar.set_message(format_subject(job));
         }
 
-        // Look up terminal-state info for bars that just left the active set
-        // so we can print an outcome line before clearing the bar.
-        bars.retain(|key, bar| {
-            if seen.contains(key) {
-                return true;
-            }
-            let outcome = lookup_outcome(&jobs, key);
-            match outcome {
-                Some((status, subject)) => {
-                    bar.finish_with_message(format!(
-                        "{} {} {}",
-                        symbol_for_status(&status),
-                        status_text(&status),
-                        muted(&subject),
-                    ));
+        let stale_keys: Vec<BarKey> = bars
+            .keys()
+            .filter(|key| !seen.contains(*key))
+            .copied()
+            .collect();
+        for key in stale_keys {
+            match resolve_stale_job(service_context, &jobs, key).await {
+                StaleJob::StillActive(job) => {
+                    if let Some(bar) = bars.get_mut(&key) {
+                        bar.set_prefix(kind_label(key.0).to_string());
+                        bar.set_message(format_subject(&job));
+                    }
                 }
-                None => bar.finish_and_clear(),
+                StaleJob::Terminal { status, subject } => {
+                    if let Some(bar) = bars.remove(&key) {
+                        bar.finish_with_message(format!(
+                            "{} {} {}",
+                            symbol_for_status(&status),
+                            status_text(&status),
+                            muted(&subject),
+                        ));
+                    }
+                }
+                StaleJob::Unknown(reason) => {
+                    if let Some(bar) = bars.remove(&key) {
+                        bar.finish_with_message(format!(
+                            "{} {} {}",
+                            symbol_for_status("failed"),
+                            status_text("unknown"),
+                            muted(&reason),
+                        ));
+                    }
+                }
             }
-            false
-        });
+        }
 
         if active_count == 0 && bars.is_empty() {
             idle_ticks = idle_ticks.saturating_add(1);
@@ -128,20 +146,17 @@ pub async fn run_status_watch(
     }
 }
 
-fn is_active(status: &str) -> bool {
-    matches!(
-        status,
-        "running" | "pending" | "processing" | "scraping" | "claimed"
-    )
+fn is_active(job: &ServiceJob) -> bool {
+    job.status_enum().is_active()
 }
 
 fn iter_jobs(
     jobs: &crate::services::system::StatusJobs,
-) -> impl Iterator<Item = (&'static str, &ServiceJob)> {
-    let crawl = jobs.crawl.iter().map(|j| ("crawl", j));
-    let extract = jobs.extract.iter().map(|j| ("extract", j));
-    let embed = jobs.embed.iter().map(|j| ("embed", j));
-    let ingest = jobs.ingest.iter().map(|j| ("ingest", j));
+) -> impl Iterator<Item = (JobKind, &ServiceJob)> {
+    let crawl = jobs.crawl.iter().map(|j| (JobKind::Crawl, j));
+    let extract = jobs.extract.iter().map(|j| (JobKind::Extract, j));
+    let embed = jobs.embed.iter().map(|j| (JobKind::Embed, j));
+    let ingest = jobs.ingest.iter().map(|j| (JobKind::Ingest, j));
     crawl.chain(extract).chain(embed).chain(ingest)
 }
 
@@ -149,17 +164,59 @@ fn lookup_outcome(
     jobs: &crate::services::system::StatusJobs,
     key: &BarKey,
 ) -> Option<(String, String)> {
-    let (kind, id) = key;
-    let pool: &[ServiceJob] = match *kind {
-        "crawl" => &jobs.crawl,
-        "extract" => &jobs.extract,
-        "embed" => &jobs.embed,
-        "ingest" => &jobs.ingest,
-        _ => return None,
+    let (kind, id) = *key;
+    let pool: &[ServiceJob] = match kind {
+        JobKind::Crawl => &jobs.crawl,
+        JobKind::Extract => &jobs.extract,
+        JobKind::Embed => &jobs.embed,
+        JobKind::Ingest => &jobs.ingest,
     };
     pool.iter()
-        .find(|j| j.id.to_string() == *id)
+        .find(|j| j.id == id)
         .map(|j| (j.status.clone(), format_subject(j)))
+}
+
+enum StaleJob {
+    StillActive(Box<ServiceJob>),
+    Terminal { status: String, subject: String },
+    Unknown(String),
+}
+
+async fn resolve_stale_job(
+    service_context: &ServiceContext,
+    jobs: &crate::services::system::StatusJobs,
+    key: BarKey,
+) -> StaleJob {
+    if let Some((status, subject)) = lookup_outcome(jobs, &key) {
+        return StaleJob::Terminal { status, subject };
+    }
+
+    match job_service::job_status(service_context, key.0, key.1).await {
+        Ok(Some(job)) if is_active(&job) => StaleJob::StillActive(Box::new(job)),
+        Ok(Some(job)) => StaleJob::Terminal {
+            status: job.status.clone(),
+            subject: format_subject(&job),
+        },
+        Ok(None) => StaleJob::Unknown(format!(
+            "{} {} left the active snapshot; current status is unavailable",
+            kind_label(key.0),
+            key.1
+        )),
+        Err(err) => StaleJob::Unknown(format!(
+            "{} {} left the active snapshot; status lookup failed: {err}",
+            kind_label(key.0),
+            key.1
+        )),
+    }
+}
+
+fn kind_label(kind: JobKind) -> &'static str {
+    match kind {
+        JobKind::Crawl => "crawl",
+        JobKind::Extract => "extract",
+        JobKind::Embed => "embed",
+        JobKind::Ingest => "ingest",
+    }
 }
 
 fn format_subject(job: &ServiceJob) -> String {
@@ -167,11 +224,25 @@ fn format_subject(job: &ServiceJob) -> String {
         job.url.as_deref(),
         job.source_type.as_deref(),
         job.target.as_deref(),
+        job.urls_json.as_ref(),
     ) {
-        (Some(url), _, _) => url.to_string(),
-        (None, Some(st), Some(tgt)) => format!("{st}: {tgt}"),
-        (None, _, Some(tgt)) => tgt.to_string(),
+        (Some(url), _, _, _) => url.to_string(),
+        (None, Some(st), Some(tgt), _) => format!("{st}: {tgt}"),
+        (None, _, Some(tgt), _) => tgt.to_string(),
+        (None, _, _, Some(urls)) => format_urls_subject(urls).unwrap_or_else(|| job.id.to_string()),
         _ => job.id.to_string(),
+    }
+}
+
+fn format_urls_subject(urls: &serde_json::Value) -> Option<String> {
+    let arr = urls.as_array()?;
+    let count = arr.len();
+    let first = arr.first().and_then(serde_json::Value::as_str);
+    match (count, first) {
+        (0, _) => None,
+        (1, Some(url)) => Some(url.to_string()),
+        (_, Some(url)) => Some(format!("{url} (+{} more)", count - 1)),
+        (n, _) => Some(format!("{n} URLs")),
     }
 }
 

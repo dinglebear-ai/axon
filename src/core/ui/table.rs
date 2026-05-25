@@ -1,5 +1,5 @@
-//! Aurora-themed table renderer. Wraps `comfy-table` with the cyan accent
-//! border preset, muted header style, and a `--color=never`-friendly fallback.
+//! Aurora-themed table renderer. Wraps `comfy-table` with rounded UTF-8
+//! borders, cyan headers, and a `--color=never`-friendly ASCII fallback.
 
 use crate::core::ui::color_enabled_public;
 use comfy_table::{Cell, Color, ContentArrangement, Table, modifiers, presets};
@@ -32,4 +32,12 @@ pub fn aurora_table(headers: &[&str]) -> Table {
         t.set_header(headers.to_vec());
     }
     t
+}
+
+pub fn print_aurora_table(headers: &[&str], rows: impl IntoIterator<Item = Vec<String>>) {
+    let mut t = aurora_table(headers);
+    for row in rows {
+        t.add_row(row);
+    }
+    println!("{t}");
 }

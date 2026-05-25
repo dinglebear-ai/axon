@@ -36,6 +36,9 @@ pub(super) fn into_config_with_sources(
     let mut global = cli.global;
 
     let dispatched = command_dispatch::dispatch(cli.command);
+    if global.watch && dispatched.command != CommandKind::Status {
+        return Err("--watch is only supported with `axon status`".to_string());
+    }
 
     // Completions and setup metadata/deploy commands do not need service URLs at
     // parse time. Return early so first-run setup works before Qdrant/TEI exist.

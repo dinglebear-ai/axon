@@ -27,6 +27,13 @@ pub fn plan_command_route(cfg: &Config, positional: &[String]) -> Result<Command
         });
     }
 
+    if cfg.command == CommandKind::Status && cfg.watch_mode {
+        return Ok(CommandRoutePlan {
+            route: CommandRoute::LocalOnly,
+            fallback_policy: FallbackPolicy::AllowEquivalentLocal,
+        });
+    }
+
     if !is_server_mode_rest_command(cfg.command) {
         return Ok(CommandRoutePlan {
             route: CommandRoute::LocalOnly,
