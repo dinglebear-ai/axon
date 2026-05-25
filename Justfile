@@ -42,6 +42,13 @@ test-all:
 nextest-install:
     {{rust_dev_env}}; cargo install cargo-nextest --locked
 
+web-build:
+    cd apps/web && npm run build
+
+web-check:
+    cd apps/web && npm run lint
+    cd apps/web && npm run openapi:check
+
 fmt:
     cargo fmt --all
 
@@ -201,8 +208,35 @@ lint-all:
 legacy-runtime-check:
     ./scripts/check_legacy_runtime_terms.sh
 
+validate-plugin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 - <<'PY'
+    import json
+    from pathlib import Path
+
+    manifest = Path(".claude-plugin/plugin.json")
+    plugin = json.loads(manifest.read_text())
+    for key in ["name", "description", "author"]:
+        if not plugin.get(key):
+            raise SystemExit(f"MISSING: {manifest} {key}")
+    if "version" in plugin:
+        raise SystemExit(f"FORBIDDEN: {manifest} version")
+
+    monitors = Path(".claude-plugin/monitors/monitors.json")
+    if not monitors.exists():
+        raise SystemExit(f"MISSING: {monitors}")
+    json.loads(monitors.read_text())
+    PY
+    echo "OK"
+
+runtime-current:
+    ./scripts/axon doctor
+
 verify:
     just legacy-runtime-check
+    just validate-plugin
+    just web-check
     just fmt-check
     just clippy
     just check
