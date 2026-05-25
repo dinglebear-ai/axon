@@ -51,7 +51,7 @@ The remaining two simplifier passes, the rest of the pr-review-toolkit sweep, an
 
 ## Files touched
 
-```
+```text
 .claude-plugin/plugin.json (no change)
 CHANGELOG.md
 Cargo.lock
