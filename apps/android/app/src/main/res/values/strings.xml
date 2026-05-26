@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Axon</string>
+    <string name="nav_ask">Ask</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_sources">Sources</string>
+    <string name="nav_settings">Settings</string>
+</resources>

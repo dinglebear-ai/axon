@@ -1,0 +1,36 @@
+package com.axon.app.ui.search
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.axon.app.AxonApp
+import com.axon.app.data.repository.QueryHitUi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+sealed interface SearchUiState {
+    object Idle : SearchUiState
+    object Loading : SearchUiState
+    data class Results(val hits: List<QueryHitUi>) : SearchUiState
+    data class Error(val message: String) : SearchUiState
+}
+
+class SearchViewModel(app: Application) : AndroidViewModel(app) {
+    private val container = (app as AxonApp).container
+
+    private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
+    val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
+
+    fun search(query: String) {
+        if (query.isBlank()) return
+        viewModelScope.launch {
+            _uiState.value = SearchUiState.Loading
+            container.axonRepository.query(query, limit = 20).fold(
+                onSuccess = { hits -> _uiState.value = SearchUiState.Results(hits) },
+                onFailure = { err -> _uiState.value = SearchUiState.Error(err.message ?: "Error") },
+            )
+        }
+    }
+}
