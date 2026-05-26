@@ -178,7 +178,12 @@ pub async fn reclaim_stale_running_jobs_detailed(
         let jobs = reclaim_stale_running_jobs_for_table_jobs(pool, *kind, stale_threshold_ms)
             .await
             .inspect_err(|e| {
-                tracing::error!(table = kind.table_name(), error = %e, "watchdog: per-table sweep failed");
+                let is_busy = e.to_string().contains("(code: 5)");
+                if is_busy {
+                    tracing::warn!(table = kind.table_name(), error = %e, "watchdog: per-table sweep skipped — DB busy");
+                } else {
+                    tracing::error!(table = kind.table_name(), error = %e, "watchdog: per-table sweep failed");
+                }
             })?;
         match kind {
             JobKind::Crawl => reclaimed.crawl = jobs,
