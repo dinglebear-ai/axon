@@ -131,18 +131,13 @@ pub async fn load_status_jobs(
         },
     );
 
-    let jobs = StatusJobs {
-        crawl: filter_and_view(cfg, crawl_raw?, |j| &j.status, |j| j.error_text.as_deref()),
-        extract: filter_and_view(
-            cfg,
-            extract_raw?,
-            |j| &j.status,
-            |j| j.error_text.as_deref(),
-        ),
-        embed: filter_and_view(cfg, embed_raw?, |j| &j.status, |j| j.error_text.as_deref()),
-        ingest: filter_and_view(cfg, ingest_raw?, |j| &j.status, |j| j.error_text.as_deref()),
-    };
     let mut errors = Vec::new();
+    let jobs = StatusJobs {
+        crawl: list_or_degraded("crawl", crawl_raw, cfg, &mut errors),
+        extract: list_or_degraded("extract", extract_raw, cfg, &mut errors),
+        embed: list_or_degraded("embed", embed_raw, cfg, &mut errors),
+        ingest: list_or_degraded("ingest", ingest_raw, cfg, &mut errors),
+    };
     let totals = StatusTotals {
         crawl: count_or_degraded("crawl", crawl_total, &mut errors),
         extract: count_or_degraded("extract", extract_total, &mut errors),
@@ -165,6 +160,24 @@ fn count_or_degraded(
             ));
             errors.push(error);
             0
+        }
+    }
+}
+
+fn list_or_degraded(
+    kind: &'static str,
+    result: Result<Vec<ServiceJob>, String>,
+    cfg: &Config,
+    errors: &mut Vec<String>,
+) -> Vec<ServiceJob> {
+    match result {
+        Ok(jobs) => filter_and_view(cfg, jobs, |j| &j.status, |j| j.error_text.as_deref()),
+        Err(error) => {
+            log_warn(&format!(
+                "status_list_jobs_degraded kind={kind} error={error}"
+            ));
+            errors.push(error);
+            vec![]
         }
     }
 }
