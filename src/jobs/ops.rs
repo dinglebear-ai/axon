@@ -2,6 +2,8 @@ mod enqueue;
 mod lifecycle;
 mod retry;
 
+pub(crate) use retry::is_lock_busy;
+
 pub use enqueue::{enqueue_job, enqueue_job_with_sidecar};
 pub use lifecycle::{
     ClaimedJob, cancel_row, claim_next_pending, claim_next_pending_for_attempt, mark_completed,

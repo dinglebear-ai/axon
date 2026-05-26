@@ -242,7 +242,7 @@ fn render_errors_subcommand(
     Ok(())
 }
 
-fn print_status_metrics(id: Uuid, metrics: &serde_json::Value) {
+fn print_status_metrics(id: Uuid, metrics: &serde_json::Value, has_errors: bool) {
     let md_created = metrics
         .get("md_created")
         .and_then(|v| v.as_u64())
@@ -280,15 +280,7 @@ fn print_status_metrics(id: Uuid, metrics: &serde_json::Value) {
     println!("  {} {}", muted("filtered urls:"), filtered_urls);
     println!("  {} {}", muted("pages crawled:"), pages_crawled);
     println!("  {} {}", muted("pages discovered:"), pages_discovered);
-    let error_pages = metrics
-        .get("error_pages")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let waf_blocked_pages = metrics
-        .get("waf_blocked_pages")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    if error_pages > 0 || waf_blocked_pages > 0 {
+    if has_errors {
         println!(
             "  {} axon crawl errors {}",
             muted("see details:"),
@@ -376,7 +368,7 @@ pub(crate) fn render_status_subcommand(
                         waf_blocked,
                     );
                 }
-                print_status_metrics(job.id, metrics);
+                print_status_metrics(job.id, metrics, total_errors > 0);
             }
             println!();
             println!("Job ID: {}", job.id);
