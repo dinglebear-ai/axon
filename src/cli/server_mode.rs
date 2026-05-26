@@ -66,8 +66,8 @@ async fn run_server_mode_sessions(
     server_url: reqwest::Url,
 ) -> Result<(), Box<dyn Error>> {
     let client = cli::client::ServerClient::new(server_url)?;
-    let request = crate::ingest::sessions::prepare_sessions_request(cfg).await?;
-    if request.docs.is_empty() {
+    let batches = crate::ingest::sessions::prepare_sessions_request_batches(cfg).await?;
+    if batches.is_empty() {
         if cfg.json_output {
             println!(
                 "{}",
@@ -82,18 +82,48 @@ async fn run_server_mode_sessions(
         }
         return Ok(());
     }
-    let result = client
-        .post_json(
-            "/v1/ingest/sessions/prepared",
-            &serde_json::to_value(request)?,
-            "sessions",
-        )
-        .await
-        .map_err(|err| server_client_error("sessions", err))?;
+
+    // Large session histories exceed the per-request doc/byte caps on
+    // `/v1/ingest/sessions/prepared`, so upload one bounded job per batch.
+    let mut results: Vec<serde_json::Value> = Vec::with_capacity(batches.len());
+    for request in batches {
+        let result = client
+            .post_json(
+                "/v1/ingest/sessions/prepared",
+                &serde_json::to_value(request)?,
+                "sessions",
+            )
+            .await
+            .map_err(|err| server_client_error("sessions", err))?;
+        results.push(result);
+    }
+
+    if results.len() == 1 {
+        let result = &results[0];
+        return if cfg.wait {
+            poll_server_jobs(cfg, &client, ServerJobFamily::Ingest, result).await
+        } else {
+            render::render_server_result(cfg, "sessions", result)
+        };
+    }
+
+    let combined = serde_json::json!({ "jobs": results });
     if cfg.wait {
-        poll_server_jobs(cfg, &client, ServerJobFamily::Ingest, &result).await
+        poll_server_jobs(cfg, &client, ServerJobFamily::Ingest, &combined).await
+    } else if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(&combined)?);
+        Ok(())
     } else {
-        render::render_server_result(cfg, "sessions", &result)
+        eprintln!(
+            "sessions: queued {} ingest jobs (history exceeded single-request limit)",
+            results.len()
+        );
+        for result in &results {
+            if let Some(job_id) = result.get("job_id").and_then(serde_json::Value::as_str) {
+                println!("Job ID: {job_id}");
+            }
+        }
+        Ok(())
     }
 }
 

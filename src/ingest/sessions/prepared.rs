@@ -3,7 +3,7 @@ use crate::core::content::url_to_domain;
 use crate::vector::ops::{PreparedDoc, chunk_text};
 use serde::{Deserialize, Serialize};
 
-const MAX_PREPARED_SESSION_DOCS: usize = 256;
+pub(crate) const MAX_PREPARED_SESSION_DOCS: usize = 256;
 const MAX_PREPARED_SESSION_METADATA_BYTES: usize = 64 * 1024;
 const RESERVED_EXTRA_KEYS: &[&str] = &[
     "agent",
@@ -184,6 +184,36 @@ impl PreparedSessionDoc {
             .unwrap_or(self.session_platform.as_str())
             .to_string()
     }
+}
+
+/// Split prepared session docs into batches that each satisfy the per-request
+/// limits enforced by [`IngestSessionsPreparedRequest::validate`] (doc count and
+/// cumulative text size). A single oversized doc is left in its own batch — its
+/// per-doc validation is the caller's responsibility.
+pub(crate) fn split_prepared_session_docs(
+    docs: Vec<PreparedSessionDoc>,
+    cfg: &Config,
+) -> Vec<Vec<PreparedSessionDoc>> {
+    let total_limit = super::session_ingest_max_bytes_for_config(cfg).saturating_mul(4);
+    let mut batches: Vec<Vec<PreparedSessionDoc>> = Vec::new();
+    let mut current: Vec<PreparedSessionDoc> = Vec::new();
+    let mut current_bytes = 0usize;
+    for doc in docs {
+        let doc_bytes = doc.text.len();
+        let exceeds_count = current.len() >= MAX_PREPARED_SESSION_DOCS;
+        let exceeds_bytes =
+            !current.is_empty() && current_bytes.saturating_add(doc_bytes) > total_limit;
+        if exceeds_count || exceeds_bytes {
+            batches.push(std::mem::take(&mut current));
+            current_bytes = 0;
+        }
+        current_bytes = current_bytes.saturating_add(doc_bytes);
+        current.push(doc);
+    }
+    if !current.is_empty() {
+        batches.push(current);
+    }
+    batches
 }
 
 fn validate_collection_name(value: &str) -> Result<(), String> {

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.1] - 2026-05-26
+
+### Fixed
+
+- `axon sessions` in server mode no longer fails with `too many prepared
+  session docs: N > 256` when a local history exceeds the per-request cap on
+  `/v1/ingest/sessions/prepared`. The client now splits prepared session docs
+  into batches that each satisfy the endpoint's doc-count and cumulative-text
+  limits and uploads one ingest job per batch
+  (`src/ingest/sessions/prepared.rs`, `src/cli/server_mode.rs`).
+
 ## [4.6.0] - 2026-05-25
 
 ### Added
