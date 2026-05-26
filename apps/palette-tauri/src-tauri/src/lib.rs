@@ -461,7 +461,9 @@ pub fn run() {
                 let _ = window.hide();
             }
             WindowEvent::Focused(false) => {
-                let _ = window.hide();
+                if merged_settings(window.app_handle()).hide_on_blur {
+                    let _ = window.hide();
+                }
             }
             _ => {}
         })
