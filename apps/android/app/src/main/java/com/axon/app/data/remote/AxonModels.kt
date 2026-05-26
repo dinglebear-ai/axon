@@ -77,3 +77,88 @@ data class SourcesResponse(
 data class StatsResponse(
     val payload: JsonObject,
 )
+
+// ── Scrape ────────────────────────────────────────────────────────────────────
+
+@Serializable
+data class ScrapeRequest(
+    val url: String,
+    val embed: Boolean? = null,
+    val collection: String? = null,
+)
+
+@Serializable
+data class ScrapeResponse(
+    val url: String,
+    val markdown: String,
+    val output: String = "",
+)
+
+// ── Map ───────────────────────────────────────────────────────────────────────
+
+@Serializable
+data class MapRequest(
+    val url: String,
+    val limit: Int? = null,
+)
+
+@Serializable
+data class MapResponse(
+    val url: String,
+    @SerialName("mapped_urls") val mappedUrls: Long,
+    val total: Long,
+    val urls: List<String>,
+)
+
+// ── Research ──────────────────────────────────────────────────────────────────
+
+@Serializable
+data class ResearchRequest(
+    val query: String,
+    val limit: Int? = null,
+)
+
+@Serializable
+data class ResearchResponse(
+    val payload: ResearchPayload,
+)
+
+@Serializable
+data class ResearchPayload(
+    val query: String,
+    val search_results: List<ResearchHit> = emptyList(),
+    val summary: String? = null,
+)
+
+@Serializable
+data class ResearchHit(
+    val position: Int,
+    val title: String,
+    val url: String,
+    val snippet: String? = null,
+)
+
+// ── Crawl ─────────────────────────────────────────────────────────────────────
+
+@Serializable
+data class CrawlRequest(
+    val urls: List<String>,
+    val max_pages: Int? = null,
+    val max_depth: Int? = null,
+    val collection: String? = null,
+)
+
+@Serializable
+data class CrawlJobResponse(
+    val job_id: String,
+    val url: String = "",
+)
+
+@Serializable
+data class CrawlStatusResponse(
+    val job_id: String,
+    val status: String,
+    val url: String = "",
+    val pages_crawled: Int? = null,
+    val error: String? = null,
+)
