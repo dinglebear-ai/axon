@@ -1,6 +1,6 @@
 use crate::core::config::{Config, ScrapeFormat};
 use crate::crawl::engine::CrawlSummary;
-use crate::services::crawl_sync::plan_chrome_fallback;
+use crate::services::crawl_sync::chrome_fallback::plan_chrome_fallback;
 
 // ─── LLM format guard ────────────────────────────────────────────────────────
 

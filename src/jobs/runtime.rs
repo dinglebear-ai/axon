@@ -35,8 +35,15 @@ impl SqliteJobBackend {
     ) -> Result<Arc<CancelStore>, Box<dyn std::error::Error + Send + Sync>> {
         let stale_threshold_ms =
             (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
-        store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await?;
-        store::reclaim_stale_watch_leases(&pool).await?;
+        if let Err(e) = store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await {
+            tracing::warn!(
+                error = %e,
+                "startup reclaim skipped — DB busy; periodic watchdog will retry"
+            );
+        }
+        if let Err(e) = store::reclaim_stale_watch_leases(&pool).await {
+            tracing::warn!(error = %e, "startup watch-lease reclaim skipped — DB busy");
+        }
         Ok(Arc::new(CancelStore::new()))
     }
 
