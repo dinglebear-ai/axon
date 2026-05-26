@@ -115,6 +115,19 @@ fn reclaim_progress_suffix(job: &ServiceJob) -> &'static str {
     }
 }
 
+fn elapsed_display(job: &ServiceJob) -> Option<String> {
+    let started = job.started_at?;
+    let end = job.finished_at.unwrap_or_else(chrono::Utc::now);
+    let ms = (end - started).num_milliseconds().max(0) as u64;
+    Some(if ms >= 60_000 {
+        format!("{:.1}m", ms as f64 / 60_000.0)
+    } else if ms >= 1_000 {
+        format!("{:.1}s", ms as f64 / 1_000.0)
+    } else {
+        format!("{ms}ms")
+    })
+}
+
 fn render_errors_subcommand(
     cfg: &Config,
     job: Option<ServiceJob>,
@@ -277,14 +290,8 @@ fn print_status_metrics(id: Uuid, metrics: &serde_json::Value) {
         .unwrap_or(0);
     if error_pages > 0 || waf_blocked_pages > 0 {
         println!(
-            "  {} {} errors, {} waf-blocked",
-            muted("crawl errors:"),
-            error_pages,
-            waf_blocked_pages
-        );
-        println!(
             "  {} axon crawl errors {}",
-            muted("details:"),
+            muted("see details:"),
             muted(&id.to_string())
         );
     }
@@ -346,6 +353,9 @@ pub(crate) fn render_status_subcommand(
             );
             println!("  {} {}", muted("Created:"), job.created_at);
             println!("  {} {}", muted("Updated:"), job.updated_at);
+            if let Some(elapsed) = elapsed_display(&job) {
+                println!("  {} {}", muted("Elapsed:"), elapsed);
+            }
             if job.attempt_count > 0 {
                 println!("  {} {}", muted("Attempt:"), job.attempt_count);
             }
@@ -355,6 +365,17 @@ pub(crate) fn render_status_subcommand(
                 println!("  {} {}", muted("Error:"), err);
             }
             if let Some(metrics) = job.result_json.as_ref() {
+                let (error_pages, waf_blocked, _) = crawl_error_metrics(Some(metrics));
+                let total_errors = error_pages + waf_blocked;
+                if total_errors > 0 {
+                    println!(
+                        "  {} {} ({} page errors, {} waf-blocked)",
+                        muted("Errors:"),
+                        total_errors,
+                        error_pages,
+                        waf_blocked,
+                    );
+                }
                 print_status_metrics(job.id, metrics);
             }
             println!();
