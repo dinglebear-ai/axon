@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -24,6 +25,13 @@ class AxonClient(
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    // Research synthesis can take up to 2 minutes
+    private val httpLong = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
@@ -59,6 +67,26 @@ class AxonClient(
         get("/v1/stats")
     }
 
+    suspend fun scrape(request: ScrapeRequest): Result<ScrapeResponse> = withContext(Dispatchers.IO) {
+        post("/v1/scrape", request)
+    }
+
+    suspend fun map(request: MapRequest): Result<MapResponse> = withContext(Dispatchers.IO) {
+        post("/v1/map", request)
+    }
+
+    suspend fun research(request: ResearchRequest): Result<ResearchResponse> = withContext(Dispatchers.IO) {
+        postWith(httpLong, "/v1/research", request)
+    }
+
+    suspend fun crawlSubmit(request: CrawlRequest): Result<CrawlJobResponse> = withContext(Dispatchers.IO) {
+        post("/v1/crawl", request)
+    }
+
+    suspend fun crawlStatus(jobId: String): Result<JsonObject> = withContext(Dispatchers.IO) {
+        get("/v1/crawl/$jobId")
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun authRequest(builder: Request.Builder): Request.Builder =
@@ -66,6 +94,9 @@ class AxonClient(
                .header("x-api-key", token)
 
     private inline fun <reified B, reified R> post(path: String, body: B): Result<R> =
+        postWith(http, path, body)
+
+    private inline fun <reified B, reified R> postWith(client: OkHttpClient, path: String, body: B): Result<R> =
         runCatching {
             val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
             val req = authRequest(
@@ -73,7 +104,7 @@ class AxonClient(
                     .url("$baseUrl$path")
                     .post(bodyBytes)
             ).build()
-            http.newCall(req).execute().use { resp ->
+            client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     val msg = resp.body?.string() ?: resp.message
                     error("HTTP ${resp.code}: $msg")

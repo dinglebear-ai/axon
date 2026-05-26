@@ -1,6 +1,7 @@
 package com.axon.app.ui.nav
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.QuestionAnswer
@@ -25,10 +26,12 @@ import com.axon.app.ui.ask.AskScreen
 import com.axon.app.ui.search.SearchScreen
 import com.axon.app.ui.settings.SettingsScreen
 import com.axon.app.ui.sources.SourcesScreen
+import com.axon.app.ui.tools.ToolsScreen
 import kotlinx.serialization.Serializable
 
 @Serializable object AskRoute
 @Serializable object SearchRoute
+@Serializable object ToolsRoute
 @Serializable object SourcesRoute
 @Serializable object SettingsRoute
 
@@ -41,6 +44,7 @@ private data class NavItem(
 private val navItems = listOf(
     NavItem("Ask",      Icons.Default.QuestionAnswer, AskRoute),
     NavItem("Search",   Icons.Default.Hub,            SearchRoute),
+    NavItem("Tools",    Icons.Default.Build,          ToolsRoute),
     NavItem("Sources",  Icons.Default.List,           SourcesRoute),
     NavItem("Settings", Icons.Default.Settings,       SettingsRoute),
 )
@@ -80,6 +84,7 @@ fun AxonNavGraph() {
         ) {
             composable<AskRoute>     { AskScreen() }
             composable<SearchRoute>  { SearchScreen() }
+            composable<ToolsRoute>   { ToolsScreen() }
             composable<SourcesRoute> { SourcesScreen() }
             composable<SettingsRoute>{ SettingsScreen() }
         }
