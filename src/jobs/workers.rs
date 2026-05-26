@@ -337,11 +337,21 @@ async fn worker_loop<F, Fut>(
                     }
                     Ok(None) => break,
                     Err(e) => {
-                        tracing::error!(
-                            table = kind.table_name(),
-                            error = %e,
-                            "worker claim error"
-                        );
+                        // SQLITE_BUSY (code 5) is expected under write contention — downgrade to WARN.
+                        let is_busy = e.to_string().contains("(code: 5)");
+                        if is_busy {
+                            tracing::warn!(
+                                table = kind.table_name(),
+                                error = %e,
+                                "worker claim skipped — DB busy; will retry"
+                            );
+                        } else {
+                            tracing::error!(
+                                table = kind.table_name(),
+                                error = %e,
+                                "worker claim error"
+                            );
+                        }
                         break;
                     }
                 }
