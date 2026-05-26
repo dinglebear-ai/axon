@@ -19,6 +19,7 @@ mod codex;
 mod gemini;
 mod prepared;
 
+pub(crate) use prepared::MAX_PREPARED_SESSION_DOCS;
 pub use prepared::{IngestSessionsPreparedRequest, PreparedSessionDoc};
 
 pub(crate) type IngestResult<T> = Result<T, anyhow::Error>;
@@ -179,11 +180,6 @@ pub async fn prepare_sessions_request(
         project: cfg.sessions_project.clone(),
         collection,
     };
-    if !request.docs.is_empty() {
-        request
-            .validate(cfg)
-            .map_err(|err| -> Box<dyn Error> { err.into() })?;
-    }
     Ok(request)
 }
 

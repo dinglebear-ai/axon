@@ -30,7 +30,7 @@ use uuid::Uuid;
 
 const TICK_MS: u64 = 100;
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
-const IDLE_EXIT_TICKS: u8 = 5;
+const IDLE_EXIT_TICKS: u8 = 3;
 
 type BarKey = (JobKind, Uuid);
 

@@ -334,7 +334,10 @@ pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
             elapsed_secs,
         } => {
             println!(
-                "SQLite runtime: queue drained — {pending_at_start} pending at start, {elapsed_secs}s elapsed."
+                "{}",
+                muted(&format!(
+                    "SQLite runtime: queue drained — {pending_at_start} pending at start, {elapsed_secs}s elapsed."
+                ))
             );
         }
         WorkerMode::Started => {}

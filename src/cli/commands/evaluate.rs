@@ -2,7 +2,7 @@ use crate::cli::commands::common::truncate_chars;
 use crate::cli::commands::resolve_input_text;
 use crate::core::config::{Config, EvaluateResponsesMode};
 use crate::core::logging::log_info;
-use crate::core::ui::{muted, primary};
+use crate::core::ui::{accent, muted, primary};
 use crate::services::query as query_service;
 use std::error::Error;
 use std::fmt;
@@ -58,9 +58,16 @@ fn print_side_by_side_answers(payload: &serde_json::Value) {
     if rag.is_empty() && baseline.is_empty() {
         return;
     }
-    println!("  WITH CONTEXT                              │ WITHOUT CONTEXT");
     println!(
-        "  ──────────────────────────────────────────┼──────────────────────────────────────────"
+        "  {:<42} {}",
+        primary("WITH CONTEXT"),
+        primary("WITHOUT CONTEXT")
+    );
+    println!(
+        "{}",
+        muted(
+            "  ──────────────────────────────────────────┼──────────────────────────────────────────"
+        )
     );
     for line in build_side_by_side_rows(rag, baseline, 42) {
         println!("{line}");
@@ -115,10 +122,12 @@ fn print_human_evaluate_output(payload: &serde_json::Value, question: &str) {
     for dim in &dimensions {
         if let Some((rag, baseline)) = parse_dimension_scores(analysis, dim) {
             println!(
-                "  {:<16} RAG: {} | Baseline: {}",
-                format!("{dim}:"),
-                rag,
-                baseline
+                "  {} {} {} {} {}",
+                muted(&format!("{:<16}", format!("{dim}:"))),
+                muted("RAG:"),
+                accent(&rag),
+                muted("| Baseline:"),
+                accent(&baseline),
             );
             found_scores = true;
         }
@@ -127,7 +136,11 @@ fn print_human_evaluate_output(payload: &serde_json::Value, question: &str) {
     // Derive verdict from score totals
     if found_scores {
         let verdict = derive_verdict(analysis);
-        println!("  {:<16} {}", "Verdict:", verdict);
+        println!(
+            "  {} {}",
+            muted(&format!("{:<16}", "Verdict:")),
+            accent(verdict)
+        );
     } else {
         // Fallback: show raw analysis if scores could not be parsed
         println!("  {} {}", primary("Analysis:"), analysis);

@@ -6,6 +6,7 @@ use crate::cli::route::{CommandRoute, plan_command_route};
 use crate::core::config::{CommandKind, Config};
 use std::error::Error;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +43,7 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
         return run_server_mode_sessions(cfg, server_url).await;
     }
     let plan = plan::server_rest_plan(cfg)?;
-    let client = cli::client::ServerClient::new(server_url)?;
+    let client = Arc::new(cli::client::ServerClient::new(server_url)?);
     let result = request_server_rest(&client, &plan).await?;
     if cfg.wait
         && let Some(family) = plan.poll_family
@@ -65,7 +66,9 @@ async fn run_server_mode_sessions(
     cfg: &Config,
     server_url: reqwest::Url,
 ) -> Result<(), Box<dyn Error>> {
-    let client = cli::client::ServerClient::new(server_url)?;
+    use crate::ingest::sessions::{IngestSessionsPreparedRequest, MAX_PREPARED_SESSION_DOCS};
+
+    let client = Arc::new(cli::client::ServerClient::new(server_url)?);
     let request = crate::ingest::sessions::prepare_sessions_request(cfg).await?;
     if request.docs.is_empty() {
         if cfg.json_output {
@@ -82,23 +85,46 @@ async fn run_server_mode_sessions(
         }
         return Ok(());
     }
-    let result = client
-        .post_json(
-            "/v1/ingest/sessions/prepared",
-            &serde_json::to_value(request)?,
-            "sessions",
-        )
-        .await
-        .map_err(|err| server_client_error("sessions", err))?;
+
+    let collection = request.collection.clone();
+    let project = request.project.clone();
+    let total = request.docs.len();
+    let batch_count = total.div_ceil(MAX_PREPARED_SESSION_DOCS);
+
+    if !cfg.json_output {
+        let noun = if batch_count == 1 { "batch" } else { "batches" };
+        eprintln!("sessions: queueing {total} docs → {batch_count} {noun}");
+    }
+
+    let mut all_job_ids: Vec<String> = Vec::new();
+    for batch_docs in request.docs.chunks(MAX_PREPARED_SESSION_DOCS) {
+        let batch = IngestSessionsPreparedRequest {
+            docs: batch_docs.to_vec(),
+            project: project.clone(),
+            collection: collection.clone(),
+        };
+        let result: serde_json::Value = client
+            .post_json("/v1/ingest/sessions/prepared", &batch, "sessions")
+            .await
+            .map_err(|err| server_client_error("sessions", err))?;
+        if let Some(job_id) = result.get("job_id").and_then(|v| v.as_str()) {
+            all_job_ids.push(job_id.to_string());
+        }
+    }
+
+    let combined_result = serde_json::json!({ "job_ids": all_job_ids });
+    if cfg.json_output {
+        return render::render_server_result(cfg, "sessions", &combined_result);
+    }
     if cfg.wait {
-        poll_server_jobs(cfg, &client, ServerJobFamily::Ingest, &result).await
+        poll_server_jobs(cfg, &client, ServerJobFamily::Ingest, &combined_result).await
     } else {
-        render::render_server_result(cfg, "sessions", &result)
+        poll_sessions_progress(&client, &all_job_ids, batch_count).await
     }
 }
 
 async fn request_server_rest(
-    client: &cli::client::ServerClient,
+    client: &Arc<cli::client::ServerClient>,
     plan: &plan::ServerRestPlan,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
     match plan.method {
@@ -142,7 +168,7 @@ fn server_client_error(label: &'static str, err: cli::client::ServerClientError)
 
 async fn poll_server_jobs(
     cfg: &Config,
-    client: &cli::client::ServerClient,
+    client: &Arc<cli::client::ServerClient>,
     family: ServerJobFamily,
     start_result: &serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
@@ -172,6 +198,136 @@ async fn poll_server_jobs(
         }
     }
     Ok(())
+}
+
+async fn poll_sessions_progress(
+    client: &Arc<cli::client::ServerClient>,
+    job_ids: &[String],
+    batch_count: usize,
+) -> Result<(), Box<dyn Error>> {
+    use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+    use tokio::sync::Mutex;
+
+    if job_ids.is_empty() {
+        return Ok(());
+    }
+
+    let mp = MultiProgress::new();
+    let spinner_style = ProgressStyle::with_template("{spinner:.cyan} {prefix:.bold} {msg}")
+        .unwrap_or_else(|_| ProgressStyle::default_spinner())
+        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", " "]);
+
+    let bars: Vec<ProgressBar> = job_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let pb = mp.add(ProgressBar::new_spinner());
+            pb.set_style(spinner_style.clone());
+            let label = if batch_count > 1 {
+                format!("batch {}/{}", i + 1, batch_count)
+            } else {
+                "sessions".to_string()
+            };
+            pb.set_prefix(label);
+            pb.set_message("pending");
+            pb
+        })
+        .collect();
+
+    let deadline = Instant::now() + Duration::from_secs(cli::client::SERVER_ACTION_TIMEOUT_SECS);
+    let total_chunks = Arc::new(Mutex::new(0u64));
+    let mut tasks = tokio::task::JoinSet::new();
+
+    for (idx, job_id) in job_ids.iter().enumerate() {
+        let client = Arc::clone(client);
+        let pb = bars[idx].clone();
+        let job_id = job_id.clone();
+        let total_chunks = Arc::clone(&total_chunks);
+
+        tasks.spawn(async move {
+            let path = plan::status_path_for_family(ServerJobFamily::Ingest, &job_id);
+            loop {
+                if Instant::now() >= deadline {
+                    pb.finish_with_message("timed out");
+                    return Err::<(), Box<dyn Error + Send + Sync>>(
+                        format!("timed out waiting for job {job_id}").into(),
+                    );
+                }
+
+                pb.tick();
+                let result: serde_json::Value = match client.get_json(&path, "job status").await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        pb.set_message(format!("poll error: {e}"));
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        continue;
+                    }
+                };
+
+                let job = result.get("job").unwrap_or(&result);
+                let status = job
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+
+                match status {
+                    "completed" => {
+                        let chunks = job
+                            .get("result_json")
+                            .and_then(|r| r.get("payload"))
+                            .and_then(|p| p.get("chunks"))
+                            .and_then(|c| c.as_u64())
+                            .unwrap_or(0);
+                        *total_chunks.lock().await += chunks;
+                        pb.finish_with_message(format!("done — {chunks} chunks embedded"));
+                        return Ok(());
+                    }
+                    "failed" => {
+                        let err = job
+                            .get("error_text")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown error");
+                        pb.finish_with_message(format!("failed: {err}"));
+                        return Err(format!("job {job_id} failed: {err}").into());
+                    }
+                    "canceled" => {
+                        pb.finish_with_message("canceled");
+                        return Ok(());
+                    }
+                    "running" => pb.set_message("running"),
+                    _ => pb.set_message("pending"),
+                }
+
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        });
+    }
+
+    let mut any_error: Option<String> = None;
+    while let Some(outcome) = tasks.join_next().await {
+        match outcome {
+            Ok(Err(e)) => {
+                if any_error.is_none() {
+                    any_error = Some(e.to_string());
+                }
+            }
+            Err(join_err) => {
+                if any_error.is_none() {
+                    any_error = Some(join_err.to_string());
+                }
+            }
+            Ok(Ok(())) => {}
+        }
+    }
+
+    let chunks = *total_chunks.lock().await;
+    eprintln!("sessions: complete — {chunks} chunks embedded");
+
+    if let Some(err) = any_error {
+        Err(err.into())
+    } else {
+        Ok(())
+    }
 }
 
 fn job_ids_from_result(result: &serde_json::Value) -> Vec<String> {

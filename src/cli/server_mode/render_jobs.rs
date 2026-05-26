@@ -136,13 +136,38 @@ pub(super) fn render_ingest(
             _ if cfg.wait => return Ok(()),
             _ => {}
         }
-        let start: IngestStartResult = serde_json::from_value(result.clone())?;
+        // Batched sessions submit returns {"job_ids": [...]}, single ingest returns {"job_id": "..."}.
         if sessions {
-            println!("  {} {}", primary("Ingest Job"), accent(&start.job_id));
-            println!("  {}", muted("Status: pending"));
-            println!("  {} {}", muted("Collection:"), accent(&cfg.collection));
-            println!("Job ID: {}", start.job_id);
+            let job_ids = result
+                .get("job_ids")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect::<Vec<_>>()
+                })
+                .or_else(|| {
+                    result
+                        .get("job_id")
+                        .and_then(|v| v.as_str())
+                        .map(|id| vec![id.to_string()])
+                })
+                .unwrap_or_default();
+            if job_ids.is_empty() {
+                println!("{}", muted("sessions: no jobs submitted"));
+            } else {
+                println!(
+                    "  {} {}",
+                    primary("Sessions"),
+                    muted(&format!("{} ingest job(s) pending", job_ids.len()))
+                );
+                println!("  {} {}", muted("Collection:"), accent(&cfg.collection));
+                for job_id in &job_ids {
+                    println!("  {} {}", muted("Job ID:"), accent(job_id));
+                }
+            }
         } else {
+            let start: IngestStartResult = serde_json::from_value(result.clone())?;
             crate::cli::commands::ingest::render_ingest_enqueue_result(
                 cfg,
                 &start.job_id,

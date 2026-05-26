@@ -1,6 +1,6 @@
 # Axon
 
-Version: 4.6.0
+Version: 4.7.0
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -52,7 +52,7 @@ Useful installer controls:
 ```bash
 AXON_INSTALL_DRY_RUN=1 ./install.sh
 AXON_INSTALL_PREFIX=/opt/axon ./install.sh
-AXON_VERSION=v4.6.0 ./install.sh
+AXON_VERSION=v4.7.0 ./install.sh
 AXON_INSTALL_SKIP_SETUP=1 ./install.sh
 ```
 

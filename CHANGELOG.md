@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-05-25
+
+### Added
+
+- Live per-page crawl progress for `axon crawl --wait`: Spider's broadcast page
+  stream is wired into an indicatif spinner that updates every 250 ms with the
+  running counts — `Crawling… N pages · M markdown · K thin`. Gated on stderr
+  TTY + `!--json` + `!--quiet`; finishes with `✓ Crawled N pages · M markdown`
+  on completion.
+
+### Fixed
+
+- Aurora styling applied to `evaluate`, `map`, `sync`, and `common_jobs` CLI
+  output — all human-readable output now uses `primary`/`accent`/`muted` tokens.
+- ANSI padding misalignment in `evaluate` score rows — raw string padded before
+  wrapping in color helpers to avoid ANSI byte count skewing `{:<N}` widths.
+- Double-redaction in `parse_claude_jsonl` test helper — per-item redaction was
+  applied and then the joined block was redacted again; now matches production
+  single-redaction behavior.
+- Double-serialization in sessions server-mode batch loop — `post_json<T:
+  Serialize>` now receives the struct directly instead of a pre-serialized
+  `serde_json::Value`.
+- `axon status --watch` idle-exit reduced from 5 → 3 ticks to fix a flaky
+  timeout in the integration test suite under parallel load.
+- Removed incorrect aggregate total-text cap in prepared-session validation —
+  the per-doc limit is the correct boundary; batching handles large counts.
+
+### Changed
+
+- Sessions server-mode now batches prepared-session docs in chunks of
+  `MAX_PREPARED_SESSION_DOCS` (256) and collects all returned job IDs.
+- Claude and Codex session parsers now stream JSONL files line-by-line via
+  `BufReader`, stopping at `max_text_bytes` without loading the full file into
+  memory.
+
 ## [4.6.0] - 2026-05-25
 
 ### Added

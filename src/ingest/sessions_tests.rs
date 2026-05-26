@@ -43,7 +43,9 @@ fn prepared_session_doc_converts_to_prepared_doc_without_extra_override() {
 }
 
 #[test]
-fn prepared_session_request_rejects_oversized_total_text() {
+fn prepared_session_request_accepts_many_docs_up_to_per_doc_limit() {
+    // Total aggregate text used to be capped at per_doc_limit * 4. That check was
+    // removed — the per-doc limit is the right boundary; batching handles large counts.
     let cfg = Config::test_default();
     let per_doc_limit = session_ingest_max_bytes_for_config(&cfg);
     let request = IngestSessionsPreparedRequest {
@@ -65,6 +67,8 @@ fn prepared_session_request_rejects_oversized_total_text() {
         collection: None,
     };
 
-    let err = request.validate(&cfg).expect_err("oversized request");
-    assert!(err.contains("total prepared session text exceeds"));
+    // Should succeed: each doc is within per-doc limit; aggregate is no longer checked.
+    request
+        .validate(&cfg)
+        .expect("should accept per-doc-bounded request");
 }

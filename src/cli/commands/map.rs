@@ -81,7 +81,7 @@ pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>
         }
         println!();
         for url in &result.urls {
-            println!("  • {url}");
+            println!("  {} {}", muted("•"), primary(url));
         }
     }
 
