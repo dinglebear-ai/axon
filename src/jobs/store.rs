@@ -80,7 +80,7 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         // the same hot pages concurrently.
         .pragma("cache_size", "-65536")
         .pragma("temp_store", "MEMORY")
-        .pragma("busy_timeout", "5000")
+        .pragma("busy_timeout", "30000")
         .pragma("foreign_keys", "ON");
 
     // 4 connections: enough for concurrent readers in WAL mode; SQLite only
