@@ -95,12 +95,9 @@ fn split_prepared_session_docs_chunks_by_count_and_validates() {
     let batches = prepared::split_prepared_session_docs(docs, &cfg);
 
     assert_eq!(batches.len(), 3);
-    assert_eq!(batches[0].len(), prepared::MAX_PREPARED_SESSION_DOCS);
-    assert_eq!(batches[1].len(), prepared::MAX_PREPARED_SESSION_DOCS);
-    assert_eq!(
-        batches[2].len(),
-        600 - 2 * prepared::MAX_PREPARED_SESSION_DOCS
-    );
+    assert_eq!(batches[0].len(), MAX_PREPARED_SESSION_DOCS);
+    assert_eq!(batches[1].len(), MAX_PREPARED_SESSION_DOCS);
+    assert_eq!(batches[2].len(), 600 - 2 * MAX_PREPARED_SESSION_DOCS);
     for batch in &batches {
         let request = IngestSessionsPreparedRequest {
             docs: batch.clone(),
