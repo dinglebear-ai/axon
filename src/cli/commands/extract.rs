@@ -5,7 +5,9 @@ use crate::cli::commands::common::{
 };
 use crate::core::config::Config;
 use crate::core::logging::log_info;
-use crate::core::ui::{accent, confirm_destructive, muted, primary, symbol_for_status};
+use crate::core::ui::{
+    accent, confirm_destructive, muted, primary, symbol_for_status, wait_spinner_for,
+};
 use crate::jobs::backend::JobKind;
 use crate::services::context::ServiceContext;
 use crate::services::extract as extract_service;
@@ -73,7 +75,18 @@ pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> 
             return result;
         }
 
+        let sp = wait_spinner_for(
+            cfg,
+            &format!(
+                "Extracting {} URL{}…",
+                urls.len(),
+                if urls.len() == 1 { "" } else { "s" }
+            ),
+        );
         let result = extract_service::extract_sync(cfg, &urls, &prompt).await?;
+        if let Some(sp) = sp {
+            sp.clear();
+        }
         emit_extract_output(cfg, &result)?;
         if result.total_items == 0 {
             return Err(anyhow::anyhow!(

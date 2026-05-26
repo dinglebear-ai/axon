@@ -10,6 +10,7 @@ use crate::cli::commands::status::metrics::{
 };
 use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info};
+use crate::core::ui::wait_spinner_for;
 use crate::core::ui::{
     accent, confirm_destructive, error, muted, primary, status_label, subtle, symbol_for_status,
 };
@@ -139,7 +140,11 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
             return result;
         }
 
+        let sp = wait_spinner_for(cfg, &format!("Embedding {}…", input));
         embed_service::embed_now(cfg, &input).await?;
+        if let Some(sp) = sp {
+            sp.finish("✓ Embedded");
+        }
         log_done(&format!(
             "command=embed complete collection={} duration_ms={}",
             cfg.collection,

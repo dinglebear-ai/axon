@@ -2,7 +2,7 @@ use crate::cli::commands::CommandFuture;
 use crate::cli::commands::ingest_common;
 use crate::core::config::Config;
 use crate::core::logging::log_info;
-use crate::core::ui::{accent, muted, primary};
+use crate::core::ui::{accent, muted, primary, wait_spinner_for};
 use crate::services::context::ServiceContext;
 use crate::services::ingest::{self as ingest_service, IngestSource};
 use crate::services::types::StartDisposition;
@@ -71,7 +71,12 @@ pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> C
             return result;
         }
 
-        ingest_common::run_ingest_sync(cfg, source).await
+        let sp = wait_spinner_for(cfg, &format!("Ingesting {}…", target));
+        let result = ingest_common::run_ingest_sync(cfg, source).await;
+        if let Some(sp) = sp {
+            sp.clear();
+        }
+        result
     })
 }
 
