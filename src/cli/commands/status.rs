@@ -381,32 +381,52 @@ fn embed_doc_totals_from_crawls(crawl_jobs: &[ServiceJob]) -> HashMap<String, u6
 }
 
 fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
-    let metrics = job.result_json.as_ref()?;
     if !matches!(job.status.as_str(), "running" | "completed") {
         return None;
     }
+    let Some(metrics) = job.result_json.as_ref() else {
+        return if job.status == "running" {
+            Some("starting…".to_string())
+        } else {
+            None
+        };
+    };
     let items = metrics
         .get("total_items")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
     if items == 0 {
-        return None;
+        return if job.status == "running" {
+            Some("extracting…".to_string())
+        } else {
+            None
+        };
     }
     Some(format!("{items} items"))
 }
 
 fn ingest_progress_summary(job: &ServiceJob) -> Option<String> {
-    let metrics = job.result_json.as_ref()?;
     if !matches!(job.status.as_str(), "running" | "completed") {
         return None;
     }
+    let Some(metrics) = job.result_json.as_ref() else {
+        return if job.status == "running" {
+            Some("starting…".to_string())
+        } else {
+            None
+        };
+    };
     let chunks = metrics
         .get("chunks")
         .or_else(|| metrics.get("chunks_embedded"))
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
     if chunks == 0 {
-        return None;
+        return if job.status == "running" {
+            Some("ingesting…".to_string())
+        } else {
+            None
+        };
     }
     Some(format!("{chunks} chunks"))
 }
