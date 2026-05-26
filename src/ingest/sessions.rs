@@ -148,9 +148,9 @@ pub async fn ingest_sessions(
     Ok(total_chunks)
 }
 
-pub async fn prepare_sessions_request(
+async fn collect_prepared_session_docs(
     cfg: &Config,
-) -> Result<IngestSessionsPreparedRequest, Box<dyn Error>> {
+) -> Result<(Vec<PreparedSessionDoc>, Option<String>), Box<dyn Error>> {
     let multi = MultiProgress::new();
     let all_platforms = !cfg.sessions_claude && !cfg.sessions_codex && !cfg.sessions_gemini;
     let mut all_docs: Vec<SessionDoc> = Vec::new();
@@ -175,12 +175,47 @@ pub async fn prepare_sessions_request(
         .map(prepared_session_doc_from_session_doc)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    Ok((docs, collection))
+}
+
+pub async fn prepare_sessions_request(
+    cfg: &Config,
+) -> Result<IngestSessionsPreparedRequest, Box<dyn Error>> {
+    let (docs, collection) = collect_prepared_session_docs(cfg).await?;
     let request = IngestSessionsPreparedRequest {
         docs,
         project: cfg.sessions_project.clone(),
         collection,
     };
     Ok(request)
+}
+
+/// Scan local session exports and split them into validated batches, each within
+/// the per-request limits of `/v1/ingest/sessions/prepared`. Used by server-mode
+/// `axon sessions` so large histories upload as several jobs instead of failing
+/// the doc-count cap. Returns an empty vec when no session docs match.
+pub async fn prepare_sessions_request_batches(
+    cfg: &Config,
+) -> Result<Vec<IngestSessionsPreparedRequest>, Box<dyn Error>> {
+    let (docs, collection) = collect_prepared_session_docs(cfg).await?;
+    if docs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let project = cfg.sessions_project.clone();
+    prepared::split_prepared_session_docs(docs, cfg)
+        .into_iter()
+        .map(|batch| {
+            let request = IngestSessionsPreparedRequest {
+                docs: batch,
+                project: project.clone(),
+                collection: collection.clone(),
+            };
+            request
+                .validate(cfg)
+                .map(|()| request)
+                .map_err(|err| -> Box<dyn Error> { err.into() })
+        })
+        .collect()
 }
 
 fn prepared_session_doc_from_session_doc(
