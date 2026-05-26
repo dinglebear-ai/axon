@@ -8,6 +8,7 @@ use crate::jobs::backend::{
     BackendResult, JobBackend, JobId, JobKind, JobPayload, JobSidecarPayload, JobStatusRow,
     JobSummary,
 };
+use crate::jobs::ops::is_lock_busy;
 use crate::jobs::{ops, query, store, workers};
 
 use crate::jobs::cancel::CancelStore;
@@ -36,13 +37,18 @@ impl SqliteJobBackend {
         let stale_threshold_ms =
             (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
         if let Err(e) = store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await {
-            tracing::warn!(
-                error = %e,
-                "startup reclaim skipped — DB busy; periodic watchdog will retry"
-            );
+            if is_lock_busy(&e) {
+                tracing::warn!(error = %e, "startup reclaim skipped — DB busy; periodic watchdog will retry");
+            } else {
+                tracing::error!(error = %e, "startup reclaim failed");
+            }
         }
         if let Err(e) = store::reclaim_stale_watch_leases(&pool).await {
-            tracing::warn!(error = %e, "startup watch-lease reclaim skipped — DB busy");
+            if is_lock_busy(&e) {
+                tracing::warn!(error = %e, "startup watch-lease reclaim skipped — DB busy");
+            } else {
+                tracing::error!(error = %e, "startup watch-lease reclaim failed");
+            }
         }
         Ok(Arc::new(CancelStore::new()))
     }

@@ -164,7 +164,7 @@ pub async fn reclaim_stale_running_jobs(
 ) -> Result<u64, sqlx::Error> {
     Ok(
         reclaim_stale_running_jobs_detailed(pool, stale_threshold_ms)
-            .await?
+            .await
             .total() as u64,
     )
 }
@@ -172,31 +172,29 @@ pub async fn reclaim_stale_running_jobs(
 pub async fn reclaim_stale_running_jobs_detailed(
     pool: &SqlitePool,
     stale_threshold_ms: i64,
-) -> Result<ReclaimedJobs, sqlx::Error> {
+) -> ReclaimedJobs {
     let mut reclaimed = ReclaimedJobs::default();
     for kind in JobKind::all() {
-        let jobs = reclaim_stale_running_jobs_for_table_jobs(pool, *kind, stale_threshold_ms)
-            .await
-            .inspect_err(|e| {
-                let is_busy = super::ops::is_lock_busy(e);
-                if is_busy {
-                    tracing::warn!(table = kind.table_name(), error = %e, "watchdog: per-table sweep skipped — DB busy");
-                } else {
-                    tracing::error!(table = kind.table_name(), error = %e, "watchdog: per-table sweep failed");
-                }
-            })?;
-        match kind {
-            JobKind::Crawl => reclaimed.crawl = jobs,
-            JobKind::Embed => reclaimed.embed = jobs,
-            JobKind::Extract => reclaimed.extract = jobs,
-            JobKind::Ingest => reclaimed.ingest = jobs,
+        match reclaim_stale_running_jobs_for_table_jobs(pool, *kind, stale_threshold_ms).await {
+            Ok(jobs) => match kind {
+                JobKind::Crawl => reclaimed.crawl = jobs,
+                JobKind::Embed => reclaimed.embed = jobs,
+                JobKind::Extract => reclaimed.extract = jobs,
+                JobKind::Ingest => reclaimed.ingest = jobs,
+            },
+            Err(e) if super::ops::is_lock_busy(&e) => {
+                tracing::warn!(table = kind.table_name(), error = %e, "watchdog: per-table sweep skipped — DB busy");
+            }
+            Err(e) => {
+                tracing::error!(table = kind.table_name(), error = %e, "watchdog: per-table sweep failed");
+            }
         }
     }
     let total = reclaimed.total();
     if total > 0 {
         tracing::info!(reclaimed = total, "watchdog: sweep complete");
     }
-    Ok(reclaimed)
+    reclaimed
 }
 
 pub async fn reclaim_stale_running_jobs_for_table(

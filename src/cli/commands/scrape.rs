@@ -67,6 +67,136 @@ pub(crate) fn scrape_result_to_prepared_doc(
     }
 }
 
+fn extractor_label(extractor: &str) -> &str {
+    match extractor {
+        "crates_io" => "crates.io",
+        "docs_rs" => "docs.rs",
+        "npm" => "npm",
+        "pypi" => "PyPI",
+        "github_repo" => "GitHub",
+        "github_issue" => "GitHub Issue",
+        "github_pr" => "GitHub PR",
+        "github_release" => "GitHub Release",
+        "huggingface_model" => "Hugging Face",
+        "docker_hub" => "Docker Hub",
+        "reddit" => "Reddit",
+        "hackernews" => "Hacker News",
+        "stackoverflow" => "Stack Overflow",
+        "dev_to" => "dev.to",
+        other => other,
+    }
+}
+
+fn print_vertical_extra(ex: &serde_json::Value) {
+    if let Some(pkg) = ex["pkg_name"].as_str() {
+        let ver = ex["pkg_version"].as_str().unwrap_or("?");
+        print_option("package", &format!("{pkg} {ver}"));
+        if let Some(lang) = ex["pkg_language"].as_str() {
+            print_option("language", lang);
+        }
+        if let Some(author) = ex["pkg_author"].as_str() {
+            print_option("author", author);
+        }
+        if let Some(license) = ex["pkg_license"].as_str() {
+            print_option("license", license);
+        }
+        if let Some(dl) = ex["pkg_downloads"].as_u64() {
+            print_option("downloads", &dl.to_string());
+        }
+        if let Some(n) = ex["docrs_item_count"].as_u64() {
+            print_option("items", &format!("{n} public items with documentation"));
+        }
+    } else if let (Some(owner), Some(repo)) = (ex["owner"].as_str(), ex["repo"].as_str()) {
+        print_option("repo", &format!("{owner}/{repo}"));
+        if let Some(number) = ex["number"].as_u64() {
+            print_option(
+                "ref",
+                &format!("#{number} ({})", ex["state"].as_str().unwrap_or("?")),
+            );
+        }
+        if let Some(meta) = ex["git_meta"].as_object() {
+            if let Some(stars) = meta["stars"].as_u64() {
+                print_option("stars", &stars.to_string());
+            }
+            if let Some(lang) = meta["language"].as_str() {
+                print_option("language", lang);
+            }
+        }
+    } else if let Some(model_id) = ex["hf_model_id"].as_str() {
+        print_option("model", model_id);
+        if let Some(task) = ex["hf_task"].as_str() {
+            print_option("task", task);
+        }
+        if let Some(dl) = ex["hf_downloads"].as_u64() {
+            print_option("downloads", &dl.to_string());
+        }
+        if let Some(likes) = ex["hf_likes"].as_u64() {
+            print_option("likes", &likes.to_string());
+        }
+    } else if let Some(image) = ex["docker_full_name"].as_str() {
+        print_option("image", image);
+        if let Some(pulls) = ex["docker_pulls"].as_u64() {
+            print_option("pulls", &pulls.to_string());
+        }
+        if let Some(stars) = ex["docker_stars"].as_u64() {
+            print_option("stars", &stars.to_string());
+        }
+    } else if let Some(sub) = ex["reddit_subreddit"].as_str() {
+        print_option("subreddit", &format!("r/{sub}"));
+        if let Some(author) = ex["reddit_author"].as_str() {
+            print_option("author", &format!("u/{author}"));
+        }
+        if let Some(score) = ex["reddit_score"].as_i64() {
+            print_option("score", &score.to_string());
+        }
+        if let Some(n) = ex["reddit_num_comments"].as_u64() {
+            print_option("comments", &n.to_string());
+        }
+    } else if let Some(hn_type) = ex["hn_type"].as_str() {
+        print_option("type", hn_type);
+        if let Some(author) = ex["hn_author"].as_str() {
+            print_option("author", author);
+        }
+        if let Some(pts) = ex["hn_points"].as_u64() {
+            print_option("points", &pts.to_string());
+        }
+        if let Some(n) = ex["hn_comment_count"].as_u64() {
+            print_option("comments", &n.to_string());
+        }
+    } else if ex["so_question_id"].is_number() {
+        if let Some(score) = ex["so_score"].as_i64() {
+            print_option("score", &score.to_string());
+        }
+        if let Some(ans) = ex["so_answer_count"].as_u64() {
+            let suffix = if ex["so_is_answered"].as_bool().unwrap_or(false) {
+                " (answered)"
+            } else {
+                ""
+            };
+            print_option("answers", &format!("{ans}{suffix}"));
+        }
+        if let Some(views) = ex["so_view_count"].as_u64() {
+            print_option("views", &views.to_string());
+        }
+    } else if let Some(author) = ex["devto_author"].as_str() {
+        print_option("author", author);
+        if let Some(mins) = ex["devto_reading_time_mins"].as_u64() {
+            print_option("reading time", &format!("{mins} min"));
+        }
+        if let Some(r) = ex["devto_reactions"].as_u64() {
+            print_option("reactions", &r.to_string());
+        }
+    }
+}
+
+fn print_vertical_summary(extractor: &str, extra: Option<&serde_json::Value>) {
+    print_option("extractor", extractor_label(extractor));
+    if let Some(ex) = extra {
+        print_vertical_extra(ex);
+    }
+    println!();
+}
+
 pub(crate) fn emit_scrape_result(
     cfg: &Config,
     result: &crate::services::types::ScrapeResult,
@@ -89,6 +219,9 @@ pub(crate) fn emit_scrape_result(
     } else {
         println!("{} {}", primary("Scrape Results for"), normalized);
         println!("{}\n", muted("As of: now"));
+        if let Some(name) = &result.extractor_name {
+            print_vertical_summary(name, result.extra.as_ref());
+        }
         println!("{}", result.output);
         log_done(&format!(
             "command=scrape url={normalized} bytes={bytes} format={:?}",
