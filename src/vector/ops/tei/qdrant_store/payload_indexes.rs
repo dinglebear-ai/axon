@@ -3,6 +3,7 @@ use crate::core::http::internal_service_http_client;
 use crate::vector::ops::qdrant::qdrant_base;
 use std::error::Error;
 use std::future::Future;
+use std::time::Duration;
 
 type IndexFut<'a> =
     std::pin::Pin<Box<dyn Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send + 'a>>;
@@ -47,6 +48,44 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "yt_channel",
 ];
 
+const MAX_INDEX_ATTEMPTS: u32 = 3;
+
+/// PUT a single payload-index request with up to MAX_INDEX_ATTEMPTS attempts.
+///
+/// Backoff: 500ms after attempt 1, 1000ms after attempt 2. Idempotent — Qdrant
+/// returns 200 when the index already exists, so retries are always safe.
+async fn put_index_with_retry(
+    client: reqwest::Client,
+    url: String,
+    body: serde_json::Value,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    for attempt in 1..=MAX_INDEX_ATTEMPTS {
+        let result = client
+            .put(&url)
+            .json(&body)
+            .send()
+            .await
+            .and_then(|r| r.error_for_status());
+        match result {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                if attempt < MAX_INDEX_ATTEMPTS {
+                    tracing::warn!(
+                        attempt,
+                        max_attempts = MAX_INDEX_ATTEMPTS,
+                        error = %e,
+                        "qdrant payload index PUT transient error, retrying"
+                    );
+                    tokio::time::sleep(Duration::from_millis(500 * u64::from(attempt))).await;
+                } else {
+                    return Err(Box::new(e));
+                }
+            }
+        }
+    }
+    unreachable!()
+}
+
 /// Creates keyword payload indexes on commonly-queried fields.
 ///
 /// Required by the Qdrant `/facet` endpoint used by `domains` and `sources`.
@@ -64,14 +103,14 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
 
     for field in KEYWORD_INDEX_FIELDS {
         let url = index_url.clone();
+        let c = client.clone();
         futures.push(Box::pin(async move {
-            client
-                .put(&url)
-                .json(&serde_json::json!({"field_name": field, "field_schema": "keyword"}))
-                .send()
-                .await?
-                .error_for_status()?;
-            Ok(())
+            put_index_with_retry(
+                c,
+                url,
+                serde_json::json!({"field_name": field, "field_schema": "keyword"}),
+            )
+            .await
         }));
     }
 
@@ -86,6 +125,13 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
 
 /// Appends integer, datetime, and bool index futures to the shared futures vec.
 fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str) {
+    let client = match internal_service_http_client() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("push_non_keyword_indexes: failed to build HTTP client: {e}");
+            return;
+        }
+    };
     let integer_fields = [
         ("chunk_index", index_url.to_string()),
         ("git_number", index_url.to_string()),
@@ -97,33 +143,26 @@ fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str
         ("gh_line_start", index_url.to_string()),
         ("gh_line_end", index_url.to_string()),
     ];
-    let client = match internal_service_http_client() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!("push_non_keyword_indexes: failed to build HTTP client: {e}");
-            return;
-        }
-    };
     for (field, url) in integer_fields {
+        let c = client.clone();
         futures.push(Box::pin(async move {
-            client
-                .put(&url)
-                .json(&serde_json::json!({"field_name": field, "field_schema": "integer"}))
-                .send()
-                .await?
-                .error_for_status()?;
-            Ok(())
+            put_index_with_retry(
+                c,
+                url,
+                serde_json::json!({"field_name": field, "field_schema": "integer"}),
+            )
+            .await
         }));
     }
     let datetime_url = index_url.to_string();
+    let c = client.clone();
     futures.push(Box::pin(async move {
-        client
-            .put(&datetime_url)
-            .json(&serde_json::json!({"field_name": "scraped_at", "field_schema": "datetime"}))
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(())
+        put_index_with_retry(
+            c,
+            datetime_url,
+            serde_json::json!({"field_name": "scraped_at", "field_schema": "datetime"}),
+        )
+        .await
     }));
     // Boolean indexes for GitHub flag fields (gh_is_fork, gh_is_archived).
     // Qdrant has a native "bool" index type — booleans must not use "keyword".
@@ -132,14 +171,18 @@ fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str
         ("gh_is_archived", index_url.to_string()),
     ];
     for (field, url) in bool_fields {
+        let c = client.clone();
         futures.push(Box::pin(async move {
-            client
-                .put(&url)
-                .json(&serde_json::json!({"field_name": field, "field_schema": "bool"}))
-                .send()
-                .await?
-                .error_for_status()?;
-            Ok(())
+            put_index_with_retry(
+                c,
+                url,
+                serde_json::json!({"field_name": field, "field_schema": "bool"}),
+            )
+            .await
         }));
     }
 }
+
+#[cfg(test)]
+#[path = "payload_indexes_tests.rs"]
+mod tests;
