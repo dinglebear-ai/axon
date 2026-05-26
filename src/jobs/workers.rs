@@ -200,34 +200,28 @@ async fn watchdog_loop(
             biased;
             _ = shutdown.cancelled() => break,
             _ = ticker.tick() => {
-                match crate::jobs::store::reclaim_stale_running_jobs_detailed(
+                let reclaimed = crate::jobs::store::reclaim_stale_running_jobs_detailed(
                     &pool,
                     stale_threshold_ms,
                 )
-                .await
-                {
-                    Ok(reclaimed) if reclaimed.total() > 0 => {
-                        cancel_reclaimed_local_tokens(&cancel_store, &reclaimed);
-                        // notify_waiters (not notify_one) so all parked lanes
-                        // for each kind wake — a single reclaim sweep can free
-                        // multiple jobs of the same kind, and embed/ingest run
-                        // multiple lanes that share one Notify handle.
-                        if reclaimed.count_for(JobKind::Crawl) > 0 {
-                            notifies.crawl.notify_waiters();
-                        }
-                        if reclaimed.count_for(JobKind::Embed) > 0 {
-                            notifies.embed.notify_waiters();
-                        }
-                        if reclaimed.count_for(JobKind::Extract) > 0 {
-                            notifies.extract.notify_waiters();
-                        }
-                        if reclaimed.count_for(JobKind::Ingest) > 0 {
-                            notifies.ingest.notify_waiters();
-                        }
+                .await;
+                if reclaimed.total() > 0 {
+                    cancel_reclaimed_local_tokens(&cancel_store, &reclaimed);
+                    // notify_waiters (not notify_one) so all parked lanes
+                    // for each kind wake — a single reclaim sweep can free
+                    // multiple jobs of the same kind, and embed/ingest run
+                    // multiple lanes that share one Notify handle.
+                    if reclaimed.count_for(JobKind::Crawl) > 0 {
+                        notifies.crawl.notify_waiters();
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::warn!(error = %e, "watchdog: periodic reclaim failed");
+                    if reclaimed.count_for(JobKind::Embed) > 0 {
+                        notifies.embed.notify_waiters();
+                    }
+                    if reclaimed.count_for(JobKind::Extract) > 0 {
+                        notifies.extract.notify_waiters();
+                    }
+                    if reclaimed.count_for(JobKind::Ingest) > 0 {
+                        notifies.ingest.notify_waiters();
                     }
                 }
             }
