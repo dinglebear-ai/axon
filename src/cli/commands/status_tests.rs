@@ -418,3 +418,149 @@ fn crawl_progress_shows_counts_once_pages_arrive() {
     let summary = crawl_progress_summary(&job, &by_id, &totals);
     assert_eq!(summary.as_deref(), Some("12 crawled · 10 docs"));
 }
+
+// ── extract_progress_summary regression tests ─────────────────────────────────
+
+fn extract_job(status: &str, result_json: Option<serde_json::Value>) -> ServiceJob {
+    ServiceJob {
+        id: Uuid::parse_str("44444444-4444-4444-4444-444444444444").unwrap(),
+        status: status.to_string(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        started_at: None,
+        finished_at: None,
+        error_text: None,
+        url: Some("https://example.com/extract".to_string()),
+        source_type: None,
+        target: Some("https://example.com/extract".to_string()),
+        urls_json: None,
+        result_json,
+        config_json: None,
+        attempt_count: 0,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    }
+}
+
+#[test]
+fn extract_progress_shows_starting_when_running_with_no_result_json() {
+    let job = extract_job("running", None);
+    let summary = extract_progress_summary(&job);
+    assert_eq!(
+        summary.as_deref(),
+        Some("starting…"),
+        "running extract with no result_json should show 'starting…'"
+    );
+}
+
+#[test]
+fn extract_progress_silent_for_completed_with_no_result_json() {
+    let job = extract_job("completed", None);
+    let summary = extract_progress_summary(&job);
+    assert!(
+        summary.is_none(),
+        "completed extract with no result_json should show nothing; got {summary:?}"
+    );
+}
+
+#[test]
+fn extract_progress_shows_extracting_when_running_with_zero_items() {
+    let job = extract_job("running", Some(json!({"total_items": 0})));
+    let summary = extract_progress_summary(&job);
+    assert_eq!(
+        summary.as_deref(),
+        Some("extracting…"),
+        "running extract with zero items should show 'extracting…'"
+    );
+}
+
+#[test]
+fn extract_progress_silent_for_pending() {
+    let job = extract_job("pending", None);
+    let summary = extract_progress_summary(&job);
+    assert!(
+        summary.is_none(),
+        "pending extract should show nothing; got {summary:?}"
+    );
+}
+
+#[test]
+fn extract_progress_shows_count_when_items_present() {
+    let job = extract_job("running", Some(json!({"total_items": 7})));
+    let summary = extract_progress_summary(&job);
+    assert_eq!(summary.as_deref(), Some("7 items"));
+}
+
+// ── ingest_progress_summary regression tests ──────────────────────────────────
+
+fn ingest_job(status: &str, result_json: Option<serde_json::Value>) -> ServiceJob {
+    ServiceJob {
+        id: Uuid::parse_str("55555555-5555-5555-5555-555555555555").unwrap(),
+        status: status.to_string(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        started_at: None,
+        finished_at: None,
+        error_text: None,
+        url: None,
+        source_type: Some("github".to_string()),
+        target: Some("https://github.com/example/repo".to_string()),
+        urls_json: None,
+        result_json,
+        config_json: None,
+        attempt_count: 0,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    }
+}
+
+#[test]
+fn ingest_progress_shows_starting_when_running_with_no_result_json() {
+    let job = ingest_job("running", None);
+    let summary = ingest_progress_summary(&job);
+    assert_eq!(
+        summary.as_deref(),
+        Some("starting…"),
+        "running ingest with no result_json should show 'starting…'"
+    );
+}
+
+#[test]
+fn ingest_progress_silent_for_completed_with_no_result_json() {
+    let job = ingest_job("completed", None);
+    let summary = ingest_progress_summary(&job);
+    assert!(
+        summary.is_none(),
+        "completed ingest with no result_json should show nothing; got {summary:?}"
+    );
+}
+
+#[test]
+fn ingest_progress_shows_ingesting_when_running_with_zero_chunks() {
+    let job = ingest_job("running", Some(json!({"chunks": 0})));
+    let summary = ingest_progress_summary(&job);
+    assert_eq!(
+        summary.as_deref(),
+        Some("ingesting…"),
+        "running ingest with zero chunks should show 'ingesting…'"
+    );
+}
+
+#[test]
+fn ingest_progress_silent_for_pending() {
+    let job = ingest_job("pending", None);
+    let summary = ingest_progress_summary(&job);
+    assert!(
+        summary.is_none(),
+        "pending ingest should show nothing; got {summary:?}"
+    );
+}
+
+#[test]
+fn ingest_progress_shows_chunks_count() {
+    let job = ingest_job("running", Some(json!({"chunks_embedded": 450})));
+    let summary = ingest_progress_summary(&job);
+    assert_eq!(summary.as_deref(), Some("450 chunks"));
+}

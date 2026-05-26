@@ -1,5 +1,6 @@
 use crate::cli::commands::resolve_input_text;
 use crate::core::config::Config;
+use crate::core::ui::{hyperlink, muted, primary, print_aurora_table};
 use crate::services::query as query_service;
 use std::error::Error;
 
@@ -17,10 +18,17 @@ pub async fn run_suggest(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 })).collect::<Vec<_>>()
             }))?
         );
+    } else if result.suggestions.is_empty() {
+        println!("{}", muted("No suggestions found."));
     } else {
-        for suggestion in &result.suggestions {
-            println!("{}\t{}", suggestion.url, suggestion.reason);
-        }
+        println!("{}", primary("Suggested sources to crawl"));
+        print_aurora_table(
+            &["URL", "Reason"],
+            result
+                .suggestions
+                .iter()
+                .map(|s| vec![hyperlink(&s.url, &s.url), s.reason.clone()]),
+        );
     }
     Ok(())
 }
