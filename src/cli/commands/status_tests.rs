@@ -341,3 +341,80 @@ fn embed_progress_silent_for_running_with_zero_docs_and_zero_total() {
         "docs_total=0 should not produce '0/0 docs' nonsense"
     );
 }
+
+// ── crawl_progress_summary regression tests (axon_rust-q6ou) ─────────────────
+
+fn crawl_job(status: &str, result_json: Option<serde_json::Value>) -> ServiceJob {
+    ServiceJob {
+        id: Uuid::parse_str("33333333-3333-3333-3333-333333333333").unwrap(),
+        status: status.to_string(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        started_at: None,
+        finished_at: None,
+        error_text: None,
+        url: Some("https://eslint.org/docs/latest/use/getting-started".to_string()),
+        source_type: None,
+        target: Some("https://eslint.org/docs/latest/use/getting-started".to_string()),
+        urls_json: None,
+        result_json,
+        config_json: None,
+        attempt_count: 0,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    }
+}
+
+fn no_embeds() -> (HashMap<String, &'static ServiceJob>, HashMap<String, u64>) {
+    (HashMap::new(), HashMap::new())
+}
+
+#[test]
+fn crawl_progress_shows_starting_when_running_with_no_result_json() {
+    let job = crawl_job("running", None);
+    let (by_id, totals) = no_embeds();
+    let summary = crawl_progress_summary(&job, &by_id, &totals);
+    assert_eq!(
+        summary.as_deref(),
+        Some("starting…"),
+        "running crawl with no result_json should show 'starting…'"
+    );
+}
+
+#[test]
+fn crawl_progress_silent_for_pending_with_no_result_json() {
+    let job = crawl_job("pending", None);
+    let (by_id, totals) = no_embeds();
+    let summary = crawl_progress_summary(&job, &by_id, &totals);
+    assert!(
+        summary.is_none(),
+        "pending crawl with no result_json should show nothing; got {summary:?}"
+    );
+}
+
+#[test]
+fn crawl_progress_shows_crawling_when_running_with_zero_pages() {
+    let job = crawl_job(
+        "running",
+        Some(json!({"pages_crawled": 0, "md_created": 0})),
+    );
+    let (by_id, totals) = no_embeds();
+    let summary = crawl_progress_summary(&job, &by_id, &totals);
+    assert_eq!(
+        summary.as_deref(),
+        Some("crawling…"),
+        "running crawl with zero pages should show 'crawling…'"
+    );
+}
+
+#[test]
+fn crawl_progress_shows_counts_once_pages_arrive() {
+    let job = crawl_job(
+        "running",
+        Some(json!({"pages_crawled": 12, "md_created": 10, "error_pages": 0})),
+    );
+    let (by_id, totals) = no_embeds();
+    let summary = crawl_progress_summary(&job, &by_id, &totals);
+    assert_eq!(summary.as_deref(), Some("12 crawled · 10 docs"));
+}
