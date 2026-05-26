@@ -9,9 +9,10 @@ use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tokio::fs;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 pub(crate) struct ParsedClaudeSession {
     pub(crate) text: String,
@@ -44,6 +45,7 @@ pub(super) async fn collect_claude_docs(
     let mut docs: Vec<SessionDoc> = Vec::new();
     let mut read_dir = fs::read_dir(root).await?;
     let mut futures = FuturesUnordered::new();
+    let max_text_bytes = super::session_ingest_max_bytes_for_config(cfg);
 
     while let Some(entry) = read_dir.next_entry().await? {
         let path = entry.path();
@@ -85,7 +87,7 @@ pub(super) async fn collect_claude_docs(
                 gh_repo: gh_repo.clone(),
             };
             futures.push(tokio::spawn(async move {
-                parse_claude_file(sub_path, coll_clone, mtime, session_meta).await
+                parse_claude_file(sub_path, coll_clone, mtime, session_meta, max_text_bytes).await
             }));
 
             // drain backpressure to avoid unbounded future accumulation
@@ -108,14 +110,120 @@ pub(super) async fn collect_claude_docs(
     Ok(docs)
 }
 
+/// Stream a Claude JSONL session file line-by-line, accumulating extracted text up to
+/// `max_text_bytes`. Avoids loading the entire file into memory, so files of any size are
+/// handled — large files are truncated at the text limit rather than skipped.
+async fn parse_claude_file_streamed(
+    path: &Path,
+    max_text_bytes: usize,
+) -> IngestResult<ParsedClaudeSession> {
+    let file = fs::File::open(path).await?;
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+
+    let mut session_text = String::new();
+    let mut turn_count: u32 = 0;
+    let mut model: Option<String> = None;
+    let mut has_tool_use = false;
+    let mut tools_used: HashSet<String> = HashSet::new();
+    let mut workspace_path: Option<String> = None;
+    let mut git_branch: Option<String> = None;
+    let mut last_message_at: Option<String> = None;
+
+    while let Some(line) = lines.next_line().await? {
+        let Ok(val) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+
+        if workspace_path.is_none() {
+            workspace_path = val["cwd"].as_str().map(str::to_string);
+        }
+        if git_branch.is_none() {
+            git_branch = val["gitBranch"].as_str().map(str::to_string);
+        }
+
+        if val["isMeta"].as_bool().unwrap_or(false) {
+            continue;
+        }
+
+        let role = if val["type"] == "user" {
+            "user"
+        } else if val["type"] == "assistant" {
+            "assistant"
+        } else {
+            continue;
+        };
+
+        if let Some(ts) = val["timestamp"].as_str() {
+            last_message_at = Some(ts.to_string());
+        }
+
+        if role == "assistant" && model.is_none() {
+            model = val["message"]["model"].as_str().map(str::to_string);
+        }
+
+        let msg_content = &val["message"]["content"];
+        let text = if msg_content.is_string() {
+            msg_content.as_str().unwrap().to_string()
+        } else if let Some(arr) = msg_content.as_array() {
+            let mut combined = String::new();
+            for item in arr {
+                if item["type"].as_str() == Some("tool_use") {
+                    has_tool_use = true;
+                    if let Some(name) = item["name"].as_str() {
+                        tools_used.insert(name.to_string());
+                    }
+                }
+                if let Some(t) = item["text"].as_str() {
+                    combined.push_str(t);
+                    combined.push('\n');
+                }
+            }
+            combined
+        } else {
+            continue;
+        };
+
+        if !text.trim().is_empty() {
+            let formatted = format!(
+                "\n\n### {}:\n{}",
+                role.to_uppercase(),
+                super::redact_session_text(&text)
+            );
+            // Check before append — stop before exceeding the per-doc text limit.
+            if session_text.len() + formatted.len() > max_text_bytes {
+                break;
+            }
+            session_text.push_str(&formatted);
+            if role == "user" {
+                turn_count += 1;
+            }
+        }
+    }
+
+    let mut tools_list: Vec<String> = tools_used.into_iter().collect();
+    tools_list.sort();
+
+    Ok(ParsedClaudeSession {
+        text: session_text,
+        turn_count,
+        model,
+        has_tool_use,
+        tools_used: tools_list,
+        workspace_path,
+        git_branch,
+        last_message_at,
+    })
+}
+
 async fn parse_claude_file(
     path: PathBuf,
     collection: String,
     mtime: SystemTime,
     session_meta: SessionMeta,
+    max_text_bytes: usize,
 ) -> IngestResult<Option<SessionDoc>> {
-    let content = super::read_session_file_limited(&path).await?;
-    let parsed = parse_claude_jsonl(&content);
+    let parsed = parse_claude_file_streamed(&path, max_text_bytes).await?;
     if parsed.text.trim().is_empty() {
         return Ok(None);
     }
@@ -184,7 +292,8 @@ fn clean_claude_project_name(dir_name: &str) -> String {
     }
 }
 
-/// Extract session text and metadata from Claude JSONL (pure, no I/O).
+/// Extract session text and metadata from Claude JSONL (pure, no I/O). Used in tests.
+#[cfg(test)]
 pub(crate) fn parse_claude_jsonl(content: &str) -> ParsedClaudeSession {
     let mut session_text = String::new();
     let mut turn_count: u32 = 0;
@@ -244,7 +353,7 @@ pub(crate) fn parse_claude_jsonl(content: &str) -> ParsedClaudeSession {
                     }
                 }
                 if let Some(t) = item["text"].as_str() {
-                    combined.push_str(&super::redact_session_text(t));
+                    combined.push_str(t);
                     combined.push('\n');
                 }
             }

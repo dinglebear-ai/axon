@@ -9,9 +9,10 @@ use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tokio::fs;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 pub(crate) struct ParsedCodexSession {
     pub(crate) text: String,
@@ -43,6 +44,7 @@ pub(super) async fn collect_codex_docs(
     // Track (dir, depth, project_name): depth 1 = direct children of root (project dirs).
     let mut dir_entries: Vec<(PathBuf, usize, String)> = vec![(root, 0, String::new())];
     let mut futures = FuturesUnordered::new();
+    let max_text_bytes = super::session_ingest_max_bytes_for_config(cfg);
 
     while let Some((current_dir, depth, project_name)) = dir_entries.pop() {
         let current_project = if depth == 1 {
@@ -79,7 +81,7 @@ pub(super) async fn collect_codex_docs(
                 gh_repo: None,
             };
             futures.push(tokio::spawn(async move {
-                parse_codex_file(path, collection, mtime, session_meta).await
+                parse_codex_file(path, collection, mtime, session_meta, max_text_bytes).await
             }));
 
             if futures.len() >= 64
@@ -101,14 +103,101 @@ pub(super) async fn collect_codex_docs(
     Ok(docs)
 }
 
+/// Stream a Codex JSONL session file line-by-line, accumulating extracted text up to
+/// `max_text_bytes`. Avoids loading the entire file into memory.
+async fn parse_codex_file_streamed(
+    path: &Path,
+    max_text_bytes: usize,
+) -> IngestResult<ParsedCodexSession> {
+    let file = fs::File::open(path).await?;
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+
+    let mut session_text = String::new();
+    let mut turn_count: u32 = 0;
+    let mut model: Option<String> = None;
+    let mut has_tool_use = false;
+    let mut tools_used: HashSet<String> = HashSet::new();
+    let mut workspace_path: Option<String> = None;
+
+    while let Some(line) = lines.next_line().await? {
+        let Ok(val) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+
+        if val["type"] == "session_meta" {
+            if workspace_path.is_none() {
+                workspace_path = val["payload"]["cwd"].as_str().map(str::to_string);
+            }
+            if model.is_none() {
+                model = val["payload"]["model"]
+                    .as_str()
+                    .or_else(|| val["payload"]["model_provider"].as_str())
+                    .map(str::to_string);
+            }
+            continue;
+        }
+
+        if val["type"] != "response_item" {
+            continue;
+        }
+        let role = val["payload"]["role"].as_str().unwrap_or("unknown");
+        if let Some(arr) = val["payload"]["content"].as_array() {
+            let mut combined = String::new();
+            for item in arr {
+                let item_type = item["type"].as_str().unwrap_or("");
+                if matches!(item_type, "function_call" | "tool_call" | "tool_use") {
+                    has_tool_use = true;
+                    let name = item["name"]
+                        .as_str()
+                        .or_else(|| item["function"]["name"].as_str());
+                    if let Some(n) = name {
+                        tools_used.insert(n.to_string());
+                    }
+                }
+                if let Some(t) = item["text"].as_str() {
+                    combined.push_str(&super::redact_session_text(t));
+                    combined.push('\n');
+                } else if let Some(t) = item["input_text"].as_str() {
+                    combined.push_str(&super::redact_session_text(t));
+                    combined.push('\n');
+                }
+            }
+            if !combined.trim().is_empty() {
+                let formatted = format!("\n\n### {}:\n{}", role.to_uppercase(), combined);
+                // Check before append — stop before exceeding the per-doc text limit.
+                if session_text.len() + formatted.len() > max_text_bytes {
+                    break;
+                }
+                session_text.push_str(&formatted);
+                if role == "user" {
+                    turn_count += 1;
+                }
+            }
+        }
+    }
+
+    let mut tools_list: Vec<String> = tools_used.into_iter().collect();
+    tools_list.sort();
+
+    Ok(ParsedCodexSession {
+        text: session_text,
+        turn_count,
+        model,
+        has_tool_use,
+        tools_used: tools_list,
+        workspace_path,
+    })
+}
+
 async fn parse_codex_file(
     path: PathBuf,
     collection: String,
     mtime: SystemTime,
     session_meta: SessionMeta,
+    max_text_bytes: usize,
 ) -> IngestResult<Option<SessionDoc>> {
-    let content = super::read_session_file_limited(&path).await?;
-    let parsed = parse_codex_jsonl(&content);
+    let parsed = parse_codex_file_streamed(&path, max_text_bytes).await?;
     if parsed.text.trim().is_empty() {
         return Ok(None);
     }
@@ -155,7 +244,8 @@ async fn parse_codex_file(
     }))
 }
 
-/// Extract session text and metadata from Codex JSONL (pure, no I/O).
+/// Extract session text and metadata from Codex JSONL (pure, no I/O). Used in tests.
+#[cfg(test)]
 pub(crate) fn parse_codex_jsonl(content: &str) -> ParsedCodexSession {
     let mut session_text = String::new();
     let mut turn_count: u32 = 0;

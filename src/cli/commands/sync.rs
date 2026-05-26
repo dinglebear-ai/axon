@@ -1,5 +1,6 @@
 use crate::cli::commands::CommandFuture;
 use crate::core::config::Config;
+use crate::core::ui::muted;
 use crate::services::context::ServiceContext;
 
 pub fn run_sync<'a>(cfg: &'a Config, _ctx: &'a ServiceContext) -> CommandFuture<'a> {
@@ -15,7 +16,7 @@ pub fn run_sync<'a>(cfg: &'a Config, _ctx: &'a ServiceContext) -> CommandFuture<
         if cfg.json_output {
             println!("{}", serde_json::json!({ "synced": 0, "pending": 0 }));
         } else {
-            println!("Sync pending: 0 synced, 0 pending");
+            println!("{}", muted("Sync pending: 0 synced, 0 pending"));
         }
         Ok(())
     })

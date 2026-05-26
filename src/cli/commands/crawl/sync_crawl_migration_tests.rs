@@ -1,6 +1,6 @@
 use crate::core::config::{Config, RenderMode};
 use crate::crawl::engine::CrawlSummary;
-use crate::services::crawl_sync::{ChromeFallbackPlan, plan_chrome_fallback};
+use crate::services::crawl_sync::chrome_fallback::{ChromeFallbackPlan, plan_chrome_fallback};
 
 #[test]
 fn autoswitch_low_coverage_without_thin_urls_uses_html_backfill_before_chrome() {

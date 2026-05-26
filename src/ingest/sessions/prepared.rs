@@ -3,7 +3,7 @@ use crate::core::content::url_to_domain;
 use crate::vector::ops::{PreparedDoc, chunk_text};
 use serde::{Deserialize, Serialize};
 
-const MAX_PREPARED_SESSION_DOCS: usize = 256;
+pub(crate) const MAX_PREPARED_SESSION_DOCS: usize = 256;
 const MAX_PREPARED_SESSION_METADATA_BYTES: usize = 64 * 1024;
 const RESERVED_EXTRA_KEYS: &[&str] = &[
     "agent",
@@ -53,16 +53,8 @@ impl IngestSessionsPreparedRequest {
         }
 
         let per_doc_limit = super::session_ingest_max_bytes_for_config(cfg);
-        let total_limit = per_doc_limit.saturating_mul(4);
-        let mut total_text = 0usize;
         for doc in &self.docs {
             doc.validate(per_doc_limit)?;
-            total_text = total_text.saturating_add(doc.text.len());
-        }
-        if total_text > total_limit {
-            return Err(format!(
-                "total prepared session text exceeds limit: {total_text} > {total_limit}"
-            ));
         }
         Ok(())
     }
