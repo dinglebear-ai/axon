@@ -1,6 +1,9 @@
 use crate::core::config::CommandKind;
 use crate::core::config::Config;
-use crate::services::setup::{self, LocalSetupInitOptions, LocalSetupMode, StackAction};
+use crate::core::ui::{accent, muted, primary, print_aurora_table, symbol_for_status};
+use crate::services::setup::{
+    self, LocalSetupInitOptions, LocalSetupMode, LocalSetupStatus, StackAction,
+};
 use serde::Serialize;
 use serde_json::json;
 use std::error::Error;
@@ -73,18 +76,30 @@ fn run_targets_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     if targets.is_empty() {
-        println!("No concrete SSH targets found in ~/.ssh/config");
+        println!(
+            "{}",
+            muted("No concrete SSH targets found in ~/.ssh/config")
+        );
         return Ok(());
     }
 
-    for target in targets {
-        let host = target.host_name.as_deref().unwrap_or(&target.alias);
-        let user = target.user.as_deref().unwrap_or("-");
-        let port = target
-            .port
-            .map_or_else(|| "-".to_string(), |value| value.to_string());
-        println!("{}\thost={host}\tuser={user}\tport={port}", target.alias);
-    }
+    println!("{}", primary("SSH Targets"));
+    print_aurora_table(
+        &["Alias", "Host", "User", "Port"],
+        targets.iter().map(|target| {
+            let host = target.host_name.as_deref().unwrap_or(&target.alias);
+            let user = target.user.as_deref().unwrap_or("-");
+            let port = target
+                .port
+                .map_or_else(|| "-".to_string(), |value| value.to_string());
+            vec![
+                accent(&target.alias),
+                host.to_string(),
+                user.to_string(),
+                port,
+            ]
+        }),
+    );
     Ok(())
 }
 
@@ -95,9 +110,9 @@ fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
             serde_json::to_string_pretty(&json!({ "usage": USAGE_LINES }))?
         );
     } else {
-        println!("Usage:");
+        println!("{}", primary("Usage"));
         for line in USAGE_LINES {
-            println!("  {line}");
+            println!("  {}", muted(line));
         }
     }
     Ok(())
@@ -222,17 +237,27 @@ fn print_plugin_hook_report(cfg: &Config, report: &PluginHookReport) -> Result<(
         if let Some(setup) = &report.setup {
             print_local_setup_report(cfg, setup)?;
         }
-        println!("Plugin hook policy: {:?}", report.exit_policy);
-        println!("Plugin hook ran setup: {}", report.ran_setup);
+        println!(
+            "{} {}",
+            muted("plugin hook policy:"),
+            accent(&format!("{:?}", report.exit_policy))
+        );
+        println!(
+            "{} {}",
+            muted("plugin hook ran setup:"),
+            accent(&report.ran_setup.to_string())
+        );
         if !report.blocking_failures.is_empty() {
             println!(
-                "Plugin hook blocking failures: {}",
+                "{} {}",
+                primary("blocking failures:"),
                 report.blocking_failures.join(", ")
             );
         }
         if !report.advisory_failures.is_empty() {
             println!(
-                "Plugin hook advisory failures: {}",
+                "{} {}",
+                muted("advisory failures:"),
                 report.advisory_failures.join(", ")
             );
         }
@@ -301,7 +326,7 @@ fn blocking_failures(report: &setup::LocalSetupReport) -> Vec<String> {
         .phases
         .iter()
         .filter(|phase| {
-            matches!(phase.status, setup::LocalSetupStatus::Error) && !phase.is_hook_advisory()
+            matches!(phase.status, LocalSetupStatus::Error) && !phase.is_hook_advisory()
         })
         .map(|phase| phase.name.to_string())
         .collect();
@@ -315,9 +340,7 @@ fn advisory_failures(report: &setup::LocalSetupReport) -> Vec<String> {
     report
         .phases
         .iter()
-        .filter(|phase| {
-            matches!(phase.status, setup::LocalSetupStatus::Error) && phase.is_hook_advisory()
-        })
+        .filter(|phase| matches!(phase.status, LocalSetupStatus::Error) && phase.is_hook_advisory())
         .map(|phase| phase.name.to_string())
         .collect()
 }
@@ -331,36 +354,52 @@ fn print_local_setup_report(
         return Ok(());
     }
 
-    println!("Axon setup mode: {}", report.mode);
-    println!("Axon home: {}", report.axon_home.display());
-    println!("Config: {}", report.config_path.display());
-    println!("Env: {}", report.env_path.display());
-    println!("Compose: {}", report.compose_dir.display());
-    println!("Web panel: {}", report.web_panel_url);
-    println!("MCP: {}", report.mcp_url);
+    println!("{} {}", muted("setup mode:"), accent(report.mode));
+    println!("{} {}", muted("axon home:"), report.axon_home.display());
+    println!("{} {}", muted("config:"), report.config_path.display());
+    println!("{} {}", muted("env:"), report.env_path.display());
+    println!("{} {}", muted("compose:"), report.compose_dir.display());
+    println!("{} {}", muted("web panel:"), accent(&report.web_panel_url));
+    println!("{} {}", muted("mcp:"), accent(&report.mcp_url));
     println!(
-        "Token: AXON_MCP_HTTP_TOKEN presence is reported in setup phases; values are never printed"
+        "{}",
+        muted(
+            "token: AXON_MCP_HTTP_TOKEN presence is reported in setup phases; values are never printed"
+        )
     );
     println!(
-        "Timing: {:.1}s (target {}s, hard max {}s)",
+        "{} {:.1}s {} {}s {} {}s{}",
+        muted("timing:"),
         report.elapsed_ms as f64 / 1000.0,
+        muted("target"),
         report.target_seconds,
-        report.hard_max_seconds
+        muted("hard max"),
+        report.hard_max_seconds,
+        if report.met_target {
+            format!(" — {}", accent("met target"))
+        } else if report.exceeded_hard_max {
+            format!(" — {}", primary("exceeded hard maximum"))
+        } else {
+            format!(" — {}", muted("exceeded target"))
+        }
     );
-    if report.met_target {
-        println!("Timing status: met target");
-    } else if report.exceeded_hard_max {
-        println!("Timing status: exceeded hard maximum");
-    } else {
-        println!("Timing status: exceeded target");
-    }
+    println!();
     for phase in &report.phases {
+        let slug = match phase.status {
+            LocalSetupStatus::Ok => "completed",
+            LocalSetupStatus::Warn => "warn",
+            LocalSetupStatus::Error => "failed",
+            LocalSetupStatus::Skipped => "pending",
+        };
         println!(
-            "{:?}\t{}\t{}ms\t{}",
-            phase.status, phase.name, phase.elapsed_ms, phase.detail
+            "  {} {} {}",
+            symbol_for_status(slug),
+            phase.name,
+            muted(&format!("{}ms  {}", phase.elapsed_ms, phase.detail))
         );
     }
-    println!("Next diagnostic: axon doctor");
+    println!();
+    println!("{}", muted("next diagnostic: axon doctor"));
     Ok(())
 }
 
