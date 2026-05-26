@@ -116,7 +116,8 @@ fn render_stats(result: &serde_json::Value) -> Result<(), Box<dyn Error>> {
 }
 
 fn render_doctor(result: &serde_json::Value) -> Result<(), Box<dyn Error>> {
-    crate::cli::commands::doctor::render::render_doctor_report_human(result);
+    let payload = result.get("payload").unwrap_or(result);
+    crate::cli::commands::doctor::render::render_doctor_report_human(payload);
     Ok(())
 }
 
