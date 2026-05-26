@@ -233,7 +233,13 @@ fn crawl_progress_summary(
     embed_jobs_by_id: &HashMap<String, &ServiceJob>,
     embed_doc_totals: &HashMap<String, u64>,
 ) -> Option<String> {
-    let metrics = job.result_json.as_ref()?;
+    let Some(metrics) = job.result_json.as_ref() else {
+        return if job.status == "running" {
+            Some("starting…".to_string())
+        } else {
+            None
+        };
+    };
     match job.status.as_str() {
         "running" => {
             let crawled = metrics
@@ -245,7 +251,7 @@ fn crawl_progress_summary(
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             if crawled == 0 && docs == 0 {
-                return None;
+                return Some("crawling…".to_string());
             }
             let errors = metrics
                 .get("error_pages")
