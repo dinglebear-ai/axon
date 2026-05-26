@@ -140,6 +140,10 @@ pub async fn qdrant_retrieve_by_url(
 ///
 /// Note: VectorMode does not affect this path — filter-only retrieval
 /// works identically for both Named and Unnamed collections.
+/// Maximum number of URLs accepted in a single batch retrieve call.
+/// Callers with more URLs must fall back to buffer_unordered streaming.
+pub const BATCH_RETRIEVE_URL_CAP: usize = 64;
+
 pub async fn qdrant_batch_retrieve_by_urls(
     cfg: &Config,
     urls: &[String],
@@ -147,6 +151,13 @@ pub async fn qdrant_batch_retrieve_by_urls(
 ) -> Result<Vec<Vec<QdrantPoint>>> {
     if urls.is_empty() {
         return Ok(Vec::new());
+    }
+    if urls.len() > BATCH_RETRIEVE_URL_CAP {
+        return Err(anyhow!(
+            "qdrant_batch_retrieve_by_urls: batch too large ({} URLs, cap is {}); use buffer_unordered instead",
+            urls.len(),
+            BATCH_RETRIEVE_URL_CAP
+        ));
     }
     // Use the total-points ceiling (500), not the per-page scroll limit (256).
     // The query endpoint returns all matches in one shot; no pagination loop.
