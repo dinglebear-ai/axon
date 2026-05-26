@@ -1,6 +1,7 @@
 use super::normalize::{extract_cited_source_ids, normalize_ask_answer, parse_context_source_map};
 use super::validate_ask_llm_config;
 use crate::core::config::Config;
+use crate::services::llm_backend::LlmBackendKind;
 
 fn cfg() -> Config {
     Config::default()
@@ -116,4 +117,30 @@ fn validate_ask_llm_config_accepts_default_gemini_config() {
     let result = validate_ask_llm_config(&cfg);
 
     assert!(result.is_ok(), "Gemini config should pass validation");
+}
+
+#[test]
+fn validate_ask_llm_config_accepts_openai_compat_config() {
+    let mut cfg = Config::test_default();
+    cfg.llm_backend = LlmBackendKind::OpenAiCompat;
+    cfg.openai_base_url = "http://llama-cpp:8080/v1".to_string();
+    cfg.openai_model = "gemma".to_string();
+
+    let result = validate_ask_llm_config(&cfg);
+
+    assert!(
+        result.is_ok(),
+        "OpenAI-compatible config should pass validation"
+    );
+}
+
+#[test]
+fn validate_ask_llm_config_rejects_openai_compat_without_base_url() {
+    let mut cfg = Config::test_default();
+    cfg.llm_backend = LlmBackendKind::OpenAiCompat;
+    cfg.openai_model = "gemma".to_string();
+
+    let err = validate_ask_llm_config(&cfg).expect_err("base URL should be required");
+
+    assert!(err.to_string().contains("AXON_OPENAI_BASE_URL"));
 }

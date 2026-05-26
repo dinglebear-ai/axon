@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Axon Palette",
-  "version": "4.5.0",
+  "version": "4.8.0",
   "identifier": "tv.tootie.axon.palette",
   "build": {
-    "beforeDevCommand": "npm run vite:dev",
-    "beforeBuildCommand": "npm run vite:build",
+    "beforeDevCommand": "pnpm vite:dev",
+    "beforeBuildCommand": "pnpm vite:build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
@@ -14,13 +14,18 @@
       {
         "title": "Axon Palette",
         "label": "main",
-        "width": 1040,
-        "height": 620,
-        "minWidth": 720,
-        "minHeight": 420,
+        "width": 900,
+        "height": 560,
+        "minWidth": 560,
+        "minHeight": 76,
         "resizable": true,
         "center": true,
-        "visible": true
+        "visible": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": true,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {
@@ -31,10 +36,22 @@
     "active": true,
     "targets": [
       "deb",
-      "rpm"
+      "rpm",
+      "app",
+      "dmg",
+      "msi",
+      "nsis"
     ],
+    "category": "DeveloperTool",
+    "shortDescription": "Native command palette for Axon",
+    "longDescription": "Axon Palette provides a native desktop command surface for Axon REST workflows.",
     "icon": [
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
     ]
   }
 }

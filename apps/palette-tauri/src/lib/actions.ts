@@ -45,7 +45,7 @@ export const ACTIONS: PaletteAction[] = [
     aliases: ["summarize", "summary", "brief"],
     description: "Scrape one or more URLs and synthesize a concise summary.",
     example: "summarize https://docs.rs/serde",
-    tone: "success",
+    tone: "rose",
   },
   {
     label: "Ask question",
@@ -117,7 +117,7 @@ export const ACTIONS: PaletteAction[] = [
     aliases: ["embed", "index", "vectorize"],
     description: "Embed a URL, file, directory, or text input into the collection.",
     example: "embed https://docs.rs/serde",
-    tone: "success",
+    tone: "violet",
   },
   {
     label: "Extract data",
@@ -126,7 +126,7 @@ export const ACTIONS: PaletteAction[] = [
     aliases: ["extract", "structured", "parse"],
     description: "Queue structured extraction for one or more URLs.",
     example: "extract https://example.com/pricing",
-    tone: "success",
+    tone: "violet",
   },
   {
     label: "Ingest target",
@@ -180,7 +180,7 @@ export const ACTIONS: PaletteAction[] = [
     aliases: ["doctor", "health", "check"],
     description: "Check Qdrant, TEI, and LLM connectivity.",
     example: "doctor",
-    tone: "success",
+    tone: "info",
   },
 ];
 

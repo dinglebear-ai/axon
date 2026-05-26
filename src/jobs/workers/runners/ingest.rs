@@ -68,7 +68,17 @@ pub async fn run_ingest_job(
         tracing::warn!(job_id = %id, error = %e, "ingest progress persister task failed");
     }
 
-    Ok(Some(result.payload))
+    let progress_json: Option<String> =
+        sqlx::query_scalar("SELECT result_json FROM axon_ingest_jobs WHERE id=?")
+            .bind(id.to_string())
+            .fetch_optional(pool)
+            .await?
+            .flatten();
+    let current_progress = progress_json
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+
+    Ok(Some(merge_final_payload(current_progress, result.payload)))
 }
 
 async fn execute_prepared_sessions_ingest(
@@ -318,6 +328,39 @@ fn merge_progress(current: &mut serde_json::Value, progress: serde_json::Value) 
         return;
     }
     *current = serde_json::Value::Object(serde_json::Map::new());
+}
+
+fn merge_final_payload(
+    current_progress: serde_json::Value,
+    final_payload: serde_json::Value,
+) -> serde_json::Value {
+    let mut merged = current_progress
+        .as_object()
+        .cloned()
+        .unwrap_or_else(serde_json::Map::new);
+
+    if let serde_json::Value::Object(final_object) = final_payload {
+        for (key, value) in final_object {
+            merged.insert(key, value);
+        }
+    }
+
+    if !merged.contains_key("chunks_embedded")
+        && let Some(chunks) = merged.get("chunks").cloned()
+    {
+        merged.insert("chunks_embedded".to_string(), chunks);
+    }
+    if !merged.contains_key("chunks")
+        && let Some(chunks) = merged.get("chunks_embedded").cloned()
+    {
+        merged.insert("chunks".to_string(), chunks);
+    }
+    merged.insert(
+        "phase".to_string(),
+        serde_json::Value::String("completed".to_string()),
+    );
+
+    serde_json::Value::Object(merged)
 }
 
 #[cfg(test)]

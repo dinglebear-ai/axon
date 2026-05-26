@@ -1,12 +1,14 @@
 use crate::cli::commands::CommandFuture;
 use crate::cli::commands::common::{
-    handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors, handle_job_list,
-    handle_job_recover, handle_job_status, handle_worker_mode, parse_urls,
+    handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors,
+    handle_job_list_with_rows, handle_job_recover, handle_job_status, handle_worker_mode,
+    parse_urls,
 };
+use crate::cli::commands::job_progress::extract_progress_summary;
 use crate::core::config::Config;
 use crate::core::logging::log_info;
 use crate::core::ui::{
-    accent, confirm_destructive, muted, primary, symbol_for_status, wait_spinner_for,
+    accent, confirm_destructive, muted, primary, status_text, symbol_for_status, wait_spinner_for,
 };
 use crate::jobs::backend::JobKind;
 use crate::services::context::ServiceContext;
@@ -128,7 +130,7 @@ async fn maybe_handle_extract_subcommand(
             let jobs = job_service::list_jobs(service_context, JobKind::Extract, 50, 0).await?;
             let total = jobs.len() as i64;
             let result = JobListResult::new(jobs, total, 50, 0);
-            handle_job_list(cfg, &result, "Extract")?;
+            render_extract_list(cfg, &result)?;
         }
         "cleanup" => {
             let removed = job_service::cleanup_jobs(service_context, JobKind::Extract).await?;
@@ -155,6 +157,36 @@ async fn maybe_handle_extract_subcommand(
     }
 
     Ok(true)
+}
+
+fn render_extract_list(
+    cfg: &Config,
+    result: &JobListResult<crate::services::types::ServiceJob>,
+) -> Result<(), Box<dyn Error>> {
+    handle_job_list_with_rows(
+        cfg,
+        result,
+        "Extract",
+        None,
+        &["", "ID", "Status", "Target", "Progress"],
+        |job| {
+            let target = job
+                .urls_json
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| job.id.to_string());
+            let progress = extract_progress_summary(job)
+                .map(|p| muted(&p).to_string())
+                .unwrap_or_default();
+            vec![
+                symbol_for_status(&job.status),
+                job.id.to_string(),
+                status_text(&job.status),
+                muted(&target).to_string(),
+                progress,
+            ]
+        },
+    )
 }
 
 fn parse_extract_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>> {

@@ -105,7 +105,7 @@ fn preflight_skips_mutation_and_warnings_are_nonfatal() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Skipped\treadiness"));
+    assert!(stdout.contains("◐ readiness"));
     assert!(stdout.contains("readiness skipped because prerequisite checks failed"));
     assert_preflight_did_not_create_runtime_dirs(home.path());
 }
@@ -128,7 +128,7 @@ fn preflight_warns_when_required_child_dirs_are_missing() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Warn\tfilesystem"));
+    assert!(stdout.contains("⚠ filesystem"));
     assert!(stdout.contains("missing child directories"));
 }
 
@@ -158,7 +158,7 @@ fn preflight_reads_oauth_config_from_managed_env_file() {
 
     assert!(!output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Error\toauth"));
+    assert!(stdout.contains("✗ oauth"));
     assert!(stdout.contains("AXON_MCP_GOOGLE_CLIENT_ID"));
 }
 
@@ -180,8 +180,8 @@ fn setup_skips_runtime_phases_after_prerequisite_errors() {
 
     assert!(!output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Error\tdocker"));
-    assert!(stdout.contains("Skipped\tstack-up"));
+    assert!(stdout.contains("✗ docker"));
+    assert!(stdout.contains("◐ stack-up"));
     assert!(stdout.contains("stack startup skipped because prerequisite checks failed"));
 }
 
@@ -204,7 +204,7 @@ fn preflight_returns_nonzero_after_printing_plain_error_report() {
     assert!(!output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stdout.contains("Error\tdocker"));
+    assert!(stdout.contains("✗ docker"));
     assert!(stdout.contains("docker unavailable"));
     assert!(stderr.contains("axon preflight completed with failed phases"));
 }

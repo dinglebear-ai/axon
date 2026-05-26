@@ -1,7 +1,7 @@
 pub use super::common_jobs::{
     JobStatus, filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup,
-    handle_job_clear, handle_job_errors, handle_job_list, handle_job_recover, handle_job_status,
-    handle_worker_mode, include_job_for_status_view,
+    handle_job_clear, handle_job_errors, handle_job_list, handle_job_list_with_rows,
+    handle_job_recover, handle_job_status, handle_worker_mode, include_job_for_status_view,
 };
 pub use super::common_urls::{parse_urls, start_url_from_cfg, truncate_chars};
 

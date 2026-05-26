@@ -18,6 +18,7 @@ pub mod extract;
 pub mod ingest;
 pub mod ingest_common;
 pub mod job_contracts;
+mod job_progress;
 pub mod map;
 pub mod mcp;
 pub mod migrate;

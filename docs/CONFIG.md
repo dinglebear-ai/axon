@@ -202,15 +202,19 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 | `TEI_TOKENIZATION_WORKERS` | `8` | Tokenization workers |
 | `HF_TOKEN` | -- | HuggingFace token for gated models |
 
-### LLM / Gemini headless
+### LLM runtime
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Use `openai-compat` for llama.cpp/OpenAI-compatible `/v1/chat/completions` servers. |
+| `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. Do not include `/chat/completions`; Axon appends it. |
+| `AXON_OPENAI_MODEL` | -- | Model name sent to the OpenAI-compatible endpoint. Required when `AXON_LLM_BACKEND=openai-compat`. |
+| `AXON_OPENAI_API_KEY` | -- | Optional bearer token for OpenAI-compatible endpoints. Leave unset for local llama.cpp servers that do not require auth. |
 | `AXON_HEADLESS_GEMINI_MODEL` | -- | Gemini model override for synthesis. Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
-| `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent Gemini headless completion requests. |
-| `AXON_LLM_COMPLETION_TIMEOUT_SECS` | `300` | Runtime-only timeout for each Gemini headless completion request. |
+| `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent LLM completion requests. |
+| `AXON_LLM_COMPLETION_TIMEOUT_SECS` | `300` | Runtime-only timeout for each LLM completion request. |
 
 ### Collections and worker lanes
 
