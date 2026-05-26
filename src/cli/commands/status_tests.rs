@@ -219,3 +219,125 @@ fn render_status_payload_keeps_normal_rows_with_progress_under_display_cap() {
         "status output exceeded display cap:\n{rendered}"
     );
 }
+
+// ── embed_progress_summary regression tests (axon_rust-qfmn) ─────────────────
+
+fn embed_job(status: &str, result_json: Option<serde_json::Value>) -> ServiceJob {
+    ServiceJob {
+        id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+        status: status.to_string(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        started_at: None,
+        finished_at: None,
+        error_text: None,
+        url: Some("https://ui.shadcn.com/docs".to_string()),
+        source_type: None,
+        target: Some("https://ui.shadcn.com/docs".to_string()),
+        urls_json: None,
+        result_json,
+        config_json: None,
+        attempt_count: 0,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    }
+}
+
+#[test]
+fn embed_progress_shows_starting_when_running_with_no_result_json() {
+    let job = embed_job("running", None);
+    let summary = embed_progress_summary(&job, None);
+    assert_eq!(
+        summary.as_deref(),
+        Some("starting…"),
+        "running job with no result_json should show 'starting…'"
+    );
+}
+
+#[test]
+fn embed_progress_silent_for_completed_with_no_result_json() {
+    let job = embed_job("completed", None);
+    let summary = embed_progress_summary(&job, None);
+    assert!(
+        summary.is_none(),
+        "completed job with no result_json should show nothing; got {summary:?}"
+    );
+}
+
+#[test]
+fn embed_progress_silent_for_failed_with_no_result_json() {
+    let job = embed_job("failed", None);
+    let summary = embed_progress_summary(&job, None);
+    assert!(
+        summary.is_none(),
+        "failed job should never show progress; got {summary:?}"
+    );
+}
+
+#[test]
+fn embed_progress_shows_initializing_with_known_total_and_zero_docs() {
+    let job = embed_job(
+        "running",
+        Some(json!({"docs_total": 42, "docs_embedded": 0, "chunks_embedded": 0})),
+    );
+    let summary = embed_progress_summary(&job, None);
+    assert_eq!(
+        summary.as_deref(),
+        Some("0/42 docs · initializing"),
+        "should show total when docs_total is known but no docs embedded yet"
+    );
+}
+
+#[test]
+fn embed_progress_shows_initializing_without_known_total_and_zero_docs() {
+    let job = embed_job(
+        "running",
+        Some(json!({"docs_embedded": 0, "chunks_embedded": 0})),
+    );
+    let summary = embed_progress_summary(&job, None);
+    assert_eq!(
+        summary.as_deref(),
+        Some("initializing"),
+        "should show 'initializing' when no total is available and no docs embedded yet"
+    );
+}
+
+#[test]
+fn embed_progress_uses_fallback_total_for_initializing() {
+    let job = embed_job(
+        "running",
+        Some(json!({"docs_embedded": 0, "chunks_embedded": 0})),
+    );
+    let summary = embed_progress_summary(&job, Some(10));
+    assert_eq!(
+        summary.as_deref(),
+        Some("0/10 docs · initializing"),
+        "should use fallback_docs_total when result_json has no docs_total"
+    );
+}
+
+#[test]
+fn embed_progress_normal_in_progress_with_total() {
+    let job = embed_job(
+        "running",
+        Some(json!({"docs_total": 100, "docs_embedded": 25, "chunks_embedded": 75})),
+    );
+    let summary = embed_progress_summary(&job, None);
+    assert_eq!(summary.as_deref(), Some("25/100 docs · 25.0% · 75 chunks"));
+}
+
+#[test]
+fn embed_progress_silent_for_running_with_zero_docs_and_zero_total() {
+    // result_json present but all zeros and no total — still show "initializing"
+    let job = embed_job(
+        "running",
+        Some(json!({"docs_embedded": 0, "chunks_embedded": 0, "docs_total": 0})),
+    );
+    let summary = embed_progress_summary(&job, None);
+    assert_eq!(
+        summary.as_deref(),
+        Some("initializing"),
+        "docs_total=0 should not produce '0/0 docs' nonsense"
+    );
+}

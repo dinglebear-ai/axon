@@ -309,10 +309,18 @@ fn reclaimed_suffix(job: &ServiceJob) -> String {
 }
 
 fn embed_progress_summary(job: &ServiceJob, fallback_docs_total: Option<u64>) -> Option<String> {
-    let metrics = job.result_json.as_ref()?;
     if !matches!(job.status.as_str(), "running" | "completed") {
         return None;
     }
+    let Some(metrics) = job.result_json.as_ref() else {
+        // Job is running but the pipeline hasn't written its first progress event yet
+        // (e.g. still inside ensure_collection / ensure_payload_indexes).
+        return if job.status == "running" {
+            Some("starting…".to_string())
+        } else {
+            None
+        };
+    };
     let docs = metrics
         .get("docs_embedded")
         .and_then(|v| v.as_u64())
@@ -326,7 +334,15 @@ fn embed_progress_summary(job: &ServiceJob, fallback_docs_total: Option<u64>) ->
         .and_then(|v| v.as_u64())
         .or(fallback_docs_total);
     if docs == 0 && chunks == 0 {
-        return None;
+        // Pipeline started (result_json exists) but no docs embedded yet.
+        if job.status != "running" {
+            return None;
+        }
+        return if let Some(total) = docs_total.filter(|t| *t > 0) {
+            Some(format!("0/{total} docs · initializing"))
+        } else {
+            Some("initializing".to_string())
+        };
     }
     if let Some(total) = docs_total.filter(|total| *total > 0) {
         let percent = ((docs as f64 / total as f64) * 100.0).clamp(0.0, 100.0);
