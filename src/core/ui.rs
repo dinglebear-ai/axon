@@ -154,6 +154,24 @@ impl Spinner {
     pub fn finish(&self, message: &str) {
         self.bar.finish_with_message(message.to_string());
     }
+
+    /// Clear the spinner from the terminal without printing a final message.
+    pub fn clear(&self) {
+        self.bar.finish_and_clear();
+    }
+}
+
+/// Create a spinner for `--wait` mode when the conditions allow it:
+/// stderr is a TTY, `--json` is not set, and `--quiet` is not set.
+///
+/// Returns `None` when suppressed so callers can pattern-match without
+/// needing a flag variable.
+pub fn wait_spinner_for(cfg: &Config, msg: &str) -> Option<Spinner> {
+    use std::io::IsTerminal;
+    if cfg.json_output || cfg.quiet || !std::io::stderr().is_terminal() {
+        return None;
+    }
+    Some(Spinner::new(msg))
 }
 
 pub fn confirm_destructive(cfg: &Config, prompt: &str) -> Result<bool, Box<dyn Error>> {
@@ -198,7 +216,7 @@ pub fn symbol_for_status(status: &str) -> String {
         "completed" => ansi_colorize(SUCCESS_ANSI, "✓"),
         "failed" | "error" => ansi_colorize(ERROR_ANSI, "✗"),
         "pending" | "running" | "processing" | "scraping" => ansi_colorize(INFO_ANSI, "◐"),
-        "canceled" => ansi_colorize(WARN_ANSI, "⚠"),
+        "canceled" | "warn" | "warning" => ansi_colorize(WARN_ANSI, "⚠"),
         _ => ansi_colorize(ACCENT_ANSI, "•"),
     }
 }
@@ -208,7 +226,7 @@ pub fn status_text(status: &str) -> String {
         "completed" => ansi_colorize(SUCCESS_ANSI, status),
         "failed" | "error" => ansi_colorize(ERROR_ANSI, status),
         "pending" | "running" | "processing" | "scraping" => ansi_colorize(INFO_ANSI, status),
-        "canceled" => ansi_colorize(WARN_ANSI, status),
+        "canceled" | "warn" | "warning" => ansi_colorize(WARN_ANSI, status),
         _ => ansi_colorize(ACCENT_ANSI, status),
     }
 }

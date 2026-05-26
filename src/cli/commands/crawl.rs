@@ -14,7 +14,7 @@ use super::common::parse_urls;
 use crate::cli::commands::CommandFuture;
 use crate::core::config::{Config, ScrapeFormat};
 use crate::core::logging::{log_info, log_warn};
-use crate::core::ui::{accent, muted, primary, success, warning};
+use crate::core::ui::{accent, muted, primary, success, wait_spinner_for, warning};
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_service;
 use crate::services::types::CrawlStartJob;
@@ -52,7 +52,11 @@ pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         ));
         if cfg.wait {
             for url in &urls {
+                let sp = wait_spinner_for(cfg, &format!("Crawling {}…", url));
                 sync_crawl::run_sync_crawl(cfg, url).await?;
+                if let Some(sp) = sp {
+                    sp.clear();
+                }
             }
             Ok(())
         } else {
