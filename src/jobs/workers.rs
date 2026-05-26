@@ -337,8 +337,8 @@ async fn worker_loop<F, Fut>(
                     }
                     Ok(None) => break,
                     Err(e) => {
-                        // SQLITE_BUSY (code 5) is expected under write contention — downgrade to WARN.
-                        let is_busy = e.to_string().contains("(code: 5)");
+                        // write contention during job claim is normal under concurrent workers
+                        let is_busy = crate::jobs::ops::is_lock_busy(&e);
                         if is_busy {
                             tracing::warn!(
                                 table = kind.table_name(),

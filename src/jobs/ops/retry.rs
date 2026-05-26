@@ -34,7 +34,7 @@ where
     }
 }
 
-pub(super) fn is_lock_busy(err: &sqlx::Error) -> bool {
+pub(crate) fn is_lock_busy(err: &sqlx::Error) -> bool {
     if let sqlx::Error::Database(db_err) = err {
         let msg = db_err.message();
         msg.contains("database is locked") || msg.contains("database table is locked")
