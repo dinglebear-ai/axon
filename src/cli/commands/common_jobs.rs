@@ -232,6 +232,34 @@ pub fn handle_job_list<T: JobStatus + Clone>(
     result: &crate::services::types::JobListResult<T>,
     command_name: &str,
 ) -> Result<(), Box<dyn Error>> {
+    handle_job_list_with_rows(
+        cfg,
+        result,
+        command_name,
+        None,
+        &["", "ID", "Status"],
+        |job| {
+            vec![
+                symbol_for_status(job.status()),
+                job.id().to_string(),
+                status_text(job.status()),
+            ]
+        },
+    )
+}
+
+pub fn handle_job_list_with_rows<T, F>(
+    cfg: &Config,
+    result: &crate::services::types::JobListResult<T>,
+    command_name: &str,
+    empty_message: Option<&str>,
+    headers: &[&str],
+    row: F,
+) -> Result<(), Box<dyn Error>>
+where
+    T: JobStatus + Clone,
+    F: Fn(&T) -> Vec<String>,
+{
     let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
     if cfg.json_output {
         let entries: Vec<Value> = jobs.iter().map(|j| j.to_summary_entry_json()).collect();
@@ -248,18 +276,12 @@ pub fn handle_job_list<T: JobStatus + Clone>(
 
     println!("{}", primary(&format!("{command_name} Jobs")));
     if jobs.is_empty() {
-        println!("  {}", muted(&format!("No {command_name} jobs found.")));
+        let message = empty_message
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("No {command_name} jobs found."));
+        println!("  {}", muted(&message));
     } else {
-        crate::core::ui::print_aurora_table(
-            &["", "ID", "Status"],
-            jobs.iter().map(|job| {
-                vec![
-                    symbol_for_status(job.status()),
-                    job.id().to_string(),
-                    status_text(job.status()),
-                ]
-            }),
-        );
+        crate::core::ui::print_aurora_table(headers, jobs.iter().map(row));
     }
 
     crate::cli::commands::common::print_list_footer(

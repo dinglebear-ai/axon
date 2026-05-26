@@ -2,6 +2,10 @@ mod failure_summary;
 pub(crate) mod metrics;
 mod watch;
 
+use crate::cli::commands::job_progress::{
+    crawl_progress_summary, embed_progress_summary, extract_progress_summary,
+    ingest_progress_summary,
+};
 use crate::core::config::Config;
 use crate::core::logging::log_info;
 use crate::core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
@@ -228,146 +232,6 @@ fn render_status_jobs_from_slices(
     out
 }
 
-fn crawl_progress_summary(
-    job: &ServiceJob,
-    embed_jobs_by_id: &HashMap<String, &ServiceJob>,
-    embed_doc_totals: &HashMap<String, u64>,
-) -> Option<String> {
-    let Some(metrics) = job.result_json.as_ref() else {
-        return if job.status == "running" {
-            Some("starting…".to_string())
-        } else {
-            None
-        };
-    };
-    match job.status.as_str() {
-        "running" => {
-            let crawled = metrics
-                .get("pages_crawled")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let docs = metrics
-                .get("md_created")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            if crawled == 0 && docs == 0 {
-                return Some("crawling…".to_string());
-            }
-            let errors = metrics
-                .get("error_pages")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let reclaim = reclaimed_suffix(job);
-            let error_suffix = if errors > 0 {
-                format!(" · {errors} errors")
-            } else {
-                String::new()
-            };
-            if docs > 0 {
-                Some(format!(
-                    "{crawled} crawled · {docs} docs{error_suffix}{reclaim}"
-                ))
-            } else {
-                Some(format!("{crawled} crawled{error_suffix}{reclaim}"))
-            }
-        }
-        "completed" => {
-            let docs = metrics
-                .get("md_created")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let elapsed_ms = metrics
-                .get("elapsed_ms")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let time = if elapsed_ms >= 1000 {
-                format!("{:.1}s", elapsed_ms as f64 / 1000.0)
-            } else {
-                format!("{elapsed_ms}ms")
-            };
-            let mut summary = format!("{docs} docs · {time}");
-            if let Some(embed_id) = metrics.get("embed_job_id").and_then(|v| v.as_str()) {
-                if let Some(embed_job) = embed_jobs_by_id.get(embed_id) {
-                    summary.push_str(&format!(" · embed {}", embed_job.status));
-                    if let Some(embed_progress) =
-                        embed_progress_summary(embed_job, embed_doc_totals.get(embed_id).copied())
-                    {
-                        summary.push_str(&format!(" ({embed_progress})"));
-                    }
-                } else {
-                    summary.push_str(&format!(" · embed queued {embed_id}"));
-                }
-            }
-            Some(summary)
-        }
-        "pending" => reclaimed_suffix(job)
-            .strip_prefix(" · ")
-            .map(ToOwned::to_owned),
-        _ => None,
-    }
-}
-
-fn reclaimed_suffix(job: &ServiceJob) -> String {
-    match job.error_text.as_deref().map(str::trim_start) {
-        Some(RECLAIMED_ERROR_TEXT) => " · reclaimed retry".to_string(),
-        _ => String::new(),
-    }
-}
-
-fn embed_progress_summary(job: &ServiceJob, fallback_docs_total: Option<u64>) -> Option<String> {
-    if !matches!(job.status.as_str(), "running" | "completed") {
-        return None;
-    }
-    let Some(metrics) = job.result_json.as_ref() else {
-        // Job is running but the pipeline hasn't written its first progress event yet
-        // (e.g. still inside ensure_collection / ensure_payload_indexes).
-        return if job.status == "running" {
-            Some("starting…".to_string())
-        } else {
-            None
-        };
-    };
-    let docs = metrics
-        .get("docs_embedded")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let chunks = metrics
-        .get("chunks_embedded")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let docs_total = metrics
-        .get("docs_total")
-        .and_then(|v| v.as_u64())
-        .or(fallback_docs_total);
-    if docs == 0 && chunks == 0 {
-        // Pipeline started (result_json exists) but no docs embedded yet.
-        if job.status != "running" {
-            return None;
-        }
-        return if let Some(total) = docs_total.filter(|t| *t > 0) {
-            Some(format!("0/{total} docs · initializing"))
-        } else {
-            Some("initializing".to_string())
-        };
-    }
-    if let Some(total) = docs_total.filter(|total| *total > 0) {
-        let percent = ((docs as f64 / total as f64) * 100.0).clamp(0.0, 100.0);
-        let percent_text = if percent < 99.95 {
-            format!("{percent:.1}%")
-        } else {
-            "100%".to_string()
-        };
-        return Some(format!(
-            "{docs}/{total} docs · {percent_text} · {chunks} chunks"
-        ));
-    }
-    if docs > 0 {
-        Some(format!("{docs} docs · {chunks} chunks"))
-    } else {
-        Some(format!("{chunks} chunks"))
-    }
-}
-
 fn embed_doc_totals_from_crawls(crawl_jobs: &[ServiceJob]) -> HashMap<String, u64> {
     crawl_jobs
         .iter()
@@ -378,57 +242,6 @@ fn embed_doc_totals_from_crawls(crawl_jobs: &[ServiceJob]) -> HashMap<String, u6
             Some((embed_id.to_string(), docs))
         })
         .collect()
-}
-
-fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
-    if !matches!(job.status.as_str(), "running" | "completed") {
-        return None;
-    }
-    let Some(metrics) = job.result_json.as_ref() else {
-        return if job.status == "running" {
-            Some("starting…".to_string())
-        } else {
-            None
-        };
-    };
-    let items = metrics
-        .get("total_items")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    if items == 0 {
-        return if job.status == "running" {
-            Some("extracting…".to_string())
-        } else {
-            None
-        };
-    }
-    Some(format!("{items} items"))
-}
-
-fn ingest_progress_summary(job: &ServiceJob) -> Option<String> {
-    if !matches!(job.status.as_str(), "running" | "completed") {
-        return None;
-    }
-    let Some(metrics) = job.result_json.as_ref() else {
-        return if job.status == "running" {
-            Some("starting…".to_string())
-        } else {
-            None
-        };
-    };
-    let chunks = metrics
-        .get("chunks")
-        .or_else(|| metrics.get("chunks_embedded"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    if chunks == 0 {
-        return if job.status == "running" {
-            Some("ingesting…".to_string())
-        } else {
-            None
-        };
-    }
-    Some(format!("{chunks} chunks"))
 }
 
 fn write_status_section(

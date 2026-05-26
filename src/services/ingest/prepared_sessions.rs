@@ -12,7 +12,7 @@ use crate::services::types::{
 use std::error::Error;
 use tokio::sync::mpsc;
 
-use super::{IngestSource, map_ingest_result, map_ingest_start_result};
+use super::{IngestSource, ingest_payload, map_ingest_result, map_ingest_start_result};
 
 pub async fn ingest_sessions_prepared_start_with_context(
     cfg: &Config,
@@ -76,9 +76,6 @@ pub async fn ingest_sessions_prepared_with_progress(
     )
     .await;
 
-    let payload = serde_json::json!({
-        "source": "prepared_sessions",
-        "chunks": chunks,
-    });
+    let payload = ingest_payload("prepared_sessions", None, chunks);
     Ok(map_ingest_result(payload))
 }

@@ -2,6 +2,7 @@ use super::enums::{
     ClientMode, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
     RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
+use crate::services::llm_backend::LlmBackendKind;
 use std::path::PathBuf;
 
 #[derive(Clone)]
@@ -243,6 +244,9 @@ pub struct Config {
     /// Env: `AXON_HEADLESS_GEMINI_MODEL`.
     pub headless_gemini_model: String,
 
+    /// LLM completion backend. Env: `AXON_LLM_BACKEND`.
+    pub llm_backend: LlmBackendKind,
+
     /// Gemini CLI command for headless LLM synthesis. Env: `AXON_HEADLESS_GEMINI_CMD`.
     pub headless_gemini_cmd: String,
 
@@ -254,6 +258,16 @@ pub struct Config {
 
     /// Timeout for each Gemini headless completion request. Env: `AXON_LLM_COMPLETION_TIMEOUT_SECS`.
     pub llm_completion_timeout_secs: u64,
+
+    /// OpenAI-compatible API base URL, e.g. llama.cpp `http://127.0.0.1:8080/v1`.
+    /// Env: `AXON_OPENAI_BASE_URL`.
+    pub openai_base_url: String,
+
+    /// Optional API key for OpenAI-compatible endpoints. Env: `AXON_OPENAI_API_KEY`.
+    pub openai_api_key: String,
+
+    /// Model name for OpenAI-compatible chat completions. Env: `AXON_OPENAI_MODEL`.
+    pub openai_model: String,
 
     /// Tavily search API key. Env: `TAVILY_API_KEY`. **Secret.**
     pub tavily_api_key: String,

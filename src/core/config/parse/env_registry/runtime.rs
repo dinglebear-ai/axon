@@ -79,6 +79,7 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Canonical,
         true,
     ),
+    spec("AXON_LLM_BACKEND", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_HEADLESS_GEMINI_CMD",
         KeepEnv,
@@ -111,6 +112,16 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Canonical,
         false,
     ),
+    spec(
+        "AXON_OPENAI_BASE_URL",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec("AXON_OPENAI_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec("AXON_OPENAI_MODEL", KeepEnv, Both, None, Canonical, false),
     spec("GEMINI_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec("GOOGLE_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec(

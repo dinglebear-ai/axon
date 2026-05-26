@@ -3,11 +3,33 @@ use std::path::PathBuf;
 
 use crate::core::config::Config;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmBackendKind {
+    GeminiHeadless,
+    OpenAiCompat,
+}
+
+impl LlmBackendKind {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim() {
+            "" | "gemini-headless" | "gemini" | "headless" => Ok(Self::GeminiHeadless),
+            "openai-compat" | "openai_compat" => Ok(Self::OpenAiCompat),
+            other => Err(format!(
+                "AXON_LLM_BACKEND must be 'gemini-headless' or 'openai-compat' (got '{other}')"
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LlmBackendConfig {
+    pub kind: LlmBackendKind,
     pub gemini_cmd: String,
     pub gemini_model: Option<String>,
     pub gemini_home: Option<PathBuf>,
+    pub openai_base_url: Option<String>,
+    pub openai_api_key: Option<String>,
+    pub openai_model: Option<String>,
     pub completion_concurrency: usize,
     pub completion_timeout_secs: u64,
     pub configured: bool,
@@ -16,9 +38,13 @@ pub struct LlmBackendConfig {
 impl Default for LlmBackendConfig {
     fn default() -> Self {
         Self {
+            kind: LlmBackendKind::GeminiHeadless,
             gemini_cmd: "gemini".to_string(),
             gemini_model: None,
             gemini_home: None,
+            openai_base_url: None,
+            openai_api_key: None,
+            openai_model: None,
             completion_concurrency: 4,
             completion_timeout_secs: 300,
             configured: false,
@@ -30,16 +56,28 @@ impl LlmBackendConfig {
     #[must_use]
     pub fn from_config(cfg: &Config) -> Self {
         Self {
+            kind: cfg.llm_backend,
             gemini_cmd: non_empty(cfg.headless_gemini_cmd.clone())
                 .unwrap_or_else(|| "gemini".to_string()),
             gemini_model: non_empty(cfg.headless_gemini_model.clone()),
             gemini_home: cfg.headless_gemini_home.clone(),
+            openai_base_url: non_empty(cfg.openai_base_url.clone()),
+            openai_api_key: non_empty(cfg.openai_api_key.clone()),
+            openai_model: non_empty(cfg.openai_model.clone()),
             completion_concurrency: cfg
                 .llm_completion_concurrency
                 .clamp(1, tokio::sync::Semaphore::MAX_PERMITS),
             completion_timeout_secs: cfg.llm_completion_timeout_secs.max(1),
             configured: true,
         }
+    }
+}
+
+#[must_use]
+pub fn configured_model_from_config(cfg: &Config) -> Option<String> {
+    match cfg.llm_backend {
+        LlmBackendKind::GeminiHeadless => non_empty(cfg.headless_gemini_model.clone()),
+        LlmBackendKind::OpenAiCompat => non_empty(cfg.openai_model.clone()),
     }
 }
 
@@ -86,7 +124,7 @@ impl CompletionRequest {
     pub fn backend_from_config(mut self, cfg: &Config) -> Self {
         self.backend = LlmBackendConfig::from_config(cfg);
         if self.model.is_none() {
-            self.model = self.backend.gemini_model.clone();
+            self.model = configured_model_from_config(cfg);
         }
         self
     }

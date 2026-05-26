@@ -1,0 +1,78 @@
+name: llama-cpp
+
+# Standalone llama.cpp server for Gemma 4 E4B IT.
+#
+# Start:
+#   docker compose -f docker-compose.llama.yaml up -d
+#
+# API:
+#   http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/v1
+#
+# Source model:
+#   https://huggingface.co/google/gemma-4-E4B-it
+#
+# llama.cpp consumes the GGUF conversion:
+#   https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF
+#
+# The model is downloaded by llama-server on first start and cached under:
+#   ${AXON_HOME:-${HOME}/.axon}/llama-cpp/cache
+
+x-common-service: &common-service
+  networks:
+    - axon
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  ulimits:
+    nofile:
+      soft: 65535
+      hard: 65535
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+      compress: "true"
+
+x-gpu-service: &gpu-service
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  llama-cpp:
+    <<: [*common-service, *gpu-service]
+    image: ${LLAMA_CPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
+    container_name: llama-cpp
+    environment:
+      TZ: ${TZ:-America/New_York}
+      LLAMA_CACHE: /root/.cache/llama.cpp
+    volumes:
+      - ${AXON_HOME:-${HOME}/.axon}/llama-cpp/cache:/root/.cache/llama.cpp
+    ports:
+      - "${LLAMA_CPP_PORT:-8080}:8080"
+    command:
+      - -hf
+      - ${LLAMA_CPP_HF_MODEL:-ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --ctx-size
+      - "${LLAMA_CPP_CTX_SIZE:-12288}"
+      - --n-gpu-layers
+      - "${LLAMA_CPP_N_GPU_LAYERS:-99}"
+      - --jinja
+      - --cache-type-k
+      - "${LLAMA_CPP_CACHE_TYPE_K:-q8_0}"
+      - --cache-type-v
+      - "${LLAMA_CPP_CACHE_TYPE_V:-q8_0}"
+
+networks:
+  axon:
+    name: ${DOCKER_NETWORK:-axon}
+    external: true

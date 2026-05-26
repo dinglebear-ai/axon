@@ -562,5 +562,36 @@ fn ingest_progress_silent_for_pending() {
 fn ingest_progress_shows_chunks_count() {
     let job = ingest_job("running", Some(json!({"chunks_embedded": 450})));
     let summary = ingest_progress_summary(&job);
-    assert_eq!(summary.as_deref(), Some("450 chunks"));
+    assert_eq!(summary.as_deref(), Some("450 chunks embedded"));
+}
+
+#[test]
+fn ingest_progress_shows_file_progress_like_ingest_status() {
+    let job = ingest_job(
+        "running",
+        Some(json!({
+            "files_done": 1325,
+            "files_total": 3556,
+            "chunks_embedded": 7249,
+        })),
+    );
+    let summary = ingest_progress_summary(&job);
+    assert_eq!(
+        summary.as_deref(),
+        Some("1325 / 3556 files, 7249 chunks embedded")
+    );
+}
+
+#[test]
+fn ingest_progress_shows_task_phase_before_chunks_like_ingest_status() {
+    let job = ingest_job(
+        "running",
+        Some(json!({
+            "phase": "fetching_issues",
+            "tasks_done": 2,
+            "tasks_total": 5,
+        })),
+    );
+    let summary = ingest_progress_summary(&job);
+    assert_eq!(summary.as_deref(), Some("fetching_issues (2 / 5 tasks)"));
 }

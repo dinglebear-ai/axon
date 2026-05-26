@@ -25,15 +25,7 @@ export function formatPayload(subcommand: string, payload: unknown): string {
       });
     case "search":
     case "research":
-      return (
-        stringField(value, "summary") ??
-        resultRows(value, "results", (hit, index) => {
-          const title = stringField(hit, "title") ?? stringField(hit, "name") ?? "Untitled";
-          const url = stringField(hit, "url") ?? "";
-          const snippet = stringField(hit, "snippet") ?? stringField(hit, "content") ?? "";
-          return `${index + 1}. ${title}\n${url}\n${snippet}`.trim();
-        })
-      );
+      return formatSearchLike(value);
     case "summarize":
       return stringField(value, "summary") ?? compact(value);
     case "suggest":
@@ -41,10 +33,12 @@ export function formatPayload(subcommand: string, payload: unknown): string {
         return `${stringField(suggestion, "url") ?? ""}\n${stringField(suggestion, "reason") ?? ""}`.trim();
       });
     case "evaluate":
-      return ["query", "analysis_answer", "rag_answer", "baseline_answer"]
-        .map((key) => stringField(value, key))
-        .filter(Boolean)
-        .join("\n\n") || compact(value);
+      return (
+        ["query", "analysis_answer", "rag_answer", "baseline_answer"]
+          .map((key) => stringField(value, key))
+          .filter(Boolean)
+          .join("\n\n") || compact(value)
+      );
     case "crawl":
     case "embed":
     case "extract":
@@ -60,6 +54,23 @@ export function formatPayload(subcommand: string, payload: unknown): string {
     default:
       return compact(value);
   }
+}
+
+function formatSearchLike(value: Record<string, unknown>): string {
+  const body = recordField(value, "payload") ?? value;
+  return (
+    stringField(body, "summary") ??
+    optionalResultRows(body, "results", renderSearchResult) ??
+    optionalResultRows(body, "search_results", renderSearchResult) ??
+    compact(value)
+  );
+}
+
+function renderSearchResult(hit: Record<string, unknown>, index: number): string {
+  const title = stringField(hit, "title") ?? stringField(hit, "name") ?? "Untitled";
+  const url = stringField(hit, "url") ?? "";
+  const snippet = stringField(hit, "snippet") ?? stringField(hit, "content") ?? "";
+  return `${index + 1}. ${title}\n${url}\n${snippet}`.trim();
 }
 
 function sourceList(value: Record<string, unknown>): string {
@@ -83,8 +94,16 @@ function resultRows(
   key: string,
   render: (value: Record<string, unknown>, index: number) => string,
 ): string {
+  return optionalResultRows(value, key, render) ?? compact(value);
+}
+
+function optionalResultRows(
+  value: Record<string, unknown>,
+  key: string,
+  render: (value: Record<string, unknown>, index: number) => string,
+): string | undefined {
   const rows = arrayField(value, key);
-  if (!rows?.length) return compact(value);
+  if (!rows?.length) return undefined;
   return rows
     .slice(0, SUMMARY_LIMIT)
     .map((row, index) => (isRecord(row) ? render(row, index) : compact(row)))

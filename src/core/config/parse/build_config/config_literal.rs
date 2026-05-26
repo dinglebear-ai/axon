@@ -167,6 +167,9 @@ fn populate_services_and_ask_basics(
 ) -> Result<(), String> {
     cfg.tei_url = tei_url;
     cfg.qdrant_url = qdrant_url;
+    cfg.llm_backend = crate::services::llm_backend::LlmBackendKind::parse(
+        &non_empty_env("AXON_LLM_BACKEND").unwrap_or_default(),
+    )?;
     cfg.headless_gemini_model = non_empty_env("AXON_HEADLESS_GEMINI_MODEL").unwrap_or_default();
     cfg.headless_gemini_cmd =
         non_empty_env("AXON_HEADLESS_GEMINI_CMD").unwrap_or_else(|| "gemini".to_string());
@@ -177,6 +180,9 @@ fn populate_services_and_ask_basics(
         parse_positive_usize_env("AXON_LLM_COMPLETION_CONCURRENCY", 4)?;
     cfg.llm_completion_timeout_secs =
         parse_positive_u64_env("AXON_LLM_COMPLETION_TIMEOUT_SECS", 300)?;
+    cfg.openai_base_url = non_empty_env("AXON_OPENAI_BASE_URL").unwrap_or_default();
+    cfg.openai_api_key = non_empty_env("AXON_OPENAI_API_KEY").unwrap_or_default();
+    cfg.openai_model = non_empty_env("AXON_OPENAI_MODEL").unwrap_or_default();
     cfg.tavily_api_key = env::var("TAVILY_API_KEY").ok().unwrap_or_default();
     cfg.mcp_allowed_origins = env::var("AXON_MCP_ALLOWED_ORIGINS")
         .ok()

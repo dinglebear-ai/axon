@@ -1,11 +1,10 @@
 use super::super::timing::{AskTiming, AskTimingSlot};
 use crate::core::config::Config;
-use crate::core::logging::{log_debug, log_warn};
+use crate::core::logging::{log_debug, log_info};
 use crate::services::types::{AskExplainRetrieval, AskExplainScoreKind};
 use crate::vector::ops::commands::retrieval::{
     CandidateBuildPolicy, CandidateRankingTrace, CandidateScorePolicy, RetrievedCandidate,
-    VectorDispatchContext, authoritative_ratio, candidates_only,
-    dispatch_vector_search_with_diagnostics, embed_retrieval_inputs, product_authority_ratio,
+    authoritative_ratio, candidates_only, embed_retrieval_inputs, product_authority_ratio,
     query_allows_low_signal, score_and_filter_candidates, score_and_filter_candidates_with_trace,
     score_rrf_candidates_with_trace, top_domains, vector_mode_metadata,
 };
@@ -14,7 +13,12 @@ use crate::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
 
 mod build;
+mod dispatch;
 use build::build_ask_candidates;
+use dispatch::{DispatchOutcome, run_qdrant_dispatch};
+
+type SearchHitsResult =
+    Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>;
 
 const ASK_PRODUCT_AUTHORITY_BOOST: f64 = 0.35;
 
@@ -117,39 +121,34 @@ pub(super) async fn retrieve_ask_candidates(
     let query_forms = super::query_rewrite::build_query_forms(query);
     let query_tokens = &query_forms.query_tokens;
     let allow_low_signal = query_allows_low_signal(query_tokens, query);
+    log_info(&format!(
+        "ask retrieval start query_len={} use_dual={} complexity={:?} tokens={} candidate_limit={} hybrid_candidates={}",
+        query.len(),
+        query_forms.use_dual,
+        query_forms.complexity_hint,
+        query_tokens.len(),
+        ask_tuning.ask_candidate_limit,
+        ask_tuning.ask_hybrid_candidates,
+    ));
     let mut ask_vectors = embed_ask_query_forms(cfg, query, &query_forms, timing).await?;
     let vecq = ask_vectors.remove(0);
 
-    let DispatchOutcome {
-        primary_request,
-        primary_res,
-        secondary_res,
-    } = run_qdrant_dispatch(
+    let BuiltRetrievalCandidates {
+        retrieved_candidates,
+        pre_rerank_traces,
+        mode,
+        rrf_mode,
+        retrieval_score_kind,
+    } = retrieve_and_build_candidates(
         cfg,
         query,
         &vecq,
         &mut ask_vectors,
-        &query_forms.keyword_query,
-        query_forms.use_dual,
-        ask_tuning.ask_candidate_limit,
-        ask_tuning.ask_hybrid_candidates,
+        &query_forms,
+        allow_low_signal,
         timing,
     )
     .await?;
-
-    let hits = primary_res.map_err(|e| anyhow!("{e}"))?;
-    let mode = vector_mode_metadata(cfg, &primary_request).await?;
-    let rrf_mode = mode.rrf_mode;
-    let retrieval_score_kind = retrieval_score_kind(mode.vector_mode, rrf_mode);
-
-    let build_policy = CandidateBuildPolicy { allow_low_signal };
-    let built_candidates = build_ask_candidates(
-        hits,
-        secondary_res,
-        &build_policy,
-        cfg.ask_explain.then_some(retrieval_score_kind),
-    );
-    let retrieved_candidates = built_candidates.retrieved_candidates;
 
     if retrieved_candidates.is_empty() {
         return Err(anyhow!("No relevant documents found for ask query"));
@@ -162,6 +161,12 @@ pub(super) async fn retrieve_ask_candidates(
         min_relevance_score: ask_tuning.ask_min_relevance_score,
     };
     let rerank_started = std::time::Instant::now();
+    log_info(&format!(
+        "ask rerank start candidates={} rrf_mode={} score_kind={:?}",
+        retrieved_candidates.len(),
+        rrf_mode,
+        retrieval_score_kind,
+    ));
     let (reranked_candidates, candidate_traces) = rerank_with_optional_trace(
         cfg.ask_explain,
         rrf_mode,
@@ -171,9 +176,15 @@ pub(super) async fn retrieve_ask_candidates(
         &rerank_params,
     );
     let mut candidate_traces = candidate_traces;
-    candidate_traces.extend(built_candidates.pre_rerank_traces);
+    candidate_traces.extend(pre_rerank_traces);
     let reranked = candidates_only(&reranked_candidates);
     timing.record(AskTimingSlot::Rerank, rerank_started);
+    log_info(&format!(
+        "ask rerank complete candidates={} selected_after_filter={} elapsed_ms={}",
+        retrieved_candidates.len(),
+        reranked.len(),
+        rerank_started.elapsed().as_millis(),
+    ));
     if reranked.is_empty() {
         if rrf_mode {
             return Err(anyhow!("No candidates passed topical overlap"));
@@ -200,37 +211,142 @@ pub(super) async fn retrieve_ask_candidates(
     );
     timing.record(AskTimingSlot::TopSelect, top_select_started);
 
-    let configured_authority_ratio =
-        authoritative_ratio(&reranked, &ask_tuning.ask_authoritative_domains);
-    let product_authority_ratio =
-        product_authority_ratio(&reranked, query_tokens, ASK_PRODUCT_AUTHORITY_BOOST);
-    let effective_authority_ratio = configured_authority_ratio.max(product_authority_ratio);
-
-    Ok(AskRetrieval {
+    Ok(finalize_retrieval(FinalizeRetrievalInputs {
+        cfg,
+        query,
+        query_forms: &query_forms,
+        mode: &mode,
+        retrieval_score_kind,
+        retrieved_candidates: &retrieved_candidates,
+        reranked,
         top_chunk_indices,
         top_full_doc_indices,
-        top_domains: top_domains(&reranked, 5),
-        authoritative_ratio: effective_authority_ratio,
+        query_tokens,
+        retrieval_started,
+        candidate_traces,
+    }))
+}
+
+struct BuiltRetrievalCandidates {
+    retrieved_candidates: Vec<RetrievedCandidate>,
+    pre_rerank_traces: Vec<CandidateRankingTrace>,
+    mode: crate::vector::ops::commands::retrieval::VectorModeMetadata,
+    rrf_mode: bool,
+    retrieval_score_kind: AskExplainScoreKind,
+}
+
+async fn retrieve_and_build_candidates<'a>(
+    cfg: &'a Config,
+    query: &'a str,
+    vecq: &'a [f32],
+    ask_vectors: &mut Vec<Vec<f32>>,
+    query_forms: &'a super::query_rewrite::AskQueryForms,
+    allow_low_signal: bool,
+    timing: &mut AskTiming,
+) -> Result<BuiltRetrievalCandidates> {
+    let ask_tuning = cfg.ask_config();
+    let DispatchOutcome {
+        primary_request,
+        primary_res,
+        secondary_res,
+    } = run_qdrant_dispatch(
+        cfg,
+        query,
+        vecq,
+        ask_vectors,
+        &query_forms.keyword_query,
+        query_forms.use_dual,
+        ask_tuning.ask_candidate_limit,
+        ask_tuning.ask_hybrid_candidates,
+        timing,
+    )
+    .await?;
+    let hits = primary_res.map_err(|e| anyhow!("{e}"))?;
+    log_qdrant_hits(&hits, &secondary_res);
+    let mode = vector_mode_metadata(cfg, &primary_request).await?;
+    let rrf_mode = mode.rrf_mode;
+    let retrieval_score_kind = retrieval_score_kind(mode.vector_mode, rrf_mode);
+    let built_candidates = build_ask_candidates(
+        hits,
+        secondary_res,
+        &CandidateBuildPolicy { allow_low_signal },
+        cfg.ask_explain.then_some(retrieval_score_kind),
+    );
+    Ok(BuiltRetrievalCandidates {
+        retrieved_candidates: built_candidates.retrieved_candidates,
+        pre_rerank_traces: built_candidates.pre_rerank_traces,
+        mode,
+        rrf_mode,
+        retrieval_score_kind,
+    })
+}
+
+fn log_qdrant_hits(
+    hits: &[qdrant::QdrantSearchHit],
+    secondary_res: &Option<
+        Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>,
+    >,
+) {
+    log_info(&format!(
+        "ask retrieval qdrant returned primary_hits={} secondary_hits={}",
+        hits.len(),
+        secondary_res
+            .as_ref()
+            .and_then(|res| res.as_ref().ok())
+            .map_or(0, Vec::len),
+    ));
+}
+
+struct FinalizeRetrievalInputs<'a> {
+    cfg: &'a Config,
+    query: &'a str,
+    query_forms: &'a super::query_rewrite::AskQueryForms,
+    mode: &'a crate::vector::ops::commands::retrieval::VectorModeMetadata,
+    retrieval_score_kind: AskExplainScoreKind,
+    retrieved_candidates: &'a [RetrievedCandidate],
+    reranked: Vec<ranking::AskCandidate>,
+    top_chunk_indices: Vec<usize>,
+    top_full_doc_indices: Vec<usize>,
+    query_tokens: &'a [String],
+    retrieval_started: std::time::Instant,
+    candidate_traces: Vec<CandidateRankingTrace>,
+}
+
+fn finalize_retrieval(inputs: FinalizeRetrievalInputs<'_>) -> AskRetrieval {
+    let ask_tuning = inputs.cfg.ask_config();
+    let configured_authority_ratio =
+        authoritative_ratio(&inputs.reranked, &ask_tuning.ask_authoritative_domains);
+    let product_authority_ratio = product_authority_ratio(
+        &inputs.reranked,
+        inputs.query_tokens,
+        ASK_PRODUCT_AUTHORITY_BOOST,
+    );
+
+    AskRetrieval {
+        top_chunk_indices: inputs.top_chunk_indices,
+        top_full_doc_indices: inputs.top_full_doc_indices,
+        top_domains: top_domains(&inputs.reranked, 5),
+        authoritative_ratio: configured_authority_ratio.max(product_authority_ratio),
         configured_authority_ratio,
         product_authority_ratio,
-        candidates: candidates_only(&retrieved_candidates),
-        reranked,
-        retrieval_elapsed_ms: retrieval_started.elapsed().as_millis(),
+        candidates: candidates_only(inputs.retrieved_candidates),
+        reranked: inputs.reranked,
+        retrieval_elapsed_ms: inputs.retrieval_started.elapsed().as_millis(),
         min_supplemental_score: min_supplemental_score(
-            rrf_mode,
+            inputs.mode.rrf_mode,
             ask_tuning.ask_min_relevance_score,
         ),
         explain_retrieval: explain_retrieval(
-            cfg,
-            query,
-            &query_forms,
-            &mode,
-            retrieval_score_kind,
+            inputs.cfg,
+            inputs.query,
+            inputs.query_forms,
+            inputs.mode,
+            inputs.retrieval_score_kind,
             ask_tuning.ask_candidate_limit,
             ask_tuning.ask_hybrid_candidates,
         ),
-        candidate_traces,
-    })
+        candidate_traces: inputs.candidate_traces,
+    }
 }
 
 fn min_supplemental_score(rrf_mode: bool, min_relevance_score: f64) -> Option<f64> {
@@ -316,170 +432,14 @@ async fn embed_ask_query_forms(
         .await
         .map_err(|e| anyhow!("{e}"))?;
     timing.record(AskTimingSlot::TeiEmbed, tei_started);
+    log_info(&format!(
+        "ask embed complete forms={} vectors={} elapsed_ms={}",
+        embed_inputs.len(),
+        ask_vectors.len(),
+        tei_started.elapsed().as_millis(),
+    ));
     if ask_vectors.is_empty() {
         return Err(anyhow!("TEI returned no vector for ask query"));
     }
     Ok(ask_vectors)
-}
-
-type SearchHitsResult =
-    Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>;
-
-struct DispatchOutcome<'a> {
-    primary_request: qdrant::VectorSearchRequest<'a>,
-    primary_res: SearchHitsResult,
-    secondary_res: Option<SearchHitsResult>,
-}
-
-/// Dispatch the NL (primary) and optional keyword (secondary) Qdrant searches.
-///
-/// Tries the batch path (`/points/query/batch`) first when both arms are
-/// available; this saves the second TLS+TCP handshake/header round-trip on
-/// every ask. On any batch failure (transport error, 5xx after retries,
-/// VectorMode::Unnamed which the batch helper intentionally rejects) the
-/// dispatch falls back to the existing parallel-single (`tokio::join!`) path
-/// so retrieval cannot be silently disabled by a transient batch hiccup.
-///
-/// Timing semantics:
-/// - **Batch path**: Qdrant's `/points/query/batch` returns only one
-///   aggregate `time` field; per-arm timings are unavailable. We record the
-///   batch wall-clock under [`AskTimingSlot::QdrantPrimary`] as the only
-///   meaningful signal and leave [`AskTimingSlot::QdrantSecondary`] as None.
-///   Operators reading diagnostics should read `qdrant_primary_ms` as the
-///   aggregate dispatch ms when `qdrant_secondary_ms` is None.
-/// - **Fallback path**: each arm is timed independently as before.
-///
-/// (bd axon_rust-j2c)
-#[allow(clippy::too_many_arguments)]
-async fn run_qdrant_dispatch<'a>(
-    cfg: &'a Config,
-    query: &'a str,
-    vecq: &'a [f32],
-    ask_vectors: &mut Vec<Vec<f32>>,
-    keyword_query: &'a str,
-    use_dual: bool,
-    candidate_limit: usize,
-    hybrid_candidates: usize,
-    timing: &mut AskTiming,
-) -> Result<DispatchOutcome<'a>> {
-    let primary_request =
-        qdrant::VectorSearchRequest::from_query(cfg, vecq, query, candidate_limit)
-            .map_err(|e| anyhow!("build ask vector search request: {e}"))?
-            .with_candidates_override(Some(hybrid_candidates));
-
-    // No secondary arm — single dispatch, classic timing.
-    if !use_dual || ask_vectors.is_empty() {
-        let (primary_res, primary_ms) =
-            dispatch_ask_arm(cfg, &primary_request, query, "primary").await;
-        timing.set(AskTimingSlot::QdrantPrimary, primary_ms);
-        return Ok(DispatchOutcome {
-            primary_request,
-            primary_res,
-            secondary_res: None,
-        });
-    }
-
-    let vecq_kw = ask_vectors.remove(0);
-    let secondary_request =
-        qdrant::VectorSearchRequest::from_query(cfg, &vecq_kw, keyword_query, candidate_limit)
-            .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
-            .with_candidates_override(Some(hybrid_candidates));
-
-    // Try batch path first.
-    let primary_sparse_default = primary_request.sparse.clone().unwrap_or_default();
-    let secondary_sparse_default = secondary_request.sparse.clone().unwrap_or_default();
-    let primary_arm = qdrant::DualSearchArm {
-        dense: primary_request.dense,
-        sparse: &primary_sparse_default,
-        filter: primary_request.filter.as_ref(),
-    };
-    let secondary_arm = qdrant::DualSearchArm {
-        dense: secondary_request.dense,
-        sparse: &secondary_sparse_default,
-        filter: secondary_request.filter.as_ref(),
-    };
-    let batch_started = std::time::Instant::now();
-    match qdrant::qdrant_dual_search(
-        cfg,
-        primary_arm,
-        secondary_arm,
-        candidate_limit,
-        Some(hybrid_candidates),
-    )
-    .await
-    {
-        Ok(qdrant::DualSearchResult { primary, secondary }) => {
-            // Per-arm timing is unavailable on the batch path: Qdrant only
-            // returns one aggregate `time` field. Record the wall-clock under
-            // QdrantPrimary and leave QdrantSecondary unset to signal the
-            // batch path to operators reading diagnostics.
-            timing.set(
-                AskTimingSlot::QdrantPrimary,
-                batch_started.elapsed().as_millis(),
-            );
-            Ok(DispatchOutcome {
-                primary_request,
-                primary_res: Ok(primary),
-                secondary_res: Some(Ok(secondary)),
-            })
-        }
-        Err(e) => {
-            log_warn(&format!(
-                "ask: qdrant batch dual-search failed, falling back to parallel-single: {e}"
-            ));
-            let ((primary_res, primary_ms), (secondary_res, secondary_ms)) =
-                fallback_parallel_dispatch(
-                    cfg,
-                    &primary_request,
-                    query,
-                    &secondary_request,
-                    keyword_query,
-                )
-                .await;
-            timing.set(AskTimingSlot::QdrantPrimary, primary_ms);
-            timing.set(AskTimingSlot::QdrantSecondary, secondary_ms);
-            Ok(DispatchOutcome {
-                primary_request,
-                primary_res,
-                secondary_res: Some(secondary_res),
-            })
-        }
-    }
-}
-
-async fn fallback_parallel_dispatch(
-    cfg: &Config,
-    primary_request: &qdrant::VectorSearchRequest<'_>,
-    query: &str,
-    secondary_request: &qdrant::VectorSearchRequest<'_>,
-    keyword_query: &str,
-) -> (TimedSearchResult, TimedSearchResult) {
-    tokio::join!(
-        dispatch_ask_arm(cfg, primary_request, query, "primary"),
-        dispatch_ask_arm(cfg, secondary_request, keyword_query, "secondary")
-    )
-}
-
-type TimedSearchResult = (SearchHitsResult, u128);
-
-async fn dispatch_ask_arm(
-    cfg: &Config,
-    request: &qdrant::VectorSearchRequest<'_>,
-    query: &str,
-    arm: &'static str,
-) -> TimedSearchResult {
-    let t = std::time::Instant::now();
-    let result = dispatch_vector_search_with_diagnostics(
-        cfg,
-        request,
-        query,
-        VectorDispatchContext {
-            stage: "ask_vector_search_dispatch",
-            command: "ask",
-            arm,
-            fetch_limit: None,
-        },
-    )
-    .await;
-    (result, t.elapsed().as_millis())
 }

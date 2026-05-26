@@ -2,11 +2,13 @@ use std::error::Error as StdError;
 
 pub mod concurrency;
 pub mod headless;
+pub mod openai_compat;
 pub mod types;
 
 pub use types::{
     CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult,
-    LlmBackendConfig, UsageSnapshot, extract_completion_result, normalize_stream_flag,
+    LlmBackendConfig, LlmBackendKind, UsageSnapshot, configured_model_from_config,
+    extract_completion_result, normalize_stream_flag,
 };
 
 pub async fn complete_text(
@@ -15,7 +17,10 @@ pub async fn complete_text(
     ensure_configured(&req)?;
     let _permit =
         concurrency::acquire_completion_permit(req.backend.completion_concurrency).await?;
-    headless::gemini::complete_text(req).await
+    match req.backend.kind {
+        LlmBackendKind::GeminiHeadless => headless::gemini::complete_text(req).await,
+        LlmBackendKind::OpenAiCompat => openai_compat::complete_text(req).await,
+    }
 }
 
 pub async fn complete_streaming<F>(
@@ -28,7 +33,10 @@ where
     ensure_configured(&req)?;
     let _permit =
         concurrency::acquire_completion_permit(req.backend.completion_concurrency).await?;
-    headless::gemini::complete_streaming(req, on_delta).await
+    match req.backend.kind {
+        LlmBackendKind::GeminiHeadless => headless::gemini::complete_streaming(req, on_delta).await,
+        LlmBackendKind::OpenAiCompat => openai_compat::complete_streaming(req, on_delta).await,
+    }
 }
 
 fn ensure_configured(req: &CompletionRequest) -> Result<(), Box<dyn StdError + Send + Sync>> {
