@@ -81,6 +81,7 @@ impl HttpError {
         let diagnostics = include_diagnostics
             .then(|| diagnostics_from_error(err).cloned())
             .flatten();
+        log_handler_error(status, kind, err);
         Self {
             status,
             kind,
@@ -182,6 +183,29 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
 
 fn contains_any(message: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| message.contains(needle))
+}
+
+fn error_chain(err: &(dyn Error + 'static)) -> String {
+    let mut chain = err.to_string();
+    let mut cursor = err.source();
+    while let Some(cause) = cursor {
+        chain.push_str(": ");
+        chain.push_str(&cause.to_string());
+        cursor = cause.source();
+    }
+    chain
+}
+
+fn log_handler_error(status: StatusCode, kind: &'static str, err: &(dyn Error + 'static)) {
+    if status.is_client_error() && status != StatusCode::TOO_MANY_REQUESTS {
+        return;
+    }
+    let chain = error_chain(err);
+    if status.is_server_error() {
+        tracing::error!(status = status.as_u16(), kind, error = %chain, "handler error");
+    } else {
+        tracing::warn!(status = status.as_u16(), kind, error = %chain, "handler error");
+    }
 }
 
 fn response_message(status: StatusCode, err: &(dyn Error + 'static)) -> String {
