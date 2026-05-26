@@ -91,5 +91,10 @@ mod tests;
 
 pub(crate) fn map_service_error(err: &(dyn Error + 'static)) -> Response {
     let (status, kind) = classify_service_error(err);
+    if status.is_server_error() {
+        tracing::error!(status = status.as_u16(), kind, error = %err, "handler error");
+    } else if status == StatusCode::TOO_MANY_REQUESTS {
+        tracing::warn!(status = status.as_u16(), kind, error = %err, "handler error");
+    }
     rest_error(status, kind, err.to_string())
 }
