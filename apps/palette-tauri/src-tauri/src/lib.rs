@@ -1,4 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -35,7 +38,7 @@ const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const SETTINGS_FILE: &str = "settings.json";
 
 #[tauri::command]
-fn load_palette_config(app: AppHandle) -> PaletteSettings {
+fn load_palette_config(app: AppHandle) -> Result<PaletteSettings, String> {
     merged_settings(&app)
 }
 
@@ -74,12 +77,22 @@ fn resize_palette(app: AppHandle, width: f64, height: f64) -> Result<(), String>
     window.center().map_err(|err| err.to_string())
 }
 
-fn merged_settings(app: &AppHandle) -> PaletteSettings {
-    let persisted = read_settings(app);
+fn merged_settings(app: &AppHandle) -> Result<PaletteSettings, String> {
+    let persisted = read_settings_result(app)?;
     let env_entries = read_default_env_entries();
     let defaults = default_settings(&env_entries);
 
-    merge_settings(persisted, defaults)
+    Ok(merge_settings(persisted, defaults))
+}
+
+fn merged_settings_or_default(app: &AppHandle) -> PaletteSettings {
+    match merged_settings(app) {
+        Ok(settings) => settings,
+        Err(err) => {
+            eprintln!("{err}");
+            default_settings(&read_default_env_entries())
+        }
+    }
 }
 
 fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) -> PaletteSettings {
@@ -136,14 +149,32 @@ struct PartialPaletteSettings {
     hide_on_blur: Option<bool>,
 }
 
-fn read_settings(app: &AppHandle) -> PartialPaletteSettings {
+fn read_settings_result(app: &AppHandle) -> Result<PartialPaletteSettings, String> {
     let Some(path) = settings_path(app) else {
-        return PartialPaletteSettings::default();
+        return Ok(PartialPaletteSettings::default());
     };
-    let Ok(contents) = fs::read_to_string(path) else {
-        return PartialPaletteSettings::default();
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            return Ok(PartialPaletteSettings::default());
+        }
+        Err(err) => {
+            return Err(format!(
+                "failed to read palette settings at {}: {err}",
+                path.display()
+            ));
+        }
     };
-    serde_json::from_str(&contents).unwrap_or_default()
+    parse_settings_json(&contents, &path)
+}
+
+fn parse_settings_json(contents: &str, path: &Path) -> Result<PartialPaletteSettings, String> {
+    serde_json::from_str(contents).map_err(|err| {
+        format!(
+            "failed to parse palette settings at {}: {err}",
+            path.display()
+        )
+    })
 }
 
 fn write_settings(
@@ -381,6 +412,15 @@ mod tests {
 
         assert_eq!(merged.collection, "saved");
     }
+
+    #[test]
+    fn parse_settings_json_reports_path_on_malformed_settings() {
+        let path = Path::new("/tmp/axon-palette/settings.json");
+        let err = parse_settings_json("{not json", path).expect_err("malformed settings fail");
+
+        assert!(err.contains("/tmp/axon-palette/settings.json"));
+        assert!(err.contains("failed to parse palette settings"));
+    }
 }
 
 pub fn run() {
@@ -404,7 +444,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let _ = install_tray(app);
-            let settings = merged_settings(app.handle());
+            let settings = merged_settings_or_default(app.handle());
             register_configured_shortcut(app.handle(), &settings).map_err(anyhow::Error::msg)?;
             Ok(())
         })
@@ -414,7 +454,7 @@ pub fn run() {
                 let _ = window.hide();
             }
             WindowEvent::Focused(false) => {
-                if merged_settings(window.app_handle()).hide_on_blur {
+                if merged_settings_or_default(window.app_handle()).hide_on_blur {
                     let _ = window.hide();
                 }
             }
