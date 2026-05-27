@@ -220,14 +220,16 @@ fn format_ingest_progress(
         metrics.get("tasks_done").and_then(|v| v.as_u64()),
         metrics.get("tasks_total").and_then(|v| v.as_u64()),
     ) {
+        let phase = metrics
+            .get("phase")
+            .and_then(|v| v.as_str())
+            .unwrap_or("working");
         if chunks == 0 {
-            let phase = metrics
-                .get("phase")
-                .and_then(|v| v.as_str())
-                .unwrap_or("working");
             return Some(format!("{phase} ({done} / {total} tasks)"));
         }
-        return Some(format!("{done} / {total} tasks, {chunks} chunks embedded"));
+        return Some(format!(
+            "{phase} ({done} / {total} tasks), {chunks} chunks embedded"
+        ));
     }
     if chunks == 0 {
         return if status == "running" && include_running_fallback {
