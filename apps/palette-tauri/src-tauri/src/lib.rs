@@ -79,6 +79,10 @@ fn merged_settings(app: &AppHandle) -> PaletteSettings {
     let env_entries = read_default_env_entries();
     let defaults = default_settings(&env_entries);
 
+    merge_settings(persisted, defaults)
+}
+
+fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) -> PaletteSettings {
     normalize_settings(PaletteSettings {
         server_url: persisted
             .server_url
@@ -89,10 +93,7 @@ fn merged_settings(app: &AppHandle) -> PaletteSettings {
             .shortcut
             .or_else(|| Some(DEFAULT_SHORTCUT.to_string()))
             .unwrap_or_else(|| DEFAULT_SHORTCUT.to_string()),
-        collection: persisted
-            .collection
-            .or_else(|| Some("axon".to_string()))
-            .unwrap_or_else(|| "axon".to_string()),
+        collection: persisted.collection.unwrap_or(defaults.collection),
         result_limit: persisted.result_limit.unwrap_or(10),
         theme: persisted.theme.unwrap_or(PaletteTheme::System),
         hide_on_blur: persisted.hide_on_blur.unwrap_or(true),
@@ -352,6 +353,33 @@ fn trim_env_value(value: &str) -> String {
         }
     }
     value.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_settings_uses_default_collection_when_persisted_collection_missing() {
+        let defaults = default_settings(&[("AXON_COLLECTION".to_string(), "docs".to_string())]);
+
+        let merged = merge_settings(PartialPaletteSettings::default(), defaults);
+
+        assert_eq!(merged.collection, "docs");
+    }
+
+    #[test]
+    fn merge_settings_keeps_persisted_collection_over_default() {
+        let defaults = default_settings(&[("AXON_COLLECTION".to_string(), "docs".to_string())]);
+        let persisted = PartialPaletteSettings {
+            collection: Some("saved".to_string()),
+            ..PartialPaletteSettings::default()
+        };
+
+        let merged = merge_settings(persisted, defaults);
+
+        assert_eq!(merged.collection, "saved");
+    }
 }
 
 pub fn run() {
