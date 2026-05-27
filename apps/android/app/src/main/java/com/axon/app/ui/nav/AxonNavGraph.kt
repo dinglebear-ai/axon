@@ -43,6 +43,7 @@ import com.axon.app.ui.jobs.JobsScreen
 import com.axon.app.ui.knowledge.KnowledgeScreen
 import com.axon.app.ui.operations.OperationsScreen
 import com.axon.app.ui.settings.SettingsScreen
+import com.axon.app.ui.status.ConnectionStatusIndicator
 import com.axon.app.ui.system.SystemScreen
 import kotlinx.serialization.Serializable
 import tv.tootie.aurora.components.AuroraThinking
@@ -110,6 +111,7 @@ private fun HomeShell(navController: NavController) {
                     }
                 },
                 actions = {
+                    ConnectionStatusIndicator()
                     IconButton(onClick = { navController.navigate(SettingsRoute) }) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
                     }
