@@ -6,14 +6,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -33,10 +33,26 @@ import tv.tootie.aurora.components.AuroraSeparator
 import tv.tootie.aurora.components.AuroraStatusIndicator
 import tv.tootie.aurora.components.AuroraStatusTone
 
-/**
- * Renders the full assembled document for a URL. Triggered when a [QueryHitCard]
- * is tapped; loads via [DocumentViewModel.load] which calls /v1/retrieve.
- */
+/** Split a document into ~2 KiB chunks at paragraph (and as a fallback, line) boundaries. */
+private const val DOC_CHUNK_TARGET_CHARS = 2_000
+
+private fun chunkDocument(content: String): List<String> {
+    if (content.length <= DOC_CHUNK_TARGET_CHARS) return listOf(content)
+    val paragraphs = content.split("\n\n")
+    val out = ArrayList<String>()
+    val buf = StringBuilder()
+    for (p in paragraphs) {
+        if (buf.isNotEmpty() && buf.length + p.length > DOC_CHUNK_TARGET_CHARS) {
+            out += buf.toString()
+            buf.clear()
+        }
+        if (buf.isNotEmpty()) buf.append("\n\n")
+        buf.append(p)
+    }
+    if (buf.isNotEmpty()) out += buf.toString()
+    return out
+}
+
 @Composable
 fun DocumentScreen(
     url: String,
@@ -104,17 +120,21 @@ fun DocumentScreen(
 
                 AuroraSeparator()
 
+                // Chunk the assembled doc into ~2 KiB blocks rendered as LazyColumn
+                // items so a multi-MB body doesn't measure/layout in a single Text.
+                val chunks = remember(s.result.content) { chunkDocument(s.result.content) }
                 AuroraCard(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     variant = AuroraCardVariant.Outlined,
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .verticalScroll(rememberScrollState()),
-                    ) {
-                        SelectionContainer {
-                            Text(s.result.content, style = MaterialTheme.typography.bodySmall)
+                    SelectionContainer {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            items(chunks.size, key = { it }) { i ->
+                                Text(chunks[i], style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
