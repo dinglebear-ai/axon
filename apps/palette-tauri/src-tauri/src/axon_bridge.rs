@@ -45,7 +45,7 @@ pub(crate) async fn axon_http_request(
     let base_url = validate_saved_server_url(&settings.server_url)?;
     let url = format!("{}{}", base_url.trim_end_matches('/'), path);
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_secs(300))
         .user_agent("Axon Palette/4.5")
         .build()
         .map_err(|err| err.to_string())?;
