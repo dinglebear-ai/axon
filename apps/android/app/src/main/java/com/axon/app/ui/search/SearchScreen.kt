@@ -70,6 +70,14 @@ fun SearchScreen(vm: SearchViewModel = viewModel()) {
                 ErrorContent(message = state.message)
                 Spacer(Modifier.weight(1f))
             }
+            is SearchUiState.Empty -> {
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("No results", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             is SearchUiState.Idle -> Spacer(Modifier.weight(1f))
         }
 

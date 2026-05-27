@@ -1,10 +1,16 @@
 package com.axon.app.ui.common
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import tv.tootie.aurora.components.AuroraCallout
 import tv.tootie.aurora.components.AuroraCalloutVariant
 import tv.tootie.aurora.components.AuroraThinking
@@ -23,13 +29,28 @@ fun LoadingContent(label: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** Error callout shared across screens. */
+/**
+ * Error callout shared across screens.
+ * Pass [onRetry] to show a "Retry" button below the callout (e.g. after configuring credentials).
+ */
 @Composable
-fun ErrorContent(message: String, modifier: Modifier = Modifier) {
-    AuroraCallout(
-        title = "Error",
-        message = message,
-        variant = AuroraCalloutVariant.Error,
-        modifier = Modifier.fillMaxWidth().then(modifier),
-    )
+fun ErrorContent(
+    message: String,
+    modifier: Modifier = Modifier,
+    onRetry: (() -> Unit)? = null,
+) {
+    Column(modifier = Modifier.fillMaxWidth().then(modifier)) {
+        AuroraCallout(
+            title = "Error",
+            message = message,
+            variant = AuroraCalloutVariant.Error,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (onRetry != null) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                Text("Retry")
+            }
+        }
+    }
 }
