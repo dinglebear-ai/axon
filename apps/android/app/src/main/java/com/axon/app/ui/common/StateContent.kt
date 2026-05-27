@@ -5,14 +5,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraCallout
 import tv.tootie.aurora.components.AuroraCalloutVariant
+import tv.tootie.aurora.components.AuroraEmptyState
 import tv.tootie.aurora.components.AuroraThinking
 
 /**
@@ -31,7 +35,7 @@ fun LoadingContent(label: String, modifier: Modifier = Modifier) {
 
 /**
  * Error callout shared across screens.
- * Pass [onRetry] to show a "Retry" button below the callout (e.g. after configuring credentials).
+ * Pass [onRetry] to show a "Retry" button below the callout.
  */
 @Composable
 fun ErrorContent(
@@ -45,12 +49,45 @@ fun ErrorContent(
             message = message,
             variant = AuroraCalloutVariant.Error,
             modifier = Modifier.fillMaxWidth(),
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.ErrorOutline,
+                    contentDescription = null,
+                )
+            },
         )
         if (onRetry != null) {
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-                Text("Retry")
+            AuroraButton(
+                onClick = onRetry,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                androidx.compose.material3.Text("Retry")
             }
         }
     }
+}
+
+/**
+ * Empty state placeholder shared across screens.
+ * Pass [icon] and [onAction] for a fully decorated empty state.
+ */
+@Composable
+fun EmptyContent(
+    title: String,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    icon: ImageVector? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    AuroraEmptyState(
+        title = title,
+        description = description,
+        modifier = modifier,
+        icon = icon?.let { { Icon(it, contentDescription = null) } },
+        action = if (actionLabel != null && onAction != null) {
+            { AuroraButton(onClick = onAction) { androidx.compose.material3.Text(actionLabel) } }
+        } else null,
+    )
 }

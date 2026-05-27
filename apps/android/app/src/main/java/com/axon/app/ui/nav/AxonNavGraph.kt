@@ -4,12 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.QuestionAnswer
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Handyman
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -35,6 +35,7 @@ import com.axon.app.ui.settings.SettingsScreen
 import com.axon.app.ui.sources.SourcesScreen
 import com.axon.app.ui.tools.ToolsScreen
 import kotlinx.serialization.Serializable
+import tv.tootie.aurora.components.AuroraThinking
 
 @Serializable object AskRoute
 @Serializable object SearchRoute
@@ -49,11 +50,11 @@ private data class NavItem(
 )
 
 private val navItems = listOf(
-    NavItem("Ask",      Icons.Default.QuestionAnswer, AskRoute),
-    NavItem("Search",   Icons.Default.Hub,            SearchRoute),
-    NavItem("Tools",    Icons.Default.Build,          ToolsRoute),
-    NavItem("Sources",  Icons.Default.List,           SourcesRoute),
-    NavItem("Settings", Icons.Default.Settings,       SettingsRoute),
+    NavItem("Ask",      Icons.AutoMirrored.Filled.Chat, AskRoute),
+    NavItem("Search",   Icons.Filled.Search,            SearchRoute),
+    NavItem("Tools",    Icons.Filled.Handyman,          ToolsRoute),
+    NavItem("Sources",  Icons.Filled.Storage,           SourcesRoute),
+    NavItem("Settings", Icons.Filled.Settings,          SettingsRoute),
 )
 
 @Composable
@@ -64,7 +65,7 @@ fun AxonNavGraph() {
 
     if (!isReady) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            AuroraThinking(label = "Initializing…")
         }
         return
     }

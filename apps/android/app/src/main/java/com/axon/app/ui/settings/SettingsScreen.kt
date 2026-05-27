@@ -8,10 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +22,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraButtonVariant
+import tv.tootie.aurora.components.AuroraCallout
+import tv.tootie.aurora.components.AuroraCalloutVariant
+import tv.tootie.aurora.components.AuroraSeparator
+import tv.tootie.aurora.components.AuroraStatusIndicator
+import tv.tootie.aurora.components.AuroraStatusTone
 import tv.tootie.aurora.components.AuroraTextField
 
 @Composable
@@ -46,6 +47,14 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
+        AuroraSeparator()
+
+        // Server Configuration section
+        Text(
+            "Server Configuration",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         AuroraTextField(
             value = serverUrl,
@@ -53,6 +62,15 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             label = "Server URL",
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // Cleartext HTTP warning
+        if (serverUrl.startsWith("http://")) {
+            AuroraCallout(
+                message = "Cleartext HTTP is in use. Consider switching to HTTPS for non-Tailscale servers.",
+                variant = AuroraCalloutVariant.Warn,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         AuroraTextField(
             value = token,
@@ -67,6 +85,15 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             onValueChange = { collection = it },
             label = "Collection",
             modifier = Modifier.fillMaxWidth(),
+        )
+
+        AuroraSeparator()
+
+        // Actions section
+        Text(
+            "Actions",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -87,40 +114,57 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             }
         }
 
+        AuroraSeparator()
+
+        // Status section
+        Text(
+            "Status",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         // Save result feedback
         when (val s = saveState) {
             is SaveState.Saved ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
-                    Text("Settings saved", color = MaterialTheme.colorScheme.primary)
-                }
+                AuroraCallout(
+                    message = "Settings saved successfully.",
+                    variant = AuroraCalloutVariant.Success,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             is SaveState.Failed ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error)
-                    Text("Save failed: ${s.error}", color = MaterialTheme.colorScheme.error)
-                }
+                AuroraCallout(
+                    message = "Save failed: ${s.error}",
+                    variant = AuroraCalloutVariant.Error,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             else -> {}
         }
 
+        // Connection status
         when (val c = connection) {
+            is ConnectionState.Testing ->
+                AuroraStatusIndicator(
+                    tone = AuroraStatusTone.Syncing,
+                    label = "Testing…",
+                )
             is ConnectionState.Ok -> {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
-                    Text("Connected", color = MaterialTheme.colorScheme.primary)
-                }
+                AuroraStatusIndicator(
+                    tone = AuroraStatusTone.Online,
+                    label = "Connected",
+                )
                 c.warning?.let { warning ->
-                    Text(
-                        warning,
-                        color = MaterialTheme.colorScheme.tertiary,
-                        style = MaterialTheme.typography.bodySmall,
+                    AuroraCallout(
+                        message = warning,
+                        variant = AuroraCalloutVariant.Warn,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
             is ConnectionState.Failed ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error)
-                    Text(c.error, color = MaterialTheme.colorScheme.error)
-                }
+                AuroraStatusIndicator(
+                    tone = AuroraStatusTone.Error,
+                    label = c.error,
+                )
             else -> {}
         }
     }
