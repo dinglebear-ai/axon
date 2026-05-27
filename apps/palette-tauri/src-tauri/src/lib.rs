@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -36,6 +37,10 @@ enum PaletteTheme {
 const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8001";
 const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const SETTINGS_FILE: &str = "settings.json";
+
+fn log_palette_warning(context: &str, err: impl Display) {
+    eprintln!("axon palette: {context}: {err}");
+}
 
 #[tauri::command]
 fn load_palette_config(app: AppHandle) -> Result<PaletteSettings, String> {
@@ -263,7 +268,9 @@ fn show_main_window(app: &AppHandle) -> Result<(), String> {
     window.center().map_err(|err| err.to_string())?;
     window.show().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
-    let _ = window.emit("palette://shown", ());
+    if let Err(err) = window.emit("palette://shown", ()) {
+        log_palette_warning("failed to emit shown event", err);
+    }
     Ok(())
 }
 
@@ -273,10 +280,14 @@ fn toggle_main_window(app: &AppHandle) {
     };
     match window.is_visible() {
         Ok(true) => {
-            let _ = window.hide();
+            if let Err(err) = window.hide() {
+                log_palette_warning("failed to hide main window", err);
+            }
         }
         _ => {
-            let _ = show_main_window(app);
+            if let Err(err) = show_main_window(app) {
+                log_palette_warning("failed to show main window", err);
+            }
         }
     }
 }
@@ -294,16 +305,26 @@ fn install_tray(app: &tauri::App) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => {
-                let _ = show_main_window(app);
+                if let Err(err) = show_main_window(app) {
+                    log_palette_warning("failed to show main window from tray", err);
+                }
             }
             "settings" => {
-                let _ = show_main_window(app);
+                if let Err(err) = show_main_window(app) {
+                    log_palette_warning("failed to show main window for settings", err);
+                }
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.emit("palette://open-settings", ());
+                    if let Err(err) = window.emit("palette://open-settings", ()) {
+                        log_palette_warning("failed to emit open settings event", err);
+                    }
+                } else {
+                    log_palette_warning("failed to open settings", "main window not found");
                 }
             }
             "quit" => {
-                let _ = app.global_shortcut().unregister_all();
+                if let Err(err) = app.global_shortcut().unregister_all() {
+                    log_palette_warning("failed to unregister global shortcuts on quit", err);
+                }
                 app.exit(0);
             }
             _ => {}
@@ -443,7 +464,9 @@ pub fn run() {
             axon_bridge::axon_http_request
         ])
         .setup(|app| {
-            let _ = install_tray(app);
+            if let Err(err) = install_tray(app) {
+                log_palette_warning("failed to install tray icon", err);
+            }
             let settings = merged_settings_or_default(app.handle());
             register_configured_shortcut(app.handle(), &settings).map_err(anyhow::Error::msg)?;
             Ok(())
@@ -451,11 +474,15 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
-                let _ = window.hide();
+                if let Err(err) = window.hide() {
+                    log_palette_warning("failed to hide main window on close", err);
+                }
             }
             WindowEvent::Focused(false) => {
                 if merged_settings_or_default(window.app_handle()).hide_on_blur {
-                    let _ = window.hide();
+                    if let Err(err) = window.hide() {
+                        log_palette_warning("failed to hide main window on focus loss", err);
+                    }
                 }
             }
             _ => {}
