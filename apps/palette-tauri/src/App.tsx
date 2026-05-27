@@ -25,8 +25,6 @@ import { Spinner } from "@/components/ui/aurora/spinner";
 import { StatusIndicator } from "@/components/ui/aurora/status-indicator";
 import {
   type PaletteConfig,
-  type PaletteResult,
-  createAxonClient,
   executeAction,
 } from "@/lib/axonClient";
 import {
@@ -38,6 +36,7 @@ import {
 import { formatPayload } from "@/lib/format";
 import {
   actionHint,
+  asyncJobStart,
   argumentFor,
   argumentPlaceholder,
   firstUrl,
@@ -47,18 +46,13 @@ import {
   outputSubtitle,
   outputTitle,
   parseCommand,
+  type RunState,
   runTone,
   validationMessage,
 } from "@/lib/paletteView";
 
-type RunState =
-  | { kind: "idle" }
-  | { kind: "running"; title: string; subtitle: string }
-  | { kind: "queued" | "success" | "error"; title: string; subtitle: string; text: string; result: PaletteResult };
-
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 const appWindow = getCurrentWindow();
-
 export default function App() {
   const [query, setQuery] = useState("");
   const [modeAction, setModeAction] = useState<PaletteAction | null>(null);
@@ -70,14 +64,24 @@ export default function App() {
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
       .then((nextConfig) => {
         setConfig(nextConfig);
         setDraftConfig(nextConfig);
       })
-      .catch((err) => setConfigError(String(err)));
+      .catch((err) => {
+        setConfigError(String(err));
+        void invoke<PaletteConfig>("load_palette_default_config")
+          .then((fallbackConfig) => {
+            setConfig(fallbackConfig);
+            setDraftConfig(fallbackConfig);
+          })
+          .catch(() => {
+            setConfig(null);
+            setDraftConfig(null);
+          });
+      });
   }, []);
 
   useEffect(() => {
@@ -175,10 +179,8 @@ export default function App() {
     void invoke("resize_palette", size);
   }, [showResultsLayout, showContent]);
 
-  const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
-
   async function submit(action: PaletteAction = active) {
-    if (!client || !config || !action || run.kind === "running") return;
+    if (!config || !action || run.kind === "running") return;
     const argument = argumentFor(action, modeAction, parsed, query);
     const validation = validationMessage(action, argument);
     if (validation) return;
@@ -189,7 +191,7 @@ export default function App() {
       subtitle: commandLine,
     });
     try {
-      const result = await executeAction(client, action, argument, config);
+      const result = await executeAction(action, argument, config);
       const jobStart = asyncJobStart(result.payload);
       setRun({
         kind: result.ok ? (jobStart ? "queued" : "success") : "error",
@@ -315,7 +317,7 @@ export default function App() {
           className="command-submit"
           type="button"
           onClick={() => active && void submit(active)}
-          disabled={!client || !active || run.kind === "running" || Boolean(validation)}
+          disabled={!config || !active || run.kind === "running" || Boolean(validation)}
           aria-label="Run selected action"
           title={validation || "Run selected action"}
         >
@@ -492,30 +494,4 @@ export default function App() {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   }
-}
-
-function asyncJobStart(payload: unknown): { jobId: string; status: string } | null {
-  const result = recordField(payload, "result") ?? recordField(payload, "job") ?? payload;
-  if (!isRecord(result)) return null;
-  const jobId = stringField(result, "job_id") ?? stringField(result, "id");
-  if (!jobId) return null;
-  const rawStatus =
-    stringField(result, "status") ??
-    stringField(recordField(payload, "result") ?? {}, "status") ??
-    stringField(payload, "disposition") ??
-    "queued";
-  if (/^(completed|failed|error)$/i.test(rawStatus)) return null;
-  return { jobId, status: "queued" };
-}
-
-function stringField(value: unknown, key: string): string | undefined {
-  return isRecord(value) && typeof value[key] === "string" ? value[key] : undefined;
-}
-
-function recordField(value: unknown, key: string): Record<string, unknown> | undefined {
-  return isRecord(value) && isRecord(value[key]) ? value[key] : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

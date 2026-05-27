@@ -165,6 +165,37 @@ fn ask_result_defaults_missing_warnings_to_empty() {
 }
 
 #[test]
+fn ask_result_omits_empty_warnings_when_serialized() {
+    let result = AskResult {
+        query: "what is axon?".to_string(),
+        answer: "A crawler.".to_string(),
+        session: None,
+        warnings: Vec::new(),
+        diagnostics: None,
+        explain: None,
+        timing_ms: crate::services::types::AskTiming {
+            retrieval: 1,
+            context_build: 2,
+            llm: 3,
+            total: 6,
+            retrieval_wait_ms: None,
+            query_embed_ms: None,
+            qdrant_ms: None,
+            doc_fetch_ms: None,
+            context_format_ms: None,
+            llm_ttft_ms: None,
+            llm_total_ms: None,
+            streamed: None,
+            normalize_ms: None,
+        },
+    };
+
+    let json = serde_json::to_value(&result).expect("ask result should serialize");
+
+    assert!(json.get("warnings").is_none());
+}
+
+#[test]
 fn ask_result_preserves_retrieval_warnings_without_diagnostics() {
     let result: AskResult = serde_json::from_value(serde_json::json!({
         "query": "what is axon?",

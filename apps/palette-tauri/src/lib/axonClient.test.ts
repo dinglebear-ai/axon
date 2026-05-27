@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTIONS, type PaletteAction } from "./actions";
-import { createAxonClient, executeAction, type PaletteConfig } from "./axonClient";
+import { executeAction, type PaletteConfig } from "./axonClient";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -44,22 +44,18 @@ describe("executeAction", () => {
     });
   });
 
-  it("posts GitHub ingest targets using target instead of repo", async () => {
-    const client = createAxonClient(config);
-
-    await executeAction(client, action("ingest"), "owner/repo", config);
+  it("posts GitHub ingest targets using the REST repo field", async () => {
+    await executeAction(action("ingest"), "owner/repo", config);
 
     expect(lastRequestBody()).toEqual({
       source_type: "github",
-      target: "owner/repo",
+      repo: "owner/repo",
       include_source: true,
     });
   });
 
   it("does not attach collection to summarize requests", async () => {
-    const client = createAxonClient(config);
-
-    await executeAction(client, action("summarize"), "https://example.com/doc", config);
+    await executeAction(action("summarize"), "https://example.com/doc", config);
 
     expect(lastRequestBody()).toEqual({
       urls: ["https://example.com/doc"],
@@ -67,9 +63,7 @@ describe("executeAction", () => {
   });
 
   it("attaches the configured collection to ask requests", async () => {
-    const client = createAxonClient(config);
-
-    await executeAction(client, action("ask"), "what changed?", config);
+    await executeAction(action("ask"), "what changed?", config);
 
     expect(lastRequestBody()).toEqual({
       query: "what changed?",

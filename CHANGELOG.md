@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.2] - 2026-05-26
+
+### Changed
+
+- Palette CI now runs Tauri crate tests in addition to cargo check, and compose
+  smoke validates the Steamy build safety helper.
+
+### Fixed
+
+- Palette startup now falls back to default settings if persisted settings
+  cannot be read.
+- Palette GitHub ingest requests use the REST `repo` field expected by the
+  server.
+- Job config snapshots now reject invalid serialized LLM backend values instead
+  of silently falling back to the worker default.
+
 ## [4.8.1] - 2026-05-26
 
 ### Changed
