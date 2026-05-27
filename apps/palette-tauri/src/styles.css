@@ -53,12 +53,12 @@ textarea {
 
 .palette-titlebar {
   display: flex;
-  flex: 0 0 46px;
+  flex: 0 0 32px;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  height: 46px;
-  padding: 0 18px;
+  gap: 10px;
+  height: 32px;
+  padding: 0 12px;
   background: var(--aurora-nav-bg);
   border-bottom: 1px solid var(--aurora-border-default);
   box-shadow: var(--aurora-highlight-medium);
@@ -135,7 +135,7 @@ textarea {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 14px 18px;
+  padding: 8px 14px;
   background: var(--aurora-panel-medium);
   border-bottom: 1px solid var(--aurora-border-default);
 }
@@ -292,7 +292,7 @@ textarea {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 16px;
+  padding: 10px 12px;
 }
 
 .action-panel {
@@ -308,13 +308,13 @@ textarea {
 .output-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   background: var(--aurora-page-bg);
 }
 
 .panel-heading {
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: var(--aurora-text-muted);
   font-size: var(--aurora-type-caption);
   font-weight: var(--aurora-weight-label);
@@ -322,21 +322,38 @@ textarea {
   letter-spacing: var(--aurora-letter-eyebrow);
 }
 
+.output-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.output-meta-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
 .action-scroll {
-  height: calc(100vh - 166px);
+  height: calc(100vh - 120px);
   border-radius: 8px;
 }
 
 .action-scroll-viewport {
-  max-height: calc(100vh - 166px);
+  max-height: calc(100vh - 120px);
 }
 
 .palette-suggestions .action-scroll {
-  height: calc(100vh - 112px);
+  height: calc(100vh - 80px);
 }
 
 .palette-suggestions .action-scroll-viewport {
-  max-height: calc(100vh - 112px);
+  max-height: calc(100vh - 80px);
 }
 
 .action-list {
@@ -418,15 +435,21 @@ textarea {
 }
 
 .output-title {
+  overflow: hidden;
   color: var(--aurora-text-primary);
   font-family: var(--aurora-font-display);
-  font-size: 18px;
+  font-size: 13px;
   font-weight: var(--aurora-weight-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .output-subtitle {
+  overflow: hidden;
   color: var(--aurora-text-muted);
-  font-size: var(--aurora-type-body-sm);
+  font-size: var(--aurora-type-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .output-error .output-title {
@@ -436,9 +459,9 @@ textarea {
 .output-body {
   flex: 1;
   min-height: 0;
-  margin: 8px 0 0;
+  margin: 0;
   overflow: auto;
-  padding: 14px;
+  padding: 10px 12px;
   color: var(--aurora-text-primary);
   background: var(--aurora-control-surface);
   border: 1px solid var(--aurora-border-default);
