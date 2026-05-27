@@ -96,7 +96,6 @@ data class StatsResponse(
 data class ScrapeRequest(
     val url: String,
     val embed: Boolean? = null,
-    val collection: String? = null,
 )
 
 /** Response body from POST /v1/scrape. */
@@ -184,7 +183,6 @@ data class CrawlRequest(
     val urls: List<String>,
     @SerialName("max_pages") val maxPages: Int? = null,
     @SerialName("max_depth") val maxDepth: Int? = null,
-    val collection: String? = null,
 )
 
 /** Response body from POST /v1/crawl (job submission). */

@@ -211,7 +211,7 @@ class AxonRepositoryTest {
         )
         val result = repo.crawlStatus("abc")
         assertTrue(result.isSuccess)
-        assertEquals("unknown", result.getOrThrow())
+        assertEquals("unknown", result.getOrThrow().status)
     }
 
     @Test
@@ -223,7 +223,7 @@ class AxonRepositoryTest {
         )
         val result = repo.crawlStatus("abc")
         assertTrue(result.isSuccess)
-        assertEquals("running", result.getOrThrow())
+        assertEquals("running", result.getOrThrow().status)
     }
 
     // ── ping delegates to healthz ─────────────────────────────────────────────
