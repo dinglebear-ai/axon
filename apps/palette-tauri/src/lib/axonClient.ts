@@ -138,7 +138,7 @@ function ingestBody(target: string): Record<string, unknown> {
   if (lower.includes("reddit.com/") || lower.startsWith("/r/") || lower.startsWith("r/")) {
     return { source_type: "reddit", target };
   }
-  return { source_type: "github", repo: target, include_source: true };
+  return { source_type: "github", target, include_source: true };
 }
 
 type GetPath = "/v1/doctor" | "/v1/status" | "/v1/sources" | "/v1/domains" | "/v1/stats";
