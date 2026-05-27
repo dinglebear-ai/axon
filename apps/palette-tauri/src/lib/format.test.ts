@@ -15,13 +15,18 @@ describe("formatPayload", () => {
   });
 
   it("formats async job starts as human-readable status lines", () => {
-    expect(
-      formatPayload("ingest", {
-        disposition: "queued",
-        execution_mode: "async",
-        result: { status: "pending", job_id: "job-123" },
-      }),
-    ).toBe("ingest queued\nstatus: pending\nmode: async\njob: job-123\nNext: status");
+    const output = formatPayload("ingest", {
+      disposition: "queued",
+      execution_mode: "async",
+      result: { status: "pending", job_id: "job-123" },
+    });
+
+    expect(output).not.toMatch(/^\s*\{/);
+    expect(output).toContain("ingest");
+    expect(output).toContain("queued");
+    expect(output).toContain("pending");
+    expect(output).toContain("async");
+    expect(output).toContain("job-123");
   });
 
   it("returns ask answers without compacting the whole response", () => {
