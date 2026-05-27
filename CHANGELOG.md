@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.1] - 2026-05-26
+
+### Changed
+
+- Tauri palette command entry now has clearer mode state, clearable input, hover
+  selection, and run-state badges for output results.
+- New Qdrant collections now use scalar int8 quantization with
+  `always_ram = false` to reduce memory pressure while keeping the existing
+  quantile and HNSW defaults.
+
+### Fixed
+
+- Tauri palette action lists now show an explicit empty state and better action
+  hints when no command matches.
+
 ## [4.8.0] - 2026-05-26
 
 ### Added
