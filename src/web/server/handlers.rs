@@ -2,6 +2,8 @@
 pub mod admin;
 #[path = "handlers/ask.rs"]
 pub mod ask;
+#[path = "handlers/ask_stream.rs"]
+pub mod ask_stream;
 #[path = "handlers/async_jobs.rs"]
 pub mod async_jobs;
 #[path = "handlers/auth.rs"]
@@ -22,6 +24,7 @@ pub(crate) mod rest;
 pub mod setup;
 
 pub use ask::v1_ask;
+pub use ask_stream::v1_ask_stream;
 pub use auth::{login, panel_state};
 pub use config::{
     get_config, get_env_config, ops, panel_command, panel_doctor, panel_status, save_config,

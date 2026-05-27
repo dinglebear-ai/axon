@@ -43,6 +43,28 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
 }
 
 pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json::Value> {
+    ask_payload_with_delta_handler(cfg, query, Option::<fn(&str)>::None).await
+}
+
+pub async fn ask_payload_with_deltas<F>(
+    cfg: &Config,
+    query: &str,
+    on_delta: F,
+) -> anyhow::Result<serde_json::Value>
+where
+    F: FnMut(&str) + Send,
+{
+    ask_payload_with_delta_handler(cfg, query, Some(on_delta)).await
+}
+
+async fn ask_payload_with_delta_handler<F>(
+    cfg: &Config,
+    query: &str,
+    mut on_delta: Option<F>,
+) -> anyhow::Result<serde_json::Value>
+where
+    F: FnMut(&str) + Send,
+{
     let ask_started = std::time::Instant::now();
     let diagnostics_enabled = cfg.ask_diagnostics || cfg.ask_explain;
     let mut timing = AskTiming::new(diagnostics_enabled, ask_started);
@@ -78,25 +100,14 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         ctx.context_elapsed_ms,
     ));
     if cfg.ask_explain {
-        let total_elapsed_ms = ask_started.elapsed().as_millis();
-        log_info(&format!(
-            "ask explain complete total_ms={total_elapsed_ms} context_chars={}",
-            ctx.context.len()
+        return Ok(build_explain_payload(
+            cfg,
+            query,
+            &ctx,
+            diagnostics_enabled,
+            &timing,
+            ask_started.elapsed().as_millis(),
         ));
-        return Ok(serde_json::json!({
-            "query": query,
-            "answer": "",
-            "session": serde_json::Value::Null,
-            "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
-            "explain": ctx.explain,
-            "timing_ms": build_timing_json(
-                ctx.retrieval_elapsed_ms,
-                ctx.context_elapsed_ms,
-                0,
-                total_elapsed_ms,
-                &timing,
-            ),
-        }));
     }
 
     validate_ask_llm_config(cfg)?;
@@ -108,9 +119,12 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         context.len(),
         cfg.ask_stream,
     ));
-    let llm = output::ask_llm_answer(cfg, query, &context)
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
+    let llm = if let Some(callback) = on_delta.take() {
+        output::ask_llm_answer_with_deltas(cfg, query, &context, callback).await
+    } else {
+        output::ask_llm_answer(cfg, query, &context).await
+    }
+    .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
     let (answer_text, llm_total_ms) = match &llm {
         output::AskLlmCompletion::Streamed {
             answer,
@@ -166,6 +180,34 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
             &timing,
         ),
     }))
+}
+
+fn build_explain_payload(
+    cfg: &Config,
+    query: &str,
+    ctx: &AskContext,
+    diagnostics_enabled: bool,
+    timing: &AskTiming,
+    total_elapsed_ms: u128,
+) -> serde_json::Value {
+    log_info(&format!(
+        "ask explain complete total_ms={total_elapsed_ms} context_chars={}",
+        ctx.context.len()
+    ));
+    serde_json::json!({
+        "query": query,
+        "answer": "",
+        "session": serde_json::Value::Null,
+        "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, ctx),
+        "explain": ctx.explain,
+        "timing_ms": build_timing_json(
+            ctx.retrieval_elapsed_ms,
+            ctx.context_elapsed_ms,
+            0,
+            total_elapsed_ms,
+            timing,
+        ),
+    })
 }
 
 fn build_diagnostics_json(enabled: bool, cfg: &Config, ctx: &AskContext) -> serde_json::Value {

@@ -9,7 +9,7 @@ use crate::services::types::{
     AskResult, DocumentBackend, EvaluateResult, Pagination, QueryHit, QueryResult, RetrieveOptions,
     RetrieveResult, ServiceRetrieveVariantError, SuggestResult, Suggestion,
 };
-use crate::vector::ops::commands::ask::ask_payload;
+use crate::vector::ops::commands::ask::{ask_payload, ask_payload_with_deltas};
 use crate::vector::ops::commands::discover_crawl_suggestions;
 use crate::vector::ops::commands::evaluate_payload;
 use crate::vector::ops::commands::query_results;
@@ -412,6 +412,28 @@ pub async fn ask(
     )
     .await;
     map_ask_payload(payload)
+}
+
+/// RAG ask with token deltas emitted as the LLM streams.
+#[must_use = "ask_stream returns a Result that should be handled"]
+pub async fn ask_stream<F>(
+    cfg: &Config,
+    question: &str,
+    on_delta: F,
+) -> Result<String, Box<dyn Error>>
+where
+    F: FnMut(&str) + Send,
+{
+    let payload = ask_payload_with_deltas(cfg, question, on_delta)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            let message = format!(
+                "ask failed for {}: {e}",
+                question.chars().take(80).collect::<String>()
+            );
+            wrap_service_error(message, e.root_cause())
+        })?;
+    Ok(map_ask_payload(payload)?.answer)
 }
 
 /// RAG evaluate: run RAG and baseline answers, then judge with a second LLM call.
