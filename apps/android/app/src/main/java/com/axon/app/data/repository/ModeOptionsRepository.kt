@@ -1,0 +1,151 @@
+package com.axon.app.data.repository
+
+import android.content.Context
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import com.axon.app.data.remote.AskRequest
+import com.axon.app.data.remote.CrawlRequest
+import com.axon.app.data.remote.MapRequest
+import com.axon.app.data.remote.QueryRequest
+import com.axon.app.data.remote.ResearchRequest
+import com.axon.app.data.remote.ScrapeRequest
+import com.axon.app.data.remote.models.IngestRequest
+import com.axon.app.data.remote.models.SearchWebRequest
+import com.axon.app.data.remote.models.SummarizeRequest
+import com.axon.app.ui.options.forms.AskFormKeys
+import com.axon.app.ui.options.forms.CrawlFormKeys
+import com.axon.app.ui.options.forms.IngestFormKeys
+import com.axon.app.ui.options.forms.MapFormKeys
+import com.axon.app.ui.options.forms.QueryFormKeys
+import com.axon.app.ui.options.forms.ResearchFormKeys
+import com.axon.app.ui.options.forms.ScrapeFormKeys
+import com.axon.app.ui.options.forms.SearchWebFormKeys
+import com.axon.app.ui.options.forms.SummarizeFormKeys
+import kotlinx.coroutines.flow.first
+
+/**
+ * Generic DataStore<Preferences> helpers plus the [ModeOptionsApplicator] impl.
+ *
+ * Per the R9 contract from /lavra-eng-review, this class is intentionally tiny:
+ *   - generic [read]/[write] helpers exposed to forms
+ *   - one `apply()` per wire DTO that merges persisted overrides
+ *
+ * Each form file owns its own `intPreferencesKey(...)` set + defaults. The applicator
+ * reaches into those keys via the `*FormKeys` objects exported from each form file —
+ * the form is still the single source of truth for which keys exist.
+ */
+class ModeOptionsRepository(private val context: Context) : ModeOptionsApplicator {
+
+    /** Read a single Preferences value once (no flow). Returns null when unset. */
+    suspend fun <T> read(key: Preferences.Key<T>): T? =
+        context.modeOptionsDataStore.data.first()[key]
+
+    /** Persist a single value. Pass `null` to remove the key (reset to default). */
+    suspend fun <T> write(key: Preferences.Key<T>, value: T?) {
+        context.modeOptionsDataStore.edit { prefs ->
+            if (value == null) prefs.remove(key) else prefs[key] = value
+        }
+    }
+
+    /** Bulk-remove a key set — used by per-form "Reset to defaults" buttons. */
+    suspend fun resetKeys(keys: List<Preferences.Key<*>>) {
+        context.modeOptionsDataStore.edit { prefs ->
+            keys.forEach { prefs.remove(it) }
+        }
+    }
+
+    // ── Applicator implementations ───────────────────────────────────────────
+    //
+    // Each apply() reads only keys for its own mode. Unset keys leave the
+    // existing request field untouched so call-site arguments still win when
+    // the user has not configured an override.
+
+    override suspend fun apply(req: AskRequest): AskRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        return req.copy(
+            chunkLimit       = req.chunkLimit       ?: prefs[AskFormKeys.CHUNK_LIMIT],
+            fullDocs         = req.fullDocs         ?: prefs[AskFormKeys.FULL_DOCS],
+            maxContextChars  = req.maxContextChars  ?: prefs[AskFormKeys.MAX_CONTEXT_CHARS],
+            hybridCandidates = req.hybridCandidates ?: prefs[AskFormKeys.HYBRID_CANDIDATES],
+            diagnostics      = req.diagnostics      ?: prefs[AskFormKeys.DIAGNOSTICS],
+            explain          = req.explain          ?: prefs[AskFormKeys.EXPLAIN],
+            collection       = req.collection       ?: prefs[AskFormKeys.COLLECTION],
+        )
+    }
+
+    override suspend fun apply(req: QueryRequest): QueryRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        // QueryRequest.limit is non-null (default 10) — only override when the call site
+        // left it at the default (would be brittle; instead always honour override when set).
+        val limitOverride = prefs[QueryFormKeys.LIMIT]
+        return req.copy(
+            limit      = limitOverride ?: req.limit,
+            collection = req.collection ?: prefs[QueryFormKeys.COLLECTION],
+        )
+    }
+
+    override suspend fun apply(req: SummarizeRequest): SummarizeRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        return req.copy(
+            renderMode      = req.renderMode      ?: prefs[SummarizeFormKeys.RENDER_MODE],
+            rootSelector    = req.rootSelector    ?: prefs[SummarizeFormKeys.ROOT_SELECTOR]?.takeIf { it.isNotBlank() },
+            excludeSelector = req.excludeSelector ?: prefs[SummarizeFormKeys.EXCLUDE_SELECTOR]?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    override suspend fun apply(req: ResearchRequest): ResearchRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        return req.copy(
+            limit = req.limit ?: prefs[ResearchFormKeys.LIMIT],
+        )
+    }
+
+    override suspend fun apply(req: ScrapeRequest): ScrapeRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        return req.copy(
+            renderMode = req.renderMode ?: prefs[ScrapeFormKeys.RENDER_MODE],
+            format     = req.format     ?: prefs[ScrapeFormKeys.FORMAT],
+            embed      = req.embed      ?: prefs[ScrapeFormKeys.EMBED],
+            collection = req.collection ?: prefs[ScrapeFormKeys.COLLECTION],
+        )
+    }
+
+    override suspend fun apply(req: CrawlRequest): CrawlRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        val headers = if (req.headers.isNotEmpty()) req.headers
+                      else prefs[CrawlFormKeys.HEADERS]?.toList()?.filter { it.isNotBlank() } ?: emptyList()
+        return req.copy(
+            maxPages          = req.maxPages          ?: prefs[CrawlFormKeys.MAX_PAGES],
+            maxDepth          = req.maxDepth          ?: prefs[CrawlFormKeys.MAX_DEPTH],
+            renderMode        = req.renderMode        ?: prefs[CrawlFormKeys.RENDER_MODE],
+            includeSubdomains = req.includeSubdomains ?: prefs[CrawlFormKeys.INCLUDE_SUBDOMAINS],
+            collection        = req.collection        ?: prefs[CrawlFormKeys.COLLECTION],
+            headers           = headers,
+        )
+    }
+
+    override suspend fun apply(req: MapRequest): MapRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        return req.copy(
+            limit  = req.limit  ?: prefs[MapFormKeys.LIMIT],
+            offset = req.offset ?: prefs[MapFormKeys.OFFSET],
+        )
+    }
+
+    override suspend fun apply(req: SearchWebRequest): SearchWebRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        return req.copy(
+            limit     = req.limit     ?: prefs[SearchWebFormKeys.LIMIT],
+            offset    = req.offset    ?: prefs[SearchWebFormKeys.OFFSET],
+            timeRange = req.timeRange ?: prefs[SearchWebFormKeys.TIME_RANGE]?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    override suspend fun apply(req: IngestRequest): IngestRequest {
+        val prefs = context.modeOptionsDataStore.data.first()
+        return req.copy(
+            includeSource = req.includeSource ?: prefs[IngestFormKeys.INCLUDE_SOURCE],
+            collection    = req.collection    ?: prefs[IngestFormKeys.COLLECTION],
+        )
+    }
+}

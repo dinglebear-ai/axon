@@ -5,6 +5,9 @@ import com.axon.app.data.local.AppDatabase
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.AxonRepository
 import com.axon.app.data.repository.DEFAULT_SERVER_URL
+import com.axon.app.data.repository.EncryptedTokenStore
+import com.axon.app.data.repository.ModeOptionsApplicator
+import com.axon.app.data.repository.ModeOptionsRepository
 import com.axon.app.data.repository.RecentJobsRepository
 import com.axon.app.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,14 +27,13 @@ import kotlinx.coroutines.flow.asStateFlow
  *    pushes real credentials into the client and sets [isReady] = true.
  * 4. The splash/gate composable observes [isReady] and blocks the UI until step 3 completes,
  *    ensuring no API calls reach the server with stale (empty) credentials.
- *
- * TODO: SECURITY — migrate token storage to EncryptedSharedPreferences before production use.
- * See: https://developer.android.com/reference/androidx/security/crypto/EncryptedSharedPreferences
- * Artifact: androidx.security:security-crypto
  */
 class AppContainer(context: Context) {
-    val settingsRepository = SettingsRepository(context)
+    val encryptedTokenStore = EncryptedTokenStore(context)
+    val settingsRepository = SettingsRepository(context, encryptedTokenStore)
     val recentJobs = RecentJobsRepository(context)
+    val modeOptionsRepository = ModeOptionsRepository(context)
+    val modeOptionsApplicator: ModeOptionsApplicator = modeOptionsRepository
     private val db = AppDatabase.build(context)
 
     val axonClient = AxonClient(
@@ -43,6 +45,7 @@ class AppContainer(context: Context) {
     val axonRepository = AxonRepository(
         client = axonClient,
         askHistoryDao = db.askHistoryDao(),
+        applicator = modeOptionsApplicator,
     )
 
     private val _isReady = MutableStateFlow(false)

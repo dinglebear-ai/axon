@@ -84,6 +84,7 @@ private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000
 class AxonRepository(
     private val client: AxonClient,
     private val askHistoryDao: AskHistoryDao,
+    private val applicator: ModeOptionsApplicator = NoopModeOptionsApplicator,
 ) {
 
     // Short-circuits with a failure when no token is configured; otherwise runs [block].
@@ -92,7 +93,8 @@ class AxonRepository(
         else Result.failure(IllegalStateException("No API token configured. Go to Settings to add your token."))
 
     suspend fun ask(query: String, collection: String? = null): Result<AskResultUi> = withToken {
-        client.ask(AskRequest(query = query, collection = collection)).map { r ->
+        val req = applicator.apply(AskRequest(query = query, collection = collection))
+        client.ask(req).map { r ->
             AskResultUi(query = r.query, answer = r.answer, timingMs = r.timingMs?.totalMs)
         }
     }
@@ -100,6 +102,11 @@ class AxonRepository(
     /**
      * Streams the ask response via SSE. Emits [AskStreamEvent] objects as they arrive.
      * If no API token is configured, immediately emits a single [AskStreamEvent.Error].
+     *
+     * Note: applicator merge can't easily run inside a non-suspending `flow {}` builder
+     * because the merge itself is suspending. We construct the base request synchronously;
+     * persisted overrides will land on the next non-streaming call. SSE streaming is
+     * intentionally narrow surface area — extending mode-options here is a follow-up.
      */
     fun askStream(query: String, collection: String? = null): Flow<AskStreamEvent> {
         if (!client.hasToken()) return flow {
@@ -109,7 +116,8 @@ class AxonRepository(
     }
 
     suspend fun query(query: String, limit: Int = 10, collection: String? = null): Result<List<QueryHitUi>> = withToken {
-        client.query(QueryRequest(query = query, limit = limit, collection = collection)).map { r ->
+        val req = applicator.apply(QueryRequest(query = query, limit = limit, collection = collection))
+        client.query(req).map { r ->
             r.results.map { h ->
                 QueryHitUi(rank = h.rank, score = h.score, url = h.url, source = h.source, snippet = h.snippet)
             }
@@ -172,19 +180,22 @@ class AxonRepository(
     }
 
     suspend fun scrape(url: String): Result<ScrapeResultUi> = withToken {
-        client.scrape(ScrapeRequest(url = url)).map { r ->
+        val req = applicator.apply(ScrapeRequest(url = url))
+        client.scrape(req).map { r ->
             ScrapeResultUi(url = r.url, markdown = r.markdown)
         }
     }
 
     suspend fun map(url: String): Result<MapResultUi> = withToken {
-        client.map(MapRequest(url = url)).map { r ->
+        val req = applicator.apply(MapRequest(url = url))
+        client.map(req).map { r ->
             MapResultUi(url = r.url, total = r.total, urls = r.urls)
         }
     }
 
     suspend fun research(query: String): Result<ResearchResultUi> = withToken {
-        client.research(ResearchRequest(query = query)).map { r ->
+        val req = applicator.apply(ResearchRequest(query = query))
+        client.research(req).map { r ->
             ResearchResultUi(
                 query = r.payload.query,
                 summary = r.payload.summary,
@@ -194,7 +205,8 @@ class AxonRepository(
     }
 
     suspend fun crawlSubmit(url: String, maxPages: Int? = null): Result<String> = withToken {
-        client.crawlSubmit(CrawlRequest(urls = listOf(url), maxPages = maxPages)).map { it.jobId }
+        val req = applicator.apply(CrawlRequest(urls = listOf(url), maxPages = maxPages))
+        client.crawlSubmit(req).map { it.jobId }
     }
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusUi> = withToken {
@@ -227,13 +239,15 @@ class AxonRepository(
     // ── Phase 2 wrappers ───────────────────────────────────────────────────
 
     suspend fun summarize(urls: List<String>, collection: String? = null): Result<SummarizeResultUi> = withToken {
-        client.summarize(
+        val req = applicator.apply(
             com.axon.app.data.remote.models.SummarizeRequest(urls = urls, collection = collection)
-        ).map { r -> SummarizeResultUi(r.urls, r.summary, r.contextChars, r.contextTruncated) }
+        )
+        client.summarize(req).map { r -> SummarizeResultUi(r.urls, r.summary, r.contextChars, r.contextTruncated) }
     }
 
     suspend fun searchWeb(query: String): Result<SearchWebResultUi> = withToken {
-        client.searchWeb(com.axon.app.data.remote.models.SearchWebRequest(query = query)).map { r ->
+        val req = applicator.apply(com.axon.app.data.remote.models.SearchWebRequest(query = query))
+        client.searchWeb(req).map { r ->
             SearchWebResultUi(
                 query = r.query,
                 results = r.results.map { SearchWebHitUi(it.title, it.url, it.snippet, it.score) },
@@ -245,9 +259,10 @@ class AxonRepository(
     }
 
     suspend fun ingestStart(sourceType: String, target: String, collection: String? = null): Result<String> = withToken {
-        client.ingestStart(
+        val req = applicator.apply(
             com.axon.app.data.remote.models.IngestRequest(sourceType = sourceType, target = target, collection = collection)
-        ).map { it.jobId }
+        )
+        client.ingestStart(req).map { it.jobId }
     }
 
     suspend fun getJob(kind: AxonClient.JobKind, id: String): Result<JobUi> = withToken {
