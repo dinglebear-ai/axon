@@ -88,6 +88,7 @@ pub(crate) struct AskContext {
     /// "user_override" | "adaptive_simple" | "adaptive_complex".
     /// (bd axon_rust-721)
     pub full_docs_source: &'static str,
+    pub warnings: Vec<String>,
     pub explain: Option<AskExplainTrace>,
 }
 
@@ -159,6 +160,7 @@ pub(crate) async fn build_ask_context(
         detected_complexity,
         resolved_full_docs,
         full_docs_source: full_docs_source.as_str(),
+        warnings: retrieval.warnings,
         explain: if cfg.ask_explain {
             build_explain_trace(
                 query,

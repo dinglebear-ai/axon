@@ -12,6 +12,7 @@ pub(super) struct DispatchOutcome<'a> {
     pub(super) primary_request: qdrant::VectorSearchRequest<'a>,
     pub(super) primary_res: SearchHitsResult,
     pub(super) secondary_res: Option<SearchHitsResult>,
+    pub(super) warnings: Vec<String>,
 }
 
 /// Dispatch the NL (primary) and optional keyword (secondary) Qdrant searches.
@@ -87,6 +88,7 @@ async fn run_single_qdrant_dispatch<'a>(
         primary_request,
         primary_res,
         secondary_res: None,
+        warnings: Vec::new(),
     })
 }
 
@@ -139,6 +141,7 @@ async fn run_dual_qdrant_dispatch<'a>(
                 primary_request,
                 primary_res: Ok(primary),
                 secondary_res: Some(Ok(secondary)),
+                warnings: Vec::new(),
             })
         }
         Err(e) => {
@@ -168,6 +171,7 @@ async fn fallback_after_batch_error<'a>(
     log_warn(&format!(
         "ask: qdrant batch dual-search failed, falling back to parallel-single: {error}"
     ));
+    let warning = batch_fallback_warning();
     log_info("ask qdrant fallback parallel dispatch start");
     let ((primary_res, primary_ms), (secondary_res, secondary_ms)) = fallback_parallel_dispatch(
         cfg,
@@ -186,7 +190,12 @@ async fn fallback_after_batch_error<'a>(
         primary_request,
         primary_res,
         secondary_res: Some(secondary_res),
+        warnings: vec![warning],
     })
+}
+
+fn batch_fallback_warning() -> String {
+    "ask: qdrant batch dual-search failed; falling back to parallel-single retrieval".to_string()
 }
 
 async fn fallback_parallel_dispatch(
@@ -224,4 +233,18 @@ async fn dispatch_ask_arm(
     )
     .await;
     (result, t.elapsed().as_millis())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::batch_fallback_warning;
+
+    #[test]
+    fn batch_fallback_warning_is_user_facing() {
+        let warning = batch_fallback_warning();
+
+        assert!(warning.contains("qdrant batch dual-search failed"));
+        assert!(warning.contains("falling back to parallel-single"));
+        assert!(!warning.contains("temporary qdrant outage"));
+    }
 }

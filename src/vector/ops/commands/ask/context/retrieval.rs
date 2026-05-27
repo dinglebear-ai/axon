@@ -35,6 +35,7 @@ pub(super) struct AskRetrieval {
     pub(super) min_supplemental_score: Option<f64>,
     pub(super) explain_retrieval: Option<AskExplainRetrieval>,
     pub(super) candidate_traces: Vec<CandidateRankingTrace>,
+    pub(super) warnings: Vec<String>,
 }
 
 pub(super) struct RerankParams<'a> {
@@ -139,6 +140,7 @@ pub(super) async fn retrieve_ask_candidates(
         mode,
         rrf_mode,
         retrieval_score_kind,
+        warnings,
     } = retrieve_and_build_candidates(
         cfg,
         query,
@@ -224,6 +226,7 @@ pub(super) async fn retrieve_ask_candidates(
         query_tokens,
         retrieval_started,
         candidate_traces,
+        warnings,
     }))
 }
 
@@ -233,6 +236,7 @@ struct BuiltRetrievalCandidates {
     mode: crate::vector::ops::commands::retrieval::VectorModeMetadata,
     rrf_mode: bool,
     retrieval_score_kind: AskExplainScoreKind,
+    warnings: Vec<String>,
 }
 
 async fn retrieve_and_build_candidates<'a>(
@@ -249,6 +253,7 @@ async fn retrieve_and_build_candidates<'a>(
         primary_request,
         primary_res,
         secondary_res,
+        mut warnings,
     } = run_qdrant_dispatch(
         cfg,
         query,
@@ -272,12 +277,14 @@ async fn retrieve_and_build_candidates<'a>(
         &CandidateBuildPolicy { allow_low_signal },
         cfg.ask_explain.then_some(retrieval_score_kind),
     );
+    warnings.extend(built_candidates.warnings);
     Ok(BuiltRetrievalCandidates {
         retrieved_candidates: built_candidates.retrieved_candidates,
         pre_rerank_traces: built_candidates.pre_rerank_traces,
         mode,
         rrf_mode,
         retrieval_score_kind,
+        warnings,
     })
 }
 
@@ -310,6 +317,7 @@ struct FinalizeRetrievalInputs<'a> {
     query_tokens: &'a [String],
     retrieval_started: std::time::Instant,
     candidate_traces: Vec<CandidateRankingTrace>,
+    warnings: Vec<String>,
 }
 
 fn finalize_retrieval(inputs: FinalizeRetrievalInputs<'_>) -> AskRetrieval {
@@ -346,6 +354,7 @@ fn finalize_retrieval(inputs: FinalizeRetrievalInputs<'_>) -> AskRetrieval {
             ask_tuning.ask_hybrid_candidates,
         ),
         candidate_traces: inputs.candidate_traces,
+        warnings: inputs.warnings,
     }
 }
 
