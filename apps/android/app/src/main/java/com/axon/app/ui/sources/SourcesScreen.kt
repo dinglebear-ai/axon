@@ -39,7 +39,13 @@ fun SourcesScreen(vm: SourcesViewModel = viewModel()) {
             is SourcesUiState.Loading -> {
                 AuroraProgress(modifier = Modifier.fillMaxWidth())
             }
-            is SourcesUiState.Error -> ErrorContent(message = state.message)
+            is SourcesUiState.Empty -> {
+                ErrorContent(
+                    message = "No sources indexed yet. Use Ask or Search to start indexing content.",
+                    onRetry = vm::load,
+                )
+            }
+            is SourcesUiState.Error -> ErrorContent(message = state.message, onRetry = vm::load)
             is SourcesUiState.Loaded -> {
                 Text(
                     "${state.sources.size} sources · ${state.total} chunks",

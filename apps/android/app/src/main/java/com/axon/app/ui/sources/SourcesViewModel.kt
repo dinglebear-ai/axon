@@ -8,6 +8,8 @@ import com.axon.app.data.repository.SourceEntryUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -26,7 +28,14 @@ class SourcesViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow<SourcesUiState>(SourcesUiState.Loading)
     val uiState: StateFlow<SourcesUiState> = _uiState.asStateFlow()
 
-    init { load() }
+    init {
+        // Auto-reload when the API token changes (e.g. after the user configures it in Settings).
+        viewModelScope.launch {
+            container.settingsRepository.settings
+                .distinctUntilChangedBy { it.token }
+                .collect { load() }
+        }
+    }
 
     fun load() {
         viewModelScope.launch {
