@@ -104,6 +104,9 @@ coverage/
 npm-debug.log*
 package-lock.json
 
+# ── Android ─────────────────────────────────────────────────────────────────
+apps/android/local.properties
+
 # ── Repo-specific ────────────────────────────────────────────────────────────
 /output/
 tmp/
