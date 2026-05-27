@@ -99,7 +99,14 @@
         },
         "responses": {
           "200": {
-            "description": "RAG answer streamed as text/event-stream"
+            "description": "RAG answer streamed as server-sent events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid ask request",

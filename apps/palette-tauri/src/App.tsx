@@ -33,10 +33,10 @@ import type { RunState } from "@/lib/runState";
 import { hostLabel } from "@/lib/url";
 
 type PaletteStreamEvent =
-  | { type: "started"; path: string }
-  | { type: "delta"; text: string }
-  | { type: "done"; answer?: string | null }
-  | { type: "error"; message: string };
+  | { type: "started"; requestId: string; path: string }
+  | { type: "delta"; requestId: string; text: string }
+  | { type: "done"; requestId: string; answer?: string | null }
+  | { type: "error"; requestId: string; message: string };
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 const appWindow = getCurrentWindow();
@@ -86,13 +86,13 @@ export default function App() {
       const payload = event.payload;
       if (payload.type === "delta") {
         setRun((current) =>
-          current.kind === "streaming"
+          current.kind === "streaming" && current.requestId === payload.requestId
             ? { ...current, text: current.text + payload.text }
             : current,
         );
       } else if (payload.type === "done") {
         setRun((current) =>
-          current.kind === "streaming"
+          current.kind === "streaming" && current.requestId === payload.requestId
             ? {
                 kind: "success",
                 title: "Ask question completed",
@@ -111,7 +111,7 @@ export default function App() {
         );
       } else if (payload.type === "error") {
         setRun((current) =>
-          current.kind === "streaming"
+          current.kind === "streaming" && current.requestId === payload.requestId
             ? {
                 kind: "error",
                 title: "Ask question failed",
@@ -221,6 +221,7 @@ export default function App() {
     if (validation) return;
     const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
     if (action.subcommand === "ask") {
+      const requestId = newRequestId();
       const request = buildActionRequest(client, action, argument, config);
       setRun({
         kind: "streaming",
@@ -228,22 +229,39 @@ export default function App() {
         subtitle: `${request.method} /v1/ask/stream`,
         text: "",
         outputKind: outputKindFor(action.subcommand),
+        requestId,
       });
       try {
         await invoke("axon_http_stream_request", {
           request: {
             ...request,
+            requestId,
             path: "/v1/ask/stream",
             body: request.body,
           },
         });
         return;
-      } catch {
-        setRun({
-          kind: "running",
-          title: `Running ${action.label}`,
-          subtitle: commandLine,
-        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setRun((current) =>
+          current.kind === "streaming" && current.requestId === requestId
+            ? {
+                kind: "error",
+                title: `${action.label} stream failed`,
+                subtitle: `${request.method} /v1/ask/stream`,
+                text: message,
+                outputKind: outputKindFor(action.subcommand),
+                result: {
+                  ok: false,
+                  status: 0,
+                  path: "/v1/ask/stream",
+                  method: "POST",
+                  payload: { error: message },
+                },
+              }
+            : current,
+        );
+        return;
       }
     } else {
       setRun({
@@ -456,6 +474,10 @@ function focusInput(select = false) {
     input?.focus();
     if (select) input?.select();
   }, 30);
+}
+
+function newRequestId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function parseCommand(raw: string): { invoked?: PaletteAction; search: string; arg: string } {
