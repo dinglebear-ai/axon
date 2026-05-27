@@ -44,17 +44,25 @@ class AxonClient(
 
     fun hasToken(): Boolean = config.get().second.isNotBlank()
 
-    suspend fun healthz(): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * Checks server reachability. Returns [Result.success] on HTTP 2xx,
+     * [Result.failure] with the underlying cause otherwise so callers can show
+     * the specific reason (401 Unauthorized, DNS failure, TLS error, etc.)
+     * instead of the generic "Server unreachable".
+     */
+    suspend fun healthz(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val (baseUrl, _) = config.get()
             val req = Request.Builder()
                 .url("$baseUrl/healthz")
                 .get()
                 .build()
-            http.newCall(req).execute().use { it.isSuccessful }
-        }
-            .onFailure { if (it is CancellationException) throw it }
-            .getOrDefault(false)
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    error("HTTP ${resp.code}: ${resp.body?.string()?.take(200) ?: resp.message}")
+                }
+            }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     suspend fun ask(request: AskRequest): Result<AskResponse> = withContext(Dispatchers.IO) {

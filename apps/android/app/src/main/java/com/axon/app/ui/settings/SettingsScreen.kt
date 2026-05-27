@@ -32,9 +32,10 @@ import tv.tootie.aurora.components.AuroraTextField
 fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
+    val saveState by vm.saveState.collectAsStateWithLifecycle()
 
-    var serverUrl  by remember(settings.serverUrl)  { mutableStateOf(settings.serverUrl) }
-    var token      by remember(settings.token)      { mutableStateOf(settings.token) }
+    var serverUrl  by remember(settings.serverUrl)  { mutableStateOf(settings.serverUrl.value) }
+    var token      by remember(settings.token)      { mutableStateOf(settings.token.value) }
     var collection by remember(settings.collection) { mutableStateOf(settings.collection) }
 
     Column(
@@ -72,8 +73,9 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             AuroraButton(
                 onClick = { vm.saveSettings(serverUrl, token, collection) },
                 modifier = Modifier.weight(1f),
+                enabled = saveState !is SaveState.Saving,
             ) {
-                Text("Save")
+                Text(if (saveState is SaveState.Saving) "Saving…" else "Save")
             }
             AuroraButton(
                 onClick = { vm.testConnection(serverUrl, token) },
@@ -83,6 +85,21 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             ) {
                 Text(if (connection is ConnectionState.Testing) "Testing…" else "Test")
             }
+        }
+
+        // Save result feedback
+        when (val s = saveState) {
+            is SaveState.Saved ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Settings saved", color = MaterialTheme.colorScheme.primary)
+                }
+            is SaveState.Failed ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error)
+                    Text("Save failed: ${s.error}", color = MaterialTheme.colorScheme.error)
+                }
+            else -> {}
         }
 
         when (val c = connection) {

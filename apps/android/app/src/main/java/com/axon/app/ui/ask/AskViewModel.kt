@@ -16,7 +16,12 @@ import kotlinx.coroutines.launch
 sealed interface AskUiState {
     object Idle : AskUiState
     object Loading : AskUiState
-    data class Success(val result: AskResultUi) : AskUiState
+    /**
+     * [historyWarning] is non-null when the ask succeeded but saving to history
+     * failed (e.g. disk full). The answer is still shown; the user is informed
+     * that history was not recorded so they can act on it.
+     */
+    data class Success(val result: AskResultUi, val historyWarning: String? = null) : AskUiState
     data class Error(val message: String) : AskUiState
 }
 
@@ -35,9 +40,16 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = AskUiState.Loading
             container.axonRepository.ask(query).fold(
                 onSuccess = { result ->
-                    _uiState.value = AskUiState.Success(result)
-                    container.axonRepository.recordAskHistory(
+                    val saved = container.axonRepository.recordAskHistory(
                         AskHistoryEntry(query = result.query, answer = result.answer)
+                    )
+                    _uiState.value = AskUiState.Success(
+                        result = result,
+                        historyWarning = if (!saved) {
+                            "Answer shown, but history could not be saved (storage may be full)."
+                        } else {
+                            null
+                        },
                     )
                 },
                 onFailure = { err ->

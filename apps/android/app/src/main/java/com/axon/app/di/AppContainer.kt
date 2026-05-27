@@ -33,7 +33,7 @@ class AppContainer(context: Context) {
 
     // Called once at app start after settings are read from DataStore
     fun applySettings(serverUrl: String, token: String) {
-        axonClient.updateConfig(serverUrl, token)
+        axonClient.updateConfig(serverUrl.trimEnd('/'), token)
         _isReady.value = true
     }
 }

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.data.remote.ResearchHit
+import com.axon.app.data.repository.CrawlStatusUi
 import com.axon.app.data.repository.MapResultUi
 import com.axon.app.data.repository.ResearchResultUi
 import com.axon.app.data.repository.ScrapeResultUi
@@ -46,7 +47,16 @@ sealed interface CrawlUiState {
     object Idle : CrawlUiState
     object Loading : CrawlUiState
     data class Submitted(val jobId: String) : CrawlUiState
-    data class StatusPolled(val jobId: String, val status: String) : CrawlUiState
+    /**
+     * [serverError] is non-null when the Axon server reported a failure reason for the crawl job.
+     * Surfacing it lets users understand why a crawl failed rather than just seeing "failed".
+     */
+    data class StatusPolled(
+        val jobId: String,
+        val status: String,
+        val pagesCrawled: Int?,
+        val serverError: String?,
+    ) : CrawlUiState
     data class Error(val message: String) : CrawlUiState
 }
 
@@ -118,7 +128,14 @@ class ToolsViewModel(app: Application) : AndroidViewModel(app) {
     fun pollCrawlStatus(jobId: String) {
         viewModelScope.launch {
             repo.crawlStatus(jobId).fold(
-                onSuccess = { status -> _crawlState.value = CrawlUiState.StatusPolled(jobId, status) },
+                onSuccess = { s ->
+                    _crawlState.value = CrawlUiState.StatusPolled(
+                        jobId = s.jobId,
+                        status = s.status,
+                        pagesCrawled = s.pagesCrawled,
+                        serverError = s.serverError,
+                    )
+                },
                 onFailure = { _crawlState.value = CrawlUiState.Error(it.message ?: "Status check failed") },
             )
         }

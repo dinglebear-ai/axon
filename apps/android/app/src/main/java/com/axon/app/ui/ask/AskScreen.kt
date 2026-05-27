@@ -72,6 +72,14 @@ fun AskScreen(vm: AskViewModel = viewModel()) {
                         }
                     }
                 }
+                state.historyWarning?.let { warning ->
+                    Text(
+                        warning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
             }
             is AskUiState.Error -> ErrorContent(message = state.message)
             is AskUiState.Idle -> {}
