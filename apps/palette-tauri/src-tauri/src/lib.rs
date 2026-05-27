@@ -48,6 +48,11 @@ fn load_palette_config(app: AppHandle) -> Result<PaletteSettings, String> {
 }
 
 #[tauri::command]
+fn load_palette_default_config() -> PaletteSettings {
+    default_settings(&read_default_env_entries())
+}
+
+#[tauri::command]
 fn save_palette_settings(
     app: AppHandle,
     settings: PaletteSettings,
@@ -457,6 +462,7 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             load_palette_config,
+            load_palette_default_config,
             save_palette_settings,
             hide_palette,
             show_palette,

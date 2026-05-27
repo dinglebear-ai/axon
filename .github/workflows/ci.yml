@@ -165,6 +165,8 @@ jobs:
         run: pnpm --dir apps/palette-tauri vite:build
       - name: Tauri cargo check
         run: cargo check --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
+      - name: Tauri cargo test
+        run: cargo test --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
 
   windows-check:
     name: windows-check (xtask only)

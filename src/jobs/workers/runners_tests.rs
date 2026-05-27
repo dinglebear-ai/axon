@@ -245,6 +245,47 @@ fn config_snapshot_does_not_serialize_process_local_endpoint_urls() {
 }
 
 #[test]
+fn config_snapshot_rejects_invalid_llm_backend_values() {
+    let worker = Config::test_default();
+    let config_json = r#"{
+        "version": 2,
+        "config": {
+            "llm_backend": "openai-compatible"
+        }
+    }"#;
+
+    let err = apply_config_snapshot(&worker, config_json).expect_err("invalid backend fails");
+
+    assert!(
+        err.to_string().contains("invalid llm_backend"),
+        "expected invalid backend error, got: {err}"
+    );
+}
+
+#[test]
+fn ingest_config_snapshot_rejects_invalid_llm_backend_values() {
+    let worker = Config::test_default();
+    let config_json = r#"{
+        "version": 2,
+        "source": {
+            "source_type": "github",
+            "repo": "owner/repo",
+            "include_source": true
+        },
+        "config": {
+            "llm_backend": "openai-compatible"
+        }
+    }"#;
+
+    let err = decode_ingest_job_config(&worker, config_json).expect_err("invalid backend fails");
+
+    assert!(
+        err.to_string().contains("invalid llm_backend"),
+        "expected invalid backend error, got: {err}"
+    );
+}
+
+#[test]
 fn ingest_job_config_preserves_source_and_supports_legacy_rows() {
     let mut submitted = Config::test_default();
     submitted.collection = "submitted_collection".to_string();

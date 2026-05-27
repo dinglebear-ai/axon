@@ -1,16 +1,16 @@
 mod endpoint;
 mod errors;
+mod ingest;
 mod paths;
 
-use std::path::PathBuf;
+use std::{io, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::core::config::{Config, RenderMode, ScrapeFormat};
-use crate::jobs::ingest::IngestSource;
-
 use endpoint::endpoint_snapshot;
 use errors::{running_in_container, serde_json_error};
+pub(crate) use ingest::{decode_ingest_job_config, ingest_config_json};
 use paths::normalize_container_output_dir;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -19,14 +19,6 @@ struct ConfigSnapshotEnvelope {
     version: u8,
     config: ConfigSnapshot,
     prompt: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-struct IngestConfigSnapshotEnvelope {
-    version: u8,
-    source: Option<IngestSource>,
-    config: ConfigSnapshot,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -247,20 +239,34 @@ impl ConfigSnapshot {
         })
     }
 
-    fn apply_to(self, cfg: &mut Config, exact_options: bool) {
+    fn apply_to(
+        self,
+        cfg: &mut Config,
+        exact_options: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut snapshot = self;
         let fallback_fields = std::mem::take(&mut snapshot.process_fallback_fields);
-        snapshot.apply_llm_backend(cfg);
+        snapshot.apply_llm_backend(cfg)?;
         snapshot.apply_regular_fields(cfg);
         snapshot.apply_option_fields(cfg, exact_options, &fallback_fields);
+        Ok(())
     }
 
-    fn apply_llm_backend(&mut self, cfg: &mut Config) {
-        if let Some(value) = self.llm_backend.take()
-            && let Ok(kind) = crate::services::llm_backend::LlmBackendKind::parse(&value)
-        {
+    fn apply_llm_backend(
+        &mut self,
+        cfg: &mut Config,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(value) = self.llm_backend.take() {
+            let kind =
+                crate::services::llm_backend::LlmBackendKind::parse(&value).map_err(|err| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("invalid llm_backend in config snapshot {value:?}: {err}"),
+                    )
+                })?;
             cfg.llm_backend = kind;
         }
+        Ok(())
     }
 
     fn apply_regular_fields(&mut self, cfg: &mut Config) {
@@ -462,40 +468,12 @@ pub(crate) fn apply_config_snapshot_for_container(
     }
     let envelope = decode_config_envelope(config_json)?;
     let exact_options = envelope.version >= 2;
-    envelope.config.apply_to(&mut cfg, exact_options);
+    envelope.config.apply_to(&mut cfg, exact_options)?;
     if let Some(prompt) = envelope.prompt {
         cfg.query = Some(prompt);
     }
     normalize_container_output_dir(process_cfg, &mut cfg, in_container);
     Ok(cfg)
-}
-
-pub(crate) fn ingest_config_json(
-    cfg: &Config,
-    source: &IngestSource,
-) -> Result<String, serde_json::Error> {
-    serde_json::to_string(&IngestConfigSnapshotEnvelope {
-        version: 2,
-        source: Some(source.clone()),
-        config: ConfigSnapshot::from_config(cfg).map_err(serde_json_error)?,
-    })
-}
-
-pub(crate) fn decode_ingest_job_config(
-    process_cfg: &Config,
-    config_json: &str,
-) -> Result<(IngestSource, Config), Box<dyn std::error::Error + Send + Sync>> {
-    if let Ok(envelope) = serde_json::from_str::<IngestConfigSnapshotEnvelope>(config_json)
-        && let Some(source) = envelope.source
-    {
-        let mut cfg = process_cfg.clone();
-        let exact_options = envelope.version >= 2;
-        envelope.config.apply_to(&mut cfg, exact_options);
-        return Ok((source, cfg));
-    }
-
-    let source: IngestSource = serde_json::from_str(config_json)?;
-    Ok((source, process_cfg.clone()))
 }
 
 fn decode_config_envelope(
