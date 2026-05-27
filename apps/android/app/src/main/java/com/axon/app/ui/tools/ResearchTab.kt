@@ -64,7 +64,7 @@ fun ResearchTab(vm: ToolsViewModel) {
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AuroraThinking(label = "Researching… (may take up to 30s)")
+                    AuroraThinking(label = "Researching… (may take up to 2 minutes)")
                 }
             }
 

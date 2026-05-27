@@ -26,7 +26,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow<AskUiState>(AskUiState.Idle)
     val uiState: StateFlow<AskUiState> = _uiState.asStateFlow()
 
-    val history = container.askHistoryDao.recent()
+    val history = container.axonRepository.recentHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun ask(query: String) {
@@ -36,7 +36,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             container.axonRepository.ask(query).fold(
                 onSuccess = { result ->
                     _uiState.value = AskUiState.Success(result)
-                    container.askHistoryDao.insert(
+                    container.axonRepository.recordAskHistory(
                         AskHistoryEntry(query = result.query, answer = result.answer)
                     )
                 },
