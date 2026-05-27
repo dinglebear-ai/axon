@@ -28,7 +28,7 @@ fun ModeContentHost(activeMode: OperationMode) {
         OperationMode.Crawl     -> CrawlTab(toolsVm)
         OperationMode.Map       -> MapTab(toolsVm)
         OperationMode.Research  -> ResearchTab(toolsVm)
-        OperationMode.Summarize -> StubModeForm(mode = activeMode)  // replaced in Task 3
+        OperationMode.Summarize -> com.axon.app.ui.summarize.SummarizeScreen()
         OperationMode.Search    -> StubModeForm(mode = activeMode)  // replaced in Task 7
         OperationMode.Ingest    -> StubModeForm(mode = activeMode)  // replaced in Task 8
     }
