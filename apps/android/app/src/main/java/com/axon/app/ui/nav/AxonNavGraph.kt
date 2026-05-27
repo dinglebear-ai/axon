@@ -41,7 +41,9 @@ import com.axon.app.AxonApp
 import com.axon.app.ui.document.DocumentScreen
 import com.axon.app.ui.jobs.JobsScreen
 import com.axon.app.ui.knowledge.KnowledgeScreen
+import com.axon.app.ui.operations.OperationMode
 import com.axon.app.ui.operations.OperationsScreen
+import com.axon.app.ui.options.ModeOptionsScreen
 import com.axon.app.ui.settings.SettingsScreen
 import com.axon.app.ui.status.ConnectionStatusIndicator
 import com.axon.app.ui.system.SystemScreen
@@ -53,6 +55,16 @@ import tv.tootie.aurora.components.AuroraThinking
 
 /** Opens a saved document by URL via /v1/retrieve. */
 @Serializable data class DocumentRoute(val url: String)
+
+/**
+ * Opens the mode-options form for [modeName]. The mode name is the enum
+ * `OperationMode.name`; we re-resolve via `OperationMode.valueOf(...)` at the
+ * destination so we don't have to register a custom `NavType` for the enum.
+ *
+ * If an unrecognised name slips through (e.g. legacy deep link), the
+ * destination logs and pops back via the `?:` fallback.
+ */
+@Serializable data class ModeOptionsRoute(val modeName: String)
 
 private val PAGES = listOf("Operations", "Jobs", "Knowledge", "System")
 
@@ -75,7 +87,13 @@ fun AxonNavGraph() {
     val openDocument = remember(navController) {
         { url: String -> navController.navigate(DocumentRoute(url)); Unit }
     }
-    CompositionLocalProvider(LocalOpenDocument provides openDocument) {
+    val openModeOptions = remember(navController) {
+        { mode: OperationMode -> navController.navigate(ModeOptionsRoute(mode.name)); Unit }
+    }
+    CompositionLocalProvider(
+        LocalOpenDocument provides openDocument,
+        LocalOpenModeOptions provides openModeOptions,
+    ) {
         NavHost(
             navController = navController,
             startDestination = HomeRoute,
@@ -86,8 +104,26 @@ fun AxonNavGraph() {
                 val route: DocumentRoute = entry.toRoute()
                 BackShell("Document", navController::popBackStack) { DocumentScreen(url = route.url) }
             }
+            composable<ModeOptionsRoute> { entry ->
+                val route: ModeOptionsRoute = entry.toRoute()
+                val mode = runCatching { OperationMode.valueOf(route.modeName) }.getOrNull()
+                if (mode == null) {
+                    // Unknown mode name — bounce back. Cheaper than a crash dialog.
+                    LaunchedPopBack(navController)
+                } else {
+                    BackShell(
+                        title = "${mode.label} options",
+                        onBack = navController::popBackStack,
+                    ) { ModeOptionsScreen(mode) }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun LaunchedPopBack(navController: NavController) {
+    androidx.compose.runtime.LaunchedEffect(Unit) { navController.popBackStack() }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
