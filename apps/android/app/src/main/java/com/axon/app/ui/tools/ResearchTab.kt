@@ -51,12 +51,19 @@ fun ResearchTab(vm: ToolsViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        AuroraButton(
-            onClick = { vm.research(queryInput.trim()) },
-            enabled = state !is ResearchUiState.Loading,
+        androidx.compose.foundation.layout.Row(
             modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Research")
+            com.axon.app.ui.operations.modeOptionsCog()?.invoke()
+            AuroraButton(
+                onClick = { vm.research(queryInput.trim()) },
+                enabled = state !is ResearchUiState.Loading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Research")
+            }
         }
 
         when (val s = state) {

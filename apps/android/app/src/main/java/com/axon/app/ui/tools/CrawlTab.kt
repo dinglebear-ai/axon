@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -62,15 +63,22 @@ fun CrawlTab(vm: ToolsViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        AuroraButton(
-            onClick = {
-                val maxPages = maxPagesInput.toIntOrNull()
-                vm.crawl(urlInput.trim(), maxPages)
-            },
-            enabled = state !is CrawlUiState.Loading,
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Start Crawl")
+            com.axon.app.ui.operations.modeOptionsCog()?.invoke()
+            AuroraButton(
+                onClick = {
+                    val maxPages = maxPagesInput.toIntOrNull()
+                    vm.crawl(urlInput.trim(), maxPages)
+                },
+                enabled = state !is CrawlUiState.Loading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Start Crawl")
+            }
         }
 
         when (val s = state) {
