@@ -281,6 +281,93 @@ class AxonRepositoryTest {
         assertEquals("a", dao.inserted[0].answer)
     }
 
+    // ── retrieve ──────────────────────────────────────────────────────────────
+
+    @Test
+    fun `retrieve maps response body to RetrieveResultUi`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """{"chunk_count":3,"content":"hello world","requested_url":"https://a.com","matched_url":"https://a.com/x","truncated":false,"warnings":[]}""",
+                )
+                .addHeader("Content-Type", "application/json"),
+        )
+        val result = repo.retrieve("https://a.com")
+        assertTrue(result.isSuccess)
+        val ui = result.getOrThrow()
+        assertEquals("https://a.com", ui.requestedUrl)
+        assertEquals("https://a.com/x", ui.matchedUrl)
+        assertEquals(3, ui.chunkCount)
+        assertEquals("hello world", ui.content)
+        assertFalse(ui.truncated)
+        assertTrue(ui.warnings.isEmpty())
+    }
+
+    @Test
+    fun `retrieve falls back to caller url when response omits requested_url`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"chunk_count":0,"content":""}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+        val result = repo.retrieve("https://b.com")
+        assertTrue(result.isSuccess)
+        assertEquals("https://b.com", result.getOrThrow().requestedUrl)
+    }
+
+    @Test
+    fun `retrieve forwards default token_budget to the server`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"chunk_count":0,"content":""}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+        repo.retrieve("https://c.com")
+        val request = server.takeRequest()
+        // Default DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000 — verify it lands on the wire.
+        val body = request.body.readUtf8()
+        assertTrue(
+            "expected token_budget=64000 in body, got: $body",
+            body.contains("\"token_budget\":64000") || body.contains("\"token_budget\": 64000"),
+        )
+    }
+
+    @Test
+    fun `retrieve forwards explicit token_budget override to the server`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"chunk_count":0,"content":""}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+        repo.retrieve("https://d.com", tokenBudget = 8_000)
+        val request = server.takeRequest()
+        assertTrue(request.body.readUtf8().contains("\"token_budget\":8000"))
+    }
+
+    @Test
+    fun `retrieve propagates truncated and warnings to UI model`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """{"chunk_count":2,"content":"abc","truncated":true,"warnings":["chunk-parse-failure","stale-cache"]}""",
+                )
+                .addHeader("Content-Type", "application/json"),
+        )
+        val result = repo.retrieve("https://e.com")
+        assertTrue(result.isSuccess)
+        val ui = result.getOrThrow()
+        assertTrue(ui.truncated)
+        assertEquals(listOf("chunk-parse-failure", "stale-cache"), ui.warnings)
+    }
+
+    @Test
+    fun `retrieve returns failure with no-token message when client has no token`() = runBlocking {
+        val emptyRepo = repoWithNoToken()
+        val result = emptyRepo.retrieve("https://x.com")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("No API token configured"))
+    }
+
     // ── Helper ────────────────────────────────────────────────────────────────
 
     private fun repoWithNoToken(): AxonRepository {

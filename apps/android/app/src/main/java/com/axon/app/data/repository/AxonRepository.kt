@@ -43,7 +43,7 @@ import kotlinx.serialization.json.int
     val serverError: String?,
 )
 
-/** Default `token_budget` cap for `/v1/retrieve` calls. Long enough for most docs, short enough to keep Compose happy. */
+/** Default `token_budget` cap for `/v1/retrieve` calls. */
 private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000
 
 class AxonRepository(
@@ -84,10 +84,8 @@ class AxonRepository(
     /**
      * Fetch the full assembled document for [url].
      *
-     * [tokenBudget] caps the server-side document window — defaults to 64K tokens
-     * which keeps the Android `DocumentScreen` responsive on long pages. The
-     * server signals [RetrieveResultUi.truncated] when the cap is hit so the UI
-     * can show a banner; pagination via `next_cursor` is a future hook.
+     * [tokenBudget] caps the server-side document window. Server signals
+     * [RetrieveResultUi.truncated] when the cap is hit so the UI can show a banner.
      */
     suspend fun retrieve(
         url: String,

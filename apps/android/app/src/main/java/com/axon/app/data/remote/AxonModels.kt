@@ -93,7 +93,7 @@ data class RetrieveRequest(
     @SerialName("token_budget") val tokenBudget: Int? = null,
 )
 
-/** Response body from POST /v1/retrieve. Maps src/services/types/service.rs::RetrieveResult. */
+/** Response body from POST /v1/retrieve. Mirrors the server-side `RetrieveResult`. */
 @Serializable
 data class RetrieveResponse(
     @SerialName("chunk_count") val chunkCount: Int = 0,
