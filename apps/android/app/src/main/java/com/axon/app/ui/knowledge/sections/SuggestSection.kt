@@ -69,9 +69,8 @@ fun SuggestSection(vm: KnowledgeViewModel) {
                 message = s.message,
                 onRetry = { vm.loadSuggest(focus.ifBlank { null }, force = true) },
             )
-            is Resource.Ready<*> -> {
-                @Suppress("UNCHECKED_CAST")
-                val hits = (s as Resource.Ready<List<SuggestHitUi>>).value
+            is Resource.Ready -> {
+                val hits = s.value
                 if (hits.isEmpty()) {
                     EmptyContent(
                         title = "No suggestions",

@@ -9,9 +9,20 @@ import java.net.URL
  * the network call.
  */
 object UrlValidator {
-    fun isValidHttpUrl(input: String): Boolean {
-        if (input.isBlank()) return false
-        val url = runCatching { URL(input) }.getOrNull() ?: return false
-        return url.protocol == "http" || url.protocol == "https"
+    fun isValidHttpUrl(input: String): Boolean = parseHttpUrl(input) != null
+
+    /**
+     * Returns the lowercased host of [input] when it parses as a valid http(s)
+     * URL. Used by callers that need both the validity guard AND the host (e.g.
+     * IngestViewModel's source-vs-target cross-check). Non-URL inputs (git@host:
+     * ssh form, owner/repo shorthand, etc.) return null — callers can decide
+     * whether to accept those or defer to server-side validation.
+     */
+    fun hostOrNull(input: String): String? = parseHttpUrl(input)?.host?.lowercase()
+
+    private fun parseHttpUrl(input: String): URL? {
+        if (input.isBlank()) return null
+        val url = runCatching { URL(input) }.getOrNull() ?: return null
+        return if (url.protocol == "http" || url.protocol == "https") url else null
     }
 }

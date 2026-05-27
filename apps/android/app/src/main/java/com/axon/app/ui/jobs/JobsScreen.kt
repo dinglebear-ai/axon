@@ -94,14 +94,12 @@ fun JobsScreen(vm: JobsViewModel = viewModel()) {
         when (val s = jobsState) {
             Resource.Idle, Resource.Loading -> LoadingContent("Loading jobs…", Modifier.fillMaxWidth())
             is Resource.Error -> ErrorContent(message = s.message)
-            is Resource.Ready<*> -> {
-                @Suppress("UNCHECKED_CAST")
-                val ready = s as Resource.Ready<List<com.axon.app.data.repository.JobUi>>
+            is Resource.Ready -> {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(ready.value, key = { it.id }) { job ->
+                    items(s.value, key = { it.id }) { job ->
                         JobRow(job = job, onCancel = { vm.cancel(job.id) })
                     }
                 }

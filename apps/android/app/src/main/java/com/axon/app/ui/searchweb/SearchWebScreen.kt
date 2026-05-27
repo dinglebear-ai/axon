@@ -69,10 +69,8 @@ fun SearchWebScreen(vm: SearchWebViewModel = viewModel()) {
                 modifier = Modifier.fillMaxWidth(),
             )
             is Resource.Error -> ErrorContent(message = s.message)
-            is Resource.Ready<*> -> {
-                @Suppress("UNCHECKED_CAST")
-                val ready = s as Resource.Ready<SearchWebResultUi>
-                val result = ready.value
+            is Resource.Ready -> {
+                val result = s.value
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),

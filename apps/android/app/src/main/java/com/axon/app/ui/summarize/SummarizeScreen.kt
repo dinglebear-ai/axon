@@ -59,10 +59,9 @@ fun SummarizeScreen(vm: SummarizeViewModel = viewModel()) {
                 modifier = Modifier.fillMaxWidth(),
             )
             is Resource.Error -> ErrorContent(message = s.message)
-            is Resource.Ready<*> -> {
-                @Suppress("UNCHECKED_CAST")
-                val ready = s as Resource.Ready<SummarizeResultUi>
-                if (ready.value.contextTruncated) {
+            is Resource.Ready -> {
+                val result = s.value
+                if (result.contextTruncated) {
                     AuroraCallout(
                         title = "Context truncated",
                         message = "The source content was larger than the synthesis budget.",
@@ -76,7 +75,7 @@ fun SummarizeScreen(vm: SummarizeViewModel = viewModel()) {
                 ) {
                     Column(modifier = Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
                         SelectionContainer {
-                            Text(ready.value.summary, style = MaterialTheme.typography.bodySmall)
+                            Text(result.summary, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

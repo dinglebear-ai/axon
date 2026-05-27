@@ -35,9 +35,8 @@ fun DomainsSection(vm: KnowledgeViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
         is Resource.Error -> ErrorContent(message = s.message, onRetry = { vm.loadDomains(force = true) })
-        is Resource.Ready<*> -> {
-            @Suppress("UNCHECKED_CAST")
-            val facets = (s as Resource.Ready<List<DomainFacetUi>>).value
+        is Resource.Ready -> {
+            val facets = s.value
             if (facets.isEmpty()) {
                 EmptyContent(
                     title = "No domains indexed",

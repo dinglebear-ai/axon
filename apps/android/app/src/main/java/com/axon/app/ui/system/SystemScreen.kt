@@ -62,9 +62,8 @@ fun SystemScreen(vm: SystemViewModel = viewModel()) {
                 modifier = Modifier.fillMaxWidth(),
             )
             is Resource.Error -> ErrorContent(message = s.message, onRetry = { vm.refresh() })
-            is Resource.Ready<*> -> {
-                @Suppress("UNCHECKED_CAST")
-                val payload = (s as Resource.Ready<JsonElement>).value
+            is Resource.Ready -> {
+                val payload = s.value
                 val chunks = remember(payload) {
                     chunkDocument(prettyJson.encodeToString(JsonElement.serializer(), payload))
                 }

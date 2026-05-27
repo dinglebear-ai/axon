@@ -68,7 +68,7 @@ class KnowledgeViewModel(
         at != null && (System.currentTimeMillis() - at) < FRESHNESS_MS
 
     fun loadSuggest(focus: String?, force: Boolean = false) {
-        if (!force && fresh(suggestCachedAt) && _suggest.value is Resource.Ready<*>) return
+        if (!force && fresh(suggestCachedAt) && _suggest.value is Resource.Ready) return
         viewModelScope.launch {
             _suggest.value = Resource.Loading
             val collection = container.settingsRepository.settings.first().collection
@@ -87,7 +87,7 @@ class KnowledgeViewModel(
     }
 
     fun loadSources(force: Boolean = false) {
-        if (!force && fresh(sourcesCachedAt) && _sources.value is Resource.Ready<*>) return
+        if (!force && fresh(sourcesCachedAt) && _sources.value is Resource.Ready) return
         viewModelScope.launch {
             _sources.value = Resource.Loading
             val collection = container.settingsRepository.settings.first().collection
@@ -106,7 +106,7 @@ class KnowledgeViewModel(
     }
 
     fun loadDomains(limit: Int = 200, force: Boolean = false) {
-        if (!force && fresh(domainsCachedAt) && _domains.value is Resource.Ready<*>) return
+        if (!force && fresh(domainsCachedAt) && _domains.value is Resource.Ready) return
         viewModelScope.launch {
             _domains.value = Resource.Loading
             container.axonRepository.domains(limit = limit).fold(
@@ -124,7 +124,7 @@ class KnowledgeViewModel(
     }
 
     fun loadStats(force: Boolean = false) {
-        if (!force && fresh(statsCachedAt) && _stats.value is Resource.Ready<*>) return
+        if (!force && fresh(statsCachedAt) && _stats.value is Resource.Ready) return
         viewModelScope.launch {
             _stats.value = Resource.Loading
             container.axonRepository.statsPayload().fold(
