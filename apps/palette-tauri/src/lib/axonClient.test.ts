@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTIONS, type PaletteAction } from "./actions";
-import { executeAction, type PaletteConfig } from "./axonClient";
+import { createAxonClient, executeAction, type PaletteConfig } from "./axonClient";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -32,6 +32,10 @@ function lastRequestBody(): unknown {
   return args.request.body;
 }
 
+function executeTestAction(subcommand: string, arg: string) {
+  return executeAction(createAxonClient(config), action(subcommand), arg, config);
+}
+
 describe("executeAction", () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
@@ -45,7 +49,7 @@ describe("executeAction", () => {
   });
 
   it("posts GitHub ingest targets using the REST repo field", async () => {
-    await executeAction(action("ingest"), "owner/repo", config);
+    await executeTestAction("ingest", "owner/repo");
 
     expect(lastRequestBody()).toEqual({
       source_type: "github",
@@ -55,7 +59,7 @@ describe("executeAction", () => {
   });
 
   it("does not attach collection to summarize requests", async () => {
-    await executeAction(action("summarize"), "https://example.com/doc", config);
+    await executeTestAction("summarize", "https://example.com/doc");
 
     expect(lastRequestBody()).toEqual({
       urls: ["https://example.com/doc"],
@@ -63,7 +67,7 @@ describe("executeAction", () => {
   });
 
   it("attaches the configured collection to ask requests", async () => {
-    await executeAction(action("ask"), "what changed?", config);
+    await executeTestAction("ask", "what changed?");
 
     expect(lastRequestBody()).toEqual({
       query: "what changed?",

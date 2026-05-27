@@ -21,11 +21,71 @@ export interface PaletteResult {
   payload: unknown;
 }
 
+export interface Client {
+  baseUrl: string;
+  headers: Record<string, string>;
+}
+
+export interface PaletteHttpRequest {
+  baseUrl: string;
+  token: string | null;
+  method: "GET" | "POST";
+  path: string;
+  body: Record<string, unknown> | null;
+}
+
+export function createAxonClient(config: PaletteConfig): Client {
+  const token = config.token?.trim();
+  return {
+    baseUrl: normalizeServerUrl(config.serverUrl),
+    headers: token ? { Authorization: `Bearer ${token}`, "x-api-key": token } : {},
+  };
+}
+
+function normalizeServerUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed || trimmed.includes("://")) return trimmed;
+  if (trimmed.startsWith("localhost") || trimmed.startsWith("127.0.0.1")) {
+    return `http://${trimmed}`;
+  }
+  return `https://${trimmed}`;
+}
+
 export async function executeAction(
+  client: Client,
   action: PaletteAction,
   arg: string,
   config: PaletteConfig,
 ): Promise<PaletteResult> {
+  const request = buildActionRequest(client, action, arg, config);
+  try {
+    return await invoke<PaletteResult>("axon_http_request", { request });
+  } catch (error) {
+    return failedResult(request.method, request.path, error);
+  }
+}
+
+export function buildActionRequest(
+  client: Client,
+  action: PaletteAction,
+  arg: string,
+  config: PaletteConfig,
+): PaletteHttpRequest {
+  const body = bodyFor(action, arg, config);
+  return {
+    baseUrl: client.baseUrl,
+    token: tokenFromHeaders(client.headers),
+    method: body.method,
+    path: body.path,
+    body: body.body,
+  };
+}
+
+function bodyFor(
+  action: PaletteAction,
+  arg: string,
+  config: PaletteConfig,
+): { method: "GET" | "POST"; path: GetPath | PostPath; body: Record<string, unknown> | null } {
   const words = wordsFor(action, arg);
   const collection = config.collection.trim();
   const collectionBody = collection ? { collection } : {};
@@ -33,52 +93,60 @@ export async function executeAction(
 
   switch (action.subcommand) {
     case "doctor":
-      return getResult("/v1/doctor");
+      return { method: "GET", path: "/v1/doctor", body: null };
     case "status":
-      return getResult("/v1/status");
+      return { method: "GET", path: "/v1/status", body: null };
     case "sources":
-      return getResult("/v1/sources");
+      return { method: "GET", path: "/v1/sources", body: null };
     case "domains":
-      return getResult("/v1/domains");
+      return { method: "GET", path: "/v1/domains", body: null };
     case "stats":
-      return getResult("/v1/stats");
+      return { method: "GET", path: "/v1/stats", body: null };
     case "scrape":
-      return postResult("/v1/scrape", { url: first(words, "url"), ...collectionBody });
+      return { method: "POST", path: "/v1/scrape", body: { url: first(words, "url"), ...collectionBody } };
     case "crawl":
-      return postResult("/v1/crawl", { urls: required(words, "urls"), ...collectionBody });
+      return { method: "POST", path: "/v1/crawl", body: { urls: required(words, "urls"), ...collectionBody } };
     case "map":
-      return postResult("/v1/map", { url: first(words, "url"), limit: 100 });
+      return { method: "POST", path: "/v1/map", body: { url: first(words, "url"), limit: 100 } };
     case "summarize":
-      return postResult("/v1/summarize", { urls: required(words, "urls") });
+      return { method: "POST", path: "/v1/summarize", body: { urls: required(words, "urls") } };
     case "ask":
-      return postResult("/v1/ask", {
-        query: first(words, "query"),
-        explain: false,
-        diagnostics: false,
-        ...collectionBody,
-      });
+      return {
+        method: "POST",
+        path: "/v1/ask",
+        body: {
+          query: first(words, "query"),
+          explain: false,
+          diagnostics: false,
+          ...collectionBody,
+        },
+      };
     case "query":
-      return postResult("/v1/query", { query: first(words, "query"), limit, ...collectionBody });
+      return { method: "POST", path: "/v1/query", body: { query: first(words, "query"), limit, ...collectionBody } };
     case "retrieve":
-      return postResult("/v1/retrieve", {
-        url: first(words, "url"),
-        token_budget: 6000,
-        ...collectionBody,
-      });
+      return {
+        method: "POST",
+        path: "/v1/retrieve",
+        body: {
+          url: first(words, "url"),
+          token_budget: 6000,
+          ...collectionBody,
+        },
+      };
     case "suggest":
-      return postResult("/v1/suggest", words[0] ? { focus: words[0] } : {});
+      return { method: "POST", path: "/v1/suggest", body: words[0] ? { focus: words[0] } : {} };
     case "evaluate":
-      return postResult("/v1/evaluate", { question: first(words, "question") });
+      return { method: "POST", path: "/v1/evaluate", body: { question: first(words, "question") } };
     case "search":
-      return postResult("/v1/search", { query: first(words, "query"), limit });
+      return { method: "POST", path: "/v1/search", body: { query: first(words, "query"), limit } };
     case "research":
-      return postResult("/v1/research", { query: first(words, "query"), limit });
+      return { method: "POST", path: "/v1/research", body: { query: first(words, "query"), limit } };
     case "embed":
-      return postResult("/v1/embed", { input: first(words, "input"), ...collectionBody });
+      return { method: "POST", path: "/v1/embed", body: { input: first(words, "input"), ...collectionBody } };
     case "extract":
-      return postResult("/v1/extract", { urls: required(words, "urls"), ...collectionBody });
+      return { method: "POST", path: "/v1/extract", body: { urls: required(words, "urls"), ...collectionBody } };
     case "ingest":
-      return postResult("/v1/ingest", ingestBody(first(words, "target")));
+      return { method: "POST", path: "/v1/ingest", body: ingestBody(first(words, "target")) };
     default:
       throw new Error(`REST route is not wired for ${action.subcommand}`);
   }
@@ -135,38 +203,15 @@ type PostPath =
   | "/v1/extract"
   | "/v1/ingest";
 
-async function getResult<Path extends GetPath>(path: Path): Promise<PaletteResult> {
-  try {
-    return await invoke<PaletteResult>("axon_http_request", {
-      request: {
-        method: "GET",
-        path,
-        body: null,
-      },
-    });
-  } catch (error) {
-    return failedResult("GET", path, error);
+function tokenFromHeaders(headers: Record<string, string>): string | null {
+  const authorization = headers.Authorization;
+  if (authorization?.startsWith("Bearer ")) {
+    return authorization.slice("Bearer ".length);
   }
+  return headers["x-api-key"] ?? null;
 }
 
-async function postResult<Path extends PostPath>(
-  path: Path,
-  body: Record<string, unknown>,
-): Promise<PaletteResult> {
-  try {
-    return await invoke<PaletteResult>("axon_http_request", {
-      request: {
-        method: "POST",
-        path,
-        body,
-      },
-    });
-  } catch (error) {
-    return failedResult("POST", path, error);
-  }
-}
-
-function failedResult(method: PaletteResult["method"], path: GetPath | PostPath, error: unknown): PaletteResult {
+function failedResult(method: PaletteResult["method"], path: string, error: unknown): PaletteResult {
   return {
     ok: false,
     status: 0,

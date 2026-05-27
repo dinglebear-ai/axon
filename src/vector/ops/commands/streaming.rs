@@ -276,16 +276,41 @@ pub(crate) async fn run_streaming_completion_ttft(
     print_tokens: bool,
     tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
 ) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>> {
-    run_streaming_completion_inner(cfg, req, print_tokens, tagged, true).await
+    run_streaming_completion_inner(
+        cfg,
+        req,
+        print_tokens,
+        tagged,
+        true,
+        Option::<fn(&str)>::None,
+    )
+    .await
 }
 
-async fn run_streaming_completion_inner(
+pub(crate) async fn run_streaming_completion_ttft_with_callback<F>(
+    cfg: &Config,
+    req: CompletionRequest,
+    print_tokens: bool,
+    tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
+    on_delta: F,
+) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>>
+where
+    F: FnMut(&str) + Send,
+{
+    run_streaming_completion_inner(cfg, req, print_tokens, tagged, true, Some(on_delta)).await
+}
+
+async fn run_streaming_completion_inner<F>(
     cfg: &Config,
     req: CompletionRequest,
     print_tokens: bool,
     tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
     capture_ttft: bool,
-) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>> {
+    mut on_delta: Option<F>,
+) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>>
+where
+    F: FnMut(&str) + Send,
+{
     let req = req.backend_from_config(cfg);
     let mut state = StreamProcessorState::default();
     let stream_result = llm_backend::complete_streaming(req, |delta| {
@@ -299,7 +324,13 @@ async fn run_streaming_completion_inner(
         .map_err(|err| {
             let err: Box<dyn Error + Send + Sync> = err.to_string().into();
             err
-        })
+        })?;
+        if !delta.is_empty()
+            && let Some(callback) = on_delta.as_mut()
+        {
+            callback(delta);
+        }
+        Ok(())
     })
     .await;
     let fallback_text = match stream_result {
@@ -325,7 +356,15 @@ async fn run_streaming_completion(
     print_tokens: bool,
     tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
 ) -> Result<String, Box<dyn Error>> {
-    let (answer, _) = run_streaming_completion_inner(cfg, req, print_tokens, tagged, false).await?;
+    let (answer, _) = run_streaming_completion_inner(
+        cfg,
+        req,
+        print_tokens,
+        tagged,
+        false,
+        Option::<fn(&str)>::None,
+    )
+    .await?;
     Ok(answer)
 }
 
@@ -371,6 +410,27 @@ pub(crate) async fn ask_llm_streaming_ttft(
         ask_completion_request(cfg, query, context, true),
         print_tokens,
         None,
+    )
+    .await
+}
+
+pub(crate) async fn ask_llm_streaming_ttft_with_callback<F>(
+    cfg: &Config,
+    _client: &reqwest::Client,
+    query: &str,
+    context: &str,
+    print_tokens: bool,
+    on_delta: F,
+) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>>
+where
+    F: FnMut(&str) + Send,
+{
+    run_streaming_completion_ttft_with_callback(
+        cfg,
+        ask_completion_request(cfg, query, context, true),
+        print_tokens,
+        None,
+        on_delta,
     )
     .await
 }

@@ -918,3 +918,4 @@ Expected: only intentional work remains.
 **Placeholder scan:** No implementation step uses TBD/TODO/later language. Each task includes concrete files, code shape, commands, and expected results.
 
 **Type consistency:** `RunState`, `PaletteStreamEvent`, `PaletteHttpRequest`, `PaletteStreamRequest`, and `AskStreamEvent` names are consistent across tasks.
+
