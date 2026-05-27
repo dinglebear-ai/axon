@@ -43,6 +43,41 @@ import kotlinx.serialization.json.int
     val serverError: String?,
 )
 
+// ── Phase 2 UI models ─────────────────────────────────────────────────────────
+
+@Stable data class SummarizeResultUi(
+    val urls: List<String>,
+    val summary: String,
+    val contextChars: Long,
+    val contextTruncated: Boolean,
+)
+
+@Stable data class SearchWebHitUi(
+    val title: String, val url: String, val snippet: String?, val score: Double?,
+)
+@Stable data class CrawlJobRefUi(val jobId: String, val url: String)
+@Stable data class SearchWebResultUi(
+    val query: String,
+    val results: List<SearchWebHitUi>,
+    val crawlJobsEnqueued: Int,
+    val crawlJobsSkipped: Int,
+    val crawlJobs: List<CrawlJobRefUi>,
+)
+
+@Stable data class JobUi(
+    val id: String,
+    val status: String,
+    val url: String?,
+    val sourceType: String?,
+    val target: String?,
+    val errorText: String?,
+    val resultJson: kotlinx.serialization.json.JsonElement?,
+    val finishedAt: String?,
+)
+
+@Stable data class SuggestHitUi(val url: String, val reason: String?)
+@Stable data class DomainFacetUi(val domain: String, val vectors: Long)
+
 /** Default `token_budget` cap for `/v1/retrieve` calls. */
 private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000
 
@@ -188,4 +223,68 @@ class AxonRepository(
             .getOrDefault(false)
 
     fun recentHistory(): Flow<List<AskHistoryEntry>> = askHistoryDao.recent()
+
+    // ── Phase 2 wrappers ───────────────────────────────────────────────────
+
+    suspend fun summarize(urls: List<String>, collection: String? = null): Result<SummarizeResultUi> = withToken {
+        client.summarize(
+            com.axon.app.data.remote.models.SummarizeRequest(urls = urls, collection = collection)
+        ).map { r -> SummarizeResultUi(r.urls, r.summary, r.contextChars, r.contextTruncated) }
+    }
+
+    suspend fun searchWeb(query: String): Result<SearchWebResultUi> = withToken {
+        client.searchWeb(com.axon.app.data.remote.models.SearchWebRequest(query = query)).map { r ->
+            SearchWebResultUi(
+                query = r.query,
+                results = r.results.map { SearchWebHitUi(it.title, it.url, it.snippet, it.score) },
+                crawlJobsEnqueued = r.autoCrawlStatus?.enqueued ?: 0,
+                crawlJobsSkipped = r.autoCrawlStatus?.skipped ?: 0,
+                crawlJobs = r.crawlJobs.map { CrawlJobRefUi(it.jobId, it.url) },
+            )
+        }
+    }
+
+    suspend fun ingestStart(sourceType: String, target: String, collection: String? = null): Result<String> = withToken {
+        client.ingestStart(
+            com.axon.app.data.remote.models.IngestRequest(sourceType = sourceType, target = target, collection = collection)
+        ).map { it.jobId }
+    }
+
+    suspend fun getJob(kind: AxonClient.JobKind, id: String): Result<JobUi> = withToken {
+        client.getJob(kind, id).map(::toJobUi)
+    }
+
+    suspend fun listJobs(kind: AxonClient.JobKind): Result<List<JobUi>> = withToken {
+        client.listJobs(kind).map { list -> list.map(::toJobUi) }
+    }
+
+    suspend fun cancelJob(kind: AxonClient.JobKind, id: String): Result<Boolean> = withToken {
+        client.cancelJob(kind, id).map { it.canceled }
+    }
+
+    suspend fun statusPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+        client.status().map { it.payload }
+    }
+
+    suspend fun doctorPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+        client.doctor().map { it.payload }
+    }
+
+    suspend fun suggest(focus: String?, collection: String? = null): Result<List<SuggestHitUi>> = withToken {
+        client.suggest(focus = focus, collection = collection).map { r ->
+            r.urls.map { SuggestHitUi(it.url, it.reason) }
+        }
+    }
+
+    suspend fun domains(limit: Int = 100, offset: Int = 0): Result<List<DomainFacetUi>> = withToken {
+        client.domains(limit = limit, offset = offset).map { r ->
+            r.domains.map { DomainFacetUi(it.domain, it.vectors) }
+        }
+    }
+
+    private fun toJobUi(j: com.axon.app.data.remote.models.ServiceJob) = JobUi(
+        id = j.id, status = j.status, url = j.url, sourceType = j.sourceType,
+        target = j.target, errorText = j.errorText, resultJson = j.resultJson,
+        finishedAt = j.finishedAt,
+    )
 }
