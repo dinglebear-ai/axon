@@ -3,7 +3,7 @@
 .env.*
 services.env
 !.env.example
-
+.broadcastr
 # ── Runtime artifacts ────────────────────────────────────────────────────────
 logs/
 backups/
