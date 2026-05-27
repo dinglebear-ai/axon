@@ -83,6 +83,7 @@ function jobStart(subcommand: string, value: Record<string, unknown>): string {
   const result = recordField(value, "result") ?? value;
   const lines = [
     stringField(value, "disposition") ? `${subcommand} ${stringField(value, "disposition")}` : "",
+    stringField(result, "status") ? `status: ${stringField(result, "status")}` : "",
     stringField(value, "execution_mode") ? `mode: ${stringField(value, "execution_mode")}` : "",
     stringField(result, "job_id") ? `job: ${stringField(result, "job_id")}` : "",
   ].filter(Boolean);

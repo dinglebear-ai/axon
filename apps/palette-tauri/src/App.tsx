@@ -54,7 +54,7 @@ import {
 type RunState =
   | { kind: "idle" }
   | { kind: "running"; title: string; subtitle: string }
-  | { kind: "success" | "error"; title: string; subtitle: string; text: string; result: PaletteResult };
+  | { kind: "queued" | "success" | "error"; title: string; subtitle: string; text: string; result: PaletteResult };
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 const appWindow = getCurrentWindow();
@@ -190,10 +190,13 @@ export default function App() {
     });
     try {
       const result = await executeAction(client, action, argument, config);
+      const jobStart = asyncJobStart(result.payload);
       setRun({
-        kind: result.ok ? "success" : "error",
-        title: `${action.label} ${result.ok ? "completed" : "failed"}`,
-        subtitle: `${result.method} ${result.path} | HTTP ${result.status}`,
+        kind: result.ok ? (jobStart ? "queued" : "success") : "error",
+        title: result.ok ? (jobStart ? `${action.label} ${jobStart.status}` : `${action.label} completed`) : `${action.label} failed`,
+        subtitle: jobStart
+          ? `${result.method} ${result.path} | HTTP ${result.status} | job ${jobStart.jobId}`
+          : `${result.method} ${result.path} | HTTP ${result.status}`,
         text: formatPayload(action.subcommand, result.payload),
         result,
       });
@@ -489,4 +492,30 @@ export default function App() {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   }
+}
+
+function asyncJobStart(payload: unknown): { jobId: string; status: string } | null {
+  const result = recordField(payload, "result") ?? recordField(payload, "job") ?? payload;
+  if (!isRecord(result)) return null;
+  const jobId = stringField(result, "job_id") ?? stringField(result, "id");
+  if (!jobId) return null;
+  const rawStatus =
+    stringField(result, "status") ??
+    stringField(recordField(payload, "result") ?? {}, "status") ??
+    stringField(payload, "disposition") ??
+    "queued";
+  if (/^(completed|failed|error)$/i.test(rawStatus)) return null;
+  return { jobId, status: "queued" };
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  return isRecord(value) && typeof value[key] === "string" ? value[key] : undefined;
+}
+
+function recordField(value: unknown, key: string): Record<string, unknown> | undefined {
+  return isRecord(value) && isRecord(value[key]) ? value[key] : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
