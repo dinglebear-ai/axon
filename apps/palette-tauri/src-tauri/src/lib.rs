@@ -8,6 +8,10 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+mod stream;
+
+use stream::axon_http_stream_request;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PaletteSettings {
@@ -447,7 +451,8 @@ pub fn run() {
             hide_palette,
             show_palette,
             resize_palette,
-            axon_http_request
+            axon_http_request,
+            axon_http_stream_request
         ])
         .setup(|app| {
             let _ = install_tray(app);

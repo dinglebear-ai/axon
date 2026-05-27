@@ -424,12 +424,83 @@ textarea {
   background: var(--aurora-control-surface);
   border: 1px solid var(--aurora-border-default);
   border-radius: 8px;
+}
+
+.output-code {
   font-family: var(--aurora-font-mono);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: normal;
+}
+
+.output-markdown {
+  font-size: var(--aurora-type-body-sm);
+  line-height: 1.58;
+}
+
+.output-markdown :where(h1, h2, h3) {
+  margin: 14px 0 8px;
+  color: var(--aurora-text-primary);
+  font-family: var(--aurora-font-display);
+  font-weight: var(--aurora-weight-heading);
+  line-height: 1.22;
+}
+
+.output-markdown :where(h1) {
+  font-size: 18px;
+}
+
+.output-markdown :where(h2) {
+  font-size: 15px;
+}
+
+.output-markdown :where(h3) {
+  font-size: 13px;
+}
+
+.output-markdown :where(p, ul, ol, blockquote, pre, table) {
+  margin: 0 0 10px;
+}
+
+.output-markdown :where(a) {
+  color: var(--aurora-accent-strong);
+  text-decoration: none;
+}
+
+.output-markdown :where(a:hover) {
+  text-decoration: underline;
+}
+
+.output-markdown :where(code) {
+  padding: 1px 4px;
+  color: var(--aurora-code-function);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 82%, transparent);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 5px;
+  font-family: var(--aurora-font-mono);
+  font-size: 0.92em;
+}
+
+.output-markdown :where(pre) {
+  overflow: auto;
+  padding: 12px;
+  background: var(--aurora-page-bg);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 8px;
+}
+
+.output-markdown :where(pre code) {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.output-markdown :where(blockquote) {
+  padding-left: 10px;
+  color: var(--aurora-text-muted);
+  border-left: 3px solid var(--aurora-accent-primary);
 }
 
 @media (max-width: 860px) {

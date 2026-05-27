@@ -21,9 +21,17 @@ export interface PaletteResult {
   payload: unknown;
 }
 
-interface Client {
+export interface Client {
   baseUrl: string;
   headers: Record<string, string>;
+}
+
+export interface PaletteHttpRequest {
+  baseUrl: string;
+  token: string | null;
+  method: "GET" | "POST";
+  path: string;
+  body: Record<string, unknown> | null;
 }
 
 export function createAxonClient(config: PaletteConfig): Client {
@@ -49,6 +57,35 @@ export async function executeAction(
   arg: string,
   config: PaletteConfig,
 ): Promise<PaletteResult> {
+  const request = buildActionRequest(client, action, arg, config);
+  try {
+    return await invoke<PaletteResult>("axon_http_request", { request });
+  } catch (error) {
+    return failedResult(request.method, request.path, error);
+  }
+}
+
+export function buildActionRequest(
+  client: Client,
+  action: PaletteAction,
+  arg: string,
+  config: PaletteConfig,
+): PaletteHttpRequest {
+  const body = bodyFor(action, arg, config);
+  return {
+    baseUrl: client.baseUrl,
+    token: tokenFromHeaders(client.headers),
+    method: body.method,
+    path: body.path,
+    body: body.body,
+  };
+}
+
+function bodyFor(
+  action: PaletteAction,
+  arg: string,
+  config: PaletteConfig,
+): { method: "GET" | "POST"; path: GetPath | PostPath; body: Record<string, unknown> | null } {
   const words = wordsFor(action, arg);
   const collection = config.collection.trim();
   const collectionBody = collection ? { collection } : {};
@@ -56,52 +93,60 @@ export async function executeAction(
 
   switch (action.subcommand) {
     case "doctor":
-      return getResult(client, "/v1/doctor");
+      return { method: "GET", path: "/v1/doctor", body: null };
     case "status":
-      return getResult(client, "/v1/status");
+      return { method: "GET", path: "/v1/status", body: null };
     case "sources":
-      return getResult(client, "/v1/sources");
+      return { method: "GET", path: "/v1/sources", body: null };
     case "domains":
-      return getResult(client, "/v1/domains");
+      return { method: "GET", path: "/v1/domains", body: null };
     case "stats":
-      return getResult(client, "/v1/stats");
+      return { method: "GET", path: "/v1/stats", body: null };
     case "scrape":
-      return postResult(client, "/v1/scrape", { url: first(words, "url"), ...collectionBody });
+      return { method: "POST", path: "/v1/scrape", body: { url: first(words, "url"), ...collectionBody } };
     case "crawl":
-      return postResult(client, "/v1/crawl", { urls: required(words, "urls"), ...collectionBody });
+      return { method: "POST", path: "/v1/crawl", body: { urls: required(words, "urls"), ...collectionBody } };
     case "map":
-      return postResult(client, "/v1/map", { url: first(words, "url"), limit: 100 });
+      return { method: "POST", path: "/v1/map", body: { url: first(words, "url"), limit: 100 } };
     case "summarize":
-      return postResult(client, "/v1/summarize", { urls: required(words, "urls"), ...collectionBody });
+      return { method: "POST", path: "/v1/summarize", body: { urls: required(words, "urls"), ...collectionBody } };
     case "ask":
-      return postResult(client, "/v1/ask", {
-        query: first(words, "query"),
-        explain: false,
-        diagnostics: false,
-        ...collectionBody,
-      });
+      return {
+        method: "POST",
+        path: "/v1/ask",
+        body: {
+          query: first(words, "query"),
+          explain: false,
+          diagnostics: false,
+          ...collectionBody,
+        },
+      };
     case "query":
-      return postResult(client, "/v1/query", { query: first(words, "query"), limit, ...collectionBody });
+      return { method: "POST", path: "/v1/query", body: { query: first(words, "query"), limit, ...collectionBody } };
     case "retrieve":
-      return postResult(client, "/v1/retrieve", {
-        url: first(words, "url"),
-        token_budget: 6000,
-        ...collectionBody,
-      });
+      return {
+        method: "POST",
+        path: "/v1/retrieve",
+        body: {
+          url: first(words, "url"),
+          token_budget: 6000,
+          ...collectionBody,
+        },
+      };
     case "suggest":
-      return postResult(client, "/v1/suggest", words[0] ? { focus: words[0] } : {});
+      return { method: "POST", path: "/v1/suggest", body: words[0] ? { focus: words[0] } : {} };
     case "evaluate":
-      return postResult(client, "/v1/evaluate", { question: first(words, "question") });
+      return { method: "POST", path: "/v1/evaluate", body: { question: first(words, "question") } };
     case "search":
-      return postResult(client, "/v1/search", { query: first(words, "query"), limit });
+      return { method: "POST", path: "/v1/search", body: { query: first(words, "query"), limit } };
     case "research":
-      return postResult(client, "/v1/research", { query: first(words, "query"), limit });
+      return { method: "POST", path: "/v1/research", body: { query: first(words, "query"), limit } };
     case "embed":
-      return postResult(client, "/v1/embed", { input: first(words, "input"), ...collectionBody });
+      return { method: "POST", path: "/v1/embed", body: { input: first(words, "input"), ...collectionBody } };
     case "extract":
-      return postResult(client, "/v1/extract", { urls: required(words, "urls"), ...collectionBody });
+      return { method: "POST", path: "/v1/extract", body: { urls: required(words, "urls"), ...collectionBody } };
     case "ingest":
-      return postResult(client, "/v1/ingest", ingestBody(first(words, "target")));
+      return { method: "POST", path: "/v1/ingest", body: ingestBody(first(words, "target")) };
     default:
       throw new Error(`REST route is not wired for ${action.subcommand}`);
   }
@@ -158,45 +203,6 @@ type PostPath =
   | "/v1/extract"
   | "/v1/ingest";
 
-async function getResult<Path extends GetPath>(
-  client: Client,
-  path: Path,
-): Promise<PaletteResult> {
-  try {
-    return await invoke<PaletteResult>("axon_http_request", {
-      request: {
-        baseUrl: client.baseUrl,
-        token: tokenFromHeaders(client.headers),
-        method: "GET",
-        path,
-        body: null,
-      },
-    });
-  } catch (error) {
-    return failedResult("GET", path, error);
-  }
-}
-
-async function postResult<Path extends PostPath>(
-  client: Client,
-  path: Path,
-  body: Record<string, unknown>,
-): Promise<PaletteResult> {
-  try {
-    return await invoke<PaletteResult>("axon_http_request", {
-      request: {
-        baseUrl: client.baseUrl,
-        token: tokenFromHeaders(client.headers),
-        method: "POST",
-        path,
-        body,
-      },
-    });
-  } catch (error) {
-    return failedResult("POST", path, error);
-  }
-}
-
 function tokenFromHeaders(headers: Record<string, string>): string | null {
   const authorization = headers.Authorization;
   if (authorization?.startsWith("Bearer ")) {
@@ -205,7 +211,7 @@ function tokenFromHeaders(headers: Record<string, string>): string | null {
   return headers["x-api-key"] ?? null;
 }
 
-function failedResult(method: PaletteResult["method"], path: GetPath | PostPath, error: unknown): PaletteResult {
+function failedResult(method: PaletteResult["method"], path: string, error: unknown): PaletteResult {
   return {
     ok: false,
     status: 0,
