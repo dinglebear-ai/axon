@@ -12,15 +12,6 @@
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
     "core:event:default",
-    "global-shortcut:default",
-    {
-      "identifier": "http:default",
-      "allow": [
-        { "url": "http://*" },
-        { "url": "http://*:*" },
-        { "url": "https://*" },
-        { "url": "https://*/*" }
-      ]
-    }
+    "global-shortcut:default"
   ]
 }

@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, time::Duration};
+use std::{fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -7,6 +7,8 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+mod axon_bridge;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,33 +20,6 @@ struct PaletteSettings {
     result_limit: u16,
     theme: PaletteTheme,
     hide_on_blur: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AxonHttpRequest {
-    base_url: String,
-    token: Option<String>,
-    method: HttpMethod,
-    path: String,
-    body: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-enum HttpMethod {
-    Get,
-    Post,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AxonHttpResult {
-    ok: bool,
-    status: u16,
-    path: String,
-    method: HttpMethod,
-    payload: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -97,56 +72,6 @@ fn resize_palette(app: AppHandle, width: f64, height: f64) -> Result<(), String>
         .set_size(Size::Logical(LogicalSize { width, height }))
         .map_err(|err| err.to_string())?;
     window.center().map_err(|err| err.to_string())
-}
-
-#[tauri::command]
-async fn axon_http_request(request: AxonHttpRequest) -> Result<AxonHttpResult, String> {
-    let base_url = normalize_server_url(&request.base_url);
-    let url = format!("{}{}", base_url.trim_end_matches('/'), request.path);
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
-        .user_agent("Axon Palette/4.5")
-        .build()
-        .map_err(|err| err.to_string())?;
-
-    let mut builder = match request.method {
-        HttpMethod::Get => client.get(&url),
-        HttpMethod::Post => client.post(&url),
-    }
-    .header(
-        reqwest::header::ACCEPT,
-        "application/json, text/plain;q=0.9, */*;q=0.5",
-    );
-
-    if let Some(token) = request
-        .token
-        .as_deref()
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-    {
-        builder = builder.bearer_auth(token).header("x-api-key", token);
-    }
-
-    if let Some(body) = request.body {
-        builder = builder.json(&body);
-    }
-
-    let response = builder.send().await.map_err(|err| err.to_string())?;
-    let status = response.status();
-    let text = response.text().await.map_err(|err| err.to_string())?;
-    let payload = if text.trim().is_empty() {
-        serde_json::Value::Null
-    } else {
-        serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text))
-    };
-
-    Ok(AxonHttpResult {
-        ok: status.is_success(),
-        status: status.as_u16(),
-        path: request.path,
-        method: request.method,
-        payload,
-    })
 }
 
 fn merged_settings(app: &AppHandle) -> PaletteSettings {
@@ -431,7 +356,6 @@ fn trim_env_value(value: &str) -> String {
 
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_http::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -447,7 +371,7 @@ pub fn run() {
             hide_palette,
             show_palette,
             resize_palette,
-            axon_http_request
+            axon_bridge::axon_http_request
         ])
         .setup(|app| {
             let _ = install_tray(app);
