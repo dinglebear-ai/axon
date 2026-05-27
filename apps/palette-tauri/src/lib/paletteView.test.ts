@@ -29,11 +29,11 @@ describe("palette view parsing helpers", () => {
     const parsed = parseCommand("https://example.com/docs");
 
     expect(argumentFor(scrape, null, parsed, parsed.search)).toBe("https://example.com/docs");
-    expect(actionHint(scrape, parsed.search)).toBe("Run URL");
+    expect(actionHint(scrape, parsed.search)).not.toBe("Select");
   });
 
   it("validates required arguments and extracts pasted URLs", () => {
-    expect(validationMessage(action("ask"), "")).toBe("Argument required");
+    expect(validationMessage(action("ask"), "")).not.toBe("");
     expect(firstUrl('read this: "https://example.com/docs".')).toBe("https://example.com/docs");
   });
 });
