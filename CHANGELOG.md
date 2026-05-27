@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - OpenAI-compatible LLM backend support for llama.cpp-style endpoints via
-  `AXON_LLM_BACKEND=openai-compatible`, `AXON_OPENAI_BASE_URL`,
+  `AXON_LLM_BACKEND=openai-compat`, `AXON_OPENAI_BASE_URL`,
   `AXON_OPENAI_API_KEY`, and `AXON_OPENAI_MODEL`.
 - Tauri palette deployment helper `scripts/build-on-steamy.sh` for building a
   Windows executable and placing it on Steamy's desktop.
