@@ -15,6 +15,8 @@ kotlinx-collections-immutable = "0.3.8"
 junit = "4.13.2"
 turbine = "1.1.0"
 securityCrypto = "1.1.0-alpha06"
+robolectric = "4.13"
+androidxTestExtJunit = "1.2.1"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -46,3 +48,5 @@ mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", versio
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
