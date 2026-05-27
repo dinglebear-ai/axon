@@ -33,6 +33,18 @@ pre-commit:
     mcp-schema-doc:
       glob: "src/mcp/schema.rs"
       run: scripts/with_timeout.sh 30 -- scripts/check_mcp_schema_doc.sh
+    helper-shell-scripts:
+      glob: "scripts/{build-on-steamy,test-ask-gemma4}.sh"
+      run: >
+        scripts/with_timeout.sh 30 --
+        bash -c '
+          bash -n "$@";
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck "$@";
+          else
+            echo "shellcheck not found; skipped optional shell lint" >&2;
+          fi
+        ' -- {staged_files}
     monolith:
       glob: "**/*.rs"
       run: >
