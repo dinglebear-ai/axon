@@ -125,6 +125,47 @@ jobs:
       - name: enforce pre-commit stays fast
         run: python3 scripts/check_lefthook_pre_commit_speed.py
 
+  palette-tauri:
+    name: palette-tauri
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            apps/palette-tauri
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/palette-tauri/src-tauri
+          shared-key: palette-tauri
+      - name: Install Tauri Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl file libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libwebkit2gtk-4.1-dev patchelf pkg-config wget
+      - name: Install palette dependencies
+        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
+      - name: Palette TypeScript contract tests
+        run: pnpm --dir apps/palette-tauri test
+      - name: Palette typecheck
+        run: pnpm --dir apps/palette-tauri typecheck
+      - name: Palette Vite build
+        run: pnpm --dir apps/palette-tauri vite:build
+      - name: Tauri cargo check
+        run: cargo check --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
+
   windows-check:
     name: windows-check (xtask only)
     runs-on: windows-latest
@@ -820,7 +861,7 @@ jobs:
           docker compose --env-file "$HOME/.axon/.env" -f docker-compose.prod.yaml config >/dev/null
 
       - name: Create Docker network for compose
-        run: docker network create ${DOCKER_NETWORK:-axon} || true
+        run: docker network create "${DOCKER_NETWORK:-axon}" || true
 
       - name: Start Axon infra
         run: docker compose --env-file "$HOME/.axon/.env" -f docker-compose.prod.yaml up -d axon-qdrant
@@ -837,7 +878,7 @@ jobs:
 
       - name: Wait for Qdrant and TEI
         run: |
-          for i in {1..90}; do
+          for _ in {1..90}; do
             if curl -fsS http://127.0.0.1:53333/healthz >/dev/null 2>&1 && \
                curl -fsS http://127.0.0.1:52000/health >/dev/null 2>&1; then
               exit 0
@@ -867,7 +908,7 @@ jobs:
         run: |
           ./target/release/axon mcp --transport http &
           echo $! > /tmp/axon-mcp.pid
-          for i in {1..30}; do
+          for _ in {1..30}; do
             if nc -z 127.0.0.1 8001 2>/dev/null; then
               echo "axon MCP HTTP server ready on :8001"
               exit 0
