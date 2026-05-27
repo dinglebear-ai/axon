@@ -10,6 +10,7 @@ import com.axon.app.data.remote.CrawlRequest
 import com.axon.app.data.remote.MapRequest
 import com.axon.app.data.remote.QueryRequest
 import com.axon.app.data.remote.ResearchRequest
+import com.axon.app.data.remote.RetrieveRequest
 import com.axon.app.data.remote.ScrapeRequest
 import com.axon.app.data.remote.SourcesRequest
 import com.axon.app.data.remote.ResearchHit
@@ -23,6 +24,14 @@ import kotlinx.serialization.json.int
 @Stable data class QueryHitUi(val rank: Long, val score: Double, val url: String, val source: String, val snippet: String)
 @Stable data class SourceEntryUi(val url: String, val chunks: Int)
 @Stable data class ScrapeResultUi(val url: String, val markdown: String)
+@Stable data class RetrieveResultUi(
+    val requestedUrl: String,
+    val matchedUrl: String?,
+    val chunkCount: Int,
+    val content: String,
+    val truncated: Boolean,
+    val warnings: List<String>,
+)
 @Stable data class MapResultUi(val url: String, val total: Long, val urls: List<String>)
 @Stable data class ResearchResultUi(val query: String, val summary: String?, val hits: List<ResearchHit>)
 /** Full crawl status including server-reported error and page count so callers can show actionable feedback. */
@@ -66,6 +75,19 @@ class AxonRepository(
             r.results.map { h ->
                 QueryHitUi(rank = h.rank, score = h.score, url = h.url, source = h.source, snippet = h.snippet)
             }
+        }
+    }
+
+    suspend fun retrieve(url: String, collection: String? = null): Result<RetrieveResultUi> = withToken {
+        client.retrieve(RetrieveRequest(url = url, collection = collection)).map { r ->
+            RetrieveResultUi(
+                requestedUrl = r.requestedUrl ?: url,
+                matchedUrl = r.matchedUrl,
+                chunkCount = r.chunkCount,
+                content = r.content,
+                truncated = r.truncated,
+                warnings = r.warnings,
+            )
         }
     }
 

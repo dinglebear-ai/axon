@@ -158,6 +158,11 @@ class AxonClient(
         post("/v1/query", request)
     }
 
+    suspend fun retrieve(request: RetrieveRequest): Result<RetrieveResponse> = withContext(Dispatchers.IO) {
+        // Retrieve can return large assembled documents; use the longer-timeout client.
+        postWith(httpLong, "/v1/retrieve", request)
+    }
+
     suspend fun sources(request: SourcesRequest = SourcesRequest()): Result<SourcesResponse> =
         withContext(Dispatchers.IO) {
             get("/v1/sources?limit=${request.limit}&offset=${request.offset}")
