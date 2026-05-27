@@ -11,7 +11,13 @@ use axum::{
 };
 use futures_util::stream;
 use serde::Serialize;
-use std::{convert::Infallible, sync::Arc};
+use std::{
+    convert::Infallible,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use tokio::sync::mpsc;
 
 #[derive(Debug, Serialize)]
@@ -39,7 +45,7 @@ fn sse_json(event_name: &'static str, value: &AskStreamEvent) -> Event {
     path = "/v1/ask/stream",
     request_body = AskRequestBody,
     responses(
-        (status = 200, description = "RAG answer streamed as text/event-stream"),
+        (status = 200, description = "RAG answer streamed as server-sent events", body = String, content_type = "text/event-stream"),
         (status = 400, description = "Invalid ask request", body = crate::web::server::error::ErrorBody),
         (status = 413, description = "Ask request exceeds limits", body = crate::web::server::error::ErrorBody)
     ),
@@ -58,39 +64,72 @@ pub async fn v1_ask_stream(
         return HttpError::payload_too_large(format!("query exceeds {ASK_QUERY_MAX_CHARS} chars"))
             .into_response();
     }
+    if req.explain == Some(true) {
+        return HttpError::bad_request("explain is not supported for streaming ask")
+            .into_response();
+    }
 
     let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
+    let disconnected = Arc::new(AtomicBool::new(false));
     let mut req_cfg = (*cfg).clone();
     super::ask::apply_ask_overrides(&mut req_cfg, &req);
     req_cfg.ask_stream = true;
     req_cfg.json_output = false;
 
     tokio::spawn(async move {
-        let _ = tx.send(Ok(sse_json(
-            "meta",
-            &AskStreamEvent::Meta {
-                phase: "retrieving",
-            },
-        )));
+        if tx
+            .send(Ok(sse_json(
+                "meta",
+                &AskStreamEvent::Meta {
+                    phase: "retrieving",
+                },
+            )))
+            .is_err()
+        {
+            return;
+        }
 
         let delta_tx = tx.clone();
+        let delta_disconnected = Arc::clone(&disconnected);
         let result = query_svc::ask_stream(&req_cfg, &req.query, move |delta| {
-            let _ = delta_tx.send(Ok(sse_json(
-                "delta",
-                &AskStreamEvent::Delta {
-                    text: delta.to_string(),
-                },
-            )));
+            if delta_disconnected.load(Ordering::Relaxed) {
+                return;
+            }
+            if delta_tx
+                .send(Ok(sse_json(
+                    "delta",
+                    &AskStreamEvent::Delta {
+                        text: delta.to_string(),
+                    },
+                )))
+                .is_err()
+            {
+                delta_disconnected.store(true, Ordering::Relaxed);
+            }
         })
         .await
         .map_err(|err| err.to_string());
 
+        if disconnected.load(Ordering::Relaxed) {
+            return;
+        }
+
         match result {
             Ok(answer) => {
-                let _ = tx.send(Ok(sse_json("done", &AskStreamEvent::Done { answer })));
+                if tx
+                    .send(Ok(sse_json("done", &AskStreamEvent::Done { answer })))
+                    .is_err()
+                {
+                    disconnected.store(true, Ordering::Relaxed);
+                }
             }
             Err(message) => {
-                let _ = tx.send(Ok(sse_json("error", &AskStreamEvent::Error { message })));
+                if tx
+                    .send(Ok(sse_json("error", &AskStreamEvent::Error { message })))
+                    .is_err()
+                {
+                    disconnected.store(true, Ordering::Relaxed);
+                }
             }
         }
     });

@@ -4,7 +4,14 @@ import type { OutputKind } from "@/lib/format";
 export type RunState =
   | { kind: "idle" }
   | { kind: "running"; title: string; subtitle: string }
-  | { kind: "streaming"; title: string; subtitle: string; text: string; outputKind: OutputKind }
+  | {
+      kind: "streaming";
+      title: string;
+      subtitle: string;
+      text: string;
+      outputKind: OutputKind;
+      requestId: string;
+    }
   | {
       kind: "success" | "error";
       title: string;

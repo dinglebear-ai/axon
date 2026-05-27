@@ -11,17 +11,34 @@ use super::normalize_server_url;
 pub(crate) struct PaletteStreamRequest {
     base_url: String,
     token: Option<String>,
+    request_id: String,
     path: String,
     body: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 enum PaletteStreamEvent {
-    Started { path: String },
-    Delta { text: String },
-    Done { answer: Option<String> },
-    Error { message: String },
+    Started {
+        request_id: String,
+        path: String,
+    },
+    Delta {
+        request_id: String,
+        text: String,
+    },
+    Done {
+        request_id: String,
+        answer: Option<String>,
+    },
+    Error {
+        request_id: String,
+        message: String,
+    },
 }
 
 #[tauri::command]
@@ -35,6 +52,7 @@ pub(crate) async fn axon_http_stream_request(
         .emit(
             "palette://stream",
             PaletteStreamEvent::Started {
+                request_id: request.request_id.clone(),
                 path: request.path.clone(),
             },
         )
@@ -65,21 +83,53 @@ pub(crate) async fn axon_http_stream_request(
         return Err(format!("stream request failed with HTTP {status}: {text}"));
     }
 
-    let mut pending = String::new();
+    let mut pending = Vec::new();
+    let mut terminal = false;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|err| err.to_string())?;
-        pending.push_str(&String::from_utf8_lossy(&chunk));
-        while let Some(pos) = pending.find('\n') {
-            let line = pending[..pos].trim_end_matches('\r').to_string();
-            pending.drain(..=pos);
-            handle_palette_sse_line(&window, &line)?;
+        for line in drain_sse_lines(&mut pending, &chunk)? {
+            terminal |= handle_palette_sse_line(&window, &request.request_id, &line)?;
         }
     }
-    if !pending.trim().is_empty() {
-        handle_palette_sse_line(&window, pending.trim_end_matches('\r'))?;
+    if !pending.is_empty() {
+        let line = decode_sse_line(std::mem::take(&mut pending))?;
+        if !line.trim().is_empty() {
+            terminal |= handle_palette_sse_line(&window, &request.request_id, &line)?;
+        }
+    }
+    if !terminal {
+        let message = "stream ended before done".to_string();
+        let _ = window.emit(
+            "palette://stream",
+            PaletteStreamEvent::Error {
+                request_id: request.request_id,
+                message: message.clone(),
+            },
+        );
+        return Err(message);
     }
     Ok(())
+}
+
+fn drain_sse_lines(pending: &mut Vec<u8>, chunk: &[u8]) -> Result<Vec<String>, String> {
+    pending.extend_from_slice(chunk);
+    let mut lines = Vec::new();
+    while let Some(pos) = pending.iter().position(|byte| *byte == b'\n') {
+        let raw: Vec<u8> = pending.drain(..=pos).collect();
+        lines.push(decode_sse_line(raw)?);
+    }
+    Ok(lines)
+}
+
+fn decode_sse_line(mut raw: Vec<u8>) -> Result<String, String> {
+    if raw.last() == Some(&b'\n') {
+        raw.pop();
+    }
+    if raw.last() == Some(&b'\r') {
+        raw.pop();
+    }
+    String::from_utf8(raw).map_err(|err| format!("invalid UTF-8 in SSE stream: {err}"))
 }
 
 fn parse_sse_data_line(line: &str) -> Option<String> {
@@ -87,9 +137,13 @@ fn parse_sse_data_line(line: &str) -> Option<String> {
         .map(|value| value.trim().to_string())
 }
 
-fn handle_palette_sse_line(window: &tauri::Window, line: &str) -> Result<(), String> {
+fn handle_palette_sse_line(
+    window: &tauri::Window,
+    request_id: &str,
+    line: &str,
+) -> Result<bool, String> {
     let Some(data) = parse_sse_data_line(line) else {
-        return Ok(());
+        return Ok(false);
     };
     let value: serde_json::Value = serde_json::from_str(&data).map_err(|err| err.to_string())?;
     match value.get("type").and_then(|kind| kind.as_str()) {
@@ -98,19 +152,32 @@ fn handle_palette_sse_line(window: &tauri::Window, line: &str) -> Result<(), Str
                 .get("text")
                 .and_then(|text| text.as_str())
                 .unwrap_or_default();
-            window.emit(
-                "palette://stream",
-                PaletteStreamEvent::Delta {
-                    text: text.to_string(),
-                },
-            )
+            window
+                .emit(
+                    "palette://stream",
+                    PaletteStreamEvent::Delta {
+                        request_id: request_id.to_string(),
+                        text: text.to_string(),
+                    },
+                )
+                .map_err(|err| err.to_string())?;
+            Ok(false)
         }
         Some("done") => {
             let answer = value
                 .get("answer")
                 .and_then(|answer| answer.as_str())
                 .map(str::to_string);
-            window.emit("palette://stream", PaletteStreamEvent::Done { answer })
+            window
+                .emit(
+                    "palette://stream",
+                    PaletteStreamEvent::Done {
+                        request_id: request_id.to_string(),
+                        answer,
+                    },
+                )
+                .map_err(|err| err.to_string())?;
+            Ok(true)
         }
         Some("error") => {
             let message = value
@@ -118,16 +185,24 @@ fn handle_palette_sse_line(window: &tauri::Window, line: &str) -> Result<(), Str
                 .and_then(|message| message.as_str())
                 .unwrap_or("stream error")
                 .to_string();
-            window.emit("palette://stream", PaletteStreamEvent::Error { message })
+            window
+                .emit(
+                    "palette://stream",
+                    PaletteStreamEvent::Error {
+                        request_id: request_id.to_string(),
+                        message,
+                    },
+                )
+                .map_err(|err| err.to_string())?;
+            Ok(true)
         }
-        _ => Ok(()),
+        _ => Ok(false),
     }
-    .map_err(|err| err.to_string())
 }
 
 #[cfg(test)]
 mod stream_tests {
-    use super::parse_sse_data_line as parse_data_line;
+    use super::{drain_sse_lines, parse_sse_data_line as parse_data_line};
 
     #[test]
     fn parse_sse_data_line() {
@@ -140,5 +215,21 @@ mod stream_tests {
     #[test]
     fn ignores_non_data_sse_line() {
         assert_eq!(parse_data_line("event: delta"), None);
+    }
+
+    #[test]
+    fn buffers_split_utf8_until_complete_line() {
+        let mut pending = Vec::new();
+        let snowman = "data: {\"type\":\"delta\",\"text\":\"☃\"}\n".as_bytes();
+        assert!(
+            drain_sse_lines(&mut pending, &snowman[..snowman.len() - 2])
+                .unwrap()
+                .is_empty()
+        );
+
+        let lines = drain_sse_lines(&mut pending, &snowman[snowman.len() - 2..]).unwrap();
+
+        assert_eq!(lines, vec!["data: {\"type\":\"delta\",\"text\":\"☃\"}"]);
+        assert!(pending.is_empty());
     }
 }
