@@ -87,6 +87,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
             "query": query,
             "answer": "",
             "session": serde_json::Value::Null,
+            "warnings": &ctx.warnings,
             "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
             "explain": ctx.explain,
             "timing_ms": build_timing_json(
@@ -156,6 +157,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         "query": query,
         "answer": answer,
         "session": serde_json::Value::Null,
+        "warnings": &ctx.warnings,
         "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
         "explain": serde_json::Value::Null,
         "timing_ms": build_timing_json(
@@ -265,6 +267,7 @@ fn history_only_ask_context(elapsed_ms: u128) -> AskContext {
         detected_complexity: "simple",
         resolved_full_docs: 0,
         full_docs_source: "history_only",
+        warnings: Vec::new(),
         explain: None,
     }
 }

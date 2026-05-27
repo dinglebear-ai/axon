@@ -140,6 +140,7 @@ fn ask_result_serializes_absent_explain_as_null() {
         query: "what is axon?".to_string(),
         answer: "A crawler.".to_string(),
         session: None,
+        warnings: Vec::new(),
         diagnostics: None,
         explain: None,
         timing_ms: AskTiming {
