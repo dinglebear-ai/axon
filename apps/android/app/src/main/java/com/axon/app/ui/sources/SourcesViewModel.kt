@@ -8,7 +8,6 @@ import com.axon.app.data.repository.SourceEntryUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -29,10 +28,12 @@ class SourcesViewModel(app: Application) : AndroidViewModel(app) {
     val uiState: StateFlow<SourcesUiState> = _uiState.asStateFlow()
 
     init {
-        // Auto-reload when the API token changes (e.g. after the user configures it in Settings).
+        // Auto-reload when the API token, server URL, or collection changes. All three affect
+        // which sources are visible: a different collection returns a different source list,
+        // and a different server URL points to a different Axon instance entirely.
         viewModelScope.launch {
             container.settingsRepository.settings
-                .distinctUntilChangedBy { it.token }
+                .distinctUntilChangedBy { Triple(it.token, it.serverUrl, it.collection) }
                 .collect { load() }
         }
     }

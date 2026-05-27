@@ -10,14 +10,31 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-// TODO: SECURITY - migrate token storage to EncryptedSharedPreferences before production use
-// See: https://developer.android.com/reference/androidx/security/crypto/EncryptedSharedPreferences
+/**
+ * Manual dependency-injection container for the application.
+ *
+ * Manual DI (rather than Hilt) is appropriate here because the graph is small and stable.
+ * If the app grows to require scoped components or code-generated factories, migrate to Hilt.
+ *
+ * Lifecycle:
+ * 1. [AppContainer] is created synchronously in [AxonApp.onCreate].
+ * 2. [axonClient] is constructed with an empty token — [hasToken] returns false until step 3.
+ * 3. The Application reads the first DataStore emission and calls [applySettings], which
+ *    pushes real credentials into the client and sets [isReady] = true.
+ * 4. The splash/gate composable observes [isReady] and blocks the UI until step 3 completes,
+ *    ensuring no API calls reach the server with stale (empty) credentials.
+ *
+ * TODO: SECURITY — migrate token storage to EncryptedSharedPreferences before production use.
+ * See: https://developer.android.com/reference/androidx/security/crypto/EncryptedSharedPreferences
+ * Artifact: androidx.security:security-crypto
+ */
 class AppContainer(context: Context) {
     val settingsRepository = SettingsRepository(context)
     private val db = AppDatabase.build(context)
 
     val axonClient = AxonClient(
         baseUrl = DEFAULT_SERVER_URL,
+        // Empty token on construction — real token applied in applySettings() before isReady fires.
         token = "",
     )
 
@@ -31,7 +48,7 @@ class AppContainer(context: Context) {
     /** Becomes true once the initial DataStore settings have been applied to the client. */
     val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
 
-    // Called once at app start after settings are read from DataStore
+    /** Called once at app start after the first DataStore settings emission is read. */
     fun applySettings(serverUrl: String, token: String) {
         axonClient.updateConfig(serverUrl.trimEnd('/'), token)
         _isReady.value = true

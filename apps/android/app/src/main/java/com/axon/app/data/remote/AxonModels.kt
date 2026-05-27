@@ -7,12 +7,14 @@ import kotlinx.serialization.json.JsonObject
 
 // ── Requests ──────────────────────────────────────────────────────────────────
 
+/** Request body for POST /v1/ask and POST /v1/ask/stream. */
 @Serializable
 data class AskRequest(
     val query: String,
     val collection: String? = null,
 )
 
+/** Request body for POST /v1/query. */
 @Serializable
 data class QueryRequest(
     val query: String,
@@ -20,6 +22,7 @@ data class QueryRequest(
     val collection: String? = null,
 )
 
+/** Query parameters for GET /v1/sources. */
 @Serializable
 data class SourcesRequest(
     val limit: Int = 50,
@@ -29,6 +32,7 @@ data class SourcesRequest(
 
 // ── Ask response ──────────────────────────────────────────────────────────────
 
+/** Response body from POST /v1/ask (non-streaming). */
 @Serializable
 data class AskResponse(
     val query: String,
@@ -43,6 +47,7 @@ data class AskTiming(
 
 // ── Query response ────────────────────────────────────────────────────────────
 
+/** Response body from POST /v1/query. */
 @Serializable
 data class QueryResponse(
     val results: List<QueryHit>,
@@ -60,9 +65,14 @@ data class QueryHit(
 )
 
 // ── Sources response ──────────────────────────────────────────────────────────
-// Rust serializes Vec<(String, usize)> as [[url, count], ...].
-// We keep the raw JsonArray and let AxonRepository map it.
 
+/**
+ * Response body from GET /v1/sources.
+ *
+ * The server serialises `Vec<(String, usize)>` as a JSON array of two-element arrays:
+ * `[[url, chunkCount], ...]`. The raw [JsonArray] is kept here so [AxonRepository] can
+ * perform the structural mapping with full control over error handling.
+ */
 @Serializable
 data class SourcesResponse(
     val count: Int,
@@ -73,6 +83,7 @@ data class SourcesResponse(
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
+/** Response body from GET /v1/stats. */
 @Serializable
 data class StatsResponse(
     val payload: JsonObject,
@@ -80,6 +91,7 @@ data class StatsResponse(
 
 // ── Scrape ────────────────────────────────────────────────────────────────────
 
+/** Request body for POST /v1/scrape. */
 @Serializable
 data class ScrapeRequest(
     val url: String,
@@ -87,6 +99,7 @@ data class ScrapeRequest(
     val collection: String? = null,
 )
 
+/** Response body from POST /v1/scrape. */
 @Serializable
 data class ScrapeResponse(
     val url: String = "",
@@ -96,12 +109,14 @@ data class ScrapeResponse(
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 
+/** Request body for POST /v1/map. */
 @Serializable
 data class MapRequest(
     val url: String,
     val limit: Int? = null,
 )
 
+/** Response body from POST /v1/map. */
 @Serializable
 data class MapResponse(
     val url: String = "",
@@ -112,12 +127,14 @@ data class MapResponse(
 
 // ── Research ──────────────────────────────────────────────────────────────────
 
+/** Request body for POST /v1/research. */
 @Serializable
 data class ResearchRequest(
     val query: String,
     val limit: Int? = null,
 )
 
+/** Response body from POST /v1/research. */
 @Serializable
 data class ResearchResponse(
     val payload: ResearchPayload,
@@ -139,9 +156,15 @@ data class ResearchHit(
 )
 
 // ── Ask stream events ─────────────────────────────────────────────────────────
-// Server emits SSE events on POST /v1/ask/stream.
-// Each event is a JSON object with a "type" discriminator.
 
+/**
+ * Discriminated union of SSE events emitted by POST /v1/ask/stream.
+ *
+ * Each event is a JSON object with a `"type"` field. Parsing is done manually in
+ * [AxonClient.parseStreamEvent] rather than via [kotlinx.serialization] because the
+ * discriminator field name (`"type"`) conflicts with Kotlin's type keyword and the
+ * sealed interface hierarchy needs no serialization annotations for the streaming path.
+ */
 sealed interface AskStreamEvent {
     /** Phase indicator — emitted before synthesis starts (e.g. "retrieval", "synthesis"). */
     data class Meta(val phase: String) : AskStreamEvent
@@ -155,6 +178,7 @@ sealed interface AskStreamEvent {
 
 // ── Crawl ─────────────────────────────────────────────────────────────────────
 
+/** Request body for POST /v1/crawl. */
 @Serializable
 data class CrawlRequest(
     val urls: List<String>,
@@ -163,12 +187,14 @@ data class CrawlRequest(
     val collection: String? = null,
 )
 
+/** Response body from POST /v1/crawl (job submission). */
 @Serializable
 data class CrawlJobResponse(
     @SerialName("job_id") val jobId: String = "",
     val url: String = "",
 )
 
+/** Response body from GET /v1/crawl/{job_id}. */
 @Serializable
 data class CrawlStatusResponse(
     @SerialName("job_id") val jobId: String = "",
