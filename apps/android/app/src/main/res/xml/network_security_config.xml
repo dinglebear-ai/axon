@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Allow cleartext HTTP for Tailscale MagicDNS hostnames and IPs -->
+    <!--
+        Cleartext HTTP is intentionally permitted for Tailscale MagicDNS hostnames (*.ts.net)
+        and legacy Tailscale VPN addresses (*.tailvpn.net). These are private homelab network
+        addresses reachable only through the Tailscale VPN tunnel, which itself provides
+        encryption at the network layer. Cleartext is NOT permitted for any public internet host.
+    -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">ts.net</domain>
         <domain includeSubdomains="true">tailvpn.net</domain>

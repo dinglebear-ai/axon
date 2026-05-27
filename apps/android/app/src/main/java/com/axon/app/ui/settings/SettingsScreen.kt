@@ -86,11 +86,19 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         }
 
         when (val c = connection) {
-            is ConnectionState.Ok ->
+            is ConnectionState.Ok -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     Text("Connected", color = MaterialTheme.colorScheme.primary)
                 }
+                c.warning?.let { warning ->
+                    Text(
+                        warning,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             is ConnectionState.Failed ->
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error)

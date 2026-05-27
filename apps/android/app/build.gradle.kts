@@ -18,6 +18,17 @@ android {
         versionName = "1.0"
     }
 
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
     buildFeatures {
         compose = true
     }
@@ -30,6 +41,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+ksp {
+    // Room schema export — enables migration verification and schema diffing
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {

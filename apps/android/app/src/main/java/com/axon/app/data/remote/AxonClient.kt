@@ -1,5 +1,6 @@
 package com.axon.app.data.remote
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -10,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
@@ -19,35 +21,40 @@ private val json = Json {
 }
 
 class AxonClient(
-    private var baseUrl: String,
-    private var token: String,
+    baseUrl: String,
+    token: String,
 ) {
+    // Thread-safe config: both baseUrl and token updated atomically together
+    private val config = AtomicReference(baseUrl.trimEnd('/') to token)
+
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    // Research synthesis can take up to 2 minutes
-    private val httpLong = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
+    // Research synthesis can take up to 2 minutes — built from the shared client to reuse connection pool
+    private val httpLong = http.newBuilder()
         .readTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
     fun updateConfig(newBaseUrl: String, newToken: String) {
-        baseUrl = newBaseUrl.trimEnd('/')
-        token = newToken
+        config.set(newBaseUrl.trimEnd('/') to newToken)
     }
+
+    fun hasToken(): Boolean = config.get().second.isNotBlank()
 
     suspend fun healthz(): Boolean = withContext(Dispatchers.IO) {
         runCatching {
+            val (baseUrl, _) = config.get()
             val req = Request.Builder()
                 .url("$baseUrl/healthz")
                 .get()
                 .build()
             http.newCall(req).execute().use { it.isSuccessful }
-        }.getOrDefault(false)
+        }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrDefault(false)
     }
 
     suspend fun ask(request: AskRequest): Result<AskResponse> = withContext(Dispatchers.IO) {
@@ -83,15 +90,20 @@ class AxonClient(
         post("/v1/crawl", request)
     }
 
-    suspend fun crawlStatus(jobId: String): Result<JsonObject> = withContext(Dispatchers.IO) {
+    suspend fun crawlStatus(jobId: String): Result<CrawlStatusResponse> = withContext(Dispatchers.IO) {
         get("/v1/crawl/$jobId")
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun authRequest(builder: Request.Builder): Request.Builder =
-        builder.header("Authorization", "Bearer $token")
-               .header("x-api-key", token)
+    private fun authRequest(builder: Request.Builder): Request.Builder {
+        val (_, token) = config.get()
+        return builder
+            .header("Authorization", "Bearer $token")
+            .header("x-api-key", token)
+    }
+
+    private fun baseUrl(): String = config.get().first
 
     private inline fun <reified B, reified R> post(path: String, body: B): Result<R> =
         postWith(http, path, body)
@@ -101,7 +113,7 @@ class AxonClient(
             val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
             val req = authRequest(
                 Request.Builder()
-                    .url("$baseUrl$path")
+                    .url("${baseUrl()}$path")
                     .post(bodyBytes)
             ).build()
             client.newCall(req).execute().use { resp ->
@@ -109,19 +121,19 @@ class AxonClient(
                     val msg = resp.body?.string() ?: resp.message
                     error("HTTP ${resp.code}: $msg")
                 }
-                json.decodeFromString<R>(resp.body!!.string())
+                json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
             }
-        }
+        }.onFailure { if (it is CancellationException) throw it }
 
     private inline fun <reified R> get(path: String): Result<R> =
         runCatching {
-            val req = authRequest(Request.Builder().url("$baseUrl$path").get()).build()
+            val req = authRequest(Request.Builder().url("${baseUrl()}$path").get()).build()
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     val msg = resp.body?.string() ?: resp.message
                     error("HTTP ${resp.code}: $msg")
                 }
-                json.decodeFromString<R>(resp.body!!.string())
+                json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
             }
-        }
+        }.onFailure { if (it is CancellationException) throw it }
 }

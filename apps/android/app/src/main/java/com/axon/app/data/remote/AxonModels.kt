@@ -50,12 +50,12 @@ data class QueryResponse(
 
 @Serializable
 data class QueryHit(
-    val rank: Long,
-    val score: Double,
+    val rank: Long = 0L,
+    val score: Double = 0.0,
     @SerialName("rerank_score") val rerankScore: Double = 0.0,
-    val url: String,
-    val source: String,
-    val snippet: String,
+    val url: String = "",
+    val source: String = "",
+    val snippet: String = "",
     @SerialName("chunk_index") val chunkIndex: Long? = null,
 )
 
@@ -89,8 +89,8 @@ data class ScrapeRequest(
 
 @Serializable
 data class ScrapeResponse(
-    val url: String,
-    val markdown: String,
+    val url: String = "",
+    val markdown: String = "",
     val output: String = "",
 )
 
@@ -104,10 +104,10 @@ data class MapRequest(
 
 @Serializable
 data class MapResponse(
-    val url: String,
-    @SerialName("mapped_urls") val mappedUrls: Long,
-    val total: Long,
-    val urls: List<String>,
+    val url: String = "",
+    @SerialName("mapped_urls") val mappedUrls: Long = 0L,
+    val total: Long = 0L,
+    val urls: List<String> = emptyList(),
 )
 
 // ── Research ──────────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ data class ResearchResponse(
 @Serializable
 data class ResearchPayload(
     val query: String,
-    val search_results: List<ResearchHit> = emptyList(),
+    @SerialName("search_results") val searchResults: List<ResearchHit> = emptyList(),
     val summary: String? = null,
 )
 
@@ -143,22 +143,22 @@ data class ResearchHit(
 @Serializable
 data class CrawlRequest(
     val urls: List<String>,
-    val max_pages: Int? = null,
-    val max_depth: Int? = null,
+    @SerialName("max_pages") val maxPages: Int? = null,
+    @SerialName("max_depth") val maxDepth: Int? = null,
     val collection: String? = null,
 )
 
 @Serializable
 data class CrawlJobResponse(
-    val job_id: String,
+    @SerialName("job_id") val jobId: String = "",
     val url: String = "",
 )
 
 @Serializable
 data class CrawlStatusResponse(
-    val job_id: String,
-    val status: String,
+    @SerialName("job_id") val jobId: String = "",
+    val status: String = "",
     val url: String = "",
-    val pages_crawled: Int? = null,
+    @SerialName("pages_crawled") val pagesCrawled: Int? = null,
     val error: String? = null,
 )
