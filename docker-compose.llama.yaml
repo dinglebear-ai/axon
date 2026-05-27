@@ -2,6 +2,11 @@ name: llama-cpp
 
 # Standalone llama.cpp server for Gemma 4 E4B IT.
 #
+# Network:
+#   This compose file joins the external ${DOCKER_NETWORK:-axon} network.
+#   Start the main Axon stack first, or create it once with:
+#     docker network create ${DOCKER_NETWORK:-axon}
+#
 # Start:
 #   docker compose -f docker-compose.llama.yaml up -d
 #
