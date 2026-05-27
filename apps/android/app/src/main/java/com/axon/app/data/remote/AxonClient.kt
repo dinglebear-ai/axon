@@ -184,7 +184,8 @@ class AxonClient(
     }
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusResponse> = withContext(Dispatchers.IO) {
-        get("/v1/crawl/$jobId")
+        // The server wraps the job in {"job": {...}}; decode the envelope and unwrap.
+        get<CrawlStatusWrapper>("/v1/crawl/$jobId").map { it.job }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -200,13 +200,14 @@ class AxonRepositoryTest {
         assertTrue(result.getOrThrow().isEmpty())
     }
 
-    // ── crawlStatus blank fallback ────────────────────────────────────────────
+    // ── crawlStatus ───────────────────────────────────────────────────────────
 
     @Test
     fun `crawlStatus returns 'unknown' when status field is blank`() = runBlocking {
+        // Real server shape: {"job": {...}} envelope with inner id/status/url/error_text fields.
         server.enqueue(
             MockResponse()
-                .setBody("""{"job_id":"abc","status":"","url":"https://example.com"}""")
+                .setBody("""{"job":{"id":"abc","status":"","url":"https://example.com","error_text":null}}""")
                 .addHeader("Content-Type", "application/json"),
         )
         val result = repo.crawlStatus("abc")
@@ -218,12 +219,41 @@ class AxonRepositoryTest {
     fun `crawlStatus returns status string when non-blank`() = runBlocking {
         server.enqueue(
             MockResponse()
-                .setBody("""{"job_id":"abc","status":"running","url":"https://example.com"}""")
+                .setBody("""{"job":{"id":"abc","status":"running","url":"https://example.com","error_text":null}}""")
                 .addHeader("Content-Type", "application/json"),
         )
         val result = repo.crawlStatus("abc")
         assertTrue(result.isSuccess)
         assertEquals("running", result.getOrThrow().status)
+    }
+
+    @Test
+    fun `crawlStatus returns completed with pagesCrawled from result_json`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """{"job":{"id":"abc","status":"completed","url":"https://example.com","error_text":null,"result_json":{"pages_crawled":5}}}""",
+                )
+                .addHeader("Content-Type", "application/json"),
+        )
+        val result = repo.crawlStatus("abc")
+        assertTrue(result.isSuccess)
+        val ui = result.getOrThrow()
+        assertEquals("completed", ui.status)
+        assertEquals(5, ui.pagesCrawled)
+    }
+
+    @Test
+    fun `crawlStatus falls back to supplied jobId when id field is absent`() = runBlocking {
+        // id defaults to "" when missing → ifBlank uses the passed-in jobId parameter.
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"job":{"id":"","status":"pending","url":"","error_text":null}}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+        val result = repo.crawlStatus("fallback-id")
+        assertTrue(result.isSuccess)
+        assertEquals("fallback-id", result.getOrThrow().jobId)
     }
 
     // ── ping delegates to healthz ─────────────────────────────────────────────
