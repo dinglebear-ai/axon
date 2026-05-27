@@ -5,6 +5,7 @@ import com.axon.app.data.local.AppDatabase
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.AxonRepository
 import com.axon.app.data.repository.DEFAULT_SERVER_URL
+import com.axon.app.data.repository.RecentJobsRepository
 import com.axon.app.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class AppContainer(context: Context) {
     val settingsRepository = SettingsRepository(context)
+    val recentJobs = RecentJobsRepository(context)
     private val db = AppDatabase.build(context)
 
     val axonClient = AxonClient(
