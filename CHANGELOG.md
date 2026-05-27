@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-05-27
+
+### Added
+
+- Android: per-mode options screen (9 forms — Ask, Query, Summarize, Research,
+  Scrape, Crawl, Search, Map, Ingest). Each form persists overrides to
+  Preferences DataStore (one file `mode_options`) with file-private keys and
+  defaults. `Reset to defaults` clears only that mode's keys.
+- Android: `ModeOptionsApplicator` decorator boundary on `AxonRepository`.
+  Every request flowing through the repository is run through `applicator.apply(req)`
+  before reaching `AxonClient` so the repository stays ignorant of which fields
+  exist per mode. Call-site values always win over persisted overrides.
+- Android: `EncryptedTokenStore` (EncryptedSharedPreferences with `@Volatile`
+  cache) replaces the legacy plaintext DataStore entry. Tolerates AndroidKeyStore
+  invalidation by deleting the prefs file and forcing re-auth. Synchronous
+  `.commit()` writes survive immediate process kill.
+- Android: idempotent boot-time migration moves any legacy plaintext token
+  into `EncryptedTokenStore` and wipes the plaintext entry. Runs on every
+  `AxonApp.onCreate()`.
+- Android: `data_extraction_rules.xml` excludes `axon_secrets.xml` from cloud
+  backup and device-transfer (Android 12+).
+- Android: `ModeOptionsScreen` applies `FLAG_SECURE` to its host window for the
+  lifetime of the composition so sensitive header values cannot bleed via the
+  recent-apps thumbnail.
+- Android: `HeadersField` (used by `CrawlOptionsForm`) masks sensitive
+  Authorization/Cookie/X-Api-Key/Proxy-Authorization/X-Auth-Token values with
+  `PasswordVisualTransformation` plus a show/hide toggle.
+- Android: new `LocalOpenModeOptions: (OperationMode) -> Unit` composition
+  local provided by `AxonNavGraph`; `OperationsScreen` cog now navigates to
+  the real options screen.
+
+### Changed
+
+- Android: wire DTOs (`CrawlRequest`, `ScrapeRequest`, `AskRequest`,
+  `ResearchRequest`, `MapRequest`, `QueryRequest`) extended to mirror the
+  matching `RestXxxRequest` fields the server already exposes so the
+  applicator has fields to merge into.
+
+### Removed
+
+- Android: `StubModeForm` deleted — all 9 modes now route to real screens.
+
 ## [4.9.0] - 2026-05-27
 
 ### Added
