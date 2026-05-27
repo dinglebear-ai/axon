@@ -99,8 +99,8 @@ class AxonRepository(
         }
     }
 
-    suspend fun scrape(url: String, collection: String? = null): Result<ScrapeResultUi> = withToken {
-        client.scrape(ScrapeRequest(url = url, collection = collection)).map { r ->
+    suspend fun scrape(url: String): Result<ScrapeResultUi> = withToken {
+        client.scrape(ScrapeRequest(url = url)).map { r ->
             ScrapeResultUi(url = r.url, markdown = r.markdown)
         }
     }
@@ -121,8 +121,8 @@ class AxonRepository(
         }
     }
 
-    suspend fun crawlSubmit(url: String, maxPages: Int? = null, collection: String? = null): Result<String> = withToken {
-        client.crawlSubmit(CrawlRequest(urls = listOf(url), maxPages = maxPages, collection = collection)).map { it.jobId }
+    suspend fun crawlSubmit(url: String, maxPages: Int? = null): Result<String> = withToken {
+        client.crawlSubmit(CrawlRequest(urls = listOf(url), maxPages = maxPages)).map { it.jobId }
     }
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusUi> = withToken {

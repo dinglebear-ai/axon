@@ -12,7 +12,6 @@ import com.axon.app.data.repository.ScrapeResultUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ── Scrape ────────────────────────────────────────────────────────────────────
@@ -87,8 +86,7 @@ class ToolsViewModel(app: Application) : AndroidViewModel(app) {
         if (url.isBlank()) return
         viewModelScope.launch {
             _scrapeState.value = ScrapeUiState.Loading
-            val collection = container.settingsRepository.settings.first().collection
-            repo.scrape(url, collection = collection).fold(
+            repo.scrape(url).fold(
                 onSuccess = { _scrapeState.value = ScrapeUiState.Success(it) },
                 onFailure = { _scrapeState.value = ScrapeUiState.Error(it.message ?: "Scrape failed") },
             )
@@ -121,8 +119,7 @@ class ToolsViewModel(app: Application) : AndroidViewModel(app) {
         if (url.isBlank()) return
         viewModelScope.launch {
             _crawlState.value = CrawlUiState.Loading
-            val collection = container.settingsRepository.settings.first().collection
-            repo.crawlSubmit(url, maxPages, collection = collection).fold(
+            repo.crawlSubmit(url, maxPages).fold(
                 onSuccess = { jobId -> _crawlState.value = CrawlUiState.Submitted(jobId) },
                 onFailure = { _crawlState.value = CrawlUiState.Error(it.message ?: "Crawl submit failed") },
             )

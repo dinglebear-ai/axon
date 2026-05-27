@@ -36,8 +36,8 @@ class AxonClientTest {
     @Test
     fun `healthz returns true when server responds 200`() = runBlocking {
         server.enqueue(MockResponse().setBody("ok").setResponseCode(200))
-        val healthy = client.healthz()
-        assertTrue(healthy)
+        val result = client.healthz()
+        assertTrue(result.isSuccess)
         val req = server.takeRequest()
         assertEquals("/healthz", req.path)
     }
@@ -102,8 +102,8 @@ class AxonClientTest {
     @Test
     fun `healthz returns false when server responds 500`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(500).setBody("error"))
-        val healthy = client.healthz()
-        assertFalse(healthy)
+        val result = client.healthz()
+        assertTrue(result.isFailure)
     }
 
     // ── Empty response body ───────────────────────────────────────────────────
@@ -141,8 +141,8 @@ class AxonClientTest {
     @Test
     fun `healthz returns false when server is unreachable`() = runBlocking {
         server.shutdown()
-        val healthy = client.healthz()
-        assertFalse(healthy)
+        val result = client.healthz()
+        assertTrue(result.isFailure)
     }
 
     // ── updateConfig atomicity ────────────────────────────────────────────────
