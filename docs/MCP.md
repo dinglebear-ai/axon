@@ -36,8 +36,14 @@ LLM synthesis uses Gemini headless by default:
 - `AXON_LLM_COMPLETION_CONCURRENCY`
 - `AXON_LLM_COMPLETION_TIMEOUT_SECS`
 
-The legacy `OPENAI_*` env vars were removed in 3.0.0; all LLM synthesis
-now runs through the Gemini headless backend.
+OpenAI-compatible chat-completions endpoints are also supported:
+- `AXON_LLM_BACKEND=openai-compat`
+- `AXON_OPENAI_BASE_URL` (for example, a llama.cpp `/v1` endpoint)
+- `AXON_OPENAI_MODEL`
+- `AXON_OPENAI_API_KEY` (optional for local endpoints)
+
+The legacy `OPENAI_*` env vars were removed in 3.0.0; use the `AXON_*`
+OpenAI-compatible keys above instead.
 
 MCP HTTP env vars:
 - `AXON_MCP_HTTP_HOST` (default `127.0.0.1`)

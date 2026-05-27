@@ -2,7 +2,7 @@
 
 Spider-powered self-hosted RAG engine — scrape, map, extract, crawl, embed, and query indexed content via the MCP `axon` tool or the `axon` CLI.
 
-Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optional Chrome (headless) for JS-heavy sites, and a Gemini headless LLM for `ask`, `research`, and extract fallback.
+Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optional Chrome (headless) for JS-heavy sites, and a configurable LLM backend for `ask`, `research`, and extract fallback. Gemini headless is the default; OpenAI-compatible endpoints such as llama.cpp are supported with `AXON_LLM_BACKEND=openai-compat`.
 
 ## Installation
 
@@ -10,7 +10,7 @@ Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optiona
 claude plugin install <path>
 ```
 
-The plugin manifest declares a minimal `userConfig` block. Claude Code prompts for the shared Axon server URL, bearer token, optional Tavily/GitHub/Reddit credentials, and optional OAuth settings. Qdrant, TEI, Chrome, Qwen3 embedding, and Gemini CLI are configured by the shared Docker setup path, not by plugin prompts.
+The plugin manifest declares a minimal `userConfig` block. Claude Code prompts for the shared Axon server URL, bearer token, optional Tavily/GitHub/Reddit credentials, and optional OAuth settings. Qdrant, TEI, Chrome, Qwen3 embedding, and LLM backend settings are configured by the shared Docker setup path, not by plugin prompts.
 
 The SessionStart hook (`scripts/plugin-setup.sh`) delegates to the binary-owned hook setup flow:
 
