@@ -72,7 +72,7 @@ export async function executeAction(
     case "map":
       return postResult(client, "/v1/map", { url: first(words, "url"), limit: 100 });
     case "summarize":
-      return postResult(client, "/v1/summarize", { urls: required(words, "urls"), ...collectionBody });
+      return postResult(client, "/v1/summarize", { urls: required(words, "urls") });
     case "ask":
       return postResult(client, "/v1/ask", {
         query: first(words, "query"),
