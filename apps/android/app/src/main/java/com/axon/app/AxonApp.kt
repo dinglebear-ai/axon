@@ -19,6 +19,10 @@ class AxonApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         appScope.launch {
+            // Idempotent every-launch migration: any legacy plaintext token entry is
+            // moved into EncryptedSharedPreferences before we read settings.
+            runCatching { container.settingsRepository.migrateTokenToEncrypted() }
+
             // If DataStore read fails (corrupted prefs, I/O error) we must still call
             // applySettings so isReady becomes true and the user can reach Settings to
             // reconfigure. Without this guard, isReady stays false forever and the app
