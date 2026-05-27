@@ -78,7 +78,12 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.collections.immutable)
 
+    // Security
+    implementation(libs.security.crypto)
+
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.mockwebserver)
+    testImplementation(libs.turbine)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
