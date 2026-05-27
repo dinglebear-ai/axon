@@ -41,7 +41,7 @@ pub(crate) async fn axon_http_request(
 ) -> Result<AxonHttpResult, String> {
     let path = validate_axon_route(&request)?.to_string();
     let method = request.method;
-    let settings = merged_settings(&app);
+    let settings = merged_settings(&app)?;
     let base_url = validate_saved_server_url(&settings.server_url)?;
     let url = format!("{}{}", base_url.trim_end_matches('/'), path);
     let client = reqwest::Client::builder()
