@@ -9,7 +9,7 @@ export type ParsedCommand = { invoked?: PaletteAction; search: string; arg: stri
 type OutputRunState =
   | { kind: "idle" }
   | { kind: "running"; title: string; subtitle: string }
-  | { kind: "success" | "error"; title: string; subtitle: string };
+  | { kind: "queued" | "success" | "error"; title: string; subtitle: string };
 
 export function focusInput(select = false) {
   window.setTimeout(() => {
@@ -76,7 +76,7 @@ export function firstUrl(value: string): string | null {
 export function runTone(run: OutputRunState): "info" | "success" | "error" | "neutral" {
   if (run.kind === "success") return "success";
   if (run.kind === "error") return "error";
-  if (run.kind === "running") return "info";
+  if (run.kind === "running" || run.kind === "queued") return "info";
   return "neutral";
 }
 
