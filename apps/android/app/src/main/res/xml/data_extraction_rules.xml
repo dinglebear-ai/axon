@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Backup / device-transfer exclusion rules. We already set allowBackup=false on
+    <application>, but cloud-backup and device-transfer also flow through these
+    rules on Android 12+. Explicitly exclude axon_secrets so the encrypted token
+    is never copied off-device.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="axon_secrets.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="axon_secrets.xml"/>
+    </device-transfer>
+</data-extraction-rules>
