@@ -150,8 +150,9 @@ fn into_config_accepts_deprecated_ask_backend_toml() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     write!(f, "[ask]\nbackend = \"headless\"\nchunk-limit = 8\n").unwrap();
-    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+    with_env_saved(&["AXON_CONFIG_PATH", "AXON_ASK_CHUNK_LIMIT"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
+        env::remove_var("AXON_ASK_CHUNK_LIMIT");
         let cfg = into_config_via_args(&["status"]).expect("status config");
         assert_eq!(cfg.ask_chunk_limit, 8);
     });
