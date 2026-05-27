@@ -21,6 +21,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.fetch_retries = 7;
     submitted.qdrant_url = "http://submitted-qdrant:6333".to_string();
     submitted.tei_url = "http://submitted-tei:80".to_string();
+    submitted.llm_backend = crate::services::llm_backend::LlmBackendKind::OpenAiCompat;
+    submitted.openai_base_url = "http://submitted-openai:8080/v1".to_string();
+    submitted.openai_api_key = "submitted-openai-secret".to_string();
+    submitted.openai_model = "submitted-gemma".to_string();
     submitted.headless_gemini_model = "gemini-submitted".to_string();
     submitted.headless_gemini_cmd = "/opt/submitted/gemini".to_string();
     submitted.headless_gemini_home = Some(PathBuf::from("/tmp/submitted-gemini-home"));
@@ -41,6 +45,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     worker.fetch_retries = 1;
     worker.qdrant_url = "http://worker-qdrant:6333".to_string();
     worker.tei_url = "http://worker-tei:80".to_string();
+    worker.llm_backend = crate::services::llm_backend::LlmBackendKind::GeminiHeadless;
+    worker.openai_base_url = "http://worker-openai:8080/v1".to_string();
+    worker.openai_api_key = "worker-openai-secret".to_string();
+    worker.openai_model = "worker-gemma".to_string();
     worker.headless_gemini_model = "gemini-worker".to_string();
     worker.headless_gemini_cmd = "/opt/worker/gemini".to_string();
     worker.headless_gemini_home = Some(PathBuf::from("/tmp/worker-gemini-home"));
@@ -69,6 +77,13 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     assert_eq!(effective.fetch_retries, 7);
     assert_eq!(effective.qdrant_url, "http://submitted-qdrant:6333");
     assert_eq!(effective.tei_url, "http://submitted-tei:80");
+    assert_eq!(
+        effective.llm_backend,
+        crate::services::llm_backend::LlmBackendKind::OpenAiCompat
+    );
+    assert_eq!(effective.openai_base_url, "http://submitted-openai:8080/v1");
+    assert_eq!(effective.openai_api_key, "worker-openai-secret");
+    assert_eq!(effective.openai_model, "submitted-gemma");
     assert_eq!(effective.headless_gemini_model, "gemini-submitted");
     assert_eq!(effective.headless_gemini_cmd, "/opt/submitted/gemini");
     assert_eq!(
@@ -93,6 +108,7 @@ fn config_snapshot_omits_secrets() {
     cfg.tavily_api_key = "tvly-SECRET_TAVILY".to_string();
     cfg.github_token = Some("ghp_SECRET_GITHUB".to_string());
     cfg.reddit_client_secret = Some("REDDIT_SECRET".to_string());
+    cfg.openai_api_key = "OPENAI_COMPAT_SECRET".to_string();
 
     let snapshot = config_snapshot_json(&cfg).expect("snapshot should encode");
 
@@ -107,6 +123,10 @@ fn config_snapshot_omits_secrets() {
     assert!(
         !snapshot.contains("REDDIT_SECRET"),
         "snapshot must not contain reddit_client_secret"
+    );
+    assert!(
+        !snapshot.contains("OPENAI_COMPAT_SECRET"),
+        "snapshot must not contain openai_api_key"
     );
 }
 
@@ -167,9 +187,11 @@ fn config_snapshot_does_not_serialize_credential_bearing_endpoint_urls() {
     let mut submitted = Config::test_default();
     submitted.tei_url = "http://user:secret@tei.example/embed?token=abc#frag".to_string();
     submitted.qdrant_url = "http://qdrant.example:6333?api_key=secret".to_string();
+    submitted.openai_base_url = "http://token:secret@llm.example/v1?api_key=secret".to_string();
     let mut worker = Config::test_default();
     worker.tei_url = "http://worker-tei:80".to_string();
     worker.qdrant_url = "http://worker-qdrant:6333".to_string();
+    worker.openai_base_url = "http://worker-openai:8080/v1".to_string();
     let config_json = config_snapshot_json(&submitted).expect("encode snapshot");
     assert!(!config_json.contains("secret"));
     assert!(!config_json.contains("token=abc"));
@@ -179,6 +201,7 @@ fn config_snapshot_does_not_serialize_credential_bearing_endpoint_urls() {
     let effective = apply_config_snapshot(&worker, &config_json).expect("apply snapshot");
     assert_eq!(effective.tei_url, "http://worker-tei:80");
     assert_eq!(effective.qdrant_url, "http://worker-qdrant:6333");
+    assert_eq!(effective.openai_base_url, "http://worker-openai:8080/v1");
 }
 
 #[test]
@@ -200,10 +223,12 @@ fn config_snapshot_does_not_serialize_process_local_endpoint_urls() {
     submitted.tei_url = "http://127.0.0.1:52000".to_string();
     submitted.qdrant_url = "http://localhost:53333".to_string();
     submitted.chrome_remote_url = Some("http://127.0.0.1:6000".to_string());
+    submitted.openai_base_url = "http://localhost:8080/v1".to_string();
     let mut worker = Config::test_default();
     worker.tei_url = "http://worker-tei:80".to_string();
     worker.qdrant_url = "http://worker-qdrant:6333".to_string();
     worker.chrome_remote_url = Some("http://axon-chrome:6000".to_string());
+    worker.openai_base_url = "http://worker-openai:8080/v1".to_string();
 
     let config_json = config_snapshot_json(&submitted).expect("encode snapshot");
     assert!(!config_json.contains("127.0.0.1"));
@@ -216,6 +241,7 @@ fn config_snapshot_does_not_serialize_process_local_endpoint_urls() {
         effective.chrome_remote_url.as_deref(),
         Some("http://axon-chrome:6000")
     );
+    assert_eq!(effective.openai_base_url, "http://worker-openai:8080/v1");
 }
 
 #[test]
