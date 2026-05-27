@@ -81,6 +81,33 @@ data class SourcesResponse(
     val urls: JsonArray,
 )
 
+// ── Retrieve ──────────────────────────────────────────────────────────────────
+
+/** Request body for POST /v1/retrieve — fetch the full stored document for a URL. */
+@Serializable
+data class RetrieveRequest(
+    val url: String,
+    val collection: String? = null,
+    @SerialName("max_points") val maxPoints: Int? = null,
+    val cursor: String? = null,
+    @SerialName("token_budget") val tokenBudget: Int? = null,
+)
+
+/** Response body from POST /v1/retrieve. Maps src/services/types/service.rs::RetrieveResult. */
+@Serializable
+data class RetrieveResponse(
+    @SerialName("chunk_count") val chunkCount: Int = 0,
+    val content: String = "",
+    @SerialName("requested_url") val requestedUrl: String? = null,
+    @SerialName("matched_url") val matchedUrl: String? = null,
+    val truncated: Boolean = false,
+    val warnings: List<String> = emptyList(),
+    @SerialName("token_estimate") val tokenEstimate: Int? = null,
+    @SerialName("next_cursor") val nextCursor: String? = null,
+    @SerialName("remaining_tokens_estimate") val remainingTokensEstimate: Int? = null,
+    @SerialName("refresh_status") val refreshStatus: String? = null,
+)
+
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 /** Response body from GET /v1/stats. */

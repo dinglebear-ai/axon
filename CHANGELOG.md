@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-05-27
+
+### Added
+
+- Android: `HorizontalPager`-based shell with four swipe pages (Operations,
+  Jobs, Knowledge, System); bottom navigation bar removed; top app bar carries
+  the settings gear on every page.
+- Android: FAB on the Operations page opens an Aurora-styled mode picker with
+  nine operations (Ask, Summarize, Research, Query, Scrape, Crawl, Ingest,
+  Search, Map); the active mode persists in `OperationsViewModel`.
+- Android: Tapping a Query result now opens an in-app `DocumentScreen` that
+  renders the full assembled document via `/v1/retrieve` (chunk count, matched
+  URL, truncated/warning callouts), with an explicit "Open source URL" escape
+  hatch.
+- Android client: `retrieve(...)` wired through `AxonClient` and
+  `AxonRepository` with the long-timeout HTTP client.
+- Android nav: `LocalAxonNavController` `CompositionLocal` so deep children
+  (e.g. result cards) can navigate without prop-drilling the controller.
+
+### Changed
+
+- Android: Renamed `ui/search/` → `ui/query/` (the screen always called
+  `/v1/query`); the "Search" mode label is reserved for the future real
+  web-search wiring (`/v1/search`).
+
 ## [4.8.2] - 2026-05-26
 
 ### Changed

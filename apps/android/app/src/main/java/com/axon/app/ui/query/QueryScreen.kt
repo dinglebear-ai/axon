@@ -1,4 +1,4 @@
-package com.axon.app.ui.search
+package com.axon.app.ui.query
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,8 +19,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import com.axon.app.ui.nav.DocumentRoute
+import com.axon.app.ui.nav.LocalAxonNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.QueryHitUi
@@ -33,7 +34,7 @@ import tv.tootie.aurora.components.AuroraPromptInput
 import tv.tootie.aurora.components.AuroraSeparator
 
 @Composable
-fun SearchScreen(vm: SearchViewModel = viewModel()) {
+fun QueryScreen(vm: QueryViewModel = viewModel()) {
     val uiState by vm.uiState.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
 
@@ -42,15 +43,15 @@ fun SearchScreen(vm: SearchViewModel = viewModel()) {
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Text("Vector Search", style = MaterialTheme.typography.headlineMedium)
+        Text("Vector Query", style = MaterialTheme.typography.headlineMedium)
         AuroraSeparator()
 
         when (val state = uiState) {
-            is SearchUiState.Loading -> LoadingContent(
+            is QueryUiState.Loading -> LoadingContent(
                 label = "Searching vectors…",
                 modifier = Modifier.weight(1f),
             )
-            is SearchUiState.Results -> {
+            is QueryUiState.Results -> {
                 if (state.hits.isEmpty()) {
                     EmptyContent(
                         title = "No results",
@@ -64,16 +65,16 @@ fun SearchScreen(vm: SearchViewModel = viewModel()) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(state.hits, key = { h -> "${h.url}#${h.rank}" }) { hit ->
-                            SearchHitCard(hit)
+                            QueryHitCard(hit)
                         }
                     }
                 }
             }
-            is SearchUiState.Error -> {
+            is QueryUiState.Error -> {
                 ErrorContent(message = state.message)
                 Spacer(Modifier.weight(1f))
             }
-            is SearchUiState.Empty -> {
+            is QueryUiState.Empty -> {
                 EmptyContent(
                     title = "No results",
                     description = "No matching documents found. Try a different query.",
@@ -81,9 +82,9 @@ fun SearchScreen(vm: SearchViewModel = viewModel()) {
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
-            is SearchUiState.Idle -> {
+            is QueryUiState.Idle -> {
                 EmptyContent(
-                    title = "Search your knowledge",
+                    title = "Query your knowledge",
                     description = "Search your indexed knowledge using semantic vector similarity",
                     icon = Icons.Filled.Search,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -95,19 +96,19 @@ fun SearchScreen(vm: SearchViewModel = viewModel()) {
         AuroraPromptInput(
             value = input,
             onValueChange = { input = it },
-            onSend = { vm.search(input) },
-            placeholder = "Search indexed knowledge…",
-            loading = uiState is SearchUiState.Loading,
+            onSend = { vm.query(input) },
+            placeholder = "Query indexed knowledge…",
+            loading = uiState is QueryUiState.Loading,
             modifier = Modifier.fillMaxWidth(),
         )
     }
 }
 
 @Composable
-private fun SearchHitCard(hit: QueryHitUi) {
-    val uriHandler = LocalUriHandler.current
+private fun QueryHitCard(hit: QueryHitUi) {
+    val navController = LocalAxonNavController.current
     AuroraCard(
-        onClick = { runCatching { uriHandler.openUri(hit.url) } },
+        onClick = { navController.navigate(DocumentRoute(url = hit.url)) },
         modifier = Modifier.fillMaxWidth(),
         variant = AuroraCardVariant.Elevated,
     ) {
