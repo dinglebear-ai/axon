@@ -266,6 +266,10 @@ class AxonRepository(
         client.status().map { it.payload }
     }
 
+    suspend fun statsPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+        client.stats().map { it.payload }
+    }
+
     suspend fun doctorPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
         client.doctor().map { it.payload }
     }
