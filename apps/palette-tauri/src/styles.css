@@ -132,7 +132,7 @@ textarea {
 .command-bar {
   display: grid;
   flex: 0 0 auto;
-  grid-template-columns: auto auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
@@ -141,13 +141,30 @@ textarea {
 }
 
 .command-bar:not(:has(.command-mode-pill)) {
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .palette-shell-compact .command-bar {
   height: 78px;
   padding: 14px 16px;
   border-bottom: 0;
+}
+
+.command-field {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  gap: 10px;
+}
+
+.command-field-mode {
+  gap: 8px;
+}
+
+.command-icon {
+  flex: 0 0 auto;
+  color: var(--aurora-text-muted);
 }
 
 .settings-panel {
@@ -227,6 +244,8 @@ textarea {
 }
 
 .command-input {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
 }
 
