@@ -8,6 +8,7 @@ import com.axon.app.data.repository.QueryHitUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 sealed interface SearchUiState {
@@ -30,7 +31,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         if (query.isBlank()) return
         viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
-            container.axonRepository.query(query, limit = 20).fold(
+            val collection = container.settingsRepository.settings.first().collection
+            container.axonRepository.query(query, limit = 20, collection = collection).fold(
                 onSuccess = { hits ->
                     _uiState.value = if (hits.isEmpty()) SearchUiState.Empty else SearchUiState.Results(hits)
                 },

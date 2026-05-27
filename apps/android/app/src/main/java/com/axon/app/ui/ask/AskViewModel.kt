@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -38,7 +39,8 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         if (query.isBlank()) return
         viewModelScope.launch {
             _uiState.value = AskUiState.Loading
-            container.axonRepository.ask(query).fold(
+            val collection = container.settingsRepository.settings.first().collection
+            container.axonRepository.ask(query, collection = collection).fold(
                 onSuccess = { result ->
                     val saved = container.axonRepository.recordAskHistory(
                         AskHistoryEntry(query = result.query, answer = result.answer)

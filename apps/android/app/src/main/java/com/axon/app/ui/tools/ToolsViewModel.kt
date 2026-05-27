@@ -12,6 +12,7 @@ import com.axon.app.data.repository.ScrapeResultUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ── Scrape ────────────────────────────────────────────────────────────────────
@@ -63,7 +64,8 @@ sealed interface CrawlUiState {
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
 class ToolsViewModel(app: Application) : AndroidViewModel(app) {
-    private val repo = (app as AxonApp).container.axonRepository
+    private val container = (app as AxonApp).container
+    private val repo = container.axonRepository
 
     // Scrape state
     private val _scrapeState = MutableStateFlow<ScrapeUiState>(ScrapeUiState.Idle)
@@ -85,7 +87,8 @@ class ToolsViewModel(app: Application) : AndroidViewModel(app) {
         if (url.isBlank()) return
         viewModelScope.launch {
             _scrapeState.value = ScrapeUiState.Loading
-            repo.scrape(url).fold(
+            val collection = container.settingsRepository.settings.first().collection
+            repo.scrape(url, collection = collection).fold(
                 onSuccess = { _scrapeState.value = ScrapeUiState.Success(it) },
                 onFailure = { _scrapeState.value = ScrapeUiState.Error(it.message ?: "Scrape failed") },
             )
@@ -118,7 +121,8 @@ class ToolsViewModel(app: Application) : AndroidViewModel(app) {
         if (url.isBlank()) return
         viewModelScope.launch {
             _crawlState.value = CrawlUiState.Loading
-            repo.crawlSubmit(url, maxPages).fold(
+            val collection = container.settingsRepository.settings.first().collection
+            repo.crawlSubmit(url, maxPages, collection = collection).fold(
                 onSuccess = { jobId -> _crawlState.value = CrawlUiState.Submitted(jobId) },
                 onFailure = { _crawlState.value = CrawlUiState.Error(it.message ?: "Crawl submit failed") },
             )
