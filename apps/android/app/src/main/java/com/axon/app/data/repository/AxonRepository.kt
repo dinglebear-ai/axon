@@ -5,6 +5,7 @@ import com.axon.app.data.local.AskHistoryDao
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.remote.AskRequest
+import com.axon.app.data.remote.AskStreamEvent
 import com.axon.app.data.remote.CrawlRequest
 import com.axon.app.data.remote.MapRequest
 import com.axon.app.data.remote.QueryRequest
@@ -13,6 +14,7 @@ import com.axon.app.data.remote.ScrapeRequest
 import com.axon.app.data.remote.SourcesRequest
 import com.axon.app.data.remote.ResearchHit
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.int
@@ -46,6 +48,17 @@ class AxonRepository(
         client.ask(AskRequest(query = query, collection = collection)).map { r ->
             AskResultUi(query = r.query, answer = r.answer, timingMs = r.timingMs?.totalMs)
         }
+    }
+
+    /**
+     * Streams the ask response via SSE. Emits [AskStreamEvent] objects as they arrive.
+     * If no API token is configured, immediately emits a single [AskStreamEvent.Error].
+     */
+    fun askStream(query: String, collection: String? = null): Flow<AskStreamEvent> {
+        if (!client.hasToken()) return flow {
+            emit(AskStreamEvent.Error("No API token configured. Go to Settings to add your token."))
+        }
+        return client.askStream(AskRequest(query = query, collection = collection))
     }
 
     suspend fun query(query: String, limit: Int = 10, collection: String? = null): Result<List<QueryHitUi>> = withToken {

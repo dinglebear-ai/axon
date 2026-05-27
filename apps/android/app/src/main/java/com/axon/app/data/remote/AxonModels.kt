@@ -138,6 +138,21 @@ data class ResearchHit(
     val snippet: String? = null,
 )
 
+// ── Ask stream events ─────────────────────────────────────────────────────────
+// Server emits SSE events on POST /v1/ask/stream.
+// Each event is a JSON object with a "type" discriminator.
+
+sealed interface AskStreamEvent {
+    /** Phase indicator — emitted before synthesis starts (e.g. "retrieval", "synthesis"). */
+    data class Meta(val phase: String) : AskStreamEvent
+    /** Incremental answer token from the LLM. */
+    data class Delta(val text: String) : AskStreamEvent
+    /** Synthesis complete — [answer] is the full assembled answer. */
+    data class Done(val answer: String) : AskStreamEvent
+    /** Server-side or network error during streaming. */
+    data class Error(val message: String) : AskStreamEvent
+}
+
 // ── Crawl ─────────────────────────────────────────────────────────────────────
 
 @Serializable
