@@ -2,7 +2,6 @@ package com.axon.app.ui.ask
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,18 +18,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.local.AskHistoryEntry
-import tv.tootie.aurora.components.AuroraCallout
-import tv.tootie.aurora.components.AuroraCalloutVariant
+import com.axon.app.ui.common.ErrorContent
+import com.axon.app.ui.common.LoadingContent
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
 import tv.tootie.aurora.components.AuroraPromptInput
-import tv.tootie.aurora.components.AuroraThinking
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,11 +47,7 @@ fun AskScreen(vm: AskViewModel = viewModel()) {
         Text("Ask Axon", style = MaterialTheme.typography.headlineMedium)
 
         when (val state = uiState) {
-            is AskUiState.Loading -> {
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    AuroraThinking(label = "Searching knowledge base…")
-                }
-            }
+            is AskUiState.Loading -> LoadingContent(label = "Searching knowledge base…")
             is AskUiState.Success -> {
                 AuroraCard(
                     modifier = Modifier.fillMaxWidth(),
@@ -80,14 +73,7 @@ fun AskScreen(vm: AskViewModel = viewModel()) {
                     }
                 }
             }
-            is AskUiState.Error -> {
-                AuroraCallout(
-                    title = "Error",
-                    message = state.message,
-                    variant = AuroraCalloutVariant.Error,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            is AskUiState.Error -> ErrorContent(message = state.message)
             is AskUiState.Idle -> {}
         }
 

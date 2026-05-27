@@ -19,8 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.SourceEntryUi
-import tv.tootie.aurora.components.AuroraCallout
-import tv.tootie.aurora.components.AuroraCalloutVariant
+import com.axon.app.ui.common.ErrorContent
 import tv.tootie.aurora.components.AuroraItem
 import tv.tootie.aurora.components.AuroraProgress
 
@@ -40,14 +39,7 @@ fun SourcesScreen(vm: SourcesViewModel = viewModel()) {
             is SourcesUiState.Loading -> {
                 AuroraProgress(modifier = Modifier.fillMaxWidth())
             }
-            is SourcesUiState.Error -> {
-                AuroraCallout(
-                    title = "Error",
-                    message = state.message,
-                    variant = AuroraCalloutVariant.Error,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            is SourcesUiState.Error -> ErrorContent(message = state.message)
             is SourcesUiState.Loaded -> {
                 Text(
                     "${state.sources.size} sources · ${state.total} chunks",

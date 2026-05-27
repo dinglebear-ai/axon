@@ -1,7 +1,6 @@
 package com.axon.app.ui.tools
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,17 +17,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.axon.app.data.remote.ResearchHit
-import tv.tootie.aurora.components.AuroraCallout
-import tv.tootie.aurora.components.AuroraCalloutVariant
+import com.axon.app.ui.common.ErrorContent
+import com.axon.app.ui.common.LoadingContent
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
-import tv.tootie.aurora.components.AuroraThinking
 
 @Composable
 fun ResearchTab(vm: ToolsViewModel) {
@@ -59,14 +56,10 @@ fun ResearchTab(vm: ToolsViewModel) {
         }
 
         when (val s = state) {
-            is ResearchUiState.Loading -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    AuroraThinking(label = "Researching… (may take up to 2 minutes)")
-                }
-            }
+            is ResearchUiState.Loading -> LoadingContent(
+                label = "Researching… (may take up to 2 minutes)",
+                modifier = Modifier.weight(1f),
+            )
 
             is ResearchUiState.Success -> {
                 LazyColumn(
@@ -110,12 +103,7 @@ fun ResearchTab(vm: ToolsViewModel) {
             }
 
             is ResearchUiState.Error -> {
-                AuroraCallout(
-                    title = "Error",
-                    message = s.message,
-                    variant = AuroraCalloutVariant.Error,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                ErrorContent(message = s.message)
                 Spacer(Modifier.weight(1f))
             }
 

@@ -46,8 +46,4 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
     }
-
-    fun clearState() {
-        _uiState.value = AskUiState.Idle
-    }
 }
