@@ -1,7 +1,9 @@
 package com.axon.app.ui.nav
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -99,7 +101,10 @@ fun AxonNavGraph() {
         NavHost(
             navController = navController,
             startDestination = AskRoute,
-            modifier = Modifier.padding(innerPadding),
+            modifier = Modifier
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
+                .imePadding(),
         ) {
             composable<AskRoute>     { AskScreen() }
             composable<SearchRoute>  { SearchScreen() }
