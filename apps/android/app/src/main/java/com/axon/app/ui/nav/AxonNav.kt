@@ -1,6 +1,7 @@
 package com.axon.app.ui.nav
 
 import androidx.compose.runtime.compositionLocalOf
+import com.axon.app.ui.operations.OperationMode
 
 /**
  * Typed navigation callback for deep children that need to open a document
@@ -21,3 +22,12 @@ val LocalOpenDocument = compositionLocalOf<(url: String) -> Unit> {
  * so reuse outside the Operations host (Document view, etc.) is unaffected.
  */
 val LocalModeOptionsCog = compositionLocalOf<(() -> Unit)?> { null }
+
+/**
+ * Nav callback for opening the mode-options screen for a specific [OperationMode].
+ * Provided by [AxonNavGraph] so [OperationsScreen] can wire its cog without
+ * holding a NavController directly.
+ *
+ * Defaults to a no-op so screens reused outside the nav host don't crash.
+ */
+val LocalOpenModeOptions = compositionLocalOf<(OperationMode) -> Unit> { { /* no-op */ } }
