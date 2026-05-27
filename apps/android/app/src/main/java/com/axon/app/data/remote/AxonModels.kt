@@ -192,12 +192,44 @@ data class CrawlJobResponse(
     val url: String = "",
 )
 
-/** Response body from GET /v1/crawl/{job_id}. */
+/**
+ * Top-level envelope from GET /v1/crawl/{job_id}.
+ *
+ * The server wraps the job detail in a `{"job": {...}}` envelope — this class is the
+ * deserialisation target. [AxonClient.crawlStatus] extracts [job] and returns
+ * [CrawlStatusResponse] directly so callers are not coupled to the envelope shape.
+ */
+@Serializable
+data class CrawlStatusWrapper(
+    val job: CrawlStatusResponse,
+)
+
+/** `result_json` sub-object inside [CrawlStatusResponse]. */
+@Serializable
+data class CrawlResultJson(
+    @SerialName("pages_crawled") val pagesCrawled: Int? = null,
+)
+
+/**
+ * Inner job detail returned by GET /v1/crawl/{job_id} (inside the [CrawlStatusWrapper] envelope).
+ *
+ * Key differences from the previously assumed flat shape:
+ * - Primary key is `id`, not `job_id` — exposed via [jobId] for backward-compatible access.
+ * - Error text is `error_text`, not `error`.
+ * - Page count lives inside a nested `result_json` object — exposed via [pagesCrawled].
+ */
 @Serializable
 data class CrawlStatusResponse(
-    @SerialName("job_id") val jobId: String = "",
+    /** Server-assigned job UUID. Aliased as [jobId] for backward-compatible repository access. */
+    val id: String = "",
     val status: String = "",
     val url: String = "",
-    @SerialName("pages_crawled") val pagesCrawled: Int? = null,
-    val error: String? = null,
-)
+    @SerialName("error_text") val error: String? = null,
+    @SerialName("result_json") val resultJson: CrawlResultJson? = null,
+) {
+    /** Convenience alias for [id], matching the original flat-shape field name. */
+    val jobId: String get() = id
+
+    /** Pages crawled, nested inside [resultJson]. Null when the job has not completed. */
+    val pagesCrawled: Int? get() = resultJson?.pagesCrawled
+}
