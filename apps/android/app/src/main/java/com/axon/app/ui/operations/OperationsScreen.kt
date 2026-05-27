@@ -14,14 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.axon.app.ui.ask.AskScreen
 import com.axon.app.ui.nav.LocalModeOptionsCog
-import com.axon.app.ui.query.QueryScreen
-import com.axon.app.ui.tools.CrawlTab
-import com.axon.app.ui.tools.MapTab
-import com.axon.app.ui.tools.ResearchTab
-import com.axon.app.ui.tools.ScrapeTab
-import com.axon.app.ui.tools.ToolsViewModel
 
 /**
  * The Operations page. The body is the active mode's screen; the FAB is a
@@ -33,7 +26,6 @@ import com.axon.app.ui.tools.ToolsViewModel
 fun OperationsScreen(vm: OperationsViewModel = viewModel()) {
     val activeMode by vm.activeMode.collectAsStateWithLifecycle()
     var sheetVisible by remember { mutableStateOf(false) }
-    val toolsVm: ToolsViewModel = viewModel()
     val context = LocalContext.current
 
     // Mode-options cog handler — provided to every prompt input via CompositionLocal.
@@ -50,17 +42,7 @@ fun OperationsScreen(vm: OperationsViewModel = viewModel()) {
 
     Box(modifier = Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalModeOptionsCog provides onModeOptions) {
-            when (activeMode) {
-                OperationMode.Ask      -> AskScreen()
-                OperationMode.Query    -> QueryScreen()
-                OperationMode.Scrape   -> ScrapeTab(toolsVm)
-                OperationMode.Crawl    -> CrawlTab(toolsVm)
-                OperationMode.Map      -> MapTab(toolsVm)
-                OperationMode.Research -> ResearchTab(toolsVm)
-                OperationMode.Summarize,
-                OperationMode.Ingest,
-                OperationMode.Search   -> StubModeForm(mode = activeMode)
-            }
+            ModeContentHost(activeMode = activeMode)
         }
 
         DraggableFab(
