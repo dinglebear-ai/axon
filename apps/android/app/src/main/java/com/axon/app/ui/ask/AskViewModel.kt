@@ -5,18 +5,24 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.data.local.AskHistoryEntry
+import com.axon.app.data.remote.AskStreamEvent
 import com.axon.app.data.repository.AskResultUi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 sealed interface AskUiState {
     object Idle : AskUiState
+    /** Waiting for the first SSE event (retrieval phase). */
     object Loading : AskUiState
+    /** Streaming: LLM is generating — [partialAnswer] grows with each delta token. */
+    data class Streaming(val query: String, val partialAnswer: String) : AskUiState
     /**
      * [historyWarning] is non-null when the ask succeeded but saving to history
      * failed (e.g. disk full). The answer is still shown; the user is informed
@@ -40,24 +46,46 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _uiState.value = AskUiState.Loading
             val collection = container.settingsRepository.settings.first().collection
-            container.axonRepository.ask(query, collection = collection).fold(
-                onSuccess = { result ->
-                    val saved = container.axonRepository.recordAskHistory(
-                        AskHistoryEntry(query = result.query, answer = result.answer)
-                    )
-                    _uiState.value = AskUiState.Success(
-                        result = result,
-                        historyWarning = if (!saved) {
-                            "Answer shown, but history could not be saved (storage may be full)."
-                        } else {
-                            null
-                        },
-                    )
-                },
-                onFailure = { err ->
+            var accumulated = ""
+            runCatching {
+                container.axonRepository.askStream(query, collection = collection).collect { event ->
+                    when (event) {
+                        is AskStreamEvent.Meta -> { /* stay Loading during retrieval phase */ }
+                        is AskStreamEvent.Delta -> {
+                            accumulated += event.text
+                            _uiState.value = AskUiState.Streaming(query = query, partialAnswer = accumulated)
+                        }
+                        is AskStreamEvent.Done -> {
+                            val result = AskResultUi(query = query, answer = event.answer, timingMs = null)
+                            val saved = container.axonRepository.recordAskHistory(
+                                AskHistoryEntry(query = result.query, answer = result.answer)
+                            )
+                            _uiState.value = AskUiState.Success(
+                                result = result,
+                                historyWarning = if (!saved) "Answer shown, but history could not be saved (storage may be full)." else null,
+                            )
+                        }
+                        is AskStreamEvent.Error -> {
+                            _uiState.value = AskUiState.Error(event.message)
+                        }
+                    }
+                }
+            }.onFailure { err ->
+                if (err !is CancellationException) {
                     _uiState.value = AskUiState.Error(err.message ?: "Unknown error")
-                },
-            )
+                }
+            }
+            // Fallback: stream ended without a Done/Error event (truncated response)
+            val current = _uiState.value
+            if (current is AskUiState.Loading || current is AskUiState.Streaming) {
+                if (accumulated.isNotBlank()) {
+                    val result = AskResultUi(query = query, answer = accumulated, timingMs = null)
+                    container.axonRepository.recordAskHistory(AskHistoryEntry(query = result.query, answer = result.answer))
+                    _uiState.value = AskUiState.Success(result = result)
+                } else {
+                    _uiState.value = AskUiState.Error("No response received from server")
+                }
+            }
         }
     }
 }

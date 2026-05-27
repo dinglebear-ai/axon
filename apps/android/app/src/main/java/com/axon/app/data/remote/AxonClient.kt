@@ -2,10 +2,15 @@ package com.axon.app.data.remote
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -68,6 +73,51 @@ class AxonClient(
     suspend fun ask(request: AskRequest): Result<AskResponse> = withContext(Dispatchers.IO) {
         post("/v1/ask", request)
     }
+
+    /**
+     * Streams the ask response via SSE from POST /v1/ask/stream.
+     * Emits [AskStreamEvent.Meta] for phase indicators, [AskStreamEvent.Delta] for each LLM token,
+     * [AskStreamEvent.Done] when synthesis completes, and [AskStreamEvent.Error] on failure.
+     */
+    fun askStream(request: AskRequest): Flow<AskStreamEvent> = flow {
+        val bodyBytes = json.encodeToString(request).toRequestBody(JSON_MEDIA_TYPE)
+        val (baseUrl, token) = config.get()
+        val req = Request.Builder()
+            .url("$baseUrl/v1/ask/stream")
+            .post(bodyBytes)
+            .header("Authorization", "Bearer $token")
+            .header("x-api-key", token)
+            .build()
+        val resp = httpLong.newCall(req).execute()
+        try {
+            if (!resp.isSuccessful) {
+                val errBody = resp.body?.string()?.take(200) ?: resp.message
+                emit(AskStreamEvent.Error("HTTP ${resp.code}: $errBody"))
+                return@flow
+            }
+            val reader = resp.body?.byteStream()?.bufferedReader()
+            if (reader == null) {
+                emit(AskStreamEvent.Error("Empty response body"))
+                return@flow
+            }
+            try {
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val l = line ?: break
+                    if (!l.startsWith("data: ")) continue
+                    val data = l.removePrefix("data: ").trim()
+                    if (data.isEmpty()) continue
+                    val event = parseStreamEvent(data) ?: continue
+                    emit(event)
+                    if (event is AskStreamEvent.Done || event is AskStreamEvent.Error) break
+                }
+            } finally {
+                reader.close()
+            }
+        } finally {
+            resp.close()
+        }
+    }.flowOn(Dispatchers.IO)
 
     suspend fun query(request: QueryRequest): Result<QueryResponse> = withContext(Dispatchers.IO) {
         post("/v1/query", request)
@@ -136,4 +186,15 @@ class AxonClient(
                 json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
             }
         }.onFailure { if (it is CancellationException) throw it }
+
+    private fun parseStreamEvent(data: String): AskStreamEvent? = runCatching {
+        val obj = json.parseToJsonElement(data).jsonObject
+        when (obj["type"]?.jsonPrimitive?.content) {
+            "meta" -> AskStreamEvent.Meta(phase = obj["phase"]?.jsonPrimitive?.content ?: "")
+            "delta" -> AskStreamEvent.Delta(text = obj["text"]?.jsonPrimitive?.content ?: "")
+            "done" -> AskStreamEvent.Done(answer = obj["answer"]?.jsonPrimitive?.content ?: "")
+            "error" -> AskStreamEvent.Error(message = obj["message"]?.jsonPrimitive?.content ?: "Unknown error")
+            else -> null
+        }
+    }.getOrNull()
 }

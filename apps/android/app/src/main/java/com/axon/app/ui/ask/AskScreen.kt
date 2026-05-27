@@ -48,6 +48,32 @@ fun AskScreen(vm: AskViewModel = viewModel()) {
 
         when (val state = uiState) {
             is AskUiState.Loading -> LoadingContent(label = "Searching knowledge base…")
+            is AskUiState.Streaming -> {
+                AuroraCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = AuroraCardVariant.Filled,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "Q: ${state.query}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (state.partialAnswer.isNotEmpty()) {
+                            Text(state.partialAnswer, style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Text(
+                                "Answering…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
             is AskUiState.Success -> {
                 AuroraCard(
                     modifier = Modifier.fillMaxWidth(),
@@ -114,7 +140,7 @@ fun AskScreen(vm: AskViewModel = viewModel()) {
                 input = ""
             },
             placeholder = "Ask anything about your indexed knowledge…",
-            loading = uiState is AskUiState.Loading,
+            loading = uiState is AskUiState.Loading || uiState is AskUiState.Streaming,
             modifier = Modifier.fillMaxWidth(),
         )
     }
