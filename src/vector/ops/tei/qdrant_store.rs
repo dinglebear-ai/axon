@@ -339,7 +339,7 @@ pub(super) async fn ensure_collection(
             "scalar": {
                 "type": "int8",
                 "quantile": 0.99,
-                "always_ram": true
+                "always_ram": false
             }
         }
     });

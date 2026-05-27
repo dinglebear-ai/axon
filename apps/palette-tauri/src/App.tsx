@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  Hash,
   RotateCw,
   Search,
   Send,
@@ -32,10 +33,23 @@ import {
   ACTIONS,
   type PaletteAction,
   acceptsDirectUrl,
-  actionInvokedBy,
   actionMatches,
 } from "@/lib/actions";
 import { formatPayload } from "@/lib/format";
+import {
+  actionHint,
+  argumentFor,
+  argumentPlaceholder,
+  firstUrl,
+  focusInput,
+  hostLabel,
+  looksLikeUrl,
+  outputSubtitle,
+  outputTitle,
+  parseCommand,
+  runTone,
+  validationMessage,
+} from "@/lib/paletteView";
 
 type RunState =
   | { kind: "idle" }
@@ -141,6 +155,7 @@ export default function App() {
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
+  const inputState = validation && (modeAction || hasQuery) ? "warn" : undefined;
   const showOutput = run.kind !== "idle";
   const showContent = settingsOpen || showOutput || (!modeAction && hasQuery);
   const showActionPanel = !modeAction || settingsOpen;
@@ -242,48 +257,57 @@ export default function App() {
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}`}>
       {showContent && (
-      <header className="palette-titlebar" data-tauri-drag-region>
-        <div className="palette-brand" data-tauri-drag-region>
-          <span className="brand-dot" />
-          <span>Axon Palette</span>
-          <Badge tone={configError ? "error" : config ? "info" : "neutral"} shape="tag">
-            {config?.shortcut ?? "Loading"}
-          </Badge>
-        </div>
-        <div className="palette-status" data-tauri-drag-region>
-          {config ? (
-            <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
-          ) : configError ? (
-            <StatusIndicator tone="error" label="Config error" />
-          ) : (
-            <StatusIndicator tone="syncing" label="Loading config" />
-          )}
-          <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
-            <Settings size={14} />
-          </button>
-          <button className="titlebar-button" type="button" onClick={() => void invoke("hide_palette")} aria-label="Hide palette">
-            <X size={14} />
-          </button>
-        </div>
-      </header>
+        <header className="palette-titlebar" data-tauri-drag-region>
+          <div className="palette-brand" data-tauri-drag-region>
+            <span className="brand-dot" />
+            <span>Axon Palette</span>
+            <Badge tone={configError ? "error" : config ? "info" : "neutral"} shape="tag">
+              {config?.shortcut ?? "Loading"}
+            </Badge>
+          </div>
+          <div className="palette-status" data-tauri-drag-region>
+            {config ? (
+              <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
+            ) : configError ? (
+              <StatusIndicator tone="error" label="Config error" />
+            ) : (
+              <StatusIndicator tone="syncing" label="Loading config" />
+            )}
+            <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
+              <Settings size={14} />
+            </button>
+            <button className="titlebar-button" type="button" onClick={() => void invoke("hide_palette")} aria-label="Hide palette">
+              <X size={14} />
+            </button>
+          </div>
+        </header>
       )}
 
       <section className="command-bar">
-        <Search size={16} />
-        {modeAction && (
-          <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} title="Clear action mode">
-            {modeAction.subcommand}
-          </button>
-        )}
-        <Input
-          ref={inputRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={onInputKeyDown}
-          placeholder={modeAction ? argumentPlaceholder(modeAction) : active?.example ?? "Search commands"}
-          className="command-input"
-          aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
-        />
+        <div className={`command-field${modeAction ? " command-field-mode" : ""}`}>
+          <Search className="command-icon" size={16} />
+          {modeAction && (
+            <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} title="Clear action mode">
+              <Hash size={12} />
+              <span>{modeAction.subcommand}</span>
+            </button>
+          )}
+          <Input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onInputKeyDown}
+            placeholder={modeAction ? argumentPlaceholder(modeAction) : active?.example ?? "Search commands"}
+            className="command-input"
+            state={inputState}
+            clearable={Boolean(query)}
+            onClear={() => {
+              setQuery("");
+              if (!modeAction) setRun({ kind: "idle" });
+            }}
+            aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
+          />
+        </div>
         <button
           className="command-submit"
           type="button"
@@ -367,83 +391,95 @@ export default function App() {
       )}
 
       {showContent && (
-      <main className={showResultsLayout ? (showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
-        {showActionPanel && (
-        <section className="action-panel">
-          <div className="panel-heading">
-            <span>Actions</span>
-            <span>{validation || `${filtered.length} matches`}</span>
-          </div>
-          <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
-            <div className="action-list">
-              {filtered.map((action, index) => (
-                <button
-                  key={action.subcommand}
-                  className={index === selected ? "action-row action-row-selected" : "action-row"}
-                  onClick={() => {
-                    setSelected(index);
-                    if (parsed.invoked && run.kind !== "running") {
-                      void submit(action);
-                    } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search) && run.kind !== "running") {
-                      void submit(action);
-                    } else {
-                      enterActionMode(action);
-                    }
-                  }}
-                >
-                  <span className="action-main">
-                    <span className="action-label">{action.label}</span>
-                    <span className="action-description">{action.description}</span>
-                  </span>
-                  <span className="action-meta">
-                    <kbd>Enter</kbd>
-                    <Badge tone={action.tone} shape="tag">
-                      {action.subcommand}
-                    </Badge>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
-        </section>
-        )}
+        <main className={showResultsLayout ? (showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
+          {showActionPanel && (
+            <section className="action-panel">
+              <div className="panel-heading">
+                <span>Actions</span>
+                <span>{validation || `${filtered.length} matches`}</span>
+              </div>
+              <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
+                <div className="action-list">
+                  {filtered.map((action, index) => (
+                    <button
+                      key={action.subcommand}
+                      className={index === selected ? "action-row action-row-selected" : "action-row"}
+                      onMouseEnter={() => setSelected(index)}
+                      onClick={() => {
+                        setSelected(index);
+                        if (parsed.invoked && run.kind !== "running") {
+                          void submit(action);
+                        } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search) && run.kind !== "running") {
+                          void submit(action);
+                        } else {
+                          enterActionMode(action);
+                        }
+                      }}
+                      aria-current={index === selected ? "true" : undefined}
+                    >
+                      <span className="action-main">
+                        <span className="action-label">{action.label}</span>
+                        <span className="action-description">{action.description}</span>
+                      </span>
+                      <span className="action-meta">
+                        <span className="action-hint">{actionHint(action, parsed.search)}</span>
+                        <kbd>{index === selected ? "Enter" : "Tab"}</kbd>
+                        <Badge tone={action.tone} shape="tag">
+                          {action.subcommand}
+                        </Badge>
+                      </span>
+                    </button>
+                  ))}
+                  {!filtered.length && (
+                    <div className="empty-state">
+                      <Search size={16} />
+                      <span>No matching action</span>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </section>
+          )}
 
-        {showResultsLayout && (
-        <section className="output-panel">
-          <div className="panel-heading">
-            <span>Output</span>
-            <span className="output-tools">
-              {"text" in run && (
-                <>
-                  <button type="button" onClick={() => void copyOutput(run.text)} title="Copy output" aria-label="Copy output">
-                    <Copy size={14} />
-                  </button>
-                  <button type="button" onClick={() => active && void submit(active)} title="Retry" aria-label="Retry">
-                    <RotateCw size={14} />
-                  </button>
-                </>
-              )}
-              {outputUrl && (
-                <button type="button" onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")} title="Open first URL" aria-label="Open first URL">
-                  <ExternalLink size={14} />
-                </button>
-              )}
-              {run.kind === "running" ? <Spinner size="sm" /> : run.kind === "success" ? <CheckCircle2 size={15} /> : run.kind === "error" ? <XCircle size={15} /> : <Activity size={15} />}
-            </span>
-          </div>
-          <Separator />
-          <div className={`output-state output-${run.kind}`}>
-            <div className="output-title">{copied ? "Copied" : outputTitle(run)}</div>
-            <div className="output-subtitle">{outputSubtitle(run, active)}</div>
-            {"text" in run && (
-              <pre className="output-body">
-                <code>{run.text}</code>
-              </pre>
-            )}
-          </div>
-        </section>
-        )}
-      </main>
+          {showResultsLayout && (
+            <section className="output-panel">
+              <div className="panel-heading">
+                <span>Output</span>
+                <span className="output-tools">
+                  {"text" in run && (
+                    <>
+                      <button type="button" onClick={() => void copyOutput(run.text)} title="Copy output" aria-label="Copy output">
+                        <Copy size={14} />
+                      </button>
+                      <button type="button" onClick={() => active && void submit(active)} title="Retry" aria-label="Retry">
+                        <RotateCw size={14} />
+                      </button>
+                    </>
+                  )}
+                  {outputUrl && (
+                    <button type="button" onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")} title="Open first URL" aria-label="Open first URL">
+                      <ExternalLink size={14} />
+                    </button>
+                  )}
+                  <Badge tone={runTone(run)} shape="pill" dot={run.kind !== "idle"} pulse={run.kind === "running"}>
+                    {run.kind}
+                  </Badge>
+                  {run.kind === "running" ? <Spinner size="sm" /> : run.kind === "success" ? <CheckCircle2 size={15} /> : run.kind === "error" ? <XCircle size={15} /> : <Activity size={15} />}
+                </span>
+              </div>
+              <Separator />
+              <div className={`output-state output-${run.kind}`}>
+                <div className="output-title">{copied ? "Copied" : outputTitle(run)}</div>
+                <div className="output-subtitle">{outputSubtitle(run, active)}</div>
+                {"text" in run && (
+                  <pre className="output-body">
+                    <code>{run.text}</code>
+                  </pre>
+                )}
+              </div>
+            </section>
+          )}
+        </main>
       )}
     </div>
   );
@@ -453,70 +489,4 @@ export default function App() {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   }
-}
-
-function focusInput(select = false) {
-  window.setTimeout(() => {
-    const input = document.querySelector<HTMLInputElement>(".command-input");
-    input?.focus();
-    if (select) input?.select();
-  }, 30);
-}
-
-function parseCommand(raw: string): { invoked?: PaletteAction; search: string; arg: string } {
-  const trimmed = raw.trimStart();
-  const [token = ""] = trimmed.split(/\s+/);
-  const invoked = ACTIONS.find((action) => actionInvokedBy(action, token));
-  if (invoked) {
-    return { invoked, search: token, arg: trimmed.slice(token.length).trimStart() };
-  }
-  return { search: trimmed, arg: "" };
-}
-
-function argumentFor(
-  action: PaletteAction,
-  modeAction: PaletteAction | null,
-  parsed: { invoked?: PaletteAction; search: string; arg: string },
-  query: string,
-): string {
-  if (modeAction?.subcommand === action.subcommand) return query.trim();
-  if (parsed.invoked?.subcommand === action.subcommand) return parsed.arg;
-  if (looksLikeUrl(parsed.search) && acceptsDirectUrl(action)) return parsed.search;
-  return parsed.search;
-}
-
-function validationMessage(action: PaletteAction, argument: string): string {
-  if (action.argMode === "none" || action.argMode === "optionalSingle") return "";
-  return argument.trim() ? "" : "Argument required";
-}
-
-function argumentPlaceholder(action: PaletteAction): string {
-  const example = action.example.replace(new RegExp(`^${action.subcommand}\\s*`, "i"), "").trim();
-  return example || action.description;
-}
-
-function looksLikeUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value.trim());
-}
-
-function outputTitle(run: RunState): string {
-  if (run.kind === "idle") return "Ready";
-  return run.title;
-}
-
-function outputSubtitle(run: RunState, action: PaletteAction | undefined): string {
-  if (run.kind === "idle") return action?.description ?? "No matching action";
-  return run.subtitle;
-}
-
-function hostLabel(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
-
-function firstUrl(value: string): string | null {
-  return value.match(/https?:\/\/[^\s"')\]}]+/i)?.[0] ?? null;
 }
