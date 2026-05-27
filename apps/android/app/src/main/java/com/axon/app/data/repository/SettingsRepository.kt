@@ -12,7 +12,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+// The "settings" DataStore is internal so the unit test in :app can inspect the
+// same singleton instance the production code reads/writes. Marking it `private`
+// would force tests to construct a second DataStore (different file lock) and the
+// migration assertions would always pass against a fresh store.
+internal val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 private val KEY_SERVER_URL  = stringPreferencesKey("server_url")
 private val KEY_COLLECTION  = stringPreferencesKey("collection")
@@ -60,7 +64,7 @@ class SettingsRepository(
     // writes via save()/clearToken() update both the store and this StateFlow.
     private val tokenMirror = MutableStateFlow(encrypted.read().orEmpty())
 
-    val settings: Flow<AxonSettings> = context.dataStore.data
+    val settings: Flow<AxonSettings> = context.settingsDataStore.data
         .map { prefs ->
             // Guard against a blank stored value (e.g. a DataStore entry written as "" before
             // validation was added). ServerUrl.init requires non-blank, so fall back to the
@@ -78,7 +82,7 @@ class SettingsRepository(
         }
 
     suspend fun save(settings: AxonSettings) {
-        context.dataStore.edit { prefs ->
+        context.settingsDataStore.edit { prefs ->
             prefs[KEY_SERVER_URL]  = settings.serverUrl.value
             prefs[KEY_COLLECTION]  = settings.collection
             // Defensive: ensure any lingering legacy plaintext token entry is removed.
@@ -95,7 +99,7 @@ class SettingsRepository(
     suspend fun clearToken() {
         encrypted.clear()
         tokenMirror.value = ""
-        context.dataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
+        context.settingsDataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
     }
 
     /**
@@ -109,14 +113,14 @@ class SettingsRepository(
      */
     suspend fun migrateTokenToEncrypted() {
         if (encrypted.read() != null) {
-            context.dataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
+            context.settingsDataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
             tokenMirror.value = encrypted.read().orEmpty()
             return
         }
-        val plain = context.dataStore.data.first()[LEGACY_KEY_TOKEN]?.takeIf { it.isNotBlank() }
+        val plain = context.settingsDataStore.data.first()[LEGACY_KEY_TOKEN]?.takeIf { it.isNotBlank() }
             ?: return
         encrypted.write(plain)
-        context.dataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
+        context.settingsDataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
         tokenMirror.value = plain
     }
 }
