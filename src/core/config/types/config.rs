@@ -253,10 +253,10 @@ pub struct Config {
     /// Source HOME for Gemini CLI auth isolation. Env: `AXON_HEADLESS_GEMINI_HOME`.
     pub headless_gemini_home: Option<PathBuf>,
 
-    /// Max concurrent Gemini headless completion requests. Env: `AXON_LLM_COMPLETION_CONCURRENCY`.
+    /// Max concurrent LLM completion requests across the selected backend. Env: `AXON_LLM_COMPLETION_CONCURRENCY`.
     pub llm_completion_concurrency: usize,
 
-    /// Timeout for each Gemini headless completion request. Env: `AXON_LLM_COMPLETION_TIMEOUT_SECS`.
+    /// Timeout for each LLM completion request across the selected backend. Env: `AXON_LLM_COMPLETION_TIMEOUT_SECS`.
     pub llm_completion_timeout_secs: u64,
 
     /// OpenAI-compatible API base URL, e.g. llama.cpp `http://127.0.0.1:8080/v1`.
