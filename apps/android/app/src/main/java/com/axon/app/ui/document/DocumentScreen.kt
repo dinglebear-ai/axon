@@ -25,9 +25,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.ui.common.DOC_CHUNK_TARGET_CHARS
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
+import com.axon.app.ui.common.chunkDocument
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraButtonVariant
 import tv.tootie.aurora.components.AuroraCallout
@@ -37,57 +39,6 @@ import tv.tootie.aurora.components.AuroraCardVariant
 import tv.tootie.aurora.components.AuroraSeparator
 import tv.tootie.aurora.components.AuroraStatusIndicator
 import tv.tootie.aurora.components.AuroraStatusTone
-
-/** Target size (chars) for each rendered chunk in the document `LazyColumn`. */
-internal const val DOC_CHUNK_TARGET_CHARS = 2_000
-
-/**
- * Split a document into bounded blocks for `LazyColumn` rendering. Splits at
- * paragraph (`\n\n`) boundaries first; oversized paragraphs are then split at
- * line (`\n`) boundaries; anything still over the target is sliced by char so
- * a single 10K paragraph never becomes a single `Text` node.
- *
- * Exposed `internal` for unit tests.
- */
-internal fun chunkDocument(content: String): List<String> {
-    if (content.length <= DOC_CHUNK_TARGET_CHARS) return listOf(content)
-    val out = ArrayList<String>()
-    val buf = StringBuilder()
-    fun flush() {
-        if (buf.isNotEmpty()) {
-            out += buf.toString()
-            buf.clear()
-        }
-    }
-    fun appendUnit(unit: String, sep: String) {
-        if (buf.isNotEmpty() && buf.length + sep.length + unit.length > DOC_CHUNK_TARGET_CHARS) flush()
-        if (buf.isNotEmpty()) buf.append(sep)
-        buf.append(unit)
-    }
-    for (paragraph in content.split("\n\n")) {
-        if (paragraph.length <= DOC_CHUNK_TARGET_CHARS) {
-            appendUnit(paragraph, "\n\n")
-            continue
-        }
-        flush()
-        for (line in paragraph.split("\n")) {
-            if (line.length <= DOC_CHUNK_TARGET_CHARS) {
-                appendUnit(line, "\n")
-            } else {
-                flush()
-                var i = 0
-                while (i < line.length) {
-                    val end = (i + DOC_CHUNK_TARGET_CHARS).coerceAtMost(line.length)
-                    out += line.substring(i, end)
-                    i = end
-                }
-            }
-        }
-        flush()
-    }
-    flush()
-    return out
-}
 
 @Composable
 fun DocumentScreen(

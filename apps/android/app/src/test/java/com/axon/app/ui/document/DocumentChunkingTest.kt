@@ -1,5 +1,7 @@
 package com.axon.app.ui.document
 
+import com.axon.app.ui.common.DOC_CHUNK_TARGET_CHARS
+import com.axon.app.ui.common.chunkDocument
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
