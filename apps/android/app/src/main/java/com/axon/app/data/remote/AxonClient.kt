@@ -11,6 +11,21 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.axon.app.data.remote.models.AcceptedJob
+import com.axon.app.data.remote.models.CancelResponse
+import com.axon.app.data.remote.models.DoctorResponse
+import com.axon.app.data.remote.models.DomainsResponse
+import com.axon.app.data.remote.models.IngestRequest
+import com.axon.app.data.remote.models.SearchWebRequest
+import com.axon.app.data.remote.models.SearchWebResponse
+import com.axon.app.data.remote.models.ServiceJob
+import com.axon.app.data.remote.models.StatusSummary
+import com.axon.app.data.remote.models.SuggestRequest
+import com.axon.app.data.remote.models.SuggestResponse
+import com.axon.app.data.remote.models.SummarizeRequest
+import com.axon.app.data.remote.models.SummarizeResponse
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -51,7 +66,19 @@ class AxonClient(
     // Thread-safe config: both baseUrl and token updated atomically together.
     private val config = AtomicReference(baseUrl.trimEnd('/') to token)
 
+    // R7: share a single ConnectionPool + Dispatcher across http/httpLong/httpStream
+    // so concurrent fan-out (e.g. polling multiple job kinds) doesn't starve on
+    // OkHttp's default `maxRequestsPerHost = 5`.
+    private val sharedPool = ConnectionPool(
+        maxIdleConnections = 16,
+        keepAliveDuration = 5,
+        TimeUnit.MINUTES,
+    )
+    private val sharedDispatcher = Dispatcher().apply { maxRequestsPerHost = 16 }
+
     private val http = OkHttpClient.Builder()
+        .connectionPool(sharedPool)
+        .dispatcher(sharedDispatcher)
         .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -192,6 +219,55 @@ class AxonClient(
         // The server wraps the job in {"job": {...}}; decode the envelope and unwrap.
         get<CrawlStatusWrapper>("/v1/crawl/$jobId").map { it.job }
     }
+
+    // ── Phase 2 endpoints ──────────────────────────────────────────────────────
+
+    enum class JobKind(val path: String) {
+        Crawl("crawl"), Embed("embed"), Extract("extract"), Ingest("ingest")
+    }
+
+    /** /v1/summarize — Gemini-backed, can take minutes. Use httpLong. */
+    suspend fun summarize(req: SummarizeRequest): Result<SummarizeResponse> = withContext(Dispatchers.IO) {
+        postWith(httpLong, "/v1/summarize", req)
+    }
+
+    /** /v1/search — Tavily web search; auto-enqueues crawl jobs server-side. */
+    suspend fun searchWeb(req: SearchWebRequest): Result<SearchWebResponse> = withContext(Dispatchers.IO) {
+        post("/v1/search", req)
+    }
+
+    /** POST /v1/ingest — submits an async ingest job. */
+    suspend fun ingestStart(req: IngestRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
+        post("/v1/ingest", req)
+    }
+
+    /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
+    suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
+        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/$id").get())
+        execute(httpLong, builder)
+    }
+
+    /** GET /v1/{kind}/list — list jobs of one kind. */
+    suspend fun listJobs(kind: JobKind, limit: Int = 100, offset: Int = 0): Result<List<ServiceJob>> = withContext(Dispatchers.IO) {
+        get("/v1/${kind.path}/list?limit=$limit&offset=$offset")
+    }
+
+    /** POST /v1/{kind}/{id}/cancel. */
+    suspend fun cancelJob(kind: JobKind, id: String): Result<CancelResponse> = withContext(Dispatchers.IO) {
+        val body = "{}".toRequestBody(JSON_MEDIA_TYPE)
+        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/$id/cancel").post(body))
+        execute(http, builder)
+    }
+
+    suspend fun status(): Result<StatusSummary> = withContext(Dispatchers.IO) { get("/v1/status") }
+
+    suspend fun doctor(): Result<DoctorResponse> = withContext(Dispatchers.IO) { get("/v1/doctor") }
+
+    suspend fun suggest(focus: String? = null, collection: String? = null): Result<SuggestResponse> =
+        withContext(Dispatchers.IO) { post("/v1/suggest", SuggestRequest(focus = focus, collection = collection)) }
+
+    suspend fun domains(limit: Int = 100, offset: Int = 0): Result<DomainsResponse> =
+        withContext(Dispatchers.IO) { get("/v1/domains?limit=$limit&offset=$offset") }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
