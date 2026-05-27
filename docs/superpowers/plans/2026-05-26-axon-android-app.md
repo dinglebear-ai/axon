@@ -23,7 +23,7 @@ apps/android/
 │       └── gradle-wrapper.properties                # Gradle 8.10
 ├── gradlew                                          # copied from aurora-design-system/android
 ├── gradlew.bat                                      # copied from aurora-design-system/android
-├── local.properties.example                         # optional SDK path template; do not commit local.properties
+├── local.properties                                 # ANDROID_HOME path
 └── app/
     ├── build.gradle.kts                             # app module deps + KSP room compiler
     └── src/main/
@@ -72,7 +72,7 @@ apps/android/
 - Create: `apps/android/build.gradle.kts`
 - Create: `apps/android/gradle/libs.versions.toml`
 - Create: `apps/android/gradle/wrapper/gradle-wrapper.properties`
-- Create: `apps/android/local.properties.example`
+- Create: `apps/android/local.properties`
 
 - [ ] **Step 1: Copy gradle wrapper binaries from aurora-design-system**
 
@@ -188,22 +188,11 @@ plugins {
 }
 ```
 
-- [ ] **Step 6: Configure the Android SDK path locally**
-
-Prefer `ANDROID_HOME` for local builds:
-
-```bash
-export ANDROID_HOME="$HOME/Android/Sdk"
-```
-
-Optionally create a template only:
+- [ ] **Step 6: Create `apps/android/local.properties`**
 
 ```properties
-# apps/android/local.properties.example
-sdk.dir=/path/to/Android/Sdk
+sdk.dir=/home/jmagar/Android/Sdk
 ```
-
-Do not commit `apps/android/local.properties`; it is machine-local and ignored by git.
 
 - [ ] **Step 7: Verify Gradle sync resolves**
 
