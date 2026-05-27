@@ -54,7 +54,7 @@ All MCP handlers call through the services layer (`src/services/`), never direct
 
 ```
 MCP handler -> services::query() -> vector::ops::search() -> Qdrant
-MCP handler -> services::ask()   -> vector::ops::ask()    -> Qdrant + Gemini headless
+MCP handler -> services::ask()   -> vector::ops::ask()    -> Qdrant + configured LLM backend
 CLI handler -> services::query() -> (same path)
 Web route   -> services::query() -> (same path)
 ```
@@ -181,9 +181,9 @@ Query
 
 Named-mode collections (new) support hybrid search. Legacy unnamed-mode collections fall back to dense-only. The `VectorMode` is cached per-process -- restart workers after collection migration.
 
-## Gemini headless completion pattern
+## LLM completion backend pattern
 
-Operations requiring LLM synthesis (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) call the typed `services::llm_backend` facade. The backend launches Gemini headless with an isolated temporary HOME, an allowlisted environment, timeout enforcement, and a concurrency semaphore.
+Operations requiring LLM synthesis (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) call the typed `services::llm_backend` facade. Gemini headless is the default backend and launches with an isolated temporary HOME, an allowlisted environment, timeout enforcement, and a concurrency semaphore. `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible chat-completions endpoint such as llama.cpp via `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL`.
 
 ## See also
 

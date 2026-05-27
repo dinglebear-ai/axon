@@ -130,7 +130,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
 | `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `delay-ms`, `request-timeout-ms`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | ladder env vars only |
 
-URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL` for llama.cpp/OpenAI-compatible endpoints. `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 
@@ -202,15 +202,19 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 | `TEI_TOKENIZATION_WORKERS` | `8` | Tokenization workers |
 | `HF_TOKEN` | -- | HuggingFace token for gated models |
 
-### LLM / Gemini headless
+### LLM runtime
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Use `openai-compat` for llama.cpp/OpenAI-compatible `/v1/chat/completions` servers. |
+| `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. Do not include `/chat/completions`; Axon appends it. |
+| `AXON_OPENAI_MODEL` | -- | Model name sent to the OpenAI-compatible endpoint. Required when `AXON_LLM_BACKEND=openai-compat`. |
+| `AXON_OPENAI_API_KEY` | -- | Optional bearer token for OpenAI-compatible endpoints. Leave unset for local llama.cpp servers that do not require auth. |
 | `AXON_HEADLESS_GEMINI_MODEL` | -- | Gemini model override for synthesis. Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
-| `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent Gemini headless completion requests. |
-| `AXON_LLM_COMPLETION_TIMEOUT_SECS` | `300` | Runtime-only timeout for each Gemini headless completion request. |
+| `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent LLM completion requests. |
+| `AXON_LLM_COMPLETION_TIMEOUT_SECS` | `300` | Runtime-only timeout for each LLM completion request. |
 
 ### Collections and worker lanes
 

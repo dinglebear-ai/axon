@@ -66,9 +66,8 @@ cli/
     │   └── tests.rs               # Scrape unit tests
     ├── status/
     │   ├── failure_summary.rs    # Recent failure summary rendering
-    │   ├── metrics.rs            # Job counts, rates, stale-job aggregates
-    │   ├── metrics/{format,ingest}.rs
-    │   └── presentation.rs       # Status output rendering (JSON + human text)
+    │   ├── metrics.rs            # Shared status formatting helpers
+    │   └── metrics/format.rs
     ├── doctor/
     │   └── render.rs             # Doctor report rendering (human + JSON)
     └── map/

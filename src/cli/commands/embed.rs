@@ -1,19 +1,16 @@
 use crate::cli::commands::CommandFuture;
 use crate::cli::commands::common::{
-    filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
-    handle_job_errors, handle_job_list, handle_job_recover, handle_job_status, handle_worker_mode,
-    print_list_footer,
+    handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors,
+    handle_job_list_with_rows, handle_job_recover, handle_job_status, handle_worker_mode,
 };
+use crate::cli::commands::job_progress::embed_progress_summary;
 use crate::cli::commands::status::metrics::{
-    collection_from_config, display_embed_input, embed_metrics_suffix, format_error,
-    job_runtime_text,
+    collection_from_config, display_embed_input, format_error, job_runtime_text,
 };
 use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info};
 use crate::core::ui::wait_spinner_for;
-use crate::core::ui::{
-    accent, confirm_destructive, error, muted, primary, status_label, subtle, symbol_for_status,
-};
+use crate::core::ui::{accent, confirm_destructive, error, muted, primary, symbol_for_status};
 use crate::jobs::backend::JobKind;
 use crate::services::context::ServiceContext;
 use crate::services::embed as embed_service;
@@ -28,58 +25,51 @@ pub(crate) fn render_embed_list(
     all_jobs: Vec<crate::services::types::ServiceJob>,
     total: i64,
 ) -> Result<(), Box<dyn Error>> {
-    if cfg.json_output {
-        let result = crate::services::types::JobListResult::new(all_jobs, total, 50, 0);
-        return handle_job_list(cfg, &result, "Embed");
-    }
-    let jobs = filter_jobs_for_status_view(cfg, all_jobs);
-
-    println!("{}", primary("Embed Jobs"));
-    if jobs.is_empty() {
-        println!("  {}", muted("No embed jobs found."));
-        return Ok(());
-    }
-
+    let result = crate::services::types::JobListResult::new(all_jobs, total, 50, 0);
     let empty_crawl_map = std::collections::HashMap::new();
-    for job in &jobs {
-        let target = display_embed_input(job.target.as_deref().unwrap_or(""), &empty_crawl_map);
-        let metrics = embed_metrics_suffix(&job.status, job.result_json.as_ref());
-        let collection =
-            collection_from_config(job.config_json.as_ref().unwrap_or(&serde_json::Value::Null));
-        let age = job_runtime_text(
-            &job.status,
-            job.started_at.as_ref(),
-            job.finished_at.as_ref(),
-            &job.updated_at,
-        );
-        let collection_str = collection
-            .map(|c| format!("{}{}", subtle(" | "), accent(c)))
-            .unwrap_or_default();
-        let label = status_label(&job.status);
-        let prefix = if label.is_empty() {
-            format!("  {} ", symbol_for_status(&job.status))
-        } else {
-            format!("  {} {} ", symbol_for_status(&job.status), label)
-        };
-        let age_str = format!("{}{}", subtle(" | "), accent(&age));
-        println!(
-            "{}{}{}{}{} {} {}",
-            prefix,
-            primary(&target),
-            metrics,
-            collection_str,
-            age_str,
-            subtle("|"),
-            muted(&job.id.to_string()),
-        );
-        if let Some(err) = format_error(job.error_text.as_deref()) {
-            let err_line = error(&format!("↳ {err}"));
-            println!("       {err_line}");
-        }
-    }
-
-    print_list_footer(jobs.len(), total, 50, 0);
-    Ok(())
+    handle_job_list_with_rows(
+        cfg,
+        &result,
+        "Embed",
+        Some("No embed jobs found."),
+        &[
+            "",
+            "ID",
+            "Status",
+            "Input",
+            "Progress",
+            "Collection",
+            "Age",
+            "Error",
+        ],
+        |job| {
+            let target = display_embed_input(job.target.as_deref().unwrap_or(""), &empty_crawl_map);
+            let collection = collection_from_config(
+                job.config_json.as_ref().unwrap_or(&serde_json::Value::Null),
+            )
+            .unwrap_or("");
+            let age = job_runtime_text(
+                &job.status,
+                job.started_at.as_ref(),
+                job.finished_at.as_ref(),
+                &job.updated_at,
+            );
+            vec![
+                symbol_for_status(&job.status),
+                job.id.to_string(),
+                crate::core::ui::status_text(&job.status),
+                primary(&target).to_string(),
+                embed_progress_summary(job, None)
+                    .map(|summary| accent(&summary).to_string())
+                    .unwrap_or_default(),
+                accent(collection).to_string(),
+                accent(&age).to_string(),
+                format_error(job.error_text.as_deref())
+                    .map(|err| error(&err).to_string())
+                    .unwrap_or_default(),
+            ]
+        },
+    )
 }
 
 pub(crate) fn render_embed_enqueue_result(

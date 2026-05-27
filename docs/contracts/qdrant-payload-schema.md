@@ -242,7 +242,7 @@ cosine-only `/points/search`. The mode is detected once per process via `ensure_
 New collections are always created as `Named`. Upgrade legacy collections with `axon migrate`.
 
 HNSW config for new collections: `m = 32`, `ef_construct = 256`.
-Quantization: scalar int8, quantile 0.99, always_ram = true.
+Quantization: scalar int8, quantile 0.99, always_ram = false.
 
 ---
 

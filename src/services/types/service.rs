@@ -732,6 +732,8 @@ pub struct AskResult {
     pub answer: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     pub diagnostics: Option<AskDiagnostics>,
     #[serde(default)]
     pub explain: Option<AskExplainTrace>,

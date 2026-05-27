@@ -320,7 +320,7 @@ fn build_extract_summary(
     Ok(serde_json::json!({
         "urls": urls,
         "prompt": prompt,
-        "model": cfg.headless_gemini_model,
+        "model": crate::services::llm_backend::configured_model_from_config(cfg),
         "pages_visited": agg.pages_visited,
         "pages_with_data": agg.pages_with_data,
         "deterministic_pages": agg.deterministic_pages,

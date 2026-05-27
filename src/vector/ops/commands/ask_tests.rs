@@ -1,6 +1,8 @@
 use super::normalize::{extract_cited_source_ids, normalize_ask_answer, parse_context_source_map};
 use super::validate_ask_llm_config;
 use crate::core::config::Config;
+use crate::services::llm_backend::LlmBackendKind;
+use crate::services::types::AskResult;
 
 fn cfg() -> Config {
     Config::default()
@@ -116,4 +118,104 @@ fn validate_ask_llm_config_accepts_default_gemini_config() {
     let result = validate_ask_llm_config(&cfg);
 
     assert!(result.is_ok(), "Gemini config should pass validation");
+}
+
+#[test]
+fn validate_ask_llm_config_accepts_openai_compat_config() {
+    let mut cfg = Config::test_default();
+    cfg.llm_backend = LlmBackendKind::OpenAiCompat;
+    cfg.openai_base_url = "http://llama-cpp:8080/v1".to_string();
+    cfg.openai_model = "gemma".to_string();
+
+    let result = validate_ask_llm_config(&cfg);
+
+    assert!(
+        result.is_ok(),
+        "OpenAI-compatible config should pass validation"
+    );
+}
+
+#[test]
+fn validate_ask_llm_config_rejects_openai_compat_without_base_url() {
+    let mut cfg = Config::test_default();
+    cfg.llm_backend = LlmBackendKind::OpenAiCompat;
+    cfg.openai_model = "gemma".to_string();
+
+    let err = validate_ask_llm_config(&cfg).expect_err("base URL should be required");
+
+    assert!(err.to_string().contains("AXON_OPENAI_BASE_URL"));
+}
+
+#[test]
+fn ask_result_defaults_missing_warnings_to_empty() {
+    let result: AskResult = serde_json::from_value(serde_json::json!({
+        "query": "what is axon?",
+        "answer": "A crawler.",
+        "diagnostics": null,
+        "timing_ms": {
+            "retrieval": 1,
+            "context_build": 2,
+            "llm": 3,
+            "total": 6
+        }
+    }))
+    .expect("ask result should deserialize without warnings for back-compat");
+
+    assert!(result.warnings.is_empty());
+}
+
+#[test]
+fn ask_result_omits_empty_warnings_when_serialized() {
+    let result = AskResult {
+        query: "what is axon?".to_string(),
+        answer: "A crawler.".to_string(),
+        session: None,
+        warnings: Vec::new(),
+        diagnostics: None,
+        explain: None,
+        timing_ms: crate::services::types::AskTiming {
+            retrieval: 1,
+            context_build: 2,
+            llm: 3,
+            total: 6,
+            tei_embed_ms: None,
+            qdrant_primary_ms: None,
+            qdrant_secondary_ms: None,
+            rerank_ms: None,
+            top_select_ms: None,
+            full_doc_fetch_ms: None,
+            supplemental_ms: None,
+            llm_ttft_ms: None,
+            llm_total_ms: None,
+            streamed: None,
+            normalize_ms: None,
+        },
+    };
+
+    let json = serde_json::to_value(&result).expect("ask result should serialize");
+
+    assert!(json.get("warnings").is_none());
+}
+
+#[test]
+fn ask_result_preserves_retrieval_warnings_without_diagnostics() {
+    let result: AskResult = serde_json::from_value(serde_json::json!({
+        "query": "what is axon?",
+        "answer": "A crawler.",
+        "warnings": [
+            "ask: keyword search failed; continuing with natural-language retrieval only"
+        ],
+        "diagnostics": null,
+        "timing_ms": {
+            "retrieval": 1,
+            "context_build": 2,
+            "llm": 3,
+            "total": 6
+        }
+    }))
+    .expect("ask result should deserialize warnings without diagnostics");
+
+    assert_eq!(result.warnings.len(), 1);
+    assert!(result.diagnostics.is_none());
+    assert!(result.warnings[0].contains("keyword search failed"));
 }

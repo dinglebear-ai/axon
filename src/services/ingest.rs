@@ -35,6 +35,29 @@ pub fn map_ingest_result(payload: serde_json::Value) -> IngestResult {
     IngestResult { payload }
 }
 
+pub(crate) fn ingest_payload(
+    source: &str,
+    target_field: Option<(&str, &str)>,
+    chunks_embedded: usize,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "source": source,
+        "chunks_embedded": chunks_embedded,
+        // Preserve the legacy key for existing API and CLI callers while making
+        // `chunks_embedded` the canonical progress/result field.
+        "chunks": chunks_embedded,
+    });
+    if let Some((key, value)) = target_field
+        && let Some(object) = payload.as_object_mut()
+    {
+        object.insert(
+            key.to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
+    }
+    payload
+}
+
 pub fn map_ingest_start_result(job_id: String) -> IngestStartResult {
     IngestStartResult { job_id }
 }
@@ -206,11 +229,7 @@ pub async fn ingest_github_with_progress(
     )
     .await;
 
-    let payload = serde_json::json!({
-        "source": "github",
-        "repo": repo_slug,
-        "chunks": chunks,
-    });
+    let payload = ingest_payload("github", Some(("repo", &repo_slug)), chunks);
     Ok(map_ingest_result(payload))
 }
 
@@ -249,11 +268,7 @@ pub async fn ingest_gitlab_with_progress(
     )
     .await;
 
-    let payload = serde_json::json!({
-        "source": "gitlab",
-        "target": target,
-        "chunks": chunks,
-    });
+    let payload = ingest_payload("gitlab", Some(("target", target)), chunks);
     Ok(map_ingest_result(payload))
 }
 
@@ -321,18 +336,19 @@ pub async fn ingest_reddit_with_progress_and_options(
     )
     .await;
 
-    let payload = serde_json::json!({
-        "source": "reddit",
-        "target": target,
-        "chunks": summary.chunks_embedded,
-        "reddit_stats": {
-            "posts_seen": summary.stats.posts_seen,
-            "posts_prepared": summary.stats.posts_prepared,
-            "comment_fetch_attempts": summary.stats.comment_fetch_attempts,
-            "comment_fetch_failures": summary.stats.comment_fetch_failures,
-            "partial_comment_failures": summary.stats.has_partial_comment_failures(),
-        },
-    });
+    let mut payload = ingest_payload("reddit", Some(("target", target)), summary.chunks_embedded);
+    if let Some(object) = payload.as_object_mut() {
+        object.insert(
+            "reddit_stats".to_string(),
+            serde_json::json!({
+                "posts_seen": summary.stats.posts_seen,
+                "posts_prepared": summary.stats.posts_prepared,
+                "comment_fetch_attempts": summary.stats.comment_fetch_attempts,
+                "comment_fetch_failures": summary.stats.comment_fetch_failures,
+                "partial_comment_failures": summary.stats.has_partial_comment_failures(),
+            }),
+        );
+    }
     Ok(map_ingest_result(payload))
 }
 
@@ -382,11 +398,7 @@ pub async fn ingest_youtube_with_progress(
     )
     .await;
 
-    let payload = serde_json::json!({
-        "source": "youtube",
-        "url": url,
-        "chunks": chunks,
-    });
+    let payload = ingest_payload("youtube", Some(("url", url)), chunks);
     Ok(map_ingest_result(payload))
 }
 
@@ -432,10 +444,7 @@ pub async fn ingest_sessions_with_progress(
     )
     .await;
 
-    let payload = serde_json::json!({
-        "source": "sessions",
-        "chunks": chunks,
-    });
+    let payload = ingest_payload("sessions", None, chunks);
     Ok(map_ingest_result(payload))
 }
 

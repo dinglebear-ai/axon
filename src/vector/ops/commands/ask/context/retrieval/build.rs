@@ -10,6 +10,7 @@ use crate::vector::ops::qdrant;
 pub(super) struct AskCandidateBuild {
     pub(super) retrieved_candidates: Vec<RetrievedCandidate>,
     pub(super) pre_rerank_traces: Vec<CandidateRankingTrace>,
+    pub(super) warnings: Vec<String>,
 }
 
 pub(super) fn build_ask_candidates(
@@ -19,6 +20,7 @@ pub(super) fn build_ask_candidates(
     trace_score_kind: Option<AskExplainScoreKind>,
 ) -> AskCandidateBuild {
     let mut pre_rerank_traces = Vec::new();
+    let mut warnings = Vec::new();
     let mut retrieved_candidates =
         build_primary_candidates(hits, build_policy, trace_score_kind, &mut pre_rerank_traces);
 
@@ -38,15 +40,24 @@ pub(super) fn build_ask_candidates(
                     &mut pre_rerank_traces,
                 );
             }
-            Err(e) => log_warn(&format!(
-                "ask: keyword search failed (continuing with NL only): {e}"
-            )),
+            Err(e) => {
+                log_warn(&format!(
+                    "ask: keyword search failed, continuing with NL only: {e}"
+                ));
+                let warning = keyword_search_warning();
+                warnings.push(warning);
+            }
         }
     }
     AskCandidateBuild {
         retrieved_candidates,
         pre_rerank_traces,
+        warnings,
     }
+}
+
+fn keyword_search_warning() -> String {
+    "ask: keyword search failed; continuing with natural-language retrieval only".to_string()
 }
 
 fn build_primary_candidates(
@@ -76,5 +87,32 @@ fn merge_candidate_sets(
         merged.candidates
     } else {
         merge_candidates(primary, secondary)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SearchHitsResult, build_ask_candidates};
+    use crate::vector::ops::commands::retrieval::CandidateBuildPolicy;
+
+    #[test]
+    fn keyword_search_failure_returns_warning() {
+        let secondary: SearchHitsResult = Err("keyword backend timed out".into());
+        let built = build_ask_candidates(
+            Vec::new(),
+            Some(secondary),
+            &CandidateBuildPolicy {
+                allow_low_signal: false,
+            },
+            None,
+        );
+
+        assert_eq!(built.warnings.len(), 1);
+        assert!(
+            built.warnings[0].contains("keyword search failed"),
+            "warning should describe degraded keyword retrieval: {:?}",
+            built.warnings
+        );
+        assert!(!built.warnings[0].contains("keyword backend timed out"));
     }
 }

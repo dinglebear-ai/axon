@@ -1,13 +1,16 @@
-import createClient from "openapi-fetch";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { invoke } from "@tauri-apps/api/core";
 
-import type { components, paths } from "./axon-api";
 import type { PaletteAction } from "./actions";
 import { splitShellWords } from "./shellWords";
 
 export interface PaletteConfig {
   serverUrl: string;
   token?: string | null;
+  shortcut: string;
+  collection: string;
+  resultLimit: number;
+  theme: "system" | "dark" | "light";
+  hideOnBlur: boolean;
 }
 
 export interface PaletteResult {
@@ -18,70 +21,64 @@ export interface PaletteResult {
   payload: unknown;
 }
 
-type Client = ReturnType<typeof createClient<paths>>;
-
-export function createAxonClient(config: PaletteConfig): Client {
-  const headers = config.token ? { Authorization: `Bearer ${config.token}` } : undefined;
-  return createClient<paths>({
-    baseUrl: config.serverUrl.replace(/\/+$/, ""),
-    headers,
-    fetch: tauriFetch as unknown as typeof globalThis.fetch,
-  });
-}
-
 export async function executeAction(
-  client: Client,
   action: PaletteAction,
   arg: string,
+  config: PaletteConfig,
 ): Promise<PaletteResult> {
   const words = wordsFor(action, arg);
+  const collection = config.collection.trim();
+  const collectionBody = collection ? { collection } : {};
+  const limit = config.resultLimit || 10;
 
   switch (action.subcommand) {
     case "doctor":
-      return getResult(client, "/v1/doctor");
+      return getResult("/v1/doctor");
     case "status":
-      return getResult(client, "/v1/status");
+      return getResult("/v1/status");
     case "sources":
-      return getResult(client, "/v1/sources");
+      return getResult("/v1/sources");
     case "domains":
-      return getResult(client, "/v1/domains");
+      return getResult("/v1/domains");
     case "stats":
-      return getResult(client, "/v1/stats");
+      return getResult("/v1/stats");
     case "scrape":
-      return postResult(client, "/v1/scrape", { url: first(words, "url") });
+      return postResult("/v1/scrape", { url: first(words, "url"), ...collectionBody });
     case "crawl":
-      return postResult(client, "/v1/crawl", { urls: required(words, "urls") });
+      return postResult("/v1/crawl", { urls: required(words, "urls"), ...collectionBody });
     case "map":
-      return postResult(client, "/v1/map", { url: first(words, "url"), limit: 100 });
+      return postResult("/v1/map", { url: first(words, "url"), limit: 100 });
     case "summarize":
-      return postResult(client, "/v1/summarize", { urls: required(words, "urls") });
+      return postResult("/v1/summarize", { urls: required(words, "urls") });
     case "ask":
-      return postResult(client, "/v1/ask", {
+      return postResult("/v1/ask", {
         query: first(words, "query"),
         explain: false,
         diagnostics: false,
+        ...collectionBody,
       });
     case "query":
-      return postResult(client, "/v1/query", { query: first(words, "query"), limit: 10 });
+      return postResult("/v1/query", { query: first(words, "query"), limit, ...collectionBody });
     case "retrieve":
-      return postResult(client, "/v1/retrieve", {
+      return postResult("/v1/retrieve", {
         url: first(words, "url"),
         token_budget: 6000,
+        ...collectionBody,
       });
     case "suggest":
-      return postResult(client, "/v1/suggest", words[0] ? { focus: words[0] } : {});
+      return postResult("/v1/suggest", words[0] ? { focus: words[0] } : {});
     case "evaluate":
-      return postResult(client, "/v1/evaluate", { question: first(words, "question") });
+      return postResult("/v1/evaluate", { question: first(words, "question") });
     case "search":
-      return postResult(client, "/v1/search", { query: first(words, "query"), limit: 10 });
+      return postResult("/v1/search", { query: first(words, "query"), limit });
     case "research":
-      return postResult(client, "/v1/research", { query: first(words, "query"), limit: 10 });
+      return postResult("/v1/research", { query: first(words, "query"), limit });
     case "embed":
-      return postResult(client, "/v1/embed", { input: first(words, "input") });
+      return postResult("/v1/embed", { input: first(words, "input"), ...collectionBody });
     case "extract":
-      return postResult(client, "/v1/extract", { urls: required(words, "urls") });
+      return postResult("/v1/extract", { urls: required(words, "urls"), ...collectionBody });
     case "ingest":
-      return postResult(client, "/v1/ingest", ingestBody(first(words, "target")));
+      return postResult("/v1/ingest", ingestBody(first(words, "target")));
     default:
       throw new Error(`REST route is not wired for ${action.subcommand}`);
   }
@@ -138,38 +135,32 @@ type PostPath =
   | "/v1/extract"
   | "/v1/ingest";
 
-async function getResult<Path extends GetPath>(
-  client: Client,
-  path: Path,
-): Promise<PaletteResult> {
+async function getResult<Path extends GetPath>(path: Path): Promise<PaletteResult> {
   try {
-    const { data, error, response } = await (client.GET as AnyGet)(path, {});
-    return {
-      ok: response.ok,
-      status: response.status,
-      path: String(path),
-      method: "GET",
-      payload: data ?? error ?? null,
-    };
+    return await invoke<PaletteResult>("axon_http_request", {
+      request: {
+        method: "GET",
+        path,
+        body: null,
+      },
+    });
   } catch (error) {
     return failedResult("GET", path, error);
   }
 }
 
 async function postResult<Path extends PostPath>(
-  client: Client,
   path: Path,
-  body: components["schemas"][keyof components["schemas"]] | Record<string, unknown>,
+  body: Record<string, unknown>,
 ): Promise<PaletteResult> {
   try {
-    const { data, error, response } = await (client.POST as AnyPost)(path, { body });
-    return {
-      ok: response.ok,
-      status: response.status,
-      path: String(path),
-      method: "POST",
-      payload: data ?? error ?? null,
-    };
+    return await invoke<PaletteResult>("axon_http_request", {
+      request: {
+        method: "POST",
+        path,
+        body,
+      },
+    });
   } catch (error) {
     return failedResult("POST", path, error);
   }
@@ -186,18 +177,3 @@ function failedResult(method: PaletteResult["method"], path: GetPath | PostPath,
     },
   };
 }
-
-type AnyGet = (path: GetPath, init?: Record<string, unknown>) => Promise<{
-  data?: unknown;
-  error?: unknown;
-  response: Response;
-}>;
-
-type AnyPost = (
-  path: PostPath,
-  init: { body: Record<string, unknown> },
-) => Promise<{
-  data?: unknown;
-  error?: unknown;
-  response: Response;
-}>;

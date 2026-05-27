@@ -1,11 +1,13 @@
 mod appenders;
 mod diagnostics;
 mod fetchers;
+mod logging;
 mod selection;
+mod supplemental;
 mod trace;
 
 use super::super::timing::{AskTiming, AskTimingSlot};
-use super::heuristics::{SkipDecision, should_inject_supplemental, should_skip_full_doc_fetch};
+use super::heuristics::{SkipDecision, should_skip_full_doc_fetch};
 use crate::core::config::Config;
 use crate::core::logging::log_info;
 use crate::services::types::AskExplainContext;
@@ -14,24 +16,25 @@ use crate::vector::ops::ranking;
 use anyhow::{Result, anyhow};
 use std::collections::HashSet;
 
-pub(super) use appenders::{
-    append_full_docs_to_context, append_supplemental_chunks, append_top_chunks_to_context,
-};
+pub(super) use appenders::{append_full_docs_to_context, append_top_chunks_to_context};
 pub(super) use diagnostics::build_diagnostic_sources;
 #[cfg(test)]
 pub(super) use fetchers::ask_doc_cache;
 pub(super) use fetchers::fetch_full_docs;
-pub(super) use selection::{
-    SelectionPolicy, collect_supplemental_candidate_indices, planned_full_doc_urls,
-    select_context_indices,
-};
+use logging::{ContextCompleteLog, ContextStartLog, log_context_complete, log_context_start};
+#[cfg(test)]
+pub(super) use selection::collect_supplemental_candidate_indices;
+pub(super) use selection::{SelectionPolicy, planned_full_doc_urls, select_context_indices};
 use selection::{dominant_retrieval_hosts, full_doc_selection_score};
+use supplemental::maybe_inject_supplemental;
 pub(super) use trace::{CandidateSelectionMetadata, candidate_selection_key};
 pub(super) use trace::{
     ContextCandidateSelection, ContextSelectionInputs, build_context_selection_decisions,
     context_source_candidate_count, final_source_order_from_entries, selected_top_chunk_indices,
     sorted_urls,
 };
+
+const CONTEXT_SEPARATOR: &str = "\n\n---\n\n";
 
 pub(super) struct BuiltAskContext {
     pub(super) context: String,
@@ -63,27 +66,37 @@ pub(super) async fn build_context_from_candidates(
 ) -> Result<BuiltAskContext> {
     let ask_tuning = cfg.ask_config();
     let max_context_chars = ask_tuning.ask_max_context_chars;
-    let backfill_limit = ask_tuning.ask_backfill_chunks;
     let doc_fetch_concurrency = ask_tuning.ask_doc_fetch_concurrency;
     let doc_chunk_limit = ask_tuning.ask_doc_chunk_limit;
     let context_started = std::time::Instant::now();
     let mut context_entries: Vec<(f64, String)> = Vec::new();
     let mut context_char_count = 0usize;
-    let separator = "\n\n---\n\n";
     let mut source_idx = 1usize;
     let is_rrf = min_supplemental_score.is_none();
     let skip_decision = should_skip_full_doc_fetch(cfg, reranked, is_rrf);
     let planned_full_doc_urls_set =
         planned_full_doc_urls(reranked, top_full_doc_indices, skip_decision.skip);
-    let top_chunks_selected = append_top_chunks_to_context(
-        reranked,
-        top_chunk_indices,
-        &planned_full_doc_urls_set,
+    log_context_start(ContextStartLog {
+        reranked_len: reranked.len(),
+        top_chunks_len: top_chunk_indices.len(),
+        top_full_docs_len: top_full_doc_indices.len(),
+        max_context_chars,
+        doc_chunk_limit,
+        doc_fetch_concurrency,
+        skip_full_docs: skip_decision.skip,
+        skip_reason: skip_decision.reason,
+    });
+    let top_chunks_selected = append_top_chunks_phase(
+        AppendTopChunksInputs {
+            reranked,
+            top_chunk_indices,
+            planned_full_doc_urls_set: &planned_full_doc_urls_set,
+            separator: CONTEXT_SEPARATOR,
+            max_context_chars,
+        },
         &mut context_entries,
         &mut context_char_count,
         &mut source_idx,
-        separator,
-        max_context_chars,
     );
     let selected_top_chunk_indices = selected_top_chunk_indices(
         reranked,
@@ -91,36 +104,29 @@ pub(super) async fn build_context_from_candidates(
         &planned_full_doc_urls_set,
         top_chunks_selected,
     );
-
     let mut inserted_full_doc_urls: HashSet<String> = HashSet::new();
 
-    let fetched_docs = fetch_full_docs_for_context(FetchFullDocsInputs {
-        cfg,
-        reranked,
-        top_full_doc_indices,
-        context_char_count,
-        max_context_chars,
-        doc_chunk_limit,
-        doc_fetch_concurrency,
-        skip_decision,
-        is_rrf,
-        timing,
-    })
-    .await?;
-    let (full_docs_selected, next_source_idx) = append_planned_full_docs(
-        AppendPlannedFullDocsInputs {
+    let (full_docs_selected, next_source_idx) = append_full_docs_phase(
+        FullDocsPhaseInputs {
+            cfg,
             reranked,
             top_full_doc_indices,
-            fetched_docs,
             query_tokens,
-            separator,
+            context_char_count,
+            doc_chunk_limit,
+            doc_fetch_concurrency,
+            skip_decision,
+            is_rrf,
+            separator: CONTEXT_SEPARATOR,
             max_context_chars,
+            timing,
         },
         &mut context_entries,
         &mut context_char_count,
         &mut inserted_full_doc_urls,
         source_idx,
-    );
+    )
+    .await?;
     source_idx = next_source_idx;
 
     let supplemental_started = std::time::Instant::now();
@@ -130,9 +136,9 @@ pub(super) async fn build_context_from_candidates(
         min_supplemental_score,
         full_docs_selected,
         top_chunks_selected,
-        backfill_limit,
+        ask_tuning.ask_backfill_chunks,
         max_context_chars,
-        separator,
+        CONTEXT_SEPARATOR,
         &mut context_entries,
         &mut context_char_count,
         &mut source_idx,
@@ -153,26 +159,105 @@ pub(super) async fn build_context_from_candidates(
         max_context_chars,
         skip_decision,
         is_rrf,
-        separator,
+        separator: CONTEXT_SEPARATOR,
         context_started,
         context_entries,
     })?;
-
-    Ok(BuiltAskContext {
-        context: finalized.context,
-        chunks_selected: top_chunks_selected,
+    log_context_complete(ContextCompleteLog {
+        top_chunks_selected,
         full_docs_selected,
         supplemental_count,
-        context_elapsed_ms: finalized.context_elapsed_ms,
-        diagnostic_sources: finalized.diagnostic_sources,
-        full_doc_fetch_skipped: skip_decision.skip,
-        full_doc_fetch_skip_reason: skip_decision.reason,
-        explain_context: finalized.explain_context,
-        selection_decisions: finalized.selection_decisions,
-    })
+        context_chars: finalized.context.len(),
+        elapsed_ms: finalized.context_elapsed_ms,
+    });
+
+    Ok(to_built_ask_context(ToBuiltContextInputs {
+        finalized,
+        top_chunks_selected,
+        full_docs_selected,
+        supplemental_count,
+        skip_decision,
+    }))
 }
 
 type FetchedFullDocs = Vec<(usize, String, Vec<qdrant::QdrantPoint>)>;
+
+struct FullDocsPhaseInputs<'a> {
+    cfg: &'a Config,
+    reranked: &'a [ranking::AskCandidate],
+    top_full_doc_indices: &'a [usize],
+    query_tokens: &'a [String],
+    context_char_count: usize,
+    doc_chunk_limit: usize,
+    doc_fetch_concurrency: usize,
+    skip_decision: SkipDecision,
+    is_rrf: bool,
+    separator: &'a str,
+    max_context_chars: usize,
+    timing: &'a mut AskTiming,
+}
+
+async fn append_full_docs_phase(
+    inputs: FullDocsPhaseInputs<'_>,
+    context_entries: &mut Vec<(f64, String)>,
+    context_char_count: &mut usize,
+    inserted_full_doc_urls: &mut HashSet<String>,
+    source_idx: usize,
+) -> Result<(usize, usize)> {
+    let fetched_docs = fetch_full_docs_for_context(FetchFullDocsInputs {
+        cfg: inputs.cfg,
+        reranked: inputs.reranked,
+        top_full_doc_indices: inputs.top_full_doc_indices,
+        context_char_count: inputs.context_char_count,
+        max_context_chars: inputs.max_context_chars,
+        doc_chunk_limit: inputs.doc_chunk_limit,
+        doc_fetch_concurrency: inputs.doc_fetch_concurrency,
+        skip_decision: inputs.skip_decision,
+        is_rrf: inputs.is_rrf,
+        timing: inputs.timing,
+    })
+    .await?;
+    Ok(append_planned_full_docs(
+        AppendPlannedFullDocsInputs {
+            reranked: inputs.reranked,
+            top_full_doc_indices: inputs.top_full_doc_indices,
+            fetched_docs,
+            query_tokens: inputs.query_tokens,
+            separator: inputs.separator,
+            max_context_chars: inputs.max_context_chars,
+        },
+        context_entries,
+        context_char_count,
+        inserted_full_doc_urls,
+        source_idx,
+    ))
+}
+
+struct AppendTopChunksInputs<'a> {
+    reranked: &'a [ranking::AskCandidate],
+    top_chunk_indices: &'a [usize],
+    planned_full_doc_urls_set: &'a HashSet<String>,
+    separator: &'a str,
+    max_context_chars: usize,
+}
+
+fn append_top_chunks_phase(
+    inputs: AppendTopChunksInputs<'_>,
+    context_entries: &mut Vec<(f64, String)>,
+    context_char_count: &mut usize,
+    source_idx: &mut usize,
+) -> usize {
+    append_top_chunks_to_context(
+        inputs.reranked,
+        inputs.top_chunk_indices,
+        inputs.planned_full_doc_urls_set,
+        context_entries,
+        context_char_count,
+        source_idx,
+        inputs.separator,
+        inputs.max_context_chars,
+    )
+}
 
 struct AppendPlannedFullDocsInputs<'a> {
     reranked: &'a [ranking::AskCandidate],
@@ -253,6 +338,12 @@ async fn fetch_full_docs_for_context(inputs: FetchFullDocsInputs<'_>) -> Result<
         )
         .await?
     };
+    log_info(&format!(
+        "ask full-doc fetch complete planned={} fetched={} elapsed_ms={}",
+        inputs.top_full_doc_indices.len(),
+        fetched_docs.len(),
+        full_doc_fetch_started.elapsed().as_millis(),
+    ));
     inputs
         .timing
         .record(AskTimingSlot::FullDocFetch, full_doc_fetch_started);
@@ -406,52 +497,27 @@ fn renumber_source_header(entry: &str, display_id: usize) -> String {
     format!("{}S{}{}", &entry[..start + 1], display_id, &entry[end..])
 }
 
-/// Run the supplemental backfill pass when coverage is thin and budget allows.
-/// Extracted from `build_context_from_candidates` to keep that function under
-/// the monolith policy's per-function line limit.
-#[allow(clippy::too_many_arguments)]
-fn maybe_inject_supplemental(
-    reranked: &[ranking::AskCandidate],
-    inserted_full_doc_urls: &HashSet<String>,
-    min_supplemental_score: Option<f64>,
-    full_docs_selected: usize,
+struct ToBuiltContextInputs {
+    finalized: FinalizedAskContext,
     top_chunks_selected: usize,
-    backfill_limit: usize,
-    max_context_chars: usize,
-    separator: &str,
-    context_entries: &mut Vec<(f64, String)>,
-    context_char_count: &mut usize,
-    source_idx: &mut usize,
-) -> (Vec<usize>, usize) {
-    if !should_inject_supplemental(
-        *context_char_count,
-        max_context_chars,
-        full_docs_selected,
-        top_chunks_selected,
-    ) {
-        return (Vec::new(), 0);
+    full_docs_selected: usize,
+    supplemental_count: usize,
+    skip_decision: SkipDecision,
+}
+
+fn to_built_ask_context(inputs: ToBuiltContextInputs) -> BuiltAskContext {
+    BuiltAskContext {
+        context: inputs.finalized.context,
+        chunks_selected: inputs.top_chunks_selected,
+        full_docs_selected: inputs.full_docs_selected,
+        supplemental_count: inputs.supplemental_count,
+        context_elapsed_ms: inputs.finalized.context_elapsed_ms,
+        diagnostic_sources: inputs.finalized.diagnostic_sources,
+        full_doc_fetch_skipped: inputs.skip_decision.skip,
+        full_doc_fetch_skip_reason: inputs.skip_decision.reason,
+        explain_context: inputs.finalized.explain_context,
+        selection_decisions: inputs.finalized.selection_decisions,
     }
-    let supplemental_candidate_indices = collect_supplemental_candidate_indices(
-        reranked,
-        inserted_full_doc_urls,
-        min_supplemental_score,
-    );
-    let supplemental = ranking::select_diverse_candidates_from_indices(
-        reranked,
-        &supplemental_candidate_indices,
-        backfill_limit,
-        1,
-    );
-    let supplemental_count = append_supplemental_chunks(
-        reranked,
-        &supplemental,
-        context_entries,
-        context_char_count,
-        source_idx,
-        separator,
-        max_context_chars,
-    );
-    (supplemental, supplemental_count)
 }
 
 #[cfg(test)]

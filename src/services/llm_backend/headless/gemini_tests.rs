@@ -148,9 +148,13 @@ async fn gemini_headless_timeout_returns_error_for_hung_child() {
 
     let mut req = CompletionRequest::new("hello");
     req.backend = LlmBackendConfig {
+        kind: crate::services::llm_backend::LlmBackendKind::GeminiHeadless,
         gemini_cmd: cmd.display().to_string(),
         gemini_model: None,
         gemini_home: Some(dir.path().to_path_buf()),
+        openai_base_url: None,
+        openai_api_key: None,
+        openai_model: None,
         completion_concurrency: 1,
         completion_timeout_secs: 1,
         configured: true,

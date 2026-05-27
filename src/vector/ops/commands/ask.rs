@@ -20,9 +20,26 @@ pub(crate) use normalize::normalize_ask_answer;
 pub(crate) use timing::{AskTiming, AskTimingSlot};
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
-    let _ = cfg;
     let backend = llm_backend::LlmBackendConfig::from_config(cfg);
-    llm_backend::headless::gemini::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
+    match backend.kind {
+        llm_backend::LlmBackendKind::GeminiHeadless => {
+            llm_backend::headless::gemini::validate_config(&backend)
+                .map_err(|e| anyhow::anyhow!("{e}"))
+        }
+        llm_backend::LlmBackendKind::OpenAiCompat => {
+            backend
+                .openai_base_url
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| anyhow::anyhow!("AXON_OPENAI_BASE_URL is required for ask"))?;
+            backend
+                .openai_model
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| anyhow::anyhow!("AXON_OPENAI_MODEL is required for ask"))?;
+            Ok(())
+        }
+    }
 }
 
 pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json::Value> {
@@ -31,9 +48,16 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     let mut timing = AskTiming::new(diagnostics_enabled, ask_started);
 
     log_info(&format!(
-        "ask query_len={} collection={}",
+        "ask start query_len={} collection={} backend={:?} candidate_limit={} hybrid_candidates={} chunk_limit={} full_docs={} doc_chunk_limit={} max_context_chars={}",
         query.len(),
-        cfg.collection
+        cfg.collection,
+        cfg.llm_backend,
+        cfg.ask_candidate_limit,
+        cfg.ask_hybrid_candidates,
+        cfg.ask_chunk_limit,
+        cfg.ask_full_docs,
+        cfg.ask_doc_chunk_limit,
+        cfg.ask_max_context_chars,
     ));
     let ctx = match build_ask_context(cfg, query, &mut timing).await {
         Ok(ctx) => ctx,
@@ -42,12 +66,28 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         }
         Err(err) => return Err(err),
     };
+    log_info(&format!(
+        "ask context ready candidates={} reranked={} chunks={} full_docs={} supplemental={} context_chars={} retrieval_ms={} context_ms={}",
+        ctx.candidate_count,
+        ctx.reranked_count,
+        ctx.chunks_selected,
+        ctx.full_docs_selected,
+        ctx.supplemental_count,
+        ctx.context.len(),
+        ctx.retrieval_elapsed_ms,
+        ctx.context_elapsed_ms,
+    ));
     if cfg.ask_explain {
         let total_elapsed_ms = ask_started.elapsed().as_millis();
+        log_info(&format!(
+            "ask explain complete total_ms={total_elapsed_ms} context_chars={}",
+            ctx.context.len()
+        ));
         return Ok(serde_json::json!({
             "query": query,
             "answer": "",
             "session": serde_json::Value::Null,
+            "warnings": &ctx.warnings,
             "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
             "explain": ctx.explain,
             "timing_ms": build_timing_json(
@@ -62,6 +102,13 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
 
     validate_ask_llm_config(cfg)?;
     let context = ask_context_with_follow_up(cfg, &ctx.context);
+    log_info(&format!(
+        "ask llm starting backend={:?} model={} context_chars={} stream={}",
+        cfg.llm_backend,
+        llm_backend::configured_model_from_config(cfg).unwrap_or_else(|| "<default>".to_string()),
+        context.len(),
+        cfg.ask_stream,
+    ));
     let llm = output::ask_llm_answer(cfg, query, &context)
         .await
         .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
@@ -99,11 +146,18 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     }
 
     let total_elapsed_ms = ask_started.elapsed().as_millis();
+    log_info(&format!(
+        "ask complete answer_chars={} llm_ms={} total_ms={}",
+        answer.len(),
+        llm_total_ms,
+        total_elapsed_ms,
+    ));
 
     Ok(serde_json::json!({
         "query": query,
         "answer": answer,
         "session": serde_json::Value::Null,
+        "warnings": &ctx.warnings,
         "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
         "explain": serde_json::Value::Null,
         "timing_ms": build_timing_json(
@@ -213,6 +267,7 @@ fn history_only_ask_context(elapsed_ms: u128) -> AskContext {
         detected_complexity: "simple",
         resolved_full_docs: 0,
         full_docs_source: "history_only",
+        warnings: Vec::new(),
         explain: None,
     }
 }

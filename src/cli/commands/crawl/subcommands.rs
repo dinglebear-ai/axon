@@ -1,9 +1,10 @@
 use super::audit;
 use crate::cli::commands::common::{
-    filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
-    handle_job_recover, handle_job_status, handle_worker_mode, print_list_footer, truncate_chars,
+    handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_list_with_rows,
+    handle_job_recover, handle_job_status, handle_worker_mode,
 };
-use crate::cli::commands::job_contracts::{JobErrorsResponse, JobSummaryEntry};
+use crate::cli::commands::job_contracts::JobErrorsResponse;
+use crate::cli::commands::job_progress::crawl_list_progress_summary;
 use crate::core::config::Config;
 use crate::core::ui::{
     accent, confirm_destructive, muted, primary, status_text, symbol_for_status,
@@ -105,14 +106,6 @@ fn is_reclaimed_retry(job: &ServiceJob) -> bool {
         .as_deref()
         .map(str::trim_start)
         .is_some_and(|text| text == RECLAIMED_ERROR_TEXT)
-}
-
-fn reclaim_progress_suffix(job: &ServiceJob) -> &'static str {
-    if is_reclaimed_retry(job) {
-        " · reclaimed retry"
-    } else {
-        ""
-    }
 }
 
 fn elapsed_display(job: &ServiceJob) -> Option<String> {
@@ -378,124 +371,30 @@ pub(crate) fn render_status_subcommand(
     Ok(())
 }
 
-/// Returns a compact inline progress string for a crawl job list row.
-///
-/// - running:   "127 crawled · 43 docs"
-/// - completed: "342 docs · 5.2s"
-/// - failed:    first 60 chars of error_text
-/// - other:     None
-fn job_progress_summary(job: &ServiceJob) -> Option<String> {
-    match job.status.as_str() {
-        "running" => {
-            let metrics = job.result_json.as_ref()?;
-            let crawled = metrics
-                .get("pages_crawled")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let docs = metrics
-                .get("md_created")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            if crawled == 0 && docs == 0 {
-                return None;
-            }
-            let errors = metrics
-                .get("error_pages")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let error_suffix = if errors > 0 {
-                format!(" · {errors} errors")
-            } else {
-                String::new()
-            };
-            let reclaim_suffix = reclaim_progress_suffix(job);
-            if docs > 0 {
-                Some(format!(
-                    "{crawled} crawled · {docs} docs{error_suffix}{reclaim_suffix}"
-                ))
-            } else {
-                Some(format!("{crawled} crawled{error_suffix}{reclaim_suffix}"))
-            }
-        }
-        "completed" => {
-            let metrics = job.result_json.as_ref()?;
-            let docs = metrics
-                .get("md_created")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let elapsed_ms = metrics
-                .get("elapsed_ms")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let time = if elapsed_ms >= 1000 {
-                format!("{:.1}s", elapsed_ms as f64 / 1000.0)
-            } else {
-                format!("{elapsed_ms}ms")
-            };
-            Some(format!("{docs} docs · {time}"))
-        }
-        "failed" => {
-            let err = job.error_text.as_deref().unwrap_or("unknown error");
-            let truncated = if err.chars().count() > 60 {
-                format!("{}…", truncate_chars(err, 60))
-            } else {
-                err.to_string()
-            };
-            Some(truncated)
-        }
-        "pending" => is_reclaimed_retry(job).then(|| "reclaimed retry".to_string()),
-        _ => None,
-    }
-}
-
 pub(crate) fn render_list_subcommand(
     cfg: &Config,
     all_jobs: Vec<ServiceJob>,
     total: i64,
 ) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, all_jobs);
-    if cfg.json_output {
-        let entries: Vec<JobSummaryEntry> =
-            jobs.iter().map(JobSummaryEntry::from_service_job).collect();
-        let out = serde_json::json!({
-            "jobs": entries,
-            "total": total,
-            "limit": 50_i64,
-            "offset": 0_i64,
-            "truncated": total > 50,
-        });
-        println!("{}", serde_json::to_string_pretty(&out)?);
-    } else {
-        println!("{}", primary("Crawl Jobs"));
-        if jobs.is_empty() {
-            println!("  {}", muted("No crawl jobs found."));
-        } else {
-            for job in &jobs {
-                let progress = job_progress_summary(job);
-                if let Some(p) = progress {
-                    println!(
-                        "  {} {} {} {}  {}",
-                        symbol_for_status(&job.status),
-                        accent(&job.id.to_string()),
-                        status_text(&job.status),
-                        muted(job.url.as_deref().unwrap_or("")),
-                        muted(&p),
-                    );
-                } else {
-                    println!(
-                        "  {} {} {} {}",
-                        symbol_for_status(&job.status),
-                        accent(&job.id.to_string()),
-                        status_text(&job.status),
-                        muted(job.url.as_deref().unwrap_or("")),
-                    );
-                }
-            }
-        }
-
-        print_list_footer(jobs.len(), total, 50, 0);
-    }
-    Ok(())
+    let result = crate::services::types::JobListResult::new(all_jobs, total, 50, 0);
+    handle_job_list_with_rows(
+        cfg,
+        &result,
+        "Crawl",
+        Some("No crawl jobs found."),
+        &["", "ID", "Status", "URL", "Progress"],
+        |job| {
+            vec![
+                symbol_for_status(&job.status),
+                job.id.to_string(),
+                status_text(&job.status),
+                muted(job.url.as_deref().unwrap_or("")).to_string(),
+                crawl_list_progress_summary(job)
+                    .map(|p| muted(&p).to_string())
+                    .unwrap_or_default(),
+            ]
+        },
+    )
 }
 
 async fn handle_list_subcommand(

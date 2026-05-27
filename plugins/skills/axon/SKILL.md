@@ -55,7 +55,7 @@ Once per session, confirm the live action map and that services are healthy:
 { "action": "doctor" }
 ```
 
-`help` returns the full action/subaction map and current defaults — authoritative when names look wrong. `doctor` pings Qdrant, Chrome, Tavily, Gemini headless readiness, and the embedding service.
+`help` returns the full action/subaction map and current defaults — authoritative when names look wrong. `doctor` pings Qdrant, Chrome, Tavily, configured LLM backend readiness, and the embedding service.
 
 CLI equivalents: `axon doctor`. (No CLI `help` for the action map — use the MCP one.)
 

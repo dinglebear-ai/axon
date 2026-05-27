@@ -171,6 +171,16 @@ fn source_from_mcp_request_rejects_invalid_youtube_target() {
 }
 
 #[test]
+fn ingest_payload_uses_chunks_embedded_as_canonical_count() {
+    let payload = ingest_payload("github", Some(("repo", "nexu-io/open-design")), 43598);
+
+    assert_eq!(payload["source"], "github");
+    assert_eq!(payload["repo"], "nexu-io/open-design");
+    assert_eq!(payload["chunks_embedded"], 43598);
+    assert_eq!(payload["chunks"], 43598);
+}
+
+#[test]
 fn source_from_mcp_request_normalizes_supported_git_targets() {
     let cfg = Config::test_default();
 
