@@ -18,9 +18,23 @@ private val KEY_COLLECTION  = stringPreferencesKey("collection")
 const val DEFAULT_SERVER_URL = "https://axon.tootie.tv"
 const val DEFAULT_COLLECTION = "axon"
 
+/** Wraps a server URL string. Prevents accidental use of a bare token or collection name as a URL. */
+@JvmInline
+value class ServerUrl(val value: String) {
+    init { require(value.isNotBlank()) { "ServerUrl must not be blank" } }
+    override fun toString(): String = value
+}
+
+/** Wraps a bearer token. Redacts the value from toString so it cannot be accidentally logged. */
+@JvmInline
+value class ApiToken(val value: String) {
+    override fun toString(): String = if (value.isBlank()) "<no token>" else "ApiToken(***)"
+    fun isBlank(): Boolean = value.isBlank()
+}
+
 data class AxonSettings(
-    val serverUrl: String = DEFAULT_SERVER_URL,
-    val token: String = "",
+    val serverUrl: ServerUrl = ServerUrl(DEFAULT_SERVER_URL),
+    val token: ApiToken = ApiToken(""),
     val collection: String = DEFAULT_COLLECTION,
 )
 
@@ -28,16 +42,16 @@ class SettingsRepository(private val context: Context) {
 
     val settings: Flow<AxonSettings> = context.dataStore.data.map { prefs ->
         AxonSettings(
-            serverUrl  = prefs[KEY_SERVER_URL]  ?: DEFAULT_SERVER_URL,
-            token      = prefs[KEY_TOKEN]       ?: "",
-            collection = prefs[KEY_COLLECTION]  ?: DEFAULT_COLLECTION,
+            serverUrl  = ServerUrl(prefs[KEY_SERVER_URL]  ?: DEFAULT_SERVER_URL),
+            token      = ApiToken(prefs[KEY_TOKEN]        ?: ""),
+            collection = prefs[KEY_COLLECTION]            ?: DEFAULT_COLLECTION,
         )
     }
 
     suspend fun save(settings: AxonSettings) {
         context.dataStore.edit { prefs ->
-            prefs[KEY_SERVER_URL]  = settings.serverUrl
-            prefs[KEY_TOKEN]       = settings.token
+            prefs[KEY_SERVER_URL]  = settings.serverUrl.value
+            prefs[KEY_TOKEN]       = settings.token.value
             prefs[KEY_COLLECTION]  = settings.collection
         }
     }

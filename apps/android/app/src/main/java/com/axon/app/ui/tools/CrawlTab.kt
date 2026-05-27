@@ -123,6 +123,20 @@ fun CrawlTab(vm: ToolsViewModel) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        s.pagesCrawled?.let { pages ->
+                            Text(
+                                "Pages crawled: $pages",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        s.serverError?.let { errMsg ->
+                            Text(
+                                "Server error: $errMsg",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(4.dp))

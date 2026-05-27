@@ -23,6 +23,14 @@ import kotlinx.serialization.json.int
 @Stable data class ScrapeResultUi(val url: String, val markdown: String)
 @Stable data class MapResultUi(val url: String, val total: Long, val urls: List<String>)
 @Stable data class ResearchResultUi(val query: String, val summary: String?, val hits: List<ResearchHit>)
+/** Full crawl status including server-reported error and page count so callers can show actionable feedback. */
+@Stable data class CrawlStatusUi(
+    val jobId: String,
+    val status: String,
+    val pagesCrawled: Int?,
+    /** Non-null when the server reports a crawl failure reason. */
+    val serverError: String?,
+)
 
 class AxonRepository(
     private val client: AxonClient,
@@ -49,8 +57,9 @@ class AxonRepository(
     }
 
     suspend fun sources(limit: Int = 50, offset: Int = 0): Result<List<SourceEntryUi>> = withToken {
-        client.sources(SourcesRequest(limit = limit, offset = offset)).map { r ->
-            r.urls.mapNotNull { element ->
+        client.sources(SourcesRequest(limit = limit, offset = offset)).mapCatching { r ->
+            var parseFailures = 0
+            val entries = r.urls.mapNotNull { element ->
                 runCatching {
                     val arr = element.jsonArray
                     if (arr.size < 2) return@mapNotNull null
@@ -58,8 +67,22 @@ class AxonRepository(
                         url = arr[0].jsonPrimitive.content,
                         chunks = arr[1].jsonPrimitive.int,
                     )
-                }.getOrNull()
+                }.getOrElse {
+                    parseFailures++
+                    null
+                }
             }
+            // Surface a failure if the server returned entries but we decoded zero —
+            // this indicates an API contract change (e.g. shape changed from [[url, n]] to [{url, n}]).
+            if (entries.isEmpty() && r.urls.isNotEmpty()) {
+                error(
+                    "Failed to parse ${r.urls.size} source entries from the server response. " +
+                    "The server may be returning an unexpected format."
+                )
+            }
+            // Non-fatal: some entries failed to parse, but at least some succeeded.
+            // The caller sees partial results; a future improvement could expose `parseFailures`.
+            entries
         }
     }
 
@@ -89,17 +112,30 @@ class AxonRepository(
         client.crawlSubmit(CrawlRequest(urls = listOf(url), maxPages = maxPages)).map { it.jobId }
     }
 
-    suspend fun crawlStatus(jobId: String): Result<String> = withToken {
-        client.crawlStatus(jobId).map { it.status.ifBlank { "unknown" } }
+    suspend fun crawlStatus(jobId: String): Result<CrawlStatusUi> = withToken {
+        client.crawlStatus(jobId).map { r ->
+            CrawlStatusUi(
+                jobId = r.jobId.ifBlank { jobId },
+                status = r.status.ifBlank { "unknown" },
+                pagesCrawled = r.pagesCrawled,
+                serverError = r.error,
+            )
+        }
     }
 
-    suspend fun ping(): Boolean = client.healthz()
+    suspend fun ping(): Boolean = client.healthz().isSuccess
 
     // ── Ask history ───────────────────────────────────────────────────────────
 
-    suspend fun recordAskHistory(entry: AskHistoryEntry) {
-        askHistoryDao.insert(entry)
-    }
+    /**
+     * Persists an ask history entry. Returns true on success, false if the Room
+     * insert fails (e.g. disk full). The failure is non-fatal — the ask result
+     * was already shown — but callers should log a warning rather than silently
+     * swallowing it.
+     */
+    suspend fun recordAskHistory(entry: AskHistoryEntry): Boolean =
+        runCatching { askHistoryDao.insert(entry); true }
+            .getOrDefault(false)
 
     fun recentHistory(): Flow<List<AskHistoryEntry>> = askHistoryDao.recent()
 }

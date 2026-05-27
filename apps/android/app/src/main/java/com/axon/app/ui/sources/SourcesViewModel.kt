@@ -12,6 +12,9 @@ import kotlinx.coroutines.launch
 
 sealed interface SourcesUiState {
     object Loading : SourcesUiState
+    /** Server responded but no sources are indexed yet. */
+    object Empty : SourcesUiState
+    /** At least one source is indexed. [sources] is guaranteed non-empty. */
     data class Loaded(val sources: List<SourceEntryUi>, val total: Int) : SourcesUiState
     data class Error(val message: String) : SourcesUiState
 }
@@ -29,10 +32,14 @@ class SourcesViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = SourcesUiState.Loading
             container.axonRepository.sources(limit = 100).fold(
                 onSuccess = { list ->
-                    _uiState.value = SourcesUiState.Loaded(
-                        sources = list,
-                        total = list.sumOf { it.chunks },
-                    )
+                    _uiState.value = if (list.isEmpty()) {
+                        SourcesUiState.Empty
+                    } else {
+                        SourcesUiState.Loaded(
+                            sources = list,
+                            total = list.sumOf { it.chunks },
+                        )
+                    }
                 },
                 onFailure = { err -> _uiState.value = SourcesUiState.Error(err.message ?: "Error") },
             )
