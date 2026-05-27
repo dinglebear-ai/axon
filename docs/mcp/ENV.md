@@ -49,6 +49,10 @@ The MCP server reads existing Axon stack variables at startup:
 | `QDRANT_URL` | Vector search and retrieval |
 | `TEI_URL` | Embedding generation |
 | `AXON_HEADLESS_GEMINI_MODEL` | Model override for Gemini headless completions |
+| `AXON_LLM_BACKEND` | LLM backend selector: `gemini-headless` (default) or `openai-compat` |
+| `AXON_OPENAI_BASE_URL` | OpenAI-compatible `/v1` base URL when `AXON_LLM_BACKEND=openai-compat` |
+| `AXON_OPENAI_MODEL` | OpenAI-compatible model name |
+| `AXON_OPENAI_API_KEY` | Optional API key for OpenAI-compatible endpoints |
 | `TAVILY_API_KEY` | Web search and research |
 | `AXON_COLLECTION` | Default Qdrant collection |
 
