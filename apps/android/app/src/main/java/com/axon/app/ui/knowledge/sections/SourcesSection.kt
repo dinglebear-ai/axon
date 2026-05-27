@@ -37,9 +37,8 @@ fun SourcesSection(vm: KnowledgeViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
         is Resource.Error -> ErrorContent(message = s.message, onRetry = { vm.loadSources(force = true) })
-        is Resource.Ready<*> -> {
-            @Suppress("UNCHECKED_CAST")
-            val entries = (s as Resource.Ready<List<SourceEntryUi>>).value
+        is Resource.Ready -> {
+            val entries = s.value
             if (entries.isEmpty()) {
                 EmptyContent(
                     title = "No sources indexed",

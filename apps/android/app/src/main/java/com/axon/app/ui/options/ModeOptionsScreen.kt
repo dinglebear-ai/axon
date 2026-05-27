@@ -2,11 +2,8 @@ package com.axon.app.ui.options
 
 import android.app.Activity
 import android.view.WindowManager
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import com.axon.app.ui.operations.OperationMode
 import com.axon.app.ui.options.forms.AskOptionsForm
@@ -36,17 +33,15 @@ fun ModeOptionsScreen(mode: OperationMode) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        when (mode) {
-            OperationMode.Ask       -> AskOptionsForm()
-            OperationMode.Query     -> QueryOptionsForm()
-            OperationMode.Summarize -> SummarizeOptionsForm()
-            OperationMode.Research  -> ResearchOptionsForm()
-            OperationMode.Scrape    -> ScrapeOptionsForm()
-            OperationMode.Crawl     -> CrawlOptionsForm()
-            OperationMode.Search    -> SearchWebOptionsForm()
-            OperationMode.Map       -> MapOptionsForm()
-            OperationMode.Ingest    -> IngestOptionsForm()
-        }
+    when (mode) {
+        OperationMode.Ask       -> AskOptionsForm()
+        OperationMode.Query     -> QueryOptionsForm()
+        OperationMode.Summarize -> SummarizeOptionsForm()
+        OperationMode.Research  -> ResearchOptionsForm()
+        OperationMode.Scrape    -> ScrapeOptionsForm()
+        OperationMode.Crawl     -> CrawlOptionsForm()
+        OperationMode.Search    -> SearchWebOptionsForm()
+        OperationMode.Map       -> MapOptionsForm()
+        OperationMode.Ingest    -> IngestOptionsForm()
     }
 }

@@ -41,8 +41,9 @@ enum class IngestSource(val wire: String, val targetHostHint: String?) {
     fun validate(target: String): String? {
         if (target.isBlank()) return "Target is required"
         val hint = targetHostHint ?: return null
-        val host = runCatching { java.net.URL(target).host?.lowercase() }.getOrNull()
-            ?: return null // Non-URL forms (git@…) — let the server validate.
+        // Non-URL forms (git@host:owner/repo, ssh URIs, etc.) return null from
+        // UrlValidator and defer to server-side validation.
+        val host = com.axon.app.data.util.UrlValidator.hostOrNull(target) ?: return null
         val lcHint = hint.lowercase()
         return if (host == lcHint || host.endsWith(".$lcHint")) null
         else "Expected target host to be $hint"
