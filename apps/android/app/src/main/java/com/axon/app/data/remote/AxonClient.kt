@@ -222,7 +222,7 @@ class AxonClient(
         runCatching {
             client.newCall(builder.build()).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    error("HTTP ${resp.code}: ${resp.body?.string() ?: resp.message}")
+                    error("HTTP ${resp.code}: ${resp.body?.string()?.take(200) ?: resp.message}")
                 }
                 // Read body exactly once — use() closes the response, so the stream is single-pass.
                 json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
