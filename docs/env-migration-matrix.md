@@ -69,15 +69,19 @@ Generated: 2026-05-15 from source-derived inventory.
 | `GOOGLE_API_KEY` | keep-env | both | — | **yes** | runtime.rs |
 | `GOOGLE_APPLICATION_CREDENTIALS` | trusted-bootstrap | both | — | no | advanced.rs |
 
-### LLM / Gemini Headless
+### LLM / Completion Backends
 
 | Key | Class | Placement | TOML dest | Secret | Source |
 |-----|-------|-----------|-----------|--------|--------|
+| `AXON_LLM_BACKEND` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_CMD` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | keep-env | both | — | no | runtime.rs |
 | `AXON_LLM_COMPLETION_TIMEOUT_SECS` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_HOME` | trusted-bootstrap | both | — | no | advanced.rs |
+| `AXON_OPENAI_BASE_URL` | keep-env | both | — | no | runtime.rs |
+| `AXON_OPENAI_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_OPENAI_API_KEY` | keep-env | both | — | **yes** | runtime.rs |
 | `OPENAI_MODEL` | delete | not-runtime | — | no | migration.rs (DeleteOnMigration, removed in 3.0.0) |
 | `OPENAI_BASE_URL` | delete | not-runtime | — | no | migration.rs (DeleteOnMigration, removed in 3.0.0) |
 | `OPENAI_API_KEY` | delete | not-runtime | — | **yes** | migration.rs (DeleteOnMigration, removed in 3.0.0) |
