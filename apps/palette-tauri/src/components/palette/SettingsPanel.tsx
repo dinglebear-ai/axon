@@ -20,6 +20,10 @@ export function SettingsPanel({
   onClose,
   onSave,
 }: SettingsPanelProps) {
+  const updateConfig = <Key extends keyof PaletteConfig>(key: Key, value: PaletteConfig[Key]) => {
+    onChange({ ...draftConfig, [key]: value });
+  };
+
   return (
     <section className="settings-panel">
       <div className="settings-heading">
@@ -28,19 +32,19 @@ export function SettingsPanel({
       </div>
       <label>
         <span>Server</span>
-        <input value={draftConfig.serverUrl} onChange={(event) => onChange({ ...draftConfig, serverUrl: event.target.value })} />
+        <input value={draftConfig.serverUrl} onChange={(event) => updateConfig("serverUrl", event.target.value)} />
       </label>
       <label>
         <span>Token</span>
         <input
           type="password"
           value={draftConfig.token ?? ""}
-          onChange={(event) => onChange({ ...draftConfig, token: event.target.value || null })}
+          onChange={(event) => updateConfig("token", event.target.value || null)}
         />
       </label>
       <label>
         <span>Shortcut</span>
-        <select value={draftConfig.shortcut} onChange={(event) => onChange({ ...draftConfig, shortcut: event.target.value })}>
+        <select value={draftConfig.shortcut} onChange={(event) => updateConfig("shortcut", event.target.value)}>
           {shortcutOptions.map((shortcut) => (
             <option key={shortcut} value={shortcut}>
               {shortcut}
@@ -50,7 +54,7 @@ export function SettingsPanel({
       </label>
       <label>
         <span>Collection</span>
-        <input value={draftConfig.collection} onChange={(event) => onChange({ ...draftConfig, collection: event.target.value })} />
+        <input value={draftConfig.collection} onChange={(event) => updateConfig("collection", event.target.value)} />
       </label>
       <label>
         <span>Results</span>
@@ -59,12 +63,12 @@ export function SettingsPanel({
           min={1}
           max={50}
           value={draftConfig.resultLimit}
-          onChange={(event) => onChange({ ...draftConfig, resultLimit: Number(event.target.value) })}
+          onChange={(event) => updateConfig("resultLimit", Number(event.target.value))}
         />
       </label>
       <label>
         <span>Theme</span>
-        <select value={draftConfig.theme} onChange={(event) => onChange({ ...draftConfig, theme: event.target.value as PaletteConfig["theme"] })}>
+        <select value={draftConfig.theme} onChange={(event) => updateConfig("theme", event.target.value as PaletteConfig["theme"])}>
           <option value="system">System</option>
           <option value="dark">Dark</option>
           <option value="light">Light</option>
@@ -74,7 +78,7 @@ export function SettingsPanel({
         <input
           type="checkbox"
           checked={draftConfig.hideOnBlur}
-          onChange={(event) => onChange({ ...draftConfig, hideOnBlur: event.target.checked })}
+          onChange={(event) => updateConfig("hideOnBlur", event.target.checked)}
         />
         <span>Hide on blur</span>
       </label>

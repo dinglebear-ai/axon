@@ -78,7 +78,7 @@ where
     // The error type from streaming is `Box<dyn StdError>` (!Send). Collapse it
     // into Option<(String, Option<Instant>)> + Option<String> here so the !Send
     // error never crosses the await boundary that follows.
-    let (streamed_ok, streamed_err): (Option<(String, Option<Instant>)>, Option<String>) = {
+    let streamed = {
         let result = if let Some(mut callback) = on_delta.take() {
             let mut callback_answer = String::new();
             ask_llm_streaming_ttft_with_callback(
@@ -96,29 +96,29 @@ where
         } else {
             ask_llm_streaming_ttft(cfg, client, query, context, stream_to_stdout).await
         };
-        match result {
-            Ok(pair) => (Some(pair), None),
-            Err(e) => (None, Some(e.to_string())),
+        result.map_err(|e| e.to_string())
+    };
+
+    let streamed = match streamed {
+        Ok(streamed) => streamed,
+        Err(err_msg) => {
+            log_warn(&format!(
+                "ask: streaming failed, falling back to non-streaming: {err_msg}"
+            ));
+            let answer = ask_llm_non_streaming(cfg, client, query, context).await?;
+            log_info(&format!(
+                "ask llm fallback complete answer_chars={} elapsed_ms={}",
+                answer.len(),
+                llm_started.elapsed().as_millis(),
+            ));
+            return Ok(AskLlmCompletion::Fallback {
+                answer,
+                llm_total_ms: llm_started.elapsed().as_millis(),
+            });
         }
     };
 
-    if let Some(err_msg) = streamed_err {
-        log_warn(&format!(
-            "ask: streaming failed, falling back to non-streaming: {err_msg}"
-        ));
-        let answer = ask_llm_non_streaming(cfg, client, query, context).await?;
-        log_info(&format!(
-            "ask llm fallback complete answer_chars={} elapsed_ms={}",
-            answer.len(),
-            llm_started.elapsed().as_millis(),
-        ));
-        return Ok(AskLlmCompletion::Fallback {
-            answer,
-            llm_total_ms: llm_started.elapsed().as_millis(),
-        });
-    }
-
-    match streamed_ok.expect("streamed_err handled above") {
+    match streamed {
         (answer, Some(ttft_at)) => {
             let llm_total_ms = llm_started.elapsed().as_millis();
             log_info(&format!(

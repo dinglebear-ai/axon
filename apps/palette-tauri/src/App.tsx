@@ -6,7 +6,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/aurora/badge";
 import { OutputPanel } from "@/components/palette/OutputPanel";
@@ -51,7 +51,6 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
@@ -357,7 +356,6 @@ export default function App() {
           </button>
         )}
         <Input
-          ref={inputRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={onInputKeyDown}
