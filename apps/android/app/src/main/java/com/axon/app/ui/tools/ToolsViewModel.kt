@@ -144,4 +144,12 @@ class ToolsViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
     }
+
+    /**
+     * Resets the crawl state back to [CrawlUiState.Idle], allowing the user to start a new crawl
+     * after viewing a [CrawlUiState.StatusPolled] or [CrawlUiState.Error] result.
+     */
+    fun resetCrawl() {
+        _crawlState.value = CrawlUiState.Idle
+    }
 }

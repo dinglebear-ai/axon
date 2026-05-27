@@ -18,6 +18,25 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
+// ── Timeout constants ─────────────────────────────────────────────────────────
+
+private const val CONNECT_TIMEOUT_SECONDS = 10L
+private const val READ_TIMEOUT_SECONDS = 60L
+
+/** Synthesis endpoints (research) can take up to 5 min — matches AXON_LLM_COMPLETION_TIMEOUT_SECS. */
+private const val LONG_READ_TIMEOUT_SECONDS = 300L
+
+/**
+ * SSE stream read timeout. Must be long enough to span the full LLM generation window.
+ * OkHttp's read timeout fires when no *bytes* arrive for this duration — a slow token
+ * stream resets it on each chunk, so this is effectively an idle-stream timeout.
+ */
+private const val STREAM_READ_TIMEOUT_SECONDS = 300L
+
+private const val WRITE_TIMEOUT_SECONDS = 15L
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
 private val json = Json {
@@ -29,18 +48,30 @@ class AxonClient(
     baseUrl: String,
     token: String,
 ) {
-    // Thread-safe config: both baseUrl and token updated atomically together
+    // Thread-safe config: both baseUrl and token updated atomically together.
     private val config = AtomicReference(baseUrl.trimEnd('/') to token)
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
-    // Research synthesis can take up to 2 minutes — built from the shared client to reuse connection pool
+    // Research synthesis can take up to 5 minutes — built from the shared client to reuse the
+    // connection pool and dispatcher.
     private val httpLong = http.newBuilder()
-        .readTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(LONG_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+
+    /**
+     * Dedicated OkHttp client for SSE streaming. Uses a longer read timeout than [httpLong]
+     * because OkHttp's read timeout is an *idle* timeout — it fires when no bytes arrive for
+     * the configured duration, not after an absolute wall-clock budget. A slow LLM emitting
+     * tokens occasionally keeps the timeout rolling, so we give it the full synthesis window
+     * without sharing the connection-timeout semantics of [httpLong].
+     */
+    private val httpStream = http.newBuilder()
+        .readTimeout(STREAM_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     fun updateConfig(newBaseUrl: String, newToken: String) {
@@ -78,9 +109,13 @@ class AxonClient(
      * Streams the ask response via SSE from POST /v1/ask/stream.
      * Emits [AskStreamEvent.Meta] for phase indicators, [AskStreamEvent.Delta] for each LLM token,
      * [AskStreamEvent.Done] when synthesis completes, and [AskStreamEvent.Error] on failure.
+     *
+     * Uses the dedicated [httpStream] client so the SSE idle timeout does not interfere with
+     * regular request timeouts on [http].
      */
     fun askStream(request: AskRequest): Flow<AskStreamEvent> = flow {
         val bodyBytes = json.encodeToString(request).toRequestBody(JSON_MEDIA_TYPE)
+        // Capture atomically once — avoids a TOCTOU race if updateConfig() is called mid-stream.
         val (baseUrl, token) = config.get()
         val req = Request.Builder()
             .url("$baseUrl/v1/ask/stream")
@@ -88,7 +123,7 @@ class AxonClient(
             .header("Authorization", "Bearer $token")
             .header("x-api-key", token)
             .build()
-        val resp = httpLong.newCall(req).execute()
+        val resp = httpStream.newCall(req).execute()
         try {
             if (!resp.isSuccessful) {
                 val errBody = resp.body?.string()?.take(200) ?: resp.message
@@ -183,18 +218,31 @@ class AxonClient(
                 if (!resp.isSuccessful) {
                     error("HTTP ${resp.code}: ${resp.body?.string() ?: resp.message}")
                 }
+                // Read body exactly once — use() closes the response, so the stream is single-pass.
                 json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
             }
         }.onFailure { if (it is CancellationException) throw it }
 
+    /**
+     * Parses a single SSE data payload into an [AskStreamEvent].
+     *
+     * Wire format — each event is a JSON object with a `"type"` discriminator:
+     * - `{"type":"meta","phase":"retrieval"}` — a processing-phase indicator
+     * - `{"type":"delta","text":"..."}` — an incremental LLM token
+     * - `{"type":"done","answer":"..."}` — synthesis complete; full answer attached
+     * - `{"type":"error","message":"..."}` — server-side failure during streaming
+     *
+     * Returns null when the type is unknown or the payload is malformed, so the
+     * caller can skip unrecognised events without crashing the stream.
+     */
     private fun parseStreamEvent(data: String): AskStreamEvent? = runCatching {
         val obj = json.parseToJsonElement(data).jsonObject
         when (obj["type"]?.jsonPrimitive?.content) {
-            "meta" -> AskStreamEvent.Meta(phase = obj["phase"]?.jsonPrimitive?.content ?: "")
+            "meta"  -> AskStreamEvent.Meta(phase = obj["phase"]?.jsonPrimitive?.content ?: "")
             "delta" -> AskStreamEvent.Delta(text = obj["text"]?.jsonPrimitive?.content ?: "")
-            "done" -> AskStreamEvent.Done(answer = obj["answer"]?.jsonPrimitive?.content ?: "")
+            "done"  -> AskStreamEvent.Done(answer = obj["answer"]?.jsonPrimitive?.content ?: "")
             "error" -> AskStreamEvent.Error(message = obj["message"]?.jsonPrimitive?.content ?: "Unknown error")
-            else -> null
+            else    -> null
         }
     }.getOrNull()
 }

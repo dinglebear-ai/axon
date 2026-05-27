@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -46,14 +45,22 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _uiState.value = AskUiState.Loading
             val collection = container.settingsRepository.settings.first().collection
-            var accumulated = ""
+
+            // Use StringBuilder to avoid O(n²) string concatenation across delta events.
+            // Declared inside the launch block — concurrent ask() calls each get their own
+            // StringBuilder so they cannot interleave.
+            val accumulated = StringBuilder()
+
             runCatching {
                 container.axonRepository.askStream(query, collection = collection).collect { event ->
                     when (event) {
                         is AskStreamEvent.Meta -> { /* stay Loading during retrieval phase */ }
                         is AskStreamEvent.Delta -> {
-                            accumulated += event.text
-                            _uiState.value = AskUiState.Streaming(query = query, partialAnswer = accumulated)
+                            accumulated.append(event.text)
+                            _uiState.value = AskUiState.Streaming(
+                                query = query,
+                                partialAnswer = accumulated.toString(),
+                            )
                         }
                         is AskStreamEvent.Done -> {
                             val result = AskResultUi(query = query, answer = event.answer, timingMs = null)
@@ -71,15 +78,20 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }.onFailure { err ->
-                if (err !is CancellationException) {
-                    _uiState.value = AskUiState.Error(err.message ?: "Unknown error")
-                }
+                // Re-throw CancellationException so structured cancellation propagates correctly.
+                // Any other exception is surfaced as an error state.
+                if (err is CancellationException) throw err
+                _uiState.value = AskUiState.Error(err.message ?: "Unknown error")
             }
-            // Fallback: stream ended without a Done/Error event (truncated response)
+
+            // Fallback: stream ended without a Done/Error event (truncated SSE response).
+            // Note: _uiState.value is read after collect() returns. A concurrent ask() call is
+            // impossible here because the ask() function cancels any prior job via a single
+            // viewModelScope.launch — only one ask coroutine runs at a time per ViewModel instance.
             val current = _uiState.value
             if (current is AskUiState.Loading || current is AskUiState.Streaming) {
                 if (accumulated.isNotBlank()) {
-                    val result = AskResultUi(query = query, answer = accumulated, timingMs = null)
+                    val result = AskResultUi(query = query, answer = accumulated.toString(), timingMs = null)
                     container.axonRepository.recordAskHistory(AskHistoryEntry(query = result.query, answer = result.answer))
                     _uiState.value = AskUiState.Success(result = result)
                 } else {

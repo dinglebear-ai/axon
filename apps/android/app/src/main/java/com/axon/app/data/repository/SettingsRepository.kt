@@ -41,8 +41,12 @@ data class AxonSettings(
 class SettingsRepository(private val context: Context) {
 
     val settings: Flow<AxonSettings> = context.dataStore.data.map { prefs ->
+        // Guard against a blank stored value (e.g. a DataStore entry written as "" before
+        // validation was added). ServerUrl.init requires non-blank, so fall back to the default
+        // at the call site rather than letting the value class throw.
+        val rawUrl = prefs[KEY_SERVER_URL]?.takeIf { it.isNotBlank() } ?: DEFAULT_SERVER_URL
         AxonSettings(
-            serverUrl  = ServerUrl(prefs[KEY_SERVER_URL]  ?: DEFAULT_SERVER_URL),
+            serverUrl  = ServerUrl(rawUrl),
             token      = ApiToken(prefs[KEY_TOKEN]        ?: ""),
             collection = prefs[KEY_COLLECTION]            ?: DEFAULT_COLLECTION,
         )
