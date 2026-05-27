@@ -18,6 +18,7 @@ use super::{handlers, openapi_jobs};
         handlers::discovery::status,
         handlers::discovery::doctor,
         handlers::ask::v1_ask,
+        handlers::ask_stream::v1_ask_stream,
         handlers::rag::query,
         handlers::rag::retrieve,
         handlers::rag::evaluate,

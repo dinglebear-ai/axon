@@ -1,30 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  Activity,
-  CheckCircle2,
-  Copy,
-  ExternalLink,
-  Hash,
-  RotateCw,
   Search,
   Send,
   Settings,
-  SlidersHorizontal,
   X,
-  XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/aurora/badge";
-import { Button } from "@/components/ui/aurora/button";
+import { OutputPanel } from "@/components/palette/OutputPanel";
+import { SettingsPanel } from "@/components/palette/SettingsPanel";
 import { Input } from "@/components/ui/aurora/input";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
-import { Separator } from "@/components/ui/aurora/separator";
 import { Spinner } from "@/components/ui/aurora/spinner";
 import { StatusIndicator } from "@/components/ui/aurora/status-indicator";
 import {
   type PaletteConfig,
+  buildActionRequest,
+  createAxonClient,
   executeAction,
 } from "@/lib/axonClient";
 import {
@@ -33,26 +27,27 @@ import {
   acceptsDirectUrl,
   actionMatches,
 } from "@/lib/actions";
-import { formatPayload } from "@/lib/format";
+import { formatPayload, outputKindFor } from "@/lib/format";
 import {
-  actionHint,
-  asyncJobStart,
   argumentFor,
   argumentPlaceholder,
-  firstUrl,
   focusInput,
   hostLabel,
   looksLikeUrl,
-  outputSubtitle,
-  outputTitle,
   parseCommand,
-  type RunState,
-  runTone,
   validationMessage,
 } from "@/lib/paletteView";
+import type { RunState } from "@/lib/runState";
+
+type PaletteStreamEvent =
+  | { type: "started"; requestId: string; path: string }
+  | { type: "delta"; requestId: string; text: string }
+  | { type: "done"; requestId: string; answer?: string | null }
+  | { type: "error"; requestId: string; message: string };
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 const appWindow = getCurrentWindow();
+
 export default function App() {
   const [query, setQuery] = useState("");
   const [modeAction, setModeAction] = useState<PaletteAction | null>(null);
@@ -63,7 +58,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
       .then((nextConfig) => {
@@ -99,6 +94,63 @@ export default function App() {
     ];
     return () => {
       void Promise.all(unlisteners).then((items) => items.forEach((unlisten) => unlisten()));
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    const unlisten = appWindow.listen<PaletteStreamEvent>("palette://stream", (event) => {
+      if (disposed) return;
+      const payload = event.payload;
+      if (payload.type === "delta") {
+        setRun((current) =>
+          current.kind === "streaming" && current.requestId === payload.requestId
+            ? { ...current, text: current.text + payload.text }
+            : current,
+        );
+      } else if (payload.type === "done") {
+        setRun((current) =>
+          current.kind === "streaming" && current.requestId === payload.requestId
+            ? {
+                kind: "success",
+                title: "Ask question completed",
+                subtitle: current.subtitle,
+                text: payload.answer ?? current.text,
+                outputKind: current.outputKind,
+                result: {
+                  ok: true,
+                  status: 200,
+                  path: "/v1/ask/stream",
+                  method: "POST",
+                  payload: { answer: payload.answer ?? current.text },
+                },
+              }
+            : current,
+        );
+      } else if (payload.type === "error") {
+        setRun((current) =>
+          current.kind === "streaming" && current.requestId === payload.requestId
+            ? {
+                kind: "error",
+                title: "Ask question failed",
+                subtitle: "/v1/ask/stream",
+                text: payload.message,
+                outputKind: current.outputKind,
+                result: {
+                  ok: false,
+                  status: 0,
+                  path: "/v1/ask/stream",
+                  method: "POST",
+                  payload: { error: payload.message },
+                },
+              }
+            : current,
+        );
+      }
+    });
+    return () => {
+      disposed = true;
+      void unlisten.then((fn) => fn());
     };
   }, []);
 
@@ -159,7 +211,6 @@ export default function App() {
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
-  const inputState = validation && (modeAction || hasQuery) ? "warn" : undefined;
   const showOutput = run.kind !== "idle";
   const showContent = settingsOpen || showOutput || (!modeAction && hasQuery);
   const showActionPanel = !modeAction || settingsOpen;
@@ -179,27 +230,72 @@ export default function App() {
     void invoke("resize_palette", size);
   }, [showResultsLayout, showContent]);
 
+  const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
+
   async function submit(action: PaletteAction = active) {
-    if (!config || !action || run.kind === "running") return;
+    if (!client || !config || !action || run.kind === "running" || run.kind === "streaming") return;
     const argument = argumentFor(action, modeAction, parsed, query);
     const validation = validationMessage(action, argument);
     if (validation) return;
     const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
-    setRun({
-      kind: "running",
-      title: `Running ${action.label}`,
-      subtitle: commandLine,
-    });
-    try {
-      const result = await executeAction(action, argument, config);
-      const jobStart = asyncJobStart(result.payload);
+    if (action.subcommand === "ask") {
+      const requestId = newRequestId();
+      const request = buildActionRequest(client, action, argument, config);
       setRun({
-        kind: result.ok ? (jobStart ? "queued" : "success") : "error",
-        title: result.ok ? (jobStart ? `${action.label} ${jobStart.status}` : `${action.label} completed`) : `${action.label} failed`,
-        subtitle: jobStart
-          ? `${result.method} ${result.path} | HTTP ${result.status} | job ${jobStart.jobId}`
-          : `${result.method} ${result.path} | HTTP ${result.status}`,
+        kind: "streaming",
+        title: "Streaming Ask question",
+        subtitle: `${request.method} /v1/ask/stream`,
+        text: "",
+        outputKind: outputKindFor(action.subcommand),
+        requestId,
+      });
+      try {
+        await invoke("axon_http_stream_request", {
+          request: {
+            ...request,
+            requestId,
+            path: "/v1/ask/stream",
+            body: request.body,
+          },
+        });
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setRun((current) =>
+          current.kind === "streaming" && current.requestId === requestId
+            ? {
+                kind: "error",
+                title: `${action.label} stream failed`,
+                subtitle: `${request.method} /v1/ask/stream`,
+                text: message,
+                outputKind: outputKindFor(action.subcommand),
+                result: {
+                  ok: false,
+                  status: 0,
+                  path: "/v1/ask/stream",
+                  method: "POST",
+                  payload: { error: message },
+                },
+              }
+            : current,
+        );
+        return;
+      }
+    } else {
+      setRun({
+        kind: "running",
+        title: `Running ${action.label}`,
+        subtitle: commandLine,
+      });
+    }
+    try {
+      const result = await executeAction(client, action, argument, config);
+      setRun({
+        kind: result.ok ? "success" : "error",
+        title: `${action.label} ${result.ok ? "completed" : "failed"}`,
+        subtitle: `${result.method} ${result.path} | HTTP ${result.status}`,
         text: formatPayload(action.subcommand, result.payload),
+        outputKind: outputKindFor(action.subcommand),
         result,
       });
     } catch (err) {
@@ -208,6 +304,7 @@ export default function App() {
         title: `${action.label} failed`,
         subtitle: commandLine,
         text: err instanceof Error ? err.message : String(err),
+        outputKind: outputKindFor(action.subcommand),
         result: { ok: false, status: 0, path: "", method: "POST", payload: null },
       });
     }
@@ -256,235 +353,128 @@ export default function App() {
     }
   }
 
-  const outputText = "text" in run ? run.text : "";
-  const outputUrl = outputText ? firstUrl(outputText) : null;
+  const outputKind = "outputKind" in run ? run.outputKind : active ? outputKindFor(active.subcommand) : "code";
 
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}`}>
       {showContent && (
-        <header className="palette-titlebar" data-tauri-drag-region>
-          <div className="palette-brand" data-tauri-drag-region>
-            <span className="brand-dot" />
-            <span>Axon Palette</span>
-            <Badge tone={configError ? "error" : config ? "info" : "neutral"} shape="tag">
-              {config?.shortcut ?? "Loading"}
-            </Badge>
-          </div>
-          <div className="palette-status" data-tauri-drag-region>
-            {config ? (
-              <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
-            ) : configError ? (
-              <StatusIndicator tone="error" label="Config error" />
-            ) : (
-              <StatusIndicator tone="syncing" label="Loading config" />
-            )}
-            <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
-              <Settings size={14} />
-            </button>
-            <button className="titlebar-button" type="button" onClick={() => void invoke("hide_palette")} aria-label="Hide palette">
-              <X size={14} />
-            </button>
-          </div>
-        </header>
+      <header className="palette-titlebar" data-tauri-drag-region>
+        <div className="palette-brand" data-tauri-drag-region>
+          <span className="brand-dot" />
+          <span>Axon Palette</span>
+          <Badge tone={configError ? "error" : config ? "info" : "neutral"} shape="tag">
+            {config?.shortcut ?? "Loading"}
+          </Badge>
+        </div>
+        <div className="palette-status" data-tauri-drag-region>
+          {config ? (
+            <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
+          ) : configError ? (
+            <StatusIndicator tone="error" label="Config error" />
+          ) : (
+            <StatusIndicator tone="syncing" label="Loading config" />
+          )}
+          <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
+            <Settings size={14} />
+          </button>
+          <button className="titlebar-button" type="button" onClick={() => void invoke("hide_palette")} aria-label="Hide palette">
+            <X size={14} />
+          </button>
+        </div>
+      </header>
       )}
 
       <section className="command-bar">
-        <div className={`command-field${modeAction ? " command-field-mode" : ""}`}>
-          <Search className="command-icon" size={16} />
-          {modeAction && (
-            <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} title="Clear action mode">
-              <Hash size={12} />
-              <span>{modeAction.subcommand}</span>
-            </button>
-          )}
-          <Input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={onInputKeyDown}
-            placeholder={modeAction ? argumentPlaceholder(modeAction) : active?.example ?? "Search commands"}
-            className="command-input"
-            state={inputState}
-            clearable={Boolean(query)}
-            onClear={() => {
-              setQuery("");
-              if (!modeAction) setRun({ kind: "idle" });
-            }}
-            aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
-          />
-        </div>
+        <Search size={16} />
+        {modeAction && (
+          <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} title="Clear action mode">
+            {modeAction.subcommand}
+          </button>
+        )}
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={onInputKeyDown}
+          placeholder={modeAction ? argumentPlaceholder(modeAction) : active?.example ?? "Search commands"}
+          className="command-input"
+          aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
+        />
         <button
           className="command-submit"
           type="button"
           onClick={() => active && void submit(active)}
-          disabled={!config || !active || run.kind === "running" || Boolean(validation)}
+          disabled={!client || !active || run.kind === "running" || run.kind === "streaming" || Boolean(validation)}
           aria-label="Run selected action"
           title={validation || "Run selected action"}
         >
-          {run.kind === "running" ? <Spinner size="sm" tone="rose" /> : <Send size={15} />}
+          {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" tone="rose" /> : <Send size={15} />}
         </button>
       </section>
 
       {settingsOpen && draftConfig && (
-        <section className="settings-panel">
-          <div className="settings-heading">
-            <SlidersHorizontal size={15} />
-            <span>Settings</span>
-          </div>
-          <label>
-            <span>Server</span>
-            <input value={draftConfig.serverUrl} onChange={(event) => setDraftConfig({ ...draftConfig, serverUrl: event.target.value })} />
-          </label>
-          <label>
-            <span>Token</span>
-            <input
-              type="password"
-              value={draftConfig.token ?? ""}
-              onChange={(event) => setDraftConfig({ ...draftConfig, token: event.target.value || null })}
-            />
-          </label>
-          <label>
-            <span>Shortcut</span>
-            <select value={draftConfig.shortcut} onChange={(event) => setDraftConfig({ ...draftConfig, shortcut: event.target.value })}>
-              {shortcutOptions.map((shortcut) => (
-                <option key={shortcut} value={shortcut}>
-                  {shortcut}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Collection</span>
-            <input value={draftConfig.collection} onChange={(event) => setDraftConfig({ ...draftConfig, collection: event.target.value })} />
-          </label>
-          <label>
-            <span>Results</span>
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={draftConfig.resultLimit}
-              onChange={(event) => setDraftConfig({ ...draftConfig, resultLimit: Number(event.target.value) })}
-            />
-          </label>
-          <label>
-            <span>Theme</span>
-            <select value={draftConfig.theme} onChange={(event) => setDraftConfig({ ...draftConfig, theme: event.target.value as PaletteConfig["theme"] })}>
-              <option value="system">System</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </label>
-          <label className="settings-check">
-            <input
-              type="checkbox"
-              checked={draftConfig.hideOnBlur}
-              onChange={(event) => setDraftConfig({ ...draftConfig, hideOnBlur: event.target.checked })}
-            />
-            <span>Hide on blur</span>
-          </label>
-          <div className="settings-actions">
-            {configError && <span>{configError}</span>}
-            <Button size="sm" variant="neutral" onClick={() => setSettingsOpen(false)}>
-              Close
-            </Button>
-            <Button size="sm" variant="rose" onClick={() => void saveSettings()}>
-              Save
-            </Button>
-          </div>
-        </section>
+        <SettingsPanel
+          configError={configError}
+          draftConfig={draftConfig}
+          shortcutOptions={shortcutOptions}
+          onChange={setDraftConfig}
+          onClose={() => setSettingsOpen(false)}
+          onSave={() => void saveSettings()}
+        />
       )}
 
       {showContent && (
-        <main className={showResultsLayout ? (showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
-          {showActionPanel && (
-            <section className="action-panel">
-              <div className="panel-heading">
-                <span>Actions</span>
-                <span>{validation || `${filtered.length} matches`}</span>
-              </div>
-              <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
-                <div className="action-list">
-                  {filtered.map((action, index) => (
-                    <button
-                      key={action.subcommand}
-                      className={index === selected ? "action-row action-row-selected" : "action-row"}
-                      onMouseEnter={() => setSelected(index)}
-                      onClick={() => {
-                        setSelected(index);
-                        if (parsed.invoked && run.kind !== "running") {
-                          void submit(action);
-                        } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search) && run.kind !== "running") {
-                          void submit(action);
-                        } else {
-                          enterActionMode(action);
-                        }
-                      }}
-                      aria-current={index === selected ? "true" : undefined}
-                    >
-                      <span className="action-main">
-                        <span className="action-label">{action.label}</span>
-                        <span className="action-description">{action.description}</span>
-                      </span>
-                      <span className="action-meta">
-                        <span className="action-hint">{actionHint(action, parsed.search)}</span>
-                        <kbd>{index === selected ? "Enter" : "Tab"}</kbd>
-                        <Badge tone={action.tone} shape="tag">
-                          {action.subcommand}
-                        </Badge>
-                      </span>
-                    </button>
-                  ))}
-                  {!filtered.length && (
-                    <div className="empty-state">
-                      <Search size={16} />
-                      <span>No matching action</span>
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </section>
-          )}
+      <main className={showResultsLayout ? (showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
+        {showActionPanel && (
+        <section className="action-panel">
+          <div className="panel-heading">
+            <span>Actions</span>
+            <span>{validation || `${filtered.length} matches`}</span>
+          </div>
+          <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
+            <div className="action-list">
+              {filtered.map((action, index) => (
+                <button
+                  key={action.subcommand}
+                  className={index === selected ? "action-row action-row-selected" : "action-row"}
+                  onClick={() => {
+                    setSelected(index);
+                    if (parsed.invoked && run.kind !== "running" && run.kind !== "streaming") {
+                      void submit(action);
+                    } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search) && run.kind !== "running" && run.kind !== "streaming") {
+                      void submit(action);
+                    } else {
+                      enterActionMode(action);
+                    }
+                  }}
+                >
+                  <span className="action-main">
+                    <span className="action-label">{action.label}</span>
+                    <span className="action-description">{action.description}</span>
+                  </span>
+                  <span className="action-meta">
+                    <kbd>Enter</kbd>
+                    <Badge tone={action.tone} shape="tag">
+                      {action.subcommand}
+                    </Badge>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+        </section>
+        )}
 
-          {showResultsLayout && (
-            <section className="output-panel">
-              <div className="panel-heading">
-                <span>Output</span>
-                <span className="output-tools">
-                  {"text" in run && (
-                    <>
-                      <button type="button" onClick={() => void copyOutput(run.text)} title="Copy output" aria-label="Copy output">
-                        <Copy size={14} />
-                      </button>
-                      <button type="button" onClick={() => active && void submit(active)} title="Retry" aria-label="Retry">
-                        <RotateCw size={14} />
-                      </button>
-                    </>
-                  )}
-                  {outputUrl && (
-                    <button type="button" onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")} title="Open first URL" aria-label="Open first URL">
-                      <ExternalLink size={14} />
-                    </button>
-                  )}
-                  <Badge tone={runTone(run)} shape="pill" dot={run.kind !== "idle"} pulse={run.kind === "running"}>
-                    {run.kind}
-                  </Badge>
-                  {run.kind === "running" ? <Spinner size="sm" /> : run.kind === "success" ? <CheckCircle2 size={15} /> : run.kind === "error" ? <XCircle size={15} /> : <Activity size={15} />}
-                </span>
-              </div>
-              <Separator />
-              <div className={`output-state output-${run.kind}`}>
-                <div className="output-title">{copied ? "Copied" : outputTitle(run)}</div>
-                <div className="output-subtitle">{outputSubtitle(run, active)}</div>
-                {"text" in run && (
-                  <pre className="output-body">
-                    <code>{run.text}</code>
-                  </pre>
-                )}
-              </div>
-            </section>
-          )}
-        </main>
+        {showResultsLayout && (
+          <OutputPanel
+            active={active}
+            copied={copied}
+            outputKind={outputKind}
+            run={run}
+            onCopy={(text) => void copyOutput(text)}
+            onRetry={() => active && void submit(active)}
+          />
+        )}
+      </main>
       )}
     </div>
   );
@@ -494,4 +484,8 @@ export default function App() {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   }
+}
+
+function newRequestId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }

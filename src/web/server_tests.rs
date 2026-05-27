@@ -113,6 +113,7 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
         ("GET", "/v1/status"),
         ("GET", "/v1/doctor"),
         ("POST", "/v1/ask"),
+        ("POST", "/v1/ask/stream"),
         ("POST", "/v1/query"),
         ("POST", "/v1/retrieve"),
         ("POST", "/v1/evaluate"),
@@ -235,6 +236,7 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
     for path in [
         "/v1/query",
         "/v1/ask",
+        "/v1/ask/stream",
         "/v1/crawl",
         "/v1/crawl/{id}",
         "/v1/embed",

@@ -1,5 +1,20 @@
 const SUMMARY_LIMIT = 10;
 
+export type OutputKind = "markdown" | "code";
+
+export function outputKindFor(subcommand: string): OutputKind {
+  switch (subcommand) {
+    case "ask":
+    case "scrape":
+    case "summarize":
+    case "research":
+    case "suggest":
+      return "markdown";
+    default:
+      return "code";
+  }
+}
+
 export function formatPayload(subcommand: string, payload: unknown): string {
   if (typeof payload === "string") {
     return payload;

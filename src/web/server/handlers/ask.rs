@@ -9,7 +9,7 @@ use std::sync::Arc;
 ///
 /// Keep these bounds in sync with `src/core/config/parse/tuning.rs` so
 /// in-process CLI and `/v1/ask` callers get the same retrieval behavior.
-fn apply_ask_overrides(req_cfg: &mut Config, req: &AskRequestBody) {
+pub(super) fn apply_ask_overrides(req_cfg: &mut Config, req: &AskRequestBody) {
     if let Some(c) = req.collection.as_ref() {
         req_cfg.collection = c.clone();
     }
