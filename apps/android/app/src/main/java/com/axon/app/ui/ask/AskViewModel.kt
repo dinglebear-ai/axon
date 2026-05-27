@@ -16,6 +16,25 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** A single completed Q/A turn kept in-VM for follow-up context injection. */
+data class AskTurn(val question: String, val answer: String)
+
+/** Maximum prior turns inlined into the next ask. Matches CLI's MAX_FOLLOW_UP_TURNS=6. */
+internal const val MAX_FOLLOW_UP_TURNS = 6
+
+/**
+ * Build the effective query for the server by prepending the last
+ * [MAX_FOLLOW_UP_TURNS] turns as "Q: …\nA: …" pairs.
+ *
+ * Mirrors the CLI's render in `src/cli/commands/ask/followup.rs::follow_up_query`.
+ */
+internal fun buildFollowUpQuery(prior: List<AskTurn>, question: String): String {
+    if (prior.isEmpty()) return question
+    val recent = prior.takeLast(MAX_FOLLOW_UP_TURNS)
+    val rendered = recent.joinToString("\n\n") { "Q: ${it.question}\nA: ${it.answer}" }
+    return "$rendered\n\n$question"
+}
+
 sealed interface AskUiState {
     object Idle : AskUiState
     /** Waiting for the first SSE event (retrieval phase). */
@@ -40,11 +59,25 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     val history = container.axonRepository.recentHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val _turns = MutableStateFlow<List<AskTurn>>(emptyList())
+    val turns: StateFlow<List<AskTurn>> = _turns.asStateFlow()
+
+    /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
+    fun clearFollowUp() { _turns.value = emptyList() }
+
+    private fun appendTurn(q: String, a: String) {
+        _turns.value = (_turns.value + AskTurn(q, a)).takeLast(MAX_FOLLOW_UP_TURNS)
+    }
+
     fun ask(query: String) {
         if (query.isBlank()) return
         viewModelScope.launch {
             _uiState.value = AskUiState.Loading
             val collection = container.settingsRepository.settings.first().collection
+
+            // Prepend prior turns into the wire query, but keep the raw `query` for UI/history
+            // so we don't nest prior context inside future turns.
+            val effective = buildFollowUpQuery(_turns.value, query)
 
             // Use StringBuilder to avoid O(n²) string concatenation across delta events.
             // Declared inside the launch block — concurrent ask() calls each get their own
@@ -52,7 +85,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             val accumulated = StringBuilder()
 
             runCatching {
-                container.axonRepository.askStream(query, collection = collection).collect { event ->
+                container.axonRepository.askStream(effective, collection = collection).collect { event ->
                     when (event) {
                         is AskStreamEvent.Meta -> { /* stay Loading during retrieval phase */ }
                         is AskStreamEvent.Delta -> {
@@ -71,6 +104,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                                 result = result,
                                 historyWarning = if (!saved) "Answer shown, but history could not be saved (storage may be full)." else null,
                             )
+                            appendTurn(q = query, a = event.answer)
                         }
                         is AskStreamEvent.Error -> {
                             _uiState.value = AskUiState.Error(event.message)
@@ -91,9 +125,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             val current = _uiState.value
             if (current is AskUiState.Loading || current is AskUiState.Streaming) {
                 if (accumulated.isNotBlank()) {
-                    val result = AskResultUi(query = query, answer = accumulated.toString(), timingMs = null)
+                    val finalAnswer = accumulated.toString()
+                    val result = AskResultUi(query = query, answer = finalAnswer, timingMs = null)
                     container.axonRepository.recordAskHistory(AskHistoryEntry(query = result.query, answer = result.answer))
                     _uiState.value = AskUiState.Success(result = result)
+                    appendTurn(q = query, a = finalAnswer)
                 } else {
                     _uiState.value = AskUiState.Error("No response received from server")
                 }

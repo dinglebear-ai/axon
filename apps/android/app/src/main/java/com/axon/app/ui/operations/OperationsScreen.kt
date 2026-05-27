@@ -6,14 +6,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.ui.ask.AskViewModel
 import com.axon.app.ui.nav.LocalModeOptionsCog
 
 /**
@@ -27,6 +30,17 @@ fun OperationsScreen(vm: OperationsViewModel = viewModel()) {
     val activeMode by vm.activeMode.collectAsStateWithLifecycle()
     var sheetVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    // R14: rememberSaveable so the prior-mode tracker survives rotation —
+    // OperationMode is an enum, supported natively by the default Saver.
+    val askVm: AskViewModel = viewModel()
+    var previousMode by rememberSaveable { mutableStateOf<OperationMode?>(null) }
+    LaunchedEffect(activeMode) {
+        if (previousMode == OperationMode.Ask && activeMode != OperationMode.Ask) {
+            askVm.clearFollowUp()
+        }
+        previousMode = activeMode
+    }
 
     // Mode-options cog handler — provided to every prompt input via CompositionLocal.
     // Wired to a Toast until the per-mode flag-form screen is built (axon_rust-ivjr).

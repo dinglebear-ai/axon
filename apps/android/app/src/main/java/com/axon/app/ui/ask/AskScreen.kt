@@ -166,6 +166,14 @@ fun AskScreen(vm: AskViewModel = viewModel()) {
         }
 
         AuroraSeparator()
+        val turns by vm.turns.collectAsStateWithLifecycle()
+        if (turns.isNotEmpty()) {
+            AuroraStatusIndicator(
+                tone = AuroraStatusTone.Automating,
+                label = "Follow-up · ${turns.size} prior turn${if (turns.size == 1) "" else "s"}",
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
         AuroraPromptInput(
             value = input,
             onValueChange = { input = it },
