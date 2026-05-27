@@ -108,30 +108,22 @@ class AxonClient(
     private inline fun <reified B, reified R> post(path: String, body: B): Result<R> =
         postWith(http, path, body)
 
-    private inline fun <reified B, reified R> postWith(client: OkHttpClient, path: String, body: B): Result<R> =
-        runCatching {
-            val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
-            val req = authRequest(
-                Request.Builder()
-                    .url("${baseUrl()}$path")
-                    .post(bodyBytes)
-            ).build()
-            client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    val msg = resp.body?.string() ?: resp.message
-                    error("HTTP ${resp.code}: $msg")
-                }
-                json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
-            }
-        }.onFailure { if (it is CancellationException) throw it }
+    private inline fun <reified B, reified R> postWith(client: OkHttpClient, path: String, body: B): Result<R> {
+        val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
+        val builder = authRequest(Request.Builder().url("${baseUrl()}$path").post(bodyBytes))
+        return execute(client, builder)
+    }
 
-    private inline fun <reified R> get(path: String): Result<R> =
+    private inline fun <reified R> get(path: String): Result<R> {
+        val builder = authRequest(Request.Builder().url("${baseUrl()}$path").get())
+        return execute(http, builder)
+    }
+
+    private inline fun <reified R> execute(client: OkHttpClient, builder: Request.Builder): Result<R> =
         runCatching {
-            val req = authRequest(Request.Builder().url("${baseUrl()}$path").get()).build()
-            http.newCall(req).execute().use { resp ->
+            client.newCall(builder.build()).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    val msg = resp.body?.string() ?: resp.message
-                    error("HTTP ${resp.code}: $msg")
+                    error("HTTP ${resp.code}: ${resp.body?.string() ?: resp.message}")
                 }
                 json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
             }

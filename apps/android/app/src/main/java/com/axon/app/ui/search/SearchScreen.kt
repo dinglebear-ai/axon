@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -25,12 +24,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.QueryHitUi
-import tv.tootie.aurora.components.AuroraCallout
-import tv.tootie.aurora.components.AuroraCalloutVariant
+import com.axon.app.ui.common.ErrorContent
+import com.axon.app.ui.common.LoadingContent
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
 import tv.tootie.aurora.components.AuroraPromptInput
-import tv.tootie.aurora.components.AuroraThinking
 
 @Composable
 fun SearchScreen(vm: SearchViewModel = viewModel()) {
@@ -45,16 +43,10 @@ fun SearchScreen(vm: SearchViewModel = viewModel()) {
         Text("Vector Search", style = MaterialTheme.typography.headlineMedium)
 
         when (val state = uiState) {
-            is SearchUiState.Loading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    AuroraThinking(label = "Searching vectors…")
-                }
-            }
+            is SearchUiState.Loading -> LoadingContent(
+                label = "Searching vectors…",
+                modifier = Modifier.weight(1f),
+            )
             is SearchUiState.Results -> {
                 if (state.hits.isEmpty()) {
                     Box(
@@ -75,12 +67,7 @@ fun SearchScreen(vm: SearchViewModel = viewModel()) {
                 }
             }
             is SearchUiState.Error -> {
-                AuroraCallout(
-                    title = "Error",
-                    message = state.message,
-                    variant = AuroraCalloutVariant.Error,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                ErrorContent(message = state.message)
                 Spacer(Modifier.weight(1f))
             }
             is SearchUiState.Idle -> Spacer(Modifier.weight(1f))

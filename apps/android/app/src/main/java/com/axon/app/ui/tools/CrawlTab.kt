@@ -1,7 +1,6 @@
 package com.axon.app.ui.tools
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,16 +18,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import tv.tootie.aurora.components.AuroraCallout
-import tv.tootie.aurora.components.AuroraCalloutVariant
+import com.axon.app.ui.common.ErrorContent
+import com.axon.app.ui.common.LoadingContent
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
-import tv.tootie.aurora.components.AuroraThinking
 
 @Composable
 fun CrawlTab(vm: ToolsViewModel) {
@@ -73,14 +70,10 @@ fun CrawlTab(vm: ToolsViewModel) {
         }
 
         when (val s = state) {
-            is CrawlUiState.Loading -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    AuroraThinking(label = "Submitting crawl job…")
-                }
-            }
+            is CrawlUiState.Loading -> LoadingContent(
+                label = "Submitting crawl job…",
+                modifier = Modifier.weight(1f),
+            )
 
             is CrawlUiState.Submitted -> {
                 AuroraCard(
@@ -143,12 +136,7 @@ fun CrawlTab(vm: ToolsViewModel) {
             }
 
             is CrawlUiState.Error -> {
-                AuroraCallout(
-                    title = "Error",
-                    message = s.message,
-                    variant = AuroraCalloutVariant.Error,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                ErrorContent(message = s.message)
                 Spacer(Modifier.weight(1f))
             }
 
