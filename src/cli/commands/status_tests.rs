@@ -590,8 +590,12 @@ fn ingest_progress_shows_task_phase_before_chunks_like_ingest_status() {
             "phase": "fetching_issues",
             "tasks_done": 2,
             "tasks_total": 5,
+            "chunks_embedded": 7249,
         })),
     );
     let summary = ingest_progress_summary(&job);
-    assert_eq!(summary.as_deref(), Some("fetching_issues (2 / 5 tasks)"));
+    assert_eq!(
+        summary.as_deref(),
+        Some("fetching_issues (2 / 5 tasks), 7249 chunks embedded")
+    );
 }
