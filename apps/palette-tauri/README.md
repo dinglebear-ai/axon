@@ -23,7 +23,7 @@ The app reads Axon connection settings from the environment first, then `~/.axon
 - `AXON_MCP_HTTP_TOKEN`
 - `AXON_COLLECTION`
 
-Runtime palette preferences are stored in the platform app config directory as `settings.json`. The settings panel can override the server URL, token, shortcut, collection, result limit, theme, and hide-on-blur behavior. Hide-on-blur is off by default so titlebar and resize interactions do not dismiss the palette unexpectedly.
+Runtime palette preferences are stored in the platform app config directory as `settings.json`. The settings panel can override the server URL, token, shortcut, collection, result limit, theme, and hide-on-blur behavior. Hide-on-blur is on by default so clicking outside the palette dismisses it.
 
 Aurora tokens/components are rooted in the installed registry output:
 

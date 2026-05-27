@@ -366,6 +366,7 @@ mod tests {
         let merged = merge_settings(PartialPaletteSettings::default(), defaults);
 
         assert_eq!(merged.collection, "docs");
+        assert!(merged.hide_on_blur);
     }
 
     #[test]
