@@ -7,13 +7,18 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 private val KEY_SERVER_URL  = stringPreferencesKey("server_url")
-private val KEY_TOKEN       = stringPreferencesKey("token")
 private val KEY_COLLECTION  = stringPreferencesKey("collection")
+// KEY_TOKEN is no longer the source of truth for the token — kept only so the
+// idempotent migration helper can find legacy plaintext copies and clear them.
+internal val LEGACY_KEY_TOKEN: Preferences.Key<String> = stringPreferencesKey("token")
 
 const val DEFAULT_SERVER_URL = "https://axon.tootie.tv"
 const val DEFAULT_COLLECTION = "axon"
@@ -38,25 +43,80 @@ data class AxonSettings(
     val collection: String = DEFAULT_COLLECTION,
 )
 
-class SettingsRepository(private val context: Context) {
+/**
+ * SettingsRepository — server URL and collection live in plaintext DataStore;
+ * the bearer token is delegated to [EncryptedTokenStore].
+ *
+ * To keep the [settings] flow reactive across token changes, this repository
+ * mirrors the encrypted token through a [MutableStateFlow] kept in sync by
+ * [save] / [clearToken]. Direct mutation of [EncryptedTokenStore] from other
+ * call sites will not propagate to observers — go through this repository.
+ */
+class SettingsRepository(
+    private val context: Context,
+    private val encrypted: EncryptedTokenStore = EncryptedTokenStore(context),
+) {
+    // Seed the mirror with whatever the encrypted store currently has. Subsequent
+    // writes via save()/clearToken() update both the store and this StateFlow.
+    private val tokenMirror = MutableStateFlow(encrypted.read().orEmpty())
 
-    val settings: Flow<AxonSettings> = context.dataStore.data.map { prefs ->
-        // Guard against a blank stored value (e.g. a DataStore entry written as "" before
-        // validation was added). ServerUrl.init requires non-blank, so fall back to the default
-        // at the call site rather than letting the value class throw.
-        val rawUrl = prefs[KEY_SERVER_URL]?.takeIf { it.isNotBlank() } ?: DEFAULT_SERVER_URL
-        AxonSettings(
-            serverUrl  = ServerUrl(rawUrl),
-            token      = ApiToken(prefs[KEY_TOKEN]        ?: ""),
-            collection = prefs[KEY_COLLECTION]            ?: DEFAULT_COLLECTION,
-        )
-    }
+    val settings: Flow<AxonSettings> = context.dataStore.data
+        .map { prefs ->
+            // Guard against a blank stored value (e.g. a DataStore entry written as "" before
+            // validation was added). ServerUrl.init requires non-blank, so fall back to the
+            // default at the call site rather than letting the value class throw.
+            val rawUrl = prefs[KEY_SERVER_URL]?.takeIf { it.isNotBlank() } ?: DEFAULT_SERVER_URL
+            val collection = prefs[KEY_COLLECTION] ?: DEFAULT_COLLECTION
+            rawUrl to collection
+        }
+        .combine(tokenMirror) { (rawUrl, collection), token ->
+            AxonSettings(
+                serverUrl  = ServerUrl(rawUrl),
+                token      = ApiToken(token),
+                collection = collection,
+            )
+        }
 
     suspend fun save(settings: AxonSettings) {
         context.dataStore.edit { prefs ->
             prefs[KEY_SERVER_URL]  = settings.serverUrl.value
-            prefs[KEY_TOKEN]       = settings.token.value
             prefs[KEY_COLLECTION]  = settings.collection
+            // Defensive: ensure any lingering legacy plaintext token entry is removed.
+            prefs.remove(LEGACY_KEY_TOKEN)
         }
+        if (settings.token.value.isBlank()) {
+            encrypted.clear()
+        } else {
+            encrypted.write(settings.token.value)
+        }
+        tokenMirror.value = settings.token.value
+    }
+
+    suspend fun clearToken() {
+        encrypted.clear()
+        tokenMirror.value = ""
+        context.dataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
+    }
+
+    /**
+     * Idempotent boot-time migration. Safe to call on every app start.
+     *
+     *  1. If the encrypted store already has a token, the migration is done —
+     *     defensively wipe any legacy plaintext copy and return.
+     *  2. Otherwise, if the plaintext DataStore has a non-blank token, move it
+     *     into the encrypted store and remove the plaintext entry.
+     *  3. If neither has a token, no-op.
+     */
+    suspend fun migrateTokenToEncrypted() {
+        if (encrypted.read() != null) {
+            context.dataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
+            tokenMirror.value = encrypted.read().orEmpty()
+            return
+        }
+        val plain = context.dataStore.data.first()[LEGACY_KEY_TOKEN]?.takeIf { it.isNotBlank() }
+            ?: return
+        encrypted.write(plain)
+        context.dataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
+        tokenMirror.value = plain
     }
 }
