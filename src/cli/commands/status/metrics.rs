@@ -1,109 +1,12 @@
 mod format;
-mod ingest;
 
 pub(crate) use format::{format_error, job_runtime_text};
 
-use crate::core::ui::{accent, metric, subtle, symbol_for_status};
 use serde_json::Value;
-
-#[allow(dead_code)]
-pub(super) fn section_symbol(statuses: &[&str]) -> String {
-    if statuses.iter().any(|s| matches!(*s, "failed" | "error")) {
-        symbol_for_status("failed")
-    } else if statuses
-        .iter()
-        .any(|s| matches!(*s, "pending" | "running" | "processing" | "scraping"))
-    {
-        symbol_for_status("pending")
-    } else {
-        symbol_for_status("completed")
-    }
-}
-
-#[allow(dead_code)]
-pub(super) fn extract_metrics_suffix(result_json: Option<&Value>, url_count: usize) -> String {
-    let sep = subtle(" | ");
-    let mut parts = vec![metric(url_count, "urls")];
-    if let Some(total_items) = result_json
-        .and_then(|r| r.get("total_items"))
-        .and_then(|v| v.as_u64())
-    {
-        parts.push(metric(total_items, "items"));
-    }
-    if let Some(pages) = result_json
-        .and_then(|r| r.get("pages_visited"))
-        .and_then(|v| v.as_u64())
-    {
-        parts.push(metric(pages, "pages"));
-    }
-    format!("{sep}{}", parts.join(&sep))
-}
-
-pub(crate) fn embed_metrics_suffix(status: &str, result_json: Option<&Value>) -> String {
-    let sep = subtle(" | ");
-    if matches!(status, "pending" | "running" | "processing") {
-        if let (Some(done), Some(total)) = (
-            result_json
-                .and_then(|r| r.get("docs_completed"))
-                .and_then(|v| v.as_u64()),
-            result_json
-                .and_then(|r| r.get("docs_total"))
-                .and_then(|v| v.as_u64()),
-        ) {
-            return format!(
-                "{sep}{}{}{} {}",
-                accent(&done.to_string()),
-                subtle("/"),
-                accent(&total.to_string()),
-                accent("docs")
-            );
-        }
-        return String::new();
-    }
-    let docs = result_json
-        .and_then(|r| r.get("docs_embedded"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let chunks = result_json
-        .and_then(|r| r.get("chunks_embedded"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    if docs == 0 && chunks == 0 {
-        return String::new();
-    }
-    format!(
-        "{sep}{}{sep}{}",
-        metric(docs, "docs"),
-        metric(chunks, "chunks")
-    )
-}
 
 /// Extract the `"collection"` string from a job's `config_json`, if present.
 pub(crate) fn collection_from_config(config_json: &Value) -> Option<&str> {
     config_json.get("collection").and_then(|v| v.as_str())
-}
-
-#[allow(dead_code)]
-pub(super) fn summarize_urls(urls_json: &Value) -> (String, usize) {
-    let urls = urls_json
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(ToOwned::to_owned))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let count = urls.len();
-    if count == 0 {
-        return ("(no targets)".to_string(), 0);
-    }
-    let first = urls[0].clone();
-    let label = if count > 1 {
-        format!("{first} (+{} more)", count - 1)
-    } else {
-        first
-    };
-    (label, count)
 }
 
 /// Extract crawl job UUID from an embed input path.

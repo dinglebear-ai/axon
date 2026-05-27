@@ -227,6 +227,7 @@ pub(crate) fn print_ask_human(cfg: &Config, query: &str, active_session: &str, r
             "  {} rerun with --json for the full explain trace",
             muted("Hint:")
         );
+        print_ask_warnings(result);
         return;
     }
 
@@ -248,9 +249,16 @@ pub(crate) fn print_ask_human(cfg: &Config, query: &str, active_session: &str, r
         result.timing_ms.total,
     );
     println!("  {} {}", muted("Session:"), active_session);
+    print_ask_warnings(result);
 
     if cfg.ask_diagnostics {
         print_diagnostics(&result.diagnostics);
+    }
+}
+
+fn print_ask_warnings(result: &AskResult) {
+    if !result.warnings.is_empty() {
+        println!("  {} {}", muted("Warnings:"), result.warnings.join(" | "));
     }
 }
 

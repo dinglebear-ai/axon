@@ -1,6 +1,6 @@
 # Axon
 
-Version: 4.7.0
+Version: 4.8.1
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -12,7 +12,8 @@ Supported production runtime:
 - Qdrant only for vector storage.
 - Hugging Face TEI only for embeddings.
 - `Qwen/Qwen3-Embedding-0.6B` as the production embedding model.
-- Gemini CLI only for LLM operations; the user must already be authenticated.
+- Gemini CLI is the default LLM synthesis path; OpenAI-compatible endpoints
+  such as llama.cpp are supported when configured with `AXON_LLM_BACKEND=openai-compat`.
 - Local NVIDIA RTX 4070 target with NVIDIA Container Toolkit.
 - Host CLI defaults to client/server mode against `http://127.0.0.1:8001`.
 - One shared config home: `~/.axon/.env`, `~/.axon/config.toml`, `~/.axon/jobs.db`, `~/.axon/output`, `~/.axon/logs`, `~/.axon/artifacts`, `~/.axon/screenshots`, `~/.axon/qdrant`, and `~/.axon/tei`.
@@ -21,7 +22,9 @@ Not supported in the production path:
 
 - systemd deployment of the Axon binary.
 - Postgres, Redis, RabbitMQ, AMQP, or external worker services.
-- OpenAI-compatible first-run LLM configuration.
+- OpenAI-compatible first-run LLM configuration. Configure
+  `AXON_LLM_BACKEND=openai-compat` manually after setup when using llama.cpp or
+  another OpenAI-compatible `/v1/chat/completions` endpoint.
 - Neo4j or graph retrieval.
 - Multiple competing `.env` or `config.toml` locations.
 
@@ -32,7 +35,8 @@ Prerequisites:
 - Linux x86_64.
 - Docker and Docker Compose.
 - NVIDIA driver, `nvidia-smi`, and NVIDIA Container Toolkit.
-- Gemini CLI installed and already authenticated.
+- Gemini CLI installed and already authenticated, unless using a configured
+  OpenAI-compatible endpoint for LLM synthesis.
 - `curl`, `sha256sum`, and `install`.
 
 One-line installer:
@@ -52,7 +56,7 @@ Useful installer controls:
 ```bash
 AXON_INSTALL_DRY_RUN=1 ./install.sh
 AXON_INSTALL_PREFIX=/opt/axon ./install.sh
-AXON_VERSION=v4.7.0 ./install.sh
+AXON_VERSION=v4.8.1 ./install.sh
 AXON_INSTALL_SKIP_SETUP=1 ./install.sh
 ```
 
@@ -95,9 +99,11 @@ axon setup targets  # list SSH aliases discovered from ~/.ssh/config (informatio
 For local bearer-token operation, no manual env values are required. `setup init`
 defaults to loopback MCP HTTP, writes `AXON_MCP_AUTH_MODE=bearer`, and generates
 `AXON_MCP_HTTP_TOKEN`. Optional features need credentials: Gemini auth under
-`~/.gemini` for LLM features, `TAVILY_API_KEY` for search/research,
-`GITHUB_TOKEN` for higher-rate GitHub ingest, and `REDDIT_CLIENT_ID` plus
-`REDDIT_CLIENT_SECRET` for Reddit ingest. OAuth mode also requires
+`~/.gemini` for default LLM features or `AXON_LLM_BACKEND=openai-compat` plus
+`AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL` for OpenAI-compatible synthesis,
+`TAVILY_API_KEY` for search/research, `GITHUB_TOKEN` for higher-rate GitHub
+ingest, and `REDDIT_CLIENT_ID` plus `REDDIT_CLIENT_SECRET` for Reddit ingest.
+OAuth mode also requires
 `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`,
 `AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`.
 
@@ -166,7 +172,9 @@ Keep in `.env`:
 - URLs: `AXON_SERVER_URL`, `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`.
 - Secrets: `AXON_MCP_HTTP_TOKEN`, `TAVILY_API_KEY`, `GITHUB_TOKEN`, Reddit credentials, OAuth credentials, `HF_TOKEN`.
 - Docker/runtime bootstrap: `AXON_HOME`, `AXON_DATA_DIR`, `AXON_IMAGE`, `AXON_MCP_HTTP_PUBLISH`, `TEI_HTTP_PORT`, GPU device values.
-- Gemini runtime pointers when needed: `AXON_HEADLESS_GEMINI_CMD`, `AXON_HEADLESS_GEMINI_HOME`.
+- LLM runtime pointers when needed: `AXON_HEADLESS_GEMINI_CMD`,
+  `AXON_HEADLESS_GEMINI_HOME`, `AXON_LLM_BACKEND`, `AXON_OPENAI_BASE_URL`,
+  `AXON_OPENAI_MODEL`, and optional `AXON_OPENAI_API_KEY`.
 
 Put in `config.toml`:
 
@@ -338,7 +346,9 @@ Common failures:
 
 - Docker missing: install Docker and Docker Compose, then rerun `axon setup`.
 - GPU unavailable: verify `nvidia-smi` and NVIDIA Container Toolkit.
-- Gemini unauthenticated: run Gemini CLI login outside Axon, then rerun setup.
+- Gemini unauthenticated: run Gemini CLI login outside Axon, then rerun setup,
+  or configure `AXON_LLM_BACKEND=openai-compat` for an OpenAI-compatible
+  endpoint.
 - TEI slow on first boot: model download/cache warmup is the cold path.
 - Auth failures: make sure Claude/plugin config uses the same token as `AXON_MCP_HTTP_TOKEN` in `~/.axon/.env`.
 

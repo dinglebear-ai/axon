@@ -44,11 +44,9 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if !cfg.quiet && !cfg.json_output {
         log_info(&format!("command=research query_len={}", query.len()));
         print_phase("\u{25d0}", "Researching", &query);
-        println!(
-            "  {} {}",
-            muted("provider=tavily model="),
-            cfg.headless_gemini_model
-        );
+        let model = crate::services::llm_backend::configured_model_from_config(cfg)
+            .unwrap_or_else(|| "(backend default)".to_string());
+        println!("  {} {}", muted("provider=tavily model="), model);
         println!();
     }
 

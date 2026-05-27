@@ -8,7 +8,7 @@ use crate::ingest::progress::PhaseReporter;
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::types::IngestResult;
 
-use super::map_ingest_result;
+use super::{ingest_payload, map_ingest_result};
 
 #[must_use = "ingest_gitea_with_progress returns a Result that should be handled"]
 pub async fn ingest_gitea_with_progress(
@@ -41,11 +41,11 @@ pub async fn ingest_gitea_with_progress(
         },
     )
     .await;
-    Ok(map_ingest_result(serde_json::json!({
-        "source": "gitea",
-        "target": target,
-        "chunks": chunks,
-    })))
+    Ok(map_ingest_result(ingest_payload(
+        "gitea",
+        Some(("target", target)),
+        chunks,
+    )))
 }
 
 #[must_use = "ingest_generic_git_with_progress returns a Result that should be handled"]
@@ -79,9 +79,9 @@ pub async fn ingest_generic_git_with_progress(
         },
     )
     .await;
-    Ok(map_ingest_result(serde_json::json!({
-        "source": "git",
-        "target": target,
-        "chunks": chunks,
-    })))
+    Ok(map_ingest_result(ingest_payload(
+        "git",
+        Some(("target", target)),
+        chunks,
+    )))
 }

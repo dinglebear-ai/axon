@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.2] - 2026-05-26
+
+### Changed
+
+- Palette CI now runs Tauri crate tests in addition to cargo check, and compose
+  smoke validates the Steamy build safety helper.
+
+### Fixed
+
+- Palette startup now falls back to default settings if persisted settings
+  cannot be read.
+- Palette GitHub ingest requests use the REST `repo` field expected by the
+  server.
+- Job config snapshots now reject invalid serialized LLM backend values instead
+  of silently falling back to the worker default.
+
+## [4.8.1] - 2026-05-26
+
+### Changed
+
+- Tauri palette command entry now has clearer mode state, clearable input, hover
+  selection, and run-state badges for output results.
+- New Qdrant collections now use scalar int8 quantization with
+  `always_ram = false` to reduce memory pressure while keeping the existing
+  quantile and HNSW defaults.
+
+### Fixed
+
+- Tauri palette action lists now show an explicit empty state and better action
+  hints when no command matches.
+
+## [4.8.0] - 2026-05-26
+
+### Added
+
+- OpenAI-compatible LLM backend support for llama.cpp-style endpoints via
+  `AXON_LLM_BACKEND=openai-compat`, `AXON_OPENAI_BASE_URL`,
+  `AXON_OPENAI_API_KEY`, and `AXON_OPENAI_MODEL`.
+- Tauri palette deployment helper `scripts/build-on-steamy.sh` for building a
+  Windows executable and placing it on Steamy's desktop.
+- Job progress presentation helpers and additional ask/query logging around
+  retrieval, context assembly, and LLM synthesis.
+
+### Changed
+
+- Tauri palette output formatting now unwraps REST payloads for search/research
+  results and renders human-readable summaries instead of raw JSON blobs.
+- Tauri palette layout keeps the input bar fixed while answers scroll, hides on
+  blur, and aligns action/status colors more closely with Aurora.
+- Ask/RAG defaults and logging are tuned for the local Gemma/llama.cpp path.
+
+### Fixed
+
+- Research responses shown in the Tauri palette now prefer summary/result text
+  over raw payload JSON.
+- Qdrant ask-path diagnostics now include enough stage detail to distinguish
+  retrieval stalls from LLM synthesis latency.
+
 ## [4.7.0] - 2026-05-25
 
 ### Added

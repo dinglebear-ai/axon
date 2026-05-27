@@ -186,7 +186,7 @@ fn ask_completion_request(
         .system_prompt(super::ask::synthesis_prompt::synthesis_prompt())
         .stream(stream)
         .backend_from_config(cfg);
-    apply_optional_model(req, &cfg.headless_gemini_model)
+    apply_optional_model(req, cfg)
 }
 
 fn baseline_completion_request(cfg: &Config, query: &str, stream: bool) -> CompletionRequest {
@@ -194,7 +194,7 @@ fn baseline_completion_request(cfg: &Config, query: &str, stream: bool) -> Compl
         .system_prompt(BASELINE_SYSTEM_PROMPT)
         .stream(stream)
         .backend_from_config(cfg);
-    apply_optional_model(req, &cfg.headless_gemini_model)
+    apply_optional_model(req, cfg)
 }
 
 fn judge_completion_request(
@@ -206,14 +206,13 @@ fn judge_completion_request(
         .system_prompt(judge_system_prompt())
         .stream(stream)
         .backend_from_config(cfg);
-    apply_optional_model(req, &cfg.headless_gemini_model)
+    apply_optional_model(req, cfg)
 }
 
-fn apply_optional_model(req: CompletionRequest, model: &str) -> CompletionRequest {
-    if model.trim().is_empty() {
-        req
-    } else {
-        req.model(model.to_string())
+fn apply_optional_model(req: CompletionRequest, cfg: &Config) -> CompletionRequest {
+    match llm_backend::configured_model_from_config(cfg) {
+        Some(model) => req.model(model),
+        None => req,
     }
 }
 

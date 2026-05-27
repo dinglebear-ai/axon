@@ -89,6 +89,50 @@ fn into_config_reads_gemini_env_settings() {
 
 #[allow(unsafe_code)]
 #[test]
+fn into_config_reads_openai_compat_env_settings() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(
+        &[
+            "AXON_LLM_BACKEND",
+            "AXON_OPENAI_BASE_URL",
+            "AXON_OPENAI_API_KEY",
+            "AXON_OPENAI_MODEL",
+        ],
+        || unsafe {
+            env::set_var("AXON_LLM_BACKEND", "openai-compat");
+            env::set_var("AXON_OPENAI_BASE_URL", "http://127.0.0.1:8080/v1");
+            env::set_var("AXON_OPENAI_API_KEY", "local-key");
+            env::set_var("AXON_OPENAI_MODEL", "gemma-4-e4b");
+            let cfg = into_config_via_args(&["status"]).expect("status config");
+            let backend = crate::services::llm_backend::LlmBackendConfig::from_config(&cfg);
+            assert_eq!(
+                backend.kind,
+                crate::services::llm_backend::LlmBackendKind::OpenAiCompat
+            );
+            assert_eq!(
+                backend.openai_base_url.as_deref(),
+                Some("http://127.0.0.1:8080/v1")
+            );
+            assert_eq!(backend.openai_api_key.as_deref(), Some("local-key"));
+            assert_eq!(backend.openai_model.as_deref(), Some("gemma-4-e4b"));
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn into_config_rejects_unknown_llm_backend() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(&["AXON_LLM_BACKEND"], || unsafe {
+        env::set_var("AXON_LLM_BACKEND", "llama");
+        let err = into_config_via_args(&["status"]).unwrap_err();
+        assert!(err.contains("AXON_LLM_BACKEND"));
+        assert!(err.contains("openai-compat"));
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn into_config_ignores_removed_openai_model_env() {
     let _guard = ENV_LOCK.lock().unwrap();
     with_env_saved(&["OPENAI_MODEL", "AXON_HEADLESS_GEMINI_MODEL"], || unsafe {
@@ -106,8 +150,9 @@ fn into_config_accepts_deprecated_ask_backend_toml() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     write!(f, "[ask]\nbackend = \"headless\"\nchunk-limit = 8\n").unwrap();
-    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+    with_env_saved(&["AXON_CONFIG_PATH", "AXON_ASK_CHUNK_LIMIT"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
+        env::remove_var("AXON_ASK_CHUNK_LIMIT");
         let cfg = into_config_via_args(&["status"]).expect("status config");
         assert_eq!(cfg.ask_chunk_limit, 8);
     });

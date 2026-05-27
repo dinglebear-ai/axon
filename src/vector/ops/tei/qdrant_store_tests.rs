@@ -683,7 +683,7 @@ async fn ensure_collection_sends_quantization_config_on_create() {
         .mock_async(|when, then| {
             when.method(PUT)
                 .path("/collections/quant_test_col")
-                .json_body_includes(r#"{"quantization_config":{"scalar":{"type":"int8","quantile":0.99,"always_ram":true}}}"#);
+                .json_body_includes(r#"{"quantization_config":{"scalar":{"type":"int8","quantile":0.99,"always_ram":false}}}"#);
             then.status(200)
                 .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
         })
@@ -731,7 +731,7 @@ async fn ensure_collection_sends_full_create_body_with_hnsw_and_quantization() {
             when.method(PUT)
                 .path("/collections/full_body_col")
                 .json_body_includes(r#"{"hnsw_config":{"m":32,"ef_construct":256}}"#)
-                .json_body_includes(r#"{"quantization_config":{"scalar":{"type":"int8","quantile":0.99,"always_ram":true}}}"#);
+                .json_body_includes(r#"{"quantization_config":{"scalar":{"type":"int8","quantile":0.99,"always_ram":false}}}"#);
             then.status(200)
                 .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
         })

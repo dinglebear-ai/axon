@@ -15,17 +15,31 @@ jobs:
           sparse-checkout: |
             config
             apps/web
+            scripts
 
       # Docker Compose v5 validates external networks exist even during config --quiet.
       # Create the network so both prod and dev compose files pass static validation.
       - name: Create Docker network
-        run: docker network create ${DOCKER_NETWORK:-axon} || true
+        run: docker network create "${DOCKER_NETWORK:-axon}" || true
 
       - name: Validate production compose
         run: docker compose --env-file .env.example -f docker-compose.prod.yaml config --quiet
 
       - name: Validate development compose
         run: docker compose --env-file .env.example -f docker-compose.yaml config --quiet
+
+      - name: Validate llama.cpp compose
+        run: docker compose -f docker-compose.llama.yaml config --quiet
+
+      - name: Validate helper shell scripts
+        run: |
+          bash -n scripts/build-on-steamy.sh scripts/test-ask-gemma4.sh scripts/test-build-on-steamy-safety.sh
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck scripts/build-on-steamy.sh scripts/test-ask-gemma4.sh scripts/test-build-on-steamy-safety.sh
+          else
+            echo "shellcheck not found; skipped optional shell lint" >&2
+          fi
+          scripts/test-build-on-steamy-safety.sh
 
   image-build-smoke:
     name: image-build-smoke

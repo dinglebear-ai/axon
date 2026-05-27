@@ -55,8 +55,8 @@
 # collection = "axon"
 
 [ask]
-# LLM synthesis uses Gemini headless. Override the Gemini model with
-# AXON_HEADLESS_GEMINI_MODEL in the env layer rather than config.toml.
+# LLM synthesis defaults to Gemini headless. Configure AXON_LLM_BACKEND and
+# backend-specific runtime variables in the env layer rather than config.toml.
 
 # Max context characters passed to the LLM (clamped 20_000–1_000_000).
 # Env: AXON_ASK_MAX_CONTEXT_CHARS

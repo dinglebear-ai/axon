@@ -398,7 +398,8 @@ fn render_search(cfg: &Config, result: &serde_json::Value) -> Result<(), Box<dyn
 }
 
 fn render_research(result: &serde_json::Value) -> Result<(), Box<dyn Error>> {
-    let payload: ResearchPayload = serde_json::from_value(result.clone())?;
+    let inner = result.get("payload").unwrap_or(result);
+    let payload: ResearchPayload = serde_json::from_value(inner.clone())?;
     crate::cli::commands::research::print_human_research_output(&payload, payload.timing_ms.total)
 }
 

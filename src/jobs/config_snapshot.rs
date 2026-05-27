@@ -1,16 +1,16 @@
 mod endpoint;
 mod errors;
+mod ingest;
 mod paths;
 
-use std::path::PathBuf;
+use std::{io, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::core::config::{Config, RenderMode, ScrapeFormat};
-use crate::jobs::ingest::IngestSource;
-
 use endpoint::endpoint_snapshot;
 use errors::{running_in_container, serde_json_error};
+pub(crate) use ingest::{decode_ingest_job_config, ingest_config_json};
 use paths::normalize_container_output_dir;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -19,14 +19,6 @@ struct ConfigSnapshotEnvelope {
     version: u8,
     config: ConfigSnapshot,
     prompt: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-struct IngestConfigSnapshotEnvelope {
-    version: u8,
-    source: Option<IngestSource>,
-    config: ConfigSnapshot,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -82,9 +74,12 @@ struct ConfigSnapshot {
     reddit_scrape_links: Option<bool>,
     tei_url: Option<String>,
     qdrant_url: Option<String>,
+    llm_backend: Option<String>,
     headless_gemini_model: Option<String>,
     headless_gemini_cmd: Option<String>,
     headless_gemini_home: Option<PathBuf>,
+    openai_base_url: Option<String>,
+    openai_model: Option<String>,
     llm_completion_concurrency: Option<usize>,
     llm_completion_timeout_secs: Option<u64>,
     ask_diagnostics: Option<bool>,
@@ -191,9 +186,12 @@ impl ConfigSnapshot {
             reddit_scrape_links: Some(cfg.reddit_scrape_links),
             tei_url: endpoints.tei_url,
             qdrant_url: endpoints.qdrant_url,
+            llm_backend: Some(llm_backend_snapshot(cfg.llm_backend)),
             headless_gemini_model: Some(cfg.headless_gemini_model.clone()),
             headless_gemini_cmd: Some(cfg.headless_gemini_cmd.clone()),
             headless_gemini_home: cfg.headless_gemini_home.clone(),
+            openai_base_url: endpoints.openai_base_url,
+            openai_model: Some(cfg.openai_model.clone()),
             llm_completion_concurrency: Some(cfg.llm_completion_concurrency),
             llm_completion_timeout_secs: Some(cfg.llm_completion_timeout_secs),
             ask_diagnostics: Some(cfg.ask_diagnostics),
@@ -241,11 +239,34 @@ impl ConfigSnapshot {
         })
     }
 
-    fn apply_to(self, cfg: &mut Config, exact_options: bool) {
+    fn apply_to(
+        self,
+        cfg: &mut Config,
+        exact_options: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut snapshot = self;
         let fallback_fields = std::mem::take(&mut snapshot.process_fallback_fields);
+        snapshot.apply_llm_backend(cfg)?;
         snapshot.apply_regular_fields(cfg);
         snapshot.apply_option_fields(cfg, exact_options, &fallback_fields);
+        Ok(())
+    }
+
+    fn apply_llm_backend(
+        &mut self,
+        cfg: &mut Config,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(value) = self.llm_backend.take() {
+            let kind =
+                crate::services::llm_backend::LlmBackendKind::parse(&value).map_err(|err| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("invalid llm_backend in config snapshot {value:?}: {err}"),
+                    )
+                })?;
+            cfg.llm_backend = kind;
+        }
+        Ok(())
     }
 
     fn apply_regular_fields(&mut self, cfg: &mut Config) {
@@ -298,6 +319,8 @@ impl ConfigSnapshot {
             qdrant_url,
             headless_gemini_model,
             headless_gemini_cmd,
+            openai_base_url,
+            openai_model,
             llm_completion_concurrency,
             llm_completion_timeout_secs,
             ask_diagnostics,
@@ -377,6 +400,7 @@ impl ConfigSnapshot {
 struct EndpointSnapshots {
     tei_url: Option<String>,
     qdrant_url: Option<String>,
+    openai_base_url: Option<String>,
 }
 
 fn snapshot_endpoints(
@@ -386,7 +410,21 @@ fn snapshot_endpoints(
     Ok(EndpointSnapshots {
         tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, process_fallback_fields)?,
         qdrant_url: endpoint_snapshot("qdrant_url", &cfg.qdrant_url, process_fallback_fields)?,
+        openai_base_url: endpoint_snapshot(
+            "openai_base_url",
+            &cfg.openai_base_url,
+            process_fallback_fields,
+        )?,
     })
+}
+
+fn llm_backend_snapshot(kind: crate::services::llm_backend::LlmBackendKind) -> String {
+    match kind {
+        crate::services::llm_backend::LlmBackendKind::GeminiHeadless => {
+            "gemini-headless".to_string()
+        }
+        crate::services::llm_backend::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
+    }
 }
 
 pub(crate) fn config_snapshot_json(cfg: &Config) -> Result<String, serde_json::Error> {
@@ -430,40 +468,12 @@ pub(crate) fn apply_config_snapshot_for_container(
     }
     let envelope = decode_config_envelope(config_json)?;
     let exact_options = envelope.version >= 2;
-    envelope.config.apply_to(&mut cfg, exact_options);
+    envelope.config.apply_to(&mut cfg, exact_options)?;
     if let Some(prompt) = envelope.prompt {
         cfg.query = Some(prompt);
     }
     normalize_container_output_dir(process_cfg, &mut cfg, in_container);
     Ok(cfg)
-}
-
-pub(crate) fn ingest_config_json(
-    cfg: &Config,
-    source: &IngestSource,
-) -> Result<String, serde_json::Error> {
-    serde_json::to_string(&IngestConfigSnapshotEnvelope {
-        version: 2,
-        source: Some(source.clone()),
-        config: ConfigSnapshot::from_config(cfg).map_err(serde_json_error)?,
-    })
-}
-
-pub(crate) fn decode_ingest_job_config(
-    process_cfg: &Config,
-    config_json: &str,
-) -> Result<(IngestSource, Config), Box<dyn std::error::Error + Send + Sync>> {
-    if let Ok(envelope) = serde_json::from_str::<IngestConfigSnapshotEnvelope>(config_json)
-        && let Some(source) = envelope.source
-    {
-        let mut cfg = process_cfg.clone();
-        let exact_options = envelope.version >= 2;
-        envelope.config.apply_to(&mut cfg, exact_options);
-        return Ok((source, cfg));
-    }
-
-    let source: IngestSource = serde_json::from_str(config_json)?;
-    Ok((source, process_cfg.clone()))
 }
 
 fn decode_config_envelope(
