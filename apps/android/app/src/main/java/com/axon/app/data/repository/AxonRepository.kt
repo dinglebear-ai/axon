@@ -56,8 +56,8 @@ class AxonRepository(
         }
     }
 
-    suspend fun sources(limit: Int = 50, offset: Int = 0): Result<List<SourceEntryUi>> = withToken {
-        client.sources(SourcesRequest(limit = limit, offset = offset)).mapCatching { r ->
+    suspend fun sources(limit: Int = 50, offset: Int = 0, collection: String? = null): Result<List<SourceEntryUi>> = withToken {
+        client.sources(SourcesRequest(limit = limit, offset = offset, collection = collection)).mapCatching { r ->
             var parseFailures = 0
             val entries = r.urls.mapNotNull { element ->
                 runCatching {
@@ -86,8 +86,8 @@ class AxonRepository(
         }
     }
 
-    suspend fun scrape(url: String): Result<ScrapeResultUi> = withToken {
-        client.scrape(ScrapeRequest(url = url)).map { r ->
+    suspend fun scrape(url: String, collection: String? = null): Result<ScrapeResultUi> = withToken {
+        client.scrape(ScrapeRequest(url = url, collection = collection)).map { r ->
             ScrapeResultUi(url = r.url, markdown = r.markdown)
         }
     }
@@ -108,8 +108,8 @@ class AxonRepository(
         }
     }
 
-    suspend fun crawlSubmit(url: String, maxPages: Int? = null): Result<String> = withToken {
-        client.crawlSubmit(CrawlRequest(urls = listOf(url), maxPages = maxPages)).map { it.jobId }
+    suspend fun crawlSubmit(url: String, maxPages: Int? = null, collection: String? = null): Result<String> = withToken {
+        client.crawlSubmit(CrawlRequest(urls = listOf(url), maxPages = maxPages, collection = collection)).map { it.jobId }
     }
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusUi> = withToken {

@@ -14,13 +14,21 @@ dependencyResolutionManagement {
 }
 
 // Pull in aurora library from sibling repo via composite build.
-// Path from worktree apps/android/ → up 5 levels → aurora-design-system/android
-// worktree: axon_rust/.worktrees/axon-android-app/apps/android
-// target:   workspace/aurora-design-system/android
-includeBuild("../../../../../aurora-design-system/android") {
-    dependencySubstitution {
-        substitute(module("tv.tootie.aurora:aurora")).using(project(":aurora"))
+// Supports both the main checkout (axon_rust/apps/android) and worktree
+// (.worktrees/<slug>/apps/android) locations by probing both candidate paths.
+val auroraRelPaths = listOf(
+    "../../../aurora-design-system/android",        // main checkout: axon_rust/apps/android
+    "../../../../../aurora-design-system/android",  // worktree: .worktrees/<slug>/apps/android
+)
+val auroraDir = auroraRelPaths.map { file(it) }.firstOrNull { it.isDirectory }
+if (auroraDir != null) {
+    includeBuild(auroraDir) {
+        dependencySubstitution {
+            substitute(module("tv.tootie.aurora:aurora")).using(project(":aurora"))
+        }
     }
+} else {
+    logger.warn("Aurora design system not found at expected paths; tv.tootie.aurora:aurora will resolve from Maven")
 }
 
 rootProject.name = "axon-android"

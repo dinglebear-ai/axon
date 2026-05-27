@@ -8,6 +8,7 @@ import com.axon.app.data.repository.SourceEntryUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 sealed interface SourcesUiState {
@@ -30,7 +31,8 @@ class SourcesViewModel(app: Application) : AndroidViewModel(app) {
     fun load() {
         viewModelScope.launch {
             _uiState.value = SourcesUiState.Loading
-            container.axonRepository.sources(limit = 100).fold(
+            val collection = container.settingsRepository.settings.first().collection
+            container.axonRepository.sources(limit = 100, collection = collection).fold(
                 onSuccess = { list ->
                     _uiState.value = if (list.isEmpty()) {
                         SourcesUiState.Empty
