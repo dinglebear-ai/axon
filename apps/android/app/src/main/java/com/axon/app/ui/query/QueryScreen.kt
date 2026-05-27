@@ -20,8 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.axon.app.ui.nav.DocumentRoute
-import com.axon.app.ui.nav.LocalAxonNavController
+import com.axon.app.ui.nav.LocalOpenDocument
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.QueryHitUi
@@ -106,9 +105,9 @@ fun QueryScreen(vm: QueryViewModel = viewModel()) {
 
 @Composable
 private fun QueryHitCard(hit: QueryHitUi) {
-    val navController = LocalAxonNavController.current
+    val openDocument = LocalOpenDocument.current
     AuroraCard(
-        onClick = { navController.navigate(DocumentRoute(url = hit.url)) },
+        onClick = { openDocument(hit.url) },
         modifier = Modifier.fillMaxWidth(),
         variant = AuroraCardVariant.Elevated,
     ) {

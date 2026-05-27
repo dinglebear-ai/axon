@@ -1,7 +1,6 @@
 package com.axon.app.ui.operations
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -67,30 +66,26 @@ private fun ModeTile(
         modifier = Modifier.fillMaxWidth(),
         variant = if (selected) AuroraCardVariant.Filled else AuroraCardVariant.Outlined,
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 16.dp),
-            contentAlignment = Alignment.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    imageVector = mode.icon,
-                    contentDescription = mode.label,
-                    tint = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
-                Text(
-                    mode.label,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
+            Icon(
+                imageVector = mode.icon,
+                contentDescription = mode.label,
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+            Text(
+                mode.label,
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
     }
 }

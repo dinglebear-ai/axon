@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,7 +53,6 @@ import tv.tootie.aurora.components.AuroraThinking
 /** Opens a saved document by URL via /v1/retrieve. */
 @Serializable data class DocumentRoute(val url: String)
 
-/** Page labels for the [HorizontalPager] inside [HomeShell]. */
 private val PAGES = listOf("Operations", "Jobs", "Knowledge", "System")
 
 @Composable
@@ -69,27 +69,26 @@ fun AxonNavGraph() {
     }
 
     val navController = rememberNavController()
-    CompositionLocalProvider(LocalAxonNavController provides navController) {
+    // Stable callback: same lambda identity across recompositions so deep children
+    // don't see a new function reference per render.
+    val openDocument = remember(navController) {
+        { url: String -> navController.navigate(DocumentRoute(url)); Unit }
+    }
+    CompositionLocalProvider(LocalOpenDocument provides openDocument) {
         NavHost(
             navController = navController,
             startDestination = HomeRoute,
         ) {
             composable<HomeRoute>     { HomeShell(navController) }
-            composable<SettingsRoute> { SettingsShell(navController) }
+            composable<SettingsRoute> { BackShell("Settings", navController::popBackStack) { SettingsScreen() } }
             composable<DocumentRoute> { entry ->
                 val route: DocumentRoute = entry.toRoute()
-                DocumentShell(navController = navController, url = route.url)
+                BackShell("Document", navController::popBackStack) { DocumentScreen(url = route.url) }
             }
         }
     }
 }
 
-/**
- * Top-level shell: a TopAppBar with the page title + settings gear, and a
- * HorizontalPager hosting the four primary pages. Swiping switches pages; the
- * bottom bar is intentionally absent — the FAB on the Operations page drives
- * mode selection there.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeShell(navController: NavController) {
@@ -120,6 +119,10 @@ private fun HomeShell(navController: NavController) {
     ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
+            // Don't eagerly compose neighbour pages — each one resolves its own
+            // ViewModel(s) on first composition and we want that deferred until
+            // the user actually swipes there.
+            beyondViewportPageCount = 0,
             modifier = Modifier
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
@@ -138,13 +141,17 @@ private fun HomeShell(navController: NavController) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsShell(navController: NavController) {
+private fun BackShell(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit,
+) {
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Settings", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(title, style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -158,34 +165,7 @@ private fun SettingsShell(navController: NavController) {
                 .imePadding()
                 .fillMaxSize(),
         ) {
-            SettingsScreen()
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DocumentShell(navController: NavController, url: String) {
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Document", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
-                .imePadding()
-                .fillMaxSize(),
-        ) {
-            DocumentScreen(url = url)
+            content()
         }
     }
 }
