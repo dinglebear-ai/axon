@@ -8,10 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,8 +21,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
+import tv.tootie.aurora.components.AuroraButton
+import tv.tootie.aurora.components.AuroraButtonVariant
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
+import tv.tootie.aurora.components.AuroraKbd
+import tv.tootie.aurora.components.AuroraSeparator
+import tv.tootie.aurora.components.AuroraStatusIndicator
+import tv.tootie.aurora.components.AuroraStatusTone
+import tv.tootie.aurora.components.AuroraTextField
 
 @Composable
 fun CrawlTab(vm: ToolsViewModel) {
@@ -39,26 +43,26 @@ fun CrawlTab(vm: ToolsViewModel) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(
+        AuroraTextField(
             value = urlInput,
             onValueChange = { urlInput = it },
-            label = { Text("Start URL") },
-            placeholder = { Text("https://example.com") },
+            label = "Start URL",
+            placeholder = "https://example.com",
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
 
-        OutlinedTextField(
+        AuroraTextField(
             value = maxPagesInput,
             onValueChange = { maxPagesInput = it.filter { c -> c.isDigit() } },
-            label = { Text("Max Pages (optional)") },
-            placeholder = { Text("e.g. 50") },
+            label = "Max Pages (optional)",
+            placeholder = "e.g. 50",
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Button(
+        AuroraButton(
             onClick = {
                 val maxPages = maxPagesInput.toIntOrNull()
                 vm.crawl(urlInput.trim(), maxPages)
@@ -84,20 +88,23 @@ fun CrawlTab(vm: ToolsViewModel) {
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(
-                            "Job submitted",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                        AuroraStatusIndicator(
+                            tone = AuroraStatusTone.Queued,
+                            label = "Job submitted",
                         )
+                        AuroraSeparator()
                         Text(
-                            "ID: ${s.jobId}",
-                            style = MaterialTheme.typography.bodySmall,
+                            "Job ID",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        AuroraKbd(key = s.jobId)
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                OutlinedButton(
+                AuroraButton(
                     onClick = { vm.pollCrawlStatus(s.jobId) },
+                    variant = AuroraButtonVariant.Outlined,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Check Status")
@@ -114,15 +121,21 @@ fun CrawlTab(vm: ToolsViewModel) {
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        val tone = when (s.status.lowercase()) {
+                            "completed", "done" -> AuroraStatusTone.Online
+                            "running", "processing" -> AuroraStatusTone.Syncing
+                            "failed", "error" -> AuroraStatusTone.Error
+                            "pending", "queued" -> AuroraStatusTone.Queued
+                            else -> AuroraStatusTone.Queued
+                        }
+                        AuroraStatusIndicator(tone = tone, label = s.status)
+                        AuroraSeparator()
                         Text(
-                            "Status: ${s.status}",
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Text(
-                            "Job ID: ${s.jobId}",
-                            style = MaterialTheme.typography.bodySmall,
+                            "Job ID",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        AuroraKbd(key = s.jobId)
                         s.pagesCrawled?.let { pages ->
                             Text(
                                 "Pages crawled: $pages",
@@ -140,8 +153,9 @@ fun CrawlTab(vm: ToolsViewModel) {
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                OutlinedButton(
+                AuroraButton(
                     onClick = { vm.pollCrawlStatus(s.jobId) },
+                    variant = AuroraButtonVariant.Outlined,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Refresh Status")
