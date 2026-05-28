@@ -38,7 +38,10 @@ import com.axon.app.data.local.Session
 import com.axon.app.ui.common.EmptyContent
 
 @Composable
-fun SessionsDrawerContent(vm: SessionsViewModel = viewModel()) {
+fun SessionsDrawerContent(
+    onSelect: (String) -> Unit = {},
+    vm: SessionsViewModel = viewModel(),
+) {
     val sessions by vm.sessions.collectAsStateWithLifecycle()
 
     if (sessions.isEmpty()) {
@@ -58,6 +61,7 @@ fun SessionsDrawerContent(vm: SessionsViewModel = viewModel()) {
         items(sessions, key = { it.id }) { session ->
             SessionRow(
                 session = session,
+                onSelect = { onSelect(session.id) },
                 onPin   = { vm.pin(session.id) },
                 onUnpin = { vm.unpin(session.id) },
                 onDelete = { vm.delete(session) },
@@ -69,6 +73,7 @@ fun SessionsDrawerContent(vm: SessionsViewModel = viewModel()) {
 @Composable
 private fun SessionRow(
     session: Session,
+    onSelect: () -> Unit,
     onPin: () -> Unit,
     onUnpin: () -> Unit,
     onDelete: () -> Unit,
@@ -80,7 +85,7 @@ private fun SessionRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(
-                    onClick = {},
+                    onClick = onSelect,
                     onLongClick = { showMenu = true },
                 )
                 .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -132,8 +137,8 @@ private fun SessionRow(
                 )
             }
             DropdownMenuItem(
-                text = { Text("Delete", color = Color(0xFFEF5350)) },
-                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFEF5350)) },
+                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                 onClick = { showMenu = false; onDelete() },
             )
         }
