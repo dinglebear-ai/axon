@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.axon.app.ui.sessions.SessionsDrawerContent
 
 @Composable
 fun DrawerSectionContent(
@@ -22,7 +23,7 @@ fun DrawerSectionContent(
     navController: NavController,
 ) {
     when (section) {
-        DrawerSection.Sessions   -> SessionsDrawerContentStub()
+        DrawerSection.Sessions   -> SessionsDrawerContent()
         DrawerSection.Jobs       -> JobsDrawerContentStub()
         DrawerSection.Knowledge  -> KnowledgeDrawerContentStub()
         DrawerSection.Management -> ManagementDrawerContentStub()
@@ -31,8 +32,6 @@ fun DrawerSectionContent(
 }
 
 // Stubs — replaced in later tasks
-@Composable private fun SessionsDrawerContentStub() =
-    DrawerStub(Icons.Rounded.History, "Sessions")
 @Composable private fun JobsDrawerContentStub() =
     DrawerStub(Icons.Rounded.Checklist, "Jobs")
 @Composable private fun KnowledgeDrawerContentStub() =
