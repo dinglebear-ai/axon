@@ -1,5 +1,6 @@
 package com.axon.app.ui.fab
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
@@ -33,21 +35,29 @@ fun FabLauncher(
     var state by remember { mutableStateOf<FabState>(FabState.Idle) }
     var fabCenter by remember { mutableStateOf(IntOffset.Zero) }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    BackHandler(enabled = state !is FabState.Idle) {
+        state = FabState.Idle
+    }
+
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val screenCenter = remember(maxWidth, maxHeight) {
+            with(density) { IntOffset((maxWidth / 2).roundToPx(), (maxHeight / 2).roundToPx()) }
+        }
+
         FabRing(
             visible = state is FabState.Ring,
-            fabCenterOffset = fabCenter,
+            fabCenterOffset = if (state is FabState.Ring) screenCenter else fabCenter,
             onOpSelected = { op -> state = FabState.Input(op) },
             onDismiss = { state = FabState.Idle },
         )
 
-        if (state is FabState.Input) {
-            val op = (state as FabState.Input).op
+        (state as? FabState.Input)?.let { input ->
             FabOpInputCard(
-                op = op,
-                onSubmit = { input ->
+                op = input.op,
+                onSubmit = { text ->
                     state = FabState.Idle
-                    onOpSubmit(op, input)
+                    onOpSubmit(input.op, text)
                 },
                 onDismiss = { state = FabState.Idle },
             )
