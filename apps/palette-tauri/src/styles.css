@@ -117,7 +117,7 @@ textarea {
 }
 
 .command-submit:disabled {
-  color: #1a3550;
+  color: var(--aurora-disabled-text);
   background: #0d1e2d;
   border-color: rgba(255, 255, 255, 0.07);
   box-shadow: none;
@@ -333,7 +333,7 @@ textarea {
 .panel-heading {
   justify-content: space-between;
   margin-bottom: 8px;
-  color: #1e3448;
+  color: var(--aurora-text-muted);
   font-size: var(--aurora-type-caption);
   font-weight: 700;
   text-transform: uppercase;
@@ -575,5 +575,4 @@ textarea {
   padding: 0 18px;
   background: #060e17;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-  color: #1e3448;
 }
