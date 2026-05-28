@@ -16,3 +16,6 @@ val LocalOpenDocument = compositionLocalOf<(url: String) -> Unit> {
 
 /** Top-level shell that hosts [RailScaffold] — the navigation rail + content pane. */
 @Serializable data object RailShellRoute
+
+/** Full-screen suggest list — accessible from the Knowledge drawer section. */
+@Serializable data object SuggestRoute
