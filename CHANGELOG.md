@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Android redesign specs** — added `docs/specs/android-redesign.md` and
   implementation plans for Android phase 3 completion and the full rail redesign.
 
+### Changed
+- style(palette): Crystalline visual design — darker near-black surfaces, cyan accent system replacing rose, ghost chip mode pill with × dismiss
 ## [4.12.2] - 2026-05-27
 
 ### Added
