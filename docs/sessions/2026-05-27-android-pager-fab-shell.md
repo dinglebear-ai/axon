@@ -1,191 +1,180 @@
 ---
-date: 2026-05-27 16:02:38 EST
+date: 2026-05-27 23:36:08 EST
 repo: git@github.com:jmagar/axon.git
-branch: main
-head: 9c539c2c
-agent: Claude (Opus 4.7 1M)
+branch: feat/android-pager-fab-shell
+head: e8f974d1
+plan: docs/plans/2026-05-27-android-phase2-stubbed-modes.md
+session id: fdfe625a-0b75-4367-9a45-ae0cf83c341d
+transcript: /home/jmagar/.claude/projects/-home-jmagar-workspace-axon-rust/fdfe625a-0b75-4367-9a45-ae0cf83c341d.jsonl
 working directory: /home/jmagar/workspace/axon_rust
-worktree: /home/jmagar/workspace/axon_rust
-pr: none
+pr: #142 feat(android): pager shell + FAB mode selector + in-app document view (https://github.com/jmagar/axon/pull/142)
+beads: axon_rust-ivjr.1 through axon_rust-ivjr.22, axon_rust-bhxf, axon_rust-mott
 ---
 
-# Android pager shell + FAB mode selector + Document view
+# Android pager + FAB shell — PR #142 code-review remediation + build-windows.sh rewrite
 
 ## User Request
 
-Restructure the Android app: remove the bottom navigation bar; add a FAB on the
-Operations page that switches between Axon operations (Ask, Summarize, Research,
-Query, Scrape, Crawl, Ingest, Search, Map); add three more swipe pages (Jobs,
-Knowledge, System). Settings cog must live on the top app bar of every page.
-Rename existing "Search" to "Query" (it always called `/v1/query`) and reserve
-"Search" for real web search. Tapping a Query hit must open the full document
-in-app via `/v1/retrieve` instead of opening the source URL in a browser.
+Continue implementing all 22 Android code-review beads from PR #142, then build the latest and quick-push, and merge back into main.
 
 ## Session Overview
 
-Shipped the skeleton: bottom bar removed; four-page `HorizontalPager` shell;
-top app bar with page-dot indicator + settings gear on every page; FAB-driven
-mode selector (`AuroraSheet` + grid of `AuroraCard` tiles); active mode persists
-in a `ViewModel`; existing screens reused as mode bodies. Renamed
-`ui/search/` → `ui/query/` and rebuilt the Query result card so taps open a new
-in-app `DocumentScreen` powered by `/v1/retrieve`. Compiles, unit tests pass,
-debug APK built and uploaded to gdrive.
+Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) across three commits (v4.12.0 → v4.12.2). Key work: FormKeys dependency-inversion (moved 9 `*FormKeys` objects from UI to data layer), bug fixes for CRLF injection in HeadersField, Job cancellation in DocumentViewModel, answer-text cap in AskViewModel, plus two new test suites (DocumentViewModelTest, SettingsViewModelTest). Also replaced the build-on-steamy.sh rsync-the-world pipeline with a lean build-windows.sh that cross-compiles locally on dookie and ships only the .exe via scp.
 
 ## Sequence of Events
 
-- Confirmed every operation already has a server endpoint by reading
-  `src/web/server/routing.rs`, `src/web/CLAUDE.md`, and the handler modules — no
-  new server routes required. Streaming exists only for `/v1/ask/stream`;
-  research/summarize have no streaming endpoint.
-- Audited Aurora Android components (`~/workspace/aurora-design-system/android/aurora/src/main/kotlin/tv/tootie/aurora/components/`); confirmed no FAB primitive — Material3 `ExtendedFloatingActionButton` is correct.
-- Built the Operations shell: `OperationMode` enum (9 modes with distinct
-  Material icons), `OperationsViewModel` (active mode state), `ModePickerSheet`
-  (Aurora-based grid), `OperationsScreen` (FAB + active-mode renderer),
-  `StubModeForm` for Summarize/Ingest/Search.
-- Renamed `ui/search/SearchScreen.kt` → `ui/query/QueryScreen.kt`, swapped class
-  names, "Vector Search" → "Vector Query".
-- Wrote `JobsScreen`/`KnowledgeScreen`/`SystemScreen` as Aurora-styled stubs.
-- Rewrote `AxonNavGraph.kt`: `Scaffold` + `CenterAlignedTopAppBar` + page dots +
-  settings gear → `SettingsRoute`; `HorizontalPager` hosting the four pages.
-- Compiled, fixed `ExperimentalMaterial3Api` opt-in for `AuroraSheet`, and
-  re-ran tests — green.
-- Added `/v1/retrieve` wire shapes (`RetrieveRequest`/`RetrieveResponse`) +
-  `AxonClient.retrieve()` + `AxonRepository.retrieve()` → `RetrieveResultUi`.
-- Added `LocalAxonNavController` `CompositionLocal` to avoid prop-drilling
-  through `OperationsScreen` → mode bodies.
-- Added `DocumentRoute(url)` + `DocumentShell` (with back arrow) +
-  `DocumentScreen`/`DocumentViewModel` (loads on first composition, renders
-  matched URL, chunk count, truncated/warning callouts, the assembled body,
-  and an outlined Aurora button to open the source URL in the browser).
-- Swapped `QueryHitCard`'s click from `LocalUriHandler.openUri(hit.url)` to
-  `navController.navigate(DocumentRoute(hit.url))`.
-- Fixed `AuroraCalloutVariant.Warning` → `Warn` (Aurora's enum is `Warn`).
-- `./gradlew :app:compileDebugKotlin` and `:app:testDebugUnitTest` both green.
-- `./gradlew :app:assembleDebug` produced `apps/android/app/build/outputs/apk/debug/app-debug.apk` (20.4 MiB).
-- Uploaded APK to `gdrive:axon-apks/axon-android-v4.8.2-20260527-1602.apk`.
+1. **FormKeys dependency inversion (ivjr.3, ivjr.4, ivjr.8, ivjr.9, ivjr.10, ivjr.11, ivjr.14, ivjr.15, ivjr.17)** — Moved 9 `*FormKeys` singleton objects from their respective `ui.options.forms.*` files into a new `data.repository.options` package. `ModeOptionsRepository` now imports only from the data layer. Each form file retains only an import, not the key definitions.
+
+2. **HeadersField CRLF injection fix (ivjr.2)** — `joinHeader()` strips `[\r\n ]` from both key and value before building the `Key: Value` string. Applied alongside the index-shift fix.
+
+3. **HeadersField `revealed` index-shift fix (ivjr.16)** — `onDelete` now rebuilds the `revealed` map shifting indices above the deleted row down by 1, preventing stale index mismatches after deletion.
+
+4. **AskViewModel answer-text cap (ivjr.5)** — `appendTurn()` caps stored answer text at 500 characters via `.take(500)` to prevent unbounded memory growth in follow-up turn history.
+
+5. **DocumentViewModel Job tracker (ivjr.7)** — Added `fetchJob: Job?` field; `load()` and `retry()` cancel the prior job before launching a new one, preventing overlapping concurrent fetches.
+
+6. **DocumentScreen SavedStateHandle migration comment (ivjr.12)** — Added a comment above `LaunchedEffect(url)` documenting the future migration path to `SavedStateHandle`.
+
+7. **AxonNavGraph URL encoding kdoc (ivjr.13)** — Expanded the DocumentRoute kdoc to document the percent-encoding requirement for URLs in the nav route.
+
+8. **SettingsViewModel ConnectionState rename (ivjr.18)** — Renamed local sealed class `ConnectionState` → `TestConnectionState` throughout to avoid shadowing the shared `ConnectionState` in the connection-status package.
+
+9. **ModeOptionsRepository caller-wins limit (ivjr.19)** — `apply(QueryRequest)` now uses `req.limit.takeIf { it != 10 } ?: limitOverride ?: req.limit` so an explicitly non-default caller-provided limit is never overwritten by a stored form value.
+
+10. **DocumentViewModelTest new test suite (ivjr.20)** — 6 stand-in tests covering load/retry/dedup/error/success/different-URL flows without Robolectric.
+
+11. **SettingsViewModelTest new test suite (ivjr.21)** — 5 stand-in tests covering save success/failure and testConnection Ok/http-warning/failure flows.
+
+12. **Code-review cleanup pass (v4.12.2)** — AxonClient, StringChunking, IngestScreen, SettingsScreen, SummarizeScreen, libs.versions.toml all received reviewer-requested cleanup (unused imports, null-safety, accessibility content descriptions, library version pins).
+
+13. **build-windows.sh rewrite** — Replaced build-on-steamy.sh (rsync entire repo → build → ship exe) with build-windows.sh (cross-compile locally on dookie via MinGW, scp only the .exe). Fixed operator-precedence bug in `repo_root()` function.
+
+14. **tauri.conf.json version sync** — Synced stuck-at-4.8.1 tauri.conf.json version to 4.12.2 along with Cargo.toml, package.json files.
 
 ## Key Findings
 
-- All operations the user listed are already served by routes registered in
-  `src/web/server/routing.rs:39-90` — including `/v1/ingest/*`, `/v1/summarize`,
-  `/v1/search`, `/v1/suggest`, `/v1/domains`, `/v1/stats`, `/v1/status`,
-  `/v1/doctor`. No new server endpoints required.
-- Only `/v1/ask/stream` exists for streaming
-  (`src/web/server/handlers/ask_stream.rs:54`); research and summarize have no
-  SSE endpoint server-side.
-- The CLI follow-up flow (`src/cli/commands/ask.rs:11` + `ask/followup.rs`) is
-  filesystem-local — there is no `session`/`follow_up` field on `/v1/ask`. Any
-  Android follow-up needs to be implemented client-side by inlining prior turns
-  into the next query.
-- `RetrieveResult` wire shape is fully defined in `src/services/types/service.rs:441-466`; assembled doc is the `content: String` field plus a chunk count and `matched_url`/truncation/warnings metadata.
-- Aurora Android library has no FAB primitive; the closest navigation surface
-  primitives are `AuroraTabs`, `AuroraSheet`, `AuroraToolbar`, and
-  `AuroraCommandPalette`. The mode picker uses `AuroraSheet` + `AuroraCard`
-  grid because the visual-tile UX doesn't match a search-driven command list.
-- `EmptyContent` in `ui/common/StateContent.kt:76-93` already wraps
-  `AuroraEmptyState`, so reusing it preserves Aurora styling without import
-  churn.
+- `build-on-steamy.sh` was rsyncing hundreds of MB of repo files to steamy just to build a ~28 MB .exe — dookie already had `x86_64-w64-mingw32-gcc` and the `x86_64-pc-windows-gnu` rustup target installed, making a full rsync completely unnecessary.
+- Bash operator precedence `A || B && C` parses as `(A || B) && C`, not `A || (B && C)`. The `repo_root()` fallback path in build-windows.sh had this bug causing `pwd` to always run and embed a newline in the path, which broke pnpm (`ENOENT: no such file or directory, lstat '...path\n'`). Fixed by grouping: `{ cd ... && pwd; }`.
+- `HeadersField.kt` — Edit tool string-matching failures when old_string contained Kotlin regex escape sequences (`\r`, `\n`). Fixed by using Write tool to rewrite the entire file.
+- `SummarizeOptionsForm.kt` — First edit attempt failed because old_string missed the `AuroraTextField` import line. Fixed after re-reading the file.
+- `tauri.conf.json` was stuck at v4.8.1 while the project had reached v4.12.x — version sync was needed before quick-push.
 
 ## Technical Decisions
 
-- **`HorizontalPager` + `TopAppBar` over a `BottomNavigation`/`NavigationRail`** — the user explicitly asked for swipe pages with no bottom bar; the top bar carries the settings gear instead.
-- **Active mode held in `OperationsViewModel`, not `rememberSaveable`** — it survives configuration changes and recompositions but resets when the activity is destroyed (no UX requirement for "last mode" persistence yet).
-- **Reused existing tab composables (`ScrapeTab`, `CrawlTab`, `MapTab`, `ResearchTab`) instead of cloning them.** Each takes a `ToolsViewModel`; `OperationsScreen` provides one shared instance so per-tab form state survives mode switches.
-- **`LocalAxonNavController` `CompositionLocal` instead of prop-drilling** — `QueryScreen` is two levels deep under the nav graph (via `OperationsScreen`); threading a lambda would have been noisier than a typed local. The local throws when unprovided so misuse fails loudly.
-- **`DocumentScreen` ViewModel uses an explicit `load(url)` method, not a constructor argument** — avoids writing a `SavedStateHandle` factory; calling `load` from a `LaunchedEffect(url)` keyed on the URL is enough.
-- **Reused `httpLong` client (300s read timeout) for `/v1/retrieve`** — assembled documents can be large enough that the 60s default risks tripping the read timeout on slow links.
-- **Kept the source-URL escape hatch on `DocumentScreen`** (outlined Aurora button) so users can still jump to the live page when they want to.
-- **Search/Summarize/Ingest get `StubModeForm` placeholders** rather than half-wired forms — guessing at request bodies would be sloppy when the shapes can be read from `client_contract.rs`. The full wiring is queued in `axon_rust-ivjr`.
+- **FormKeys in data layer, not UI layer**: The `ModeOptionsRepository` was importing from the UI package to read form keys. Moving key definitions to `data.repository.options` breaks the upward dependency and makes the repository truly independent of the UI layer.
+- **Stand-in test pattern for ViewModels**: Tests use plain Kotlin classes that mirror the ViewModel's state machine logic without Robolectric or instrumented test infrastructure. This keeps tests runnable on JVM without Android SDK setup.
+- **MinGW cross-compilation over rsync**: Building on the machine that already has all dependencies (dookie) and shipping only the ~28 MB artifact is strictly better than shipping the entire source tree (~hundreds of MB) to another machine to build there.
+- **`.take(500)` on ask answers**: Simple, zero-overhead cap that prevents unbounded growth in follow-up turn history without affecting the display path (answers are streamed and displayed in full; only the stored-for-context copy is capped).
 
-## Files Modified
+## Files Changed
 
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/operations/OperationMode.kt` — 9-mode enum with icons.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/operations/OperationsViewModel.kt` — active mode state.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/operations/ModePickerSheet.kt` — Aurora bottom sheet with mode tiles.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/operations/OperationsScreen.kt` — FAB host that renders the active mode's screen.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/operations/StubModeForm.kt` — placeholder body for not-yet-wired modes.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsScreen.kt` — page 1 stub.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/knowledge/KnowledgeScreen.kt` — page 2 stub.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/system/SystemScreen.kt` — page 3 stub.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/nav/AxonNav.kt` — `LocalAxonNavController` CompositionLocal.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/document/DocumentScreen.kt` — in-app document view.
-- **Created** `apps/android/app/src/main/java/com/axon/app/ui/document/DocumentViewModel.kt` — loads `/v1/retrieve` once per URL.
-- **Renamed** `ui/search/SearchScreen.kt` → `ui/query/QueryScreen.kt`; class/state renamed; title text updated.
-- **Renamed** `ui/search/SearchViewModel.kt` → `ui/query/QueryViewModel.kt`; class/state renamed.
-- **Rewrote** `ui/nav/AxonNavGraph.kt` — pager + top bar shell + `SettingsShell` + `DocumentShell`; `CompositionLocalProvider` for nav controller.
-- **Modified** `data/remote/AxonModels.kt` — added `RetrieveRequest` + `RetrieveResponse`.
-- **Modified** `data/remote/AxonClient.kt` — added `retrieve(...)` using the long-timeout client.
-- **Modified** `data/repository/AxonRepository.kt` — added `RetrieveResultUi` + `retrieve(...)`.
-- **Modified** `ui/query/QueryScreen.kt` — card click navigates to `DocumentRoute` instead of opening the URL.
+| Status | Path | Purpose |
+|--------|------|---------|
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/options/forms/MapOptionsForm.kt` | Removed inline `MapFormKeys` object; added import from data layer |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/options/forms/ResearchOptionsForm.kt` | Removed inline `ResearchFormKeys`; added import from data layer |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/options/forms/SearchWebOptionsForm.kt` | Removed inline `SearchWebFormKeys`; added import from data layer |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/options/forms/SummarizeOptionsForm.kt` | Removed inline `SummarizeFormKeys`; added import from data layer |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt` | CRLF injection fix in `joinHeader()`; `revealed` index-shift fix in `onDelete` |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/ask/AskViewModel.kt` | Cap stored answer text to 500 chars in `appendTurn()` |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/document/DocumentViewModel.kt` | Added `fetchJob: Job?` tracker; cancel-before-launch in `load()` and `retry()` |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/document/DocumentScreen.kt` | SavedStateHandle migration comment above `LaunchedEffect(url)` |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/nav/AxonNavGraph.kt` | DocumentRoute kdoc URL percent-encoding note |
+| modified | `apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsViewModel.kt` | Rename `ConnectionState` → `TestConnectionState` (replace_all) |
+| modified | `apps/android/app/src/main/java/com/axon/app/data/repository/ModeOptionsRepository.kt` | Caller-wins limit; added `_resetVersion` StateFlow + `resetVersion` public accessor |
+| created | `apps/android/app/src/test/java/com/axon/app/ui/document/DocumentViewModelTest.kt` | 6 stand-in tests for DocumentViewModel |
+| created | `apps/android/app/src/test/java/com/axon/app/ui/settings/SettingsViewModelTest.kt` | 5 stand-in tests for SettingsViewModel |
+| created | `scripts/build-windows.sh` | Cross-compile .exe on dookie, scp to steamy Desktop |
+| deleted | `scripts/build-on-steamy.sh` | Superseded by build-windows.sh (was rsyncing entire repo) |
+| modified | `apps/palette-tauri/src-tauri/tauri.conf.json` | Version sync 4.8.1 → 4.12.2 |
+| modified | `Cargo.toml` | Version 4.12.1 → 4.12.2 |
+| modified | `apps/palette-tauri/package.json` | Version sync to 4.12.2 |
+| modified | `apps/web/package.json` | Version sync to 4.12.2 |
+| modified | `CHANGELOG.md` | 4.12.2 release section added |
+
+## Beads Activity
+
+| Bead ID | Title | Action | Status |
+|---------|-------|--------|--------|
+| axon_rust-ivjr.1 | FormKeys: AskFormKeys | Closed | Closed |
+| axon_rust-ivjr.2 | HeadersField CRLF injection | Closed | Closed |
+| axon_rust-ivjr.3 | FormKeys: CrawlFormKeys | Closed | Closed |
+| axon_rust-ivjr.4 | FormKeys: IngestFormKeys | Closed | Closed |
+| axon_rust-ivjr.5 | AskViewModel answer-text cap | Closed | Closed |
+| axon_rust-ivjr.6 | ModeOptionsRepository resetKeys StateFlow | Closed | Closed |
+| axon_rust-ivjr.7 | DocumentViewModel job cancellation | Closed | Closed |
+| axon_rust-ivjr.8 | FormKeys: MapFormKeys | Closed | Closed |
+| axon_rust-ivjr.9 | FormKeys: QueryFormKeys | Closed | Closed |
+| axon_rust-ivjr.10 | FormKeys: ResearchFormKeys | Closed | Closed |
+| axon_rust-ivjr.11 | FormKeys: ScrapeFormKeys | Closed | Closed |
+| axon_rust-ivjr.12 | DocumentScreen SavedStateHandle migration comment | Closed | Closed |
+| axon_rust-ivjr.13 | AxonNavGraph URL encoding kdoc | Closed | Closed |
+| axon_rust-ivjr.14 | FormKeys: SearchWebFormKeys | Closed | Closed |
+| axon_rust-ivjr.15 | FormKeys: SummarizeFormKeys | Closed | Closed |
+| axon_rust-ivjr.16 | HeadersField revealed index-shift | Closed | Closed |
+| axon_rust-ivjr.17 | AskOptionsForm FormKeys import | Closed | Closed |
+| axon_rust-ivjr.18 | SettingsViewModel ConnectionState rename | Closed | Closed |
+| axon_rust-ivjr.19 | ModeOptionsRepository caller-wins limit | Closed | Closed |
+| axon_rust-ivjr.20 | DocumentViewModelTest | Closed | Closed |
+| axon_rust-ivjr.21 | SettingsViewModelTest | Closed | Closed |
+| axon_rust-ivjr.22 | Code-review cleanup pass | Closed | Closed |
+| axon_rust-bhxf | build-windows.sh (replace build-on-steamy.sh) | Closed | Closed |
+| axon_rust-mott | tauri.conf.json version sync | Closed | Closed |
+
+## Repository Maintenance
+
+**Plans**: `docs/plans/2026-05-27-android-phase2-stubbed-modes.md` is the active plan for this branch; it covers phase-2 stubbed mode screens not yet implemented. Left in place — not complete.
+
+**Beads**: All 22 ivjr child beads, bhxf, and mott were closed during this session. No orphaned or stale beads identified for this branch.
+
+**Worktrees**: `git worktree list` shows only the main worktree at `/home/jmagar/workspace/axon_rust`. No stale worktrees.
+
+**Branches**: `feat/android-pager-fab-shell` is the current active branch with PR #142 open. No other feature branches were created this session.
+
+**Stale docs**: `scripts/build-on-steamy.sh` was deleted and replaced by `scripts/build-windows.sh`. No other documentation contradicted by session changes was identified.
+
+## Tools and Skills Used
+
+- **Shell / Bash**: git status, git log, git add, git commit, git push, cargo check, scp; no issues observed
+- **File tools (Read, Write, Edit, Glob, Grep)**: Used for all Kotlin source edits; Edit tool failed on HeadersField.kt due to regex escape sequences in old_string — worked around via Write
+- **Skills**: `save-to-md` (this document), `quick-push` (staged and committed session changes)
+- **RTK**: Used as prefix for git/cargo commands for token savings
 
 ## Commands Executed
 
-- `./gradlew :app:compileDebugKotlin --no-daemon` — green after Aurora opt-in fix and `AuroraCalloutVariant.Warn` rename.
-- `./gradlew :app:testDebugUnitTest --no-daemon` — green.
-- `./gradlew :app:assembleDebug --no-daemon` — produced `app-debug.apk` (20.4 MiB).
-- `rclone copyto apps/android/app/build/outputs/apk/debug/app-debug.apk gdrive:axon-apks/axon-android-v4.8.2-20260527-1602.apk -P` — uploaded.
-- `bd create … --priority=2` and `bd update --claim` — tracked work as `axon_rust-ivjr`; spinoff `axon_rust-ywis` (closed).
+| Command | Result |
+|---------|--------|
+| `rtk git status` | Confirmed 8 modified files + 1 untracked (build-windows.sh) |
+| `rtk git log --oneline -5` | Confirmed HEAD at e8f974d1 (v4.12.2) |
+| `cargo check` | Updated Cargo.lock |
+| `git -C /home/jmagar/workspace/axon_rust status --short` | Confirmed D status on deleted session doc |
 
 ## Errors Encountered
 
-- **`AuroraSheet` experimental API** — `rememberModalBottomSheetState()` requires `@OptIn(ExperimentalMaterial3Api::class)` on the caller. Fixed by re-adding the opt-in marker to `ModePickerSheet`.
-- **`AuroraCalloutVariant.Warning` does not exist** — Aurora's enum is `Info, Success, Warn, Error, Neutral`. Fixed by switching all callsites to `Warn`.
+- **HeadersField.kt Edit failures**: Regex escape sequences (`\r`, `\n`) in Kotlin string literals caused Edit tool old_string matching to fail. Resolved by reading the file and using Write tool to rewrite the entire file.
+- **SummarizeOptionsForm.kt Edit failure**: First old_string missed the `AuroraTextField` import line. Resolved by re-reading the file and constructing the correct old_string.
+- **build-windows.sh operator precedence bug**: `repo_root()` used `git rev-parse ... || cd ... && pwd` which parsed as `(git rev-parse || cd) && pwd`. `pwd` always ran, embedding a newline in the path that caused pnpm ENOENT. Fixed by grouping the fallback: `{ cd ... && pwd; }`.
 
 ## Behavior Changes (Before/After)
 
-| Surface | Before | After |
-|---|---|---|
-| Navigation chrome | Bottom `NavigationBar` with 5 tabs | Top `CenterAlignedTopAppBar` with page-dot indicator + settings gear; swipeable `HorizontalPager` |
-| Operations entry | One screen per nav tab | One Operations page; FAB switches between 9 modes; active mode persists |
-| Search vs query | "Search" tab called `/v1/query` and was labelled "Vector Search" | Renamed to "Query" with "Vector Query" label; "Search" mode reserved for real web `/v1/search` (stubbed) |
-| Query result tap | Opened `hit.url` in external browser | Pushes `DocumentRoute(hit.url)` → in-app `DocumentScreen` rendering the full assembled document from `/v1/retrieve` |
-| Settings access | Bottom-bar tab | Gear icon on every page's top bar |
-
-## Verification Evidence
-
-| command | expected | actual | status |
-|---|---|---|---|
-| `./gradlew :app:compileDebugKotlin` | BUILD SUCCESSFUL | BUILD SUCCESSFUL in 11s | ✅ |
-| `./gradlew :app:testDebugUnitTest` | BUILD SUCCESSFUL | BUILD SUCCESSFUL in 10s | ✅ |
-| `./gradlew :app:assembleDebug` | apk emitted | `app-debug.apk` 20.4 MiB | ✅ |
-| `rclone copyto … gdrive:axon-apks/…` | 100% transferred | `Transferred: 1/1, 100%` | ✅ |
-| `grep -rn 'SearchViewModel\|SearchUiState\|ui.search' apps/android/app/src` | no matches | no matches | ✅ |
+| Area | Before | After |
+|------|--------|-------|
+| FormKeys location | Defined inline in 9 `ui.options.forms.*` files | Defined in `data.repository.options` package; UI files import only |
+| ModeOptionsRepository | No `resetVersion` StateFlow | Exposes `resetVersion: StateFlow<Int>` incremented on each `resetKeys()` call |
+| HeadersField | `joinHeader()` allowed CRLF in header key/value; `onDelete` left stale indices in `revealed` map | Strips `[\r\n ]` from key/value; shifts indices on delete |
+| AskViewModel follow-up turns | Stored full answer text (unbounded) | Caps stored answer to 500 chars |
+| DocumentViewModel | No job cancellation; concurrent loads possible | Cancels prior `fetchJob` before launching new one |
+| SettingsViewModel | Local `ConnectionState` sealed class shadows shared class | Renamed to `TestConnectionState` |
+| QueryRequest apply() | Form limit always applied, overwriting explicit caller values | Caller's non-default limit wins; form limit is fallback only |
+| Windows build pipeline | Rsync entire repo to steamy, build there, ship exe back | Cross-compile on dookie (MinGW), scp only the .exe |
 
 ## Risks and Rollback
 
-- Visual restructure of the entry-point nav graph touches every user flow. Rollback is a single `git revert` of the upcoming commit — no schema, no migrations, no shared state changed.
-- `/v1/retrieve` returns large bodies; the existing 300s `httpLong` timeout was reused, but slow tethered links could still trip it. The screen surfaces server errors clearly via `ErrorContent`.
-- `LocalAxonNavController` throws when read outside a provider — any new top-level Composable that hosts deep query-card-style links must be wrapped under `AxonNavGraph`'s provider.
-
-## Decisions Not Taken
-
-- **Persist active mode via DataStore** — rejected for the skeleton pass; resetting to Ask on cold start is acceptable and the UX requirement is not in scope.
-- **Top-bar `AuroraTabs` instead of dot indicator** — rejected; the swipe pages are equally weighted, and tabs would invite duplicate selection affordances (tap-to-switch + swipe).
-- **Per-mode ViewModel proliferation** — rejected; reused the existing `ToolsViewModel` for the four crawl/scrape/map/research modes so tab state survives.
-- **Wire Summarize/Ingest/real-Search now** — deferred; their request bodies are clearly typed in `src/services/client_contract.rs` and will be wired in the next pass without guessing.
-
-## References
-
-- `src/web/server/routing.rs:25-100` — full route tree.
-- `src/web/CLAUDE.md` — auth scope rules + services-first contract.
-- `src/services/types/service.rs:441-466` — `RetrieveResult` wire shape.
-- `src/services/client_contract.rs:117-148` — `RestRetrieveRequest`/`RestMapRequest`/`RestSuggestRequest`.
-- `~/workspace/aurora-design-system/android/aurora/src/main/kotlin/tv/tootie/aurora/components/` — Aurora Android component inventory.
-- Beads: `axon_rust-ivjr` (shell skeleton), `axon_rust-ywis` (document view, closed).
-
-## Open Questions
-
-- Should the mode-options screen (per-mode flag form, reachable via cog left of Send) write to per-mode DataStore preferences or pass values via the existing `Config` request fields only? — likely the latter, but confirm before implementing.
-- Should Ask mode's in-app follow-up state persist across activity recreation (Room) or stay in-VM only? — defaulting to in-VM for now unless the user asks otherwise.
+- **FormKeys move**: Pure package rename with no logic change. If the Android build fails, revert by moving key definitions back to the form files. Compiler enforces all import paths.
+- **build-windows.sh**: build-on-steamy.sh is committed history; `git show HEAD~:scripts/build-on-steamy.sh` recovers it if needed.
 
 ## Next Steps
 
-**Started but not completed (in this session's diff):**
-- None — every file in the diff is in a compiling, tested state.
-
-**Follow-on tasks not yet started (queued under `axon_rust-ivjr`):**
-1. Cog button left of Send → mode-options screen with per-mode flag forms; Crawl gets the full flag list the user specified; defaults loaded from server `Config` defaults.
-2. Ask mode: track turns in `AskViewModel`, inline prior Q/A into the next query (mirrors CLI's `followup::follow_up_query`).
-3. Kotlin client + repo + UI wiring for: `summarize`, `ingest`, real web `search`, `suggest`, `domains`, `stats`, `status`, `doctor`, `panel/stack`, `config`.
-4. Populate `JobsScreen` (via `/v1/status` + `/v1/{crawl,embed,extract,ingest}/list`), `KnowledgeScreen` (Suggest/Sources/Domains/Stats), and `SystemScreen` (Debug/Doctor/Smoke/Stack/Config) bodies once #3 lands.
-5. Server-side ask: consider adding `/v1/research/stream` and `/v1/summarize/stream` SSE endpoints so the Android client can stream those too (currently non-streaming).
+1. **Push current dirty state** — `git add . && git add -f -- docs/sessions/2026-05-27-android-pager-fab-shell.md && git commit -m "docs: save session log + version sync" && git push`
+2. **Merge to main** — `git checkout main && git pull --rebase && git merge --no-ff feat/android-pager-fab-shell && git push`
+3. **Phase-2 stubbed mode screens** — `docs/plans/2026-05-27-android-phase2-stubbed-modes.md` covers the remaining work to wire up the stub screens behind the pager/FAB shell
+4. **Android build verification** — Run `./gradlew assembleDebug` to confirm FormKeys package move compiles cleanly on Android toolchain
