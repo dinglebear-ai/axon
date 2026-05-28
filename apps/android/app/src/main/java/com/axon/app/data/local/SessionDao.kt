@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SessionDao {
-    @Query("SELECT * FROM sessions ORDER BY CASE WHEN pinned_at IS NULL THEN 1 ELSE 0 END, pinned_at DESC, updated_at DESC")
+    @Query("SELECT * FROM sessions ORDER BY CASE WHEN pinned_at IS NULL THEN 1 ELSE 0 END, updated_at DESC")
     fun allSessions(): Flow<List<Session>>
 
     @Query("SELECT * FROM sessions WHERE id = :id")
