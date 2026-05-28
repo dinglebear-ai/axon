@@ -27,7 +27,6 @@ import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
-import com.axon.app.ui.operations.modeOptionsCog
 import tv.tootie.aurora.components.AuroraCallout
 import tv.tootie.aurora.components.AuroraCalloutVariant
 import tv.tootie.aurora.components.AuroraCard
@@ -96,7 +95,6 @@ fun SummarizeScreen(vm: SummarizeViewModel = viewModel()) {
             },
             placeholder = "https://…",
             loading = state is Resource.Loading,
-            actionLeft = modeOptionsCog(),
             modifier = Modifier.fillMaxWidth(),
         )
     }
