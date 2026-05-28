@@ -343,11 +343,11 @@ textarea {
 }
 
 .palette-suggestions .action-scroll {
-  height: calc(100vh - 114px);
+  height: auto;
 }
 
 .palette-suggestions .action-scroll-viewport {
-  max-height: calc(100vh - 114px);
+  max-height: none;
 }
 
 .action-list {

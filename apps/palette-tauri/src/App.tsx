@@ -98,6 +98,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const onBlur = () => void invoke("hide_palette");
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, []);
+
+  useEffect(() => {
     let disposed = false;
     const unlisten = appWindow.listen<PaletteStreamEvent>("palette://stream", (event) => {
       if (disposed) return;
@@ -225,10 +231,10 @@ export default function App() {
     const size = showResultsLayout
       ? { width: 900, height: 560 }
       : showContent
-        ? { width: 760, height: 390 }
+        ? { width: 760, height: Math.min(148 + filtered.length * 48, 520) }
         : { width: 640, height: 78 };
     void invoke("resize_palette", size);
-  }, [showResultsLayout, showContent]);
+  }, [showResultsLayout, showContent, filtered.length]);
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
 

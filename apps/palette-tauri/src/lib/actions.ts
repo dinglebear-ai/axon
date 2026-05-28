@@ -187,13 +187,9 @@ export const ACTIONS: PaletteAction[] = [
 export function actionMatches(action: PaletteAction, input: string): boolean {
   const query = input.trim().toLowerCase();
   if (!query) return true;
-  return [
-    action.label,
-    action.subcommand,
-    action.description,
-    action.example,
-    ...action.aliases,
-  ].some((value) => value.toLowerCase().includes(query));
+  return [action.label, action.subcommand, ...action.aliases].some((value) =>
+    value.toLowerCase().includes(query),
+  );
 }
 
 export function actionInvokedBy(action: PaletteAction, token: string): boolean {
