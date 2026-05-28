@@ -54,7 +54,7 @@ fun FabRing(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xD2040A0E).copy(alpha = openProgress * 0.82f))
+                    .background(Color(0xFF040A0E).copy(alpha = openProgress * 0.82f))
                     .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             )
         }
