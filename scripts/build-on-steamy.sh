@@ -111,7 +111,7 @@ case "$target" in
     log 'Building palette frontend assets'
     pnpm vite:build
     log 'Building Axon Palette Windows executable'
-    cargo build --release --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-gnu
+    cargo build --release --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-gnu
     copy_exe \
       "$remote_repo/apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe" \
       'Axon Palette.exe'

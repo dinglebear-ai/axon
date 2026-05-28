@@ -52,17 +52,11 @@ textarea {
 }
 
 .palette-titlebar {
-  display: flex;
-  flex: 0 0 32px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  height: 32px;
-  padding: 0 12px;
-  background: var(--aurora-nav-bg);
-  border-bottom: 1px solid var(--aurora-border-default);
-  box-shadow: var(--aurora-highlight-medium);
-  user-select: none;
+  display: none;
+}
+
+.palette-footer-hints {
+  flex: 1;
 }
 
 .palette-brand,
@@ -340,20 +334,20 @@ textarea {
 }
 
 .action-scroll {
-  height: calc(100vh - 120px);
+  height: calc(100vh - 154px);
   border-radius: 8px;
 }
 
 .action-scroll-viewport {
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 154px);
 }
 
 .palette-suggestions .action-scroll {
-  height: calc(100vh - 80px);
+  height: calc(100vh - 114px);
 }
 
 .palette-suggestions .action-scroll-viewport {
-  max-height: calc(100vh - 80px);
+  max-height: calc(100vh - 114px);
 }
 
 .action-list {
@@ -369,8 +363,8 @@ textarea {
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 58px;
-  padding: 10px;
+  min-height: 42px;
+  padding: 6px 8px;
   color: var(--aurora-text-primary);
   text-align: left;
   background: transparent;
@@ -552,7 +546,7 @@ textarea {
 }
 
 .palette-footer {
-  justify-content: flex-end;
+  justify-content: space-between;
   height: 34px;
   padding: 0 18px;
   background: var(--aurora-nav-bg);
