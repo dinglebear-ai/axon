@@ -38,6 +38,7 @@ fun ScrapeTab(vm: ToolsViewModel) {
             buttonLabel = "Scrape",
             submitEnabled = state !is ScrapeUiState.Loading,
             onSubmit = { vm.scrape(it) },
+            actionLeft = com.axon.app.ui.operations.modeOptionsCog(),
         )
 
         when (val s = state) {

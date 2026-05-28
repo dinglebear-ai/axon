@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,12 +52,19 @@ fun ResearchTab(vm: ToolsViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        AuroraButton(
-            onClick = { vm.research(queryInput.trim()) },
-            enabled = state !is ResearchUiState.Loading,
+        androidx.compose.foundation.layout.Row(
             modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Research")
+            com.axon.app.ui.operations.modeOptionsCog()?.invoke()
+            AuroraButton(
+                onClick = { vm.research(queryInput.trim()) },
+                enabled = state !is ResearchUiState.Loading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Research")
+            }
         }
 
         when (val s = state) {
@@ -149,6 +157,11 @@ private fun ResearchHitCard(hit: ResearchHit) {
                 color = MaterialTheme.colorScheme.primary,
             )
         },
-        onClick = { runCatching { uriHandler.openUri(hit.url) } },
+        onClick = {
+            val scheme = Uri.parse(hit.url).scheme
+            if (scheme == "https" || scheme == "http") {
+                runCatching { uriHandler.openUri(hit.url) }
+            }
+        },
     )
 }

@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,6 +39,7 @@ fun MapTab(vm: ToolsViewModel) {
             buttonLabel = "Map",
             submitEnabled = state !is MapUiState.Loading,
             onSubmit = { vm.map(it) },
+            actionLeft = com.axon.app.ui.operations.modeOptionsCog(),
         )
 
         when (val s = state) {
@@ -83,6 +85,11 @@ private fun MapUrlRow(url: String) {
     val uriHandler = LocalUriHandler.current
     AuroraItem(
         title = url,
-        onClick = { runCatching { uriHandler.openUri(url) } },
+        onClick = {
+            val scheme = Uri.parse(url).scheme
+            if (scheme == "https" || scheme == "http") {
+                runCatching { uriHandler.openUri(url) }
+            }
+        },
     )
 }

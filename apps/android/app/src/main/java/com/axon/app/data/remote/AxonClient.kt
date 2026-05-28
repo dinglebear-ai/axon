@@ -1,16 +1,34 @@
 package com.axon.app.data.remote
 
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.axon.app.data.remote.models.AcceptedJob
+import com.axon.app.data.remote.models.CancelResponse
+import com.axon.app.data.remote.models.DoctorResponse
+import com.axon.app.data.remote.models.DomainsResponse
+import com.axon.app.data.remote.models.IngestRequest
+import com.axon.app.data.remote.models.SearchWebRequest
+import com.axon.app.data.remote.models.SearchWebResponse
+import com.axon.app.data.remote.models.ServiceJob
+import com.axon.app.data.remote.models.StatusSummary
+import com.axon.app.data.remote.models.SuggestRequest
+import com.axon.app.data.remote.models.SuggestResponse
+import com.axon.app.data.remote.models.SummarizeRequest
+import com.axon.app.data.remote.models.SummarizeResponse
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -44,6 +62,8 @@ private val json = Json {
     coerceInputValues = true
 }
 
+private const val TAG = "AxonClient"
+
 class AxonClient(
     baseUrl: String,
     token: String,
@@ -51,7 +71,19 @@ class AxonClient(
     // Thread-safe config: both baseUrl and token updated atomically together.
     private val config = AtomicReference(baseUrl.trimEnd('/') to token)
 
+    // R7: share a single ConnectionPool + Dispatcher across http/httpLong/httpStream
+    // so concurrent fan-out (e.g. polling multiple job kinds) doesn't starve on
+    // OkHttp's default `maxRequestsPerHost = 5`.
+    private val sharedPool = ConnectionPool(
+        maxIdleConnections = 16,
+        keepAliveDuration = 5,
+        TimeUnit.MINUTES,
+    )
+    private val sharedDispatcher = Dispatcher().apply { maxRequestsPerHost = 16 }
+
     private val http = OkHttpClient.Builder()
+        .connectionPool(sharedPool)
+        .dispatcher(sharedDispatcher)
         .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -123,10 +155,30 @@ class AxonClient(
             .header("Authorization", "Bearer $token")
             .header("x-api-key", token)
             .build()
-        val resp = httpStream.newCall(req).execute()
+
+        // Capture the Call before execute() so we can cancel it from
+        // invokeOnCompletion. Without this, BufferedReader.readLine() below blocks
+        // an IO thread until the SSE socket idles out (STREAM_READ_TIMEOUT_SECONDS
+        // = 300s) when the parent coroutine is cancelled — leaking threads on
+        // every navigate-away mid-stream and stalling subsequent ask() calls.
+        val call = httpStream.newCall(req)
+        val cancelHandle = currentCoroutineContext().job.invokeOnCompletion {
+            runCatching { call.cancel() }
+        }
+
+        val resp = try {
+            call.execute()
+        } catch (t: Throwable) {
+            cancelHandle.dispose()
+            if (t is CancellationException) throw t
+            Log.w(TAG, "askStream: connect failed", t)
+            emit(AskStreamEvent.Error(t.message ?: "Stream connect failed"))
+            return@flow
+        }
         try {
             if (!resp.isSuccessful) {
                 val errBody = resp.body?.string()?.take(200) ?: resp.message
+                Log.w(TAG, "askStream: HTTP ${resp.code} $errBody")
                 emit(AskStreamEvent.Error("HTTP ${resp.code}: $errBody"))
                 return@flow
             }
@@ -146,16 +198,28 @@ class AxonClient(
                     emit(event)
                     if (event is AskStreamEvent.Done || event is AskStreamEvent.Error) break
                 }
+            } catch (t: Throwable) {
+                // Socket closed mid-stream (cancel(), timeout, network drop). Surface as
+                // a clean Error so callers can distinguish from a normal Done.
+                if (t is CancellationException) throw t
+                Log.w(TAG, "askStream: read failed mid-stream", t)
+                emit(AskStreamEvent.Error(t.message ?: "Stream interrupted"))
             } finally {
-                reader.close()
+                runCatching { reader.close() }
             }
         } finally {
-            resp.close()
+            runCatching { resp.close() }
+            cancelHandle.dispose()
         }
     }.flowOn(Dispatchers.IO)
 
     suspend fun query(request: QueryRequest): Result<QueryResponse> = withContext(Dispatchers.IO) {
         post("/v1/query", request)
+    }
+
+    suspend fun retrieve(request: RetrieveRequest): Result<RetrieveResponse> = withContext(Dispatchers.IO) {
+        // Retrieve can return large assembled documents; use the longer-timeout client.
+        postWith(httpLong, "/v1/retrieve", request)
     }
 
     suspend fun sources(request: SourcesRequest = SourcesRequest()): Result<SourcesResponse> =
@@ -185,10 +249,62 @@ class AxonClient(
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusResponse> = withContext(Dispatchers.IO) {
         // The server wraps the job in {"job": {...}}; decode the envelope and unwrap.
-        get<CrawlStatusWrapper>("/v1/crawl/$jobId").map { it.job }
+        get<CrawlStatusWrapper>("/v1/crawl/${encodePathSegment(jobId)}").map { it.job }
     }
 
+    // ── Phase 2 endpoints ──────────────────────────────────────────────────────
+
+    enum class JobKind(val path: String) {
+        Crawl("crawl"), Embed("embed"), Extract("extract"), Ingest("ingest")
+    }
+
+    /** /v1/summarize — Gemini-backed, can take minutes. Use httpLong. */
+    suspend fun summarize(req: SummarizeRequest): Result<SummarizeResponse> = withContext(Dispatchers.IO) {
+        postWith(httpLong, "/v1/summarize", req)
+    }
+
+    /** /v1/search — Tavily web search; auto-enqueues crawl jobs server-side. */
+    suspend fun searchWeb(req: SearchWebRequest): Result<SearchWebResponse> = withContext(Dispatchers.IO) {
+        post("/v1/search", req)
+    }
+
+    /** POST /v1/ingest — submits an async ingest job. */
+    suspend fun ingestStart(req: IngestRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
+        post("/v1/ingest", req)
+    }
+
+    /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
+    suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
+        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}").get())
+        execute(httpLong, builder)
+    }
+
+    /** GET /v1/{kind}/list — list jobs of one kind. */
+    suspend fun listJobs(kind: JobKind, limit: Int = 100, offset: Int = 0): Result<List<ServiceJob>> = withContext(Dispatchers.IO) {
+        get("/v1/${kind.path}/list?limit=$limit&offset=$offset")
+    }
+
+    /** POST /v1/{kind}/{id}/cancel. */
+    suspend fun cancelJob(kind: JobKind, id: String): Result<CancelResponse> = withContext(Dispatchers.IO) {
+        val body = "{}".toRequestBody(JSON_MEDIA_TYPE)
+        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}/cancel").post(body))
+        execute(http, builder)
+    }
+
+    suspend fun status(): Result<StatusSummary> = withContext(Dispatchers.IO) { get("/v1/status") }
+
+    suspend fun doctor(): Result<DoctorResponse> = withContext(Dispatchers.IO) { get("/v1/doctor") }
+
+    suspend fun suggest(focus: String? = null, collection: String? = null): Result<SuggestResponse> =
+        withContext(Dispatchers.IO) { post("/v1/suggest", SuggestRequest(focus = focus, collection = collection)) }
+
+    suspend fun domains(limit: Int = 100, offset: Int = 0): Result<DomainsResponse> =
+        withContext(Dispatchers.IO) { get("/v1/domains?limit=$limit&offset=$offset") }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun encodePathSegment(s: String): String =
+        java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
     private fun authRequest(builder: Request.Builder): Request.Builder {
         val (_, token) = config.get()
@@ -213,16 +329,24 @@ class AxonClient(
         return execute(http, builder)
     }
 
-    private inline fun <reified R> execute(client: OkHttpClient, builder: Request.Builder): Result<R> =
-        runCatching {
-            client.newCall(builder.build()).execute().use { resp ->
+    private inline fun <reified R> execute(client: OkHttpClient, builder: Request.Builder): Result<R> {
+        val built = builder.build()
+        return runCatching {
+            client.newCall(built).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    error("HTTP ${resp.code}: ${resp.body?.string() ?: resp.message}")
+                    error("HTTP ${resp.code}: ${resp.body?.string()?.take(200) ?: resp.message}")
                 }
                 // Read body exactly once — use() closes the response, so the stream is single-pass.
                 json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
             }
-        }.onFailure { if (it is CancellationException) throw it }
+        }.onFailure { t ->
+            if (t is CancellationException) throw t
+            // One-line logcat breadcrumb for any non-cancellation failure (HTTP error,
+            // decode mismatch, transport error). Body is truncated upstream; method+path
+            // is enough to grep when triaging field reports.
+            Log.w(TAG, "${built.method} ${built.url.encodedPath} failed: ${t.message}")
+        }
+    }
 
     /**
      * Parses a single SSE data payload into an [AskStreamEvent].

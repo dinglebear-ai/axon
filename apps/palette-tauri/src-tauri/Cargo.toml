@@ -1,6 +1,6 @@
 [package]
 name = "axon-palette-tauri"
-version = "4.8.2"
+version = "4.12.0"
 description = "Tauri command palette for the Axon REST API"
 edition = "2024"
 rust-version = "1.94.0"

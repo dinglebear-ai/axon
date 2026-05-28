@@ -69,6 +69,66 @@ fun ErrorContent(
 }
 
 /**
+ * Renders a [Resource]-driven state holder via a single `when` block. Eliminates
+ * the per-screen Idle/Loading/Error/Ready boilerplate plus the unchecked-cast
+ * dance that arises from matching `is Resource.Ready<*>`. Callers supply the
+ * Ready branch with a typed [value] — smart-cast is preserved.
+ *
+ * @param idle Defaults to the Loading branch so callers can omit it when the
+ *   state never sits in [Resource.Idle] long enough to matter.
+ * @param onRetry Wired to [ErrorContent]'s retry button when non-null.
+ */
+@Composable
+fun <T> ResourceContent(
+    state: Resource<T>,
+    loadingLabel: String,
+    onRetry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    idle: @Composable () -> Unit = { LoadingContent(loadingLabel, modifier) },
+    ready: @Composable (T) -> Unit,
+) {
+    when (state) {
+        Resource.Idle -> idle()
+        Resource.Loading -> LoadingContent(loadingLabel, modifier)
+        is Resource.Error -> ErrorContent(message = state.message, modifier = modifier, onRetry = onRetry)
+        is Resource.Ready -> ready(state.value)
+    }
+}
+
+/**
+ * Page-sized "feature not yet wired" placeholder. Headline, Aurora separator,
+ * and a full-bleed empty-state card. Used by stub screens that own a top-level
+ * pager page or operation mode and have nothing to render yet.
+ */
+@Composable
+fun NotYetWiredPage(
+    title: String,
+    headline: String,
+    description: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.foundation.layout.Column(
+        modifier = androidx.compose.ui.Modifier
+            .fillMaxWidth()
+            .then(modifier),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+    ) {
+        androidx.compose.material3.Text(
+            title,
+            style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+        )
+        tv.tootie.aurora.components.AuroraSeparator()
+        EmptyContent(
+            title = headline,
+            description = description,
+            icon = icon,
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
  * Empty state placeholder shared across screens.
  * Pass [icon] and [onAction] for a fully decorated empty state.
  */

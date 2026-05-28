@@ -1,5 +1,5 @@
 use crate::core::config::{Config, ConfigOverrides};
-use crate::core::http::validate_url;
+use crate::core::http::{normalize_url, validate_url};
 use crate::services;
 use crate::services::client_contract::{
     RestMapRequest as MapRequest, RestResearchRequest as ResearchRequest,
@@ -103,7 +103,8 @@ pub(crate) async fn map(
     Json(req): Json<MapRequest>,
 ) -> Result<Json<services::types::MapResult>, HttpError> {
     let url = required_text(&req.url, "url")?;
-    services::map::discover(&cfg, url, map_options(req.limit, req.offset), None)
+    let url = normalize_url(url);
+    services::map::discover(&cfg, &url, map_options(req.limit, req.offset), None)
         .await
         .map(Json)
         .map_err(HttpError::from_box)
