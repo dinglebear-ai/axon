@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.axon.app.ui.nav.LocalOpenDocument
-import com.axon.app.ui.operations.modeOptionsCog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.QueryHitUi
@@ -99,7 +98,6 @@ fun QueryScreen(vm: QueryViewModel = viewModel()) {
             onSend = { vm.query(input) },
             placeholder = "Query indexed knowledge…",
             loading = uiState is QueryUiState.Loading,
-            actionLeft = modeOptionsCog(),
             modifier = Modifier.fillMaxWidth(),
         )
     }

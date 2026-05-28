@@ -23,7 +23,6 @@ import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.jobs.JobRow
-import com.axon.app.ui.operations.modeOptionsCog
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraButtonVariant
 import tv.tootie.aurora.components.AuroraCard
@@ -121,7 +120,6 @@ private fun IngestForm(
     sourceOptions: List<String>,
     onSubmit: () -> Unit,
 ) {
-    val cog = modeOptionsCog()
     val submitEnabled = target.isNotBlank()
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -148,17 +146,11 @@ private fun IngestForm(
                 ?: "Target URL or identifier",
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(
+        AuroraButton(
+            onClick = onSubmit,
+            enabled = submitEnabled,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            cog?.invoke()
-            AuroraButton(
-                onClick = onSubmit,
-                enabled = submitEnabled,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Submit") }
-        }
+        ) { Text("Submit") }
     }
 }
 

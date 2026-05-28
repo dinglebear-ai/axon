@@ -27,7 +27,6 @@ import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
 import com.axon.app.ui.nav.LocalOpenDocument
-import com.axon.app.ui.operations.modeOptionsCog
 import tv.tootie.aurora.components.AuroraCallout
 import tv.tootie.aurora.components.AuroraCalloutVariant
 import tv.tootie.aurora.components.AuroraCard
@@ -141,7 +140,6 @@ fun SearchWebScreen(vm: SearchWebViewModel = viewModel()) {
             },
             placeholder = "Search the web…",
             loading = state is Resource.Loading,
-            actionLeft = modeOptionsCog(),
             modifier = Modifier.fillMaxWidth(),
         )
     }

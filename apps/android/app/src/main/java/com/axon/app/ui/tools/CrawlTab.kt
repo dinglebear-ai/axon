@@ -63,22 +63,15 @@ fun CrawlTab(vm: ToolsViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Row(
+        AuroraButton(
+            onClick = {
+                val maxPages = maxPagesInput.toIntOrNull()
+                vm.crawl(urlInput.trim(), maxPages)
+            },
+            enabled = state !is CrawlUiState.Loading,
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            com.axon.app.ui.operations.modeOptionsCog()?.invoke()
-            AuroraButton(
-                onClick = {
-                    val maxPages = maxPagesInput.toIntOrNull()
-                    vm.crawl(urlInput.trim(), maxPages)
-                },
-                enabled = state !is CrawlUiState.Loading,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Start Crawl")
-            }
+            Text("Start Crawl")
         }
 
         when (val s = state) {

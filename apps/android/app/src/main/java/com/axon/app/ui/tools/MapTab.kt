@@ -39,7 +39,6 @@ fun MapTab(vm: ToolsViewModel) {
             buttonLabel = "Map",
             submitEnabled = state !is MapUiState.Loading,
             onSubmit = { vm.map(it) },
-            actionLeft = com.axon.app.ui.operations.modeOptionsCog(),
         )
 
         when (val s = state) {
