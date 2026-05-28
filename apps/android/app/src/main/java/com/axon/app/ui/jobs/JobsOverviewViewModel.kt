@@ -28,12 +28,10 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    private var pollJob: Job? = null
-
     init { startPolling() }
 
     private fun startPolling() {
-        pollJob = viewModelScope.launch {
+        viewModelScope.launch {
             while (true) {
                 refresh()
                 delay(OVERVIEW_POLL_MS)
@@ -45,18 +43,20 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val kinds = AxonClient.JobKind.entries
             val all = mutableListOf<JobUi>()
+            var failures = 0
             var firstError: String? = null
             for (kind in kinds) {
                 repo.listJobs(kind).fold(
                     onSuccess = { jobs -> all += jobs.filter { it.status in ACTIVE_STATUSES } },
                     onFailure = { e ->
+                        failures++
                         if (firstError == null) firstError = e.message
                         Log.w(OVERVIEW_TAG, "listJobs($kind) failed", e)
                     },
                 )
             }
             _activeJobs.value = all
-            _errorMessage.value = if (firstError != null && all.isEmpty()) firstError else null
+            _errorMessage.value = if (failures == kinds.size && all.isEmpty()) firstError else null
         }
     }
 }
