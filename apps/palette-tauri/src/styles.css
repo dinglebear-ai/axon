@@ -399,9 +399,9 @@ textarea {
 
 .action-row:hover,
 .action-row-selected {
-  background: color-mix(in srgb, var(--aurora-accent-primary) 9%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--aurora-accent-primary) 38%, var(--aurora-border-default));
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.12);
+  background: #0d1f30;
+  border-color: rgba(41, 182, 246, 0.22);
+  box-shadow: inset 3px 0 0 #29b6f6, 0 1px 5px rgba(0, 0, 0, 0.28);
 }
 
 .action-main {
