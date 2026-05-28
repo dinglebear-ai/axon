@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,10 +101,11 @@ internal fun <T : Any> rememberPersistedState(
 ): androidx.compose.runtime.MutableState<T> {
     val scope = rememberCoroutineScope()
     var state by remember(key) { mutableStateOf(default) }
-    LaunchedEffect(key) {
+    val resetVersion by repo.resetVersion.collectAsState()
+    LaunchedEffect(key, resetVersion) {
         runCatching {
             val stored = repo.read(key)
-            if (stored != null) state = stored
+            state = stored ?: default
         }
     }
     return object : androidx.compose.runtime.MutableState<T> {
@@ -126,7 +128,8 @@ internal fun <T : Any> rememberOptionalPersistedState(
 ): androidx.compose.runtime.MutableState<T?> {
     val scope = rememberCoroutineScope()
     var state by remember(key) { mutableStateOf<T?>(null) }
-    LaunchedEffect(key) {
+    val resetVersion by repo.resetVersion.collectAsState()
+    LaunchedEffect(key, resetVersion) {
         runCatching { state = repo.read(key) }
     }
     return object : androidx.compose.runtime.MutableState<T?> {

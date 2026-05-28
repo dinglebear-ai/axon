@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.data.repository.SearchWebResultUi
 import com.axon.app.ui.common.Resource
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,10 +29,13 @@ class SearchWebViewModel(
     private val _uiState = MutableStateFlow<Resource<SearchWebResultUi>>(Resource.Idle)
     val uiState: StateFlow<Resource<SearchWebResultUi>> = _uiState.asStateFlow()
 
+    private var searchJob: Job? = null
+
     fun submit(query: String) {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _uiState.value = Resource.Loading
             container.axonRepository.searchWeb(trimmed).fold(
                 onSuccess = { _uiState.value = Resource.Ready(it) },

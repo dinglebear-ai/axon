@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.12.1] - 2026-05-27
+
+### Fixed
+
+- **Android: job cancellation races** — `SystemViewModel`, `SearchWebViewModel`,
+  `SummarizeViewModel`, and `QueryViewModel` now cancel in-flight coroutine jobs
+  before launching new ones, preventing stale results from overwriting fresh state.
+- **Android: `JobsViewModel` tab-switch flicker** — emit `Resource.Loading`
+  immediately at the start of each `flatMapLatest` block so the UI transitions
+  to a loading state before the first poll result arrives.
+- **Android: lazy `ToolsViewModel` creation** — moved `viewModel()` call inside
+  the `Scrape/Crawl/Map/Research` branches of `ModeContentHost` so the VM is not
+  eagerly constructed for `Ask/Query/Summarize/Search/Ingest` modes.
+- **Android: form reset not reflected in UI** — `ModeOptionsRepository.resetKeys()`
+  now increments a `resetVersion` counter; `rememberPersistedState` and
+  `rememberOptionalPersistedState` re-read DataStore when the counter changes,
+  restoring default values in the UI after a reset.
+- **Android: `MapOptionsForm` allows negative values** — `limit` and `offset`
+  fields now clamp input to `coerceAtLeast(0)`.
+- **Android: URL-encoded job IDs in HTTP paths** — `AxonClient.crawlStatus`,
+  `getJob`, and `cancelJob` now percent-encode the job ID before embedding it
+  in the request URL path.
+- **Android: `AxonRepository.retrieve` accepts invalid `tokenBudget`** — added
+  `require(tokenBudget > 0)` guard before the network call.
+- **Android: `IngestViewModel` persistence failure masks success** — wrapped
+  `recentJobs.add()` in `runCatching` so a DataStore I/O failure during
+  persistence does not prevent the `Submitted` state from being set.
+- **Android: token migration failure silently swallowed** — `AxonApp.onCreate`
+  now logs a warning when the `migrateTokenToEncrypted` migration fails.
+- **Android: `SummarizeScreen` submits blank input** — added `trim().isNotEmpty()`
+  guard in `onSend` so whitespace-only strings never reach the ViewModel.
+- **Android: `IngestScreen` submit-enabled for whitespace** — changed `isNotBlank()`
+  to `trim().isNotEmpty()` to match the actual trimmed payload being submitted.
+- **Android: `DocumentViewModel` logs PII URLs** — removed the URL from the
+  `Log.w` call in the error path to avoid leaking document URLs in logcat.
+- **Android: `StringChunking` drops separator at chunk boundary** — separator
+  is now appended to the *outgoing* buffer before `flush()`, preserving it in
+  the emitted chunk and enabling lossless reassembly via `joinToString("")`.
+- **Android tests: missing HTTP method/path assertions** — added `assertEquals`
+  calls for method and path in the `doctor`, `suggest`, and `domains` test cases
+  of `AxonClientPhase2Test`.
+- **Android tests: missing reassembly assertion** — paragraph and line split
+  paths in `DocumentChunkingTest` now verify `chunks.joinToString("") == original`.
+- **Docs: session log filename missing time component** — renamed
+  `2026-05-27-android-pager-fab-shell.md` to
+  `2026-05-27-16-02-android-pager-fab-shell.md`.
+
 ## [4.12.0] - 2026-05-27
 
 ### Added

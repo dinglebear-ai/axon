@@ -81,14 +81,16 @@ class IngestViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = IngestUi.Submitting
             container.axonRepository.ingestStart(source.wire, target).fold(
                 onSuccess = { jobId ->
-                    container.recentJobs.add(
-                        RecentJob(
-                            jobId = jobId,
-                            kind = "ingest",
-                            target = target,
-                            submittedAt = System.currentTimeMillis(),
-                        ),
-                    )
+                    runCatching {
+                        container.recentJobs.add(
+                            RecentJob(
+                                jobId = jobId,
+                                kind = "ingest",
+                                target = target,
+                                submittedAt = System.currentTimeMillis(),
+                            ),
+                        )
+                    }.onFailure { Log.w(TAG, "recentJobs.add failed for ingest job $jobId", it) }
                     _uiState.value = IngestUi.Submitted(jobId, source, target)
                 },
                 onFailure = { _uiState.value = IngestUi.Error(it.message ?: "Error") },

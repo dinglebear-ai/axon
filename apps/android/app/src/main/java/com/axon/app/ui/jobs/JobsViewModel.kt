@@ -57,6 +57,7 @@ class JobsViewModel(
     val visibleJobs: StateFlow<Resource<List<JobUi>>> = _selectedTab
         .flatMapLatest { kind ->
             flow {
+                emit(Resource.Loading)
                 var backoffMs = POLL_INTERVAL_MS
                 while (true) {
                     val r = container.axonRepository.listJobs(kind)

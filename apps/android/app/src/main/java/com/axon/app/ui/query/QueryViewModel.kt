@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.data.repository.QueryHitUi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,9 +28,12 @@ class QueryViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow<QueryUiState>(QueryUiState.Idle)
     val uiState: StateFlow<QueryUiState> = _uiState.asStateFlow()
 
+    private var queryJob: Job? = null
+
     fun query(query: String) {
         if (query.isBlank()) return
-        viewModelScope.launch {
+        queryJob?.cancel()
+        queryJob = viewModelScope.launch {
             _uiState.value = QueryUiState.Loading
             val collection = container.settingsRepository.settings.first().collection
             container.axonRepository.query(query, limit = 20, collection = collection).fold(

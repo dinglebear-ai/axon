@@ -134,6 +134,7 @@ class AxonRepository(
         collection: String? = null,
         tokenBudget: Int = DEFAULT_RETRIEVE_TOKEN_BUDGET,
     ): Result<RetrieveResultUi> = withToken {
+        require(tokenBudget > 0) { "tokenBudget must be positive, got $tokenBudget" }
         client.retrieve(
             RetrieveRequest(url = url, collection = collection, tokenBudget = tokenBudget),
         ).map { r ->
