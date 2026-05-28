@@ -61,18 +61,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---------------------------------------------------------------------------
-# Log rotation — when running in cron/quiet mode, truncate the cron log to the
-# last CRON_LOG_MAX_LINES lines so it never grows unboundedly.  The write goes
-# through a temp file so the replacement is atomic.
+# Log rotation — truncate cron log at startup when running in cron/quiet mode
+# so it never grows unboundedly.  Uses a tmp file + mv for atomic replacement.
 # ---------------------------------------------------------------------------
 if [[ "${QUIET}" == true ]] && [[ -f "${CRON_LOG}" ]]; then
-    _tmp_log=$(mktemp "${CRON_LOG}.XXXXXX")
-    if tail -n "${CRON_LOG_MAX_LINES}" -- "${CRON_LOG}" > "${_tmp_log}"; then
-        mv -f -- "${_tmp_log}" "${CRON_LOG}"
+    tmp_log=$(mktemp "${CRON_LOG}.XXXXXX")
+    if tail -n "${CRON_LOG_MAX_LINES}" -- "${CRON_LOG}" > "${tmp_log}"; then
+        mv -f -- "${tmp_log}" "${CRON_LOG}"
     else
-        rm -f -- "${_tmp_log}"
+        rm -f -- "${tmp_log}"
     fi
-    unset _tmp_log
 fi
 
 # ---------------------------------------------------------------------------
@@ -80,8 +78,6 @@ fi
 # ---------------------------------------------------------------------------
 
 # log() — always returns 0 so set -e cannot fire on the "quiet" path.
-# (A bare [[ ]] test as the only statement returns 1 when false, which kills
-# the script under set -e.)
 log() {
     if [[ "${QUIET}" == false ]]; then
         echo "$@"
@@ -89,18 +85,14 @@ log() {
     return 0
 }
 
-# ps_field PID FORMAT
-# Returns a single ps field with all whitespace stripped.
-#
-# Captures ps output into a variable BEFORE any further processing so that
-# the assignment-level || fallback is reachable even when ps fails.  The old
-# "ps | tr || fallback" pattern was broken: tr sits between ps and ||, so tr
-# receives no input but exits 0, and the fallback never fires.
+# ps_field PID FORMAT — return a single ps field with whitespace stripped.
+# Captures ps output into a variable BEFORE stripping so the || fallback is
+# reachable even when ps fails (fixes the broken "ps | tr || fallback" pattern
+# where tr sits between ps and ||, preventing the fallback from ever firing).
 ps_field() {
-    local _pid="${1}" _fmt="${2}" _raw
-    _raw=$(ps -o "${_fmt}=" -p "${_pid}" 2>/dev/null) || _raw=""
-    # Strip whitespace with parameter expansion — no fork required.
-    printf '%s' "${_raw//[[:space:]]/}"
+    local pid="${1}" fmt="${2}" raw
+    raw=$(ps -o "${fmt}=" -p "${pid}" 2>/dev/null) || raw=""
+    printf '%s' "${raw//[[:space:]]/}"
 }
 
 # ---------------------------------------------------------------------------
@@ -126,14 +118,14 @@ for pid in "${claude_pids[@]}"; do
     rss_kb=$(ps_field  "${pid}" "rss")
     elapsed=$(ps_field "${pid}" "etimes")
 
-    # Provide safe arithmetic defaults — never operate on an empty string.
+    # Provide safe arithmetic defaults so we never operate on an empty string.
     rss_kb="${rss_kb:-0}"
     elapsed="${elapsed:-0}"
 
     rss_mb=$(( rss_kb / 1024 ))
     elapsed_min=$(( elapsed / 60 ))
 
-    # Parent command — guard against an empty ppid (process already gone).
+    # Parent command — only query if ppid is non-empty and not "1".
     if [[ -z "${ppid}" ]]; then
         parent_cmd="dead"
     elif [[ "${ppid}" == "1" ]]; then
@@ -145,15 +137,15 @@ for pid in "${claude_pids[@]}"; do
 
     reason=""
 
-    # KILL: stopped/suspended (ctrl-z'd) — always safe to reap
+    # KILL: stopped/suspended (ctrl-z'd) — always dead
     if [[ "${state}" == *"T"* ]]; then
         reason="stopped (ctrl-z)"
-    # KILL: orphaned — parent is init (PID 1) or already dead
+    # KILL: orphaned — parent is init (PID 1) or dead
     elif [[ "${ppid}" == "1" ]] || [[ "${parent_cmd}" == "dead" ]]; then
         reason="orphaned (parent dead)"
-    # KILL: idle too long (only when age check is enabled)
+    # KILL: idle too long (if age check enabled)
     elif [[ "${MAX_AGE_MIN}" -gt 0 ]] && [[ "${elapsed_min}" -ge "${MAX_AGE_MIN}" ]]; then
-        # Spare if it is the foreground process in a real TTY — user is in it.
+        # Spare if it is foreground in a TTY — user is actively in it
         if [[ "${state}" == *"+"* ]]; then
             keep_pids+=("${pid}")
             log "  KEEP  PID=${pid}  state=${state}  tty=${tty}  parent=${parent_cmd}  ${rss_mb}MB  age=${elapsed_min}m  (foreground)"
@@ -195,66 +187,67 @@ for pid in "${kill_pids[@]}"; do
     # The process may have exited since the classification pass — that is fine.
     # Every ps/pgrep/kill call below is guarded with 2>/dev/null and || true.
 
-    # Snapshot child and grandchild PIDs into arrays *before* sending any
-    # signals so we work from a stable picture of the tree.
-    mapfile -t _children < <(pgrep -P "${pid}" 2>/dev/null || true)
+    # Snapshot child and grandchild PIDs before we start killing anything.
+    mapfile -t children < <(pgrep -P "${pid}" 2>/dev/null || true)
 
-    declare -A _grandchildren=()
-    for _cpid in "${_children[@]}"; do
-        mapfile -t _gc < <(pgrep -P "${_cpid}" 2>/dev/null || true)
-        _grandchildren["${_cpid}"]="${_gc[*]:-}"
+    # Build a simple associative array: child PID → space-separated grandchild PIDs.
+    declare -A grandchildren=()
+    for cpid in "${children[@]}"; do
+        mapfile -t gc < <(pgrep -P "${cpid}" 2>/dev/null || true)
+        grandchildren["${cpid}"]="${gc[*]:-}"
     done
 
-    # ---- RSS accounting (best-effort; processes may be gone already) ----
-    _tree_rss=0
+    # ---- RSS accounting (best-effort; process may be gone by now) ----
+    tree_rss=0
 
-    _raw_rss=$(ps --no-headers -o rss -p "${pid}" --ppid "${pid}" 2>/dev/null || true)
-    while IFS= read -r _line; do
-        _val="${_line//[[:space:]]/}"
-        if [[ "${_val}" =~ ^[0-9]+$ ]]; then
-            _tree_rss=$(( _tree_rss + _val ))
+    raw_rss=$(ps --no-headers -o rss -p "${pid}" --ppid "${pid}" 2>/dev/null || true)
+    while IFS= read -r line; do
+        val="${line//[[:space:]]/}"
+        if [[ "${val}" =~ ^[0-9]+$ ]]; then
+            tree_rss=$(( tree_rss + val ))
         fi
-    done <<< "${_raw_rss}"
+    done <<< "${raw_rss}"
 
-    for _cpid in "${_children[@]}"; do
-        _raw=$(ps --no-headers -o rss -p "${_cpid}" 2>/dev/null || true)
-        _val="${_raw//[[:space:]]/}"
-        if [[ "${_val}" =~ ^[0-9]+$ ]]; then
-            _tree_rss=$(( _tree_rss + _val ))
+    for cpid in "${children[@]}"; do
+        raw=$(ps --no-headers -o rss -p "${cpid}" 2>/dev/null || true)
+        val="${raw//[[:space:]]/}"
+        if [[ "${val}" =~ ^[0-9]+$ ]]; then
+            tree_rss=$(( tree_rss + val ))
         fi
 
-        for _gpid in ${_grandchildren["${_cpid}"]:-}; do
-            _raw=$(ps --no-headers -o rss= -p "${_gpid}" 2>/dev/null || true)
-            _val="${_raw//[[:space:]]/}"
-            if [[ "${_val}" =~ ^[0-9]+$ ]]; then
-                _tree_rss=$(( _tree_rss + _val ))
+        for gpid in ${grandchildren["${cpid}"]:-}; do
+            raw=$(ps --no-headers -o rss= -p "${gpid}" 2>/dev/null || true)
+            val="${raw//[[:space:]]/}"
+            if [[ "${val}" =~ ^[0-9]+$ ]]; then
+                tree_rss=$(( tree_rss + val ))
             fi
         done
     done
 
-    freed_mb=$(( freed_mb + _tree_rss / 1024 ))
+    freed_mb=$(( freed_mb + tree_rss / 1024 ))
 
-    # ---- Signal sweep: children first (MCP servers), then the root process ----
+    # ---- Signal: children first (MCP servers), then the root Claude process ----
 
-    # SIGTERM pass
+    # SIGTERM sweep
     pkill -TERM -P "${pid}" 2>/dev/null || true
-    for _cpid in "${_children[@]}"; do
-        pkill -TERM -P "${_cpid}" 2>/dev/null || true
+    for cpid in "${children[@]}"; do
+        pkill -TERM -P "${cpid}" 2>/dev/null || true
     done
 
     sleep 0.3
 
-    # SIGKILL pass: grandchildren → children → root
+    # SIGKILL sweep: grandchildren → children → root
     pkill -KILL -P "${pid}" 2>/dev/null || true
-    for _cpid in "${_children[@]}"; do
-        for _gpid in ${_grandchildren["${_cpid}"]:-}; do
-            kill -KILL "${_gpid}" 2>/dev/null || true
+    for cpid in "${children[@]}"; do
+        for gpid in ${grandchildren["${cpid}"]:-}; do
+            kill -KILL "${gpid}" 2>/dev/null || true
         done
-        kill -KILL "${_cpid}" 2>/dev/null || true
+        kill -KILL "${cpid}" 2>/dev/null || true
     done
     kill -KILL "${pid}" 2>/dev/null || true
 
-    unset _grandchildren _children _gc _raw_rss _raw _line _val _cpid _gpid _tree_rss
+    unset grandchildren
+    declare -A grandchildren=()
 
     killed=$(( killed + 1 ))
 done
