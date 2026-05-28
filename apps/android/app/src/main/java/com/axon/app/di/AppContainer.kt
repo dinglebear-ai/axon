@@ -36,7 +36,7 @@ class AppContainer(context: Context) {
     val recentJobs = RecentJobsRepository(context)
     val modeOptionsRepository = ModeOptionsRepository(context, encryptedHeadersStore)
     val modeOptionsApplicator: ModeOptionsApplicator = modeOptionsRepository
-    private val db = AppDatabase.build(context)
+    val database = AppDatabase.build(context)
 
     val axonClient = AxonClient(
         baseUrl = DEFAULT_SERVER_URL,
@@ -46,7 +46,7 @@ class AppContainer(context: Context) {
 
     val axonRepository = AxonRepository(
         client = axonClient,
-        askHistoryDao = db.askHistoryDao(),
+        askHistoryDao = database.askHistoryDao(),
         applicator = modeOptionsApplicator,
     )
 
