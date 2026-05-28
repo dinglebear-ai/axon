@@ -2,9 +2,13 @@ package com.axon.app.data.local
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "sessions")
+@Entity(
+    tableName = "sessions",
+    indices = [Index(value = ["pinned_at", "updated_at"])]
+)
 data class Session(
     @PrimaryKey val id: String,
     val title: String,
