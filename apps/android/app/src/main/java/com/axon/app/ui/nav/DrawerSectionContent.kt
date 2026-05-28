@@ -17,12 +17,12 @@ fun DrawerSectionContent(
     when (section) {
         DrawerSection.Sessions   -> SessionsDrawerContent(onSelect = { _ -> onDismiss() })
         DrawerSection.Jobs       -> JobsDrawerContent()
-        DrawerSection.Knowledge  -> KnowledgeDrawerContent(onOpenSuggest = { navController.navigate(SuggestRoute) })
+        DrawerSection.Knowledge  -> KnowledgeDrawerContent(onOpenSuggest = { onDismiss(); navController.navigate(SuggestRoute) })
         DrawerSection.Management -> ManagementDrawerContent(
-            onOpenSettings = { navController.navigate(SettingsRoute) },
+            onOpenSettings = { onDismiss(); navController.navigate(SettingsRoute) },
         )
         DrawerSection.Setup -> SetupDrawerContent(
-            onOpenSettings = { navController.navigate(SettingsRoute) },
+            onOpenSettings = { onDismiss(); navController.navigate(SettingsRoute) },
         )
     }
 }
