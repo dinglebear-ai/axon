@@ -30,7 +30,7 @@ fun AuroraStatusDot(state: DotState, size: Dp = 7.dp, modifier: Modifier = Modif
         initialValue = 1f,
         targetValue = 0.35f,
         animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
+            animation = tween(900, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulse",

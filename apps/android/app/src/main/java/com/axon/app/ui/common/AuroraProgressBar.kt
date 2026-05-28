@@ -97,7 +97,8 @@ fun AuroraProgressBar(
                     startX = sx - sw / 2,
                     endX = sx + sw / 2,
                 )
-                drawRect(brush = shimmerBrush, size = this.size)
+                val shimmerWidth = if (progress != null) w * animatedProgress.coerceIn(0f, 1f) else w
+                drawRect(brush = shimmerBrush, size = Size(shimmerWidth, h))
             }
         }
     }
