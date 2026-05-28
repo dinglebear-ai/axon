@@ -1,28 +1,20 @@
 package com.axon.app.ui.setup
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.ui.common.DrawerSubItem
+import com.axon.app.ui.theme.AxonColors
 
-private val AccentPrimary = Color(0xFF29B6F6)
-private val TextMuted     = Color(0xFFA7BCC9)
-private val SuccessBase   = Color(0xFF66BB6A)
-private val ErrorBase     = Color(0xFFEF5350)
-private val TextLabel     = Color(0xFFE1EEF7)
-
+// ViewModel is activity-scoped (default ViewModelStoreOwner), so smoke/doctor
+// results survive across drawer open/close cycles — intentional.
 @Composable
 fun SetupDrawerContent(
     onOpenSettings: () -> Unit,
@@ -38,7 +30,7 @@ fun SetupDrawerContent(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         // ── Preflight (smoke + doctor) ────────────────────────────────────────
-        SetupSubItem(
+        DrawerSubItem(
             icon = Icons.Rounded.FlightTakeoff,
             label = "Preflight",
             detail = when {
@@ -49,27 +41,29 @@ fun SetupDrawerContent(
                 else -> "Tap to run all checks"
             },
             detailColor = when {
-                smokeState is SetupActionState.Fail || doctorState is SetupActionState.Fail -> ErrorBase
-                smokeState is SetupActionState.Pass && doctorState is SetupActionState.Pass -> SuccessBase
-                else -> TextMuted
+                smokeState is SetupActionState.Fail || doctorState is SetupActionState.Fail -> AxonColors.ErrorBase
+                smokeState is SetupActionState.Pass && doctorState is SetupActionState.Pass -> AxonColors.SuccessBase
+                else -> AxonColors.TextMuted
             },
             onClick = {
                 vm.runSmoke()
                 vm.runDoctor()
             },
+            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Setup (→ Settings) ────────────────────────────────────────────────
-        SetupSubItem(
+        DrawerSubItem(
             icon = Icons.Rounded.Construction,
             label = "Setup",
             detail = "Server URL · Token · Collection",
-            detailColor = TextMuted,
+            detailColor = AxonColors.TextMuted,
             onClick = onOpenSettings,
+            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Smoke ─────────────────────────────────────────────────────────────
-        SetupSubItem(
+        DrawerSubItem(
             icon = Icons.Rounded.Wifi,
             label = "Smoke",
             detail = when (val s = smokeState) {
@@ -79,15 +73,16 @@ fun SetupDrawerContent(
                 is SetupActionState.Fail    -> s.message
             },
             detailColor = when (smokeState) {
-                is SetupActionState.Pass -> SuccessBase
-                is SetupActionState.Fail -> ErrorBase
-                else -> TextMuted
+                is SetupActionState.Pass -> AxonColors.SuccessBase
+                is SetupActionState.Fail -> AxonColors.ErrorBase
+                else -> AxonColors.TextMuted
             },
             onClick = { vm.runSmoke() },
+            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Doctor ────────────────────────────────────────────────────────────
-        SetupSubItem(
+        DrawerSubItem(
             icon = Icons.Rounded.HealthAndSafety,
             label = "Doctor",
             detail = when (val s = doctorState) {
@@ -97,47 +92,22 @@ fun SetupDrawerContent(
                 is SetupActionState.Fail    -> s.message
             },
             detailColor = when (doctorState) {
-                is SetupActionState.Pass -> SuccessBase
-                is SetupActionState.Fail -> ErrorBase
-                else -> TextMuted
+                is SetupActionState.Pass -> AxonColors.SuccessBase
+                is SetupActionState.Fail -> AxonColors.ErrorBase
+                else -> AxonColors.TextMuted
             },
             onClick = { vm.runDoctor() },
+            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Debug ─────────────────────────────────────────────────────────────
-        SetupSubItem(
+        DrawerSubItem(
             icon = Icons.Rounded.BugReport,
             label = "Debug",
             detail = "Server config · Advanced settings",
-            detailColor = TextMuted,
+            detailColor = AxonColors.TextMuted,
             onClick = onOpenSettings,
+            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
-    }
-}
-
-@Composable
-private fun SetupSubItem(
-    icon: ImageVector,
-    label: String,
-    detail: String,
-    detailColor: Color = TextMuted,
-    onClick: (() -> Unit)? = null,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .let { if (onClick != null) it.clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick) else it }
-            .padding(vertical = 8.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(imageVector = icon, contentDescription = label, tint = if (onClick != null) AccentPrimary else TextMuted, modifier = Modifier.size(17.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodySmall, color = TextLabel)
-            Text(detail, style = MaterialTheme.typography.labelSmall, color = detailColor, maxLines = 2)
-        }
-        if (onClick != null) {
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
-        }
     }
 }
