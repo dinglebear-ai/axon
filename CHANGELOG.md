@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.12.2] - 2026-05-27
+
+### Added
+
+- **build-windows.sh** — new cross-compile script that builds the Palette Tauri
+  or `axon.exe` Windows executable on dookie and ships it to Steamy's Desktop
+  via `scp`, replacing the old `build-on-steamy.sh` repo-sync approach.
+
+### Fixed
+
+- **Android: 22 code-review findings from PR #142** — CRLF injection in
+  `joinHeader`, `askStream` skipping `ModeOptionsApplicator`, `security-crypto`
+  downgraded to stable, URI scheme validation in four screens, `EncryptedTokenStore`
+  race condition, backup exclusion rules, `JobsViewModel` backoff, connection poll
+  flow termination, `DocumentViewModel` concurrent fetch cancellation,
+  `RecentJobsRepository` Set-of-JSON dedup bug, `HeadersField` delete index
+  shifting, `ModeOptionsRepository` dependency inversion (`*FormKeys` moved to
+  `data.repository.options`), `ConnectionState` name collision renamed to
+  `TestConnectionState`, `QueryRequest.limit` caller-wins precedence, answer text
+  capped at 500 chars, `OperationMode` ProGuard safety, `data object` sealed
+  states.
+
 ## [4.12.1] - 2026-05-27
 
 ### Fixed
