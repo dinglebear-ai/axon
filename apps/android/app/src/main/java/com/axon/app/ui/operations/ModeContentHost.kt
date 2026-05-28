@@ -20,14 +20,13 @@ import com.axon.app.ui.tools.ToolsViewModel
  */
 @Composable
 fun ModeContentHost(activeMode: OperationMode) {
-    val toolsVm: ToolsViewModel = viewModel()
     when (activeMode) {
         OperationMode.Ask       -> AskScreen()
         OperationMode.Query     -> QueryScreen()
-        OperationMode.Scrape    -> ScrapeTab(toolsVm)
-        OperationMode.Crawl     -> CrawlTab(toolsVm)
-        OperationMode.Map       -> MapTab(toolsVm)
-        OperationMode.Research  -> ResearchTab(toolsVm)
+        OperationMode.Scrape    -> ScrapeTab(viewModel())
+        OperationMode.Crawl     -> CrawlTab(viewModel())
+        OperationMode.Map       -> MapTab(viewModel())
+        OperationMode.Research  -> ResearchTab(viewModel())
         OperationMode.Summarize -> com.axon.app.ui.summarize.SummarizeScreen()
         OperationMode.Search    -> com.axon.app.ui.searchweb.SearchWebScreen()
         OperationMode.Ingest    -> com.axon.app.ui.ingest.IngestScreen()

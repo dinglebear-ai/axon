@@ -64,7 +64,7 @@ class DocumentViewModel(app: Application) : AndroidViewModel(app) {
             },
             onFailure = { err ->
                 lastLoadedUrl = null
-                Log.w(TAG, "retrieve($url) failed", err)
+                Log.w(TAG, "retrieve failed", err)
                 val kind = err::class.simpleName ?: "Error"
                 _uiState.value = DocumentUiState.Error(
                     err.message?.let { "$kind: $it" } ?: kind,

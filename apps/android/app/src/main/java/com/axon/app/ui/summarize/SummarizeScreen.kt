@@ -88,8 +88,10 @@ fun SummarizeScreen(vm: SummarizeViewModel = viewModel()) {
             value = input,
             onValueChange = { input = it },
             onSend = {
-                vm.submit(input.trim())
-                input = ""
+                if (input.trim().isNotEmpty()) {
+                    vm.submit(input.trim())
+                    input = ""
+                }
             },
             placeholder = "https://…",
             loading = state is Resource.Loading,

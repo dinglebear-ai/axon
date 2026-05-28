@@ -249,7 +249,8 @@ class AxonClient(
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusResponse> = withContext(Dispatchers.IO) {
         // The server wraps the job in {"job": {...}}; decode the envelope and unwrap.
-        get<CrawlStatusWrapper>("/v1/crawl/$jobId").map { it.job }
+        val encodedId = java.net.URLEncoder.encode(jobId, "UTF-8").replace("+", "%20")
+        get<CrawlStatusWrapper>("/v1/crawl/$encodedId").map { it.job }
     }
 
     // ── Phase 2 endpoints ──────────────────────────────────────────────────────
@@ -275,7 +276,8 @@ class AxonClient(
 
     /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
     suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
-        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/$id").get())
+        val encodedId = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/$encodedId").get())
         execute(httpLong, builder)
     }
 
@@ -286,8 +288,9 @@ class AxonClient(
 
     /** POST /v1/{kind}/{id}/cancel. */
     suspend fun cancelJob(kind: JobKind, id: String): Result<CancelResponse> = withContext(Dispatchers.IO) {
+        val encodedId = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
         val body = "{}".toRequestBody(JSON_MEDIA_TYPE)
-        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/$id/cancel").post(body))
+        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/$encodedId/cancel").post(body))
         execute(http, builder)
     }
 

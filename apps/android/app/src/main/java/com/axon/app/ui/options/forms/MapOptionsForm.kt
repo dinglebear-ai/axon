@@ -20,7 +20,7 @@ fun MapOptionsForm() {
         resetKeys = MapFormKeys.ALL,
         repo = repo,
     ) {
-        IntField("Limit", limit) { limit = it }
-        IntField("Offset", offset) { offset = it }
+        IntField("Limit", limit) { limit = it.coerceAtLeast(0) }
+        IntField("Offset", offset) { offset = it.coerceAtLeast(0) }
     }
 }

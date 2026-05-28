@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.ui.common.Resource
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,10 +31,13 @@ class SystemViewModel(
     private val _doctor = MutableStateFlow<Resource<JsonElement>>(Resource.Loading)
     val doctor: StateFlow<Resource<JsonElement>> = _doctor.asStateFlow()
 
+    private var refreshJob: Job? = null
+
     init { refresh() }
 
     fun refresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             _doctor.value = Resource.Loading
             container.axonRepository.doctorPayload().fold(
                 onSuccess = { _doctor.value = Resource.Ready(it) },

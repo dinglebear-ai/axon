@@ -7,6 +7,7 @@ import com.axon.app.AxonApp
 import com.axon.app.data.repository.SummarizeResultUi
 import com.axon.app.data.util.UrlValidator
 import com.axon.app.ui.common.Resource
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,9 +35,12 @@ class SummarizeViewModel(
     private val _uiState = MutableStateFlow<Resource<SummarizeResultUi>>(Resource.Idle)
     val uiState: StateFlow<Resource<SummarizeResultUi>> = _uiState.asStateFlow()
 
+    private var submitJob: Job? = null
+
     fun submit(input: String) {
         if (!UrlValidator.isValidHttpUrl(input)) return
-        viewModelScope.launch {
+        submitJob?.cancel()
+        submitJob = viewModelScope.launch {
             _uiState.value = Resource.Loading
             // DataStore handles its own dispatcher; no need to wrap in withContext.
             val collection = container.settingsRepository.settings.first().collection

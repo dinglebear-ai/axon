@@ -73,15 +73,24 @@ class AxonClientPhase2Test {
     @Test fun `doctor GETs v1 doctor`() = runBlocking {
         server.enqueue(MockResponse().setBody("""{"payload":{"qdrant":"ok"}}""").addHeader("Content-Type","application/json"))
         assertTrue(client.doctor().isSuccess)
+        val req = server.takeRequest()
+        assertEquals("GET", req.method)
+        assertEquals("/v1/doctor", req.path)
     }
 
     @Test fun `suggest POSTs v1 suggest`() = runBlocking {
         server.enqueue(MockResponse().setBody("""{"urls":[{"url":"https://x","reason":"r"}]}""").addHeader("Content-Type","application/json"))
         assertTrue(client.suggest(focus = "rust").isSuccess)
+        val req = server.takeRequest()
+        assertEquals("POST", req.method)
+        assertEquals("/v1/suggest", req.path)
     }
 
     @Test fun `domains GETs v1 domains`() = runBlocking {
         server.enqueue(MockResponse().setBody("""{"domains":[{"domain":"d","vectors":5}]}""").addHeader("Content-Type","application/json"))
         assertTrue(client.domains().isSuccess)
+        val req = server.takeRequest()
+        assertEquals("GET", req.method)
+        assertTrue("expected path starting with /v1/domains, got ${req.path}", req.path!!.startsWith("/v1/domains"))
     }
 }

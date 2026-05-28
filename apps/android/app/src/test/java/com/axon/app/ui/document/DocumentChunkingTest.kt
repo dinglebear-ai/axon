@@ -27,12 +27,15 @@ class DocumentChunkingTest {
     fun `splits on paragraph boundaries when content exceeds target`() {
         // Two ~1500-char paragraphs joined by a blank line. Total >2000, so the
         // chunker must split — and the split must land on the `\n\n` boundary.
+        // The separator is appended to the outgoing chunk so reassembly is lossless.
         val p1 = "a".repeat(1_500)
         val p2 = "b".repeat(1_500)
-        val chunks = chunkDocument("$p1\n\n$p2")
+        val original = "$p1\n\n$p2"
+        val chunks = chunkDocument(original)
         assertEquals(2, chunks.size)
-        assertEquals(p1, chunks[0])
+        assertEquals(p1 + "\n\n", chunks[0])
         assertEquals(p2, chunks[1])
+        assertEquals(original, chunks.joinToString(""))
     }
 
     @Test
@@ -47,6 +50,8 @@ class DocumentChunkingTest {
         chunks.forEach {
             assertTrue("chunk too large (${it.length}): $it", it.length <= DOC_CHUNK_TARGET_CHARS)
         }
+        // Reassembling chunks must reproduce the original content.
+        assertEquals(content, chunks.joinToString(""))
     }
 
     @Test

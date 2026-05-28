@@ -21,6 +21,9 @@ import com.axon.app.data.repository.options.ResearchFormKeys
 import com.axon.app.data.repository.options.ScrapeFormKeys
 import com.axon.app.data.repository.options.SearchWebFormKeys
 import com.axon.app.data.repository.options.SummarizeFormKeys
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 
 /**
@@ -38,6 +41,10 @@ class ModeOptionsRepository(
     private val context: Context,
     private val encryptedHeadersStore: EncryptedHeadersStore = EncryptedHeadersStore(context),
 ) : ModeOptionsApplicator {
+
+    private val _resetVersion = MutableStateFlow(0)
+    /** Incremented each time [resetKeys] clears DataStore; forms re-read their stored values. */
+    val resetVersion: StateFlow<Int> = _resetVersion.asStateFlow()
 
     /** Read a single Preferences value once (no flow). Returns null when unset. */
     suspend fun <T> read(key: Preferences.Key<T>): T? =
@@ -69,6 +76,7 @@ class ModeOptionsRepository(
         context.modeOptionsDataStore.edit { prefs ->
             keys.forEach { prefs.remove(it) }
         }
+        _resetVersion.value++
     }
 
     // ── Applicator implementations ───────────────────────────────────────────
