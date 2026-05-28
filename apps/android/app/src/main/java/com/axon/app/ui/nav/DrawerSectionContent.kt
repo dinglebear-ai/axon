@@ -18,7 +18,11 @@ fun DrawerSectionContent(
         DrawerSection.Sessions   -> SessionsDrawerContent(onSelect = { _ -> onDismiss() })
         DrawerSection.Jobs       -> JobsDrawerContent()
         DrawerSection.Knowledge  -> KnowledgeDrawerContent(onOpenSuggest = { navController.navigate(SuggestRoute) })
-        DrawerSection.Management -> ManagementDrawerContent()
-        DrawerSection.Setup      -> SetupDrawerContent()
+        DrawerSection.Management -> ManagementDrawerContent(
+            onOpenSettings = { navController.navigate(SettingsRoute) },
+        )
+        DrawerSection.Setup -> SetupDrawerContent(
+            onOpenSettings = { navController.navigate(SettingsRoute) },
+        )
     }
 }
