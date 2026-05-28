@@ -88,8 +88,9 @@ fun SummarizeScreen(vm: SummarizeViewModel = viewModel()) {
             value = input,
             onValueChange = { input = it },
             onSend = {
-                if (input.trim().isNotEmpty()) {
-                    vm.submit(input.trim())
+                val trimmed = input.trim()
+                if (trimmed.isNotEmpty()) {
+                    vm.submit(trimmed)
                     input = ""
                 }
             },

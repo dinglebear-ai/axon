@@ -122,7 +122,7 @@ private fun IngestForm(
     onSubmit: () -> Unit,
 ) {
     val cog = modeOptionsCog()
-    val submitEnabled = target.trim().isNotEmpty()
+    val submitEnabled = target.isNotBlank()
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
         EmptyContent(

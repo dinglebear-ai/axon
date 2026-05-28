@@ -23,11 +23,9 @@ internal fun chunkDocument(content: String): List<String> {
         }
     }
     fun appendUnit(unit: String, sep: String) {
-        if (buf.isNotEmpty() && buf.length + sep.length + unit.length > DOC_CHUNK_TARGET_CHARS) {
+        if (buf.isNotEmpty()) {
             buf.append(sep)
-            flush()
-        } else if (buf.isNotEmpty()) {
-            buf.append(sep)
+            if (buf.length + unit.length > DOC_CHUNK_TARGET_CHARS) flush()
         }
         buf.append(unit)
     }
