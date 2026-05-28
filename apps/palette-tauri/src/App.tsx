@@ -231,7 +231,7 @@ export default function App() {
     const size = showResultsLayout
       ? { width: 900, height: 560 }
       : showContent
-        ? { width: 760, height: Math.min(148 + filtered.length * 48, 520) }
+        ? { width: 760, height: Math.min(142 + filtered.length * 48, window.screen.availHeight - 80) }
         : { width: 640, height: 78 };
     void invoke("resize_palette", size);
   }, [showResultsLayout, showContent, filtered.length]);
