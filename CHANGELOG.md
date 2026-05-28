@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.12.0] - 2026-05-27
+
+### Added
+
+- **Android: pager + FAB shell** — bottom-pager navigation and draggable FAB shell
+  wired into the main nav graph, enabling swipe-between-tabs UX alongside the
+  existing destination-based routing.
+- **Android: complete operation mode coverage** — `Map`, `Research`, `SearchWeb`,
+  and `Summarize` modes added to `OperationMode`; matching option forms
+  (`MapOptionsForm`, `ResearchOptionsForm`, `SearchWebOptionsForm`,
+  `SummarizeOptionsForm`) and nav graph destinations registered.
+- **Android: `options` form-keys package** — all per-mode form key constants
+  extracted from the repository layer into
+  `data/repository/options/{Ask,Crawl,Ingest,Map,Query,Research,Scrape,SearchWeb,Summarize}FormKeys.kt`,
+  giving UI forms a stable, typed constant surface.
+
+### Changed
+
+- Android: options forms (`AskOptionsForm`, `CrawlOptionsForm`, `IngestOptionsForm`,
+  `QueryOptionsForm`, `ScrapeOptionsForm`, and the new forms) simplified — form key
+  references now come from the dedicated keys package rather than inline strings.
+- Android: `AxonRepository`, `ModeOptionsRepository`, `RecentJobsRepository`, and
+  `EncryptedTokenStore` updated to use the new form-keys constants.
+- Android: `DocumentScreen`, `SourcesScreen`, `MapTab`, `ResearchTab` wired into
+  the expanded nav graph.
+- Android: `libs.versions.toml` dependency updates for new form/nav requirements.
+- `scripts/build-on-steamy.sh`: minor fixes to sync paths.
+
 ## [4.11.0] - 2026-05-27
 
 ### Security
