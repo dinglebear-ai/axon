@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.common.DrawerSubItem
+import com.axon.app.ui.common.Resource
 import com.axon.app.ui.status.ConnectionState
 import com.axon.app.ui.status.ConnectionStatusViewModel
 import com.axon.app.ui.theme.AxonColors
@@ -93,12 +94,12 @@ fun ManagementDrawerContent(
             icon = Icons.Rounded.Storage,
             label = "Stack",
             detail = when (val s = statsState) {
-                is MgmtActionState.Idle    -> "Tap to load"
-                is MgmtActionState.Loading -> "Loading…"
-                is MgmtActionState.Done    -> s.summary
-                is MgmtActionState.Error   -> s.message
+                Resource.Idle    -> "Tap to load"
+                Resource.Loading -> "Loading…"
+                is Resource.Ready -> s.value
+                is Resource.Error -> s.message
             },
-            detailColor = if (statsState is MgmtActionState.Error) AxonColors.ErrorBase else AxonColors.TextMuted,
+            detailColor = if (statsState is Resource.Error) AxonColors.ErrorBase else AxonColors.TextMuted,
             onClick = { vm.loadStats() },
         )
 

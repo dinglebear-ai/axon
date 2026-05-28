@@ -4,59 +4,75 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
+import com.axon.app.ui.common.Resource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-sealed interface MgmtActionState {
-    data object Idle : MgmtActionState
-    data object Loading : MgmtActionState
-    data class Done(val summary: String) : MgmtActionState
-    data class Error(val message: String) : MgmtActionState
-}
-
 class ManagementViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
 
-    private val _statsState = MutableStateFlow<MgmtActionState>(MgmtActionState.Idle)
-    val statsState: StateFlow<MgmtActionState> = _statsState.asStateFlow()
+    private val _statsState = MutableStateFlow<Resource<String>>(Resource.Idle)
+    val statsState: StateFlow<Resource<String>> = _statsState.asStateFlow()
 
-    private val _doctorState = MutableStateFlow<MgmtActionState>(MgmtActionState.Idle)
-    val doctorState: StateFlow<MgmtActionState> = _doctorState.asStateFlow()
+    private val _doctorState = MutableStateFlow<Resource<String>>(Resource.Idle)
+    val doctorState: StateFlow<Resource<String>> = _doctorState.asStateFlow()
 
     fun loadStats() {
-        if (_statsState.value is MgmtActionState.Loading) return
+        if (_statsState.value is Resource.Loading) return
         viewModelScope.launch {
-            _statsState.value = MgmtActionState.Loading
-            container.axonClient.stats().fold(
-                onSuccess = { resp ->
-                    // payload is opaque JsonObject — show top-level key count as a summary
-                    val preview = resp.payload.entries
-                        .take(4)
-                        .joinToString(" · ") { (k, v) -> "$k: $v" }
-                    _statsState.value = MgmtActionState.Done(preview.ifBlank { "ok" })
-                },
-                onFailure = { e ->
-                    _statsState.value = MgmtActionState.Error(e.message ?: "Stats unavailable")
-                },
-            )
+            _statsState.value = Resource.Loading
+            runCatching { container.axonClient.stats() }
+                .fold(
+                    onSuccess = { result ->
+                        result.fold(
+                            onSuccess = { resp ->
+                                // payload is opaque JsonObject — show top-level key count as a summary
+                                val preview = resp.payload.entries
+                                    .take(4)
+                                    .joinToString(" · ") { (k, v) -> "$k: $v" }
+                                _statsState.value = Resource.Ready(
+                                    preview.ifBlank { "(no collection data — Qdrant may be empty)" }
+                                )
+                            },
+                            onFailure = { e ->
+                                val hint = e.message?.take(120) ?: e.javaClass.simpleName
+                                _statsState.value = Resource.Error("Stats unavailable: $hint")
+                            },
+                        )
+                    },
+                    onFailure = { e ->
+                        val hint = e.message?.take(120) ?: e.javaClass.simpleName
+                        _statsState.value = Resource.Error("Unexpected error: $hint")
+                    },
+                )
         }
     }
 
     fun runDoctor() {
-        if (_doctorState.value is MgmtActionState.Loading) return
+        if (_doctorState.value is Resource.Loading) return
         viewModelScope.launch {
-            _doctorState.value = MgmtActionState.Loading
-            container.axonClient.doctor().fold(
-                onSuccess = { resp ->
-                    val preview = resp.payload.toString().take(200)
-                    _doctorState.value = MgmtActionState.Done(preview)
-                },
-                onFailure = { e ->
-                    _doctorState.value = MgmtActionState.Error(e.message ?: "Doctor unavailable")
-                },
-            )
+            _doctorState.value = Resource.Loading
+            runCatching { container.axonClient.doctor() }
+                .fold(
+                    onSuccess = { result ->
+                        result.fold(
+                            onSuccess = { resp ->
+                                val preview = resp.payload.toString().take(200)
+                                _doctorState.value = Resource.Ready(preview)
+                            },
+                            onFailure = { e ->
+                                val hint = e.message?.take(120) ?: e.javaClass.simpleName
+                                _doctorState.value = Resource.Error("Doctor unavailable: $hint")
+                            },
+                        )
+                    },
+                    onFailure = { e ->
+                        val hint = e.message?.take(120) ?: e.javaClass.simpleName
+                        _doctorState.value = Resource.Error("Unexpected error: $hint")
+                    },
+                )
         }
     }
 }

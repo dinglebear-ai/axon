@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.common.DrawerSubItem
+import com.axon.app.ui.common.Resource
 import com.axon.app.ui.theme.AxonColors
 
 // ViewModel is activity-scoped (default ViewModelStoreOwner), so smoke/doctor
@@ -28,19 +29,23 @@ fun SetupDrawerContent(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         // ── Preflight (smoke + doctor) ────────────────────────────────────────
+        // Failure surfaces before in-progress so a fast-failing smoke check is visible
+        // even while doctor is still running.
+        val smokeFail = smokeState as? Resource.Error
+        val doctorFail = doctorState as? Resource.Error
         DrawerSubItem(
             icon = Icons.Rounded.FlightTakeoff,
             label = "Preflight",
             detail = when {
-                smokeState is SetupActionState.Running || doctorState is SetupActionState.Running -> "Running checks…"
-                smokeState is SetupActionState.Fail    -> (smokeState as SetupActionState.Fail).message
-                doctorState is SetupActionState.Fail   -> (doctorState as SetupActionState.Fail).message
-                smokeState is SetupActionState.Pass && doctorState is SetupActionState.Pass -> "All checks passed"
+                smokeFail != null  -> smokeFail.message
+                doctorFail != null -> doctorFail.message
+                smokeState is Resource.Loading || doctorState is Resource.Loading -> "Running checks…"
+                smokeState is Resource.Ready && doctorState is Resource.Ready -> "All checks passed"
                 else -> "Tap to run all checks"
             },
             detailColor = when {
-                smokeState is SetupActionState.Fail || doctorState is SetupActionState.Fail -> AxonColors.ErrorBase
-                smokeState is SetupActionState.Pass && doctorState is SetupActionState.Pass -> AxonColors.SuccessBase
+                smokeFail != null || doctorFail != null -> AxonColors.ErrorBase
+                smokeState is Resource.Ready && doctorState is Resource.Ready -> AxonColors.SuccessBase
                 else -> AxonColors.TextMuted
             },
             onClick = {
@@ -63,14 +68,14 @@ fun SetupDrawerContent(
             icon = Icons.Rounded.Wifi,
             label = "Smoke",
             detail = when (val s = smokeState) {
-                is SetupActionState.Idle    -> "Tap to run /healthz"
-                is SetupActionState.Running -> "Testing connectivity…"
-                is SetupActionState.Pass    -> s.detail
-                is SetupActionState.Fail    -> s.message
+                Resource.Idle    -> "Tap to run /healthz"
+                Resource.Loading -> "Testing connectivity…"
+                is Resource.Ready -> s.value
+                is Resource.Error -> s.message
             },
             detailColor = when (smokeState) {
-                is SetupActionState.Pass -> AxonColors.SuccessBase
-                is SetupActionState.Fail -> AxonColors.ErrorBase
+                is Resource.Ready -> AxonColors.SuccessBase
+                is Resource.Error -> AxonColors.ErrorBase
                 else -> AxonColors.TextMuted
             },
             onClick = { vm.runSmoke() },
@@ -81,14 +86,14 @@ fun SetupDrawerContent(
             icon = Icons.Rounded.HealthAndSafety,
             label = "Doctor",
             detail = when (val s = doctorState) {
-                is SetupActionState.Idle    -> "Tap to run /v1/doctor"
-                is SetupActionState.Running -> "Running diagnostics…"
-                is SetupActionState.Pass    -> s.detail
-                is SetupActionState.Fail    -> s.message
+                Resource.Idle    -> "Tap to run /v1/doctor"
+                Resource.Loading -> "Running diagnostics…"
+                is Resource.Ready -> s.value
+                is Resource.Error -> s.message
             },
             detailColor = when (doctorState) {
-                is SetupActionState.Pass -> AxonColors.SuccessBase
-                is SetupActionState.Fail -> AxonColors.ErrorBase
+                is Resource.Ready -> AxonColors.SuccessBase
+                is Resource.Error -> AxonColors.ErrorBase
                 else -> AxonColors.TextMuted
             },
             onClick = { vm.runDoctor() },
