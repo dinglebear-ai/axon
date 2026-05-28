@@ -1,12 +1,12 @@
 :root,
 .dark {
   /* Surfaces — navy lift tiers */
-  --aurora-page-bg:       #07131c;
+  --aurora-page-bg:       #070f18;
   --aurora-bg:            var(--aurora-page-bg);
-  --aurora-nav-bg:        #07111a;
-  --aurora-panel-medium:  #102330;
+  --aurora-nav-bg:        #060e17;
+  --aurora-panel-medium:  #0f1d2b;
   --aurora-panel-strong:  #13293a;
-  --aurora-control-surface: #0c1a24;
+  --aurora-control-surface: #071018;
   --aurora-hover-bg:      #17364b;
   --aurora-surface-raised: linear-gradient(180deg, rgba(18, 40, 56, 0.96), rgba(12, 27, 38, 0.98));
 
@@ -99,9 +99,9 @@
   --aurora-shadow-strong: 0 20px 38px rgba(0, 0, 0, 0.26);
   --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.055);
-  --aurora-active-glow: 0 0 0 1px color-mix(in srgb, #29b6f6 28%, transparent),
-                        0 2px 8px color-mix(in srgb, #29b6f6 18%, transparent);
-  --aurora-focus-ring: color-mix(in srgb, #29b6f6 30%, transparent);
+  --aurora-active-glow: 0 0 0 1px color-mix(in srgb, var(--aurora-accent-primary) 28%, transparent),
+                        0 2px 8px color-mix(in srgb, var(--aurora-accent-primary) 18%, transparent);
+  --aurora-focus-ring: color-mix(in srgb, var(--aurora-accent-primary) 30%, transparent);
 
   /* Radii */
   --aurora-radius-1: 14px;
@@ -131,10 +131,8 @@
   --aurora-weight-label: 650;
   --aurora-weight-heading: 760;
 
-  /* Page shell — the two-radial aurora wash */
-  --aurora-shell-bg: radial-gradient(circle at 12% 0%, rgba(41, 182, 246, 0.09), transparent 28%),
-                     radial-gradient(circle at 88% 0%, rgba(28, 127, 172, 0.10), transparent 24%),
-                     var(--aurora-page-bg);
+  /* Page shell — crystalline flat surface */
+  --aurora-shell-bg: #0b1622;
 
   /* shadcn token bridge — dark */
   --background:           var(--aurora-page-bg);
@@ -239,6 +237,7 @@
   --aurora-subtle-bg:         color-mix(in srgb, var(--aurora-hover-bg) 66%, transparent);
   --aurora-selected-bg:       color-mix(in srgb, var(--aurora-accent-primary) 10%, var(--aurora-panel-medium));
   --aurora-pressed-bg:        color-mix(in srgb, var(--aurora-accent-primary) 16%, var(--aurora-panel-medium));
+  --aurora-focus-ring:        color-mix(in srgb, var(--aurora-accent-primary) 40%, transparent);
   --aurora-focus-ring-strong: color-mix(in srgb, var(--aurora-accent-primary) 40%, transparent);
 
   /* --aurora-status-offline is deprecated; alias to --aurora-neutral. Remove after all consumers migrate. */

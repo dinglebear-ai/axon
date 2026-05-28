@@ -365,10 +365,11 @@ export default function App() {
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}`}>
 
       <section className="command-bar">
-        <Search size={16} />
+        <Search size={16} aria-hidden="true" />
         {modeAction && (
-          <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} title="Clear action mode">
+          <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} aria-label={`Clear ${modeAction.subcommand} mode`}>
             {modeAction.subcommand}
+            <span className="mode-pill-dismiss" aria-hidden="true">×</span>
           </button>
         )}
         <Input
@@ -387,7 +388,7 @@ export default function App() {
           aria-label="Run selected action"
           title={validation || "Run selected action"}
         >
-          {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" tone="rose" /> : <Send size={15} />}
+          {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" tone="cyan" /> : <Send size={15} />}
         </button>
       </section>
 
