@@ -12,7 +12,7 @@ Defaults:
   --target palette-tauri
   --host steamy-wsl
   --remote-repo /home/jmagar/.cache/axon/build-on-steamy/axon_rust
-  --desktop /mnt/c/Users/jmaga/Desktop
+  --desktop /mnt/c/Users/jmaga/OneDrive/Desktop
 
 Sync safety:
   The default remote repo is a disposable mirror marked with:
@@ -178,7 +178,7 @@ destructive_sync=0
 host="${STEAMY_HOST:-steamy-wsl}"
 default_remote_repo="/home/jmagar/.cache/axon/build-on-steamy/axon_rust"
 remote_repo="${STEAMY_AXON_REPO:-$default_remote_repo}"
-desktop="${STEAMY_DESKTOP:-/mnt/c/Users/jmaga/Desktop}"
+desktop="${STEAMY_DESKTOP:-/mnt/c/Users/jmaga/OneDrive/Desktop}"
 
 while (($#)); do
   case "$1" in
