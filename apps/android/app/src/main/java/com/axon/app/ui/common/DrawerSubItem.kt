@@ -2,7 +2,14 @@ package com.axon.app.ui.common
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,9 +26,8 @@ import com.axon.app.ui.theme.AxonColors
 /**
  * Shared drawer sub-item row used by Management and Setup drawer sections.
  *
- * [trailing] is an optional slot for badges, chevrons, or other decorations.
- * When [onClick] is non-null and [trailing] is null the caller is responsible
- * for providing trailing content (e.g. a chevron icon).
+ * When [onClick] is non-null and [trailing] is null, a chevron is rendered automatically.
+ * Pass an explicit [trailing] composable for badges or other custom decorations.
  */
 @Composable
 fun DrawerSubItem(
@@ -32,15 +38,18 @@ fun DrawerSubItem(
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val clickModifier = if (onClick != null) {
+        Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onClick,
+        )
+    } else Modifier
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .let {
-                if (onClick != null)
-                    it.clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-                else it
-            }
-            // vertical = 14.dp gives ~45dp row height with 17dp icon — meets 48dp with icon padding
+            .then(clickModifier)
             .padding(vertical = 14.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -61,6 +70,14 @@ fun DrawerSubItem(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        trailing?.invoke()
+        when {
+            trailing != null -> trailing()
+            onClick != null -> Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = AxonColors.TextMuted,
+                modifier = Modifier.size(14.dp),
+            )
+        }
     }
 }
