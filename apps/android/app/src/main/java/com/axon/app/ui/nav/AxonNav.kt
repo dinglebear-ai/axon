@@ -2,6 +2,7 @@ package com.axon.app.ui.nav
 
 import androidx.compose.runtime.compositionLocalOf
 import com.axon.app.ui.operations.OperationMode
+import kotlinx.serialization.Serializable
 
 /**
  * Typed navigation callback for deep children that need to open a document
@@ -20,6 +21,8 @@ val LocalOpenDocument = compositionLocalOf<(url: String) -> Unit> {
  *
  * Nullable on purpose — screens render the cog only when a handler is present,
  * so reuse outside the Operations host (Document view, etc.) is unaffected.
+ *
+ * TODO(Task 6): remove once OperationsScreen and ModeOptionsCog are deleted.
  */
 val LocalModeOptionsCog = compositionLocalOf<(() -> Unit)?> { null }
 
@@ -29,5 +32,10 @@ val LocalModeOptionsCog = compositionLocalOf<(() -> Unit)?> { null }
  * holding a NavController directly.
  *
  * Defaults to a no-op so screens reused outside the nav host don't crash.
+ *
+ * TODO(Task 6): remove once OperationsScreen is deleted.
  */
 val LocalOpenModeOptions = compositionLocalOf<(OperationMode) -> Unit> { { /* no-op */ } }
+
+/** Top-level shell that hosts [RailScaffold] — the navigation rail + content pane. */
+@Serializable data object RailShellRoute
