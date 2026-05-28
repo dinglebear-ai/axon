@@ -633,6 +633,7 @@ jobs:
       # async chains overflow the 2 MiB rustc-test-harness default
       # (jobs::watch_lite::tests::lite_watch_run_now_records_completed_run).
       RUST_MIN_STACK: "8388608"
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -660,6 +661,9 @@ jobs:
 
       - name: cargo test ignored cli infra tests
         run: cargo test --locked cli_ --features test-helpers -- --ignored
+
+      - name: cargo test github integration (clone + cleanup regression)
+        run: cargo test --locked --features test-helpers -- github_integration_ --ignored
 
       - name: ask quality regression fixtures
         run: ./scripts/test-ask-quality-regressions.sh
@@ -940,3 +944,61 @@ jobs:
           kill "$(cat /tmp/axon-mcp.pid 2>/dev/null)" 2>/dev/null || true
           docker rm -f axon-tei || true
           docker compose --env-file "$HOME/.axon/.env" -f docker-compose.prod.yaml down || true
+
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - name: create web assets placeholder
+        run: mkdir -p apps/web/out
+      - name: cargo build release axon
+        run: cargo build --release --locked --bin axon
+
+  release-smoke:
+    name: release-smoke
+    runs-on: ubuntu-latest
+    needs: [release]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - name: create web assets placeholder
+        run: mkdir -p apps/web/out
+      - name: build release binary for smoke test
+        run: cargo build --release --locked --bin axon
+      - name: smoke test release binary help output
+        run: ./target/release/axon --help
+
+  production-gate:
+    name: production-gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - monolith
+      - no-mod-rs
+      - fmt
+      - check
+      - clippy
+      - test
+      - security
+      - release
+      - release-smoke
+    steps:
+      - name: verify all required jobs passed
+        run: |
+          test "${{ needs.monolith.result }}" = "success"
+          test "${{ needs.no-mod-rs.result }}" = "success"
+          test "${{ needs.fmt.result }}" = "success"
+          test "${{ needs.check.result }}" = "success"
+          test "${{ needs.clippy.result }}" = "success"
+          test "${{ needs.test.result }}" = "success"
+          test "${{ needs.security.result }}" = "success"
+          test "${{ needs.release.result }}" = "success"
+          test "${{ needs.release-smoke.result }}" = "success"
