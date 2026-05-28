@@ -333,9 +333,9 @@ textarea {
 .panel-heading {
   justify-content: space-between;
   margin-bottom: 8px;
-  color: var(--aurora-text-muted);
+  color: #1e3448;
   font-size: var(--aurora-type-caption);
-  font-weight: var(--aurora-weight-label);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: var(--aurora-letter-eyebrow);
 }
@@ -481,8 +481,8 @@ textarea {
   overflow: auto;
   padding: 10px 12px;
   color: var(--aurora-text-primary);
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
+  background: #040b12;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
 }
 
@@ -573,6 +573,7 @@ textarea {
   justify-content: space-between;
   height: 34px;
   padding: 0 18px;
-  background: var(--aurora-nav-bg);
-  border-top: 1px solid var(--aurora-border-default);
+  background: #060e17;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  color: #1e3448;
 }
