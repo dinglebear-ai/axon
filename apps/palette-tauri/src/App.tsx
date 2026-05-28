@@ -388,7 +388,7 @@ export default function App() {
           aria-label="Run selected action"
           title={validation || "Run selected action"}
         >
-          {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" tone="rose" /> : <Send size={15} />}
+          {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" tone="cyan" /> : <Send size={15} />}
         </button>
       </section>
 
