@@ -42,7 +42,10 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun AskScreen(vm: AskViewModel = viewModel()) {
+fun AskScreen(
+    onOpenDocument: (String) -> Unit = {},
+    vm: AskViewModel = viewModel(),
+) {
     val uiState by vm.uiState.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
