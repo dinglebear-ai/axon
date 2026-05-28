@@ -115,10 +115,14 @@ private fun clampOffset(
     if (parentSize.width == 0 || fabSize.width == 0) return current
     val endPx = with(density) { padding.calculateEndPadding(layoutDir).toPx() }
     val bottomPx = with(density) { padding.calculateBottomPadding().toPx() }
+    // Anchor is bottom-end with `padding`. Positive offsets push the FAB past
+    // the anchor (further right / further down), which lets the user drag it
+    // off-screen or into the system nav bar. Clamp the positive axes to 0 so
+    // the FAB can never move past its initial visible position.
     val minX = -(parentSize.width - fabSize.width - endPx)
-    val maxX = endPx
+    val maxX = 0f
     val minY = -(parentSize.height - fabSize.height - bottomPx)
-    val maxY = bottomPx
+    val maxY = 0f
     return Offset(
         x = current.x.coerceIn(minX, maxX),
         y = current.y.coerceIn(minY, maxY),

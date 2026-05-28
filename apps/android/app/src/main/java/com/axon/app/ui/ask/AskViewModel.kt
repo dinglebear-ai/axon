@@ -8,6 +8,7 @@ import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.remote.AskStreamEvent
 import com.axon.app.data.repository.AskResultUi
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +63,15 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     private val _turns = MutableStateFlow<List<AskTurn>>(emptyList())
     val turns: StateFlow<List<AskTurn>> = _turns.asStateFlow()
 
+    /**
+     * In-flight ask coroutine. Tracked so a second `ask()` call cancels the
+     * prior stream — without this, repeated Asks pile up parallel SSE
+     * connections, blocked OkHttp IO threads (readLine never returns until
+     * STREAM_READ_TIMEOUT_SECONDS = 300s), and interleaved [_uiState] writes.
+     * The user-visible symptom is an app that "hangs" and then force-closes.
+     */
+    private var askJob: Job? = null
+
     /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
     fun clearFollowUp() { _turns.value = emptyList() }
 
@@ -71,7 +81,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
 
     fun ask(query: String) {
         if (query.isBlank()) return
-        viewModelScope.launch {
+        // Cancel any prior in-flight stream BEFORE launching a new one. Without
+        // this guard, viewModelScope.launch creates parallel coroutines and a
+        // stuck readLine() from a previous ask leaks an IO thread.
+        askJob?.cancel()
+        askJob = viewModelScope.launch {
             _uiState.value = AskUiState.Loading
             val collection = container.settingsRepository.settings.first().collection
 
@@ -119,16 +133,23 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             // Fallback: stream ended without a Done/Error event (truncated SSE response).
-            // Note: _uiState.value is read after collect() returns. A concurrent ask() call is
-            // impossible here because the ask() function cancels any prior job via a single
-            // viewModelScope.launch — only one ask coroutine runs at a time per ViewModel instance.
+            // [askJob] tracking guarantees at most one ask coroutine writes to _uiState
+            // at a time — see the askJob?.cancel() above.
             val current = _uiState.value
             if (current is AskUiState.Loading || current is AskUiState.Streaming) {
                 if (accumulated.isNotBlank()) {
                     val finalAnswer = accumulated.toString()
                     val result = AskResultUi(query = query, answer = finalAnswer, timingMs = null)
-                    container.axonRepository.recordAskHistory(AskHistoryEntry(query = result.query, answer = result.answer))
-                    _uiState.value = AskUiState.Success(result = result)
+                    val saved = container.axonRepository.recordAskHistory(
+                        AskHistoryEntry(query = result.query, answer = result.answer),
+                    )
+                    // Honest about the truncation — the user is shown the partial bytes
+                    // but warned that the stream ended before the server signalled Done.
+                    val warning = buildString {
+                        append("Response may be incomplete — the server ended the stream without a completion event.")
+                        if (!saved) append(" History could not be saved (storage may be full).")
+                    }
+                    _uiState.value = AskUiState.Success(result = result, historyWarning = warning)
                     appendTurn(q = query, a = finalAnswer)
                 } else {
                     _uiState.value = AskUiState.Error("No response received from server")

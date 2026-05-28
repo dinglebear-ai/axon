@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,7 +21,47 @@ import kotlinx.coroutines.launch
 enum class ConnectionState { Checking, Online, Offline }
 
 /** Health-check cadence. Server is LAN/Tailscale, not internet-scale. */
-private const val POLL_INTERVAL_MS = 30_000L
+internal const val POLL_INTERVAL_MS = 30_000L
+
+/**
+ * Pure connection-state engine. Extracted from the AndroidViewModel so it can
+ * be exercised under `runTest` with a virtual scheduler and a stubbed ping.
+ *
+ * The same `merge(poll + refresh) -> map -> catch -> stateIn` shape used by the
+ * ViewModel; the only difference is `ping` is a function reference instead of
+ * a hard call to `container.axonRepository.ping()`. Keep the call chain here
+ * load-bearing — the ViewModel below is a thin shell around it.
+ */
+internal class ConnectionStatusEngine(
+    private val ping: suspend () -> Boolean,
+    private val pollIntervalMs: Long = POLL_INTERVAL_MS,
+) {
+    private val refreshTicker = Channel<Unit>(capacity = Channel.CONFLATED)
+
+    fun state(scope: CoroutineScope): StateFlow<ConnectionState> = merge(
+        flow {
+            while (true) {
+                emit(Unit)
+                delay(pollIntervalMs)
+            }
+        },
+        refreshTicker.receiveAsFlow(),
+    )
+        .map { if (ping()) ConnectionState.Online else ConnectionState.Offline }
+        .catch { e ->
+            if (e is CancellationException) throw e
+            // Any non-cancellation throwable from ping() is treated as Offline.
+            // Without this, an exception in ping() would tear down the entire
+            // poll flow and the indicator would freeze on its last value.
+            emit(ConnectionState.Offline)
+        }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ConnectionState.Checking)
+
+    fun refresh() {
+        // Channel is CONFLATED — multiple rapid taps collapse into a single signal.
+        refreshTicker.trySend(Unit)
+    }
+}
 
 /**
  * Periodically pings `/healthz` and exposes the result as a [StateFlow].
@@ -32,28 +73,13 @@ private const val POLL_INTERVAL_MS = 30_000L
 class ConnectionStatusViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
 
-    /** Conflated refresh signal — tapping the indicator merges into the poll flow. */
-    private val refreshTicker = Channel<Unit>(capacity = Channel.CONFLATED)
-
-    val state: StateFlow<ConnectionState> = merge(
-        flow {
-            while (true) {
-                emit(Unit)
-                delay(POLL_INTERVAL_MS)
-            }
-        },
-        refreshTicker.receiveAsFlow(),
+    private val engine = ConnectionStatusEngine(
+        ping = { container.axonRepository.ping() },
     )
-        .map {
-            if (container.axonRepository.ping()) ConnectionState.Online else ConnectionState.Offline
-        }
-        .catch { e ->
-            if (e is CancellationException) throw e
-            emit(ConnectionState.Offline)
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionState.Checking)
+
+    val state: StateFlow<ConnectionState> = engine.state(viewModelScope)
 
     fun refresh() {
-        viewModelScope.launch { refreshTicker.send(Unit) }
+        viewModelScope.launch { engine.refresh() }
     }
 }

@@ -34,11 +34,28 @@ import kotlinx.coroutines.flow.first
  * reaches into those keys via the `*FormKeys` objects exported from each form file —
  * the form is still the single source of truth for which keys exist.
  */
-class ModeOptionsRepository(private val context: Context) : ModeOptionsApplicator {
+class ModeOptionsRepository(
+    private val context: Context,
+    private val encryptedHeadersStore: EncryptedHeadersStore = EncryptedHeadersStore(context),
+) : ModeOptionsApplicator {
 
     /** Read a single Preferences value once (no flow). Returns null when unset. */
     suspend fun <T> read(key: Preferences.Key<T>): T? =
         context.modeOptionsDataStore.data.first()[key]
+
+    // ── Encrypted-header convenience API ─────────────────────────────────────
+    //
+    // Headers can carry bearer tokens / cookies / API keys, so they must NOT
+    // live in the plaintext mode-options DataStore. These wrappers delegate to
+    // [EncryptedHeadersStore]; forms call them directly instead of using the
+    // generic Preferences read/write helpers above for header lists.
+
+    fun readEncryptedHeaders(key: String): List<String> =
+        encryptedHeadersStore.read(key).orEmpty()
+
+    fun writeEncryptedHeaders(key: String, headers: List<String>) {
+        encryptedHeadersStore.write(key, headers)
+    }
 
     /** Persist a single value. Pass `null` to remove the key (reset to default). */
     suspend fun <T> write(key: Preferences.Key<T>, value: T?) {
@@ -112,8 +129,10 @@ class ModeOptionsRepository(private val context: Context) : ModeOptionsApplicato
 
     override suspend fun apply(req: CrawlRequest): CrawlRequest {
         val prefs = context.modeOptionsDataStore.data.first()
+        // Headers come from EncryptedHeadersStore — never the plaintext DataStore.
         val headers = if (req.headers.isNotEmpty()) req.headers
-                      else prefs[CrawlFormKeys.HEADERS]?.toList()?.filter { it.isNotBlank() } ?: emptyList()
+                      else readEncryptedHeaders(EncryptedHeadersStore.KEY_CRAWL_HEADERS)
+                          .filter { it.isNotBlank() }
         return req.copy(
             maxPages          = req.maxPages          ?: prefs[CrawlFormKeys.MAX_PAGES],
             maxDepth          = req.maxDepth          ?: prefs[CrawlFormKeys.MAX_DEPTH],

@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.0] - 2026-05-27
+
+### Security
+
+- **Android: encrypt user-supplied HTTP headers** — header values entered in the
+  Crawl options form (Authorization, Cookie, X-Api-Key, Proxy-Authorization,
+  X-Auth-Token) previously persisted to the plaintext mode-options DataStore.
+  New `EncryptedHeadersStore` (AES-256-GCM via AndroidX security-crypto) stores
+  the entire crawl header list encrypted at rest; the legacy
+  `CrawlFormKeys.HEADERS` DataStore key is removed.
+- Android: `data_extraction_rules.xml` now excludes the encrypted headers prefs
+  file plus the `settings` and `mode_options` DataStore protobufs from both
+  cloud backup and Android 12+ device-to-device transfer.
+
+### Fixed
+
+- **Android: Ask mode no longer hangs and force-closes after repeated taps.**
+  Root cause was a leaked OkHttp IO thread in `AxonClient.askStream`:
+  `BufferedReader.readLine()` blocked for up to 300s after coroutine
+  cancellation. Fix captures the `Call` reference and installs
+  `invokeOnCompletion { call.cancel() }`, and `AskViewModel` now tracks the
+  in-flight `Job` so a second `ask()` cancels the prior stream cleanly.
+- Android: `DraggableFab` could be dragged off-screen / into the system nav bar.
+  `clampOffset` now caps `maxX`/`maxY` to `0f` so the FAB cannot escape its
+  visible anchor.
+- Android: `JobsViewModel.cancel()` and `IngestViewModel.cancel()` discarded the
+  `Result` — failed cancels were invisible to the user. Both now surface
+  errors (toast in Jobs, error state in Ingest) and log to logcat.
+- Android: `AskViewModel` fallback for truncated SSE streams now sets a
+  `historyWarning` flag instead of silently presenting partial bytes as a
+  completed answer.
+- Android: `EncryptedTokenStore` now logs every keystore failure path
+  (`Log.w`), surfaces commit failures via boolean returns, and `SettingsRepository.save()`
+  throws `IllegalStateException` if encrypted persistence fails so the UI is
+  never left in a "looks saved but isn't" state.
+- Android: token migration (`SettingsRepository.migrateTokenToEncrypted`) now
+  uses `try { write } finally { remove }` and refuses to remove the plaintext
+  copy when the encrypted write returns false — bounded the
+  plaintext-exposure window if a process is killed mid-migration.
+- Android: `AxonClient.execute` and `askStream` now log network failures
+  (one-line `Log.w` with method + path) so field reports have a logcat
+  breadcrumb.
+
+### Changed
+
+- Android: `AxonRepository`'s `applicator` constructor parameter is now
+  **required** — the silent `NoopModeOptionsApplicator` default removed a
+  class of test-fixture bugs where forgotten injection silently bypassed
+  user preferences.
+- Android: extracted `ConnectionStatusEngine` from `ConnectionStatusViewModel`
+  so the polling / refresh / cancellation contract is unit-testable under
+  `runTest` (5 new tests).
+- Android: extracted `HeadersReducer` pure-function reducer from
+  `HeadersField`; row-add/delete/set-key/set-value/serialize logic is now
+  unit-tested (10 new tests).
+- Android: `KnowledgeViewModel` collapses the 4 near-identical `loadX()`
+  bodies into one generic `loadSection<T>(state, cachedAt, force, label, fetch)`
+  helper — 60+ LOC saved, identical behaviour.
+
+### Added
+
+- Android: `AxonClientErrorPathTest` — 401/403/404/500/503 + malformed JSON +
+  empty body + socket disconnect + abort coverage for phase-2 endpoints (15
+  new tests).
+- Android: `UrlValidatorTest` — 9 new tests covering `hostOrNull`,
+  ipv4-literal, userinfo-stripping, and the `github.com.attacker.com`
+  lookalike regression.
+
 ## [4.10.0] - 2026-05-27
 
 ### Added

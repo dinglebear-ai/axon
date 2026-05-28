@@ -81,6 +81,12 @@ class SettingsRepository(
             )
         }
 
+    /**
+     * Persist [settings]. Throws [IllegalStateException] if the encrypted token
+     * write fails so callers don't proceed under the illusion that credentials
+     * were stored — the user can be re-prompted instead of silently bouncing
+     * to a 401 wall on the next request.
+     */
     suspend fun save(settings: AxonSettings) {
         context.settingsDataStore.edit { prefs ->
             prefs[KEY_SERVER_URL]  = settings.serverUrl.value
@@ -88,16 +94,23 @@ class SettingsRepository(
             // Defensive: ensure any lingering legacy plaintext token entry is removed.
             prefs.remove(LEGACY_KEY_TOKEN)
         }
-        if (settings.token.value.isBlank()) {
+        val tokenOk = if (settings.token.value.isBlank()) {
             encrypted.clear()
         } else {
             encrypted.write(settings.token.value)
+        }
+        if (!tokenOk) {
+            android.util.Log.w("SettingsRepository", "token store write failed; UI mirror NOT updated")
+            throw IllegalStateException("Could not securely store credentials. Please try again.")
         }
         tokenMirror.value = settings.token.value
     }
 
     suspend fun clearToken() {
-        encrypted.clear()
+        val ok = encrypted.clear()
+        if (!ok) {
+            android.util.Log.w("SettingsRepository", "encrypted token clear() returned false; token may still be on disk")
+        }
         tokenMirror.value = ""
         context.settingsDataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
     }
@@ -110,6 +123,15 @@ class SettingsRepository(
      *  2. Otherwise, if the plaintext DataStore has a non-blank token, move it
      *     into the encrypted store and remove the plaintext entry.
      *  3. If neither has a token, no-op.
+     *
+     * Crash safety: the plaintext key is removed inside a `try { write } finally`
+     * block — even if [encrypted.write] throws, or the process is killed between
+     * the encrypted write and the plaintext removal, the next launch's
+     * idempotency guard (`encrypted.read() != null`) wipes the legacy key.
+     *
+     * If [encrypted.write] returns false (encrypted prefs unavailable), the
+     * plaintext entry is NOT removed — leaving it on disk is the correct
+     * behaviour because the user would otherwise be silently logged out.
      */
     suspend fun migrateTokenToEncrypted() {
         if (encrypted.read() != null) {
@@ -119,8 +141,24 @@ class SettingsRepository(
         }
         val plain = context.settingsDataStore.data.first()[LEGACY_KEY_TOKEN]?.takeIf { it.isNotBlank() }
             ?: return
-        encrypted.write(plain)
-        context.settingsDataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
-        tokenMirror.value = plain
+        val written = try {
+            encrypted.write(plain)
+        } catch (t: Throwable) {
+            android.util.Log.w("SettingsRepository", "encrypted write failed during migration", t)
+            false
+        }
+        if (!written) {
+            // Encrypted prefs are unavailable. Leave the plaintext token in
+            // place rather than silently logging the user out — the next launch
+            // will retry the migration.
+            return
+        }
+        // Encrypted write succeeded — guarantee the plaintext removal even if a
+        // subsequent step throws.
+        try {
+            context.settingsDataStore.edit { it.remove(LEGACY_KEY_TOKEN) }
+        } finally {
+            tokenMirror.value = plain
+        }
     }
 }

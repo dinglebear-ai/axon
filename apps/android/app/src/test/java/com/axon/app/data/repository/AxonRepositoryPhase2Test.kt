@@ -26,7 +26,11 @@ class AxonRepositoryPhase2Test {
 
     @Before fun setUp() {
         server = MockWebServer().also { it.start() }
-        repo = AxonRepository(AxonClient(server.url("/").toString().trimEnd('/'), "t"), NoopDao())
+        repo = AxonRepository(
+            AxonClient(server.url("/").toString().trimEnd('/'), "t"),
+            NoopDao(),
+            NoopModeOptionsApplicator,
+        )
     }
     @After fun tearDown() { server.shutdown() }
 
@@ -56,7 +60,11 @@ class AxonRepositoryPhase2Test {
     }
 
     @Test fun `summarize blocked by missing token`() = runBlocking {
-        val r2 = AxonRepository(AxonClient(server.url("/").toString().trimEnd('/'), ""), NoopDao()).summarize(listOf("a"))
+        val r2 = AxonRepository(
+            AxonClient(server.url("/").toString().trimEnd('/'), ""),
+            NoopDao(),
+            NoopModeOptionsApplicator,
+        ).summarize(listOf("a"))
         assertTrue(r2.isFailure)
     }
 }

@@ -13,7 +13,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.axon.app.data.repository.EncryptedHeadersStore
 import com.axon.app.ui.options.components.HeadersField
 import kotlinx.coroutines.launch
 import tv.tootie.aurora.components.AuroraSelect
@@ -24,7 +24,9 @@ internal object CrawlFormKeys {
     val MAX_DEPTH          = intPreferencesKey("mode_options.crawl.max_depth")
     val RENDER_MODE        = stringPreferencesKey("mode_options.crawl.render_mode")
     val INCLUDE_SUBDOMAINS = booleanPreferencesKey("mode_options.crawl.include_subdomains")
-    val HEADERS            = stringSetPreferencesKey("mode_options.crawl.headers")
+    // Headers live in EncryptedHeadersStore — see [EncryptedHeadersStore.KEY_CRAWL_HEADERS].
+    // No plaintext DataStore key is exposed because header values can carry bearer
+    // tokens / cookies / API keys.
     val SKIP_EMBED         = booleanPreferencesKey("mode_options.crawl.skip_embed")
     val COLLECTION         = stringPreferencesKey("mode_options.crawl.collection")
     val WAIT               = booleanPreferencesKey("mode_options.crawl.wait")
@@ -32,7 +34,7 @@ internal object CrawlFormKeys {
 
     val ALL: List<Preferences.Key<*>> = listOf(
         MAX_PAGES, MAX_DEPTH, RENDER_MODE, INCLUDE_SUBDOMAINS,
-        HEADERS, SKIP_EMBED, COLLECTION, WAIT, JSON,
+        SKIP_EMBED, COLLECTION, WAIT, JSON,
     )
 }
 
@@ -61,10 +63,14 @@ fun CrawlOptionsForm() {
     var wait by rememberPersistedState(CrawlFormKeys.WAIT, DEFAULT_WAIT, repo)
     var json by rememberPersistedState(CrawlFormKeys.JSON, DEFAULT_JSON, repo)
 
-    // Headers persist as a StringSet (DataStore primitive); UI state is a List<String>.
+    // Headers persist in EncryptedHeadersStore — plaintext DataStore would leak
+    // bearer tokens / cookies / API keys. Read is synchronous since the encrypted
+    // prefs API is non-suspending; load happens on first composition.
     var headers by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(Unit) {
-        runCatching { headers = repo.readStringSet(CrawlFormKeys.HEADERS)?.toList().orEmpty() }
+        runCatching {
+            headers = repo.readEncryptedHeaders(EncryptedHeadersStore.KEY_CRAWL_HEADERS)
+        }
     }
 
     ModeOptionsFormScaffold(
@@ -72,6 +78,10 @@ fun CrawlOptionsForm() {
         description = "Multi-page crawl. `wait` / `json` / `skip-embed` are UI-only flags carried into job submission.",
         resetKeys = CrawlFormKeys.ALL,
         repo = repo,
+        onResetExtra = {
+            repo.writeEncryptedHeaders(EncryptedHeadersStore.KEY_CRAWL_HEADERS, emptyList())
+            headers = emptyList()
+        },
     ) {
         IntField("Max pages (0 = uncapped)", maxPages) { maxPages = it }
         IntField("Max depth", maxDepth) { maxDepth = it }
@@ -96,7 +106,9 @@ fun CrawlOptionsForm() {
             headers = headers,
             onChange = { newList ->
                 headers = newList
-                scope.launch { repo.write(CrawlFormKeys.HEADERS, newList.toSet()) }
+                scope.launch {
+                    repo.writeEncryptedHeaders(EncryptedHeadersStore.KEY_CRAWL_HEADERS, newList)
+                }
             },
             modifier = Modifier.fillMaxWidth(),
         )

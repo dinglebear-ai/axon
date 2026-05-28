@@ -57,6 +57,61 @@ internal fun joinHeader(key: String, value: String): String? {
 }
 
 /**
+ * Parse a `"Key: Value"` wire line into its (key, value) pair. Whitespace around
+ * the key is trimmed; whitespace after the first `:` is trimmed once.
+ *
+ * - `"Foo: bar"`     → `("Foo", "bar")`
+ * - `"foo:bar:baz"` → `("foo", "bar:baz")` — only the first colon splits
+ * - `"orphan"`       → `("", "orphan")` — header missing a key, preserved so
+ *                      the user can fix it without losing typed text
+ * - empty / `:value` → `("", value.trim())`
+ */
+internal fun splitHeader(line: String): Pair<String, String> {
+    val idx = line.indexOf(':')
+    if (idx < 0) return "" to line.trim()
+    // idx == 0 means a leading colon — the key is empty but we still want to
+    // strip the colon from the value so a `":value"` round-trip becomes
+    // `("", "value")` (matching the wire-format split contract).
+    return line.substring(0, idx).trim() to line.substring(idx + 1).trim()
+}
+
+/**
+ * Pure state reducer for [HeadersField]. Exposed for unit testing — the
+ * composable wires this into a `SnapshotStateList<Pair<String, String>>`.
+ *
+ * Operations are immutable: each call returns a fresh list so the caller can
+ * publish it without worrying about list-identity tricks. Empty input becomes
+ * a single empty row so the user always sees one slot to type into.
+ */
+internal object HeadersReducer {
+
+    /** Build the initial row list from a List of wire `"Key: Value"` strings. */
+    fun init(wire: List<String>): List<Pair<String, String>> {
+        val parsed = wire.map(::splitHeader)
+        return if (parsed.isEmpty()) listOf("" to "") else parsed
+    }
+
+    fun setKey(rows: List<Pair<String, String>>, index: Int, key: String): List<Pair<String, String>> =
+        if (index !in rows.indices) rows else rows.toMutableList().also { it[index] = key to it[index].second }
+
+    fun setValue(rows: List<Pair<String, String>>, index: Int, value: String): List<Pair<String, String>> =
+        if (index !in rows.indices) rows else rows.toMutableList().also { it[index] = it[index].first to value }
+
+    fun addBlank(rows: List<Pair<String, String>>): List<Pair<String, String>> =
+        rows + ("" to "")
+
+    fun remove(rows: List<Pair<String, String>>, index: Int): List<Pair<String, String>> {
+        if (index !in rows.indices) return rows
+        val next = rows.toMutableList().also { it.removeAt(index) }
+        return if (next.isEmpty()) listOf("" to "") else next
+    }
+
+    /** Serialize the row list to the wire format, skipping rows with a blank key. */
+    fun toWire(rows: List<Pair<String, String>>): List<String> =
+        rows.mapNotNull { (k, v) -> joinHeader(k, v) }
+}
+
+/**
  * Repeatable Key:Value header rows. Sensitive keys (Authorization, Cookie,
  * X-Api-Key, Proxy-Authorization, X-Auth-Token) mask their value field with
  * [PasswordVisualTransformation] until the user taps the eye toggle.
@@ -70,24 +125,20 @@ fun HeadersField(
     onChange: (List<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Local mutable list of (key, value) pairs derived from the input.
-    val rows = remember(headers) {
-        val parsed = headers.map { line ->
-            val idx = line.indexOf(':')
-            if (idx <= 0) "" to line
-            else line.substring(0, idx).trim() to line.substring(idx + 1).trim()
-        }
-        // Always show at least one empty row so the user can add the first header.
-        if (parsed.isEmpty()) mutableStateListOfPairs(listOf("" to ""))
-        else mutableStateListOfPairs(parsed)
-    }
+    // Seed local state from `headers` ONCE on first composition. Re-keying on
+    // `headers` (the old behaviour) discarded in-progress keystrokes whenever
+    // the parent's persistence layer round-tripped a new list back through us.
+    // The persistence side mirrors what we emit, so the seed value is the
+    // canonical input — subsequent edits flow through this state.
+    var rows by remember { mutableStateOf(HeadersReducer.init(headers)) }
 
     // Per-row "show plaintext" toggle map. Keyed by row index because rows can
     // be reordered/removed; remember to drop stale keys when rows shrink.
     val revealed = remember { mutableStateMapOf<Int, Boolean>() }
 
-    fun emit() {
-        onChange(rows.mapNotNull { (k, v) -> joinHeader(k, v) })
+    fun publish(next: List<Pair<String, String>>) {
+        rows = next
+        onChange(HeadersReducer.toWire(next))
     }
 
     Column(
@@ -99,29 +150,18 @@ fun HeadersField(
             HeaderRow(
                 key = key,
                 value = value,
-                onKeyChange = { newKey ->
-                    rows[index] = newKey to value
-                    emit()
-                },
-                onValueChange = { newValue ->
-                    rows[index] = key to newValue
-                    emit()
-                },
+                onKeyChange = { newKey -> publish(HeadersReducer.setKey(rows, index, newKey)) },
+                onValueChange = { newValue -> publish(HeadersReducer.setValue(rows, index, newValue)) },
                 revealed = revealed[index] == true,
                 onToggleReveal = { revealed[index] = !(revealed[index] ?: false) },
                 onDelete = {
-                    rows.removeAt(index)
-                    if (rows.isEmpty()) rows.add("" to "")
+                    publish(HeadersReducer.remove(rows, index))
                     revealed.clear()
-                    emit()
                 },
             )
         }
         AuroraButton(
-            onClick = {
-                rows.add("" to "")
-                emit()
-            },
+            onClick = { publish(HeadersReducer.addBlank(rows)) },
             variant = AuroraButtonVariant.Outlined,
         ) { Text("Add header") }
     }
@@ -175,12 +215,3 @@ private fun HeaderRow(
     }
 }
 
-// SnapshotStateList-of-pairs helper. Compose tracks list mutation on the outer
-// SnapshotStateList; the inner Pairs are immutable so reassigning rows[i]
-// triggers recomposition correctly.
-private fun mutableStateListOfPairs(initial: List<Pair<String, String>>) =
-    androidx.compose.runtime.mutableStateListOf<Pair<String, String>>().apply { addAll(initial) }
-
-// Small helper to keep a per-row toggled flag without requiring composed state hoisting.
-@Suppress("unused")
-private fun rememberRevealState() = mutableStateOf(false)

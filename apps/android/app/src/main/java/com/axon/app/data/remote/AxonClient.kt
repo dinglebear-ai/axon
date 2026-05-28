@@ -1,10 +1,13 @@
 package com.axon.app.data.remote
 
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -58,6 +61,8 @@ private val json = Json {
     ignoreUnknownKeys = true
     coerceInputValues = true
 }
+
+private const val TAG = "AxonClient"
 
 class AxonClient(
     baseUrl: String,
@@ -150,10 +155,30 @@ class AxonClient(
             .header("Authorization", "Bearer $token")
             .header("x-api-key", token)
             .build()
-        val resp = httpStream.newCall(req).execute()
+
+        // Capture the Call before execute() so we can cancel it from
+        // invokeOnCompletion. Without this, BufferedReader.readLine() below blocks
+        // an IO thread until the SSE socket idles out (STREAM_READ_TIMEOUT_SECONDS
+        // = 300s) when the parent coroutine is cancelled — leaking threads on
+        // every navigate-away mid-stream and stalling subsequent ask() calls.
+        val call = httpStream.newCall(req)
+        val cancelHandle = currentCoroutineContext().job.invokeOnCompletion {
+            runCatching { call.cancel() }
+        }
+
+        val resp = try {
+            call.execute()
+        } catch (t: Throwable) {
+            cancelHandle.dispose()
+            if (t is CancellationException) throw t
+            Log.w(TAG, "askStream: connect failed", t)
+            emit(AskStreamEvent.Error(t.message ?: "Stream connect failed"))
+            return@flow
+        }
         try {
             if (!resp.isSuccessful) {
                 val errBody = resp.body?.string()?.take(200) ?: resp.message
+                Log.w(TAG, "askStream: HTTP ${resp.code} $errBody")
                 emit(AskStreamEvent.Error("HTTP ${resp.code}: $errBody"))
                 return@flow
             }
@@ -173,11 +198,18 @@ class AxonClient(
                     emit(event)
                     if (event is AskStreamEvent.Done || event is AskStreamEvent.Error) break
                 }
+            } catch (t: Throwable) {
+                // Socket closed mid-stream (cancel(), timeout, network drop). Surface as
+                // a clean Error so callers can distinguish from a normal Done.
+                if (t is CancellationException) throw t
+                Log.w(TAG, "askStream: read failed mid-stream", t)
+                emit(AskStreamEvent.Error(t.message ?: "Stream interrupted"))
             } finally {
-                reader.close()
+                runCatching { reader.close() }
             }
         } finally {
-            resp.close()
+            runCatching { resp.close() }
+            cancelHandle.dispose()
         }
     }.flowOn(Dispatchers.IO)
 
@@ -294,16 +326,24 @@ class AxonClient(
         return execute(http, builder)
     }
 
-    private inline fun <reified R> execute(client: OkHttpClient, builder: Request.Builder): Result<R> =
-        runCatching {
-            client.newCall(builder.build()).execute().use { resp ->
+    private inline fun <reified R> execute(client: OkHttpClient, builder: Request.Builder): Result<R> {
+        val built = builder.build()
+        return runCatching {
+            client.newCall(built).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     error("HTTP ${resp.code}: ${resp.body?.string()?.take(200) ?: resp.message}")
                 }
                 // Read body exactly once — use() closes the response, so the stream is single-pass.
                 json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
             }
-        }.onFailure { if (it is CancellationException) throw it }
+        }.onFailure { t ->
+            if (t is CancellationException) throw t
+            // One-line logcat breadcrumb for any non-cancellation failure (HTTP error,
+            // decode mismatch, transport error). Body is truncated upstream; method+path
+            // is enough to grep when triaging field reports.
+            Log.w(TAG, "${built.method} ${built.url.encodedPath} failed: ${t.message}")
+        }
+    }
 
     /**
      * Parses a single SSE data payload into an [AskStreamEvent].

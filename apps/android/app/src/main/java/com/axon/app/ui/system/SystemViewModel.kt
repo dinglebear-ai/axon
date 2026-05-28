@@ -6,8 +6,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.ui.common.Resource
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +23,6 @@ private const val TAG = "SystemViewModel"
  */
 class SystemViewModel(
     app: Application,
-    @Suppress("unused") private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : AndroidViewModel(app) {
 
     private val container = (app as AxonApp).container
