@@ -99,9 +99,9 @@
   --aurora-shadow-strong: 0 20px 38px rgba(0, 0, 0, 0.26);
   --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.055);
-  --aurora-active-glow: 0 0 0 1px color-mix(in srgb, #29b6f6 28%, transparent),
-                        0 2px 8px color-mix(in srgb, #29b6f6 18%, transparent);
-  --aurora-focus-ring: color-mix(in srgb, #29b6f6 30%, transparent);
+  --aurora-active-glow: 0 0 0 1px color-mix(in srgb, var(--aurora-accent-primary) 28%, transparent),
+                        0 2px 8px color-mix(in srgb, var(--aurora-accent-primary) 18%, transparent);
+  --aurora-focus-ring: color-mix(in srgb, var(--aurora-accent-primary) 30%, transparent);
 
   /* Radii */
   --aurora-radius-1: 14px;
@@ -237,6 +237,7 @@
   --aurora-subtle-bg:         color-mix(in srgb, var(--aurora-hover-bg) 66%, transparent);
   --aurora-selected-bg:       color-mix(in srgb, var(--aurora-accent-primary) 10%, var(--aurora-panel-medium));
   --aurora-pressed-bg:        color-mix(in srgb, var(--aurora-accent-primary) 16%, var(--aurora-panel-medium));
+  --aurora-focus-ring:        color-mix(in srgb, var(--aurora-accent-primary) 40%, transparent);
   --aurora-focus-ring-strong: color-mix(in srgb, var(--aurora-accent-primary) 40%, transparent);
 
   /* --aurora-status-offline is deprecated; alias to --aurora-neutral. Remove after all consumers migrate. */
