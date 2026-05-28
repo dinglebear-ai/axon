@@ -23,7 +23,7 @@ fun DrawerSectionContent(
     navController: NavController,
 ) {
     when (section) {
-        DrawerSection.Sessions   -> SessionsDrawerContent()
+        DrawerSection.Sessions   -> SessionsDrawerContent(onSelect = { _ -> onDismiss() })
         DrawerSection.Jobs       -> JobsDrawerContentStub()
         DrawerSection.Knowledge  -> KnowledgeDrawerContentStub()
         DrawerSection.Management -> ManagementDrawerContentStub()
