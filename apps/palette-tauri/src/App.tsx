@@ -369,6 +369,7 @@ export default function App() {
         {modeAction && (
           <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} title="Clear action mode">
             {modeAction.subcommand}
+            <span className="mode-pill-dismiss" aria-hidden="true">×</span>
           </button>
         )}
         <Input
