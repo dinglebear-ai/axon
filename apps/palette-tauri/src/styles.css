@@ -78,8 +78,8 @@ textarea {
   width: 9px;
   height: 9px;
   border-radius: 999px;
-  background: var(--aurora-accent-pink);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--aurora-accent-pink) 42%, transparent);
+  background: #29b6f6;
+  box-shadow: 0 0 8px rgba(41, 182, 246, 0.55);
 }
 
 .titlebar-button,
@@ -98,22 +98,29 @@ textarea {
 }
 
 .titlebar-button:hover,
-.command-submit:hover:not(:disabled),
 .output-tools button:hover {
   color: var(--aurora-text-primary);
   background: var(--aurora-hover-bg);
   border-color: var(--aurora-border-default);
 }
 
+.command-submit:hover:not(:disabled) {
+  background: linear-gradient(135deg, #42c8ff, #1976d2);
+  box-shadow: 0 3px 14px rgba(41, 182, 246, 0.45);
+}
+
 .command-submit {
-  color: var(--aurora-accent-foreground);
-  background: var(--aurora-rose-gradient);
-  border-color: color-mix(in srgb, var(--aurora-accent-pink) 42%, transparent);
+  color: #fff;
+  background: linear-gradient(135deg, #29b6f6, #1565c0);
+  border-color: rgba(41, 182, 246, 0.4);
+  box-shadow: 0 2px 10px rgba(41, 182, 246, 0.35);
 }
 
 .command-submit:disabled {
-  color: var(--aurora-disabled-text);
-  background: var(--aurora-disabled-surface);
+  color: #1a3550;
+  background: #0d1e2d;
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow: none;
   cursor: default;
 }
 
