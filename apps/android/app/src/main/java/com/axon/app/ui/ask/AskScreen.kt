@@ -28,7 +28,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.ui.common.EmptyContent
-import com.axon.app.ui.operations.modeOptionsCog
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import tv.tootie.aurora.components.AuroraCard
@@ -186,7 +185,6 @@ fun AskScreen(
             },
             placeholder = "Ask anything about your indexed knowledge…",
             loading = uiState is AskUiState.Loading || uiState is AskUiState.Streaming,
-            actionLeft = modeOptionsCog(),
             modifier = Modifier.fillMaxWidth(),
         )
     }
