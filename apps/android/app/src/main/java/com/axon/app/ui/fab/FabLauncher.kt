@@ -1,5 +1,6 @@
 package com.axon.app.ui.fab
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +35,10 @@ fun FabLauncher(
     var fabCenter by remember { mutableStateOf(IntOffset.Zero) }
 
     Box(modifier = modifier.fillMaxSize()) {
+        BackHandler(enabled = state !is FabState.Idle) {
+            state = FabState.Idle
+        }
+
         FabRing(
             visible = state is FabState.Ring,
             fabCenterOffset = fabCenter,
