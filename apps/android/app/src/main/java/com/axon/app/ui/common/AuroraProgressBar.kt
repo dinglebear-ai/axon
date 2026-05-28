@@ -37,26 +37,41 @@ fun AuroraProgressBar(
     val shape = RoundedCornerShape(50)
     val colors = variantColors(variant)
 
-    val infiniteTransition = rememberInfiniteTransition(label = "pb")
+    val isIndeterminate = progress == null
+    val showShimmer = variant == ProgressVariant.Cyan && (progress == null || (progress > 0f && progress < 1f))
 
-    val indetOffset by infiniteTransition.animateFloat(
-        initialValue = -0.35f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "indet",
-    )
-    val shimmerOffset by infiniteTransition.animateFloat(
-        initialValue = -0.5f,
-        targetValue = 1.5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "shimmer",
-    )
+    val indetOffset = if (isIndeterminate) {
+        val infiniteTransition = rememberInfiniteTransition(label = "pb-indet")
+        val offset by infiniteTransition.animateFloat(
+            initialValue = -0.35f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "indet",
+        )
+        offset
+    } else {
+        0f
+    }
+
+    val shimmerOffset = if (showShimmer) {
+        val infiniteTransition = rememberInfiniteTransition(label = "pb-shimmer")
+        val offset by infiniteTransition.animateFloat(
+            initialValue = -0.5f,
+            targetValue = 1.5f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "shimmer",
+        )
+        offset
+    } else {
+        0f
+    }
+
     val animatedProgress by animateFloatAsState(
         targetValue = progress ?: 0f,
         animationSpec = tween(600),
@@ -75,7 +90,7 @@ fun AuroraProgressBar(
             val h = this.size.height
             val r = CornerRadius(h / 2)
 
-            if (progress == null) {
+            if (isIndeterminate) {
                 val fillW = w * 0.35f
                 val x = indetOffset * (w + fillW)
                 val brush = Brush.horizontalGradient(colors = colors, startX = x, endX = x + fillW)
@@ -88,7 +103,6 @@ fun AuroraProgressBar(
                 }
             }
 
-            val showShimmer = variant == ProgressVariant.Cyan && (progress == null || (progress > 0f && progress < 1f))
             if (showShimmer) {
                 val sx = shimmerOffset * w
                 val sw = w * 0.3f
@@ -98,7 +112,10 @@ fun AuroraProgressBar(
                     endX = sx + sw / 2,
                 )
                 val shimmerWidth = if (progress != null) w * animatedProgress.coerceIn(0f, 1f) else w
-                drawRect(brush = shimmerBrush, size = Size(shimmerWidth, h))
+                drawContext.canvas.save()
+                drawContext.canvas.clipRect(androidx.compose.ui.geometry.Rect(0f, 0f, shimmerWidth, h))
+                drawRect(brush = shimmerBrush, size = Size(w, h))
+                drawContext.canvas.restore()
             }
         }
     }
