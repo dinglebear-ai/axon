@@ -253,20 +253,37 @@ textarea {
 .command-mode-pill {
   display: inline-flex;
   align-items: center;
-  height: 30px;
-  padding: 0 10px;
-  color: var(--aurora-accent-foreground);
-  background: color-mix(in srgb, var(--aurora-accent-primary) 18%, var(--aurora-control-surface));
-  border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 45%, var(--aurora-border-default));
-  border-radius: 999px;
+  gap: 5px;
+  height: 27px;
+  padding: 0 7px 0 10px;
+  color: #29b6f6;
+  background: transparent;
+  border: 1px solid rgba(41, 182, 246, 0.28);
+  border-radius: 6px;
   font-family: var(--aurora-font-mono);
   font-size: var(--aurora-type-caption);
   font-weight: var(--aurora-weight-label);
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .command-mode-pill:hover {
-  background: color-mix(in srgb, var(--aurora-accent-primary) 26%, var(--aurora-control-surface));
+  background: rgba(41, 182, 246, 0.07);
+  border-color: rgba(41, 182, 246, 0.42);
+}
+
+.mode-pill-dismiss {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  background: rgba(41, 182, 246, 0.1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  font-style: normal;
 }
 
 .palette-grid {
