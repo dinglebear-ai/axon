@@ -2,6 +2,7 @@ package com.axon.app.ui.sessions
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,65 +75,67 @@ private fun SessionRow(
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = {},
-                onLongClick = { showMenu = true },
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = { showMenu = true },
+                )
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = if (session.pinnedAt != null) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkBorder,
+                contentDescription = null,
+                tint = if (session.pinnedAt != null) Color(0xFFC6A36B) else Color(0xFF4A6374),
+                modifier = Modifier.size(16.dp),
             )
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(
-            imageVector = if (session.pinnedAt != null) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkBorder,
-            contentDescription = null,
-            tint = if (session.pinnedAt != null) Color(0xFFC6A36B) else Color(0xFF4A6374),
-            modifier = Modifier.size(16.dp),
-        )
-        Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    session.title,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFFE6F4FB),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    session.firstMessagePreview,
+                    fontSize = 11.sp,
+                    color = Color(0xFF4A6374),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
-                session.title,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFFE6F4FB),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                session.firstMessagePreview,
-                fontSize = 11.sp,
+                "${session.turnCount}t",
+                fontSize = 10.sp,
                 color = Color(0xFF4A6374),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
-        Text(
-            "${session.turnCount}t",
-            fontSize = 10.sp,
-            color = Color(0xFF4A6374),
-        )
-    }
 
-    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-        if (session.pinnedAt == null) {
+        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+            if (session.pinnedAt == null) {
+                DropdownMenuItem(
+                    text = { Text("Pin") },
+                    leadingIcon = { Icon(Icons.Rounded.BookmarkAdded, contentDescription = null) },
+                    onClick = { showMenu = false; onPin() },
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text("Unpin") },
+                    leadingIcon = { Icon(Icons.Rounded.BookmarkBorder, contentDescription = null) },
+                    onClick = { showMenu = false; onUnpin() },
+                )
+            }
             DropdownMenuItem(
-                text = { Text("Pin") },
-                leadingIcon = { Icon(Icons.Rounded.BookmarkAdded, contentDescription = null) },
-                onClick = { showMenu = false; onPin() },
-            )
-        } else {
-            DropdownMenuItem(
-                text = { Text("Unpin") },
-                leadingIcon = { Icon(Icons.Rounded.BookmarkBorder, contentDescription = null) },
-                onClick = { showMenu = false; onUnpin() },
+                text = { Text("Delete", color = Color(0xFFEF5350)) },
+                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFEF5350)) },
+                onClick = { showMenu = false; onDelete() },
             )
         }
-        DropdownMenuItem(
-            text = { Text("Delete", color = Color(0xFFEF5350)) },
-            leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFEF5350)) },
-            onClick = { showMenu = false; onDelete() },
-        )
     }
 }
