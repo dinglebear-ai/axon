@@ -21,33 +21,35 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
 
     BackHandler(enabled = activeSection != null) { activeSection = null }
 
-    Box(modifier = modifier.fillMaxSize().background(Color(0xFF07131C))) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            AxonRail(
-                activeSection = activeSection,
-                onSectionClick = { section ->
-                    activeSection = if (activeSection == section) null else section
-                },
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF07131C))
+    ) {
+        AxonRail(
+            activeSection = activeSection,
+            onSectionClick = { section ->
+                activeSection = if (activeSection == section) null else section
+            },
+        )
+
+        Column(modifier = Modifier.weight(1f)) {
+            AskScreen(
+                onOpenDocument = { url -> navController.navigate(DocumentRoute(url)) },
             )
-            Box(modifier = Modifier.weight(1f)) {
-                // Ask screen is always visible
-                AskScreen(
-                    onOpenDocument = { url -> navController.navigate(DocumentRoute(url)) },
+
+            AnimatedVisibility(
+                visible = activeSection != null,
+                enter = slideInHorizontally(tween(220)) { -it } + fadeIn(tween(180)),
+                exit  = slideOutHorizontally(tween(180)) { -it } + fadeOut(tween(150)),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                OverlayDrawer(
+                    section = activeSection ?: DrawerSection.Sessions,
+                    onDismiss = { activeSection = null },
+                    navController = navController,
                 )
             }
-        }
-        // Drawer slides in over Ask
-        AnimatedVisibility(
-            visible = activeSection != null,
-            enter = slideInHorizontally(tween(220)) { -it } + fadeIn(tween(180)),
-            exit  = slideOutHorizontally(tween(180)) { -it } + fadeOut(tween(150)),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            OverlayDrawer(
-                section = activeSection ?: DrawerSection.Sessions,
-                onDismiss = { activeSection = null },
-                navController = navController,
-            )
         }
     }
 }
