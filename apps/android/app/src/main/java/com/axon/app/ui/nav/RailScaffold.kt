@@ -33,23 +33,23 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
             },
         )
 
-        Column(modifier = Modifier.weight(1f)) {
+        Box(modifier = Modifier.weight(1f)) {
             AskScreen(
                 onOpenDocument = { url -> navController.navigate(DocumentRoute(url)) },
             )
+        }
 
-            AnimatedVisibility(
-                visible = activeSection != null,
-                enter = slideInHorizontally(tween(220)) { -it } + fadeIn(tween(180)),
-                exit  = slideOutHorizontally(tween(180)) { -it } + fadeOut(tween(150)),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                OverlayDrawer(
-                    section = activeSection ?: DrawerSection.Sessions,
-                    onDismiss = { activeSection = null },
-                    navController = navController,
-                )
-            }
+        AnimatedVisibility(
+            visible = activeSection != null,
+            enter = slideInHorizontally(tween(220)) { -it } + fadeIn(tween(180)),
+            exit  = slideOutHorizontally(tween(180)) { -it } + fadeOut(tween(150)),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            OverlayDrawer(
+                section = activeSection ?: DrawerSection.Sessions,
+                onDismiss = { activeSection = null },
+                navController = navController,
+            )
         }
     }
 }
