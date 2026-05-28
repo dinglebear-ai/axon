@@ -19,6 +19,7 @@ import com.axon.app.data.remote.models.CancelResponse
 import com.axon.app.data.remote.models.DoctorResponse
 import com.axon.app.data.remote.models.DomainsResponse
 import com.axon.app.data.remote.models.IngestRequest
+import com.axon.app.data.remote.models.JobListResponse
 import com.axon.app.data.remote.models.SearchWebRequest
 import com.axon.app.data.remote.models.SearchWebResponse
 import com.axon.app.data.remote.models.ServiceJob
@@ -279,9 +280,9 @@ class AxonClient(
         execute(httpLong, builder)
     }
 
-    /** GET /v1/{kind}/list — list jobs of one kind. */
+    /** GET /v1/{kind} — list jobs of one kind. Server wraps in {"jobs":[...],"limit":N,"offset":N}. */
     suspend fun listJobs(kind: JobKind, limit: Int = 100, offset: Int = 0): Result<List<ServiceJob>> = withContext(Dispatchers.IO) {
-        get("/v1/${kind.path}/list?limit=$limit&offset=$offset")
+        get<JobListResponse>("/v1/${kind.path}?limit=$limit&offset=$offset").map { it.jobs }
     }
 
     /** POST /v1/{kind}/{id}/cancel. */
