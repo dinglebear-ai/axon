@@ -25,16 +25,20 @@ private fun dotColor(state: DotState) = when (state) {
 
 @Composable
 fun AuroraStatusDot(state: DotState, size: Dp = 7.dp, modifier: Modifier = Modifier) {
-    val infiniteTransition = rememberInfiniteTransition(label = "dot")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulse",
-    )
-    val alpha = if (state == DotState.Running) pulseAlpha else 1f
+    val alpha = if (state == DotState.Running) {
+        val infiniteTransition = rememberInfiniteTransition(label = "dot")
+        val pulseAlpha by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.35f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "pulse",
+        )
+        pulseAlpha
+    } else {
+        1f
+    }
     Box(modifier = modifier.size(size).clip(CircleShape).background(dotColor(state).copy(alpha = alpha)))
 }
