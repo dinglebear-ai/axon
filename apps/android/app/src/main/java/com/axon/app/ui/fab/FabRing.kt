@@ -49,6 +49,16 @@ fun FabRing(
     if (!visible && openProgress == 0f) return
 
     Box(modifier = modifier.fillMaxSize()) {
+        // Dim backdrop — only drawn when ring has opened far enough to be meaningful
+        if (openProgress > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xD2040A0E).copy(alpha = openProgress * 0.82f))
+                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+            )
+        }
+
         FabOp.entries.forEachIndexed { i, op ->
             val angleDeg = -90.0 + i * 36.0
             val angleRad = Math.toRadians(angleDeg)
