@@ -8,6 +8,7 @@ import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.remote.AskStreamEvent
 import com.axon.app.data.repository.AskResultUi
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,10 +17,29 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** A single completed Q/A turn kept in-VM for follow-up context injection. */
+data class AskTurn(val question: String, val answer: String)
+
+/** Maximum prior turns inlined into the next ask. Matches CLI's MAX_FOLLOW_UP_TURNS=6. */
+internal const val MAX_FOLLOW_UP_TURNS = 6
+
+/**
+ * Build the effective query for the server by prepending the last
+ * [MAX_FOLLOW_UP_TURNS] turns as "Q: …\nA: …" pairs.
+ *
+ * Mirrors the CLI's render in `src/cli/commands/ask/followup.rs::follow_up_query`.
+ */
+internal fun buildFollowUpQuery(prior: List<AskTurn>, question: String): String {
+    if (prior.isEmpty()) return question
+    val recent = prior.takeLast(MAX_FOLLOW_UP_TURNS)
+    val rendered = recent.joinToString("\n\n") { "Q: ${it.question}\nA: ${it.answer}" }
+    return "$rendered\n\n$question"
+}
+
 sealed interface AskUiState {
-    object Idle : AskUiState
+    data object Idle : AskUiState
     /** Waiting for the first SSE event (retrieval phase). */
-    object Loading : AskUiState
+    data object Loading : AskUiState
     /** Streaming: LLM is generating — [partialAnswer] grows with each delta token. */
     data class Streaming(val query: String, val partialAnswer: String) : AskUiState
     /**
@@ -40,11 +60,38 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     val history = container.axonRepository.recentHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val _turns = MutableStateFlow<List<AskTurn>>(emptyList())
+    val turns: StateFlow<List<AskTurn>> = _turns.asStateFlow()
+
+    /**
+     * In-flight ask coroutine. Tracked so a second `ask()` call cancels the
+     * prior stream — without this, repeated Asks pile up parallel SSE
+     * connections, blocked OkHttp IO threads (readLine never returns until
+     * STREAM_READ_TIMEOUT_SECONDS = 300s), and interleaved [_uiState] writes.
+     * The user-visible symptom is an app that "hangs" and then force-closes.
+     */
+    private var askJob: Job? = null
+
+    /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
+    fun clearFollowUp() { _turns.value = emptyList() }
+
+    private fun appendTurn(q: String, a: String) {
+        _turns.value = (_turns.value + AskTurn(q, a.take(500))).takeLast(MAX_FOLLOW_UP_TURNS)
+    }
+
     fun ask(query: String) {
         if (query.isBlank()) return
-        viewModelScope.launch {
+        // Cancel any prior in-flight stream BEFORE launching a new one. Without
+        // this guard, viewModelScope.launch creates parallel coroutines and a
+        // stuck readLine() from a previous ask leaks an IO thread.
+        askJob?.cancel()
+        askJob = viewModelScope.launch {
             _uiState.value = AskUiState.Loading
             val collection = container.settingsRepository.settings.first().collection
+
+            // Prepend prior turns into the wire query, but keep the raw `query` for UI/history
+            // so we don't nest prior context inside future turns.
+            val effective = buildFollowUpQuery(_turns.value, query)
 
             // Use StringBuilder to avoid O(n²) string concatenation across delta events.
             // Declared inside the launch block — concurrent ask() calls each get their own
@@ -52,7 +99,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             val accumulated = StringBuilder()
 
             runCatching {
-                container.axonRepository.askStream(query, collection = collection).collect { event ->
+                container.axonRepository.askStream(effective, collection = collection).collect { event ->
                     when (event) {
                         is AskStreamEvent.Meta -> { /* stay Loading during retrieval phase */ }
                         is AskStreamEvent.Delta -> {
@@ -71,6 +118,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                                 result = result,
                                 historyWarning = if (!saved) "Answer shown, but history could not be saved (storage may be full)." else null,
                             )
+                            appendTurn(q = query, a = event.answer)
                         }
                         is AskStreamEvent.Error -> {
                             _uiState.value = AskUiState.Error(event.message)
@@ -85,15 +133,24 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             // Fallback: stream ended without a Done/Error event (truncated SSE response).
-            // Note: _uiState.value is read after collect() returns. A concurrent ask() call is
-            // impossible here because the ask() function cancels any prior job via a single
-            // viewModelScope.launch — only one ask coroutine runs at a time per ViewModel instance.
+            // [askJob] tracking guarantees at most one ask coroutine writes to _uiState
+            // at a time — see the askJob?.cancel() above.
             val current = _uiState.value
             if (current is AskUiState.Loading || current is AskUiState.Streaming) {
                 if (accumulated.isNotBlank()) {
-                    val result = AskResultUi(query = query, answer = accumulated.toString(), timingMs = null)
-                    container.axonRepository.recordAskHistory(AskHistoryEntry(query = result.query, answer = result.answer))
-                    _uiState.value = AskUiState.Success(result = result)
+                    val finalAnswer = accumulated.toString()
+                    val result = AskResultUi(query = query, answer = finalAnswer, timingMs = null)
+                    val saved = container.axonRepository.recordAskHistory(
+                        AskHistoryEntry(query = result.query, answer = result.answer),
+                    )
+                    // Honest about the truncation — the user is shown the partial bytes
+                    // but warned that the stream ended before the server signalled Done.
+                    val warning = buildString {
+                        append("Response may be incomplete — the server ended the stream without a completion event.")
+                        if (!saved) append(" History could not be saved (storage may be full).")
+                    }
+                    _uiState.value = AskUiState.Success(result = result, historyWarning = warning)
+                    appendTurn(q = query, a = finalAnswer)
                 } else {
                     _uiState.value = AskUiState.Error("No response received from server")
                 }

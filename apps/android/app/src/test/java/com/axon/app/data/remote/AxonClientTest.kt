@@ -238,6 +238,16 @@ class AxonClientTest {
     // ── Both auth headers are sent ────────────────────────────────────────────
 
     @Test
+    fun `execute truncates oversized error body to 200 chars`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(500).setBody("E".repeat(10_000)))
+        val result = client.ask(AskRequest(query = "hello"))
+        assertTrue(result.isFailure)
+        val msg = result.exceptionOrNull()?.message.orEmpty()
+        // "HTTP 500: " prefix + at most 200 body chars (no full 10k body)
+        assertTrue("got message length ${msg.length}", msg.length <= 220)
+    }
+
+    @Test
     fun `ask sends both Authorization and x-api-key headers`() = runBlocking {
         server.enqueue(
             MockResponse()

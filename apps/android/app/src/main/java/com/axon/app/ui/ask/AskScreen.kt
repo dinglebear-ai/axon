@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.ui.common.EmptyContent
+import com.axon.app.ui.operations.modeOptionsCog
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import tv.tootie.aurora.components.AuroraCard
@@ -165,6 +166,14 @@ fun AskScreen(vm: AskViewModel = viewModel()) {
         }
 
         AuroraSeparator()
+        val turns by vm.turns.collectAsStateWithLifecycle()
+        if (turns.isNotEmpty()) {
+            AuroraStatusIndicator(
+                tone = AuroraStatusTone.Automating,
+                label = "Follow-up · ${turns.size} prior turn${if (turns.size == 1) "" else "s"}",
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
         AuroraPromptInput(
             value = input,
             onValueChange = { input = it },
@@ -174,6 +183,7 @@ fun AskScreen(vm: AskViewModel = viewModel()) {
             },
             placeholder = "Ask anything about your indexed knowledge…",
             loading = uiState is AskUiState.Loading || uiState is AskUiState.Streaming,
+            actionLeft = modeOptionsCog(),
             modifier = Modifier.fillMaxWidth(),
         )
     }

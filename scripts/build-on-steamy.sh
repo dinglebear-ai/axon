@@ -12,7 +12,7 @@ Defaults:
   --target palette-tauri
   --host steamy-wsl
   --remote-repo /home/jmagar/.cache/axon/build-on-steamy/axon_rust
-  --desktop /mnt/c/Users/jmaga/Desktop
+  --desktop /mnt/c/Users/jmaga/OneDrive/Desktop
 
 Sync safety:
   The default remote repo is a disposable mirror marked with:
@@ -111,7 +111,8 @@ case "$target" in
     log 'Building palette frontend assets'
     pnpm vite:build
     log 'Building Axon Palette Windows executable'
-    cargo build --release --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-gnu
+    touch src-tauri/src/lib.rs
+    cargo build --release --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-gnu
     copy_exe \
       "$remote_repo/apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe" \
       'Axon Palette.exe'
@@ -177,7 +178,7 @@ destructive_sync=0
 host="${STEAMY_HOST:-steamy-wsl}"
 default_remote_repo="/home/jmagar/.cache/axon/build-on-steamy/axon_rust"
 remote_repo="${STEAMY_AXON_REPO:-$default_remote_repo}"
-desktop="${STEAMY_DESKTOP:-/mnt/c/Users/jmaga/Desktop}"
+desktop="${STEAMY_DESKTOP:-/mnt/c/Users/jmaga/OneDrive/Desktop}"
 
 while (($#)); do
   case "$1" in

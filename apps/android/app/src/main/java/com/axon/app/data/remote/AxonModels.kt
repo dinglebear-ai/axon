@@ -7,11 +7,18 @@ import kotlinx.serialization.json.JsonObject
 
 // ── Requests ──────────────────────────────────────────────────────────────────
 
-/** Request body for POST /v1/ask and POST /v1/ask/stream. */
+/** Request body for POST /v1/ask and POST /v1/ask/stream. Mirrors `RestAskRequest`. */
 @Serializable
 data class AskRequest(
     val query: String,
     val collection: String? = null,
+    val diagnostics: Boolean? = null,
+    val explain: Boolean? = null,
+    @SerialName("hybrid_search") val hybridSearch: Boolean? = null,
+    @SerialName("ask_chunk_limit") val chunkLimit: Int? = null,
+    @SerialName("ask_full_docs") val fullDocs: Int? = null,
+    @SerialName("ask_max_context_chars") val maxContextChars: Int? = null,
+    @SerialName("ask_hybrid_candidates") val hybridCandidates: Int? = null,
 )
 
 /** Request body for POST /v1/query. */
@@ -19,6 +26,7 @@ data class AskRequest(
 data class QueryRequest(
     val query: String,
     val limit: Int = 10,
+    val offset: Int? = null,
     val collection: String? = null,
 )
 
@@ -81,6 +89,33 @@ data class SourcesResponse(
     val urls: JsonArray,
 )
 
+// ── Retrieve ──────────────────────────────────────────────────────────────────
+
+/** Request body for POST /v1/retrieve — fetch the full stored document for a URL. */
+@Serializable
+data class RetrieveRequest(
+    val url: String,
+    val collection: String? = null,
+    @SerialName("max_points") val maxPoints: Int? = null,
+    val cursor: String? = null,
+    @SerialName("token_budget") val tokenBudget: Int? = null,
+)
+
+/** Response body from POST /v1/retrieve. Mirrors the server-side `RetrieveResult`. */
+@Serializable
+data class RetrieveResponse(
+    @SerialName("chunk_count") val chunkCount: Int = 0,
+    val content: String = "",
+    @SerialName("requested_url") val requestedUrl: String? = null,
+    @SerialName("matched_url") val matchedUrl: String? = null,
+    val truncated: Boolean = false,
+    val warnings: List<String> = emptyList(),
+    @SerialName("token_estimate") val tokenEstimate: Int? = null,
+    @SerialName("next_cursor") val nextCursor: String? = null,
+    @SerialName("remaining_tokens_estimate") val remainingTokensEstimate: Int? = null,
+    @SerialName("refresh_status") val refreshStatus: String? = null,
+)
+
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 /** Response body from GET /v1/stats. */
@@ -91,11 +126,14 @@ data class StatsResponse(
 
 // ── Scrape ────────────────────────────────────────────────────────────────────
 
-/** Request body for POST /v1/scrape. */
+/** Request body for POST /v1/scrape. Mirrors `RestScrapeRequest`. */
 @Serializable
 data class ScrapeRequest(
     val url: String,
     val embed: Boolean? = null,
+    @SerialName("render_mode") val renderMode: String? = null,    // "http"|"chrome"|"auto-switch"
+    val format: String? = null,                                    // "markdown"|"html"|"rawHtml"|"json"
+    val collection: String? = null,
 )
 
 /** Response body from POST /v1/scrape. */
@@ -113,6 +151,7 @@ data class ScrapeResponse(
 data class MapRequest(
     val url: String,
     val limit: Int? = null,
+    val offset: Int? = null,
 )
 
 /** Response body from POST /v1/map. */
@@ -126,11 +165,13 @@ data class MapResponse(
 
 // ── Research ──────────────────────────────────────────────────────────────────
 
-/** Request body for POST /v1/research. */
+/** Request body for POST /v1/research. Mirrors `RestResearchRequest`. */
 @Serializable
 data class ResearchRequest(
     val query: String,
     val limit: Int? = null,
+    val offset: Int? = null,
+    @SerialName("time_range") val timeRange: String? = null,
 )
 
 /** Response body from POST /v1/research. */
@@ -177,12 +218,16 @@ sealed interface AskStreamEvent {
 
 // ── Crawl ─────────────────────────────────────────────────────────────────────
 
-/** Request body for POST /v1/crawl. */
+/** Request body for POST /v1/crawl. Mirrors `RestCrawlRequest`. */
 @Serializable
 data class CrawlRequest(
     val urls: List<String>,
     @SerialName("max_pages") val maxPages: Int? = null,
     @SerialName("max_depth") val maxDepth: Int? = null,
+    @SerialName("render_mode") val renderMode: String? = null,    // "http"|"chrome"|"auto-switch"
+    @SerialName("include_subdomains") val includeSubdomains: Boolean? = null,
+    val collection: String? = null,
+    val headers: List<String> = emptyList(),
 )
 
 /** Response body from POST /v1/crawl (job submission). */

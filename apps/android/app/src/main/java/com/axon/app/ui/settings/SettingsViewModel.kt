@@ -15,18 +15,18 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
-sealed interface ConnectionState {
-    object Idle : ConnectionState
-    object Testing : ConnectionState
+sealed interface TestConnectionState {
+    data object Idle : TestConnectionState
+    data object Testing : TestConnectionState
     /** Connection succeeded. [warning] is non-null when the URL uses cleartext HTTP. */
-    data class Ok(val warning: String? = null) : ConnectionState
-    data class Failed(val error: String) : ConnectionState
+    data class Ok(val warning: String? = null) : TestConnectionState
+    data class Failed(val error: String) : TestConnectionState
 }
 
 sealed interface SaveState {
-    object Idle : SaveState
-    object Saving : SaveState
-    object Saved : SaveState
+    data object Idle : SaveState
+    data object Saving : SaveState
+    data object Saved : SaveState
     data class Failed(val error: String) : SaveState
 }
 
@@ -36,8 +36,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     private val _settings = MutableStateFlow(AxonSettings())
     val settings: StateFlow<AxonSettings> = _settings.asStateFlow()
 
-    private val _connection = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
-    val connection: StateFlow<ConnectionState> = _connection.asStateFlow()
+    private val _connection = MutableStateFlow<TestConnectionState>(TestConnectionState.Idle)
+    val connection: StateFlow<TestConnectionState> = _connection.asStateFlow()
 
     private val _saveState = MutableStateFlow<SaveState>(SaveState.Idle)
     val saveState: StateFlow<SaveState> = _saveState.asStateFlow()
@@ -77,7 +77,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun testConnection(serverUrl: String, token: String) {
         viewModelScope.launch {
-            _connection.value = ConnectionState.Testing
+            _connection.value = TestConnectionState.Testing
             // Use a temporary throwaway client — do NOT mutate the shared client before saving
             val trimmedUrl = serverUrl.trim()
             val tempClient = AxonClient(trimmedUrl, token.trim())
@@ -89,12 +89,12 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                     } else {
                         null
                     }
-                    ConnectionState.Ok(warning = warning)
+                    TestConnectionState.Ok(warning = warning)
                 },
                 onFailure = { cause ->
                     // Surface the actual failure cause so users know whether it's a 401,
                     // DNS failure, TLS error, or something else — not just "Server unreachable".
-                    ConnectionState.Failed(cause.message ?: "Server unreachable")
+                    TestConnectionState.Failed(cause.message ?: "Server unreachable")
                 },
             )
         }

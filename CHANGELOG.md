@@ -7,6 +7,238 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.12.2] - 2026-05-27
+
+### Added
+
+- **build-windows.sh** — new cross-compile script that builds the Palette Tauri
+  or `axon.exe` Windows executable on dookie and ships it to Steamy's Desktop
+  via `scp`, replacing the old `build-on-steamy.sh` repo-sync approach.
+
+### Fixed
+
+- **Android: 22 code-review findings from PR #142** — CRLF injection in
+  `joinHeader`, `askStream` skipping `ModeOptionsApplicator`, `security-crypto`
+  downgraded to stable, URI scheme validation in four screens, `EncryptedTokenStore`
+  race condition, backup exclusion rules, `JobsViewModel` backoff, connection poll
+  flow termination, `DocumentViewModel` concurrent fetch cancellation,
+  `RecentJobsRepository` Set-of-JSON dedup bug, `HeadersField` delete index
+  shifting, `ModeOptionsRepository` dependency inversion (`*FormKeys` moved to
+  `data.repository.options`), `ConnectionState` name collision renamed to
+  `TestConnectionState`, `QueryRequest.limit` caller-wins precedence, answer text
+  capped at 500 chars, `OperationMode` ProGuard safety, `data object` sealed
+  states.
+
+## [4.12.1] - 2026-05-27
+
+### Fixed
+
+- **Android: job cancellation races** — `SystemViewModel`, `SearchWebViewModel`,
+  `SummarizeViewModel`, and `QueryViewModel` now cancel in-flight coroutine jobs
+  before launching new ones, preventing stale results from overwriting fresh state.
+- **Android: `JobsViewModel` tab-switch flicker** — emit `Resource.Loading`
+  immediately at the start of each `flatMapLatest` block so the UI transitions
+  to a loading state before the first poll result arrives.
+- **Android: lazy `ToolsViewModel` creation** — moved `viewModel()` call inside
+  the `Scrape/Crawl/Map/Research` branches of `ModeContentHost` so the VM is not
+  eagerly constructed for `Ask/Query/Summarize/Search/Ingest` modes.
+- **Android: form reset not reflected in UI** — `ModeOptionsRepository.resetKeys()`
+  now increments a `resetVersion` counter; `rememberPersistedState` and
+  `rememberOptionalPersistedState` re-read DataStore when the counter changes,
+  restoring default values in the UI after a reset.
+- **Android: `MapOptionsForm` allows negative values** — `limit` and `offset`
+  fields now clamp input to `coerceAtLeast(0)`.
+- **Android: URL-encoded job IDs in HTTP paths** — `AxonClient.crawlStatus`,
+  `getJob`, and `cancelJob` now percent-encode the job ID before embedding it
+  in the request URL path.
+- **Android: `AxonRepository.retrieve` accepts invalid `tokenBudget`** — added
+  `require(tokenBudget > 0)` guard before the network call.
+- **Android: `IngestViewModel` persistence failure masks success** — wrapped
+  `recentJobs.add()` in `runCatching` so a DataStore I/O failure during
+  persistence does not prevent the `Submitted` state from being set.
+- **Android: token migration failure silently swallowed** — `AxonApp.onCreate`
+  now logs a warning when the `migrateTokenToEncrypted` migration fails.
+- **Android: `SummarizeScreen` submits blank input** — added `trim().isNotEmpty()`
+  guard in `onSend` so whitespace-only strings never reach the ViewModel.
+- **Android: `IngestScreen` submit-enabled for whitespace** — changed `isNotBlank()`
+  to `trim().isNotEmpty()` to match the actual trimmed payload being submitted.
+- **Android: `DocumentViewModel` logs PII URLs** — removed the URL from the
+  `Log.w` call in the error path to avoid leaking document URLs in logcat.
+- **Android: `StringChunking` drops separator at chunk boundary** — separator
+  is now appended to the *outgoing* buffer before `flush()`, preserving it in
+  the emitted chunk and enabling lossless reassembly via `joinToString("")`.
+- **Android tests: missing HTTP method/path assertions** — added `assertEquals`
+  calls for method and path in the `doctor`, `suggest`, and `domains` test cases
+  of `AxonClientPhase2Test`.
+- **Android tests: missing reassembly assertion** — paragraph and line split
+  paths in `DocumentChunkingTest` now verify `chunks.joinToString("") == original`.
+- **Docs: session log filename missing time component** — renamed
+  `2026-05-27-android-pager-fab-shell.md` to
+  `2026-05-27-16-02-android-pager-fab-shell.md`.
+
+## [4.12.0] - 2026-05-27
+
+### Added
+
+- **Android: pager + FAB shell** — bottom-pager navigation and draggable FAB shell
+  wired into the main nav graph, enabling swipe-between-tabs UX alongside the
+  existing destination-based routing.
+- **Android: complete operation mode coverage** — `Map`, `Research`, `SearchWeb`,
+  and `Summarize` modes added to `OperationMode`; matching option forms
+  (`MapOptionsForm`, `ResearchOptionsForm`, `SearchWebOptionsForm`,
+  `SummarizeOptionsForm`) and nav graph destinations registered.
+- **Android: `options` form-keys package** — all per-mode form key constants
+  extracted from the repository layer into
+  `data/repository/options/{Ask,Crawl,Ingest,Map,Query,Research,Scrape,SearchWeb,Summarize}FormKeys.kt`,
+  giving UI forms a stable, typed constant surface.
+
+### Changed
+
+- Android: options forms (`AskOptionsForm`, `CrawlOptionsForm`, `IngestOptionsForm`,
+  `QueryOptionsForm`, `ScrapeOptionsForm`, and the new forms) simplified — form key
+  references now come from the dedicated keys package rather than inline strings.
+- Android: `AxonRepository`, `ModeOptionsRepository`, `RecentJobsRepository`, and
+  `EncryptedTokenStore` updated to use the new form-keys constants.
+- Android: `DocumentScreen`, `SourcesScreen`, `MapTab`, `ResearchTab` wired into
+  the expanded nav graph.
+- Android: `libs.versions.toml` dependency updates for new form/nav requirements.
+- `scripts/build-on-steamy.sh`: minor fixes to sync paths.
+
+## [4.11.0] - 2026-05-27
+
+### Security
+
+- **Android: encrypt user-supplied HTTP headers** — header values entered in the
+  Crawl options form (Authorization, Cookie, X-Api-Key, Proxy-Authorization,
+  X-Auth-Token) previously persisted to the plaintext mode-options DataStore.
+  New `EncryptedHeadersStore` (AES-256-GCM via AndroidX security-crypto) stores
+  the entire crawl header list encrypted at rest; the legacy
+  `CrawlFormKeys.HEADERS` DataStore key is removed.
+- Android: `data_extraction_rules.xml` now excludes the encrypted headers prefs
+  file plus the `settings` and `mode_options` DataStore protobufs from both
+  cloud backup and Android 12+ device-to-device transfer.
+
+### Fixed
+
+- **Android: Ask mode no longer hangs and force-closes after repeated taps.**
+  Root cause was a leaked OkHttp IO thread in `AxonClient.askStream`:
+  `BufferedReader.readLine()` blocked for up to 300s after coroutine
+  cancellation. Fix captures the `Call` reference and installs
+  `invokeOnCompletion { call.cancel() }`, and `AskViewModel` now tracks the
+  in-flight `Job` so a second `ask()` cancels the prior stream cleanly.
+- Android: `DraggableFab` could be dragged off-screen / into the system nav bar.
+  `clampOffset` now caps `maxX`/`maxY` to `0f` so the FAB cannot escape its
+  visible anchor.
+- Android: `JobsViewModel.cancel()` and `IngestViewModel.cancel()` discarded the
+  `Result` — failed cancels were invisible to the user. Both now surface
+  errors (toast in Jobs, error state in Ingest) and log to logcat.
+- Android: `AskViewModel` fallback for truncated SSE streams now sets a
+  `historyWarning` flag instead of silently presenting partial bytes as a
+  completed answer.
+- Android: `EncryptedTokenStore` now logs every keystore failure path
+  (`Log.w`), surfaces commit failures via boolean returns, and `SettingsRepository.save()`
+  throws `IllegalStateException` if encrypted persistence fails so the UI is
+  never left in a "looks saved but isn't" state.
+- Android: token migration (`SettingsRepository.migrateTokenToEncrypted`) now
+  uses `try { write } finally { remove }` and refuses to remove the plaintext
+  copy when the encrypted write returns false — bounded the
+  plaintext-exposure window if a process is killed mid-migration.
+- Android: `AxonClient.execute` and `askStream` now log network failures
+  (one-line `Log.w` with method + path) so field reports have a logcat
+  breadcrumb.
+
+### Changed
+
+- Android: `AxonRepository`'s `applicator` constructor parameter is now
+  **required** — the silent `NoopModeOptionsApplicator` default removed a
+  class of test-fixture bugs where forgotten injection silently bypassed
+  user preferences.
+- Android: extracted `ConnectionStatusEngine` from `ConnectionStatusViewModel`
+  so the polling / refresh / cancellation contract is unit-testable under
+  `runTest` (5 new tests).
+- Android: extracted `HeadersReducer` pure-function reducer from
+  `HeadersField`; row-add/delete/set-key/set-value/serialize logic is now
+  unit-tested (10 new tests).
+- Android: `KnowledgeViewModel` collapses the 4 near-identical `loadX()`
+  bodies into one generic `loadSection<T>(state, cachedAt, force, label, fetch)`
+  helper — 60+ LOC saved, identical behaviour.
+
+### Added
+
+- Android: `AxonClientErrorPathTest` — 401/403/404/500/503 + malformed JSON +
+  empty body + socket disconnect + abort coverage for phase-2 endpoints (15
+  new tests).
+- Android: `UrlValidatorTest` — 9 new tests covering `hostOrNull`,
+  ipv4-literal, userinfo-stripping, and the `github.com.attacker.com`
+  lookalike regression.
+
+## [4.10.0] - 2026-05-27
+
+### Added
+
+- Android: per-mode options screen (9 forms — Ask, Query, Summarize, Research,
+  Scrape, Crawl, Search, Map, Ingest). Each form persists overrides to
+  Preferences DataStore (one file `mode_options`) with file-private keys and
+  defaults. `Reset to defaults` clears only that mode's keys.
+- Android: `ModeOptionsApplicator` decorator boundary on `AxonRepository`.
+  Every request flowing through the repository is run through `applicator.apply(req)`
+  before reaching `AxonClient` so the repository stays ignorant of which fields
+  exist per mode. Call-site values always win over persisted overrides.
+- Android: `EncryptedTokenStore` (EncryptedSharedPreferences with `@Volatile`
+  cache) replaces the legacy plaintext DataStore entry. Tolerates AndroidKeyStore
+  invalidation by deleting the prefs file and forcing re-auth. Synchronous
+  `.commit()` writes survive immediate process kill.
+- Android: idempotent boot-time migration moves any legacy plaintext token
+  into `EncryptedTokenStore` and wipes the plaintext entry. Runs on every
+  `AxonApp.onCreate()`.
+- Android: `data_extraction_rules.xml` excludes `axon_secrets.xml` from cloud
+  backup and device-transfer (Android 12+).
+- Android: `ModeOptionsScreen` applies `FLAG_SECURE` to its host window for the
+  lifetime of the composition so sensitive header values cannot bleed via the
+  recent-apps thumbnail.
+- Android: `HeadersField` (used by `CrawlOptionsForm`) masks sensitive
+  Authorization/Cookie/X-Api-Key/Proxy-Authorization/X-Auth-Token values with
+  `PasswordVisualTransformation` plus a show/hide toggle.
+- Android: new `LocalOpenModeOptions: (OperationMode) -> Unit` composition
+  local provided by `AxonNavGraph`; `OperationsScreen` cog now navigates to
+  the real options screen.
+
+### Changed
+
+- Android: wire DTOs (`CrawlRequest`, `ScrapeRequest`, `AskRequest`,
+  `ResearchRequest`, `MapRequest`, `QueryRequest`) extended to mirror the
+  matching `RestXxxRequest` fields the server already exposes so the
+  applicator has fields to merge into.
+
+### Removed
+
+- Android: `StubModeForm` deleted — all 9 modes now route to real screens.
+
+## [4.9.0] - 2026-05-27
+
+### Added
+
+- Android: `HorizontalPager`-based shell with four swipe pages (Operations,
+  Jobs, Knowledge, System); bottom navigation bar removed; top app bar carries
+  the settings gear on every page.
+- Android: FAB on the Operations page opens an Aurora-styled mode picker with
+  nine operations (Ask, Summarize, Research, Query, Scrape, Crawl, Ingest,
+  Search, Map); the active mode persists in `OperationsViewModel`.
+- Android: Tapping a Query result now opens an in-app `DocumentScreen` that
+  renders the full assembled document via `/v1/retrieve` (chunk count, matched
+  URL, truncated/warning callouts), with an explicit "Open source URL" escape
+  hatch.
+- Android client: `retrieve(...)` wired through `AxonClient` and
+  `AxonRepository` with the long-timeout HTTP client.
+- Android nav: `LocalAxonNavController` `CompositionLocal` so deep children
+  (e.g. result cards) can navigate without prop-drilling the controller.
+
+### Changed
+
+- Android: Renamed `ui/search/` → `ui/query/` (the screen always called
+  `/v1/query`); the "Search" mode label is reserved for the future real
+  web-search wiring (`/v1/search`).
+
 ## [4.8.2] - 2026-05-26
 
 ### Changed

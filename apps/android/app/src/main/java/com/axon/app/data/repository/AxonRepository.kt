@@ -10,10 +10,12 @@ import com.axon.app.data.remote.CrawlRequest
 import com.axon.app.data.remote.MapRequest
 import com.axon.app.data.remote.QueryRequest
 import com.axon.app.data.remote.ResearchRequest
+import com.axon.app.data.remote.RetrieveRequest
 import com.axon.app.data.remote.ScrapeRequest
 import com.axon.app.data.remote.SourcesRequest
 import com.axon.app.data.remote.ResearchHit
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -23,6 +25,14 @@ import kotlinx.serialization.json.int
 @Stable data class QueryHitUi(val rank: Long, val score: Double, val url: String, val source: String, val snippet: String)
 @Stable data class SourceEntryUi(val url: String, val chunks: Int)
 @Stable data class ScrapeResultUi(val url: String, val markdown: String)
+@Stable data class RetrieveResultUi(
+    val requestedUrl: String,
+    val matchedUrl: String?,
+    val chunkCount: Int,
+    val content: String,
+    val truncated: Boolean,
+    val warnings: List<String>,
+)
 @Stable data class MapResultUi(val url: String, val total: Long, val urls: List<String>)
 @Stable data class ResearchResultUi(val query: String, val summary: String?, val hits: List<ResearchHit>)
 /** Full crawl status including server-reported error and page count so callers can show actionable feedback. */
@@ -34,9 +44,48 @@ import kotlinx.serialization.json.int
     val serverError: String?,
 )
 
+// ── Phase 2 UI models ─────────────────────────────────────────────────────────
+
+@Stable data class SummarizeResultUi(
+    val urls: List<String>,
+    val summary: String,
+    val contextChars: Long,
+    val contextTruncated: Boolean,
+)
+
+@Stable data class SearchWebHitUi(
+    val title: String, val url: String, val snippet: String?, val score: Double?,
+)
+@Stable data class CrawlJobRefUi(val jobId: String, val url: String)
+@Stable data class SearchWebResultUi(
+    val query: String,
+    val results: List<SearchWebHitUi>,
+    val crawlJobsEnqueued: Int,
+    val crawlJobsSkipped: Int,
+    val crawlJobs: List<CrawlJobRefUi>,
+)
+
+@Stable data class JobUi(
+    val id: String,
+    val status: String,
+    val url: String?,
+    val sourceType: String?,
+    val target: String?,
+    val errorText: String?,
+    val resultJson: kotlinx.serialization.json.JsonElement?,
+    val finishedAt: String?,
+)
+
+@Stable data class SuggestHitUi(val url: String, val reason: String?)
+@Stable data class DomainFacetUi(val domain: String, val vectors: Long)
+
+/** Default `token_budget` cap for `/v1/retrieve` calls. */
+private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000
+
 class AxonRepository(
     private val client: AxonClient,
     private val askHistoryDao: AskHistoryDao,
+    private val applicator: ModeOptionsApplicator,
 ) {
 
     // Short-circuits with a failure when no token is configured; otherwise runs [block].
@@ -45,7 +94,8 @@ class AxonRepository(
         else Result.failure(IllegalStateException("No API token configured. Go to Settings to add your token."))
 
     suspend fun ask(query: String, collection: String? = null): Result<AskResultUi> = withToken {
-        client.ask(AskRequest(query = query, collection = collection)).map { r ->
+        val req = applicator.apply(AskRequest(query = query, collection = collection))
+        client.ask(req).map { r ->
             AskResultUi(query = r.query, answer = r.answer, timingMs = r.timingMs?.totalMs)
         }
     }
@@ -53,19 +103,49 @@ class AxonRepository(
     /**
      * Streams the ask response via SSE. Emits [AskStreamEvent] objects as they arrive.
      * If no API token is configured, immediately emits a single [AskStreamEvent.Error].
+     * Mode options are applied via [applicator] before the request is sent.
      */
-    fun askStream(query: String, collection: String? = null): Flow<AskStreamEvent> {
-        if (!client.hasToken()) return flow {
+    fun askStream(query: String, collection: String? = null): Flow<AskStreamEvent> = flow {
+        if (!client.hasToken()) {
             emit(AskStreamEvent.Error("No API token configured. Go to Settings to add your token."))
+            return@flow
         }
-        return client.askStream(AskRequest(query = query, collection = collection))
+        val req = applicator.apply(AskRequest(query = query, collection = collection))
+        emitAll(client.askStream(req))
     }
 
     suspend fun query(query: String, limit: Int = 10, collection: String? = null): Result<List<QueryHitUi>> = withToken {
-        client.query(QueryRequest(query = query, limit = limit, collection = collection)).map { r ->
+        val req = applicator.apply(QueryRequest(query = query, limit = limit, collection = collection))
+        client.query(req).map { r ->
             r.results.map { h ->
                 QueryHitUi(rank = h.rank, score = h.score, url = h.url, source = h.source, snippet = h.snippet)
             }
+        }
+    }
+
+    /**
+     * Fetch the full assembled document for [url].
+     *
+     * [tokenBudget] caps the server-side document window. Server signals
+     * [RetrieveResultUi.truncated] when the cap is hit so the UI can show a banner.
+     */
+    suspend fun retrieve(
+        url: String,
+        collection: String? = null,
+        tokenBudget: Int = DEFAULT_RETRIEVE_TOKEN_BUDGET,
+    ): Result<RetrieveResultUi> = withToken {
+        require(tokenBudget > 0) { "tokenBudget must be positive, got $tokenBudget" }
+        client.retrieve(
+            RetrieveRequest(url = url, collection = collection, tokenBudget = tokenBudget),
+        ).map { r ->
+            RetrieveResultUi(
+                requestedUrl = r.requestedUrl ?: url,
+                matchedUrl = r.matchedUrl,
+                chunkCount = r.chunkCount,
+                content = r.content,
+                truncated = r.truncated,
+                warnings = r.warnings,
+            )
         }
     }
 
@@ -100,19 +180,22 @@ class AxonRepository(
     }
 
     suspend fun scrape(url: String): Result<ScrapeResultUi> = withToken {
-        client.scrape(ScrapeRequest(url = url)).map { r ->
+        val req = applicator.apply(ScrapeRequest(url = url))
+        client.scrape(req).map { r ->
             ScrapeResultUi(url = r.url, markdown = r.markdown)
         }
     }
 
     suspend fun map(url: String): Result<MapResultUi> = withToken {
-        client.map(MapRequest(url = url)).map { r ->
+        val req = applicator.apply(MapRequest(url = url))
+        client.map(req).map { r ->
             MapResultUi(url = r.url, total = r.total, urls = r.urls)
         }
     }
 
     suspend fun research(query: String): Result<ResearchResultUi> = withToken {
-        client.research(ResearchRequest(query = query)).map { r ->
+        val req = applicator.apply(ResearchRequest(query = query))
+        client.research(req).map { r ->
             ResearchResultUi(
                 query = r.payload.query,
                 summary = r.payload.summary,
@@ -122,7 +205,8 @@ class AxonRepository(
     }
 
     suspend fun crawlSubmit(url: String, maxPages: Int? = null): Result<String> = withToken {
-        client.crawlSubmit(CrawlRequest(urls = listOf(url), maxPages = maxPages)).map { it.jobId }
+        val req = applicator.apply(CrawlRequest(urls = listOf(url), maxPages = maxPages))
+        client.crawlSubmit(req).map { it.jobId }
     }
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusUi> = withToken {
@@ -151,4 +235,75 @@ class AxonRepository(
             .getOrDefault(false)
 
     fun recentHistory(): Flow<List<AskHistoryEntry>> = askHistoryDao.recent()
+
+    // ── Phase 2 wrappers ───────────────────────────────────────────────────
+
+    suspend fun summarize(urls: List<String>, collection: String? = null): Result<SummarizeResultUi> = withToken {
+        val req = applicator.apply(
+            com.axon.app.data.remote.models.SummarizeRequest(urls = urls, collection = collection)
+        )
+        client.summarize(req).map { r -> SummarizeResultUi(r.urls, r.summary, r.contextChars, r.contextTruncated) }
+    }
+
+    suspend fun searchWeb(query: String): Result<SearchWebResultUi> = withToken {
+        val req = applicator.apply(com.axon.app.data.remote.models.SearchWebRequest(query = query))
+        client.searchWeb(req).map { r ->
+            SearchWebResultUi(
+                query = r.query,
+                results = r.results.map { SearchWebHitUi(it.title, it.url, it.snippet, it.score) },
+                crawlJobsEnqueued = r.autoCrawlStatus?.enqueued ?: 0,
+                crawlJobsSkipped = r.autoCrawlStatus?.skipped ?: 0,
+                crawlJobs = r.crawlJobs.map { CrawlJobRefUi(it.jobId, it.url) },
+            )
+        }
+    }
+
+    suspend fun ingestStart(sourceType: String, target: String, collection: String? = null): Result<String> = withToken {
+        val req = applicator.apply(
+            com.axon.app.data.remote.models.IngestRequest(sourceType = sourceType, target = target, collection = collection)
+        )
+        client.ingestStart(req).map { it.jobId }
+    }
+
+    suspend fun getJob(kind: AxonClient.JobKind, id: String): Result<JobUi> = withToken {
+        client.getJob(kind, id).map(::toJobUi)
+    }
+
+    suspend fun listJobs(kind: AxonClient.JobKind): Result<List<JobUi>> = withToken {
+        client.listJobs(kind).map { list -> list.map(::toJobUi) }
+    }
+
+    suspend fun cancelJob(kind: AxonClient.JobKind, id: String): Result<Boolean> = withToken {
+        client.cancelJob(kind, id).map { it.canceled }
+    }
+
+    suspend fun statusPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+        client.status().map { it.payload }
+    }
+
+    suspend fun statsPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+        client.stats().map { it.payload }
+    }
+
+    suspend fun doctorPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+        client.doctor().map { it.payload }
+    }
+
+    suspend fun suggest(focus: String?, collection: String? = null): Result<List<SuggestHitUi>> = withToken {
+        client.suggest(focus = focus, collection = collection).map { r ->
+            r.urls.map { SuggestHitUi(it.url, it.reason) }
+        }
+    }
+
+    suspend fun domains(limit: Int = 100, offset: Int = 0): Result<List<DomainFacetUi>> = withToken {
+        client.domains(limit = limit, offset = offset).map { r ->
+            r.domains.map { DomainFacetUi(it.domain, it.vectors) }
+        }
+    }
+
+    private fun toJobUi(j: com.axon.app.data.remote.models.ServiceJob) = JobUi(
+        id = j.id, status = j.status, url = j.url, sourceType = j.sourceType,
+        target = j.target, errorText = j.errorText, resultJson = j.resultJson,
+        finishedAt = j.finishedAt,
+    )
 }
