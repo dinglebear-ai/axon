@@ -6,7 +6,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -101,7 +100,6 @@ fun ManagementDrawerContent(
             },
             detailColor = if (statsState is MgmtActionState.Error) AxonColors.ErrorBase else AxonColors.TextMuted,
             onClick = { vm.loadStats() },
-            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Dedupe (coming soon) ──────────────────────────────────────────────
@@ -129,7 +127,6 @@ fun ManagementDrawerContent(
             detail = "Server URL, token, collection",
             detailColor = AxonColors.TextMuted,
             onClick = onOpenSettings,
-            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
     }
 }

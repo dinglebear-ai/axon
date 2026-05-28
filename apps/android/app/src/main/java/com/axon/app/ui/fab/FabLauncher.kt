@@ -42,10 +42,7 @@ fun FabLauncher(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val screenCenter = remember(maxWidth, maxHeight) {
-            IntOffset(
-                x = with(density) { (maxWidth / 2).roundToPx() },
-                y = with(density) { (maxHeight / 2).roundToPx() },
-            )
+            with(density) { IntOffset((maxWidth / 2).roundToPx(), (maxHeight / 2).roundToPx()) }
         }
 
         FabRing(
@@ -55,13 +52,12 @@ fun FabLauncher(
             onDismiss = { state = FabState.Idle },
         )
 
-        if (state is FabState.Input) {
-            val op = (state as FabState.Input).op
+        (state as? FabState.Input)?.let { input ->
             FabOpInputCard(
-                op = op,
-                onSubmit = { input ->
+                op = input.op,
+                onSubmit = { text ->
                     state = FabState.Idle
-                    onOpSubmit(op, input)
+                    onOpSubmit(input.op, text)
                 },
                 onDismiss = { state = FabState.Idle },
             )

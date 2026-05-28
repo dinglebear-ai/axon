@@ -3,8 +3,6 @@ package com.axon.app.ui.setup
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -49,7 +47,6 @@ fun SetupDrawerContent(
                 vm.runSmoke()
                 vm.runDoctor()
             },
-            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Setup (→ Settings) ────────────────────────────────────────────────
@@ -59,7 +56,6 @@ fun SetupDrawerContent(
             detail = "Server URL · Token · Collection",
             detailColor = AxonColors.TextMuted,
             onClick = onOpenSettings,
-            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Smoke ─────────────────────────────────────────────────────────────
@@ -78,7 +74,6 @@ fun SetupDrawerContent(
                 else -> AxonColors.TextMuted
             },
             onClick = { vm.runSmoke() },
-            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Doctor ────────────────────────────────────────────────────────────
@@ -97,7 +92,6 @@ fun SetupDrawerContent(
                 else -> AxonColors.TextMuted
             },
             onClick = { vm.runDoctor() },
-            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
 
         // ── Debug ─────────────────────────────────────────────────────────────
@@ -107,7 +101,6 @@ fun SetupDrawerContent(
             detail = "Server config · Advanced settings",
             detailColor = AxonColors.TextMuted,
             onClick = onOpenSettings,
-            trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = AxonColors.TextMuted, modifier = Modifier.size(14.dp)) },
         )
     }
 }
