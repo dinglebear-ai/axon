@@ -357,32 +357,6 @@ export default function App() {
 
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}`}>
-      {showContent && (
-      <header className="palette-titlebar" data-tauri-drag-region>
-        <div className="palette-brand" data-tauri-drag-region>
-          <span className="brand-dot" />
-          <span>Axon Palette</span>
-          <Badge tone={configError ? "error" : config ? "info" : "neutral"} shape="tag">
-            {config?.shortcut ?? "Loading"}
-          </Badge>
-        </div>
-        <div className="palette-status" data-tauri-drag-region>
-          {config ? (
-            <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
-          ) : configError ? (
-            <StatusIndicator tone="error" label="Config error" />
-          ) : (
-            <StatusIndicator tone="syncing" label="Loading config" />
-          )}
-          <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
-            <Settings size={14} />
-          </button>
-          <button className="titlebar-button" type="button" onClick={() => void invoke("hide_palette")} aria-label="Hide palette">
-            <X size={14} />
-          </button>
-        </div>
-      </header>
-      )}
 
       <section className="command-bar">
         <Search size={16} />
@@ -475,6 +449,29 @@ export default function App() {
           />
         )}
       </main>
+      )}
+
+      {showContent && (
+        <footer className="palette-footer">
+          <span className="palette-footer-hints">
+            ↑↓ navigate · ↵ select · Tab mode · Esc close
+          </span>
+          <span className="palette-status">
+            {config ? (
+              <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
+            ) : configError ? (
+              <StatusIndicator tone="error" label="Config error" />
+            ) : (
+              <StatusIndicator tone="syncing" label="Loading" />
+            )}
+            <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
+              <Settings size={14} />
+            </button>
+            <button className="titlebar-button" type="button" onClick={() => void invoke("hide_palette")} aria-label="Hide palette">
+              <X size={14} />
+            </button>
+          </span>
+        </footer>
       )}
     </div>
   );
