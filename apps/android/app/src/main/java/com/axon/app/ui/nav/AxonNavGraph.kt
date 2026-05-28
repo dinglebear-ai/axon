@@ -53,7 +53,13 @@ import tv.tootie.aurora.components.AuroraThinking
 @Serializable object HomeRoute
 @Serializable object SettingsRoute
 
-/** Opens a saved document by URL via /v1/retrieve. */
+/**
+ * Opens a saved document by URL via /v1/retrieve.
+ *
+ * [url] must be percent-encoded before navigating if it contains characters that
+ * Navigation Compose treats as delimiters (e.g. `?`, `&`, `#`). Use
+ * `Uri.encode(url)` at the call site and `Uri.decode(url)` in the destination.
+ */
 @Serializable data class DocumentRoute(val url: String)
 
 /**

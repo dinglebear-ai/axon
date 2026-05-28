@@ -53,19 +53,21 @@ class JobsViewModel(
 
     private val _selectedTab = MutableStateFlow(AxonClient.JobKind.Crawl)
 
-    /** Visible-tab job list (R10). */
+    /** Visible-tab job list (R10). Uses capped exponential backoff on network failures. */
     val visibleJobs: StateFlow<Resource<List<JobUi>>> = _selectedTab
         .flatMapLatest { kind ->
             flow {
+                var backoffMs = POLL_INTERVAL_MS
                 while (true) {
                     val r = container.axonRepository.listJobs(kind)
+                    backoffMs = if (r.isSuccess) POLL_INTERVAL_MS else (backoffMs * 2).coerceAtMost(120_000L)
                     emit(
                         r.fold(
                             onSuccess = { Resource.Ready(it) },
                             onFailure = { Resource.Error(it.message ?: "Error") },
                         )
                     )
-                    delay(POLL_INTERVAL_MS)
+                    delay(backoffMs)
                 }
             }
         }

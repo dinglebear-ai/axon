@@ -5,19 +5,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.axon.app.data.repository.DEFAULT_COLLECTION
+import com.axon.app.data.repository.options.QueryFormKeys
 import tv.tootie.aurora.components.AuroraTextField
 
-internal object QueryFormKeys {
-    val LIMIT      = intPreferencesKey("mode_options.query.limit")
-    val COLLECTION = stringPreferencesKey("mode_options.query.collection")
-    val ALL: List<Preferences.Key<*>> = listOf(LIMIT, COLLECTION)
-}
 
 private const val DEFAULT_LIMIT = 10
-private const val DEFAULT_COLLECTION = "axon"
 
 @Composable
 fun QueryOptionsForm() {

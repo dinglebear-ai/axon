@@ -15,6 +15,7 @@ import com.axon.app.data.remote.ScrapeRequest
 import com.axon.app.data.remote.SourcesRequest
 import com.axon.app.data.remote.ResearchHit
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -102,17 +103,15 @@ class AxonRepository(
     /**
      * Streams the ask response via SSE. Emits [AskStreamEvent] objects as they arrive.
      * If no API token is configured, immediately emits a single [AskStreamEvent.Error].
-     *
-     * Note: applicator merge can't easily run inside a non-suspending `flow {}` builder
-     * because the merge itself is suspending. We construct the base request synchronously;
-     * persisted overrides will land on the next non-streaming call. SSE streaming is
-     * intentionally narrow surface area — extending mode-options here is a follow-up.
+     * Mode options are applied via [applicator] before the request is sent.
      */
-    fun askStream(query: String, collection: String? = null): Flow<AskStreamEvent> {
-        if (!client.hasToken()) return flow {
+    fun askStream(query: String, collection: String? = null): Flow<AskStreamEvent> = flow {
+        if (!client.hasToken()) {
             emit(AskStreamEvent.Error("No API token configured. Go to Settings to add your token."))
+            return@flow
         }
-        return client.askStream(AskRequest(query = query, collection = collection))
+        val req = applicator.apply(AskRequest(query = query, collection = collection))
+        emitAll(client.askStream(req))
     }
 
     suspend fun query(query: String, limit: Int = 10, collection: String? = null): Result<List<QueryHitUi>> = withToken {

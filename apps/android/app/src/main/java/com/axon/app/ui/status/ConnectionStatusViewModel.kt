@@ -47,12 +47,19 @@ internal class ConnectionStatusEngine(
         },
         refreshTicker.receiveAsFlow(),
     )
-        .map { if (ping()) ConnectionState.Online else ConnectionState.Offline }
+        .map { _ ->
+            // Handle exceptions inline so a single ping() failure doesn't terminate the
+            // flow. The outer .catch is a safety net for unexpected framework exceptions.
+            try {
+                if (ping()) ConnectionState.Online else ConnectionState.Offline
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                ConnectionState.Offline
+            }
+        }
         .catch { e ->
             if (e is CancellationException) throw e
-            // Any non-cancellation throwable from ping() is treated as Offline.
-            // Without this, an exception in ping() would tear down the entire
-            // poll flow and the indicator would freeze on its last value.
             emit(ConnectionState.Offline)
         }
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ConnectionState.Checking)

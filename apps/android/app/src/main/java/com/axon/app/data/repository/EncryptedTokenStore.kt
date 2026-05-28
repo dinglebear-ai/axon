@@ -15,6 +15,7 @@ import androidx.security.crypto.MasterKey
  */
 class EncryptedTokenStore(private val context: Context) {
     @Volatile private var cached: String? = null
+    private val lock = Any()
 
     private val prefs by lazy {
         runCatching {
@@ -35,10 +36,7 @@ class EncryptedTokenStore(private val context: Context) {
         }
     }
 
-    fun read(): String? {
-        // If prefs was invalidated and cleared earlier in this process, drop the
-        // cached value so we don't keep handing out a token that's no longer on
-        // disk. Cache stays warm in the happy path (cached != null && prefs != null).
+    fun read(): String? = synchronized(lock) {
         if (prefs == null) {
             if (cached != null) {
                 Log.w(TAG, "prefs unavailable; clearing in-memory cache")
@@ -50,7 +48,6 @@ class EncryptedTokenStore(private val context: Context) {
         val p = prefs ?: return null
         return runCatching { p.getString(KEY_TOKEN, null) }
             .getOrElse { t ->
-                // Master key invalidated at read time; clear and force re-auth.
                 Log.w(TAG, "EncryptedSharedPreferences read failed; clearing file and forcing re-auth", t)
                 context.deleteSharedPreferences(FILE)
                 cached = null
@@ -66,7 +63,7 @@ class EncryptedTokenStore(private val context: Context) {
      * (init failed) or `commit()` returned false. Callers should treat false
      * as "token NOT persisted" and prompt the user to retry.
      */
-    fun write(token: String): Boolean {
+    fun write(token: String): Boolean = synchronized(lock) {
         val p = prefs ?: run {
             Log.w(TAG, "write() failed: EncryptedSharedPreferences unavailable")
             return false
@@ -86,7 +83,7 @@ class EncryptedTokenStore(private val context: Context) {
      * cleared. Returns true on success, false otherwise (callers should
      * consider the on-disk token still present and retry on next launch).
      */
-    fun clear(): Boolean {
+    fun clear(): Boolean = synchronized(lock) {
         val ok = prefs?.edit()?.remove(KEY_TOKEN)?.commit() ?: false
         if (!ok) {
             Log.w(TAG, "clear() commit() returned false; token may still be on disk")

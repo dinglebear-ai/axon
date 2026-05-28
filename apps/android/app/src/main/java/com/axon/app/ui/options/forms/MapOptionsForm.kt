@@ -3,14 +3,7 @@ package com.axon.app.ui.options.forms
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.intPreferencesKey
-
-internal object MapFormKeys {
-    val LIMIT  = intPreferencesKey("mode_options.map.limit")
-    val OFFSET = intPreferencesKey("mode_options.map.offset")
-    val ALL: List<Preferences.Key<*>> = listOf(LIMIT, OFFSET)
-}
+import com.axon.app.data.repository.options.MapFormKeys
 
 private const val DEFAULT_LIMIT = 10
 private const val DEFAULT_OFFSET = 0

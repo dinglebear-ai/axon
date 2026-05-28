@@ -5,17 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.axon.app.data.repository.options.SearchWebFormKeys
 import tv.tootie.aurora.components.AuroraSelect
-
-internal object SearchWebFormKeys {
-    val LIMIT      = intPreferencesKey("mode_options.search.limit")
-    val OFFSET     = intPreferencesKey("mode_options.search.offset")
-    val TIME_RANGE = stringPreferencesKey("mode_options.search.time_range")
-    val ALL: List<Preferences.Key<*>> = listOf(LIMIT, OFFSET, TIME_RANGE)
-}
 
 private const val DEFAULT_LIMIT = 10
 private const val DEFAULT_OFFSET = 0

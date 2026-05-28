@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -156,6 +157,11 @@ private fun ResearchHitCard(hit: ResearchHit) {
                 color = MaterialTheme.colorScheme.primary,
             )
         },
-        onClick = { runCatching { uriHandler.openUri(hit.url) } },
+        onClick = {
+            val scheme = Uri.parse(hit.url).scheme
+            if (scheme == "https" || scheme == "http") {
+                runCatching { uriHandler.openUri(hit.url) }
+            }
+        },
     )
 }

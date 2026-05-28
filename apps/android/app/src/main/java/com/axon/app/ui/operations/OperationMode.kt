@@ -1,5 +1,6 @@
 package com.axon.app.ui.operations
 
+import androidx.annotation.Keep
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
  * shared [OperationsViewModel]; the FAB icon and the body form both react to the
  * current value.
  */
+@Keep
 enum class OperationMode(
     val label: String,
     val icon: ImageVector,
@@ -36,5 +38,7 @@ enum class OperationMode(
 
     companion object {
         val Default = Ask
+
+        fun fromNameOrNull(name: String): OperationMode? = runCatching { valueOf(name) }.getOrNull()
     }
 }

@@ -13,26 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.axon.app.data.repository.DEFAULT_COLLECTION
+import com.axon.app.data.repository.options.AskFormKeys
 import tv.tootie.aurora.components.AuroraSwitch
 import tv.tootie.aurora.components.AuroraTextField
 
-/** Internal — keys exposed to [com.axon.app.data.repository.ModeOptionsRepository.apply] only. */
-internal object AskFormKeys {
-    val CHUNK_LIMIT       = intPreferencesKey("mode_options.ask.chunk_limit")
-    val FULL_DOCS         = intPreferencesKey("mode_options.ask.full_docs")
-    val MAX_CONTEXT_CHARS = intPreferencesKey("mode_options.ask.max_context_chars")
-    val HYBRID_CANDIDATES = intPreferencesKey("mode_options.ask.hybrid_candidates")
-    val DIAGNOSTICS       = booleanPreferencesKey("mode_options.ask.diagnostics")
-    val EXPLAIN           = booleanPreferencesKey("mode_options.ask.explain")
-    val COLLECTION        = stringPreferencesKey("mode_options.ask.collection")
-
-    val ALL: List<Preferences.Key<*>> =
-        listOf(CHUNK_LIMIT, FULL_DOCS, MAX_CONTEXT_CHARS, HYBRID_CANDIDATES, DIAGNOSTICS, EXPLAIN, COLLECTION)
-}
 
 private const val DEFAULT_CHUNK_LIMIT = 20
 private const val DEFAULT_FULL_DOCS = 6
@@ -40,7 +25,6 @@ private const val DEFAULT_MAX_CONTEXT_CHARS = 300_000
 private const val DEFAULT_HYBRID_CANDIDATES = 100
 private const val DEFAULT_DIAGNOSTICS = false
 private const val DEFAULT_EXPLAIN = false
-private const val DEFAULT_COLLECTION = "axon"
 
 @Composable
 fun AskOptionsForm() {

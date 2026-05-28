@@ -3,13 +3,7 @@ package com.axon.app.ui.options.forms
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.intPreferencesKey
-
-internal object ResearchFormKeys {
-    val LIMIT = intPreferencesKey("mode_options.research.limit")
-    val ALL: List<Preferences.Key<*>> = listOf(LIMIT)
-}
+import com.axon.app.data.repository.options.ResearchFormKeys
 
 private const val DEFAULT_LIMIT = 10
 

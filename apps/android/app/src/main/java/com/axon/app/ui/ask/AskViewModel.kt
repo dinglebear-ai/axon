@@ -37,9 +37,9 @@ internal fun buildFollowUpQuery(prior: List<AskTurn>, question: String): String 
 }
 
 sealed interface AskUiState {
-    object Idle : AskUiState
+    data object Idle : AskUiState
     /** Waiting for the first SSE event (retrieval phase). */
-    object Loading : AskUiState
+    data object Loading : AskUiState
     /** Streaming: LLM is generating — [partialAnswer] grows with each delta token. */
     data class Streaming(val query: String, val partialAnswer: String) : AskUiState
     /**
@@ -76,7 +76,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     fun clearFollowUp() { _turns.value = emptyList() }
 
     private fun appendTurn(q: String, a: String) {
-        _turns.value = (_turns.value + AskTurn(q, a)).takeLast(MAX_FOLLOW_UP_TURNS)
+        _turns.value = (_turns.value + AskTurn(q, a.take(500))).takeLast(MAX_FOLLOW_UP_TURNS)
     }
 
     fun ask(query: String) {
