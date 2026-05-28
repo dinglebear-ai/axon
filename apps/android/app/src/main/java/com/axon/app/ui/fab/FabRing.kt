@@ -49,11 +49,22 @@ fun FabRing(
     if (!visible && openProgress == 0f) return
 
     Box(modifier = modifier.fillMaxSize()) {
-        FabOp.entries.forEachIndexed { i, op ->
-            val angleDeg = -90.0 + i * 36.0
-            val angleRad = Math.toRadians(angleDeg)
-            val radiusPx = with(density) { radiusDp.toPx() }
+        // Dim backdrop — only drawn when ring has opened far enough to be meaningful
+        if (openProgress > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF040A0E).copy(alpha = openProgress * 0.82f))
+                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+            )
+        }
 
+        val radiusPx = with(density) { radiusDp.toPx() }
+        val halfTilePx = with(density) { 23.dp.roundToPx() }
+        val halfDismissPx = with(density) { 21.dp.roundToPx() }
+
+        FabOp.entries.forEachIndexed { i, op ->
+            val angleRad = Math.toRadians(-90.0 + i * 36.0)
             val dx = (radiusPx * cos(angleRad) * openProgress).roundToInt()
             val dy = (radiusPx * sin(angleRad) * openProgress).roundToInt()
 
@@ -61,8 +72,8 @@ fun FabRing(
                 op = op,
                 modifier = Modifier.offset {
                     IntOffset(
-                        x = fabCenterOffset.x + dx - with(density) { 23.dp.roundToPx() },
-                        y = fabCenterOffset.y + dy - with(density) { 23.dp.roundToPx() },
+                        x = fabCenterOffset.x + dx - halfTilePx,
+                        y = fabCenterOffset.y + dy - halfTilePx,
                     )
                 },
                 alpha = openProgress,
@@ -73,10 +84,7 @@ fun FabRing(
         // Center dismiss button
         Box(
             modifier = Modifier
-                .offset {
-                    val offsetPx = with(density) { 21.dp.roundToPx() }
-                    IntOffset(fabCenterOffset.x - offsetPx, fabCenterOffset.y - offsetPx)
-                }
+                .offset { IntOffset(fabCenterOffset.x - halfDismissPx, fabCenterOffset.y - halfDismissPx) }
                 .size(42.dp)
                 .background(Color(0xFF29B6F6), RoundedCornerShape(13.dp))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
@@ -89,15 +97,16 @@ fun FabRing(
 
 @Composable
 private fun OpTile(op: FabOp, modifier: Modifier, alpha: Float, onClick: () -> Unit) {
-    val bg   = if (op.isAsync) asyncOpBg   else PanelStrong
-    val tint = if (op.isAsync) asyncOpTint else syncOpTint
+    val bg     = if (op.isAsync) asyncOpBg   else PanelStrong
+    val tint   = if (op.isAsync) asyncOpTint else syncOpTint
+    val border = if (op.isAsync) asyncOpTint.copy(alpha = 0.35f) else BorderStrong
 
     Box(
         modifier = modifier
             .size(46.dp)
             .graphicsLayer { this.alpha = alpha }
             .background(bg, RoundedCornerShape(13.dp))
-            .border(1.dp, if (op.isAsync) asyncOpTint.copy(alpha = 0.35f) else BorderStrong, RoundedCornerShape(13.dp))
+            .border(1.dp, border, RoundedCornerShape(13.dp))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
