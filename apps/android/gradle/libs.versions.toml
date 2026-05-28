@@ -14,7 +14,7 @@ kotlinx-serialization = "1.7.3"
 kotlinx-collections-immutable = "0.3.8"
 junit = "4.13.2"
 turbine = "1.1.0"
-securityCrypto = "1.0.0"
+securityCrypto = "1.1.0-alpha06"
 robolectric = "4.13"
 androidxTestExtJunit = "1.2.1"
 

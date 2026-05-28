@@ -249,8 +249,7 @@ class AxonClient(
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusResponse> = withContext(Dispatchers.IO) {
         // The server wraps the job in {"job": {...}}; decode the envelope and unwrap.
-        val encodedId = java.net.URLEncoder.encode(jobId, "UTF-8").replace("+", "%20")
-        get<CrawlStatusWrapper>("/v1/crawl/$encodedId").map { it.job }
+        get<CrawlStatusWrapper>("/v1/crawl/${encodePathSegment(jobId)}").map { it.job }
     }
 
     // ── Phase 2 endpoints ──────────────────────────────────────────────────────
@@ -276,8 +275,7 @@ class AxonClient(
 
     /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
     suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
-        val encodedId = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
-        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/$encodedId").get())
+        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}").get())
         execute(httpLong, builder)
     }
 
@@ -288,9 +286,8 @@ class AxonClient(
 
     /** POST /v1/{kind}/{id}/cancel. */
     suspend fun cancelJob(kind: JobKind, id: String): Result<CancelResponse> = withContext(Dispatchers.IO) {
-        val encodedId = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
         val body = "{}".toRequestBody(JSON_MEDIA_TYPE)
-        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/$encodedId/cancel").post(body))
+        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}/cancel").post(body))
         execute(http, builder)
     }
 
@@ -305,6 +302,9 @@ class AxonClient(
         withContext(Dispatchers.IO) { get("/v1/domains?limit=$limit&offset=$offset") }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun encodePathSegment(s: String): String =
+        java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
     private fun authRequest(builder: Request.Builder): Request.Builder {
         val (_, token) = config.get()

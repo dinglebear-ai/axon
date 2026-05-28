@@ -108,9 +108,9 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 onClick = { vm.testConnection(serverUrl, token) },
                 variant = AuroraButtonVariant.Outlined,
                 modifier = Modifier.weight(1f),
-                enabled = connection !is ConnectionState.Testing,
+                enabled = connection !is TestConnectionState.Testing,
             ) {
-                Text(if (connection is ConnectionState.Testing) "Testing…" else "Test")
+                Text(if (connection is TestConnectionState.Testing) "Testing…" else "Test")
             }
         }
 
@@ -142,12 +142,12 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
 
         // Connection status
         when (val c = connection) {
-            is ConnectionState.Testing ->
+            is TestConnectionState.Testing ->
                 AuroraStatusIndicator(
                     tone = AuroraStatusTone.Syncing,
                     label = "Testing…",
                 )
-            is ConnectionState.Ok -> {
+            is TestConnectionState.Ok -> {
                 AuroraStatusIndicator(
                     tone = AuroraStatusTone.Online,
                     label = "Connected",
@@ -160,7 +160,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     )
                 }
             }
-            is ConnectionState.Failed ->
+            is TestConnectionState.Failed ->
                 AuroraStatusIndicator(
                     tone = AuroraStatusTone.Error,
                     label = c.error,
