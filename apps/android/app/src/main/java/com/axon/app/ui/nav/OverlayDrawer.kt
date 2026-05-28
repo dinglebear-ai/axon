@@ -32,6 +32,7 @@ fun OverlayDrawer(
                 .width(232.dp)
                 .fillMaxHeight()
                 .background(Color(0xFF13293A))
+                .statusBarsPadding()
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {}),
         ) {
             DrawerSectionContent(section = section, onDismiss = onDismiss, navController = navController)

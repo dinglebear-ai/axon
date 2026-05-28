@@ -46,7 +46,8 @@ fun AxonRail(
         modifier = modifier
             .width(54.dp)
             .fillMaxHeight()
-            .background(NavBg),
+            .background(NavBg)
+            .statusBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(10.dp))

@@ -21,6 +21,14 @@ data class ServiceJob(
     @SerialName("config_json") val configJson: JsonElement? = null,
 )
 
+/** GET /v1/{kind} response — paginated job list. */
+@Serializable
+data class JobListResponse(
+    val jobs: List<ServiceJob> = emptyList(),
+    val limit: Int = 0,
+    val offset: Int = 0,
+)
+
 /** GET /v1/status response — aggregated job counts. */
 @Serializable
 data class StatusSummary(
