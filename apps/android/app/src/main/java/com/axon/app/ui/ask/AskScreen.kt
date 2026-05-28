@@ -2,6 +2,7 @@ package com.axon.app.ui.ask
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +31,7 @@ import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
+import com.axon.app.ui.fab.FabLauncher
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
 import tv.tootie.aurora.components.AuroraPromptInput
@@ -49,6 +51,7 @@ fun AskScreen(
     val history by vm.history.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -188,6 +191,10 @@ fun AskScreen(
             modifier = Modifier.fillMaxWidth(),
         )
     }
+    FabLauncher(
+        onOpSubmit = { op, input -> vm.submitFabOp(op, input) },
+    )
+    } // end Box
 }
 
 @Composable
