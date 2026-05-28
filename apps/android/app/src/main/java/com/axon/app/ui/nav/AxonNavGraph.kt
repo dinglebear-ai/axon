@@ -29,6 +29,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.axon.app.AxonApp
 import com.axon.app.ui.document.DocumentScreen
+import com.axon.app.ui.knowledge.SuggestScreen
 import com.axon.app.ui.operations.OperationMode
 import com.axon.app.ui.options.ModeOptionsScreen
 import com.axon.app.ui.settings.SettingsScreen
@@ -99,6 +100,11 @@ fun AxonNavGraph() {
                         title = "${mode.label} options",
                         onBack = navController::popBackStack,
                     ) { ModeOptionsScreen(mode) }
+                }
+            }
+            composable<SuggestRoute> {
+                BackShell("Suggest", navController::popBackStack) {
+                    SuggestScreen()
                 }
             }
         }
