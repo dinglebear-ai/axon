@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -109,6 +110,11 @@ private fun SourceRow(entry: SourceEntryUi) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-        onClick = { runCatching { uriHandler.openUri(entry.url) } },
+        onClick = {
+            val scheme = Uri.parse(entry.url).scheme
+            if (scheme == "https" || scheme == "http") {
+                runCatching { uriHandler.openUri(entry.url) }
+            }
+        },
     )
 }

@@ -9,41 +9,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.axon.app.data.repository.DEFAULT_COLLECTION
 import com.axon.app.data.repository.EncryptedHeadersStore
+import com.axon.app.data.repository.options.CrawlFormKeys
 import com.axon.app.ui.options.components.HeadersField
 import kotlinx.coroutines.launch
 import tv.tootie.aurora.components.AuroraSelect
 import tv.tootie.aurora.components.AuroraTextField
 
-internal object CrawlFormKeys {
-    val MAX_PAGES          = intPreferencesKey("mode_options.crawl.max_pages")
-    val MAX_DEPTH          = intPreferencesKey("mode_options.crawl.max_depth")
-    val RENDER_MODE        = stringPreferencesKey("mode_options.crawl.render_mode")
-    val INCLUDE_SUBDOMAINS = booleanPreferencesKey("mode_options.crawl.include_subdomains")
-    // Headers live in EncryptedHeadersStore — see [EncryptedHeadersStore.KEY_CRAWL_HEADERS].
-    // No plaintext DataStore key is exposed because header values can carry bearer
-    // tokens / cookies / API keys.
-    val SKIP_EMBED         = booleanPreferencesKey("mode_options.crawl.skip_embed")
-    val COLLECTION         = stringPreferencesKey("mode_options.crawl.collection")
-    val WAIT               = booleanPreferencesKey("mode_options.crawl.wait")
-    val JSON               = booleanPreferencesKey("mode_options.crawl.json")
-
-    val ALL: List<Preferences.Key<*>> = listOf(
-        MAX_PAGES, MAX_DEPTH, RENDER_MODE, INCLUDE_SUBDOMAINS,
-        SKIP_EMBED, COLLECTION, WAIT, JSON,
-    )
-}
 
 private const val DEFAULT_MAX_PAGES = 0
 private const val DEFAULT_MAX_DEPTH = 10
 private const val DEFAULT_RENDER_MODE = "auto-switch"
 private const val DEFAULT_INCLUDE_SUBDOMAINS = false
 private const val DEFAULT_SKIP_EMBED = false
-private const val DEFAULT_COLLECTION = "axon"
 private const val DEFAULT_WAIT = false
 private const val DEFAULT_JSON = false
 

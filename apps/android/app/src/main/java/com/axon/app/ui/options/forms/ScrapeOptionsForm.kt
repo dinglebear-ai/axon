@@ -5,24 +5,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.axon.app.data.repository.DEFAULT_COLLECTION
+import com.axon.app.data.repository.options.ScrapeFormKeys
 import tv.tootie.aurora.components.AuroraSelect
 import tv.tootie.aurora.components.AuroraTextField
 
-internal object ScrapeFormKeys {
-    val RENDER_MODE = stringPreferencesKey("mode_options.scrape.render_mode")
-    val FORMAT      = stringPreferencesKey("mode_options.scrape.format")
-    val EMBED       = booleanPreferencesKey("mode_options.scrape.embed")
-    val COLLECTION  = stringPreferencesKey("mode_options.scrape.collection")
-    val ALL: List<Preferences.Key<*>> = listOf(RENDER_MODE, FORMAT, EMBED, COLLECTION)
-}
 
 private const val DEFAULT_RENDER_MODE = "auto-switch"
 private const val DEFAULT_FORMAT = "markdown"
 private const val DEFAULT_EMBED = true
-private const val DEFAULT_COLLECTION = "axon"
 
 private val RENDER_MODES = listOf("http", "chrome", "auto-switch")
 private val FORMATS = listOf("markdown", "html", "rawHtml", "json")

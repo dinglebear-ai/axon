@@ -12,15 +12,15 @@ import com.axon.app.data.remote.ScrapeRequest
 import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.SearchWebRequest
 import com.axon.app.data.remote.models.SummarizeRequest
-import com.axon.app.ui.options.forms.AskFormKeys
-import com.axon.app.ui.options.forms.CrawlFormKeys
-import com.axon.app.ui.options.forms.IngestFormKeys
-import com.axon.app.ui.options.forms.MapFormKeys
-import com.axon.app.ui.options.forms.QueryFormKeys
-import com.axon.app.ui.options.forms.ResearchFormKeys
-import com.axon.app.ui.options.forms.ScrapeFormKeys
-import com.axon.app.ui.options.forms.SearchWebFormKeys
-import com.axon.app.ui.options.forms.SummarizeFormKeys
+import com.axon.app.data.repository.options.AskFormKeys
+import com.axon.app.data.repository.options.CrawlFormKeys
+import com.axon.app.data.repository.options.IngestFormKeys
+import com.axon.app.data.repository.options.MapFormKeys
+import com.axon.app.data.repository.options.QueryFormKeys
+import com.axon.app.data.repository.options.ResearchFormKeys
+import com.axon.app.data.repository.options.ScrapeFormKeys
+import com.axon.app.data.repository.options.SearchWebFormKeys
+import com.axon.app.data.repository.options.SummarizeFormKeys
 import kotlinx.coroutines.flow.first
 
 /**
@@ -92,11 +92,11 @@ class ModeOptionsRepository(
 
     override suspend fun apply(req: QueryRequest): QueryRequest {
         val prefs = context.modeOptionsDataStore.data.first()
-        // QueryRequest.limit is non-null (default 10) — only override when the call site
-        // left it at the default (would be brittle; instead always honour override when set).
         val limitOverride = prefs[QueryFormKeys.LIMIT]
+        // Caller wins when they passed a non-default limit; only apply the stored
+        // form override when the caller left limit at its default value (10).
         return req.copy(
-            limit      = limitOverride ?: req.limit,
+            limit      = req.limit.takeIf { it != 10 } ?: limitOverride ?: req.limit,
             collection = req.collection ?: prefs[QueryFormKeys.COLLECTION],
         )
     }

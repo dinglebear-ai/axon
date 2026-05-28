@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.data.repository.RetrieveResultUi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,7 +16,7 @@ import kotlinx.coroutines.launch
 private const val TAG = "DocumentViewModel"
 
 sealed interface DocumentUiState {
-    object Loading : DocumentUiState
+    data object Loading : DocumentUiState
     data class Success(val result: RetrieveResultUi) : DocumentUiState
     data class Error(val message: String) : DocumentUiState
 }
@@ -38,14 +39,19 @@ class DocumentViewModel(app: Application) : AndroidViewModel(app) {
     /** URL of the most recent **successful** load. `null` while loading or after a failure. */
     private var lastLoadedUrl: String? = null
 
+    /** Tracks the in-flight fetch so a new load/retry cancels the prior one. */
+    private var fetchJob: Job? = null
+
     fun load(url: String) {
         if (lastLoadedUrl == url) return
-        viewModelScope.launch { fetch(url) }
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch { fetch(url) }
     }
 
     /** Re-run the last load even when it matches the dedupe key. Used by the error-state retry button. */
     fun retry(url: String) {
-        viewModelScope.launch { fetch(url) }
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch { fetch(url) }
     }
 
     private suspend fun fetch(url: String) {

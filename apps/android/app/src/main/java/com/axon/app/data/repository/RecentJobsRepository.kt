@@ -2,7 +2,7 @@ package com.axon.app.data.repository
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -29,23 +29,21 @@ private const val MAX_RECENT_JOBS = 100
  * from this client. Survives process death so the Jobs page can show a
  * "Recent submissions" header even if the user just opened the app.
  *
- * Storage is a JSON-encoded [Set] of [RecentJob] strings inside a Preferences
- * DataStore. [add] dedupes by `jobId` (R6 lock) — re-submitting the same job
- * with a fresh `submittedAt` updates the entry in place rather than producing
- * two distinct Set members (which would happen with a naive `current.add(...)`
- * because JSON-encoded strings with different timestamps are different members).
+ * Storage is a single JSON-encoded [List] of [RecentJob] objects stored under
+ * one [stringPreferencesKey]. Using a single key avoids the `Set<String>` semantic
+ * mismatch — DataStore Set identity is referential but jobId-based dedup requires
+ * value equality on [RecentJob.jobId].
  */
 class RecentJobsRepository(context: Context) {
     private val ds = context.recentJobsDataStore
-    private val key = stringSetPreferencesKey("entries")
+    private val key = stringPreferencesKey("entries")
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Latest-first stream of persisted entries; ignores undecodable rows. */
-    val recent: Flow<List<RecentJob>> = ds.data.map { prefs ->
-        (prefs[key] ?: emptySet())
-            .mapNotNull { runCatching { json.decodeFromString<RecentJob>(it) }.getOrNull() }
-            .sortedByDescending { it.submittedAt }
-    }
+    private fun decode(raw: String?): List<RecentJob> =
+        raw?.let { runCatching { json.decodeFromString<List<RecentJob>>(it) }.getOrNull() } ?: emptyList()
+
+    /** Latest-first stream of persisted entries; ignores undecodable data. */
+    val recent: Flow<List<RecentJob>> = ds.data.map { prefs -> decode(prefs[key]) }
 
     /**
      * Add (or replace) a job entry. Dedupes by [RecentJob.jobId] and enforces
@@ -53,23 +51,17 @@ class RecentJobsRepository(context: Context) {
      */
     suspend fun add(job: RecentJob) {
         ds.edit { prefs ->
-            // Decode current entries, drop any with the same jobId, prepend the new entry,
-            // trim to the LRU cap, re-encode.
-            val current = (prefs[key] ?: emptySet())
-                .mapNotNull { runCatching { json.decodeFromString<RecentJob>(it) }.getOrNull() }
-                .filterNot { it.jobId == job.jobId }
-            val updated = (listOf(job) + current).take(MAX_RECENT_JOBS)
-            prefs[key] = updated.map { json.encodeToString(it) }.toSet()
+            val current = decode(prefs[key])
+            val updated = (listOf(job) + current.filterNot { it.jobId == job.jobId }).take(MAX_RECENT_JOBS)
+            prefs[key] = json.encodeToString(updated)
         }
     }
 
     /** Remove the entry with the given `jobId`, if any. */
     suspend fun forget(jobId: String) {
         ds.edit { prefs ->
-            val current = prefs[key] ?: return@edit
-            prefs[key] = current.filterNot {
-                runCatching { json.decodeFromString<RecentJob>(it).jobId == jobId }.getOrDefault(false)
-            }.toSet()
+            val current = decode(prefs[key])
+            prefs[key] = json.encodeToString(current.filterNot { it.jobId == jobId })
         }
     }
 }

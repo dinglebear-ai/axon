@@ -5,19 +5,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.axon.app.data.repository.DEFAULT_COLLECTION
+import com.axon.app.data.repository.options.IngestFormKeys
 import tv.tootie.aurora.components.AuroraTextField
 
-internal object IngestFormKeys {
-    val INCLUDE_SOURCE = booleanPreferencesKey("mode_options.ingest.include_source")
-    val COLLECTION     = stringPreferencesKey("mode_options.ingest.collection")
-    val ALL: List<Preferences.Key<*>> = listOf(INCLUDE_SOURCE, COLLECTION)
-}
 
 private const val DEFAULT_INCLUDE_SOURCE = true
-private const val DEFAULT_COLLECTION = "axon"
 
 @Composable
 fun IngestOptionsForm() {

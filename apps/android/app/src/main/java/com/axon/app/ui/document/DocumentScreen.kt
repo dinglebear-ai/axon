@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +46,8 @@ fun DocumentScreen(
     url: String,
     vm: DocumentViewModel = viewModel(),
 ) {
+    // When DocumentViewModel migrates to SavedStateHandle, load() can move to init {}
+    // and this effect can be removed.
     LaunchedEffect(url) { vm.load(url) }
     val state by vm.uiState.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
@@ -89,9 +92,11 @@ fun DocumentScreen(
                 AuroraButton(
                     onClick = {
                         val target = s.result.matchedUrl ?: s.result.requestedUrl
-                        runCatching { uriHandler.openUri(target) }.onFailure {
-                            // No handler for http(s) intents — surface so the click isn't silent.
-                            Toast.makeText(context, "No browser available to open the URL", Toast.LENGTH_SHORT).show()
+                        val scheme = Uri.parse(target).scheme
+                        if (scheme == "https" || scheme == "http") {
+                            runCatching { uriHandler.openUri(target) }.onFailure {
+                                Toast.makeText(context, "No browser available to open the URL", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     },
                     variant = AuroraButtonVariant.Outlined,

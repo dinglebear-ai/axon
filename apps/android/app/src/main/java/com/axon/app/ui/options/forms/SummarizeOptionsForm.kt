@@ -5,17 +5,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.axon.app.data.repository.options.SummarizeFormKeys
 import tv.tootie.aurora.components.AuroraSelect
 import tv.tootie.aurora.components.AuroraTextField
-
-internal object SummarizeFormKeys {
-    val RENDER_MODE      = stringPreferencesKey("mode_options.summarize.render_mode")
-    val ROOT_SELECTOR    = stringPreferencesKey("mode_options.summarize.root_selector")
-    val EXCLUDE_SELECTOR = stringPreferencesKey("mode_options.summarize.exclude_selector")
-    val ALL: List<Preferences.Key<*>> = listOf(RENDER_MODE, ROOT_SELECTOR, EXCLUDE_SELECTOR)
-}
 
 private const val DEFAULT_RENDER_MODE = "auto-switch"
 private val RENDER_MODES = listOf("http", "chrome", "auto-switch")
