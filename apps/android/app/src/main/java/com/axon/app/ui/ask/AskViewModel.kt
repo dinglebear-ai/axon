@@ -157,4 +157,8 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    fun submitFabOp(op: com.axon.app.ui.fab.FabOp, input: String) {
+        // TODO Phase 3 — real implementation in Task 11
+    }
 }
