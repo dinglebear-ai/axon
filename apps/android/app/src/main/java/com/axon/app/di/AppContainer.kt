@@ -5,6 +5,7 @@ import com.axon.app.data.local.AppDatabase
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.AxonRepository
 import com.axon.app.data.repository.DEFAULT_SERVER_URL
+import com.axon.app.data.repository.EncryptedHeadersStore
 import com.axon.app.data.repository.EncryptedTokenStore
 import com.axon.app.data.repository.ModeOptionsApplicator
 import com.axon.app.data.repository.ModeOptionsRepository
@@ -30,9 +31,10 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class AppContainer(context: Context) {
     val encryptedTokenStore = EncryptedTokenStore(context)
+    val encryptedHeadersStore = EncryptedHeadersStore(context)
     val settingsRepository = SettingsRepository(context, encryptedTokenStore)
     val recentJobs = RecentJobsRepository(context)
-    val modeOptionsRepository = ModeOptionsRepository(context)
+    val modeOptionsRepository = ModeOptionsRepository(context, encryptedHeadersStore)
     val modeOptionsApplicator: ModeOptionsApplicator = modeOptionsRepository
     private val db = AppDatabase.build(context)
 

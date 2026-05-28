@@ -35,6 +35,11 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        // Stub Android framework methods (android.util.Log, etc.) so unit tests
+        // running on a plain JVM don't throw "method not mocked" RuntimeExceptions.
+        // Robolectric-annotated tests still get the full framework via
+        // isIncludeAndroidResources above.
+        unitTests.isReturnDefaultValues = true
     }
 
     compileOptions {

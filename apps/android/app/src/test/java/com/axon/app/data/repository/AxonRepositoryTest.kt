@@ -51,7 +51,11 @@ class AxonRepositoryTest {
             token = "test-token",
         )
         dao = FakeAskHistoryDao()
-        repo = AxonRepository(client = client, askHistoryDao = dao)
+        repo = AxonRepository(
+            client = client,
+            askHistoryDao = dao,
+            applicator = NoopModeOptionsApplicator,
+        )
     }
 
     @After
@@ -375,6 +379,10 @@ class AxonRepositoryTest {
             baseUrl = server.url("/").toString().trimEnd('/'),
             token = "",
         )
-        return AxonRepository(client = noTokenClient, askHistoryDao = dao)
+        return AxonRepository(
+            client = noTokenClient,
+            askHistoryDao = dao,
+            applicator = NoopModeOptionsApplicator,
+        )
     }
 }

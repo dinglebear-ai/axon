@@ -84,7 +84,7 @@ private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000
 class AxonRepository(
     private val client: AxonClient,
     private val askHistoryDao: AskHistoryDao,
-    private val applicator: ModeOptionsApplicator = NoopModeOptionsApplicator,
+    private val applicator: ModeOptionsApplicator,
 ) {
 
     // Short-circuits with a failure when no token is configured; otherwise runs [block].

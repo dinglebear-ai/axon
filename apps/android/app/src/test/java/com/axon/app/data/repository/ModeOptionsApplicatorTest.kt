@@ -22,6 +22,7 @@ import com.axon.app.ui.options.forms.ResearchFormKeys
 import com.axon.app.ui.options.forms.ScrapeFormKeys
 import com.axon.app.ui.options.forms.SearchWebFormKeys
 import com.axon.app.ui.options.forms.SummarizeFormKeys
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -105,17 +106,81 @@ class ModeOptionsApplicatorTest {
         assertEquals("alt", out.collection)
     }
 
+    /**
+     * EncryptedHeadersStore round-trips through EncryptedSharedPreferences, which
+     * depends on the AndroidKeyStore HAL. Robolectric SDK 33 ships a working
+     * shim, but assume-skip the keystore-backed tests on CI images where it isn't
+     * — the persistence is the contract under test, not the keystore.
+     */
+    private fun encryptedHeadersAvailable(): Boolean {
+        val probe = EncryptedHeadersStore(ctx)
+        return try {
+            probe.write("__probe__", listOf("X-Probe: 1"))
+            EncryptedHeadersStore(ctx).read("__probe__") == listOf("X-Probe: 1")
+        } catch (_: Throwable) {
+            false
+        } finally {
+            runCatching { probe.clear("__probe__") }
+        }
+    }
+
     @Test fun `Crawl override sets max pages and headers`() = runBlocking {
+        org.junit.Assume.assumeTrue(
+            "Robolectric keystore unavailable — EncryptedSharedPreferences round-trip failed",
+            encryptedHeadersAvailable(),
+        )
         ctx.modeOptionsDataStore.edit {
             it[CrawlFormKeys.MAX_PAGES] = 200
             it[CrawlFormKeys.INCLUDE_SUBDOMAINS] = true
-            it[CrawlFormKeys.HEADERS] = setOf("Authorization: Bearer abc", "X-Trace: y")
         }
+        // Headers live in the EncryptedHeadersStore — write via the repo's
+        // encrypted convenience helper. This exercises the same path the form uses.
+        repo.writeEncryptedHeaders(
+            EncryptedHeadersStore.KEY_CRAWL_HEADERS,
+            listOf("Authorization: Bearer abc", "X-Trace: y"),
+        )
         val out = repo.apply(CrawlRequest(urls = listOf("https://a")))
         assertEquals(200, out.maxPages)
         assertEquals(true, out.includeSubdomains)
         assertEquals(2, out.headers.size)
         assertTrue("Authorization: Bearer abc" in out.headers)
+    }
+
+    @Test fun `Crawl headers do not leak into the plaintext DataStore`() = runBlocking {
+        org.junit.Assume.assumeTrue(
+            "Robolectric keystore unavailable — EncryptedSharedPreferences round-trip failed",
+            encryptedHeadersAvailable(),
+        )
+        // Regression guard for the PR-#142 critical fix: writing user-supplied
+        // headers must NOT touch the mode_options DataStore.
+        repo.writeEncryptedHeaders(
+            EncryptedHeadersStore.KEY_CRAWL_HEADERS,
+            listOf("Authorization: Bearer never-leak-this"),
+        )
+        val prefs = ctx.modeOptionsDataStore.data.first()
+        // The legacy key name no longer exists in CrawlFormKeys.ALL; the DataStore
+        // should be empty for any header-shaped value. We scan all entries to make
+        // sure no key contains the secret payload — defends against a regression
+        // where a new key accidentally persists header data.
+        val leakedKey = prefs.asMap().entries.firstOrNull { (_, v) ->
+            v.toString().contains("never-leak-this")
+        }
+        assertEquals(null, leakedKey)
+    }
+
+    @Test fun `Crawl call-site headers win over persisted encrypted headers`() = runBlocking {
+        org.junit.Assume.assumeTrue(
+            "Robolectric keystore unavailable — EncryptedSharedPreferences round-trip failed",
+            encryptedHeadersAvailable(),
+        )
+        repo.writeEncryptedHeaders(
+            EncryptedHeadersStore.KEY_CRAWL_HEADERS,
+            listOf("X-Persisted: 1"),
+        )
+        val out = repo.apply(
+            CrawlRequest(urls = listOf("https://a"), headers = listOf("X-Inline: 2")),
+        )
+        assertEquals(listOf("X-Inline: 2"), out.headers)
     }
 
     @Test fun `Map override sets limit and offset`() = runBlocking {

@@ -42,6 +42,8 @@ internal fun ModeOptionsFormScaffold(
     description: String?,
     resetKeys: List<Preferences.Key<*>>,
     repo: ModeOptionsRepository,
+    /** Optional hook for clearing storage outside of DataStore (e.g. encrypted headers). */
+    onResetExtra: suspend () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -67,7 +69,12 @@ internal fun ModeOptionsFormScaffold(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AuroraButton(
-                onClick = { scope.launch { repo.resetKeys(resetKeys) } },
+                onClick = {
+                    scope.launch {
+                        repo.resetKeys(resetKeys)
+                        onResetExtra()
+                    }
+                },
                 variant = AuroraButtonVariant.Outlined,
             ) { Text("Reset to defaults") }
         }
@@ -134,7 +141,3 @@ internal fun <T : Any> rememberOptionalPersistedState(
     }
 }
 
-/** Read a string-set key once (used by HeadersField initial state). */
-internal suspend fun ModeOptionsRepository.readStringSet(
-    key: Preferences.Key<Set<String>>,
-): Set<String>? = read(key)

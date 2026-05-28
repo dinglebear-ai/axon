@@ -9,14 +9,13 @@ import com.axon.app.data.repository.DomainFacetUi
 import com.axon.app.data.repository.SourceEntryUi
 import com.axon.app.data.repository.SuggestHitUi
 import com.axon.app.ui.common.Resource
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
+import kotlin.reflect.KMutableProperty0
 
 private const val TAG = "KnowledgeViewModel"
 private const val FRESHNESS_MS = 30_000L
@@ -42,7 +41,6 @@ private const val FRESHNESS_MS = 30_000L
  */
 class KnowledgeViewModel(
     app: Application,
-    @Suppress("unused") private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : AndroidViewModel(app) {
 
     private val container = (app as AxonApp).container
@@ -67,77 +65,64 @@ class KnowledgeViewModel(
     private fun fresh(at: Long?): Boolean =
         at != null && (System.currentTimeMillis() - at) < FRESHNESS_MS
 
-    fun loadSuggest(focus: String?, force: Boolean = false) {
-        if (!force && fresh(suggestCachedAt) && _suggest.value is Resource.Ready) return
+    /**
+     * Shared loader for the four sections. Pulls the persistent state, the
+     * cache timestamp, and the fetch function out as parameters so the four
+     * `loadX()` entry points collapse to two lines each.
+     *
+     * - `state`  — the section's MutableStateFlow (mutated through this fn only)
+     * - `cachedAt` — the section's cache-timestamp field reference
+     * - `force`  — bypasses the freshness short-circuit
+     * - `label`  — log tag suffix so failure traces identify the section
+     * - `fetch`  — suspending fetch (typically `container.axonRepository.X(...)`)
+     */
+    private fun <T> loadSection(
+        state: MutableStateFlow<Resource<T>>,
+        cachedAt: KMutableProperty0<Long?>,
+        force: Boolean,
+        label: String,
+        fetch: suspend () -> Result<T>,
+    ) {
+        if (!force && fresh(cachedAt.get()) && state.value is Resource.Ready) return
         viewModelScope.launch {
-            _suggest.value = Resource.Loading
-            val collection = container.settingsRepository.settings.first().collection
-            container.axonRepository.suggest(focus = focus, collection = collection).fold(
+            state.value = Resource.Loading
+            fetch().fold(
                 onSuccess = {
-                    _suggest.value = Resource.Ready(it)
-                    suggestCachedAt = System.currentTimeMillis()
+                    state.value = Resource.Ready(it)
+                    cachedAt.set(System.currentTimeMillis())
                 },
                 onFailure = {
-                    Log.w(TAG, "suggest failed", it)
-                    _suggest.value = Resource.Error(it.message ?: "Error")
-                    suggestCachedAt = null
+                    Log.w(TAG, "$label failed", it)
+                    state.value = Resource.Error(it.message ?: "Error")
+                    cachedAt.set(null)
                 },
             )
+        }
+    }
+
+    fun loadSuggest(focus: String?, force: Boolean = false) {
+        loadSection(_suggest, ::suggestCachedAt, force, "suggest") {
+            val collection = container.settingsRepository.settings.first().collection
+            container.axonRepository.suggest(focus = focus, collection = collection)
         }
     }
 
     fun loadSources(force: Boolean = false) {
-        if (!force && fresh(sourcesCachedAt) && _sources.value is Resource.Ready) return
-        viewModelScope.launch {
-            _sources.value = Resource.Loading
+        loadSection(_sources, ::sourcesCachedAt, force, "sources") {
             val collection = container.settingsRepository.settings.first().collection
-            container.axonRepository.sources(collection = collection).fold(
-                onSuccess = {
-                    _sources.value = Resource.Ready(it)
-                    sourcesCachedAt = System.currentTimeMillis()
-                },
-                onFailure = {
-                    Log.w(TAG, "sources failed", it)
-                    _sources.value = Resource.Error(it.message ?: "Error")
-                    sourcesCachedAt = null
-                },
-            )
+            container.axonRepository.sources(collection = collection)
         }
     }
 
     fun loadDomains(limit: Int = 200, force: Boolean = false) {
-        if (!force && fresh(domainsCachedAt) && _domains.value is Resource.Ready) return
-        viewModelScope.launch {
-            _domains.value = Resource.Loading
-            container.axonRepository.domains(limit = limit).fold(
-                onSuccess = {
-                    _domains.value = Resource.Ready(it)
-                    domainsCachedAt = System.currentTimeMillis()
-                },
-                onFailure = {
-                    Log.w(TAG, "domains failed", it)
-                    _domains.value = Resource.Error(it.message ?: "Error")
-                    domainsCachedAt = null
-                },
-            )
+        loadSection(_domains, ::domainsCachedAt, force, "domains") {
+            container.axonRepository.domains(limit = limit)
         }
     }
 
     fun loadStats(force: Boolean = false) {
-        if (!force && fresh(statsCachedAt) && _stats.value is Resource.Ready) return
-        viewModelScope.launch {
-            _stats.value = Resource.Loading
-            container.axonRepository.statsPayload().fold(
-                onSuccess = {
-                    _stats.value = Resource.Ready(it)
-                    statsCachedAt = System.currentTimeMillis()
-                },
-                onFailure = {
-                    Log.w(TAG, "stats failed", it)
-                    _stats.value = Resource.Error(it.message ?: "Error")
-                    statsCachedAt = null
-                },
-            )
+        loadSection(_stats, ::statsCachedAt, force, "stats") {
+            container.axonRepository.statsPayload()
         }
     }
 }

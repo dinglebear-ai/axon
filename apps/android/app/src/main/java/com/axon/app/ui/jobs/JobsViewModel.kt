@@ -1,6 +1,7 @@
 package com.axon.app.ui.jobs
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
@@ -9,13 +10,15 @@ import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.ui.common.Resource
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flatMapLatest
@@ -23,6 +26,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
+
+private const val TAG = "JobsViewModel"
 
 private const val POLL_INTERVAL_MS = 15_000L
 
@@ -43,7 +48,6 @@ private const val POLL_INTERVAL_MS = 15_000L
 @OptIn(ExperimentalCoroutinesApi::class)
 class JobsViewModel(
     app: Application,
-    @Suppress("unused") private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
 
@@ -75,9 +79,23 @@ class JobsViewModel(
     val recent: StateFlow<List<RecentJob>> = container.recentJobs.recent
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /**
+     * One-shot user-visible messages (cancel succeeded, cancel failed, status
+     * fetch failed). Replay = 0 so each message fires once; buffer of 4 so a
+     * burst of taps doesn't drop earlier events.
+     */
+    private val _messages = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val messages: SharedFlow<String> = _messages.asSharedFlow()
+
     init {
         viewModelScope.launch {
-            container.axonRepository.statusPayload().onSuccess { _statusPayload.value = it }
+            container.axonRepository.statusPayload().fold(
+                onSuccess = { _statusPayload.value = it },
+                onFailure = {
+                    Log.w(TAG, "status fetch failed", it)
+                    _messages.tryEmit("Status header unavailable: ${it.message ?: "error"}")
+                },
+            )
         }
     }
 
@@ -96,8 +114,18 @@ class JobsViewModel(
     fun cancel(jobId: String) {
         val kind = _selectedTab.value
         viewModelScope.launch {
-            container.axonRepository.cancelJob(kind, jobId)
-            // The next poll cycle will surface the updated status; no explicit refresh needed.
+            container.axonRepository.cancelJob(kind, jobId).fold(
+                onSuccess = { canceled ->
+                    if (!canceled) {
+                        _messages.tryEmit("Server reports job $jobId was not cancelable.")
+                    }
+                    // Successful cancel — next poll surfaces the new status.
+                },
+                onFailure = {
+                    Log.w(TAG, "cancelJob $kind/$jobId failed", it)
+                    _messages.tryEmit("Failed to cancel ${kind.name.lowercase()} job: ${it.message ?: "error"}")
+                },
+            )
         }
     }
 }

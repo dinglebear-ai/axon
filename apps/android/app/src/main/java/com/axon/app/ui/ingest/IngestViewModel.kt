@@ -1,6 +1,7 @@
 package com.axon.app.ui.ingest
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+private const val TAG = "IngestViewModel"
 
 /**
  * Source types the user can ingest from. Each has a `wire` value (server enum) and an
@@ -104,8 +107,22 @@ class IngestViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancel(jobId: String) {
         viewModelScope.launch {
-            container.axonRepository.cancelJob(AxonClient.JobKind.Ingest, jobId)
-            checkStatus(jobId)
+            container.axonRepository.cancelJob(AxonClient.JobKind.Ingest, jobId).fold(
+                onSuccess = { canceled ->
+                    if (!canceled) {
+                        // Server acknowledged the request but reported the job was no longer
+                        // cancelable (already finished, already cancelled, unknown). Refresh
+                        // the status card so the user sees the real terminal state.
+                        Log.w(TAG, "cancelJob ingest/$jobId returned canceled=false")
+                    }
+                    checkStatus(jobId)
+                },
+                onFailure = {
+                    Log.w(TAG, "cancelJob ingest/$jobId failed", it)
+                    // Surface the failure directly — don't mask with a stale status fetch.
+                    _uiState.value = IngestUi.Error("Cancel failed: ${it.message ?: "error"}")
+                },
+            )
         }
     }
 
