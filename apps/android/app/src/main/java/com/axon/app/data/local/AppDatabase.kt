@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.axon.app.BuildConfig
 
 @Database(entities = [AskHistoryEntry::class, Session::class], version = 2, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
@@ -27,13 +28,14 @@ abstract class AppDatabase : RoomDatabase() {
                         pinned_at INTEGER
                     )"""
                 )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sessions_pinned_updated ON sessions(pinned_at, updated_at)")
             }
         }
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "axon.db")
                 .addMigrations(MIGRATION_1_2)
-                .fallbackToDestructiveMigration()
+                .apply { if (BuildConfig.DEBUG) fallbackToDestructiveMigration() }
                 .build()
     }
 }
