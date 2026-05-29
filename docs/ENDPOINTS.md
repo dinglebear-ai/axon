@@ -13,6 +13,12 @@ JSON-RPC 2.0 / OpenRPC / MCP protocol support.
 > links, respect a crawl depth, or apply the crawler's locale/path-prefix
 > exclusions. For multi-page coverage, crawl first, then run `endpoints` per page.
 
+> **Terminology.** "Endpoint" carries two senses in this codebase: the **domain**
+> noun — a discovered API endpoint (`DiscoveredEndpoint`) — and the **surface**
+> noun — an HTTP route such as `/v1/endpoints`. This doc and the `endpoints`
+> service are named for the *domain*. When the HTTP surface is meant it is written
+> explicitly as `/v1/endpoints` — never "the endpoints endpoint".
+
 ---
 
 ## 1. What it does
