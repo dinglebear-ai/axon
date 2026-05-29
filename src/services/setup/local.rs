@@ -2,8 +2,8 @@ use super::config_store;
 use crate::core::paths::{axon_home_dir, ensure_private_dir};
 use model::PhaseTimer;
 pub use model::{
-    LocalSetupInitOptions, LocalSetupMode, LocalSetupPhase, LocalSetupReport, LocalSetupStatus,
-    StackAction,
+    ComposeAction, LocalSetupInitOptions, LocalSetupMode, LocalSetupPhase, LocalSetupReport,
+    LocalSetupStatus,
 };
 use std::collections::BTreeMap;
 use std::io::{self, ErrorKind};
@@ -91,19 +91,19 @@ pub async fn run_local_setup_with_options(
             phases.extend(run_preflight_check_phases(env_values).await);
             if phase_errors(&phases) {
                 phases.push(skipped_phase(
-                    "stack-up",
-                    "stack startup skipped because prerequisite checks failed",
+                    "compose-up",
+                    "compose startup skipped because prerequisite checks failed",
                 ));
                 phases.push(skipped_phase(
                     "readiness",
                     "readiness skipped because prerequisite checks failed",
                 ));
             } else if let Some(env_values) = env_values {
-                phases.extend(run_stack_up_phases(&compose_dir, &env_path, false).await);
+                phases.extend(run_compose_up_phases(&compose_dir, &env_path, false).await);
                 if phase_errors(&phases) {
                     phases.push(skipped_phase(
                         "readiness",
-                        "readiness skipped because stack startup failed",
+                        "readiness skipped because compose startup failed",
                     ));
                 } else {
                     phases.extend(run_readiness_phases(env_values).await);
@@ -123,7 +123,7 @@ pub async fn run_local_setup_with_options(
     ))
 }
 
-pub async fn run_stack_action(action: StackAction) -> io::Result<LocalSetupReport> {
+pub async fn run_compose_action(action: ComposeAction) -> io::Result<LocalSetupReport> {
     let started = Instant::now();
     let axon_home = axon_home_dir().ok_or_else(|| {
         io::Error::new(
@@ -144,20 +144,20 @@ pub async fn run_stack_action(action: StackAction) -> io::Result<LocalSetupRepor
     if phase_errors(&phases) || local_surface_incomplete(&phases) {
         phases.push(skipped_phase(
             action.as_str(),
-            "stack command skipped because env or compose assets are missing; run axon setup init",
+            "compose command skipped because env or compose assets are missing; run axon setup init",
         ));
     } else {
         phases.extend(match action {
-            // Pass follow_logs=false so `stack up` returns once containers are
+            // Pass follow_logs=false so `compose up` returns once containers are
             // started rather than blocking on `docker compose logs -f` indefinitely.
-            StackAction::Up => run_stack_up_phases(&compose_dir, &env_path, false).await,
-            StackAction::Down => {
+            ComposeAction::Up => run_compose_up_phases(&compose_dir, &env_path, false).await,
+            ComposeAction::Down => {
                 vec![runtime::run_compose(&compose_dir, &env_path, ["down"]).await]
             }
-            StackAction::Restart => {
+            ComposeAction::Restart => {
                 vec![runtime::run_compose(&compose_dir, &env_path, ["restart"]).await]
             }
-            StackAction::Rebuild => {
+            ComposeAction::Rebuild => {
                 vec![
                     runtime::run_compose(&compose_dir, &env_path, ["build"]).await,
                     runtime::run_compose(&compose_dir, &env_path, ["up", "-d"]).await,
@@ -307,7 +307,7 @@ async fn run_preflight_check_phases(
     ]
 }
 
-async fn run_stack_up_phases(
+async fn run_compose_up_phases(
     compose_dir: &Path,
     env_path: &Path,
     follow_logs: bool,

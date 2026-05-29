@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.14.0] - 2026-05-29
+
+### Changed
+- **BREAKING:** Renamed the `axon stack` command to `axon compose`
+  (`axon compose up|down|restart|rebuild`). There is no backward-compatible
+  alias — `axon stack` is no longer recognized. Internal identifiers
+  (`CommandKind::Stack` → `Compose`, `StackAction` → `ComposeAction`,
+  `StackArgs`/`StackSubcommand` → `Compose*`) and setup phase keys
+  (`stack-up` → `compose-up`, etc.) were renamed to match.
+
+### Fixed
+- **Ingest failures now report their real cause instead of a useless label.**
+  The ingest error wrappers formatted the underlying error with `{e}` (plain
+  `Display`), which on an `anyhow::Error` prints only the outermost context and
+  discards the `.source()` chain. A failed GitHub ingest therefore surfaced as
+  `github ingest failed for <repo>: GitHub` (octocrab's top-level `Display`),
+  hiding the actual `404 Not Found` / rate-limit / auth detail. Switched all six
+  provider wrappers (github, gitlab, gitea, generic git, reddit, youtube) to the
+  alternate formatter `{e:#}`, which walks the full error chain — e.g.
+  `github ingest failed for rust-lang/serde: GitHub: Not Found`.
+
 ## [4.13.2] - 2026-05-29
 
 ### Fixed

@@ -1,8 +1,8 @@
-Manage the local Docker service stack
+Manage the local Docker Compose service stack
 
 Usage
-  axon stack [OPTIONS]
-  axon stack <COMMAND>
+  axon compose [OPTIONS]
+  axon compose <COMMAND>
 
 Commands
   up                   Pull and start the Docker service stack

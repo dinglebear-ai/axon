@@ -116,7 +116,7 @@ fn fallback_policy_for(command: CommandKind, positional: &[String]) -> FallbackP
         | CommandKind::Setup
         | CommandKind::Preflight
         | CommandKind::Smoke
-        | CommandKind::Stack
+        | CommandKind::Compose
         | CommandKind::Train
         | CommandKind::Status => FallbackPolicy::Disallow,
     }

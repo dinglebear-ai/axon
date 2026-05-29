@@ -5,9 +5,9 @@
 //! shim small and the 28-arm match arm in its own module. No behavior change.
 
 use super::super::super::cli::{
-    CliCommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand, IngestArgs, MonitorSubcommand,
-    ServeArgs, ServeSubcommand, SessionsArgs, SetupArgs, SetupAuthMode, SetupInitArgs,
-    SetupSubcommand, StackArgs, StackSubcommand, SyncSubcommand,
+    CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
+    IngestArgs, MonitorSubcommand, ServeArgs, ServeSubcommand, SessionsArgs, SetupArgs,
+    SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -278,7 +278,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Serve(args) => apply_serve(&mut out, args),
         CliCommand::Preflight => out.command = CommandKind::Preflight,
         CliCommand::Smoke => out.command = CommandKind::Smoke,
-        CliCommand::Stack(args) => apply_stack(&mut out, args),
+        CliCommand::Compose(args) => apply_compose(&mut out, args),
         CliCommand::Setup(args) => apply_setup(&mut out, args),
         CliCommand::Mcp(args) => {
             out.mcp_transport = args.transport;
@@ -459,14 +459,14 @@ fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
     }
 }
 
-fn apply_stack(out: &mut DispatchOutput, args: StackArgs) {
-    out.command = CommandKind::Stack;
+fn apply_compose(out: &mut DispatchOutput, args: ComposeArgs) {
+    out.command = CommandKind::Compose;
     out.positional = vec![
         match args.action {
-            StackSubcommand::Up => "up",
-            StackSubcommand::Down => "down",
-            StackSubcommand::Restart => "restart",
-            StackSubcommand::Rebuild => "rebuild",
+            ComposeSubcommand::Up => "up",
+            ComposeSubcommand::Down => "down",
+            ComposeSubcommand::Restart => "restart",
+            ComposeSubcommand::Rebuild => "rebuild",
         }
         .to_string(),
     ];

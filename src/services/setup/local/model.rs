@@ -26,20 +26,20 @@ impl LocalSetupMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StackAction {
+pub enum ComposeAction {
     Up,
     Down,
     Restart,
     Rebuild,
 }
 
-impl StackAction {
+impl ComposeAction {
     pub(super) fn as_str(self) -> &'static str {
         match self {
-            Self::Up => "stack-up",
-            Self::Down => "stack-down",
-            Self::Restart => "stack-restart",
-            Self::Rebuild => "stack-rebuild",
+            Self::Up => "compose-up",
+            Self::Down => "compose-down",
+            Self::Restart => "compose-restart",
+            Self::Rebuild => "compose-rebuild",
         }
     }
 }

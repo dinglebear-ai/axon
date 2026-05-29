@@ -47,13 +47,13 @@ pub(in crate::core::config) enum SetupAuthMode {
 }
 
 #[derive(Debug, Args)]
-pub(in crate::core::config) struct StackArgs {
+pub(in crate::core::config) struct ComposeArgs {
     #[command(subcommand)]
-    pub(in crate::core::config) action: StackSubcommand,
+    pub(in crate::core::config) action: ComposeSubcommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub(in crate::core::config) enum StackSubcommand {
+pub(in crate::core::config) enum ComposeSubcommand {
     /// Pull and start the Docker service stack
     Up,
     /// Stop the Docker service stack

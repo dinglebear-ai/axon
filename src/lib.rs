@@ -74,7 +74,9 @@ async fn run_once(
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
         CommandKind::Serve => run_serve(cfg).await?,
-        CommandKind::Preflight | CommandKind::Smoke | CommandKind::Stack => run_setup(cfg).await?,
+        CommandKind::Preflight | CommandKind::Smoke | CommandKind::Compose => {
+            run_setup(cfg).await?
+        }
         CommandKind::Setup => run_setup(cfg).await?,
         CommandKind::Migrate => run_migrate(cfg).await?,
         CommandKind::Config => run_config(cfg).await?,

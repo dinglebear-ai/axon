@@ -181,8 +181,8 @@ fn setup_skips_runtime_phases_after_prerequisite_errors() {
     assert!(!output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("✗ docker"));
-    assert!(stdout.contains("◐ stack-up"));
-    assert!(stdout.contains("stack startup skipped because prerequisite checks failed"));
+    assert!(stdout.contains("◐ compose-up"));
+    assert!(stdout.contains("compose startup skipped because prerequisite checks failed"));
 }
 
 #[test]

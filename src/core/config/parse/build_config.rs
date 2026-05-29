@@ -49,7 +49,7 @@ pub(super) fn into_config_with_sources(
         CommandKind::Completions
             | CommandKind::Preflight
             | CommandKind::Smoke
-            | CommandKind::Stack
+            | CommandKind::Compose
             | CommandKind::Setup
             | CommandKind::Config
     ) {

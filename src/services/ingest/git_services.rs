@@ -32,7 +32,7 @@ pub async fn ingest_gitea_with_progress(
         PhaseReporter::new(progress_tx),
     )
     .await
-    .map_err(|e| -> Box<dyn Error> { format!("gitea ingest failed for {target}: {e}").into() })?;
+    .map_err(|e| -> Box<dyn Error> { format!("gitea ingest failed for {target}: {e:#}").into() })?;
     emit(
         &tx,
         ServiceEvent::Log {
@@ -70,7 +70,7 @@ pub async fn ingest_generic_git_with_progress(
         PhaseReporter::new(progress_tx),
     )
     .await
-    .map_err(|e| -> Box<dyn Error> { format!("git ingest failed for {target}: {e}").into() })?;
+    .map_err(|e| -> Box<dyn Error> { format!("git ingest failed for {target}: {e:#}").into() })?;
     emit(
         &tx,
         ServiceEvent::Log {
