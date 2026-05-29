@@ -154,35 +154,62 @@ where
     let mut last_network_event = tokio::time::Instant::now();
     let mut page_loaded = false;
     {
-        let mut capture_early_event = |value: &serde_json::Value| {
-            if value.get("sessionId").and_then(|id| id.as_str()) != Some(session_id) {
-                return;
+        // Fetch.enable (requestStage: Request) intercepts the navigation request itself,
+        // so Page.navigate's response will never arrive unless we reply to
+        // Fetch.requestPaused events while waiting. The generic send_capture_cdp_cmd
+        // callback is FnMut(&Value) with no tx access, so we inline the navigate wait.
+        let nav_id = CAPTURE_CDP_ID.fetch_add(1, Ordering::Relaxed);
+        let mut nav_msg = serde_json::json!({ "id": nav_id, "method": "Page.navigate", "params": { "url": page_url } });
+        nav_msg["sessionId"] = serde_json::Value::String(session_id.to_string());
+        tx.send(Message::Text(nav_msg.to_string().into()))
+            .await
+            .map_err(|err| format!("Chrome WebSocket send failed for Page.navigate: {err}"))?;
+        let nav_deadline = tokio::time::Instant::now() + cmd_timeout;
+        loop {
+            let frame = tokio::time::timeout_at(nav_deadline, rx.next())
+                .await
+                .map_err(|_| "timeout waiting for Chrome response to Page.navigate".to_string())?
+                .ok_or_else(|| "Chrome WebSocket closed waiting for Page.navigate".to_string())?
+                .map_err(|err| {
+                    format!("Chrome WebSocket read failed waiting for Page.navigate: {err}")
+                })?;
+            let Message::Text(text) = frame else {
+                continue;
+            };
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|err| format!("CDP response JSON parse failed: {err}"))?;
+            // Reply to any intercepted requests so Chrome doesn't stall.
+            if value.get("method").and_then(|m| m.as_str()) == Some("Fetch.requestPaused")
+                && value.get("sessionId").and_then(|id| id.as_str()) == Some(session_id)
+            {
+                send_fetch_intercept_reply(tx, session_id, &value).await;
+                continue;
             }
-            match value.get("method").and_then(|method| method.as_str()) {
-                Some("Network.requestWillBeSent") => {
-                    if captured.len() < max_requests
-                        && let Some(request) = captured_request_from_event(value)
-                    {
-                        captured.push(request);
-                        last_network_event = tokio::time::Instant::now();
+            // Capture early network/page events before the navigate ack arrives.
+            if value.get("sessionId").and_then(|id| id.as_str()) == Some(session_id) {
+                match value.get("method").and_then(|m| m.as_str()) {
+                    Some("Network.requestWillBeSent") => {
+                        if captured.len() < max_requests
+                            && let Some(request) = captured_request_from_event(&value)
+                        {
+                            captured.push(request);
+                            last_network_event = tokio::time::Instant::now();
+                        }
                     }
+                    Some("Page.loadEventFired") => {
+                        page_loaded = true;
+                    }
+                    _ => {}
                 }
-                Some("Page.loadEventFired") => {
-                    page_loaded = true;
-                }
-                _ => {}
             }
-        };
-        send_capture_cdp_cmd(
-            tx,
-            rx,
-            Some(session_id),
-            "Page.navigate",
-            serde_json::json!({ "url": page_url }),
-            cmd_timeout,
-            Some(&mut capture_early_event),
-        )
-        .await?;
+            if value.get("id").and_then(|v| v.as_u64()) != Some(nav_id) {
+                continue;
+            }
+            if let Some(error) = value.get("error") {
+                return Err(format!("CDP error on Page.navigate: {error}"));
+            }
+            break;
+        }
     }
 
     let deadline = tokio::time::Instant::now()

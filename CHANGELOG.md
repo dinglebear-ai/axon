@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.12.4] - 2026-05-28
+
+### Fixed
+
+- **CDP Page.navigate deadlock** — `Fetch.enable` with `requestStage: Request` intercepts the navigation request before dispatch; the inline navigate wait loop now replies to `Fetch.requestPaused` events so Chrome never stalls, fixing the `timeout waiting for Chrome response to Page.navigate` error in `--capture-network` mode.
+- **Endpoint noise filtering** — `is_noise_value` now rejects `w3.org`, `json-schema.org`, `schema.org`, `example.com/org/net` hosts and 20 static asset extensions (`.js`, `.css`, `.png`, `.woff2`, `.pdf`, `.map`, etc.).
+- **Minifier-garbage host rejection** — `is_valid_absolute_host` now rejects single-label domains, single-char TLDs, and empty hosts that flood results from bundled JS.
+- **Registrable-domain first-party detection** — `host_is_first_party` now correctly treats `api.example.co.uk` as first-party to `www.example.co.uk` via registrable-domain comparison covering 20 multi-label TLDs (`.co.uk`, `.com.au`, etc.).
+
 ## [4.12.3] - 2026-05-28
 
 ### Added

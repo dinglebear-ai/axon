@@ -198,3 +198,99 @@ fn protocol_relative_urls_are_not_first_party_by_path_prefix() {
         Some("https://api.other.test/graphql")
     );
 }
+
+#[test]
+fn registrable_domain_two_label_tld() {
+    assert_eq!(registrable_domain("api.example.com"), "example.com");
+    assert_eq!(registrable_domain("example.com"), "example.com");
+    assert_eq!(registrable_domain("a.b.example.com"), "example.com");
+}
+
+#[test]
+fn registrable_domain_multi_label_tld() {
+    assert_eq!(
+        registrable_domain("api.ticketmaster.co.uk"),
+        "ticketmaster.co.uk"
+    );
+    assert_eq!(registrable_domain("www.shop.com.au"), "shop.com.au");
+    assert_eq!(
+        registrable_domain("ticketmaster.co.uk"),
+        "ticketmaster.co.uk"
+    );
+}
+
+#[test]
+fn first_party_multi_label_tld_subdomain() {
+    // api.example.co.uk and www.example.co.uk share registrable domain
+    assert!(host_is_first_party(
+        Some("api.example.co.uk"),
+        "www.example.co.uk"
+    ));
+    assert!(host_is_first_party(
+        Some("example.co.uk"),
+        "www.example.co.uk"
+    ));
+    // different registrable domains must be third-party
+    assert!(!host_is_first_party(
+        Some("api.other.co.uk"),
+        "www.example.co.uk"
+    ));
+}
+
+#[test]
+fn valid_absolute_host_rejects_minifier_garbage() {
+    // single-label hosts
+    assert!(!is_valid_absolute_host("http://n/path"));
+    assert!(!is_valid_absolute_host("http://f"));
+    // single-char TLD
+    assert!(!is_valid_absolute_host("http://foo.b/path"));
+    // valid hosts pass
+    assert!(is_valid_absolute_host("https://api.example.com/v1"));
+    assert!(is_valid_absolute_host("https://example.co.uk/api"));
+    // relative paths pass through (caller decides)
+    assert!(is_valid_absolute_host("/api/v1/search"));
+}
+
+#[test]
+fn noise_hosts_filtered() {
+    let html = r#"<script>
+        fetch("https://schema.org/action");
+        fetch("https://w3.org/ns/activitystreams");
+        fetch("https://example.com/api/test");
+        fetch("https://example.net/rest/v1");
+        fetch("https://api.real.com/v1/users");
+    </script>"#;
+    let report = extract_endpoints(
+        html,
+        "https://real.com",
+        &[],
+        &EndpointExtractOptions::default(),
+    );
+    let values: Vec<_> = report.endpoints.iter().map(|e| e.value.as_str()).collect();
+    assert!(!values.iter().any(|v| v.contains("schema.org")));
+    assert!(!values.iter().any(|v| v.contains("w3.org")));
+    assert!(!values.iter().any(|v| v.contains("example.com")));
+    assert!(!values.iter().any(|v| v.contains("example.net")));
+    assert!(values.iter().any(|v| v.contains("api.real.com")));
+}
+
+#[test]
+fn static_asset_extensions_filtered() {
+    let html = r#"<script>
+        const a = "https://cdn.real.test/v1/bundle.js";
+        const b = "https://cdn.real.test/images/logo.png";
+        const c = "https://cdn.real.test/fonts/inter.woff2";
+        const d = "https://api.real.test/v1/upload";
+    </script>"#;
+    let report = extract_endpoints(
+        html,
+        "https://real.test",
+        &[],
+        &EndpointExtractOptions::default(),
+    );
+    let values: Vec<_> = report.endpoints.iter().map(|e| e.value.as_str()).collect();
+    assert!(!values.iter().any(|v| v.ends_with(".js")));
+    assert!(!values.iter().any(|v| v.ends_with(".png")));
+    assert!(!values.iter().any(|v| v.ends_with(".woff2")));
+    assert!(values.iter().any(|v| v.contains("/v1/upload")));
+}
