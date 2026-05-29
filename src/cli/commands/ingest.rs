@@ -34,7 +34,6 @@ pub(crate) fn render_ingest_enqueue_result(
             };
             println!("  {}", muted(message));
         }
-        println!("Job ID: {job_id}");
     }
     Ok(())
 }

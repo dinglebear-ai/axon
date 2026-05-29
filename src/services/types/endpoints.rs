@@ -7,6 +7,7 @@ pub struct EndpointOptions {
     pub max_scan_bytes: usize,
     pub verify: bool,
     pub capture_network: bool,
+    pub probe_rpc: bool,
 }
 
 impl Default for EndpointOptions {
@@ -19,8 +20,35 @@ impl Default for EndpointOptions {
             max_scan_bytes: 8 * 1024 * 1024,
             verify: false,
             capture_network: false,
+            probe_rpc: false,
         }
     }
+}
+
+/// Result of probing a discovered endpoint for JSON-RPC 2.0 / MCP / ACP protocol support.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct RpcProbeResult {
+    /// Detected protocol: `"jsonrpc2"`, `"openrpc"`, `"mcp"`, or `null`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<String>,
+    /// Transport layer: `"http"` (POST) or `"sse"` (Server-Sent Events).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    /// MCP `serverInfo.name`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_name: Option<String>,
+    /// MCP `serverInfo.version`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_version: Option<String>,
+    /// Discovered method names (`system.listMethods` or OpenRPC `methods[].name`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub methods: Vec<String>,
+    /// MCP tool names from `tools/list`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<String>,
+    /// Error message if probing failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(
@@ -32,6 +60,17 @@ pub enum EndpointKind {
     AbsoluteUrl,
     Graphql,
     Websocket,
+}
+
+impl EndpointKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RelativePath => "relative_path",
+            Self::AbsoluteUrl => "absolute_url",
+            Self::Graphql => "graphql",
+            Self::Websocket => "websocket",
+        }
+    }
 }
 
 #[derive(
@@ -65,6 +104,8 @@ pub struct DiscoveredEndpoint {
     pub source: EndpointSourceKind,
     pub source_url: Option<String>,
     pub verified: Option<EndpointVerification>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rpc_probe: Option<RpcProbeResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]

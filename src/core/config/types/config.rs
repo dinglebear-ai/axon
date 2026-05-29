@@ -119,6 +119,9 @@ pub struct Config {
     /// Capture browser network requests for endpoint discovery.
     pub endpoints_capture_network: bool,
 
+    /// Probe discovered endpoints for JSON-RPC 2.0, MCP, and ACP protocol support.
+    pub endpoints_probe_rpc: bool,
+
     /// Maximum number of sitemap documents to parse per map/backfill operation
     /// (0 = unlimited). TOML: `scrape.max-sitemaps`.
     pub max_sitemaps: usize,

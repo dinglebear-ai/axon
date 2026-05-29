@@ -352,6 +352,9 @@ pub(super) struct EndpointArgs {
     /// Capture browser network requests. Executes page code and requires Chrome.
     #[arg(long = "capture-network", action = ArgAction::SetTrue)]
     pub(super) capture_network: bool,
+    /// Probe discovered endpoints for JSON-RPC 2.0 / MCP / ACP protocol support.
+    #[arg(long = "probe-rpc", action = ArgAction::SetTrue)]
+    pub(super) probe_rpc: bool,
 }
 
 #[derive(Debug, Args)]

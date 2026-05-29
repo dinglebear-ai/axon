@@ -41,6 +41,8 @@ static CHROME_CAPTURE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
 
 mod capture;
 use capture::capture_requests_with_chrome;
+mod probe;
+use probe::probe_rpc_endpoints;
 mod verify;
 use verify::verify_endpoints;
 
@@ -190,6 +192,10 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
         emit_endpoint_log(&tx, "endpoint discovery verifying endpoints").await;
         verify_endpoints(cfg, &normalized, &mut report).await;
     }
+    if options.probe_rpc {
+        emit_endpoint_log(&tx, "endpoint discovery probing RPC protocols").await;
+        probe_rpc_endpoints(cfg, &mut report).await;
+    }
     report.elapsed_ms = started.elapsed().as_millis() as u64;
     emit_endpoint_log(
         &tx,
@@ -222,6 +228,7 @@ pub fn options_from_config(cfg: &Config) -> EndpointOptions {
         max_scan_bytes: cfg.endpoints_max_scan_bytes,
         verify: cfg.endpoints_verify,
         capture_network: cfg.endpoints_capture_network,
+        probe_rpc: cfg.endpoints_probe_rpc,
     }
 }
 
@@ -471,6 +478,7 @@ fn merge_validated_capture_request(
         source: EndpointSourceKind::NetworkCapture,
         source_url: Some(page_url.to_string()),
         verified: None,
+        rpc_probe: None,
     });
 }
 
