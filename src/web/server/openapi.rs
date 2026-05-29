@@ -80,6 +80,8 @@ use super::{handlers, openapi_jobs};
         crate::services::types::DiscoveredEndpoint,
         crate::services::types::EndpointVerification,
         crate::services::types::RpcProbeResult,
+        crate::services::types::RpcProtocol,
+        crate::services::types::RpcTransport,
         crate::services::types::EndpointKind,
         crate::services::types::EndpointSourceKind,
         crate::services::client_contract::RestCrawlRequest,

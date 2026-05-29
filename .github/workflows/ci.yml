@@ -131,7 +131,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          sparse-checkout-cone-mode: false
+          # Cone mode (default) so root-level files — notably the tracked
+          # `.gitignore` — are checked out. Under non-cone sparse checkout the
+          # root `.gitignore` is left out of the working tree, and with
+          # actions/checkout's blobless partial clone cargo's gix file-walker
+          # fails to build its excludes stack while fingerprinting the build
+          # script ("Failed to update the excludes stack"), breaking
+          # `cargo check`. The green check/clippy jobs use cone mode for the
+          # same reason.
           sparse-checkout: |
             apps/palette-tauri
       - uses: pnpm/action-setup@v4

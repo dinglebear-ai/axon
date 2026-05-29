@@ -2481,3 +2481,63 @@ container_allowed = false
 toml_destination = ""
 compatibility = "stable"
 reason = "Process-wide semaphore cap for concurrent endpoint verification sessions (default 16). Operator-tunable."
+
+[[env]]
+key = "AXON_ENDPOINT_PROBE_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "stable"
+reason = "Process-wide semaphore cap for concurrent JSON-RPC/MCP/ACP endpoint probe sessions (default 4, min 1). Operator-tunable."
+
+[[env]]
+key = "AXON_LLM_BACKEND"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Selects the LLM completion backend: 'gemini-headless' (default) or 'openai-compat'. Non-secret runtime selector."
+
+[[env]]
+key = "AXON_OPENAI_BASE_URL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "OpenAI-compatible API root URL, required when AXON_LLM_BACKEND=openai-compat. URLs stay in env/CLI, not TOML."
+
+[[env]]
+key = "AXON_OPENAI_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Model name for the OpenAI-compatible backend, required when AXON_LLM_BACKEND=openai-compat. Non-secret runtime selector."
+
+[[env]]
+key = "AXON_OPENAI_API_KEY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional API key for the OpenAI-compatible backend. Runtime secret, env-only."

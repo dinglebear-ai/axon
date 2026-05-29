@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.13.2] - 2026-05-29
+
+### Fixed
+
+- **`palette-tauri` CI job no longer fails at `cargo check`** — the job checked out with `sparse-checkout-cone-mode: false` and a pattern (`apps/palette-tauri`) that excluded the tracked root `.gitignore` from the working tree. Combined with `actions/checkout`'s blobless partial clone, cargo's gix file-walker could not build its excludes stack while fingerprinting the Tauri build script (`failed to determine package fingerprint for build script … Failed to update the excludes stack to see if a path is excluded`), so the job had never passed since it was added. Switched the job to cone-mode sparse checkout (matching the green `check`/`clippy` jobs), which always includes root-level files.
+
+## [4.13.1] - 2026-05-29
+
+### Fixed
+
+- **`--probe-rpc` concurrency now actually honors `AXON_ENDPOINT_PROBE_CONCURRENCY`** — the probe semaphore was acquired once per discovery session and held for its whole duration, so the env var limited *concurrent sessions*, not per-endpoint fan-out (which was a hardcoded 4). The permit is now acquired per-endpoint inside the `buffer_unordered` stream (mirroring the bundle-fetch pattern), and the stream width is driven by the same cap, so the env var governs global in-flight probes as documented.
+- **Probe timeout no longer inflated by the performance profile** — `probe_rpc_endpoints` routed through the shared `timeout_secs` helper, so a configured `request_timeout_ms` (e.g. 20s on `high-stable`) overrode the advertised 3s probe budget across up to five sequential requests per endpoint. The timeout is now clamped to a hard 3s ceiling (a lower configured value can still shorten it).
+- **MCP tool enumeration works against stateful Streamable-HTTP servers** — `probe_mcp` now captures the `Mcp-Session-Id` returned by `initialize`, sends the required `notifications/initialized`, and replays the session id on `tools/list`. Previously the `tools/list` POST carried no session context and was rejected by spec-compliant servers, yielding empty tool lists.
+- **MCP-over-SSE servers are now fully parsed** — POST probes send `Accept: application/json, text/event-stream`, and `text/event-stream` responses are parsed incrementally (first complete `data:` frame), so Streamable-HTTP servers that reply over SSE surface their `serverInfo` and tools instead of degrading to a bare `transport: sse` label. The incremental reader stops at the first frame so a kept-open stream cannot stall the probe.
+- **Probe response bodies are now byte-bounded** (256 KiB cap) instead of an unbounded `resp.text()`, closing a memory/DoS surface against hostile endpoints.
+- Removed the dead `error` field from `RpcProbeResult` (documented as "error message if probing failed" but never populated). `protocol` and `transport` are now typed enums (`RpcProtocol`, `RpcTransport`) instead of free-form strings; wire values are unchanged.
+- Bumped the MCP `initialize` `protocolVersion` to `2025-06-18`.
+- Added unit-test coverage for the probe ladder (MCP + session-id replay, MCP-over-SSE, OpenRPC, `system.listMethods`, `-32601` fingerprint, SSE transport, and a non-RPC negative case).
+- **Version sync** — `apps/web/package.json` was left at `4.12.3` (the `version_bearing_files_stay_in_sync` contract test caught the drift against `Cargo.toml`); bumped to `4.13.1`.
+- **Env/config boundary matrix** — classified the previously-unlisted `AXON_ENDPOINT_PROBE_CONCURRENCY`, `AXON_LLM_BACKEND`, and `AXON_OPENAI_{BASE_URL,MODEL,API_KEY}` keys (the `env_config_boundary` checker was failing); the `OPENAI_COMPAT_SECRET` redaction-test fixture is now ignored as a non-env token.
+- **Build determinism** — added a repo-local `.cargo/config.toml` `[build] rustc-wrapper = ""` to disable the global sccache wrapper for this repo; its shared-across-worktrees cache was serving stale sibling-worktree artifacts and producing phantom compile errors on cache miss.
+
 ## [4.13.0] - 2026-05-28
 
 ### Added

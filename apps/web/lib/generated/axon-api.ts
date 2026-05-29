@@ -17,6 +17,7 @@ export type components = {
             "first_party": boolean;
             "kind": components['schemas']['EndpointKind'];
             "normalized_url"?: string | null;
+            "rpc_probe"?: null | components['schemas']['RpcProbeResult'];
             "source": components['schemas']['EndpointSourceKind'];
             "source_url"?: string | null;
             "value": string;
@@ -198,6 +199,16 @@ export type components = {
             "url"?: string | null;
             "urls"?: string[] | null;
         };
+        "RpcProbeResult": {
+            "methods"?: string[];
+            "protocol"?: null | components['schemas']['RpcProtocol'];
+            "server_name"?: string | null;
+            "server_version"?: string | null;
+            "tools"?: string[];
+            "transport"?: null | components['schemas']['RpcTransport'];
+        };
+        "RpcProtocol": "jsonrpc2" | "openrpc" | "mcp";
+        "RpcTransport": "http" | "sse";
         "ScrapeFormat": "markdown" | "html" | "rawHtml" | "json" | "llm";
         "WatchCreateRequest": {
             "enabled"?: boolean | null;

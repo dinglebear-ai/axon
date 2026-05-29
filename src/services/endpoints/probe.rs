@@ -1,36 +1,45 @@
-use super::{EndpointError, timeout_secs, validate_url_with_dns_timeout};
+use super::{EndpointError, validate_url_with_dns_timeout};
 use crate::core::config::Config;
 use crate::core::http::{axon_ua, build_client};
-use crate::services::types::{EndpointReport, RpcProbeResult};
+use crate::services::types::{EndpointReport, RpcProbeResult, RpcProtocol, RpcTransport};
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 use std::sync::LazyLock;
 use tokio::sync::Semaphore;
 
+/// Hard upper bound on the per-probe HTTP timeout. A configured `request_timeout_ms`
+/// can only make probing *faster*, never slower than this — probing must stay snappy.
 const PROBE_TIMEOUT_SECS: u64 = 3;
 const MAX_PROBE_ENDPOINTS: usize = 20;
-const PROBE_CONCURRENCY: usize = 4;
+/// Cap on bytes read from any single probe response body (JSON or SSE frame).
+const MAX_PROBE_BODY_BYTES: usize = 256 * 1024;
+/// MCP protocol version advertised in the `initialize` handshake. Servers that
+/// negotiate a different version still echo their own `serverInfo`, so detection
+/// is unaffected by the exact value.
+const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 
-static PROBE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
-    let cap = std::env::var("AXON_ENDPOINT_PROBE_CONCURRENCY")
+/// Per-endpoint concurrency cap, shared across all concurrent discovery sessions.
+/// Override with `AXON_ENDPOINT_PROBE_CONCURRENCY` (default 4, min 1).
+fn probe_concurrency() -> usize {
+    std::env::var("AXON_ENDPOINT_PROBE_CONCURRENCY")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(4)
-        .max(1);
-    Semaphore::new(cap)
-});
+        .max(1)
+}
+
+/// Process-wide semaphore so `AXON_ENDPOINT_PROBE_CONCURRENCY` bounds the total
+/// number of in-flight probes across every discovery session — not just one.
+static PROBE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(probe_concurrency()));
+
+fn probe_timeout_secs(cfg: &Config) -> u64 {
+    cfg.request_timeout_ms
+        .map(|ms| ms.div_ceil(1000).clamp(1, PROBE_TIMEOUT_SECS))
+        .unwrap_or(PROBE_TIMEOUT_SECS)
+}
 
 pub(super) async fn probe_rpc_endpoints(cfg: &Config, report: &mut EndpointReport) {
-    let _permit = match PROBE_SEMAPHORE.acquire().await {
-        Ok(p) => p,
-        Err(err) => {
-            report
-                .warnings
-                .push(format!("rpc probe semaphore closed: {err}"));
-            return;
-        }
-    };
-    let client = match build_client(timeout_secs(cfg, PROBE_TIMEOUT_SECS), Some(axon_ua())) {
+    let client = match build_client(probe_timeout_secs(cfg), Some(axon_ua())) {
         Ok(c) => c,
         Err(err) => {
             report
@@ -65,9 +74,21 @@ pub(super) async fn probe_rpc_endpoints(cfg: &Config, report: &mut EndpointRepor
     let results: Vec<_> = stream::iter(targets)
         .map(|(idx, url)| {
             let client = client.clone();
-            async move { (idx, probe_one(&client, &url).await) }
+            async move {
+                // Acquire per-endpoint (not per-session) so the cap is honored
+                // globally; mirrors the bundle-fetch semaphore pattern.
+                // `acquire()` only errors if the semaphore is closed, which never
+                // happens — it is a process-wide `static` that is never dropped or
+                // `close()`d — so a bare `None` here is unreachable, not a silently
+                // dropped endpoint.
+                let _permit = match PROBE_SEMAPHORE.acquire().await {
+                    Ok(p) => p,
+                    Err(_) => return (idx, None),
+                };
+                (idx, probe_one(&client, &url).await)
+            }
         })
-        .buffer_unordered(PROBE_CONCURRENCY)
+        .buffer_unordered(probe_concurrency())
         .collect()
         .await;
 
@@ -99,28 +120,164 @@ async fn probe_one(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult
     probe_sse_transport(client, url).await
 }
 
-async fn post_jsonrpc(
+/// Read up to `cap` bytes of a response body, returning lossy UTF-8 text.
+async fn read_body_capped(resp: reqwest::Response, cap: usize) -> Result<String, EndpointError> {
+    let mut stream = resp.bytes_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        let remaining = cap.saturating_sub(bytes.len());
+        if remaining == 0 {
+            break;
+        }
+        let take = remaining.min(chunk.len());
+        bytes.extend_from_slice(&chunk[..take]);
+        if take < chunk.len() {
+            break;
+        }
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Stream an SSE body and return the JSON payload of the first `data:` event.
+/// Stops as soon as one complete event is parsed so a server that keeps the
+/// stream open after replying does not stall the probe until timeout.
+async fn read_first_sse_json(
+    resp: reqwest::Response,
+    cap: usize,
+) -> Result<Option<Value>, EndpointError> {
+    let mut stream = resp.bytes_stream();
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        let remaining = cap.saturating_sub(buf.len());
+        if remaining == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..remaining.min(chunk.len())]);
+        // Consume every complete event block that has fully arrived, returning
+        // the first that yields JSON. Draining consumed blocks is what prevents
+        // a non-data preamble (keepalive `:` comments, empty events) from being
+        // re-scanned forever against a stream the server keeps open.
+        while let Some((content_len, sep_len)) = sse_event_boundary(&buf) {
+            let block = String::from_utf8_lossy(&buf[..content_len]).into_owned();
+            buf.drain(..content_len + sep_len);
+            if let Some(value) = parse_sse_event(&block) {
+                return Ok(Some(value));
+            }
+        }
+        if buf.len() >= cap {
+            break;
+        }
+    }
+    // Trailing event with no final blank line (e.g. stream closed mid-frame).
+    Ok(parse_sse_event(&String::from_utf8_lossy(&buf)))
+}
+
+/// Locate the first SSE event boundary (a blank line) in `buf`, scanning raw
+/// bytes so split multibyte chars can't desync the offset. Returns
+/// `(content_len, separator_len)` where `buf[..content_len]` is the event block
+/// and `separator_len` is the blank-line delimiter (`\n\n` or `\r\n\r\n`).
+fn sse_event_boundary(buf: &[u8]) -> Option<(usize, usize)> {
+    for i in 0..buf.len() {
+        if buf[i..].starts_with(b"\r\n\r\n") {
+            return Some((i, 4));
+        }
+        if buf[i..].starts_with(b"\n\n") {
+            return Some((i, 2));
+        }
+    }
+    None
+}
+
+/// Concatenate the `data:` lines of one SSE event block and parse them as JSON.
+fn parse_sse_event(block: &str) -> Option<Value> {
+    let mut data = String::new();
+    for line in block.lines() {
+        if let Some(rest) = line.strip_prefix("data:") {
+            let rest = rest.strip_prefix(' ').unwrap_or(rest);
+            if !data.is_empty() {
+                data.push('\n');
+            }
+            data.push_str(rest);
+        }
+    }
+    if data.is_empty() {
+        return None;
+    }
+    serde_json::from_str(&data).ok()
+}
+
+/// POST a JSON-RPC request and return the parsed response, handling both
+/// `application/json` and Streamable-HTTP `text/event-stream` replies. Returns
+/// any `Mcp-Session-Id` the server assigned so callers can replay it.
+async fn send_jsonrpc(
     client: &reqwest::Client,
     url: &str,
     body: Value,
-) -> Result<Value, EndpointError> {
-    let resp = client
+    session_id: Option<&str>,
+) -> Result<(Option<String>, Value), EndpointError> {
+    let mut req = client
         .post(url)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .json(&body)
-        .send()
-        .await?;
+        .header(
+            reqwest::header::ACCEPT,
+            "application/json, text/event-stream",
+        );
+    if let Some(sid) = session_id {
+        req = req.header("mcp-session-id", sid);
+    }
+    let resp = req.json(&body).send().await?;
     let ct = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if !ct.contains("json") {
+    let session_out = resp
+        .headers()
+        .get("mcp-session-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let value = if ct.contains("text/event-stream") {
+        read_first_sse_json(resp, MAX_PROBE_BODY_BYTES)
+            .await?
+            .ok_or_else(|| EndpointError::from("no JSON-RPC frame in SSE response"))?
+    } else if ct.contains("json") {
+        let text = read_body_capped(resp, MAX_PROBE_BODY_BYTES).await?;
+        serde_json::from_str(&text)?
+    } else {
         return Err("response is not JSON".into());
+    };
+    Ok((session_out, value))
+}
+
+async fn post_jsonrpc(
+    client: &reqwest::Client,
+    url: &str,
+    body: Value,
+) -> Result<Value, EndpointError> {
+    Ok(send_jsonrpc(client, url, body, None).await?.1)
+}
+
+/// Fire-and-forget JSON-RPC notification (no response body is parsed).
+async fn post_notification(
+    client: &reqwest::Client,
+    url: &str,
+    body: Value,
+    session_id: Option<&str>,
+) {
+    let mut req = client
+        .post(url)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .header(
+            reqwest::header::ACCEPT,
+            "application/json, text/event-stream",
+        );
+    if let Some(sid) = session_id {
+        req = req.header("mcp-session-id", sid);
     }
-    let text = resp.text().await?;
-    serde_json::from_str(&text).map_err(Into::into)
+    let _ = req.json(&body).send().await;
 }
 
 async fn probe_mcp(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult> {
@@ -128,13 +285,13 @@ async fn probe_mcp(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult
         "jsonrpc": "2.0",
         "method": "initialize",
         "params": {
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": {},
             "clientInfo": { "name": "axon-probe", "version": "1.0" }
         },
         "id": 1
     });
-    let resp = post_jsonrpc(client, url, body).await.ok()?;
+    let (session_id, resp) = send_jsonrpc(client, url, body, None).await.ok()?;
     let result = resp.get("result")?;
     let server_info = result.get("serverInfo")?;
     let server_name = server_info
@@ -145,21 +302,35 @@ async fn probe_mcp(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult
         .get("version")
         .and_then(Value::as_str)
         .map(str::to_string);
-    let tools = probe_mcp_tools(client, url).await.unwrap_or_default();
+    // Complete the handshake before listing tools — stateful servers reject
+    // requests issued before `notifications/initialized`.
+    post_notification(
+        client,
+        url,
+        json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+        session_id.as_deref(),
+    )
+    .await;
+    let tools = probe_mcp_tools(client, url, session_id.as_deref())
+        .await
+        .unwrap_or_default();
     Some(RpcProbeResult {
-        protocol: Some("mcp".to_string()),
-        transport: Some("http".to_string()),
+        protocol: Some(RpcProtocol::Mcp),
+        transport: Some(RpcTransport::Http),
         server_name,
         server_version,
         methods: Vec::new(),
         tools,
-        error: None,
     })
 }
 
-async fn probe_mcp_tools(client: &reqwest::Client, url: &str) -> Option<Vec<String>> {
+async fn probe_mcp_tools(
+    client: &reqwest::Client,
+    url: &str,
+    session_id: Option<&str>,
+) -> Option<Vec<String>> {
     let body = json!({"jsonrpc": "2.0", "method": "tools/list", "id": 2});
-    let resp = post_jsonrpc(client, url, body).await.ok()?;
+    let (_session, resp) = send_jsonrpc(client, url, body, session_id).await.ok()?;
     let tools = resp.get("result")?.get("tools")?.as_array()?;
     Some(
         tools
@@ -184,13 +355,12 @@ async fn probe_openrpc(client: &reqwest::Client, url: &str) -> Option<RpcProbeRe
         })
         .unwrap_or_default();
     Some(RpcProbeResult {
-        protocol: Some("openrpc".to_string()),
-        transport: Some("http".to_string()),
+        protocol: Some(RpcProtocol::Openrpc),
+        transport: Some(RpcTransport::Http),
         server_name: None,
         server_version: None,
         methods,
         tools: Vec::new(),
-        error: None,
     })
 }
 
@@ -207,13 +377,12 @@ async fn probe_list_methods(client: &reqwest::Client, url: &str) -> Option<RpcPr
         return None;
     }
     Some(RpcProbeResult {
-        protocol: Some("jsonrpc2".to_string()),
-        transport: Some("http".to_string()),
+        protocol: Some(RpcProtocol::Jsonrpc2),
+        transport: Some(RpcTransport::Http),
         server_name: None,
         server_version: None,
         methods,
         tools: Vec::new(),
-        error: None,
     })
 }
 
@@ -224,13 +393,12 @@ async fn probe_jsonrpc_fingerprint(client: &reqwest::Client, url: &str) -> Optio
     // -32601 = Method not found per JSON-RPC 2.0 spec
     if code == -32601 {
         Some(RpcProbeResult {
-            protocol: Some("jsonrpc2".to_string()),
-            transport: Some("http".to_string()),
+            protocol: Some(RpcProtocol::Jsonrpc2),
+            transport: Some(RpcTransport::Http),
             server_name: None,
             server_version: None,
             methods: Vec::new(),
             tools: Vec::new(),
-            error: None,
         })
     } else {
         None
@@ -252,15 +420,18 @@ async fn probe_sse_transport(client: &reqwest::Client, url: &str) -> Option<RpcP
         .to_ascii_lowercase();
     if ct.contains("text/event-stream") {
         Some(RpcProbeResult {
-            protocol: Some("mcp".to_string()),
-            transport: Some("sse".to_string()),
+            protocol: Some(RpcProtocol::Mcp),
+            transport: Some(RpcTransport::Sse),
             server_name: None,
             server_version: None,
             methods: Vec::new(),
             tools: Vec::new(),
-            error: None,
         })
     } else {
         None
     }
 }
+
+#[cfg(test)]
+#[path = "probe_tests.rs"]
+mod tests;

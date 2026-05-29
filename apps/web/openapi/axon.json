@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "4.8.1"
+    "version": "4.13.2"
   },
   "paths": {
     "/v1/ask": {
@@ -1978,6 +1978,16 @@
               "null"
             ]
           },
+          "rpc_probe": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RpcProbeResult"
+              }
+            ]
+          },
           "source": {
             "$ref": "#/components/schemas/EndpointSourceKind"
           },
@@ -3001,6 +3011,79 @@
           }
         },
         "additionalProperties": false
+      },
+      "RpcProbeResult": {
+        "type": "object",
+        "description": "Result of probing a discovered endpoint for JSON-RPC 2.0 / OpenRPC / MCP support.\n\nFields are populated according to the detected `protocol` and are otherwise\nleft empty: `server_name`/`server_version`/`tools` are MCP-only, `methods` is\nJSON-RPC/OpenRPC-only. The flat shape preserves the wire contract; the type\ndoes not statically prevent contradictory combinations.",
+        "properties": {
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Discovered method names (`system.listMethods` or OpenRPC `methods[].name`)."
+          },
+          "protocol": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RpcProtocol",
+                "description": "Detected protocol, or `null` when no protocol matched."
+              }
+            ]
+          },
+          "server_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MCP `serverInfo.name`."
+          },
+          "server_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MCP `serverInfo.version`."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "MCP tool names from `tools/list`."
+          },
+          "transport": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RpcTransport",
+                "description": "Transport the protocol was observed over."
+              }
+            ]
+          }
+        }
+      },
+      "RpcProtocol": {
+        "type": "string",
+        "description": "Detected RPC protocol family. Wire strings match the historical\nstringly-typed values (`\"jsonrpc2\"`, `\"openrpc\"`, `\"mcp\"`).",
+        "enum": [
+          "jsonrpc2",
+          "openrpc",
+          "mcp"
+        ]
+      },
+      "RpcTransport": {
+        "type": "string",
+        "description": "Transport layer the protocol was observed over.",
+        "enum": [
+          "http",
+          "sse"
+        ]
       },
       "ScrapeFormat": {
         "type": "string",
