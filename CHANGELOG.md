@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.13.0] - 2026-05-28
+
+### Added
+
+- **`--probe-rpc` flag on `axon endpoints`** — opt-in JSON-RPC 2.0 / MCP / ACP protocol fingerprinting for discovered endpoints. Probes each candidate with: MCP `initialize` + `tools/list` handshake, OpenRPC `rpc.discover`, `system.listMethods` introspection, JSON-RPC -32601 error-code fingerprinting, and SSE transport detection. Results surface as `rpc_probe` on each `DiscoveredEndpoint` in both CLI and REST output. Concurrency controlled via `AXON_ENDPOINT_PROBE_CONCURRENCY` (default: 4) with a 3-second per-probe timeout.
+
 ## [4.12.4] - 2026-05-28
 
 ### Fixed

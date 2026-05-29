@@ -1,7 +1,7 @@
 use super::common::start_url_from_cfg;
 use crate::core::config::Config;
 use crate::core::logging::log_done;
-use crate::core::ui::{Spinner, muted, primary, print_option, print_phase};
+use crate::core::ui::{Spinner, accent, muted, primary, print_option, print_phase};
 use crate::services::endpoints;
 use crate::services::types::EndpointOptions;
 use std::error::Error;
@@ -20,6 +20,7 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
         max_scan_bytes: cfg.endpoints_max_scan_bytes,
         verify: cfg.endpoints_verify,
         capture_network: cfg.endpoints_capture_network,
+        probe_rpc: cfg.endpoints_probe_rpc,
     };
 
     if !cfg.json_output {
@@ -29,6 +30,7 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
         print_option("firstPartyOnly", &options.first_party_only.to_string());
         print_option("verify", &options.verify.to_string());
         print_option("captureNetwork", &options.capture_network.to_string());
+        print_option("probeRpc", &options.probe_rpc.to_string());
         println!();
     }
     let spinner = if cfg.json_output {
@@ -74,16 +76,28 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
                         .unwrap_or_else(|| " unreachable".to_string())
                 })
                 .unwrap_or_default();
+            let rpc = endpoint
+                .rpc_probe
+                .as_ref()
+                .and_then(|p| p.protocol.as_deref())
+                .map(|proto| format!(" rpc={proto}"))
+                .unwrap_or_default();
+            let url = endpoint
+                .normalized_url
+                .as_deref()
+                .unwrap_or(endpoint.value.as_str());
+            let bullet = if endpoint.first_party { "•" } else { "◦" };
             println!(
-                "  {} {} ({:?}, {:?}{})",
-                if endpoint.first_party { "•" } else { "◦" },
-                endpoint
-                    .normalized_url
-                    .as_deref()
-                    .unwrap_or(endpoint.value.as_str()),
-                endpoint.kind,
-                endpoint.source,
-                verified
+                "  {} {} {}",
+                accent(bullet),
+                accent(url),
+                muted(&format!(
+                    "({}, {}{}{})",
+                    endpoint.kind.as_str(),
+                    endpoint.source.as_str(),
+                    verified,
+                    rpc
+                ))
             );
         }
     }

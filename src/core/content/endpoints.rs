@@ -292,6 +292,7 @@ fn push_endpoint(
         source,
         source_url: source_url.map(ToString::to_string),
         verified: None::<EndpointVerification>,
+        rpc_probe: None,
     });
 }
 

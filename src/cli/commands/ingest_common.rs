@@ -223,7 +223,6 @@ pub async fn enqueue_ingest_job(
         );
         println!("  {}", muted("Status: pending"));
         println!("  {} {}", muted("Collection:"), accent(&cfg.collection));
-        println!("Job ID: {job_id}");
     }
     Ok(())
 }

@@ -92,6 +92,7 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.endpoints_max_scan_bytes = inputs.dispatched.endpoints_max_scan_bytes;
     cfg.endpoints_verify = inputs.dispatched.endpoints_verify;
     cfg.endpoints_capture_network = inputs.dispatched.endpoints_capture_network;
+    cfg.endpoints_probe_rpc = inputs.dispatched.endpoints_probe_rpc;
     cfg.max_sitemaps = scrape.max_sitemaps.unwrap_or(512);
     cfg.cache = g.cache;
     cfg.cache_http_only = g.cache_http_only;
