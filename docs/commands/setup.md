@@ -1,4 +1,4 @@
-# axon setup / preflight / stack / smoke
+# axon setup / preflight / compose / smoke
 
 Local service-stack bootstrap is split into focused commands.
 
@@ -8,10 +8,10 @@ Local service-stack bootstrap is split into focused commands.
 axon setup [--json]
 axon setup init [options] [--json]
 axon preflight [--json]
-axon stack up [--json]
-axon stack down [--json]
-axon stack restart [--json]
-axon stack rebuild [--json]
+axon compose up [--json]
+axon compose down [--json]
+axon compose restart [--json]
+axon compose rebuild [--json]
 axon smoke [--json]
 axon setup targets [--json]
 axon setup plugin-hook [--no-setup] [--json]
@@ -24,10 +24,10 @@ axon setup plugin-hook [--no-setup] [--json]
 | `setup` | Convenience wrapper: initialize local files/assets, start the service stack, then run preflight readiness checks. |
 | `setup init` | Create or refresh `~/.axon`, `config.toml`, `.env`, and compose assets. Does not start services. |
 | `preflight` | Check local prerequisites, auth config, and running service readiness. Does not mutate files or start services. |
-| `stack up` | Pull images, start the Docker service stack detached, then follow `docker compose logs -f` so startup is visible. Press Ctrl-C to stop watching logs; services keep running. |
-| `stack down` | Stop the Docker service stack. |
-| `stack restart` | Restart the Docker service stack. |
-| `stack rebuild` | Rebuild the Axon image and start the Docker service stack. |
+| `compose up` | Pull images, start the Docker service stack detached, then follow `docker compose logs -f` so startup is visible. Press Ctrl-C to stop watching logs; services keep running. |
+| `compose down` | Stop the Docker service stack. |
+| `compose restart` | Restart the Docker service stack. |
+| `compose rebuild` | Rebuild the Axon image and start the Docker service stack. |
 | `smoke` | Prewarm TEI, crawl `example.com`, and run a simple `ask` proof. |
 | `setup targets` | List concrete SSH aliases from `~/.ssh/config`. |
 | `setup plugin-hook` | Hook-safe preflight path used by Claude Code SessionStart. Use `--no-setup` for check-only mode. |
@@ -74,7 +74,7 @@ axon setup init --auth-mode oauth \
   --google-client-id "$GOOGLE_CLIENT_ID" \
   --google-client-secret "$GOOGLE_CLIENT_SECRET" \
   --auth-admin-email you@example.com
-axon stack up
+axon compose up
 axon preflight
 axon smoke
 axon setup plugin-hook --no-setup

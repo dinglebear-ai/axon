@@ -692,10 +692,11 @@ fn parse_setup_init_preflight_smoke_and_stack_modes() {
     let smoke_cfg = super::build_config::into_config(smoke).expect("smoke should parse");
     assert!(matches!(smoke_cfg.command, CommandKind::Smoke));
 
-    let stack = super::Cli::parse_from(["axon", "stack", "restart"]);
-    let stack_cfg = super::build_config::into_config(stack).expect("stack restart should parse");
-    assert!(matches!(stack_cfg.command, CommandKind::Stack));
-    assert_eq!(stack_cfg.positional, vec!["restart".to_string()]);
+    let compose = super::Cli::parse_from(["axon", "compose", "restart"]);
+    let compose_cfg =
+        super::build_config::into_config(compose).expect("compose restart should parse");
+    assert!(matches!(compose_cfg.command, CommandKind::Compose));
+    assert_eq!(compose_cfg.positional, vec!["restart".to_string()]);
 
     let removed_flag = concat!("--", "migrate", "-env");
     let repair_with_removed_flag =

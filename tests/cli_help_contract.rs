@@ -200,11 +200,11 @@ fn setup_split_help_surfaces_are_focused() {
     assert!(smoke.contains("Run crawl/ask smoke checks against the running stack"));
     assert!(!smoke.contains("--render-mode"));
 
-    let stack = run_help(&["stack", "--help"]);
+    let compose = run_help(&["compose", "--help"]);
     for expected in ["up", "down", "restart", "rebuild"] {
         assert!(
-            stack.contains(expected),
-            "stack help missing {expected}:\n{stack}"
+            compose.contains(expected),
+            "compose help missing {expected}:\n{compose}"
         );
     }
 
@@ -259,7 +259,7 @@ fn plugin_hook_no_repair_flag_is_removed() {
 fn setup_split_help_snapshots_match() {
     assert_help_snapshot(&["preflight", "--help"], "preflight.help");
     assert_help_snapshot(&["smoke", "--help"], "smoke.help");
-    assert_help_snapshot(&["stack", "--help"], "stack.help");
+    assert_help_snapshot(&["compose", "--help"], "compose.help");
     assert_help_snapshot(&["setup", "init", "--help"], "setup-init.help");
 }
 
@@ -329,7 +329,7 @@ fn all_command_help_filters_inherited_global_noise() {
         "completions",
         "preflight",
         "smoke",
-        "stack",
+        "compose",
         "serve",
         "setup",
         "mcp",

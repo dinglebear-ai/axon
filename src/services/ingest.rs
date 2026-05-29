@@ -217,7 +217,7 @@ pub async fn ingest_github_with_progress(
     )
     .await
     .map_err(|e| -> Box<dyn Error> {
-        format!("github ingest failed for {repo_slug}: {e}").into()
+        format!("github ingest failed for {repo_slug}: {e:#}").into()
     })?;
 
     emit(
@@ -257,7 +257,9 @@ pub async fn ingest_gitlab_with_progress(
         PhaseReporter::new(progress_tx),
     )
     .await
-    .map_err(|e| -> Box<dyn Error> { format!("gitlab ingest failed for {target}: {e}").into() })?;
+    .map_err(|e| -> Box<dyn Error> {
+        format!("gitlab ingest failed for {target}: {e:#}").into()
+    })?;
 
     emit(
         &tx,
@@ -324,7 +326,7 @@ pub async fn ingest_reddit_with_progress_and_options(
     let summary = ingest::reddit::ingest_reddit_with_options(cfg, target, &reporter, options)
         .await
         .map_err(|e| -> Box<dyn Error> {
-            format!("reddit ingest failed for {target}: {e}").into()
+            format!("reddit ingest failed for {target}: {e:#}").into()
         })?;
 
     emit(
@@ -386,7 +388,7 @@ pub async fn ingest_youtube_with_progress(
     let chunks = ingest::youtube::ingest_youtube_target(cfg, url, &reporter)
         .await
         .map_err(|e| -> Box<dyn Error> {
-            format!("youtube ingest failed for {url}: {e}").into()
+            format!("youtube ingest failed for {url}: {e:#}").into()
         })?;
 
     emit(

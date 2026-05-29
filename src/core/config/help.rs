@@ -54,7 +54,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "setup",
             "preflight",
             "smoke",
-            "stack",
+            "compose",
             "completions",
             "config",
         ],

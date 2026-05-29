@@ -2,7 +2,7 @@ use crate::core::config::CommandKind;
 use crate::core::config::Config;
 use crate::core::ui::{accent, muted, primary, print_aurora_table, symbol_for_status};
 use crate::services::setup::{
-    self, LocalSetupInitOptions, LocalSetupMode, LocalSetupStatus, StackAction,
+    self, ComposeAction, LocalSetupInitOptions, LocalSetupMode, LocalSetupStatus,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -16,7 +16,7 @@ const USAGE_LINES: &[&str] = &[
     "axon setup init [--auth-mode bearer|oauth] [--mcp-host HOST] [--mcp-port PORT]",
     "axon preflight",
     "axon smoke",
-    "axon stack up|down|restart|rebuild",
+    "axon compose up|down|restart|rebuild",
     "axon setup plugin-hook",
     "axon setup plugin-hook --no-setup",
 ];
@@ -27,7 +27,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             return run_local_setup_command(cfg, LocalSetupMode::Preflight).await;
         }
         CommandKind::Smoke => return run_local_setup_command(cfg, LocalSetupMode::Smoke).await,
-        CommandKind::Stack => return run_stack_command(cfg).await,
+        CommandKind::Compose => return run_compose_command(cfg).await,
         _ => {}
     }
 
@@ -50,15 +50,15 @@ async fn run_setup_init_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
     fail_if_setup_failed(&result)
 }
 
-async fn run_stack_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn run_compose_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let action = match cfg.positional.first().map(String::as_str) {
-        Some("up") => StackAction::Up,
-        Some("down") => StackAction::Down,
-        Some("restart") => StackAction::Restart,
-        Some("rebuild") => StackAction::Rebuild,
+        Some("up") => ComposeAction::Up,
+        Some("down") => ComposeAction::Down,
+        Some("restart") => ComposeAction::Restart,
+        Some("rebuild") => ComposeAction::Rebuild,
         _ => return print_usage(cfg),
     };
-    let result = setup::run_stack_action(action).await?;
+    let result = setup::run_compose_action(action).await?;
     print_local_setup_report(cfg, &result)?;
     fail_if_setup_failed(&result)
 }

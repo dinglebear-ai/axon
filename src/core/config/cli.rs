@@ -7,7 +7,7 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 pub(super) use config_args::{ConfigArgs, ConfigSubcommand, SyncArgs, SyncSubcommand};
 pub(super) use global_args::{DEFAULT_OUTPUT_DIR, GlobalArgs};
-pub(super) use setup_args::{SetupAuthMode, SetupInitArgs, StackArgs, StackSubcommand};
+pub(super) use setup_args::{ComposeArgs, ComposeSubcommand, SetupAuthMode, SetupInitArgs};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -92,8 +92,8 @@ pub(super) enum CliCommand {
     Preflight,
     /// Run crawl/ask smoke checks against the running stack
     Smoke,
-    /// Manage the local Docker service stack
-    Stack(StackArgs),
+    /// Manage the local Docker Compose service stack
+    Compose(ComposeArgs),
     /// Initialize and inspect Axon infrastructure
     Setup(SetupArgs),
     /// Start MCP stdio or unified HTTP runtime

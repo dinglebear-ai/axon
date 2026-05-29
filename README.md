@@ -1,6 +1,6 @@
 # Axon
 
-Version: 4.13.2
+Version: 4.14.0
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -83,13 +83,13 @@ The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook
 Focused commands:
 
 ```bash
-axon setup          # init + stack up + preflight
+axon setup          # init + compose up + preflight
 axon setup init     # create ~/.axon, config.toml, .env, and compose assets
 axon preflight      # check prerequisites, auth config, and service readiness
-axon stack up       # pull/start services, then follow logs until Ctrl-C
-axon stack down     # stop services
-axon stack restart  # restart services
-axon stack rebuild  # rebuild the Axon image and start services
+axon compose up       # pull/start services, then follow logs until Ctrl-C
+axon compose down     # stop services
+axon compose restart  # restart services
+axon compose rebuild  # rebuild the Axon image and start services
 axon smoke          # TEI prewarm + crawl/ask proof
 axon setup plugin-hook  # hook-safe preflight path for Claude Code SessionStart
 axon setup plugin-hook --no-setup   # preflight only; does not mutate files or services

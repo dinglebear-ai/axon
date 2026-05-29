@@ -80,7 +80,7 @@ See [CONFIG.md](CONFIG.md) for the full variable reference.
 ## 4. Start the stack
 
 ```bash
-./scripts/axon stack up
+./scripts/axon compose up
 ```
 
 This pulls images, starts the Docker stack from `~/.axon/compose` with
@@ -126,9 +126,9 @@ Axon uses SQLite for job storage and runs workers in-process. Qdrant and TEI are
 For production or containerized deployment:
 
 ```bash
-./scripts/axon setup       # init + stack up + preflight
-./scripts/axon stack up    # start services
-./scripts/axon stack down  # stop services
+./scripts/axon setup       # init + compose up + preflight
+./scripts/axon compose up    # start services
+./scripts/axon compose down  # stop services
 ```
 
 See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.
