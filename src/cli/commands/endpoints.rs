@@ -79,8 +79,8 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
             let rpc = endpoint
                 .rpc_probe
                 .as_ref()
-                .and_then(|p| p.protocol.as_deref())
-                .map(|proto| format!(" rpc={proto}"))
+                .and_then(|p| p.protocol)
+                .map(|proto| format!(" rpc={}", proto.as_str()))
                 .unwrap_or_default();
             let url = endpoint
                 .normalized_url

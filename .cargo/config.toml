@@ -10,6 +10,22 @@
 # canonical family reference.
 # =============================================================================
 
+[build]
+# Disable the global sccache wrapper (~/.cargo/config.toml sets
+# build.rustc-wrapper = ".../sccache-wrapper") for THIS repo only.
+#
+# The wrapper shares one sccache server across all of Jacob's repos and
+# worktrees ("cacheable across worktrees" by design). When the sibling
+# .worktrees/* checkouts diverge from this tree, sccache serves a successful
+# compile of the *other* worktree's source for same-named crates, yielding
+# phantom errors that reference code which does not exist here (e.g. E0463
+# "can't find crate for spider", or a struct field that was removed). The
+# failures are non-deterministic — clean on a cache hit, broken on a miss —
+# and break `cargo build` / `just verify` here while `RUSTC_WRAPPER=''` is
+# rock-solid. An empty value disables the wrapper without touching the global
+# setup. Remove this once the cache key disambiguates worktrees correctly.
+rustc-wrapper = ""
+
 [alias]
 # The `cargo xtask` convention: `cargo xtask <cmd>` delegates to the xtask crate.
 # See: https://github.com/matklad/cargo-xtask
