@@ -72,10 +72,8 @@ pub(super) async fn probe_rpc_endpoints(cfg: &Config, report: &mut EndpointRepor
         .await;
 
     for (idx, probe_result) in results {
-        if let Some(rpc) = probe_result {
-            if let Some(endpoint) = report.endpoints.get_mut(idx) {
-                endpoint.rpc_probe = Some(rpc);
-            }
+        if let (Some(rpc), Some(endpoint)) = (probe_result, report.endpoints.get_mut(idx)) {
+            endpoint.rpc_probe = Some(rpc);
         }
     }
 }
