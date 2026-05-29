@@ -10,7 +10,7 @@ use crate::services::types::{
 mod classify;
 mod scan;
 mod script_sources;
-use classify::{classify_value, is_noise_value, looks_like_endpoint};
+use classify::{classify_value, is_noise_value, is_valid_absolute_host, looks_like_endpoint};
 use scan::scan_text;
 pub use script_sources::discover_script_sources;
 
@@ -255,6 +255,13 @@ fn push_endpoint(
     if value.is_empty() || is_noise_value(&value) {
         return;
     }
+    if matches!(
+        kind,
+        EndpointKind::AbsoluteUrl | EndpointKind::Graphql | EndpointKind::Websocket
+    ) && !is_valid_absolute_host(&value)
+    {
+        return;
+    }
     let normalized_url = normalize_endpoint(&value, kind, base, base_origin);
     let first_party = endpoint_first_party(&value, normalized_url.as_deref(), base_host);
     if let Some(host) = normalized_url.as_deref().and_then(url_host) {
@@ -322,7 +329,42 @@ fn host_is_first_party(candidate: Option<&str>, base_host: &str) -> bool {
         return true;
     };
     let candidate = candidate.to_ascii_lowercase();
-    candidate == base_host || candidate.ends_with(&format!(".{base_host}"))
+    let base = base_host.to_ascii_lowercase();
+    // Exact match or direct subdomain of the full base host.
+    if candidate == base || candidate.ends_with(&format!(".{base}")) {
+        return true;
+    }
+    // Registrable-domain comparison: strip leading labels down to the last two
+    // (or three for known multi-label TLDs like .co.uk, .com.au) so that
+    // www.example.co.uk and api.example.co.uk are both first-party.
+    registrable_domain(&candidate) == registrable_domain(&base)
+        && !registrable_domain(&candidate).is_empty()
+}
+
+/// Returns the registrable domain (last two labels, or last three for
+/// known multi-label second-level domains).
+fn registrable_domain(host: &str) -> &str {
+    const MULTI_LABEL_TLDS: &[&str] = &[
+        ".co.uk", ".co.jp", ".co.nz", ".co.za", ".co.in", ".co.kr", ".com.au", ".com.br",
+        ".com.mx", ".com.ar", ".com.sg", ".com.hk", ".net.au", ".net.br", ".org.uk", ".org.au",
+        ".me.uk", ".ac.uk", ".gov.uk", ".edu.au", ".gov.au",
+    ];
+    for multi in MULTI_LABEL_TLDS {
+        if let Some(prefix) = host.strip_suffix(multi) {
+            // e.g. "api.ticketmaster.co.uk" → find the label before ".co.uk"
+            if let Some(dot) = prefix.rfind('.') {
+                return &host[dot + 1..];
+            }
+            return host; // already at the registrable domain
+        }
+    }
+    // Default: last two labels
+    if let Some(dot) = host.rfind('.')
+        && let Some(dot2) = host[..dot].rfind('.')
+    {
+        return &host[dot2 + 1..];
+    }
+    host
 }
 
 fn endpoint_first_party(value: &str, normalized_url: Option<&str>, base_host: &str) -> bool {
