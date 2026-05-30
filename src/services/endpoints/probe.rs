@@ -120,6 +120,27 @@ async fn probe_one(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult
     probe_sse_transport(client, url).await
 }
 
+/// Strict probe for synthesized candidates: positive-signal POST probes only,
+/// no bare-SSE content-type fallback (too false-positive-prone for guesses).
+/// Streamable-HTTP MCP is still detected because `probe_mcp`'s `initialize`
+/// response (incl. `text/event-stream` bodies) is parsed inside `send_jsonrpc`.
+///
+/// Callers MUST validate the URL through the SSRF guard first; this acquires the
+/// process-wide probe semaphore and issues requests unconditionally.
+pub(super) async fn probe_candidate(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult> {
+    let _permit = PROBE_SEMAPHORE.acquire().await.ok()?;
+    if let Some(r) = probe_mcp(client, url).await {
+        return Some(r);
+    }
+    if let Some(r) = probe_openrpc(client, url).await {
+        return Some(r);
+    }
+    if let Some(r) = probe_list_methods(client, url).await {
+        return Some(r);
+    }
+    probe_jsonrpc_fingerprint(client, url).await
+}
+
 /// Read up to `cap` bytes of a response body, returning lossy UTF-8 text.
 async fn read_body_capped(resp: reqwest::Response, cap: usize) -> Result<String, EndpointError> {
     let mut stream = resp.bytes_stream();
