@@ -167,6 +167,12 @@ impl AxonMcpServer {
         if let Some(value) = req.capture_network {
             options.capture_network = value;
         }
+        if let Some(value) = req.probe_rpc {
+            options.probe_rpc = value;
+        }
+        if let Some(value) = req.probe_rpc_subdomains {
+            options.probe_rpc_subdomains = value;
+        }
         let result = endpoints_svc::discover(self.cfg.as_ref(), &url, options, None)
             .await
             .map_err(|e| logged_internal_error(&format!("endpoints '{url}'"), e.as_ref()))?;
