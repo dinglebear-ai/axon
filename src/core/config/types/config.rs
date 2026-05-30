@@ -122,6 +122,10 @@ pub struct Config {
     /// Probe discovered endpoints for JSON-RPC 2.0, MCP, and ACP protocol support.
     pub endpoints_probe_rpc: bool,
 
+    /// Also synthesize + probe `mcp.<registrable-apex>` MCP candidates. No-op
+    /// without `endpoints_probe_rpc`.
+    pub endpoints_probe_rpc_subdomains: bool,
+
     /// Maximum number of sitemap documents to parse per map/backfill operation
     /// (0 = unlimited). TOML: `scrape.max-sitemaps`.
     pub max_sitemaps: usize,
