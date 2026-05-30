@@ -43,6 +43,7 @@ mod capture;
 use capture::capture_requests_with_chrome;
 mod probe;
 use probe::probe_rpc_endpoints;
+mod candidates;
 mod verify;
 use verify::verify_endpoints;
 
