@@ -29,6 +29,8 @@ pub(crate) struct EndpointsRequest {
     max_scan_bytes: Option<usize>,
     verify: Option<bool>,
     capture_network: Option<bool>,
+    probe_rpc: Option<bool>,
+    probe_rpc_subdomains: Option<bool>,
 }
 
 #[utoipa::path(
@@ -149,6 +151,12 @@ pub(crate) async fn endpoints(
     }
     if let Some(value) = req.capture_network {
         options.capture_network = value;
+    }
+    if let Some(value) = req.probe_rpc {
+        options.probe_rpc = value;
+    }
+    if let Some(value) = req.probe_rpc_subdomains {
+        options.probe_rpc_subdomains = value;
     }
     services::endpoints::discover(&cfg, url, options, None)
         .await
