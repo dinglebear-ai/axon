@@ -1,4 +1,9 @@
-use crate::services::types::McpHostKind;
+use super::{probe, validate_url_with_dns_timeout};
+use crate::services::types::{
+    DiscoveredEndpoint, EndpointKind, EndpointReport, EndpointSourceKind, McpCandidateAttempt,
+    McpHostKind, McpProbeOutcome, RpcProbeResult,
+};
+use futures_util::{StreamExt, stream};
 use url::Url;
 
 /// Well-known MCP paths probed on each candidate host.
@@ -69,6 +74,80 @@ pub(super) fn mcp_candidate_urls(target: &str, include_subdomain: bool) -> Vec<C
         }
     }
     out
+}
+
+/// Concurrency for synthesized-candidate probing (small fixed set; mirrors the
+/// discovered-endpoint probe concurrency).
+const SYNTH_PROBE_CONCURRENCY: usize = 4;
+
+/// Synthesize MCP candidates from `target`, SSRF-validate, probe each with the
+/// strict probe, append confirmed ones to `report.endpoints`, and record every
+/// attempt in `report.mcp_candidates`.
+///
+/// Uses `buffer_unordered` (NOT `tokio::spawn`) so the `#[cfg(test)]` loopback
+/// bypass thread-local propagates correctly.
+pub(super) async fn synthesize_and_probe_mcp(
+    client: &reqwest::Client,
+    target: &str,
+    include_subdomain: bool,
+    report: &mut EndpointReport,
+) {
+    let candidates = mcp_candidate_urls(target, include_subdomain);
+    // Dedup against already-discovered endpoints — those are probed by the
+    // normal path; never double-probe.
+    let candidates: Vec<Candidate> = candidates
+        .into_iter()
+        .filter(|c| {
+            !report
+                .endpoints
+                .iter()
+                .any(|e| e.normalized_url.as_deref() == Some(c.url.as_str()) || e.value == c.url)
+        })
+        .collect();
+
+    let attempts: Vec<(Candidate, McpProbeOutcome, Option<RpcProbeResult>)> =
+        stream::iter(candidates)
+            .map(|c| {
+                let client = client.clone();
+                async move {
+                    if validate_url_with_dns_timeout(&c.url).await.is_err() {
+                        return (c, McpProbeOutcome::Blocked, None);
+                    }
+                    match probe::probe_candidate(&client, &c.url).await {
+                        Some(rpc) => (c, McpProbeOutcome::Confirmed, Some(rpc)),
+                        None => (c, McpProbeOutcome::Unconfirmed, None),
+                    }
+                }
+            })
+            .buffer_unordered(SYNTH_PROBE_CONCURRENCY)
+            .collect()
+            .await;
+
+    for (c, outcome, rpc) in attempts {
+        if outcome == McpProbeOutcome::Confirmed {
+            if let Some(rpc) = rpc.clone() {
+                report.endpoints.push(DiscoveredEndpoint {
+                    value: c.url.clone(),
+                    normalized_url: Some(c.url.clone()),
+                    kind: EndpointKind::AbsoluteUrl,
+                    // Same host or mcp.<apex-of-target> — same registrable org by
+                    // construction.
+                    first_party: true,
+                    source: EndpointSourceKind::SynthesizedMcp,
+                    source_url: Some(target.to_string()),
+                    verified: None,
+                    rpc_probe: Some(rpc),
+                });
+            }
+        }
+        report.mcp_candidates.push(McpCandidateAttempt {
+            url: c.url,
+            host_kind: c.host_kind,
+            path: c.path.to_string(),
+            outcome,
+            rpc_probe: rpc,
+        });
+    }
 }
 
 #[cfg(test)]

@@ -69,3 +69,96 @@ fn candidates_skip_subdomain_for_ip() {
     assert!(c.iter().all(|x| x.host_kind == McpHostKind::SameHost));
     assert_eq!(c.len(), 2);
 }
+
+use crate::core::http::{get_allow_loopback, set_allow_loopback};
+use crate::services::types::{EndpointReport, EndpointSourceKind, McpProbeOutcome};
+use httpmock::prelude::*;
+use serial_test::serial;
+
+struct LoopbackGuard {
+    previous: bool,
+}
+impl LoopbackGuard {
+    fn allow() -> Self {
+        let previous = get_allow_loopback();
+        set_allow_loopback(true);
+        Self { previous }
+    }
+}
+impl Drop for LoopbackGuard {
+    fn drop(&mut self) {
+        set_allow_loopback(self.previous);
+    }
+}
+
+fn empty_report(url: &str) -> EndpointReport {
+    EndpointReport {
+        url: url.to_string(),
+        endpoints: Vec::new(),
+        hosts: Vec::new(),
+        scripts_discovered: 0,
+        bundles_fetched: 0,
+        bundles_scanned: 0,
+        truncated: false,
+        warnings: Vec::new(),
+        elapsed_ms: 0,
+        mcp_candidates: Vec::new(),
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn synthesized_same_host_mcp_confirms() {
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/mcp").body_includes("initialize");
+            then.status(200).header("content-type", "application/json").json_body(serde_json::json!({
+                "jsonrpc": "2.0", "id": 1,
+                "result": { "serverInfo": { "name": "demo", "version": "1" }, "capabilities": {} }
+            }));
+        })
+        .await;
+    let client = crate::core::http::build_client(3, Some(crate::core::http::axon_ua())).unwrap();
+    let mut report = empty_report(&server.url("/x"));
+
+    synthesize_and_probe_mcp(&client, &server.url("/x"), false, &mut report).await;
+
+    // /mcp confirmed, /api/mcp unconfirmed (404).
+    assert_eq!(report.mcp_candidates.len(), 2);
+    let confirmed: Vec<_> = report
+        .mcp_candidates
+        .iter()
+        .filter(|a| a.outcome == McpProbeOutcome::Confirmed)
+        .collect();
+    assert_eq!(confirmed.len(), 1);
+    assert!(confirmed[0].url.ends_with("/mcp"));
+    // Confirmed candidate added to endpoints as synthesized_mcp.
+    assert!(
+        report
+            .endpoints
+            .iter()
+            .any(|e| e.source == EndpointSourceKind::SynthesizedMcp && e.first_party)
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn synthesized_candidate_blocked_when_loopback_disallowed() {
+    // No LoopbackGuard → SSRF guard blocks 127.0.0.1.
+    set_allow_loopback(false);
+    let client = crate::core::http::build_client(3, Some(crate::core::http::axon_ua())).unwrap();
+    let mut report = empty_report("http://127.0.0.1:9/x");
+
+    synthesize_and_probe_mcp(&client, "http://127.0.0.1:9/x", false, &mut report).await;
+
+    assert!(!report.mcp_candidates.is_empty());
+    assert!(
+        report
+            .mcp_candidates
+            .iter()
+            .all(|a| a.outcome == McpProbeOutcome::Blocked)
+    );
+    assert!(report.endpoints.is_empty());
+}
