@@ -65,7 +65,7 @@ These actions do not require `subaction`:
 | `doctor` | -- | `response_mode` |
 | `domains` | -- | `domain`, `limit`, `offset`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |
-| `endpoints` | `url` (string) | `include_bundles`, `first_party_only`, `unique_only`, `max_scripts`, `max_scan_bytes`, `verify`, `capture_network`, `response_mode` |
+| `endpoints` | `url` (string) | `include_bundles`, `first_party_only`, `unique_only`, `max_scripts`, `max_scan_bytes`, `verify`, `capture_network`, `probe_rpc`, `probe_rpc_subdomains`, `response_mode` |
 | `evaluate` | `query` (aliases: `question`) (string) | `diagnostics`, `retrieval_ab`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `help` | -- | `response_mode` |
 | `map` | `url` (string) | `limit`, `offset`, `response_mode` |

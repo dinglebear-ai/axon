@@ -291,6 +291,8 @@ pub struct EndpointsRequest {
     pub max_scan_bytes: Option<usize>,
     pub verify: Option<bool>,
     pub capture_network: Option<bool>,
+    pub probe_rpc: Option<bool>,
+    pub probe_rpc_subdomains: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
 
