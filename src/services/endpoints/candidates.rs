@@ -58,19 +58,17 @@ pub(super) fn mcp_candidate_urls(target: &str, include_subdomain: bool) -> Vec<C
         });
     }
 
-    if include_subdomain {
-        if let Some(host) = url.host_str().map(|h| h.to_ascii_lowercase()) {
-            if !host.starts_with("mcp.") {
-                if let Some(apex) = registrable_apex(&host) {
-                    for path in MCP_PATHS {
-                        out.push(Candidate {
-                            host_kind: McpHostKind::ApexSubdomain,
-                            path,
-                            url: format!("https://mcp.{apex}{path}"),
-                        });
-                    }
-                }
-            }
+    if include_subdomain
+        && let Some(host) = url.host_str().map(|h| h.to_ascii_lowercase())
+        && !host.starts_with("mcp.")
+        && let Some(apex) = registrable_apex(&host)
+    {
+        for path in MCP_PATHS {
+            out.push(Candidate {
+                host_kind: McpHostKind::ApexSubdomain,
+                path,
+                url: format!("https://mcp.{apex}{path}"),
+            });
         }
     }
     out
@@ -124,21 +122,21 @@ pub(super) async fn synthesize_and_probe_mcp(
             .await;
 
     for (c, outcome, rpc) in attempts {
-        if outcome == McpProbeOutcome::Confirmed {
-            if let Some(rpc) = rpc.clone() {
-                report.endpoints.push(DiscoveredEndpoint {
-                    value: c.url.clone(),
-                    normalized_url: Some(c.url.clone()),
-                    kind: EndpointKind::AbsoluteUrl,
-                    // Same host or mcp.<apex-of-target> — same registrable org by
-                    // construction.
-                    first_party: true,
-                    source: EndpointSourceKind::SynthesizedMcp,
-                    source_url: Some(target.to_string()),
-                    verified: None,
-                    rpc_probe: Some(rpc),
-                });
-            }
+        if outcome == McpProbeOutcome::Confirmed
+            && let Some(rpc) = rpc.clone()
+        {
+            report.endpoints.push(DiscoveredEndpoint {
+                value: c.url.clone(),
+                normalized_url: Some(c.url.clone()),
+                kind: EndpointKind::AbsoluteUrl,
+                // Same host or mcp.<apex-of-target> — same registrable org by
+                // construction.
+                first_party: true,
+                source: EndpointSourceKind::SynthesizedMcp,
+                source_url: Some(target.to_string()),
+                verified: None,
+                rpc_probe: Some(rpc),
+            });
         }
         report.mcp_candidates.push(McpCandidateAttempt {
             url: c.url,

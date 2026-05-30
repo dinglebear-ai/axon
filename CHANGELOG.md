@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.15.0] - 2026-05-29
+
+### Added
+- `--probe-rpc-subdomains` flag and MCP candidate synthesis: with `--probe-rpc`, axon now probes well-known MCP paths (`/mcp`, `/api/mcp`) on the target host, and (with `--probe-rpc-subdomains`) on the derived `mcp.<registrable-apex>` host. Confirmed servers appear in `endpoints` as `synthesized_mcp`; every attempt is recorded in a new `mcp_candidates` report field. The initial page fetch is now non-fatal under `--probe-rpc`, so bare MCP endpoints (which serve no HTML) can be probed directly. Exposed across CLI, MCP (`endpoints` action), and the web `/v1/endpoints` API — `probe_rpc` is now settable over MCP/HTTP too.
+
 ## [4.14.0] - 2026-05-29
 
 ### Changed
