@@ -195,7 +195,7 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     }
     if options.probe_rpc {
         emit_endpoint_log(&tx, "endpoint discovery probing RPC protocols").await;
-        probe_rpc_endpoints(cfg, &mut report).await;
+        probe_rpc_endpoints(cfg, &normalized, options.probe_rpc_subdomains, &mut report).await;
     }
     report.elapsed_ms = started.elapsed().as_millis() as u64;
     emit_endpoint_log(
@@ -383,7 +383,7 @@ async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
     Ok(())
 }
 
-fn recompute_hosts(report: &mut EndpointReport) {
+pub(super) fn recompute_hosts(report: &mut EndpointReport) {
     let mut hosts = std::collections::BTreeSet::new();
     for endpoint in &report.endpoints {
         if let Some(host) = endpoint

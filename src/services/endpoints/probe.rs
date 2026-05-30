@@ -1,7 +1,9 @@
 use super::{EndpointError, validate_url_with_dns_timeout};
 use crate::core::config::Config;
 use crate::core::http::{axon_ua, build_client};
-use crate::services::types::{EndpointReport, RpcProbeResult, RpcProtocol, RpcTransport};
+use crate::services::types::{
+    EndpointReport, EndpointSourceKind, RpcProbeResult, RpcProtocol, RpcTransport,
+};
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 use std::sync::LazyLock;
@@ -38,7 +40,12 @@ fn probe_timeout_secs(cfg: &Config) -> u64 {
         .unwrap_or(PROBE_TIMEOUT_SECS)
 }
 
-pub(super) async fn probe_rpc_endpoints(cfg: &Config, report: &mut EndpointReport) {
+pub(super) async fn probe_rpc_endpoints(
+    cfg: &Config,
+    target_url: &str,
+    include_subdomain: bool,
+    report: &mut EndpointReport,
+) {
     let client = match build_client(probe_timeout_secs(cfg), Some(axon_ua())) {
         Ok(c) => c,
         Err(err) => {
@@ -96,6 +103,17 @@ pub(super) async fn probe_rpc_endpoints(cfg: &Config, report: &mut EndpointRepor
         if let (Some(rpc), Some(endpoint)) = (probe_result, report.endpoints.get_mut(idx)) {
             endpoint.rpc_probe = Some(rpc);
         }
+    }
+
+    // Synthesize + probe well-known MCP candidates from the target URL itself.
+    super::candidates::synthesize_and_probe_mcp(&client, target_url, include_subdomain, report)
+        .await;
+    if report
+        .endpoints
+        .iter()
+        .any(|e| e.source == EndpointSourceKind::SynthesizedMcp)
+    {
+        super::recompute_hosts(report);
     }
 }
 
