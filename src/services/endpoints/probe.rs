@@ -143,10 +143,13 @@ async fn probe_one(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult
 /// Streamable-HTTP MCP is still detected because `probe_mcp`'s `initialize`
 /// response (incl. `text/event-stream` bodies) is parsed inside `send_jsonrpc`.
 ///
-/// Callers MUST validate the URL through the SSRF guard first; this acquires the
-/// process-wide probe semaphore and issues requests unconditionally.
+/// Validates the URL through the SSRF guard before issuing any request, like
+/// `probe_one` — so it is self-guarding, not reliant on the caller.
 pub(super) async fn probe_candidate(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult> {
     let _permit = PROBE_SEMAPHORE.acquire().await.ok()?;
+    if validate_url_with_dns_timeout(url).await.is_err() {
+        return None;
+    }
     if let Some(r) = probe_mcp(client, url).await {
         return Some(r);
     }

@@ -182,7 +182,20 @@ pub enum McpProbeOutcome {
     Blocked,
 }
 
+impl McpProbeOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Confirmed => "confirmed",
+            Self::Unconfirmed => "unconfirmed",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
 /// One synthesized MCP candidate and its probe outcome.
+///
+/// `rpc_probe` is `Some` iff `outcome == Confirmed`; every other outcome
+/// (`Unconfirmed`, `Blocked`) carries `None`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct McpCandidateAttempt {
     pub url: String,

@@ -12,16 +12,17 @@ fn synthesized_mcp_source_kind_wire_string() {
 
 #[test]
 fn mcp_candidate_attempt_roundtrips() {
+    // Non-contradictory state: Unconfirmed attempts carry no rpc_probe.
     let attempt = McpCandidateAttempt {
         url: "https://mcp.foo.com/mcp".to_string(),
         host_kind: McpHostKind::ApexSubdomain,
         path: "/mcp".to_string(),
-        outcome: McpProbeOutcome::Confirmed,
+        outcome: McpProbeOutcome::Unconfirmed,
         rpc_probe: None,
     };
     let json = serde_json::to_value(&attempt).unwrap();
     assert_eq!(json["host_kind"], "apex_subdomain");
-    assert_eq!(json["outcome"], "confirmed");
+    assert_eq!(json["outcome"], "unconfirmed");
     // rpc_probe is None → omitted
     assert!(json.get("rpc_probe").is_none());
 }

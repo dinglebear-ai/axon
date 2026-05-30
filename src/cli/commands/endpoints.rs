@@ -3,7 +3,7 @@ use crate::core::config::Config;
 use crate::core::logging::log_done;
 use crate::core::ui::{Spinner, accent, muted, primary, print_option, print_phase};
 use crate::services::endpoints;
-use crate::services::types::EndpointOptions;
+use crate::services::types::{EndpointOptions, EndpointReport, McpProbeOutcome};
 use std::error::Error;
 
 pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -63,52 +63,7 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        println!("{}", primary(&format!("Endpoint Results for {url}")));
-        println!(
-            "{} {} endpoints, {} hosts, {} bundles scanned",
-            muted("Found"),
-            report.endpoints.len(),
-            report.hosts.len(),
-            report.bundles_scanned
-        );
-        for warning in &report.warnings {
-            println!("{} {}", muted("Warning:"), warning);
-        }
-        println!();
-        for endpoint in &report.endpoints {
-            let verified = endpoint
-                .verified
-                .as_ref()
-                .map(|v| {
-                    v.status
-                        .map(|status| format!(" status={status}"))
-                        .unwrap_or_else(|| " unreachable".to_string())
-                })
-                .unwrap_or_default();
-            let rpc = endpoint
-                .rpc_probe
-                .as_ref()
-                .and_then(|p| p.protocol)
-                .map(|proto| format!(" rpc={}", proto.as_str()))
-                .unwrap_or_default();
-            let url = endpoint
-                .normalized_url
-                .as_deref()
-                .unwrap_or(endpoint.value.as_str());
-            let bullet = if endpoint.first_party { "•" } else { "◦" };
-            println!(
-                "  {} {} {}",
-                accent(bullet),
-                accent(url),
-                muted(&format!(
-                    "({}, {}{}{})",
-                    endpoint.kind.as_str(),
-                    endpoint.source.as_str(),
-                    verified,
-                    rpc
-                ))
-            );
-        }
+        print_human_report(url, &report);
     }
 
     log_done(&format!(
@@ -120,4 +75,70 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
         report.elapsed_ms
     ));
     Ok(())
+}
+
+fn print_human_report(url: &str, report: &EndpointReport) {
+    println!("{}", primary(&format!("Endpoint Results for {url}")));
+    println!(
+        "{} {} endpoints, {} hosts, {} bundles scanned",
+        muted("Found"),
+        report.endpoints.len(),
+        report.hosts.len(),
+        report.bundles_scanned
+    );
+    for warning in &report.warnings {
+        println!("{} {}", muted("Warning:"), warning);
+    }
+    println!();
+    for endpoint in &report.endpoints {
+        let verified = endpoint
+            .verified
+            .as_ref()
+            .map(|v| {
+                v.status
+                    .map(|status| format!(" status={status}"))
+                    .unwrap_or_else(|| " unreachable".to_string())
+            })
+            .unwrap_or_default();
+        let rpc = endpoint
+            .rpc_probe
+            .as_ref()
+            .and_then(|p| p.protocol)
+            .map(|proto| format!(" rpc={}", proto.as_str()))
+            .unwrap_or_default();
+        let endpoint_url = endpoint
+            .normalized_url
+            .as_deref()
+            .unwrap_or(endpoint.value.as_str());
+        let bullet = if endpoint.first_party { "•" } else { "◦" };
+        println!(
+            "  {} {} {}",
+            accent(bullet),
+            accent(endpoint_url),
+            muted(&format!(
+                "({}, {}{}{})",
+                endpoint.kind.as_str(),
+                endpoint.source.as_str(),
+                verified,
+                rpc
+            ))
+        );
+    }
+    let non_confirmed: Vec<_> = report
+        .mcp_candidates
+        .iter()
+        .filter(|c| c.outcome != McpProbeOutcome::Confirmed)
+        .collect();
+    if !non_confirmed.is_empty() {
+        println!();
+        println!("  {}", muted("MCP candidates probed (not confirmed):"));
+        for c in non_confirmed {
+            println!(
+                "  {} {} {}",
+                muted("·"),
+                muted(&c.url),
+                muted(&format!("({})", c.outcome.as_str()))
+            );
+        }
+    }
 }
