@@ -107,7 +107,12 @@ no reason to swallow it).
       pub url: String,
       pub host_kind: McpHostKind,   // "same_host" | "apex_subdomain"
       pub path: String,             // "/mcp" | "/api/mcp"
-      pub outcome: McpProbeOutcome, // "confirmed" | "not_rpc" | "http_error" | "blocked" | "timeout"
+      pub outcome: McpProbeOutcome, // "confirmed" | "unconfirmed" | "blocked"
+      // The existing probe machinery collapses every non-confirmed, non-blocked
+      // result (404 / non-RPC JSON / transport error / timeout) to `None`. Rather
+      // than invent error-surfacing plumbing the codebase lacks, use 3 outcomes:
+      // blocked (SSRF-rejected pre-request), confirmed (positive RPC signal),
+      // unconfirmed (everything else).
       #[serde(default, skip_serializing_if = "Option::is_none")]
       pub rpc_probe: Option<RpcProbeResult>,
   }
