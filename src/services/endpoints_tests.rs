@@ -531,3 +531,55 @@ async fn fake_capture_proves_blocked_urls_never_dispatched() {
         );
     }
 }
+
+#[tokio::test]
+#[serial]
+async fn probe_rpc_recovers_from_non_html_fetch() {
+    let _loopback = LoopbackGuard::allow();
+
+    let server = MockServer::start_async().await;
+    // Seed URL returns 401 (no HTML) ...
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/seed");
+            then.status(401);
+        })
+        .await;
+    // ... but /mcp on the same host is a real MCP server.
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/mcp").body_includes("initialize");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(serde_json::json!({
+                    "jsonrpc": "2.0", "id": 1,
+                    "result": { "serverInfo": { "name": "demo", "version": "1" }, "capabilities": {} }
+                }));
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.endpoints_probe_rpc = true;
+    let opts = EndpointOptions {
+        probe_rpc: true,
+        capture_network: false,
+        ..EndpointOptions::default()
+    };
+    let report = discover(&cfg, &server.url("/seed"), opts, None)
+        .await
+        .unwrap();
+
+    // Did NOT error; recorded a fetch warning; still found the synthesized MCP.
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("initial fetch failed"))
+    );
+    assert!(
+        report
+            .endpoints
+            .iter()
+            .any(|e| e.source == EndpointSourceKind::SynthesizedMcp)
+    );
+}

@@ -122,8 +122,15 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     emit_endpoint_log(&tx, format!("starting endpoint discovery: {normalized}")).await;
 
     let client = build_client(timeout_secs(cfg, BUNDLE_TIMEOUT_SECS), Some(axon_ua()))?;
-    let (html, html_truncated) =
-        fetch_bounded_text(&client, &normalized, options.max_scan_bytes, true).await?;
+    let (html, html_truncated, fetch_error) =
+        match fetch_bounded_text(&client, &normalized, options.max_scan_bytes, true).await {
+            Ok((h, t)) => (h, t, None),
+            // Under --probe-rpc a failed/non-HTML fetch is recoverable: we still
+            // synthesize + probe MCP candidates against the seed host.
+            Err(e) if options.probe_rpc => (String::new(), false, Some(e.to_string())),
+            Err(e) => return Err(e),
+        };
+    let fetch_failed = fetch_error.is_some();
     emit_endpoint_log(&tx, "endpoint discovery fetched target page").await;
     let (script_sources, script_truncated) =
         discover_script_sources(&html, &normalized, options.max_scripts);
@@ -173,8 +180,13 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     report.truncated |= script_truncated;
     report.truncated |= html_truncated;
     report.warnings.extend(warnings);
+    if let Some(err) = fetch_error {
+        report.warnings.push(format!(
+            "initial fetch failed: {err}; probing synthesized MCP candidates against seed host only"
+        ));
+    }
 
-    if options.capture_network {
+    if options.capture_network && !fetch_failed {
         emit_endpoint_log(&tx, "endpoint discovery starting network capture").await;
         merge_network_capture(
             cfg,
