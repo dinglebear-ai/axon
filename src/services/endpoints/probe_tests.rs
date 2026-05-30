@@ -455,3 +455,43 @@ async fn mcp_sends_initialized_notification_with_session_id() {
     // session id assigned by initialize.
     initialized.assert_calls_async(1).await;
 }
+
+#[tokio::test]
+#[serial]
+async fn probe_candidate_confirms_mcp() {
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/mcp").body_includes("initialize");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(serde_json::json!({
+                    "jsonrpc": "2.0", "id": 1,
+                    "result": { "serverInfo": { "name": "demo", "version": "1" }, "capabilities": {} }
+                }));
+        })
+        .await;
+    let result = probe_candidate(&probe_client(), &server.url("/mcp")).await;
+    assert!(matches!(result, Some(r) if r.protocol == Some(RpcProtocol::Mcp)));
+}
+
+#[tokio::test]
+#[serial]
+async fn probe_candidate_rejects_bare_sse_stream() {
+    // A GET-only text/event-stream endpoint must NOT confirm via the strict path
+    // (the weak SSE content-type fallback is intentionally excluded).
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/sse");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body("data: hi\n\n");
+        })
+        .await;
+    // POSTs return 404 (no mock) → no positive signal.
+    let result = probe_candidate(&probe_client(), &server.url("/sse")).await;
+    assert!(result.is_none());
+}
