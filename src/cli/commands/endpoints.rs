@@ -21,7 +21,12 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
         verify: cfg.endpoints_verify,
         capture_network: cfg.endpoints_capture_network,
         probe_rpc: cfg.endpoints_probe_rpc,
+        probe_rpc_subdomains: cfg.endpoints_probe_rpc_subdomains,
     };
+
+    if options.probe_rpc_subdomains && !options.probe_rpc {
+        crate::core::logging::log_warn("--probe-rpc-subdomains has no effect without --probe-rpc");
+    }
 
     if !cfg.json_output {
         print_phase("◐", "Discovering endpoints", url);
@@ -31,6 +36,10 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
         print_option("verify", &options.verify.to_string());
         print_option("captureNetwork", &options.capture_network.to_string());
         print_option("probeRpc", &options.probe_rpc.to_string());
+        print_option(
+            "probeRpcSubdomains",
+            &options.probe_rpc_subdomains.to_string(),
+        );
         println!();
     }
     let spinner = if cfg.json_output {

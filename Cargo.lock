@@ -395,6 +395,7 @@ dependencies = [
  "octocrab",
  "once_cell",
  "proptest",
+ "psl",
  "pulldown-cmark",
  "rand 0.10.1",
  "rand_core 0.9.5",

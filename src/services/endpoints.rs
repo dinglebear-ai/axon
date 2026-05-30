@@ -229,6 +229,7 @@ pub fn options_from_config(cfg: &Config) -> EndpointOptions {
         verify: cfg.endpoints_verify,
         capture_network: cfg.endpoints_capture_network,
         probe_rpc: cfg.endpoints_probe_rpc,
+        probe_rpc_subdomains: cfg.endpoints_probe_rpc_subdomains,
     }
 }
 
