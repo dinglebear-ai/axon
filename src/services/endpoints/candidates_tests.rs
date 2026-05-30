@@ -162,3 +162,60 @@ async fn synthesized_candidate_blocked_when_loopback_disallowed() {
     );
     assert!(report.endpoints.is_empty());
 }
+
+#[tokio::test]
+#[serial]
+async fn synthesized_candidate_dedups_against_existing_endpoint() {
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    // /api/mcp is a real MCP server; /mcp is pre-seeded as an existing endpoint
+    // and must therefore be filtered out (never re-probed).
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/api/mcp").body_includes("initialize");
+            then.status(200).header("content-type", "application/json").json_body(serde_json::json!({
+                "jsonrpc": "2.0", "id": 1,
+                "result": { "serverInfo": { "name": "demo", "version": "1" }, "capabilities": {} }
+            }));
+        })
+        .await;
+    let client = crate::core::http::build_client(3, Some(crate::core::http::axon_ua())).unwrap();
+    let mut report = empty_report(&server.url("/x"));
+    report.endpoints.push(DiscoveredEndpoint {
+        value: server.url("/mcp"),
+        normalized_url: Some(server.url("/mcp")),
+        kind: EndpointKind::AbsoluteUrl,
+        first_party: true,
+        source: EndpointSourceKind::HtmlAttribute,
+        source_url: Some(server.url("/x")),
+        verified: None,
+        rpc_probe: None,
+    });
+
+    synthesize_and_probe_mcp(&client, &server.url("/x"), false, &mut report).await;
+
+    // /mcp deduped → only /api/mcp probed.
+    assert_eq!(report.mcp_candidates.len(), 1);
+    assert!(report.mcp_candidates[0].url.ends_with("/api/mcp"));
+}
+
+#[tokio::test]
+#[serial]
+async fn synthesized_subdomain_attempt_is_recorded() {
+    // Real apex (NOT loopback) so example.com resolves normally. The
+    // mcp.example.com candidate will be Blocked or Unconfirmed — we only assert
+    // the ApexSubdomain attempt was enumerated and recorded, not confirmed.
+    let client = crate::core::http::build_client(3, Some(crate::core::http::axon_ua())).unwrap();
+    let mut report = empty_report("https://docs.example.com/x");
+
+    synthesize_and_probe_mcp(&client, "https://docs.example.com/x", true, &mut report).await;
+
+    assert!(
+        report
+            .mcp_candidates
+            .iter()
+            .any(|a| a.host_kind == McpHostKind::ApexSubdomain),
+        "expected an ApexSubdomain attempt; got {:?}",
+        report.mcp_candidates
+    );
+}

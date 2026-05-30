@@ -39,39 +39,44 @@ fn authority(url: &Url) -> Option<String> {
 ///
 /// Same-host candidates always use the target's scheme + authority. Subdomain
 /// candidates (`mcp.<apex>`, https) are added only when `include_subdomain` and
-/// an apex resolves, and are skipped when the seed host is already `mcp.*`
-/// (they would duplicate the same-host set).
+/// an apex resolves, and are skipped only when the seed host is exactly
+/// `mcp.<apex>` (where they would duplicate the same-host set). A host like
+/// `mcp.sub.foo.com` still yields the distinct `mcp.foo.com` candidate.
 pub(super) fn mcp_candidate_urls(target: &str, include_subdomain: bool) -> Vec<Candidate> {
-    let mut out = Vec::new();
     let Ok(url) = Url::parse(target) else {
-        return out;
+        return Vec::new();
     };
     let scheme = url.scheme();
     let Some(auth) = authority(&url) else {
-        return out;
+        return Vec::new();
     };
-    for path in MCP_PATHS {
-        out.push(Candidate {
-            host_kind: McpHostKind::SameHost,
-            path,
-            url: format!("{scheme}://{auth}{path}"),
-        });
-    }
 
+    // (host_kind, base) pairs — same-host first, then mcp.<apex> when applicable.
+    let mut bases: Vec<(McpHostKind, String)> =
+        vec![(McpHostKind::SameHost, format!("{scheme}://{auth}"))];
+
+    // Add the `mcp.<apex>` subdomain set only when requested, an apex resolves,
+    // and the seed host is not already exactly `mcp.<apex>` (which would
+    // duplicate the same-host candidates). `mcp.sub.foo.com` still yields the
+    // distinct `mcp.foo.com` candidate because only the exact match is skipped.
     if include_subdomain
         && let Some(host) = url.host_str().map(|h| h.to_ascii_lowercase())
-        && !host.starts_with("mcp.")
         && let Some(apex) = registrable_apex(&host)
+        && host != format!("mcp.{apex}")
     {
-        for path in MCP_PATHS {
-            out.push(Candidate {
-                host_kind: McpHostKind::ApexSubdomain,
-                path,
-                url: format!("https://mcp.{apex}{path}"),
-            });
-        }
+        bases.push((McpHostKind::ApexSubdomain, format!("https://mcp.{apex}")));
     }
-    out
+
+    bases
+        .into_iter()
+        .flat_map(|(host_kind, base)| {
+            MCP_PATHS.into_iter().map(move |path| Candidate {
+                host_kind,
+                path,
+                url: format!("{base}{path}"),
+            })
+        })
+        .collect()
 }
 
 /// Concurrency for synthesized-candidate probing (small fixed set; mirrors the
@@ -123,19 +128,21 @@ pub(super) async fn synthesize_and_probe_mcp(
 
     for (c, outcome, rpc) in attempts {
         if outcome == McpProbeOutcome::Confirmed
-            && let Some(rpc) = rpc.clone()
+            && let Some(rpc) = rpc.as_ref()
         {
+            // Only SameHost is provably same-org. `mcp.<apex>` can be shared
+            // hosting (github.io, netlify.app, ...) under the same registrable
+            // apex but a different owner, so it is NOT first-party.
+            let first_party = matches!(c.host_kind, McpHostKind::SameHost);
             report.endpoints.push(DiscoveredEndpoint {
                 value: c.url.clone(),
                 normalized_url: Some(c.url.clone()),
                 kind: EndpointKind::AbsoluteUrl,
-                // Same host or mcp.<apex-of-target> — same registrable org by
-                // construction.
-                first_party: true,
+                first_party,
                 source: EndpointSourceKind::SynthesizedMcp,
                 source_url: Some(target.to_string()),
                 verified: None,
-                rpc_probe: Some(rpc),
+                rpc_probe: Some(rpc.clone()),
             });
         }
         report.mcp_candidates.push(McpCandidateAttempt {
