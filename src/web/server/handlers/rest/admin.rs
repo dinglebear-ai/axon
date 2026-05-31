@@ -207,8 +207,6 @@ pub(crate) async fn v1_watch_list(
     }
 }
 
-const MIN_WATCH_INTERVAL_SECS: i64 = 30;
-const MAX_WATCH_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60; // 7 days
 /// Maximum serialized size for task_payload — guards against storage abuse.
 const MAX_TASK_PAYLOAD_BYTES: usize = 64 * 1024;
 
@@ -228,16 +226,8 @@ pub(crate) async fn v1_watch_create(
     if let Err(msg) = crate::jobs::watch::validate_task_type(&input.task_type) {
         return rest_error(StatusCode::BAD_REQUEST, "bad_request", msg);
     }
-    if input.every_seconds < MIN_WATCH_INTERVAL_SECS
-        || input.every_seconds > MAX_WATCH_INTERVAL_SECS
-    {
-        return rest_error(
-            StatusCode::BAD_REQUEST,
-            "bad_request",
-            format!(
-                "every_seconds must be between {MIN_WATCH_INTERVAL_SECS} and {MAX_WATCH_INTERVAL_SECS}"
-            ),
-        );
+    if let Err(msg) = crate::jobs::watch::validate_every_seconds(input.every_seconds) {
+        return rest_error(StatusCode::BAD_REQUEST, "bad_request", msg);
     }
     // Guard against storage abuse via oversized payloads.
     if serde_json::to_string(&input.task_payload)
