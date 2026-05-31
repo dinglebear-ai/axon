@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.15.0] - 2026-05-31
+
+### Added
+- **Watch scheduler now auto-fires recurring watches.** A new in-process
+  scheduler loop (`src/jobs/workers/watch_scheduler.rs`) is spawned by
+  `spawn_workers` (so it runs under `axon serve` / `axon mcp`). Each tick
+  atomically leases every enabled watch whose `next_run_at` has passed via the
+  new `lease_due_watches` (`UPDATE ... RETURNING`), runs it through
+  `run_watch_now_with_pool` (which records a run, advances `next_run_at` by
+  `every_seconds`, and clears the lease), and is crash-safe through the existing
+  `reclaim_stale_watch_leases` sweep. Previously watches only ran via manual
+  `watch run-now` or the HTTP `/v1/watch/{id}/run` endpoint.
+  - Tuning: `AXON_WATCH_TICK_SECS` (sweep interval, default 15, min 1) and
+    `AXON_WATCH_LEASE_SECS` (lease TTL, default 300, min 1).
+
+### Fixed
+- **`axon watch create` now validates `task_type` at create time.** The CLI
+  previously accepted unsupported or whitespace-padded task types, persisting
+  watches that could never run. Validation is now centralized in
+  `jobs::watch::validate_task_type` and shared by the CLI and both HTTP create
+  handlers (removing two duplicated `SUPPORTED_TASK_TYPES` constants).
+- **`run_watch_now_with_pool` guards the COMPLETED finalize write.** The write
+  previously short-circuited the function via `?` on failure, leaving the run row
+  stuck in `running` (nothing reclaims stale `axon_watch_runs` rows). Task
+  execution and finalization are now separated, and a failed COMPLETED write
+  falls back to a best-effort FAILED finalize so a row-level write failure no
+  longer wedges the run.
+
 ## [4.14.1] - 2026-05-29
 
 ### Changed

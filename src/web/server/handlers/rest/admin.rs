@@ -211,10 +211,6 @@ const MIN_WATCH_INTERVAL_SECS: i64 = 30;
 const MAX_WATCH_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60; // 7 days
 /// Maximum serialized size for task_payload — guards against storage abuse.
 const MAX_TASK_PAYLOAD_BYTES: usize = 64 * 1024;
-/// Task types supported by the watch scheduler. Any value not in this list
-/// will fail at execution time; reject early with 400 so callers learn
-/// immediately rather than on the first run attempt.
-const SUPPORTED_TASK_TYPES: &[&str] = &["refresh"];
 
 pub(crate) async fn v1_watch_create(
     State(state): State<RestState>,
@@ -227,26 +223,10 @@ pub(crate) async fn v1_watch_create(
             "name is required".into(),
         );
     }
-    // Reject leading/trailing whitespace — the stored task_type would fail
-    // to match SUPPORTED_TASK_TYPES at execution time since run_watch_now
-    // compares verbatim. Reject here so callers get a clear error immediately.
-    if input.task_type != input.task_type.trim() {
-        return rest_error(
-            StatusCode::BAD_REQUEST,
-            "bad_request",
-            "task_type must not have leading or trailing whitespace".into(),
-        );
-    }
-    if !SUPPORTED_TASK_TYPES.contains(&input.task_type.as_str()) {
-        return rest_error(
-            StatusCode::BAD_REQUEST,
-            "bad_request",
-            format!(
-                "unsupported task_type: '{}'; supported: {}",
-                input.task_type,
-                SUPPORTED_TASK_TYPES.join(", ")
-            ),
-        );
+    // Shared validator (whitespace + supported set) keeps the HTTP create path
+    // in lockstep with the CLI create path and the scheduler's dispatch.
+    if let Err(msg) = crate::jobs::watch::validate_task_type(&input.task_type) {
+        return rest_error(StatusCode::BAD_REQUEST, "bad_request", msg);
     }
     if input.every_seconds < MIN_WATCH_INTERVAL_SECS
         || input.every_seconds > MAX_WATCH_INTERVAL_SECS
