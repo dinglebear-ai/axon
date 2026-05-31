@@ -48,8 +48,10 @@ async fn handle_watch_create_requires_every_seconds() {
         None,
     )
     .await
-    .expect_err("missing interval should error");
-    assert!(err.to_string().contains("--every-seconds"));
+    .expect_err("out-of-bounds interval should error");
+    // CLI now shares validate_every_seconds with the HTTP create paths, so the
+    // message is the centralized bounds text rather than a CLI-flag-specific one.
+    assert!(err.to_string().contains("every_seconds must be between"));
 }
 
 #[tokio::test]

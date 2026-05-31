@@ -61,9 +61,7 @@ async fn lease_advances_next_run_at_for_single_flight() -> Result<(), Box<dyn Er
     // next_run_at to now + every_seconds, so the row is no longer due even after
     // the lease expires.
     let temp = NamedTempFile::new()?;
-    let cfg = sqlite_cfg(temp.path());
     let pool = crate::jobs::store::open_sqlite_pool(&temp.path().to_string_lossy()).await?;
-    let _ = cfg;
 
     let due = create_watch_def_with_pool(
         &pool,
