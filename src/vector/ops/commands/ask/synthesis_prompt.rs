@@ -2,7 +2,7 @@
 // gemini.rs writes this to the isolated Gemini home so Gemini CLI can discover
 // and invoke it natively via the activate_skill tool.
 pub(crate) const SKILL_MD: &str =
-    include_str!("../../../../../plugins/skills/axon-rag-synthesize/SKILL.md");
+    include_str!("../../../../../plugins/axon/skills/axon-rag-synthesize/SKILL.md");
 
 /// System prompt passed to Gemini headless.
 ///
@@ -13,7 +13,7 @@ pub(crate) const SKILL_MD: &str =
 pub(crate) const ASK_RAG_SYSTEM_PROMPT: &str = concat!(
     "Use the axon-rag-synthesize skill to synthesize an answer from the provided context.\n\n",
     "You must also follow these instructions directly if the skill is unavailable:\n\n",
-    include_str!("../../../../../plugins/skills/axon-rag-synthesize/SKILL.md")
+    include_str!("../../../../../plugins/axon/skills/axon-rag-synthesize/SKILL.md")
 );
 
 pub(crate) fn synthesis_prompt() -> &'static str {

@@ -18,7 +18,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "4.15.0"
+version = "4.16.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -120,7 +120,10 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 tracing-appender = "0.2"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
-utoipa-swagger-ui = { version = "9", features = ["axum"] }
+# `debug-embed` embeds the Swagger UI assets in debug builds too (rust-embed
+# otherwise only embeds in release), so `/docs` serves the UI under `cargo test`
+# and the openapi-docs route test passes. Release behavior is unchanged.
+utoipa-swagger-ui = { version = "9", features = ["axum", "debug-embed"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 regex = "1"
 similar = "2"

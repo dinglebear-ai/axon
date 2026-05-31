@@ -30,12 +30,13 @@ export type components = {
             "elapsed_ms": number;
             "endpoints": components['schemas']['DiscoveredEndpoint'][];
             "hosts": string[];
+            "mcp_candidates"?: components['schemas']['McpCandidateAttempt'][];
             "scripts_discovered": number;
             "truncated": boolean;
             "url": string;
             "warnings": string[];
         };
-        "EndpointSourceKind": "inline_script" | "script_bundle" | "html_attribute" | "network_capture";
+        "EndpointSourceKind": "inline_script" | "script_bundle" | "html_attribute" | "network_capture" | "synthesized_mcp";
         "EndpointVerification": {
             "attempted_url": string;
             "content_type"?: string | null;
@@ -52,6 +53,8 @@ export type components = {
             "include_bundles"?: boolean | null;
             "max_scan_bytes"?: number | null;
             "max_scripts"?: number | null;
+            "probe_rpc"?: boolean | null;
+            "probe_rpc_subdomains"?: boolean | null;
             "unique_only"?: boolean | null;
             "url": string;
             "verify"?: boolean | null;
@@ -66,6 +69,15 @@ export type components = {
             "docs": components['schemas']['PreparedSessionDoc'][];
             "project"?: string | null;
         };
+        "McpCandidateAttempt": {
+            "host_kind": components['schemas']['McpHostKind'];
+            "outcome": components['schemas']['McpProbeOutcome'];
+            "path": string;
+            "rpc_probe"?: null | components['schemas']['RpcProbeResult'];
+            "url": string;
+        };
+        "McpHostKind": "same_host" | "apex_subdomain";
+        "McpProbeOutcome": "confirmed" | "unconfirmed" | "blocked";
         "PreparedSessionDoc": {
             "extra"?: unknown;
             "session_date"?: string | null;

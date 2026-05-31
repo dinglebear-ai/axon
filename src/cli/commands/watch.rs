@@ -172,11 +172,13 @@ async fn handle_watch_create(
     every_seconds: i64,
     task_payload_raw: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
-    if every_seconds < 1 {
-        return Err(
-            format!("watch create: --every-seconds must be >= 1, got {every_seconds}").into(),
-        );
-    }
+    // Reject out-of-bounds intervals and unsupported / whitespace-padded task
+    // types at create time so the CLI never persists a watch that can never run
+    // — parity with the HTTP create paths, which share these same validators.
+    crate::jobs::watch::validate_every_seconds(every_seconds)
+        .map_err(|msg| format!("watch create: {msg}"))?;
+    crate::jobs::watch::validate_task_type(&task_type)
+        .map_err(|msg| format!("watch create: {msg}"))?;
     let task_payload = match task_payload_raw {
         Some(raw) => Some(serde_json::from_str(&raw).map_err(|e| {
             format!("watch create: --task-payload is not valid JSON: {e} (got '{raw}')")
