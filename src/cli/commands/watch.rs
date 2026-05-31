@@ -177,6 +177,11 @@ async fn handle_watch_create(
             format!("watch create: --every-seconds must be >= 1, got {every_seconds}").into(),
         );
     }
+    // Reject unsupported / whitespace-padded task types at create time so the
+    // CLI never persists a watch that can never run — parity with the HTTP
+    // create path, which shares this same validator.
+    crate::jobs::watch::validate_task_type(&task_type)
+        .map_err(|msg| format!("watch create: {msg}"))?;
     let task_payload = match task_payload_raw {
         Some(raw) => Some(serde_json::from_str(&raw).map_err(|e| {
             format!("watch create: --task-payload is not valid JSON: {e} (got '{raw}')")
