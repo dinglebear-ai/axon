@@ -1,7 +1,9 @@
 use super::{EndpointError, validate_url_with_dns_timeout};
 use crate::core::config::Config;
 use crate::core::http::{axon_ua, build_client};
-use crate::services::types::{EndpointReport, RpcProbeResult, RpcProtocol, RpcTransport};
+use crate::services::types::{
+    EndpointReport, EndpointSourceKind, RpcProbeResult, RpcProtocol, RpcTransport,
+};
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 use std::sync::LazyLock;
@@ -38,7 +40,12 @@ fn probe_timeout_secs(cfg: &Config) -> u64 {
         .unwrap_or(PROBE_TIMEOUT_SECS)
 }
 
-pub(super) async fn probe_rpc_endpoints(cfg: &Config, report: &mut EndpointReport) {
+pub(super) async fn probe_rpc_endpoints(
+    cfg: &Config,
+    target_url: &str,
+    include_subdomain: bool,
+    report: &mut EndpointReport,
+) {
     let client = match build_client(probe_timeout_secs(cfg), Some(axon_ua())) {
         Ok(c) => c,
         Err(err) => {
@@ -97,6 +104,17 @@ pub(super) async fn probe_rpc_endpoints(cfg: &Config, report: &mut EndpointRepor
             endpoint.rpc_probe = Some(rpc);
         }
     }
+
+    // Synthesize + probe well-known MCP candidates from the target URL itself.
+    super::candidates::synthesize_and_probe_mcp(&client, target_url, include_subdomain, report)
+        .await;
+    if report
+        .endpoints
+        .iter()
+        .any(|e| e.source == EndpointSourceKind::SynthesizedMcp)
+    {
+        super::recompute_hosts(report);
+    }
 }
 
 async fn probe_one(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult> {
@@ -118,6 +136,30 @@ async fn probe_one(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult
         return Some(result);
     }
     probe_sse_transport(client, url).await
+}
+
+/// Strict probe for synthesized candidates: positive-signal POST probes only,
+/// no bare-SSE content-type fallback (too false-positive-prone for guesses).
+/// Streamable-HTTP MCP is still detected because `probe_mcp`'s `initialize`
+/// response (incl. `text/event-stream` bodies) is parsed inside `send_jsonrpc`.
+///
+/// Validates the URL through the SSRF guard before issuing any request, like
+/// `probe_one` — so it is self-guarding, not reliant on the caller.
+pub(super) async fn probe_candidate(client: &reqwest::Client, url: &str) -> Option<RpcProbeResult> {
+    let _permit = PROBE_SEMAPHORE.acquire().await.ok()?;
+    if validate_url_with_dns_timeout(url).await.is_err() {
+        return None;
+    }
+    if let Some(r) = probe_mcp(client, url).await {
+        return Some(r);
+    }
+    if let Some(r) = probe_openrpc(client, url).await {
+        return Some(r);
+    }
+    if let Some(r) = probe_list_methods(client, url).await {
+        return Some(r);
+    }
+    probe_jsonrpc_fingerprint(client, url).await
 }
 
 /// Read up to `cap` bytes of a response body, returning lossy UTF-8 text.

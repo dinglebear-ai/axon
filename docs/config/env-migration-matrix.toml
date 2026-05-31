@@ -2541,3 +2541,27 @@ container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Optional API key for the OpenAI-compatible backend. Runtime secret, env-only."
+
+[[env]]
+key = "AXON_WATCH_TICK_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Watch scheduler sweep interval in seconds (default 15, min 1); non-secret tuning knob. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_WATCH_LEASE_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Watch scheduler lease TTL in seconds (default 300, min 1); non-secret tuning knob. Kept in env until a typed config.toml field is wired."

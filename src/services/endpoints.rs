@@ -1,7 +1,5 @@
 use crate::core::config::Config;
-use crate::core::content::{
-    EndpointExtractOptions, PrefetchedBundle, discover_script_sources, extract_endpoints,
-};
+use crate::core::content::{EndpointExtractOptions, discover_script_sources, extract_endpoints};
 use crate::core::http::{axon_ua, build_client, normalize_url, validate_url_with_dns};
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::types::{
@@ -41,8 +39,11 @@ static CHROME_CAPTURE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
 
 mod capture;
 use capture::capture_requests_with_chrome;
+mod fetch;
+use fetch::{fetch_bounded_text, fetch_bundles};
 mod probe;
 use probe::probe_rpc_endpoints;
+mod candidates;
 mod verify;
 use verify::verify_endpoints;
 
@@ -121,9 +122,25 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     emit_endpoint_log(&tx, format!("starting endpoint discovery: {normalized}")).await;
 
     let client = build_client(timeout_secs(cfg, BUNDLE_TIMEOUT_SECS), Some(axon_ua()))?;
-    let (html, html_truncated) =
-        fetch_bounded_text(&client, &normalized, options.max_scan_bytes, true).await?;
-    emit_endpoint_log(&tx, "endpoint discovery fetched target page").await;
+    let (html, html_truncated, fetch_error) =
+        match fetch_bounded_text(&client, &normalized, options.max_scan_bytes, true).await {
+            Ok((h, t)) => (h, t, None),
+            // Under --probe-rpc a failed/non-HTML fetch is recoverable: we still
+            // synthesize + probe MCP candidates (same-host, plus mcp.<apex> when
+            // --probe-rpc-subdomains).
+            Err(e) if options.probe_rpc => (String::new(), false, Some(e.to_string())),
+            Err(e) => return Err(e),
+        };
+    let fetch_failed = fetch_error.is_some();
+    if fetch_failed {
+        emit_endpoint_log(
+            &tx,
+            "endpoint discovery: initial fetch failed; continuing with synthesized MCP probing",
+        )
+        .await;
+    } else {
+        emit_endpoint_log(&tx, "endpoint discovery fetched target page").await;
+    }
     let (script_sources, script_truncated) =
         discover_script_sources(&html, &normalized, options.max_scripts);
     let bundle_sources: Vec<_> = if options.include_bundles {
@@ -172,8 +189,13 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     report.truncated |= script_truncated;
     report.truncated |= html_truncated;
     report.warnings.extend(warnings);
+    if let Some(err) = fetch_error {
+        report.warnings.push(format!(
+            "initial fetch failed: {err}; probing synthesized MCP candidates (same-host, plus mcp.<apex> when --probe-rpc-subdomains)"
+        ));
+    }
 
-    if options.capture_network {
+    if options.capture_network && !fetch_failed {
         emit_endpoint_log(&tx, "endpoint discovery starting network capture").await;
         merge_network_capture(
             cfg,
@@ -185,8 +207,7 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
         .await?;
     }
     if options.first_party_only {
-        report.endpoints.retain(|endpoint| endpoint.first_party);
-        recompute_hosts(&mut report);
+        retain_first_party(&mut report);
     }
     if options.verify {
         emit_endpoint_log(&tx, "endpoint discovery verifying endpoints").await;
@@ -194,7 +215,12 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
     }
     if options.probe_rpc {
         emit_endpoint_log(&tx, "endpoint discovery probing RPC protocols").await;
-        probe_rpc_endpoints(cfg, &mut report).await;
+        probe_rpc_endpoints(cfg, &normalized, options.probe_rpc_subdomains, &mut report).await;
+        // Second pass: probe_rpc_endpoints may have synthesized first_party=false
+        // endpoints (e.g. mcp.<apex>) that bypassed the pre-probe retain above.
+        if options.first_party_only {
+            retain_first_party(&mut report);
+        }
     }
     report.elapsed_ms = started.elapsed().as_millis() as u64;
     emit_endpoint_log(
@@ -229,6 +255,7 @@ pub fn options_from_config(cfg: &Config) -> EndpointOptions {
         verify: cfg.endpoints_verify,
         capture_network: cfg.endpoints_capture_network,
         probe_rpc: cfg.endpoints_probe_rpc,
+        probe_rpc_subdomains: cfg.endpoints_probe_rpc_subdomains,
     }
 }
 
@@ -248,93 +275,6 @@ fn timeout_secs(cfg: &Config, fallback: u64) -> u64 {
     cfg.request_timeout_ms
         .map(|ms| ms.div_ceil(1000).max(1))
         .unwrap_or(fallback)
-}
-
-async fn fetch_bundles(
-    client: &reqwest::Client,
-    sources: &[crate::core::content::ScriptSource],
-    max_scan_bytes: usize,
-) -> Vec<Result<PrefetchedBundle, String>> {
-    stream::iter(sources.iter().cloned())
-        .map(|source| async move {
-            let _permit = BUNDLE_FETCH_SEMAPHORE
-                .acquire()
-                .await
-                .map_err(|err| format!("bundle fetch semaphore closed: {err}"))?;
-            fetch_script_bundle(client, &source.url, max_scan_bytes)
-                .await
-                .map_err(|err| format!("bundle fetch skipped {}: {err}", source.url))
-        })
-        .buffer_unordered(8)
-        .collect()
-        .await
-}
-
-async fn fetch_script_bundle(
-    client: &reqwest::Client,
-    url: &str,
-    max_scan_bytes: usize,
-) -> Result<PrefetchedBundle, EndpointError> {
-    validate_url_with_dns_timeout(url).await?;
-    let response = client.get(url).send().await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(format!("HTTP {status}").into());
-    }
-    if let Some(content_type) = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-    {
-        let lower = content_type.to_ascii_lowercase();
-        if !(lower.contains("javascript")
-            || lower.contains("ecmascript")
-            || lower.contains("text/plain")
-            || lower.contains("application/octet-stream"))
-        {
-            return Err(format!("content-type {content_type} is not JavaScript-like").into());
-        }
-    }
-    fetch_response_text(response, max_scan_bytes.min(MAX_BUNDLE_BYTES))
-        .await
-        .map(|(text, truncated)| PrefetchedBundle {
-            url: url.to_string(),
-            text,
-            truncated,
-        })
-}
-
-async fn fetch_bounded_text(
-    client: &reqwest::Client,
-    url: &str,
-    max_bytes: usize,
-    require_success: bool,
-) -> Result<(String, bool), EndpointError> {
-    let response = client.get(url).send().await?;
-    if require_success {
-        response.error_for_status_ref()?;
-    }
-    fetch_response_text(response, max_bytes).await
-}
-
-async fn fetch_response_text(
-    response: reqwest::Response,
-    max_bytes: usize,
-) -> Result<(String, bool), EndpointError> {
-    let mut stream = response.bytes_stream();
-    let mut bytes = Vec::new();
-    let mut truncated = false;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        if bytes.len().saturating_add(chunk.len()) > max_bytes {
-            let remaining = max_bytes.saturating_sub(bytes.len());
-            bytes.extend_from_slice(&chunk[..remaining]);
-            truncated = true;
-            break;
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    Ok((String::from_utf8_lossy(&bytes).into_owned(), truncated))
 }
 
 async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
@@ -381,7 +321,13 @@ async fn merge_network_capture<P: NetworkCaptureProvider + Sync>(
     Ok(())
 }
 
-fn recompute_hosts(report: &mut EndpointReport) {
+/// Drop non-first-party endpoints and refresh the host list to match.
+fn retain_first_party(report: &mut EndpointReport) {
+    report.endpoints.retain(|endpoint| endpoint.first_party);
+    recompute_hosts(report);
+}
+
+pub(super) fn recompute_hosts(report: &mut EndpointReport) {
     let mut hosts = std::collections::BTreeSet::new();
     for endpoint in &report.endpoints {
         if let Some(host) = endpoint

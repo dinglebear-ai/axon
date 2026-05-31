@@ -177,6 +177,7 @@ fn new_endpoint_report(base_url: &str, bundles_fetched: usize) -> EndpointReport
         bundles_fetched,
         bundles_scanned: 0,
         truncated: false,
+        mcp_candidates: Vec::new(),
         warnings: Vec::new(),
         elapsed_ms: 0,
     }

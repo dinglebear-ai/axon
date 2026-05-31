@@ -8,6 +8,9 @@ pub struct EndpointOptions {
     pub verify: bool,
     pub capture_network: bool,
     pub probe_rpc: bool,
+    /// Additionally synthesize + probe `mcp.<registrable-apex>` candidates.
+    /// No-op unless `probe_rpc` is also set.
+    pub probe_rpc_subdomains: bool,
 }
 
 impl Default for EndpointOptions {
@@ -21,6 +24,7 @@ impl Default for EndpointOptions {
             verify: false,
             capture_network: false,
             probe_rpc: false,
+            probe_rpc_subdomains: false,
         }
     }
 }
@@ -134,6 +138,9 @@ pub enum EndpointSourceKind {
     ScriptBundle,
     HtmlAttribute,
     NetworkCapture,
+    /// Not discovered in the page — synthesized from the target URL and
+    /// confirmed by an RPC probe (well-known MCP path or `mcp.<apex>` host).
+    SynthesizedMcp,
 }
 
 impl EndpointSourceKind {
@@ -143,8 +150,60 @@ impl EndpointSourceKind {
             Self::ScriptBundle => "script_bundle",
             Self::HtmlAttribute => "html_attribute",
             Self::NetworkCapture => "network_capture",
+            Self::SynthesizedMcp => "synthesized_mcp",
         }
     }
+}
+
+/// Which host a synthesized MCP candidate targets.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum McpHostKind {
+    /// Same host as the target URL (e.g. `foo.com/mcp`).
+    SameHost,
+    /// `mcp.<registrable-apex>` subdomain (e.g. `mcp.foo.com/mcp`).
+    ApexSubdomain,
+}
+
+/// Outcome of probing one synthesized MCP candidate.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum McpProbeOutcome {
+    /// Returned a positive JSON-RPC/MCP signal.
+    Confirmed,
+    /// Reachable validation passed but no positive RPC signal (404, non-RPC
+    /// JSON, transport error, or timeout all fold here).
+    Unconfirmed,
+    /// Rejected by the SSRF guard before any request was made.
+    Blocked,
+}
+
+impl McpProbeOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Confirmed => "confirmed",
+            Self::Unconfirmed => "unconfirmed",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
+/// One synthesized MCP candidate and its probe outcome.
+///
+/// `rpc_probe` is `Some` iff `outcome == Confirmed`; every other outcome
+/// (`Unconfirmed`, `Blocked`) carries `None`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct McpCandidateAttempt {
+    pub url: String,
+    pub host_kind: McpHostKind,
+    pub path: String,
+    pub outcome: McpProbeOutcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rpc_probe: Option<RpcProbeResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
@@ -183,4 +242,11 @@ pub struct EndpointReport {
     pub truncated: bool,
     pub warnings: Vec<String>,
     pub elapsed_ms: u64,
+    /// Synthesized MCP candidate probe attempts (omitted when empty).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_candidates: Vec<McpCandidateAttempt>,
 }
+
+#[cfg(test)]
+#[path = "endpoints_tests.rs"]
+mod tests;

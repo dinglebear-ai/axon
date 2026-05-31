@@ -62,6 +62,7 @@ pub(super) struct DispatchOutput {
     pub endpoints_verify: bool,
     pub endpoints_capture_network: bool,
     pub endpoints_probe_rpc: bool,
+    pub endpoints_probe_rpc_subdomains: bool,
     pub retrieve_max_points: Option<usize>,
     pub train_best_rank: Option<usize>,
     pub train_notes: Option<String>,
@@ -110,6 +111,7 @@ impl DispatchOutput {
             endpoints_verify: false,
             endpoints_capture_network: false,
             endpoints_probe_rpc: false,
+            endpoints_probe_rpc_subdomains: false,
             retrieve_max_points: None,
             train_best_rank: None,
             train_notes: None,
@@ -166,6 +168,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.endpoints_verify = args.verify;
             out.endpoints_capture_network = args.capture_network;
             out.endpoints_probe_rpc = args.probe_rpc;
+            out.endpoints_probe_rpc_subdomains = args.probe_rpc_subdomains;
         }
         CliCommand::Extract(args) => {
             out.command = CommandKind::Extract;

@@ -147,8 +147,8 @@ fn version_bearing_files_stay_in_sync() {
 fn plugin_setup_uses_canonical_axon_home() {
     let setup = fs::read_to_string("scripts/plugin-setup.sh")
         .expect("scripts/plugin-setup.sh should be readable");
-    let readme =
-        fs::read_to_string("plugins/README.md").expect("plugins/README.md should be readable");
+    let readme = fs::read_to_string("plugins/axon/README.md")
+        .expect("plugins/axon/README.md should be readable");
 
     assert!(
         setup.contains("AXON_HOME=\"${AXON_HOME:-${HOME}/.axon}\""),
