@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.15.1] - 2026-05-31
+
+### Changed
+- Finished the plugin split: removed the leftover `plugins/axon-mcp/` manifest,
+  `.mcp.json`, and monitors, and moved monitors + `.mcp.json` under `plugins/axon/`.
+
+### Docs
+- Added the llms.txt-probe implementation plan
+  (`docs/superpowers/plans/2026-05-31-llms-txt-probe.md`) — a 10-task TDD plan to
+  probe `/llms.txt` during crawl and `map` and merge its links into sitemap backfill
+  (tracked as epic `axon_rust-6s51`). Plan only; no implementation yet.
+
 ## [4.15.0] - 2026-05-31
 
 ### Added
