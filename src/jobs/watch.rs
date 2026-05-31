@@ -453,7 +453,7 @@ pub async fn run_watch_now_with_pool(
         },
         Err(text) => text,
     };
-    let _ = finish_watch_run_with_pool(
+    if let Err(persist_err) = finish_watch_run_with_pool(
         pool,
         watch.id,
         run.id,
@@ -461,7 +461,19 @@ pub async fn run_watch_now_with_pool(
         None,
         Some(&err_text),
     )
-    .await;
+    .await
+    {
+        // The FAILED-status write itself failed: the run row stays in `running`
+        // and nothing reclaims stale watch runs, so it is wedged permanently.
+        // Surface why instead of dropping the error silently.
+        tracing::warn!(
+            watch_id = %watch.id,
+            run_id = %run.id,
+            persist_error = %persist_err,
+            task_error = %err_text,
+            "watch run: FAILED-status write failed; run may be wedged in running",
+        );
+    }
     Err(err_text.into())
 }
 
