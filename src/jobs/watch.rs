@@ -45,7 +45,7 @@ pub const MAX_WATCH_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60;
 /// scheduler can never lease a sub-minimum watch. The message is safe to
 /// surface to callers.
 pub fn validate_every_seconds(every_seconds: i64) -> Result<(), String> {
-    if every_seconds < MIN_WATCH_INTERVAL_SECS || every_seconds > MAX_WATCH_INTERVAL_SECS {
+    if !(MIN_WATCH_INTERVAL_SECS..=MAX_WATCH_INTERVAL_SECS).contains(&every_seconds) {
         return Err(format!(
             "every_seconds must be between {MIN_WATCH_INTERVAL_SECS} and {MAX_WATCH_INTERVAL_SECS}"
         ));
