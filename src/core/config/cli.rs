@@ -355,6 +355,9 @@ pub(super) struct EndpointArgs {
     /// Probe discovered endpoints for JSON-RPC 2.0 / MCP / ACP protocol support.
     #[arg(long = "probe-rpc", action = ArgAction::SetTrue)]
     pub(super) probe_rpc: bool,
+    /// Also probe `mcp.<apex>` subdomain candidates for MCP/JSON-RPC. No-op without --probe-rpc.
+    #[arg(long = "probe-rpc-subdomains", action = ArgAction::SetTrue)]
+    pub(super) probe_rpc_subdomains: bool,
 }
 
 #[derive(Debug, Args)]

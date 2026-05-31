@@ -47,6 +47,7 @@ impl Default for Config {
             endpoints_verify: false,
             endpoints_capture_network: false,
             endpoints_probe_rpc: false,
+            endpoints_probe_rpc_subdomains: false,
             max_sitemaps: 512,
             cache: true,
             cache_http_only: false,
@@ -301,6 +302,10 @@ impl fmt::Debug for Config {
             .field("endpoints_verify", &self.endpoints_verify)
             .field("endpoints_capture_network", &self.endpoints_capture_network)
             .field("endpoints_probe_rpc", &self.endpoints_probe_rpc)
+            .field(
+                "endpoints_probe_rpc_subdomains",
+                &self.endpoints_probe_rpc_subdomains,
+            )
             .field("max_sitemaps", &self.max_sitemaps)
             .field("cache", &self.cache)
             .field("cache_http_only", &self.cache_http_only)

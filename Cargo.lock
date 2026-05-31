@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "4.15.1"
+version = "4.16.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -395,6 +395,7 @@ dependencies = [
  "octocrab",
  "once_cell",
  "proptest",
+ "psl",
  "pulldown-cmark",
  "rand 0.10.1",
  "rand_core 0.9.5",
