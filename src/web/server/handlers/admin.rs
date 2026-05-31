@@ -31,9 +31,6 @@ pub(crate) struct WatchCreateRequest {
     next_run_at: Option<DateTime<Utc>>,
 }
 
-/// Task types supported by the watch scheduler. Any value not in this list
-/// fails at execution time; rejecting at create time gives callers immediate feedback.
-const SUPPORTED_TASK_TYPES: &[&str] = &["refresh"];
 const MAX_TASK_PAYLOAD_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Deserialize)]
@@ -194,21 +191,14 @@ pub(crate) async fn create_watch(
     if req.name.trim().is_empty() {
         return Err(HttpError::bad_request("name is required"));
     }
-    let task_type = req.task_type.trim();
-    if task_type.is_empty() {
-        return Err(HttpError::bad_request("task_type is required"));
+    // Shared validator (whitespace + supported set) keeps this create path in
+    // lockstep with the REST + CLI create paths and the scheduler's dispatch.
+    if let Err(msg) = crate::jobs::watch::validate_task_type(&req.task_type) {
+        return Err(HttpError::bad_request(&msg));
     }
-    if !SUPPORTED_TASK_TYPES.contains(&task_type) {
-        return Err(HttpError::bad_request(
-            format!(
-                "unsupported task_type '{task_type}'; supported: {}",
-                SUPPORTED_TASK_TYPES.join(", ")
-            )
-            .as_str(),
-        ));
-    }
-    if req.every_seconds < 1 {
-        return Err(HttpError::bad_request("every_seconds must be >= 1"));
+    let task_type = req.task_type.as_str();
+    if let Err(msg) = crate::jobs::watch::validate_every_seconds(req.every_seconds) {
+        return Err(HttpError::bad_request(&msg));
     }
     if req
         .task_payload

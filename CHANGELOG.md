@@ -7,9 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.15.1] - 2026-05-31
+
+### Changed
+
+- Finished the plugin split: removed the leftover `plugins/axon-mcp/` manifest,
+  `.mcp.json`, and monitors, and moved monitors + `.mcp.json` under `plugins/axon/`.
+
+### Docs
+
+- Added the llms.txt-probe implementation plan
+  (`docs/superpowers/plans/2026-05-31-llms-txt-probe.md`) — a 10-task TDD plan to
+  probe `/llms.txt` during crawl and `map` and merge its links into sitemap backfill
+  (tracked as epic `axon_rust-6s51`). Plan only; no implementation yet.
+
+## [4.15.0] - 2026-05-31
+
+### Added
+
+- **Watch scheduler now auto-fires recurring watches.** A new in-process
+  scheduler loop (`src/jobs/workers/watch_scheduler.rs`) is spawned by
+  `spawn_workers` (so it runs under `axon serve` / `axon mcp`). Each tick
+  atomically leases every enabled watch whose `next_run_at` has passed via the
+  new `lease_due_watches` (`UPDATE ... RETURNING`), runs it through
+  `run_watch_now_with_pool` (which records a run, advances `next_run_at` by
+  `every_seconds`, and clears the lease), and is crash-safe through the existing
+  `reclaim_stale_watch_leases` sweep. Previously watches only ran via manual
+  `watch run-now` or the HTTP `/v1/watch/{id}/run` endpoint.
+  - Tuning: `AXON_WATCH_TICK_SECS` (sweep interval, default 15, min 1) and
+    `AXON_WATCH_LEASE_SECS` (lease TTL, default 300, min 1).
+
+### Fixed
+
+- **`axon watch create` now validates `task_type` at create time.** The CLI
+  previously accepted unsupported or whitespace-padded task types, persisting
+  watches that could never run. Validation is now centralized in
+  `jobs::watch::validate_task_type` and shared by the CLI and both HTTP create
+  handlers (removing two duplicated `SUPPORTED_TASK_TYPES` constants).
+- **`run_watch_now_with_pool` guards the COMPLETED finalize write.** The write
+  previously short-circuited the function via `?` on failure, leaving the run row
+  stuck in `running` (nothing reclaims stale `axon_watch_runs` rows). Task
+  execution and finalization are now separated, and a failed COMPLETED write
+  falls back to a best-effort FAILED finalize so a row-level write failure no
+  longer wedges the run.
+
 ## [4.14.1] - 2026-05-29
 
 ### Changed
+
 - **CI: `windows-build` now cross-compiles `axon.exe` from Linux instead of
   building natively on a GitHub-hosted Windows VM.** The job runs on
   `ubuntu-latest` using the `mingw-w64` (`x86_64-pc-windows-gnu`) toolchain.
@@ -27,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.14.0] - 2026-05-29
 
 ### Changed
+
 - **BREAKING:** Renamed the `axon stack` command to `axon compose`
   (`axon compose up|down|restart|rebuild`). There is no backward-compatible
   alias — `axon stack` is no longer recognized. Internal identifiers
@@ -35,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`stack-up` → `compose-up`, etc.) were renamed to match.
 
 ### Fixed
+
 - **Ingest failures now report their real cause instead of a useless label.**
   The ingest error wrappers formatted the underlying error with `{e}` (plain
   `Display`), which on an `anyhow::Error` prints only the outermost context and
@@ -90,7 +137,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementation plans for Android phase 3 completion and the full rail redesign.
 
 ### Changed
+
 - style(palette): Crystalline visual design — darker near-black surfaces, cyan accent system replacing rose, ghost chip mode pill with × dismiss
+
 ## [4.12.2] - 2026-05-27
 
 ### Added
@@ -577,6 +626,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.2.0] - 2026-05-19
 
 ### Added
+
 - `AXON_USER_AGENT` env var — general-purpose UA for all HTTP requests
 - `AXON_CHROME_USER_AGENT` falls back to `AXON_USER_AGENT`
 - docs.rs vertical extractor fetches rustdoc JSON directly
@@ -588,6 +638,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sparse checkout on all CI jobs (significant checkout time reduction)
 
 ### Fixed
+
 - All vertical extractors use correct UA (browser vs API)
 - crates.io 429 retry with Retry-After backoff
 - Various vertical content gaps (npm readme, PyPI description, etc.)
@@ -832,11 +883,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.2] - 2026-05-16
 
 ### Fixed
+
 - `AXON_COLLECTION` env var now correctly wins over TOML default when the user passes `--collection axon` explicitly (was comparing the value to the sentinel literal instead of checking clap's value source)
 - Desktop palette: commands now pass `--local` to force in-process execution, fixing connection failures when `AXON_SERVER_URL` is set
 - Desktop palette: ANSI escape codes stripped from stderr output before display
 
 ### Added
+
 - Desktop palette: markdown rendering for `scrape`, `ask`, and `research` stdout via `pulldown-cmark`
 - Desktop palette: clickable hyperlinks in markdown output open in the system browser (`xdg-open` / `cmd /c start`)
 - Desktop palette: Tab key locks a command (badge mode), Backspace from empty argument unlocks
@@ -907,6 +960,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.11.3] - 2026-05-14
 
 ### Fixed
+
 - Gemini CLI 0.41.2 compatibility: `tool_use` events renamed `"name"` field to `"tool_name"`; new built-in `update_topic` tool now whitelisted alongside `activate_skill`; removed unreliable `stats.tool_calls` count gate
 
 ## [1.11.2] - 2026-05-14
@@ -1092,6 +1146,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [1.5.8] - 2026-05-06
 
 ### Changed
+
 - Renamed `crates/` module directory to `src/` and moved `lib.rs`/`main.rs`/`crates.rs` into it — standard single-crate Rust layout
 - Removed `[lib] path` and `[[bin]] path` overrides from `Cargo.toml`; Cargo now uses the default `src/lib.rs` and `src/main.rs`
 - Eliminated the `crates.rs` re-export shim; module declarations now live directly in `src/lib.rs`
@@ -1187,9 +1242,11 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [1.5.1] - 2026-05-06
 
 ### Fixed
+
 - Negative-count wrap on i64→u64 cast in queue cap check (axon_rust-pkl.10.5)
 
 ### Changed
+
 - Queue cap path: cache env vars in LazyLock; warn on unparseable env; introduce JobError::QueueCapacityExceeded domain error; inline four dead-weight wrappers; tighten table_name to &'static str (axon_rust-pkl.10.1-10.7)
 - ACP session cache: document concurrent overshoot + O(N) eviction scan rationale; remove redundant cap==0 guard; demote routine eviction log to info; add at-most-one-victim contract test (axon_rust-pkl.11.1-11.4)
 - MapResult.mapped_urls renamed to returned_url_count for clarity (JSON wire key preserved via serde rename) (axon_rust-pkl.34.3)
@@ -1197,24 +1254,29 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [1.5.0] - 2026-05-06
 
 ### Added
+
 - `--whole-repo` and `--include-allowlisted` flags to `enforce_monoliths.py` for auditing all production files (axon_rust-pkl.7)
 - `just monolith-report` recipe and non-blocking informational CI step for whole-repo monolith visibility (axon_rust-pkl.7)
 - Tests locking the canonical key set of crawl job result JSON (axon_rust-pkl.8)
 
 ### Changed
+
 - Removed legacy aliases `pages_seen` and `markdown_files` from crawl job result JSON; consumers now read canonical `pages_crawled` and `md_created` only (axon_rust-pkl.8)
 
 ### Fixed
+
 - CLAUDE.md crawl queue cap section now references the correct file path and function name (axon_rust-pkl.35)
 
 ## [1.4.0] - 2026-05-05
 
 ### Added
+
 - Queue caps for embed, extract, and ingest jobs (AXON_MAX_PENDING_EMBED_JOBS, AXON_MAX_PENDING_EXTRACT_JOBS, AXON_MAX_PENDING_INGEST_JOBS, default 50)
 - Global LRU session cap for ACP session cache (AXON_ACP_MAX_SESSIONS, default 100)
 - taplo TOML formatter config and taplo-check/taplo-fmt Justfile recipes
 
 ### Changed
+
 - MapResult migrated from serde_json::Value to typed struct with total: u64 field
 - docs/CONFIG.md designated as single authoritative env var reference
 - Fixed MCP handle_map double-pagination bug
@@ -1222,28 +1284,34 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [1.3.4] - 2026-05-05
 
 ### Fixed
+
 - Fixed fresh-checkout compose path drift by making `config/docker-compose.services.yaml` read the repo-root `services.env`, validating that contract in CI and tests, and refreshing current infra docs to the tracked compose layout.
 
 ## [1.3.3] - 2026-05-04
 
 ### Fixed
+
 - Carried PR #65 review feedback onto the stacked SSH deployment branch: CI smoke infra starts only services present in the compose file, setup no longer calls removed test-infra compose paths, build/install recipes honor `CARGO_TARGET_DIR`, explicit `AXON_CONFIG_PATH` I/O failures hard-fail, MCP transport guard checks the real resolver wiring, and GPU compose docs no longer reference a removed overlay.
 
 ## [1.3.2] - 2026-05-04
 
 ### Added
+
 - Added the initial `xtask` workspace scaffold and cargo alias for portable repo checks.
 
 ### Changed
+
 - Consolidated collection-name validation across config parsing, MCP, and Qdrant request paths.
 - Updated docs and CI to use the tracked `config/docker-compose.services.yaml` infrastructure stack.
 
 ### Fixed
+
 - Migrated screenshot service results from raw JSON pass-through to a typed `url`/`path`/`size_bytes` contract.
 
 ## [1.3.1] - 2026-05-04
 
 ### Fixed
+
 - Hardened SSH remote deployment: `remote_dir` validation, complete compose asset upload, private-by-default service URLs, readiness-gated config writes, bounded SSH/SFTP/compose phases, `AXON_CONFIG_PATH` config writes, and explicit first-use host-key opt-in.
 - Hardened MCP HTTP token middleware coverage and updated the smoke script to match the current bearer and `x-api-key` token contract.
 - Tightened ACP adapter/path validation, unsupported ACP MCP responses, Axon data-dir fallback behavior, and local infrastructure port bindings.
@@ -1252,6 +1320,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [1.3.0] - 2026-05-04
 
 ### Added
+
 - Added `axon setup targets` and `axon setup deploy` for SSH-config target discovery and Docker Compose remote infrastructure deployment.
 - Added web panel SSH target listing and remote deployment backed by shared `crates/services/setup/` logic.
 - Bundled deployment compose/env templates into the binary and wired `[services]` config TOML URLs for remote Qdrant, TEI, and Chrome endpoints.
@@ -1259,27 +1328,32 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [1.2.3] - 2026-05-04
 
 ### Fixed
+
 - Rejected `HOME` values containing `..` path components when resolving `~/.axon`, closing the remaining traversal gap in config-home path validation.
 
 ## [1.2.2] - 2026-05-04
 
 ### Added
+
 - `axon serve` unified web + MCP HTTP server with a bundled static Next.js admin panel.
 - Browser-first setup flow that initializes `~/.axon/config.toml`, generates a 256-bit panel password, and exposes authenticated config/ops APIs.
 
 ### Fixed
+
 - Hardened `~/.axon` file creation with private permissions, exclusive password creation, and `O_NOFOLLOW` on sensitive pre-create/open paths.
 - Added Host header validation to the HTTP server path to block DNS rebinding.
 
 ## [1.2.1] - 2026-05-04
 
 ### Added
+
 - **TOML config layer**: `~/.axon/config.toml` as a structured tuning-knobs config (safe to commit). 6 Config fields wired with `CLI > env > TOML > default` priority. See `config.example.toml`.
 - `axon_home_dir()` / `axon_config_path()` in `crates/core/paths.rs` returning `~/.axon/` and `~/.axon/config.toml` (`None` when HOME is unset, no `/tmp` fallback).
 - `env_bool_opt()`, `env_usize_opt()`, `env_f64_opt()` helpers for layered config wiring.
 - `config.example.toml` at repo root with annotated Phase 1 fields, `[wired]`/`[env-only]` labels.
 
 ### Changed
+
 - **`axon.json` + `axon.schema.json` deleted** — confirmed dormant (never read by the binary). Replace with `~/.axon/config.toml`.
 - `build_config.rs` split: 9 helper functions moved to `helpers.rs` (971 → 681 lines).
 - `env_bool` / `env_usize_clamped` / `env_f64_clamped` now delegate to their `_opt` variants (single parse path, no logic duplication).
@@ -1289,6 +1363,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 - `docs/CONFIG.md`, `CLAUDE.md`, `config.example.toml`: two-layer config system documented; wired vs env-only keys distinguished.
 
 ### Fixed
+
 - `axon_config_path_env_var_overrides_home` test now acquires ENV_LOCK and saves/restores `AXON_CONFIG_PATH` unconditionally (panic-safe).
 - HOME-mutating tests in `paths.rs` now use `#[serial_test::serial]` for crate-wide serialization.
 - `check_mcp_http_only.sh` grep satisfied by comment in `build_config.rs` after `resolve_mcp_transport` moved to `helpers.rs`.
@@ -1298,61 +1373,73 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [1.2.0] - 2026-05-04
 
 ### Added
+
 - **Plugin skills**: 15 Claude Code skills under `plugins/axon/skills/` covering scrape, crawl, map, extract, embed, ingest, query, ask, search, retrieve, sources, domains, stats, status, and the top-level axon skill with full action reference.
 - **Plugin agents**: researcher agent scaffold under `plugins/axon/agents/`.
 - **Plugin MCP config**: `.mcp.json` added to `plugins/axon/` for MCP server wiring.
 
 ### Changed
+
 - **Plugin manifest relocated**: `.claude-plugin/plugin.json` moved from `plugins/axon/` to the repo root `.claude-plugin/`.
 - **Monolith splits**: `job_contracts`, `status/metrics`, `crawl/collector`, `crawl/map`, `ingest/github/files`, `jobs/lite/ops`, and `jobs/lite/workers/runners` each split into focused submodule files to comply with the 500-line file policy.
 
 ## [1.1.0] - 2026-05-03
 
 ### Added
+
 - **Tracing and progress bundle**: lite job workers now persist richer progress snapshots, CLI status prints per-job progress summaries, and ingest/embed flows expose more detailed runtime metrics.
 - **MCP plugin scaffold**: added the Axon Claude plugin package scaffold under `plugins/axon`.
 
 ### Changed
+
 - **Operational docs and config**: updated MCP, command, ingest, and config references for the new observability and transport behavior.
 
 ### Fixed
+
 - **MCP HTTP startup guard**: HTTP server startup now enforces the token policy before binding externally.
 
 ## [1.0.13] - 2026-05-03
 
 ### Changed
+
 - **Retrieval dispatch contract**: query and ask now build typed `VectorSearchRequest` values, pass ask-specific hybrid candidate overrides without cloning `Config`, and keep dispatch/facet/retrieve/dedupe code in focused modules.
 - **Typed embedding calls**: TEI embedding call sites now declare query vs document embedding intent with `EmbedKind`, preventing query-instruction omissions on new retrieval paths.
 
 ### Fixed
+
 - **Ask context selection**: top chunk and full-document selections now use disjoint URL sets so the two diversity passes cannot select the same source twice.
 - **Live Qdrant testing**: added a `live-qdrant` feature and CI job so live vector integration tests fail loudly when Qdrant configuration is expected but missing.
 
 ## [1.0.12] - 2026-05-03
 
 ### Fixed
+
 - **VectorMode cache revalidation**: cached legacy `Unnamed` collection modes now re-probe live Qdrant when hybrid search is enabled, so long-running workers self-heal after migration instead of staying on dense-only paths until restart.
 
 ## [1.0.11] - 2026-05-03
 
 ### Fixed
+
 - **Ask RRF rerank scale**: ask retrieval now skips cosine-calibrated rerank thresholds and additive BM25-style boosts only on the effective RRF path, while preserving cosine behavior for legacy, named-dense, and empty-sparse fallback searches.
 - **RRF supplemental context**: supplemental ask candidates now use an optional score floor so RRF context backfill is gated by topical overlap and context budget instead of cosine-scale thresholds.
 
 ## [1.0.10] - 2026-05-02
 
 ### Fixed
+
 - **Lite job replay review fixes**: versioned lite job snapshots now exactly replay submitted `None` option fields, preserve job-critical custom headers, Chrome proxy, and ACP adapter args, and omit credential-bearing endpoint URLs from public `config_json` while falling back to process config for those endpoints.
 - **Monolith allowlist tracking**: the current extraction-sprint allowlist extension now references its review follow-up bead so the policy waiver remains auditable.
 
 ## [1.0.9] - 2026-05-02
 
 ### Removed
+
 - **Ask authoritative allowlist**: removed the `AXON_ASK_AUTHORITATIVE_ALLOWLIST` configuration knob and strict retrieval/citation allowlist behavior. Authoritative domains and boost remain as reranking signals only, so `ask` and `query` no longer drop candidates through an ask-only allowlist.
 
 ## [1.0.8] - 2026-05-02
 
 ### Changed
+
 - **RAG service contracts**: query, retrieve, ask, and evaluate service results now use typed structs at service boundaries with JSON serialization deferred to CLI/MCP entrypoints.
 - **Shared RAG retrieval**: query and ask now share candidate construction, dedupe, scoring, and filtering helpers while preserving query-specific threshold behavior.
 - **Lite job replay**: persisted lite job rows now carry non-secret config snapshots, and workers reconstruct effective crawl/embed/extract/ingest config from row data instead of relying on process defaults.
@@ -1360,63 +1447,76 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [1.0.7] - 2026-04-30
 
 ### Added
+
 - **`render_full_doc_filtered`**: optional `(query_tokens, top_k)` parameters score each chunk by query-token overlap, keep top-K, then re-sort by `chunk_index` for narrative coherence. Used by ask context build with `FULL_DOC_RENDER_TOP_K=24`.
 
 ### Changed
+
 - **Ask context flattening**: `context_entries: Vec<(f64, String)>` and a final sort by `rerank_score` descending so the highest-scoring chunks appear first regardless of which bucket (top-chunks / full-docs / supplemental) they came from. Mitigates LLM proximity bias against the most relevant content.
 
 ## [1.0.6] - 2026-04-30
 
 ### Added
+
 - **MCP per-request `hybrid_search` override**: `QueryRequest` and `AskRequest` now accept `hybrid_search: Option<bool>` to override `cfg.hybrid_search_enabled` per call (A/B comparison without restart).
 - **Lite drain tests**: 3 tests covering `has_active_jobs` per-kind isolation, terminal-state transition, and bounded-time drain in the presence of unrelated pending rows.
 
 ### Changed
+
 - **`build_scraped_at_filter`**: process-level `LazyLock<RwLock<HashMap>>` memoizes parsed `--since`/`--before` strings so dual-embed asks no longer re-parse chrono twice per question.
 - **Hybrid search hot-path bodies**: replaced `serde_json::json!{...}` with typed `Serialize` structs (`HybridQueryBody`, `NamedDenseQueryBody`, `PrefetchArm`, `DenseParams`, `QuantizationParams`, `FusionSpec`). Eliminates per-request Map allocations.
 
 ## [1.0.5] - 2026-04-30
 
 ### Added
+
 - **Score-distribution telemetry**: `vector.dispatch` tracing event now carries `top1_score` and `top10_avg_score` per arm so operators can detect threshold no-op (top-1 below `ask_min_relevance_score`) and arm-scale divergence (cosine vs RRF magnitudes).
 - **`score_ask_candidates`**: ranks candidates without cloning, returning `(idx, score)` pairs sorted descending. Caller filters by threshold first; only survivors are cloned.
 
 ### Changed
+
 - **`retrieve_ask_candidates`**: now scores → filters → clones (was clone-all → filter), avoiding ~1 MB of throwaway clones per ask. `compute_scored_indices` extracted as the shared inner loop between `score_` and `rerank_`.
 
 ## [1.0.4] - 2026-04-30
 
 ### Added
+
 - **`validate_custom_headers`**: rejects malformed `--header K: V` entries (missing separator, empty name, RFC 7230 illegal token chars in name, CR/LF in value).
 
 ### Changed
+
 - **Ask error-path diagnostics**: `dispatch_error` now always attaches `{stage, collection, qdrant_url, query_len, error}` JSON to failed retrieval errors. `cfg.ask_diagnostics` still gates verbose **success-path** payloads.
 
 ## [1.0.3] - 2026-04-30
 
 ### Added
+
 - **`#[tracing::instrument]`** on retrieval hot path: `dispatch_vector_search`, `qdrant_hybrid_search`, `qdrant_named_dense_search`, `retrieve_ask_candidates`. Spans carry collection name, query length, sparse term count, candidate window, and filter presence.
 - **Sparse term cap**: `MAX_TERMS_PER_VECTOR = 65,536` in `compute_sparse_vector` defends against pathological inputs.
 - **Tests**: 5 unit tests for `merge_candidates` covering primary dedupe, cross-URL chunk parity, multibyte chunk-prefix boundary, empty inputs.
 - **Vector docs**: env vars table (`AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_MIN_RELEVANCE_SCORE`), Dual-Embedding for Ask section, Operational Caveats section (cache staleness, sparse fallback, threshold no-op, empty-return contract).
 
 ### Changed
+
 - **`SparseVector`**: derives `serde::Serialize` and emits the Qdrant wire shape directly. Removed `to_json()`. Updated 4 call sites (`hybrid.rs`, `tei.rs`, `tei/pipeline.rs`, `services/migrate.rs`).
 - **`COLLECTION_MODES` cache**: `OnceLock<RwLock<HashMap>>` → `LazyLock<RwLock<HashMap>>`. One fewer `Option` layer on every cache hit; `cache_vector_mode_key` no longer needs `get_or_init`.
 
 ## [1.0.2] - 2026-04-30
 
 ### Changed
+
 - **`merge_candidates`**: Dedupes primary internally before merging secondary; a single chunk landing at slightly different RRF positions across prefetch arms no longer leaks duplicates into the ask context.
 - **`compute_sparse_vector`**: Empty-result log promoted from `log_debug` → `tracing::warn!` with query character profile (`len`, `ascii_alnum`, `non_ascii`, `whitespace`, `other`); operators now see hybrid → dense-only fallback at default INFO.
 
 ### Docs
+
 - **vector/CLAUDE.md Ranking Pipeline**: documented the score-scale mismatch — `ask_min_relevance_score` and `ask_authoritative_boost` are cosine-calibrated and don't transfer cleanly to RRF output.
 - **vector/CLAUDE.md Query Instruction**: documented dual-embedding asymmetry (NL form gets `QUERY_INSTRUCTION`, keyword form does not).
 
 ## [1.0.1] - 2026-04-30
 
 ### Added
+
 - **Observability**: Tracing logs across lite worker spawn, watchdog sweep, ACP session lifecycle, persistent-conn turn, replay buffer cap, MCP capability filter, AdapterGuard kill, ACP CWD validation, AXON_ACP_AUTH_TOKEN missing path, dispatch arm + per-arm latency in `dispatch_vector_search`.
 - **Doctor**: Lite doctor probes Qdrant collection vector mode and warns when `unnamed` collection is paired with `hybrid_search_enabled=true` (silent dense-only fallback).
 - **Stats**: SQLite-backed metrics (counts/durations/freshness/totals/longest crawl/most chunks) replace the no-op placeholder so `axon stats` populates Pipeline Stats / Freshness in lite mode.
@@ -1426,6 +1526,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 - **Collection name guard**: `validate_collection_name()` rejects path-traversal / URL-injection in `cfg.collection` at dispatch entry.
 
 ### Changed
+
 - **Lite crawl runner**: `result_json` now includes the field names the CLI status display reads (`pages_crawled`, `md_created`, `pages_discovered`, `thin_md`, `error_pages`, `waf_blocked_pages`).
 - **ACP unsupported model warning**: Deduped per-process via `LazyLock<Mutex<HashSet>>`; warning now lists the adapter's available model options.
 - **ACP fallback JSON parse**: Strips ```json fences and leading prose before `serde_json::from_str`; system prompt tightened to demand bare JSON output.
@@ -1434,6 +1535,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 - **`load_status_jobs`**: Replaced `unwrap_or(0)` on `count_jobs` with `unwrap_or_else` that logs a tracing::warn! per JobKind.
 
 ### Docs
+
 - Documented `LiteBackend::new()` (enqueue-only) vs `new_with_workers()` (spawns workers) in `crates/services/CLAUDE.md` and `docs/CONFIG.md`.
 - Removed stale `refresh` references from `crates/cli/CLAUDE.md` and `crates/mcp/CLAUDE.md` (refresh was deleted in commit 05da3b44).
 - Added an inline rationale block to `main.rs` for the 8 MB Tokio worker stack.
@@ -1441,14 +1543,17 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ## [0.35.1] - 2026-04-04
 
 ### Changed
+
 - **Structured documentation**: Reorganized project documentation for clarity and consistency.
 
 ## [0.35.0] - 2026-04-03
 
 ### Fixed
+
 - **OAuth discovery 401 cascade**: BearerAuthMiddleware was blocking GET /.well-known/oauth-protected-resource, causing MCP clients to surface generic "unknown error". Added WellKnownMiddleware (RFC 9728) to return resource metadata.
 
 ### Added
+
 - **docs/AUTHENTICATION.md**: New setup guide covering token generation and client config.
 - **README Authentication section**: Added quick-start examples and link to full guide.
 
@@ -2159,7 +2264,6 @@ This section documents commits on `main` relative to `fe11a78d`.
 - **Pre-chunking optimization (`1a78dc82`)** — github files pre-chunked before TEI batching, eliminating 413 fallback path.
 - **Worker CPU tuning (`5802ff62`)** — CPU-based lane defaults and async stale-tail deletes for better throughput.
 
-
 This section documents commits on `feat/web-integration-review-fixes` relative to `main` (`fe11a78d`).
 
 ### Highlights
@@ -2173,7 +2277,6 @@ This section documents commits on `feat/web-integration-review-fixes` relative t
 - **Embed worker crash fix** — `poll_next_delivery` in `crates/jobs/worker_lane/amqp.rs` returned `Ok(None)` when an in-flight future completed via `FuturesUnordered::next()`, which `parse_delivery_result` correctly mapped to `DeliveryOutcome::Break` (consumer stream ended), terminating the lane. Fixed by returning `timeout(Duration::ZERO, pending())` → `Err(Elapsed)` → `Continue` instead. Regression test added in `worker_lane.rs`.
 
 - **Web integration full-review fixes (v0.23.0)** — 5 critical and 12 high findings from a comprehensive `apps/web ↔ crates/web` integration review addressed across 20 files. Security: `check_auth()` now reads `Authorization`/`x-api-key` headers (tokens no longer forced into query strings / access logs); CORS preflight uses an explicit header allowlist instead of reflecting arbitrary client headers; ACP sessions are bound to originating WS connection (cross-session interference prevented); shell PTY input capped at 64 KB; debug-build auth bypass now emits a prominent `log::warn!`. Protocol: `acp_resume_result` field renamed `success` → `ok` to match TypeScript Zod schema (session resume was silently broken); `permission_request` ACP events fully wired through TypeScript WS handler; all `format!()`-based JSON replaced with `serde_json::json!()` (injection-safe); four ACP permission flags (`enable_fs`, `enable_terminal`, `permission_timeout_secs`, `adapter_timeout_secs`) wired through `ALLOWED_FLAGS` → `params.rs` (UI controls now functional). Performance: WS channel-full drops replaced with visible `[output truncated]` sentinel; sync-mode concurrency semaphore added (`AXON_MAX_SYNC_CONCURRENT`, default 16); per-connection WS execute rate limiting (120 req/60s); dead ACP adapter evicted from `SESSION_CACHE` on `run_turn()` error; `axon-ws-exec.ts` singleton sends abort-triggered cancel to server and caps pending map at 100. Code quality: `NO_JSON_MODES` updated to reflect service-layer routing; `pulse_chat_probe`/`mcp_refresh` documented as internal-only; editor system prompt extracted to named constant; 22 pre-existing TypeScript `noUncheckedIndexedAccess` test errors fixed; 862 tests passing.
-
 
 This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative to `main` (`82ecd6e1`).
 
@@ -2206,7 +2309,6 @@ This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative 
 - **Web auth hardening + Pulse workspace improvements + CLI cleanup (v0.14.0)** — SSH key auth (`crates/web/ssh_auth.rs`) validates SSH public keys from `~/.ssh/authorized_keys` or `AXON_SSH_AUTHORIZED_KEYS`; dual-auth mode (`AXON_REQUIRE_DUAL_AUTH`) requires both Tailscale identity AND API token; Tailscale auth module hardened with configurable allowed users/networks; Pulse workspace gains dedicated logs/MCP/terminal panes (`pulse-logs-pane.tsx`, `pulse-mcp-pane.tsx`, `pulse-terminal-pane.tsx`); mobile pane switcher improved; `use-split-pane` rewritten for new pane layout; proxy middleware updated; `axon.subdomain.conf` deleted (superseded by Tailscale auth); CLI: `spider_capture.rs` dead code deleted; `map.rs`/`scrape.rs`/`screenshot.rs` cleaned up; crawl runtime DB helpers expanded; AMQP channel improvements; `suggest.rs` simplified; `vector/ops/input` split into module; web download handler hardened; new `.env.example` entries for auth settings; `auth/` docs added
 
 - **Sync dispatch refactor + session guard scaffold (v0.13.2)** — `dispatch_service` split into focused per-mode helpers (`dispatch_query_modes`, `dispatch_acp_modes`, etc.) to keep the top-level router concise; `session_guard.rs` added as `pub(crate)` module under `crates/web/execute/` — polls `~/.claude/projects/` for `{session_id}.jsonl` after a Pulse turn completes (100ms × 50 retries); `#![allow(dead_code)]` suppresses warnings while the call site is wired; `AcpConn` type alias simplifies signatures in `acp_adapter.rs`; `subprocess.rs` restructured for cleaner fallback path; `pulse_chat.rs` session-file integration points added; ACP WS event tests updated to cover new event shapes
-
 
 - **Ingest progress display + embed list polish + crawl batch resilience (v0.13.1)** — `axon status` now shows live YouTube ingest progress (`videos_done/total`, `enumerating…` placeholder) via `result_json` COALESCE merge on completion; `axon embed list` displays rich per-job rows (target, metrics, collection, age, error) reusing `status/metrics` helpers (made `pub(crate)`); `crawl_batch` downgrades excluded-URL errors to warnings and only hard-fails if all URLs are excluded; `find_excluded_prefix` replaces `is_excluded_url_path` with clearer error message; `YoutubeVideoMeta` gains `video_id` + `thumbnail` fields stored as `yt_video_id`/`yt_thumbnail` Qdrant payload
 
@@ -2835,5 +2937,6 @@ This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative 
 - Landed multiple PR feedback batches and docs updates (`3863d7c`, `54a543b`).
 
 ### Notes
+
 - This changelog entry is commit-driven and branch-scoped to avoid stale migration guidance from unrelated historical branches.
 - For file-level detail, inspect `git log --name-status main..HEAD`.
