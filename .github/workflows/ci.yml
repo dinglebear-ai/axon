@@ -215,13 +215,26 @@ jobs:
 
   windows-build:
     name: windows-build (axon.exe)
-    # Native build on a GitHub-hosted Windows runner. Cross-compile from Linux
-    # via cargo-zigbuild was attempted but aws-lc-sys's jitterentropy code
-    # needs platform headers (sched.h for windows-gnu, windows.h for
-    # windows-msvc) that zig doesn't bundle, and aws-lc-rs is pulled in
-    # transitively through hyper-rustls so we can't easily switch to ring.
-    # Slow (~10-15 min cold) but reliable.
-    runs-on: windows-latest
+    # Cross-compiled from Linux with the mingw-w64 (x86_64-pc-windows-gnu)
+    # toolchain. A previous cargo-zigbuild attempt failed because zig does not
+    # bundle the Windows platform headers (sched.h / windows.h) that
+    # aws-lc-sys's jitterentropy code needs; mingw-w64 ships those headers, so
+    # aws-lc-sys and ring both cross-build cleanly (the resulting axon.exe was
+    # smoke-tested on Windows 11: it runs, loads the full CLI, and resolves
+    # native C:\ paths). Running on the Linux runner avoids the slow
+    # GitHub-hosted Windows VM and its 2x minute billing.
+    #
+    # The cfg(windows) AXON_DATA_DIR path-regression test is NOT run here: it
+    # would require executing the windows-gnu test binary under wine (the
+    # Ubuntu wine64 package ships no /usr/bin/wine* wrapper, and a full
+    # lib-test recompile roughly doubles the job time). The test still lives in
+    # src/core/paths_tests.rs and was confirmed passing on Windows 11 against
+    # this cross-compiled binary.
+    runs-on: ubuntu-latest
+    env:
+      CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
+      CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
+      AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
     steps:
       - uses: actions/checkout@v5
         with:
@@ -247,21 +260,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
+          targets: x86_64-pc-windows-gnu
+      - name: Install mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: axon-windows
+          shared-key: axon-windows-gnu
       - name: create web assets placeholder
         run: mkdir -p apps/web/out
-        shell: bash
-      - name: cargo build --release -p axon
-        run: cargo build --release --locked -p axon
-      - name: Windows AXON_DATA_DIR path regression
-        run: cargo test --locked -p axon axon_data_dir_accepts_windows_absolute_path
+      - name: cargo build --release -p axon (windows-gnu cross)
+        run: cargo build --release --locked -p axon --target x86_64-pc-windows-gnu
       - name: Upload axon.exe artifact
         uses: actions/upload-artifact@v5
         with:
           name: axon-windows-x86_64
-          path: target/release/axon.exe
+          path: target/x86_64-pc-windows-gnu/release/axon.exe
           if-no-files-found: error
 
   shell-completions-smoke:

@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "4.14.0"
+    "version": "4.16.0"
   },
   "paths": {
     "/v1/ask": {
@@ -2060,6 +2060,13 @@
               "type": "string"
             }
           },
+          "mcp_candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpCandidateAttempt"
+            },
+            "description": "Synthesized MCP candidate probe attempts (omitted when empty)."
+          },
           "scripts_discovered": {
             "type": "integer",
             "minimum": 0
@@ -2084,7 +2091,8 @@
           "inline_script",
           "script_bundle",
           "html_attribute",
-          "network_capture"
+          "network_capture",
+          "synthesized_mcp"
         ]
       },
       "EndpointVerification": {
@@ -2175,6 +2183,18 @@
             ],
             "minimum": 0
           },
+          "probe_rpc": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "probe_rpc_subdomains": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "unique_only": {
             "type": [
               "boolean",
@@ -2236,6 +2256,57 @@
           }
         },
         "additionalProperties": false
+      },
+      "McpCandidateAttempt": {
+        "type": "object",
+        "description": "One synthesized MCP candidate and its probe outcome.\n\n`rpc_probe` is `Some` iff `outcome == Confirmed`; every other outcome\n(`Unconfirmed`, `Blocked`) carries `None`.",
+        "required": [
+          "url",
+          "host_kind",
+          "path",
+          "outcome"
+        ],
+        "properties": {
+          "host_kind": {
+            "$ref": "#/components/schemas/McpHostKind"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/McpProbeOutcome"
+          },
+          "path": {
+            "type": "string"
+          },
+          "rpc_probe": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RpcProbeResult"
+              }
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "McpHostKind": {
+        "type": "string",
+        "description": "Which host a synthesized MCP candidate targets.",
+        "enum": [
+          "same_host",
+          "apex_subdomain"
+        ]
+      },
+      "McpProbeOutcome": {
+        "type": "string",
+        "description": "Outcome of probing one synthesized MCP candidate.",
+        "enum": [
+          "confirmed",
+          "unconfirmed",
+          "blocked"
+        ]
       },
       "PreparedSessionDoc": {
         "type": "object",
