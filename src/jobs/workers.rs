@@ -1,6 +1,7 @@
 mod heartbeat;
 mod progress;
 mod runners;
+mod watch_scheduler;
 
 use heartbeat::HeartbeatGuard;
 
@@ -154,6 +155,15 @@ pub fn spawn_workers(
             extract: Arc::clone(&extract_notify),
             ingest: Arc::clone(&ingest_notify),
         },
+        shutdown.clone(),
+    )));
+
+    // Watch scheduler: fires recurring watch definitions whose next_run_at has
+    // passed. Self-contained — leases its own due rows, no Notify channel.
+    tracing::info!(worker = "watch_scheduler", "jobs: spawning worker");
+    worker_handles.push(tokio::spawn(watch_scheduler::watch_scheduler_loop(
+        Arc::clone(&pool),
+        Arc::clone(&cfg),
         shutdown.clone(),
     )));
 

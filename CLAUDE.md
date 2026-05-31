@@ -178,7 +178,8 @@ High-level subsystem map:
   - `src/jobs/workers.rs` + `src/jobs/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
   - `src/jobs/{crawl,embed,extract,ingest}.rs` (per-family job payload + dispatch helpers)
   - `src/jobs/crawl/sitemap.rs` (sitemap helpers; the former `processor`/`repo`/`watchdog`/`worker`/`runtime` files were consolidated into `src/jobs/workers.rs` + `workers/runners/`)
-  - `src/jobs/watch.rs` (recurring task scheduler — list/create/run-now/history)
+  - `src/jobs/watch.rs` (recurring task scheduler — list/create/run-now/history + `lease_due_watches`)
+  - `src/jobs/workers/watch_scheduler.rs` (in-process loop that auto-fires due watches)
   - `src/jobs/backend.rs` (`JobBackend` trait + `SqliteJobBackend` only)
   - job states in `src/jobs/status.rs`
 - Vector + RAG:
@@ -319,6 +320,8 @@ AXON_INGEST_LANES=2                 # parallel ingest worker lanes
 AXON_EMBED_DOC_TIMEOUT_SECS=300     # per-document embed timeout
 AXON_JOB_STALE_TIMEOUT_SECS=300    # seconds before a running job is considered stale
 AXON_JOB_STALE_CONFIRM_SECS=60     # additional grace period before stale reclaim
+AXON_WATCH_TICK_SECS=15            # watch scheduler sweep interval (min 1)
+AXON_WATCH_LEASE_SECS=300          # watch lease TTL; must exceed one run's wall time (min 1)
 ```
 
 ### MCP Security Env
@@ -355,7 +358,7 @@ axon scrape https://example.com           # SQLite/in-process runtime (only mode
 
 **Supported commands:** scrape, summarize, diff, brand, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
 
-**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch.rs` and work today. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
+**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch.rs` and work today. Enabled watches also **fire automatically**: the in-process scheduler loop in `src/jobs/workers/watch_scheduler.rs` (spawned by `spawn_workers`, so active under `axon serve`/`axon mcp`) leases due watches (`next_run_at <= now`) each `AXON_WATCH_TICK_SECS` and runs them, advancing `next_run_at` by `every_seconds`. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
 
 ```bash
 # Env vars for runtime tuning

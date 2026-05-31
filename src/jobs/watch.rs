@@ -11,6 +11,48 @@ pub const WATCH_RUN_STATUS_RUNNING: &str = "running";
 pub const WATCH_RUN_STATUS_COMPLETED: &str = "completed";
 pub const WATCH_RUN_STATUS_FAILED: &str = "failed";
 
+/// Task types a watch may carry. A `task_type` outside this set can never run,
+/// so every create path (CLI, HTTP) must validate against this single list.
+pub const SUPPORTED_TASK_TYPES: &[&str] = &["refresh"];
+
+/// Validate a `task_type` at create time so callers never persist a watch that
+/// can never execute. Rejects surrounding whitespace (the stored value would
+/// otherwise fail the exact-match dispatch) and any type outside
+/// [`SUPPORTED_TASK_TYPES`]. The message is safe for entry points to surface.
+pub fn validate_task_type(task_type: &str) -> Result<(), String> {
+    if task_type != task_type.trim() {
+        return Err("task_type must not have leading or trailing whitespace".to_string());
+    }
+    if !SUPPORTED_TASK_TYPES.contains(&task_type) {
+        return Err(format!(
+            "unsupported task_type: '{}'; supported: {}",
+            task_type,
+            SUPPORTED_TASK_TYPES.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Minimum allowed watch interval. The scheduler leases purely on
+/// `next_run_at <= now`, so a sub-minimum interval would auto-fire too often.
+pub const MIN_WATCH_INTERVAL_SECS: i64 = 30;
+/// Maximum allowed watch interval (7 days).
+pub const MAX_WATCH_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60;
+
+/// Validate `every_seconds` at create time. Centralized (like
+/// [`validate_task_type`]) so every create path — REST `/v1/watch/create`,
+/// admin `/v1/watch`, and the CLI — enforces identical bounds and the
+/// scheduler can never lease a sub-minimum watch. The message is safe to
+/// surface to callers.
+pub fn validate_every_seconds(every_seconds: i64) -> Result<(), String> {
+    if !(MIN_WATCH_INTERVAL_SECS..=MAX_WATCH_INTERVAL_SECS).contains(&every_seconds) {
+        return Err(format!(
+            "every_seconds must be between {MIN_WATCH_INTERVAL_SECS} and {MAX_WATCH_INTERVAL_SECS}"
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchDef {
     pub id: Uuid,
@@ -191,6 +233,50 @@ pub async fn list_watch_defs_with_pool(
     Ok(rows.into_iter().map(parse_watch_def_row).collect())
 }
 
+/// Atomically lease every enabled watch that is due to run.
+///
+/// A single `UPDATE ... RETURNING` stamps `lease_expires_at = now + lease_ttl_ms`
+/// onto each enabled row with `next_run_at <= now` and a free lease (NULL or
+/// expired), returning the leased defs. SQLite serializes writers and the
+/// statement is atomic, so two schedulers can never lease the same watch twice.
+///
+/// The same statement also advances `next_run_at` to `now + every_seconds` at
+/// lease time. This is the single-flight guarantee: even if a run outlives its
+/// `lease_expires_at` TTL (e.g. a refresh task with many slow URLs running past
+/// `AXON_WATCH_LEASE_SECS`), the row is no longer due, so a later sweep cannot
+/// re-lease and double-fire it while the first run is still in flight.
+/// `finish_watch_run_with_pool` re-stamps `next_run_at` from the completion time
+/// and clears the lease. Tradeoff: a crashed run is retried at the next interval
+/// (once `reclaim_stale_watch_leases` frees the lease) rather than immediately.
+pub async fn lease_due_watches(
+    pool: &SqlitePool,
+    now: i64,
+    lease_ttl_ms: i64,
+    limit: i64,
+) -> Result<Vec<WatchDef>, Box<dyn Error>> {
+    let lease_until = now + lease_ttl_ms;
+    let rows = sqlx::query_as::<_, WatchDefRow>(
+        "UPDATE axon_watch_defs \
+         SET lease_expires_at = ?, next_run_at = ? + (every_seconds * 1000), updated_at = ? \
+         WHERE id IN ( \
+             SELECT id FROM axon_watch_defs \
+             WHERE enabled = 1 AND next_run_at <= ? \
+               AND (lease_expires_at IS NULL OR lease_expires_at < ?) \
+             ORDER BY next_run_at ASC LIMIT ? \
+         ) \
+         RETURNING id, name, task_type, task_payload, every_seconds, enabled, next_run_at, lease_expires_at, last_run_at, created_at, updated_at",
+    )
+    .bind(lease_until)
+    .bind(now)
+    .bind(now)
+    .bind(now)
+    .bind(now)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(parse_watch_def_row).collect())
+}
+
 pub async fn get_watch_def(
     cfg: &Config,
     watch_id: Uuid,
@@ -353,7 +439,68 @@ pub async fn run_watch_now_with_pool(
     watch: &WatchDef,
 ) -> Result<WatchRun, Box<dyn Error>> {
     let run = create_watch_run_with_pool(pool, watch.id, None).await?;
-    let outcome: Result<(), Box<dyn Error + Send + Sync>> = match watch.task_type.as_str() {
+
+    // Execute first (no DB writes), then finalize exactly once. `err_text` is a
+    // `String`, not a boxed `dyn Error`, so the box never crosses an await and
+    // the future stays `Send` for the axum runtime behind `/v1/watch/{id}/run`.
+    // A COMPLETED write that fails falls through to the FAILED finalize below so
+    // the run is never wedged in `running` — nothing reclaims stale runs.
+    let outcome: Result<serde_json::Value, String> = run_watch_task(cfg, watch).await;
+    let err_text = match outcome {
+        Ok(payload) => match finalize_completed(pool, watch, run.id, &payload).await {
+            Ok(()) => return Ok(get_watch_run_with_pool(pool, run.id).await?.unwrap_or(run)),
+            Err(text) => text,
+        },
+        Err(text) => text,
+    };
+    if let Err(persist_err) = finish_watch_run_with_pool(
+        pool,
+        watch.id,
+        run.id,
+        WATCH_RUN_STATUS_FAILED,
+        None,
+        Some(&err_text),
+    )
+    .await
+    {
+        // The FAILED-status write itself failed: the run row stays in `running`
+        // and nothing reclaims stale watch runs, so it is wedged permanently.
+        // Surface why instead of dropping the error silently.
+        tracing::warn!(
+            watch_id = %watch.id,
+            run_id = %run.id,
+            persist_error = %persist_err,
+            task_error = %err_text,
+            "watch run: FAILED-status write failed; run may be wedged in running",
+        );
+    }
+    Err(err_text.into())
+}
+
+/// Persist a COMPLETED run, mapping any error to a `String` so the non-`Send` box is dropped before the caller's next await.
+async fn finalize_completed(
+    pool: &SqlitePool,
+    watch: &WatchDef,
+    run_id: Uuid,
+    payload: &serde_json::Value,
+) -> Result<(), String> {
+    finish_watch_run_with_pool(
+        pool,
+        watch.id,
+        run_id,
+        WATCH_RUN_STATUS_COMPLETED,
+        Some(payload),
+        None,
+    )
+    .await
+    .map(|_| ())
+    .map_err(|err| err.to_string())
+}
+
+/// Execute a watch's task → result payload, or a human-readable failure message.
+/// Pure compute + scrape; the caller owns the single finalize write.
+async fn run_watch_task(cfg: &Config, watch: &WatchDef) -> Result<serde_json::Value, String> {
+    match watch.task_type.as_str() {
         "refresh" => {
             let urls = watch
                 .task_payload
@@ -361,72 +508,33 @@ pub async fn run_watch_now_with_pool(
                 .and_then(|value| serde_json::from_value::<Vec<String>>(value.clone()).ok())
                 .unwrap_or_default();
             if urls.is_empty() {
-                Err("watch refresh task requires task_payload.urls".into())
-            } else {
-                let mut checked = 0usize;
-                let mut failed = 0usize;
-                let mut refreshed = Vec::new();
-                for url in &urls {
-                    match crate::services::scrape::scrape(cfg, url, None).await {
-                        Ok(result) => {
-                            checked += 1;
-                            refreshed.push(serde_json::json!({
-                                "url": result.url,
-                                "markdown_chars": result.markdown.chars().count(),
-                            }));
-                        }
-                        Err(_) => {
-                            checked += 1;
-                            failed += 1;
-                        }
-                    }
-                }
-                let payload = serde_json::json!({
-                    "mode": "stateless-refresh",
-                    "checked": checked,
-                    "changed": 0,
-                    "unchanged": checked.saturating_sub(failed),
-                    "failed": failed,
-                    "urls": urls,
-                    "refreshed": refreshed,
-                });
-                let _ = finish_watch_run_with_pool(
-                    pool,
-                    watch.id,
-                    run.id,
-                    WATCH_RUN_STATUS_COMPLETED,
-                    Some(&payload),
-                    None,
-                )
-                .await?;
-                Ok(())
+                return Err("watch refresh task requires task_payload.urls".to_string());
             }
+            let mut checked = 0usize;
+            let mut failed = 0usize;
+            let mut refreshed = Vec::new();
+            for url in &urls {
+                checked += 1;
+                match crate::services::scrape::scrape(cfg, url, None).await {
+                    Ok(result) => refreshed.push(serde_json::json!({
+                        "url": result.url,
+                        "markdown_chars": result.markdown.chars().count(),
+                    })),
+                    Err(_) => failed += 1,
+                }
+            }
+            Ok(serde_json::json!({
+                "mode": "stateless-refresh",
+                "checked": checked,
+                "changed": 0,
+                "unchanged": checked.saturating_sub(failed),
+                "failed": failed,
+                "urls": urls,
+                "refreshed": refreshed,
+            }))
         }
-        other => Err(format!("unsupported watch task_type: {other}").into()),
-    };
-
-    // Consume the non-Send `Box<dyn StdError>` immediately into a String so
-    // the subsequent await never sees the box and the future stays
-    // `Send`-safe for the multi-thread axum runtime used by
-    // `/v1/watch/{id}/run`.
-    let outcome_err: Option<String> = match outcome {
-        Ok(()) => None,
-        Err(err) => Some(err.to_string()),
-    };
-    if let Some(err_text) = outcome_err {
-        let _ = finish_watch_run_with_pool(
-            pool,
-            watch.id,
-            run.id,
-            WATCH_RUN_STATUS_FAILED,
-            None,
-            Some(&err_text),
-        )
-        .await?;
-        return Err(err_text.into());
+        other => Err(format!("unsupported watch task_type: {other}")),
     }
-
-    Ok(get_watch_run_with_pool(pool, run.id).await?.unwrap_or(run))
 }
 
 #[cfg(test)]
