@@ -43,6 +43,64 @@ fn validate_task_type_accepts_supported_and_rejects_others() {
     assert!(validate_task_type("refresh ").is_err());
 }
 
+#[test]
+fn validate_every_seconds_enforces_shared_bounds() {
+    assert!(validate_every_seconds(MIN_WATCH_INTERVAL_SECS).is_ok());
+    assert!(validate_every_seconds(MAX_WATCH_INTERVAL_SECS).is_ok());
+    assert!(validate_every_seconds(3600).is_ok());
+    // Below minimum (the `/v1/watch` gap this centralization closes) and above max.
+    assert!(validate_every_seconds(MIN_WATCH_INTERVAL_SECS - 1).is_err());
+    assert!(validate_every_seconds(1).is_err());
+    assert!(validate_every_seconds(0).is_err());
+    assert!(validate_every_seconds(MAX_WATCH_INTERVAL_SECS + 1).is_err());
+}
+
+#[tokio::test]
+async fn lease_advances_next_run_at_for_single_flight() -> Result<(), Box<dyn Error>> {
+    // A run that outlives its lease TTL must not be re-leased: leasing advances
+    // next_run_at to now + every_seconds, so the row is no longer due even after
+    // the lease expires.
+    let temp = NamedTempFile::new()?;
+    let cfg = sqlite_cfg(temp.path());
+    let pool = crate::jobs::store::open_sqlite_pool(&temp.path().to_string_lossy()).await?;
+    let _ = cfg;
+
+    let due = create_watch_def_with_pool(
+        &pool,
+        &WatchDefCreate {
+            name: "long-runner".to_string(),
+            task_type: "refresh".to_string(),
+            task_payload: serde_json::json!({"urls": ["https://example.com"]}),
+            every_seconds: 60,
+            enabled: true,
+            next_run_at: Utc::now() - Duration::seconds(10),
+        },
+    )
+    .await?;
+
+    let now = now_ms();
+    // Short 1s lease TTL to model a run that outlives its lease.
+    let leased = lease_due_watches(&pool, now, 1_000, 16).await?;
+    assert_eq!(leased.len(), 1);
+    assert_eq!(leased[0].id, due.id);
+
+    // Sweep again well after the lease has expired (now + 5s > now + 1s TTL) but
+    // before next_run_at (now + 60s). The advanced next_run_at must block re-lease.
+    let after_expiry = now + 5_000;
+    let again = lease_due_watches(&pool, after_expiry, 1_000, 16).await?;
+    assert!(
+        again.is_empty(),
+        "expired lease must not re-fire an in-flight watch — next_run_at was advanced"
+    );
+
+    let row = get_watch_def_with_pool(&pool, due.id).await?.expect("def");
+    assert!(
+        row.next_run_at.timestamp_millis() >= now + 60_000,
+        "next_run_at advanced by every_seconds at lease time"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn lease_due_watches_leases_due_skips_future_and_already_leased() -> Result<(), Box<dyn Error>>
 {

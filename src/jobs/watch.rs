@@ -33,6 +33,26 @@ pub fn validate_task_type(task_type: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Minimum allowed watch interval. The scheduler leases purely on
+/// `next_run_at <= now`, so a sub-minimum interval would auto-fire too often.
+pub const MIN_WATCH_INTERVAL_SECS: i64 = 30;
+/// Maximum allowed watch interval (7 days).
+pub const MAX_WATCH_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60;
+
+/// Validate `every_seconds` at create time. Centralized (like
+/// [`validate_task_type`]) so every create path — REST `/v1/watch/create`,
+/// admin `/v1/watch`, and the CLI — enforces identical bounds and the
+/// scheduler can never lease a sub-minimum watch. The message is safe to
+/// surface to callers.
+pub fn validate_every_seconds(every_seconds: i64) -> Result<(), String> {
+    if every_seconds < MIN_WATCH_INTERVAL_SECS || every_seconds > MAX_WATCH_INTERVAL_SECS {
+        return Err(format!(
+            "every_seconds must be between {MIN_WATCH_INTERVAL_SECS} and {MAX_WATCH_INTERVAL_SECS}"
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchDef {
     pub id: Uuid,
@@ -219,7 +239,15 @@ pub async fn list_watch_defs_with_pool(
 /// onto each enabled row with `next_run_at <= now` and a free lease (NULL or
 /// expired), returning the leased defs. SQLite serializes writers and the
 /// statement is atomic, so two schedulers can never lease the same watch twice.
-/// `finish_watch_run_with_pool` clears the lease; a crash leaves it until expiry.
+///
+/// The same statement also advances `next_run_at` to `now + every_seconds` at
+/// lease time. This is the single-flight guarantee: even if a run outlives its
+/// `lease_expires_at` TTL (e.g. a refresh task with many slow URLs running past
+/// `AXON_WATCH_LEASE_SECS`), the row is no longer due, so a later sweep cannot
+/// re-lease and double-fire it while the first run is still in flight.
+/// `finish_watch_run_with_pool` re-stamps `next_run_at` from the completion time
+/// and clears the lease. Tradeoff: a crashed run is retried at the next interval
+/// (once `reclaim_stale_watch_leases` frees the lease) rather than immediately.
 pub async fn lease_due_watches(
     pool: &SqlitePool,
     now: i64,
@@ -228,7 +256,8 @@ pub async fn lease_due_watches(
 ) -> Result<Vec<WatchDef>, Box<dyn Error>> {
     let lease_until = now + lease_ttl_ms;
     let rows = sqlx::query_as::<_, WatchDefRow>(
-        "UPDATE axon_watch_defs SET lease_expires_at = ?, updated_at = ? \
+        "UPDATE axon_watch_defs \
+         SET lease_expires_at = ?, next_run_at = ? + (every_seconds * 1000), updated_at = ? \
          WHERE id IN ( \
              SELECT id FROM axon_watch_defs \
              WHERE enabled = 1 AND next_run_at <= ? \
@@ -238,6 +267,7 @@ pub async fn lease_due_watches(
          RETURNING id, name, task_type, task_payload, every_seconds, enabled, next_run_at, lease_expires_at, last_run_at, created_at, updated_at",
     )
     .bind(lease_until)
+    .bind(now)
     .bind(now)
     .bind(now)
     .bind(now)

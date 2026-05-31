@@ -197,8 +197,8 @@ pub(crate) async fn create_watch(
         return Err(HttpError::bad_request(&msg));
     }
     let task_type = req.task_type.as_str();
-    if req.every_seconds < 1 {
-        return Err(HttpError::bad_request("every_seconds must be >= 1"));
+    if let Err(msg) = crate::jobs::watch::validate_every_seconds(req.every_seconds) {
+        return Err(HttpError::bad_request(&msg));
     }
     if req
         .task_payload
