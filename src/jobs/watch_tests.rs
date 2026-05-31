@@ -106,7 +106,7 @@ async fn lease_due_watches_leases_due_skips_future_and_already_leased() -> Resul
     let cfg = sqlite_cfg(temp.path());
     let pool = crate::jobs::store::open_sqlite_pool(&temp.path().to_string_lossy()).await?;
 
-    let make = |name: &str, next_run: chrono::DateTime<Utc>| WatchDefCreate {
+    let make = |name: &str, next_run: DateTime<Utc>| WatchDefCreate {
         name: name.to_string(),
         task_type: "refresh".to_string(),
         task_payload: serde_json::json!({"urls": ["https://example.com"]}),
