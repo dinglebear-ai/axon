@@ -96,6 +96,14 @@ install:
     {{rust_dev_env}}; cargo build --release --locked
     just link-bin
 
+# Build the release binary and bundle it into the Claude Code plugin (Git LFS),
+# so plugins/axon/bin/axon ships a prebuilt binary like the rest of the family.
+build-plugin:
+    {{rust_dev_env}}; cargo build --release --locked --bin axon
+    mkdir -p plugins/axon/bin
+    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; install -m 755 "$AXON_TARGET_DIR/release/axon" plugins/axon/bin/axon
+    @echo "Bundled plugins/axon/bin/axon"
+
 # Build the local dev runtime image from this checkout.
 container-build:
     #!/usr/bin/env bash
