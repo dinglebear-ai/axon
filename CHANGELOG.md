@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.3] - 2026-06-01
+
+### Fixed
+
+- **Qdrant cold-read `ask` timeouts.** Bake `quantization.scalar.always_ram = true` + `hnsw_config.on_disk = false` into the `ensure_collection` create body (raw vectors stay `on_disk`). New/recreated collections now pin the int8 quantized vectors and HNSW graph in RAM instead of leaning on the OS page cache. Previously the `always_ram = false` default let cache eviction (e.g. a concurrent crawl) turn vector searches into 20–30s cold disk reads, tripping the 30s `internal_service_http_client` timeout and hard-failing `ask`. Warm searches drop from seconds to ~40–60ms.
+
 ## [4.18.2] - 2026-06-01
 
 ### Changed
