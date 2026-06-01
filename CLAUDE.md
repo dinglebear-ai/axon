@@ -35,8 +35,8 @@ cargo build --release --bin axon
 ```
 
 MCP docs:
-- `docs/MCP.md` (runtime/design guide)
-- `docs/MCP-TOOL-SCHEMA.md` (wire contract schema source of truth)
+- `docs/reference/mcp/overview.md` (runtime/design guide)
+- `docs/reference/mcp/tool-schema.md` (wire contract schema source of truth)
 
 ## Commands
 
@@ -159,7 +159,7 @@ All flags are `--global` (usable with any subcommand).
 
 ## Architecture
 
-Canonical architecture and data-flow diagrams live in `docs/ARCHITECTURE.md`.
+Canonical architecture and data-flow diagrams live in `docs/architecture/overview.md`.
 
 High-level subsystem map:
 
@@ -258,7 +258,7 @@ Axon uses two configuration layers, both rooted under `~/.axon/`:
 
 **Priority:** CLI flags > env vars > `~/.axon/config.toml` > built-in defaults.
 
-`~/.axon/` is the canonical home for axon's persistent data — `jobs.db`, `output/`, `logs/`, `artifacts/`, `screenshots/`, and `chrome-diagnostics/` all live flat under it. `AXON_DATA_DIR` defaults to `~/.axon` (no nested `axon/` subdirectory). See `docs/CONFIG.md` for the full directory tree.
+`~/.axon/` is the canonical home for axon's persistent data — `jobs.db`, `output/`, `logs/`, `artifacts/`, `screenshots/`, and `chrome-diagnostics/` all live flat under it. `AXON_DATA_DIR` defaults to `~/.axon` (no nested `axon/` subdirectory). See `docs/guides/configuration.md` for the full directory tree.
 
 **Migration from `~/.local/share/axon`:** axon does NOT auto-migrate. Either move the directory yourself (`mv ~/.local/share/axon ~/.axon`) or set `AXON_DATA_DIR=~/.local/share` to pin the old location. Tuning knobs that were previously env-only are now also accepted in `~/.axon/config.toml`.
 
@@ -275,7 +275,7 @@ AXON_CONFIG_PATH=/path/to/config.toml axon ask "..."
 # Missing config.toml = silent, uses defaults
 ```
 
-See `config.example.toml` at the repo root for all supported keys with defaults and docs. See `docs/CONFIG.md` for the full environment variable reference.
+See `config.example.toml` at the repo root for all supported keys with defaults and docs. See `docs/guides/configuration.md` for the full environment variable reference.
 
 ## Environment Variables
 
@@ -434,7 +434,7 @@ The compose file sets `context: .` — run `docker compose build` from this dire
 - **`chrome_headless_new`**: Uses `--headless=new` instead of legacy headless. Better DOM fidelity but slightly different rendering behavior on some sites.
 - **`balance`**: NOT enabled — silently throttles concurrency with zero logging. We manage concurrency explicitly via performance profiles.
 - **`glob`**: NOT enabled — glob URL patterns (`{a,b}`, `[0-9]`) change `crawl_establish` to use `is_allowed()` (budget-aware) instead of `is_allowed_default()`. With `with_limit(1)`, the budget check immediately returns `BudgetExceeded` for the FIRST URL, producing 0 pages from Chrome crawls. axon doesn't use URL glob patterns in its CLI, so this feature is excluded. Do NOT add it back.
-- Full flag inventory: [`docs/SPIDER-FEATURE-FLAGS.md`](docs/SPIDER-FEATURE-FLAGS.md)
+- Full flag inventory: [`docs/reference/spider-feature-flags.md`](docs/reference/spider-feature-flags.md)
 
 ### Subprocess stdout vs stderr
 CLI commands output JSON data to stdout and progress/logs to stderr (Spinner via indicatif, tracing via `log_info`/`log_done`). Keep this split intact so server-mode and MCP callers can safely parse command output.

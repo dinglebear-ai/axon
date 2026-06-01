@@ -1,0 +1,14 @@
+status
+
+Usage
+  axon crawl status [OPTIONS] <JOB_ID>
+
+Arguments
+  <JOB_ID>           
+
+Options
+  --active                         Show only active jobs
+  --recent                         Show active and completed jobs
+  --reclaimed                      Show only watchdog-reclaimed jobs
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

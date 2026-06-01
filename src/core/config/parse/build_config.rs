@@ -18,7 +18,7 @@ use super::super::cli::{Cli, DEFAULT_OUTPUT_DIR};
 use super::super::types::{CommandKind, Config};
 use super::excludes;
 use super::helpers::{default_sqlite_path, parse_viewport, read_env, validate_collection_name};
-// AXON_MCP_TRANSPORT is documented as a known knob in docs/CONFIG.md and is referenced
+// AXON_MCP_TRANSPORT is documented as a known knob in docs/guides/configuration.md and is referenced
 // inside `config_literal::build` (via `resolve_mcp_transport`) so the
 // `cargo xtask check-mcp-http` grep keeps finding the canonical knob name.
 use super::toml_config::load_toml_config;

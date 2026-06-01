@@ -1,0 +1,11 @@
+Reconcile locally produced server-mode artifacts
+
+Usage
+  axon sync [OPTIONS]
+  axon sync <COMMAND>
+
+Commands
+  pending              Show local artifacts waiting to be reconciled with the server
+
+Options
+  -h, --help                       Print help

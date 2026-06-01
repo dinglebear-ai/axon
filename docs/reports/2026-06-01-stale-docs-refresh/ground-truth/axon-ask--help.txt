@@ -1,0 +1,26 @@
+RAG: retrieve relevant context, then answer with LLM
+
+Usage
+  axon ask [OPTIONS] [TEXT]...
+
+Arguments
+  [TEXT]...          Text query or prompt
+
+Options
+  --diagnostics                    
+  --explain                        
+  --stream                         Stream answer tokens as they arrive for interactive use. This is the default
+  --no-stream                      Disable answer token streaming and render only the final response
+  -c, --follow-up                  Treat this question as a follow-up to recent turns in the ask session. `--continue` is accepted as an alias and `-c` is the short form
+  --session <NAME>                 Name of the local ask session used for follow-up context
+  --reset-session                  Clear the selected ask session before running this question
+  --new-session                    Force a fresh ask session, overwriting any selected one (mutually exclusive with --follow-up)
+  --list-sessions                  List local ask sessions and exit. Cannot be combined with a query argument
+  --resume <NAME>                  Resume a named ask session (shorthand for `--follow-up --session NAME`)
+  --collection <name>              Qdrant collection name
+  --limit <n>                      Maximum number of results
+  --since <date>                   Filter to content indexed on or after this date
+  --before <date>                  Filter to content indexed on or before this date
+  --no-hybrid-search               Force dense-only retrieval
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

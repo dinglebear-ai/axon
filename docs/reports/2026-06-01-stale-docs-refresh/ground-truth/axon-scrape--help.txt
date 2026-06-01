@@ -1,0 +1,19 @@
+Scrape one or more URLs to markdown
+
+Usage
+  axon scrape [OPTIONS] [URL]...
+
+Arguments
+  [URL]...           URL to process
+
+Options
+  --max-pages <n>                  Maximum pages to crawl
+  --max-depth <n>                  Maximum crawl depth
+  --render-mode <mode>             Page fetch mode: http, chrome, or auto-switch
+  --include-subdomains <bool>      Include subdomains in crawl scope
+  --header <HEADER>                Custom HTTP request header
+  --skip-embed                     Fetch/save without indexing into Qdrant
+  --collection <name>              Qdrant collection name
+  --wait <bool>                    Block until async jobs complete
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

@@ -1,0 +1,10 @@
+get
+
+Usage
+  axon watch get [OPTIONS] <ID>
+
+Arguments
+  <ID>               
+
+Options
+  -h, --help                       Print help

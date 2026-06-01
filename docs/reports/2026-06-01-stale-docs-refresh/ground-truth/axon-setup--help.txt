@@ -1,0 +1,14 @@
+Initialize and inspect Axon infrastructure
+
+Usage
+  axon setup [OPTIONS]
+  axon setup <COMMAND>
+
+Commands
+  plugin-hook          Hook-safe preflight/setup entrypoint for Claude Code plugin SessionStart
+  init                 Initialize local Axon config, env, and compose assets
+  check                Check local prerequisites without mutating files or services
+  targets              List SSH host aliases discovered from ~/.ssh/config (informational)
+
+Options
+  -h, --help                       Print help

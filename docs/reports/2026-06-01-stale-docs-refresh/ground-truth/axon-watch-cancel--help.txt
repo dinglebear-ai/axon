@@ -1,0 +1,6 @@
+error: unrecognized subcommand 'cancel'
+
+Usage: axon watch [OPTIONS]
+       axon watch <COMMAND>
+
+For more information, try '--help'.

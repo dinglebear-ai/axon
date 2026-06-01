@@ -9,16 +9,16 @@ paths=(
   tests
   README.md
   CLAUDE.md
-  docs/ARCHITECTURE.md
-  docs/CONFIG.md
-  docs/DEPLOYMENT.md
-  docs/JOB-LIFECYCLE.md
-  docs/MCP.md
-  docs/OPERATIONS.md
-  docs/SECURITY.md
-  docs/SETUP.md
-  docs/commands
-  docs/config
+  docs/architecture/overview.md
+  docs/guides/configuration.md
+  docs/operations/deployment.md
+  docs/reference/job-lifecycle.md
+  docs/reference/mcp/overview.md
+  docs/operations/operations.md
+  docs/operations/security.md
+  docs/guides/getting-started.md
+  docs/reference/commands
+  docs/reference/env-matrix.toml
 )
 
 if rg -n "$pattern" "${paths[@]}" \

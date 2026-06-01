@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.2] - 2026-06-01
+
+### Changed
+
+- **Documentation: comprehensive accuracy refresh + aggressive restructure.**
+  - Verified all ~110 living/reference docs against current source. Fixed the default
+    collection (`cortex` → `axon`) across command/config/ingest/MCP docs, corrected MCP
+    action tables and payload schema version (v4), the watch auto-fire scheduler, security
+    port-binding claims, the spider `firewall` flag (NOT enabled), and stale `axon_rust`
+    naming / removed-AMQP/lite-mode references.
+  - Added 6 missing command references: `diff`, `brand`, `config`, `train`, `monitor`, `sync`.
+  - Restructured `docs/` into intent-based sections — `guides/`, `reference/`, `architecture/`,
+    `operations/`, `contributing/` — with filenames normalized to lowercase-kebab. Dated
+    historical records (sessions, reports, plans, archive, superpowers, perf snapshots) left in
+    place. All moves via `git mv` (history preserved); every internal link and code/CI/script
+    reference updated; link-checked clean. Rewrote `docs/README.md` and `docs/CLAUDE.md` as
+    navigation hubs. Audit trail under `docs/reports/2026-06-01-stale-docs-refresh/`.
+
 ## [4.18.1] - 2026-06-01
 
 ### Added
@@ -18,7 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Dropped the committed root `bin/axon`; the plugin ships its binary at `plugins/axon/bin/axon`.
-
 ## [4.18.0] - 2026-05-31
 
 ### Added
@@ -194,7 +211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Android redesign specs** — added `docs/specs/android-redesign.md` and
+- **Android redesign specs** — added `docs/architecture/specs/android-redesign.md` and
   implementation plans for Android phase 3 completion and the full rail redesign.
 
 ### Changed
@@ -661,10 +678,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- Added `## Security and Scope` section to `docs/commands/endpoints.md` covering
+- Added `## Security and Scope` section to `docs/reference/commands/endpoints.md` covering
   `axon:write` scope requirement, anonymous probe behavior, and CDP pre-dispatch
   blocking.
-- Added `## Resource Controls` table to `docs/commands/endpoints.md` with exact
+- Added `## Resource Controls` table to `docs/reference/commands/endpoints.md` with exact
   constants, semaphore defaults, and environment override knobs.
 
 ## [4.3.0] - 2026-05-21
@@ -848,7 +865,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- docs/commands/ask.md: documented the seven session-related flags together, added a "Session Lifecycle" table covering each flag's effect on session selection, history loading, and wipes, plus runnable examples for the new combinations.
+- docs/reference/commands/ask.md: documented the seven session-related flags together, added a "Session Lifecycle" table covering each flag's effect on session selection, history loading, and wipes, plus runnable examples for the new combinations.
 
 ## [2.6.0] - 2026-05-17
 
@@ -868,7 +885,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **palette/ui**: Stale-conversation idle-timeout sweep now runs on every submit instead of only `ask` submits, so non-ask commands after a long idle still clear the stale conversation state. (PR #100 review feedback)
 - **.env.example**: Removed `AXON_LITE=` template entry. The migration matrix classifies the key as `delete-on-migration`; runtime still accepts it as a backward-compat no-op, but it has no place in an env template. Aligns env-template with migration policy. (PR #100 review feedback)
-- **docs/config/env-migration-matrix.toml**: Added `env-template` to `AXON_LOG_PATH` surfaces so migration metadata reflects that the key is present in `.env.example`. (PR #100 review feedback)
+- **docs/reference/env-matrix.toml**: Added `env-template` to `AXON_LOG_PATH` surfaces so migration metadata reflects that the key is present in `.env.example`. (PR #100 review feedback)
 
 ## [2.4.1] - 2026-05-17
 
@@ -970,7 +987,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - chore: hard-rename `AXON_LOG_DIR` + `AXON_LOG_FILE` → single `AXON_LOG_PATH` env var (full path to active log file; rotated siblings live in the same directory). Default unchanged: `$AXON_DATA_DIR/logs/axon.log`. Legacy vars listed in migration registry for cleanup.
 - chore: rename default Qdrant collection `cortex` → `axon`. Affects `Config::default().collection`, the clap `--collection` default, and the `cfg.collection != "cortex"` "is user-customized?" checks in `build_config.rs` and `src/ingest/sessions.rs::resolve_collection`.
 - chore: rename `Config::default_lite()` → `Config::default_minimal()` and `apply_default_lite_tuning()` → `apply_default_minimal_tuning()`. Test fn names `*_in_lite_mode` → `*_with_lite_backend`.
-- docs: scrub `AXON_LITE` / `--lite` / `cortex` references across CLAUDE.md, docs/CONFIG.md, docs/TESTING.md, .env.example, config.example.toml. Root CLAUDE.md updated to point at `axon setup migrate-env` for the env scrub (was misleadingly described as "auto-scrubs"). The OPENAI_* docstring corrected — those vars are active wire types for the extract pipeline, not legacy compat.
+- docs: scrub `AXON_LITE` / `--lite` / `cortex` references across CLAUDE.md, docs/guides/configuration.md, docs/contributing/testing.md, .env.example, config.example.toml. Root CLAUDE.md updated to point at `axon setup migrate-env` for the env scrub (was misleadingly described as "auto-scrubs"). The OPENAI_* docstring corrected — those vars are active wire types for the extract pipeline, not legacy compat.
 - docs: add `src/extract/CLAUDE.md` (vertical extractor framework + 13 verticals). Refresh `src/core/CLAUDE.md` content/ map (extract_ladder, extraction, markdown, filename, url_parsing + sidecars). Refresh `src/crawl/CLAUDE.md` collector/ map with per-page passes (antibot detect, structured-data, DOM ladder). Add `vertical_scrape` action (discovery-only) to `src/mcp/CLAUDE.md`. Update all sub-CLAUDE.md `Last Modified` headers.
 - env: restructure `.env.example` into labeled sections (Data + URLs, MCP, Web panel, Ingest, Gemini, Logging, Compose). Add missing actively-read vars (`AXON_HOME`, `AXON_COLLECTION`, `AXON_MCP_HTTP_HOST/PORT`, `AXON_WEB_ALLOWED_ORIGINS`, `AXON_WEB_API_TOKEN`).
 - docker: refactor docker-compose.yaml with `x-common-service` and `x-gpu-service` YAML anchors to reduce duplication. Dockerfile: pin container env defaults (`AXON_HOME`, `AXON_IN_CONTAINER`, `AXON_MCP_HTTP_HOST=0.0.0.0`, `CLICOLOR_FORCE`).
@@ -1197,8 +1214,8 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 - Documented the canonical `~/.axon/` layout across all docs and removed `[env-only]` framing from the TOML config reference (epic `axon_rust-2j9`).
 - `config.example.toml`: dropped every `[env-only]` marker; every `[services]`, `[search]`, `[ask]`, `[tei]`, and `[workers]` key is now wired through `Config` and takes effect when set, with the env var still overriding (`axon_rust-2j9.4`).
 - `.env.example`: documented the auto-load order (`AXON_ENV_FILE` → `~/.axon/.env` → repo-root `.env` ancestor walk; first match wins).
-- `docs/CONFIG.md`: added the canonical `~/.axon/` directory tree, replaced the Phase 1 / Phase 2 / "env-only" tables with a single wired-keys table, refreshed every `$AXON_DATA_DIR/axon/...` default-path example to the flat `$AXON_DATA_DIR/...` form, and added a migration note for users coming from `~/.local/share/axon` (`axon_rust-2j9.5`).
-- `CLAUDE.md`, `README.md`, `docs/MCP.md`, `docs/DEPLOYMENT.md`, `docs/OPERATIONS.md`, `docs/ACP.md`, `docs/mcp/DEPLOY.md`, `docs/mcp/ENV.md`, `src/core/CLAUDE.md`, `src/jobs/CLAUDE.md`, `src/mcp/CLAUDE.md`: updated stale `~/.local/share/axon` and `$AXON_DATA_DIR/axon/...` references to the flat `~/.axon/` layout.
+- `docs/guides/configuration.md`: added the canonical `~/.axon/` directory tree, replaced the Phase 1 / Phase 2 / "env-only" tables with a single wired-keys table, refreshed every `$AXON_DATA_DIR/axon/...` default-path example to the flat `$AXON_DATA_DIR/...` form, and added a migration note for users coming from `~/.local/share/axon` (`axon_rust-2j9.5`).
+- `CLAUDE.md`, `README.md`, `docs/reference/mcp/overview.md`, `docs/operations/deployment.md`, `docs/operations/operations.md`, `docs/ACP.md`, `docs/reference/mcp/deploy.md`, `docs/reference/mcp/env.md`, `src/core/CLAUDE.md`, `src/jobs/CLAUDE.md`, `src/mcp/CLAUDE.md`: updated stale `~/.local/share/axon` and `$AXON_DATA_DIR/axon/...` references to the flat `~/.axon/` layout.
 
 ### Notes
 
@@ -1239,8 +1256,8 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 
 - Logging now uses size-based rotation instead of daily/7-file. `<dir>/<file>` rolls when the active file exceeds `AXON_LOG_MAX_BYTES`; archives shift `<file>.{N-1} -> <file>.N`. `AXON_LOG_DIR` and `AXON_LOG_FILE` (bare filename) control location.
 - `crates/jobs/CLAUDE.md`, `README.md`, `crates/ingest/CLAUDE.md`: replaced fictional "Tier 2 content-aware heartbeat" section (referenced non-existent constants) with accurate description of the new heartbeat + cancellation contract.
-- `docs/auth/API-TOKEN.md`: full rewrite. Documents the four real axon-side tokens (`AXON_MCP_HTTP_TOKEN`, web panel password, `AXON_ACP_AUTH_TOKEN`, `AXON_ACP_WS_TOKEN`); removes deleted-surface references (`/ws`, `/output/*`, `/download/*`, `AXON_WEB_API_TOKEN`).
-- `docs/SECURITY.md` §8: lists all three Chrome ports (6000 management, 9222 CDP proxy, 9223 raw DevTools), confirms loopback bind, adds cross-host deployment caveats. `config/docker-compose.services.yaml` annotated with intentional-loopback-bind comment.
+- `docs/operations/auth/api-token.md`: full rewrite. Documents the four real axon-side tokens (`AXON_MCP_HTTP_TOKEN`, web panel password, `AXON_ACP_AUTH_TOKEN`, `AXON_ACP_WS_TOKEN`); removes deleted-surface references (`/ws`, `/output/*`, `/download/*`, `AXON_WEB_API_TOKEN`).
+- `docs/operations/security.md` §8: lists all three Chrome ports (6000 management, 9222 CDP proxy, 9223 raw DevTools), confirms loopback bind, adds cross-host deployment caveats. `config/docker-compose.services.yaml` annotated with intentional-loopback-bind comment.
 
 ### Security
 
@@ -1278,8 +1295,8 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ### Docs
 
 - README clarified that `AXON_LITE` defaults to `false` (was incorrectly described as the build default) (PR #67)
-- `docs/CONFIG.md` deduplicated `AXON_NO_COLOR` row (PR #67)
-- `docs/mcp/ENV.md` documents unset semantics for `AXON_MCP_EMBED_MAX_LOCAL_BYTES` and `AXON_MCP_ALLOWED_ORIGINS` (PR #67)
+- `docs/guides/configuration.md` deduplicated `AXON_NO_COLOR` row (PR #67)
+- `docs/reference/mcp/env.md` documents unset semantics for `AXON_MCP_EMBED_MAX_LOCAL_BYTES` and `AXON_MCP_ALLOWED_ORIGINS` (PR #67)
 - ACP session cache `evict_if_over_cap` doc rewritten to describe actual `min_by_key` tie-breaking (the previous "skips eviction on identical timestamps" claim was incorrect) (PR #67)
 
 ## [1.5.2] - 2026-05-06
@@ -1294,7 +1311,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 
 - `lefthook.yml`: replaced 5 shell hooks with `cargo xtask check-*`; switched cargo gates to `--workspace` so the xtask crate is exercised by clippy/check/test (axon_rust-pp5.8)
 - CI `mcp-transport-modes` and `no-mod-rs` jobs now install Rust toolchain + cache and call `cargo xtask`; `check`, `msrv`, `clippy`, `test` jobs upgraded to `--workspace` (axon_rust-pp5.9)
-- Updated docs (`docs/GUARDRAILS.md`, `docs/repo/REPO.md`, `docs/repo/RULES.md`, `docs/repo/SCRIPTS.md`) and one source comment in `crates/core/config/parse/build_config.rs` to reference the new xtask commands (axon_rust-pp5.8)
+- Updated docs (`docs/contributing/guardrails.md`, `docs/contributing/repo/repo.md`, `docs/contributing/repo/rules.md`, `docs/contributing/repo/scripts.md`) and one source comment in `crates/core/config/parse/build_config.rs` to reference the new xtask commands (axon_rust-pp5.8)
 
 ### Removed
 
@@ -1339,7 +1356,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 ### Changed
 
 - MapResult migrated from serde_json::Value to typed struct with total: u64 field
-- docs/CONFIG.md designated as single authoritative env var reference
+- docs/guides/configuration.md designated as single authoritative env var reference
 - Fixed MCP handle_map double-pagination bug
 
 ## [1.3.4] - 2026-05-05
@@ -1421,7 +1438,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 - Malformed `AXON_HYBRID_SEARCH` (or any env bool) emits a warning before falling through to TOML/default.
 - PermissionDenied on config file is now a hard fail (not warn+default).
 - Docker infra cleanup: removed `docker/s6/` service scripts, CI scripts no longer needed for the current lite-mode stack.
-- `docs/CONFIG.md`, `CLAUDE.md`, `config.example.toml`: two-layer config system documented; wired vs env-only keys distinguished.
+- `docs/guides/configuration.md`, `CLAUDE.md`, `config.example.toml`: two-layer config system documented; wired vs env-only keys distinguished.
 
 ### Fixed
 
@@ -1597,7 +1614,7 @@ Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis work
 
 ### Docs
 
-- Documented `LiteBackend::new()` (enqueue-only) vs `new_with_workers()` (spawns workers) in `crates/services/CLAUDE.md` and `docs/CONFIG.md`.
+- Documented `LiteBackend::new()` (enqueue-only) vs `new_with_workers()` (spawns workers) in `crates/services/CLAUDE.md` and `docs/guides/configuration.md`.
 - Removed stale `refresh` references from `crates/cli/CLAUDE.md` and `crates/mcp/CLAUDE.md` (refresh was deleted in commit 05da3b44).
 - Added an inline rationale block to `main.rs` for the 8 MB Tokio worker stack.
 
@@ -1804,7 +1821,7 @@ Last Modified: 2026-03-31 (session: v0.34.1 — simplification pass: dedup helpe
 - **Stable embed metadata** — `axon embed status --json` now exposes top-level `collection`, `target`, and `source` fields so automation does not need to scrape nested blobs to find collection metadata.
 - **Lite-mode embed parity** — lite embed workers no longer leak a second JSON payload during in-process completion; the start and status paths now present one coherent contract.
 - **Warning cleanup in touched tests** — warning-only `.unwrap()` / `.expect()` additions were removed from the affected CLI, services, MCP config, watch-lite, and refresh-schedule test modules.
-- **Embed command docs corrected** — `docs/commands/embed.md` now documents the fixed local CLI JSON shape instead of the old leaked behavior.
+- **Embed command docs corrected** — `docs/reference/commands/embed.md` now documents the fixed local CLI JSON shape instead of the old leaked behavior.
 
 ### Commits since v0.33.1
 
@@ -1919,7 +1936,7 @@ Last Modified: 2026-03-31 (session: v0.34.1 — simplification pass: dedup helpe
 - **CI/CD** — All CI jobs standardized to `rust-toolchain.toml` pin (`1.94.0`); weekly scheduled run for `#[ignore]` AMQP infra tests; `cargo-audit`/`cargo-deny` switched to `taiki-e/install-action` prebuilt binaries; Renovate `regexManagers` for 4 Dockerfile ARG binary versions; `services.env` protected by pre-commit env guard.
 - **Code quality** — `open_amqp_channel()` deprecated + `pub(crate)`; `#[must_use]` on 26 public service entry-points; `thiserror` derive on `PayloadParseError`; named exports standardized in 2 TSX components; `criterion` dev-dep removed; `f64::EPSILON as f32` → `f32::EPSILON` in similarity test.
 - **Testing** — 5 SQL safety tests (`JobTable`/`JobStatus` value validation); 2 collection mode cache tests; 2 auth bypass tests; CI schedule for infra tests.
-- **Docs** — `docs/spider-feature-flags.md` corrected (`glob` removed, `hedge` documented, version updated); `.env.example` `AXON_COLLECTION` unified to `cortex`; `docs/SECURITY.md` and `docs/auth/API-TOKEN.md` updated; ACP session cache constants labeled in `docs/ACP.md`.
+- **Docs** — `docs/spider-feature-flags.md` corrected (`glob` removed, `hedge` documented, version updated); `.env.example` `AXON_COLLECTION` unified to `cortex`; `docs/operations/security.md` and `docs/operations/auth/api-token.md` updated; ACP session cache constants labeled in `docs/ACP.md`.
 
 ### Commits since v0.32.2
 
@@ -2051,7 +2068,7 @@ This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.
 - **Services layer** — `crates/services/scrape.rs` extracted as a dedicated module (+71 lines); `crates/services/error.rs` added; `crates/services.rs` re-export updated; `services/acp/bridge.rs` expanded (+90 lines) for richer ACP session lifecycle.
 - **MCP handler improvements** — All six handler files updated for cleaner URL validation, job-ID parsing, and error propagation; `schema.rs` minor correction; `handlers_system/screenshot.rs` cleaned.
 - **Config parse** — `build_config.rs` (+63 lines) adds new fields; `cli.rs` (+48 lines) expands CLI flags; `config.rs`/`config_impls.rs` updated with new defaults.
-- **Docs** — `docs/EXPORT.md`, `docs/GRAPH.md`, `docs/RESTORE.md`, `docs/commands/README.md`, `docs/commands/export.md`, `docs/commands/graph.md` added; `docs/MCP.md`, `docs/MCP-TOOL-SCHEMA.md`, `docs/SCHEMA.md`, `docs/JOB-LIFECYCLE.md` updated.
+- **Docs** — `docs/EXPORT.md`, `docs/GRAPH.md`, `docs/RESTORE.md`, `docs/reference/commands/README.md`, `docs/reference/commands/export.md`, `docs/reference/commands/graph.md` added; `docs/reference/mcp/overview.md`, `docs/reference/mcp/tool-schema.md`, `docs/SCHEMA.md`, `docs/reference/job-lifecycle.md` updated.
 - **Deleted stale plans** — Seven completed superpowers plan docs removed (`2026-03-10` through `2026-03-13`).
 
 ### Commits since v0.28.0
@@ -2329,7 +2346,7 @@ This section documents commits on `feat/web-integration-review-fixes` relative t
 
 ### Highlights
 
-- **Secondary violation fixes (v0.23.3)** — six targeted fixes from follow-up review: (1) `rate_limiter.rs` O(N) `retain()` on every request replaced with amortized sweep (AtomicU64 gate, at most once per 60s window); (2) `handlers_elicit.rs` raw error detail `{e}` no longer forwarded to MCP client — logged server-side, generic `"elicitation failed"` returned; (3) `ws_send.rs` sentinel type hardcoded to `"log"` (was preserving original event type, producing malformed `command.*` messages without required `ctx` fields); (4) `config/mcporter.json` hardcoded `/home/jmagar/.local/bin/axon` replaced with portable `axon` (assumes PATH); (5) `docs/MCP-TOOL-SCHEMA.md` corrected: `auto-inline` added to `ResponseMode` enum, `path` field marked required only for `head|grep|wc|read|delete` (not `list|search|clean`), `pattern` noted as required for both `grep` and `search`; (6) `elicit_demo` added to `action:help` discoverable action map in `handlers_system.rs`.
+- **Secondary violation fixes (v0.23.3)** — six targeted fixes from follow-up review: (1) `rate_limiter.rs` O(N) `retain()` on every request replaced with amortized sweep (AtomicU64 gate, at most once per 60s window); (2) `handlers_elicit.rs` raw error detail `{e}` no longer forwarded to MCP client — logged server-side, generic `"elicitation failed"` returned; (3) `ws_send.rs` sentinel type hardcoded to `"log"` (was preserving original event type, producing malformed `command.*` messages without required `ctx` fields); (4) `config/mcporter.json` hardcoded `/home/jmagar/.local/bin/axon` replaced with portable `axon` (assumes PATH); (5) `docs/reference/mcp/tool-schema.md` corrected: `auto-inline` added to `ResponseMode` enum, `path` field marked required only for `head|grep|wc|read|delete` (not `list|search|clean`), `pattern` noted as required for both `grep` and `search`; (6) `elicit_demo` added to `action:help` discoverable action map in `handlers_system.rs`.
 
 - **All PR review findings addressed (v0.23.2, `ebd54fd6`)** — complete batch of security, monolith, and test-hardening fixes: 14 Dependabot vulnerabilities resolved (13 npm via `pnpm.overrides`, 1 Rust `quinn-proto` via `cargo update`); `WEB-INTEGRATION-REVIEW.md` removed from branch git history via `git-filter-repo`; 15 PR review threads marked resolved; MCP elicitation wired (`rmcp` feature enabled, `ElicitDemoRequest`/`AxonRequest::ElicitDemo` defined, `handlers_elicit.rs` handler integrated); `ws_handler.rs` rate-limit extracted to `ws_handler/rate_limiter.rs`; `docker_stats.rs` tests split to `docker_stats/tests.rs`; `execute/cancel.rs` helpers extracted; `fingerprint_mcp_servers` uses SHA-256 instead of raw JSON; `session_cache::read_replay_buffer` delegates to `drain_replay_buffer`; worker lane env-var tests save/restore state; `axon-ws-exec.ts` cancel guarded on `backendJobId`; `axon-shell-state.ts` explicit rejection on non-auto-approve path; `ws-protocol.ts` named interfaces extracted.
 
@@ -2406,7 +2423,7 @@ This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative 
 - **CmdK palette improvements** — `CmdKOutput`, `CmdKPalette`, `cmdk-palette-dialog.tsx`, `cmdk-palette-types.ts` updated for better JSON/output display
 - **MCP common.rs expansion** — `crates/mcp/server/common.rs` (+99 lines) with shared helpers; `handlers_system.rs` updated
 - **Scripts + docker hardening** — `scripts/cache-guard.sh`, `scripts/check_docker_context_size.sh`, `scripts/check_dockerignore_guards.sh` added; `docker-compose.yaml`, `.dockerignore`, `scripts/rebuild-fresh.sh`, `lefthook.yml`, `Justfile` updated
-- **Docs updated** — `docs/MCP-TOOL-SCHEMA.md`, `docs/OPERATIONS.md`, `docs/TESTING.md`, `README.md`, `.env.example` refreshed
+- **Docs updated** — `docs/reference/mcp/tool-schema.md`, `docs/operations/operations.md`, `docs/contributing/testing.md`, `README.md`, `.env.example` refreshed
 - **Post-v0.4.0 stabilization** — fixed MCP OAuth smoke env handling and serialized crawl DB tests to reduce flakes; fixed 4 failing CI checks; pinned Vitest timezone (`TZ=UTC`) and refreshed snapshots for deterministic test output
 - **Release prep + execution hardening (v0.4.1)** — updated web/container/docs env wiring and token guidance (`AXON_WEB_API_TOKEN`/`NEXT_PUBLIC_AXON_API_TOKEN`), refreshed Docker/compose defaults, and fully hardened the services-layer refactor execution plan with strict preflight, safety rails, and parallel-worker dispatch protocol
 - **Full codebase security & quality review (v0.4.0)** — comprehensive 5-phase review covering 244 Rust + 424 TypeScript files; 40 Phase 1 findings (3 Critical, 7 High, 17 Medium, 13 Low) + 17 CodeRabbit findings all addressed; WS OAuth bearer token gating added; all `format!` SQL → parameterized queries (H-03); `Secret<T>` wrapper with `[REDACTED]` debug; `ConfigOverrides` + sub-config scaffolding (A-H-01); `Config::test_default()` (CR-Q); ANTHROPIC_API_KEY + CLAUDE_* passthrough in child env allowlist (H-02/CR-D); `spawn_blocking` replaces `block_in_place` in MCP ask handler (CR-E); token rotation race fixed (CR-F); OAuth state capacity caps (H-05/CR-K); `apply_overrides` returns new `Config` (CR-M); `ServiceUrls` Debug redacts secrets (CR-L); migration table for `axon_session_ingest_state` (CR-B); arch docs for A-H-01/A-M-01/A-M-04/A-M-08
@@ -2414,7 +2431,7 @@ This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative 
 - **Image SHA verification** — `docker/s6/cont-init.d/00-verify-image-sha` and `docker/web/cont-init.d/00-verify-image-sha` added to both worker and web containers; `scripts/check-container-revisions.sh` for CI; `scripts/rebuild-fresh.sh` and `scripts/test-mcp-oauth-protection.sh` added
 - **CLI help contract test** — `tests/cli_help_contract.rs` verifies `axon --help` exit code and output structure; `scripts/check_mcp_http_only.sh` ensures HTTP transport is correctly gated
 - **Sidebar simplification** — `SidebarSectionId` pruned to `'extracted' | 'workspace'`; `recents-section`, `starred-section`, `templates-section` removed; `workspace-section.tsx` and `file-tree.tsx` updated
-- **Docs reorganization** — `commands/axon/`, `commands/codex/`, `commands/gemini/` skill command stubs deleted; 20+ `docs/commands/*.md` reference files added covering all CLI subcommands; new `docs/CONTEXT-INJECTION.md`, `docs/schema.md` added; `scripts/check_no_mod_rs.sh` and `scripts/check_no_next_middleware.sh` added for CI
+- **Docs reorganization** — `commands/axon/`, `commands/codex/`, `commands/gemini/` skill command stubs deleted; 20+ `docs/reference/commands/*.md` reference files added covering all CLI subcommands; new `docs/guides/context-injection.md`, `docs/schema.md` added; `scripts/check_no_mod_rs.sh` and `scripts/check_no_next_middleware.sh` added for CI
 - **Module consolidation** — `mod.rs` indirection pattern replaced with single-file modules across `crates/core/config/cli.rs`, `crates/core/config/types.rs`, `crates/core/http.rs`, `crates/jobs/common.rs`, `crates/jobs/ingest.rs`, `crates/jobs/refresh.rs`, `crates/jobs/worker_lane.rs`, `crates/web/execute.rs`, `crates/web/download.rs`, `crates/ingest/reddit.rs`; deleted corresponding `mod.rs` files
 - **Map migration tests** — `crates/cli/commands/map_migration_tests.rs` added (TDD red phase): `map_payload_returns_unique_urls_without_cli_side_dedup`, `map_payload_reports_sitemap_url_count_consistently`, `map_autoswitch_only_falls_back_when_no_pages_seen`; wired via `#[cfg(test)] mod map_migration_tests` in `map.rs`
 - **CLI/config refactor** — `crates/cli/commands/crawl.rs`, `map.rs`, `mcp.rs`, `research.rs`, `search.rs`, `youtube.rs` updated; `crates/core/config.rs`, `config/parse/build_config.rs`, `config/parse/helpers.rs`, `config/types/config.rs`, `config/types/config_impls.rs`, `config/types/enums.rs` updated; `crates/cli/commands/crawl/runtime.rs` updated
@@ -2944,7 +2961,7 @@ This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative 
 - Refresh job pipeline: `RefreshSchedule` table + schedule-claim lease (300s) (`115e264`, `d1f20a4`).
 - Refresh command: full schedule CRUD — list/add/remove/enable/disable/run (`d1f20a4`).
 - Command artifact manifests for axon, codex, and gemini workflows (`115e264`).
-- `docs/commands/refresh.md` reference added (`d1f20a4`).
+- `docs/reference/commands/refresh.md` reference added (`d1f20a4`).
 
 #### Ask / RAG
 - Citation-quality gates: min score threshold, per-citation diagnostic fields (`234989b`).

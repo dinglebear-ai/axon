@@ -11,7 +11,7 @@ Judge isolation:
   backend/agent cell. The JSONL rows disclose that actual cell backend/agent;
   this report is therefore a structured parity substrate, not a final
   pinned-judge parity claim.
-- Judge model: recorded from `JUDGE_MODEL` or `$OPENAI_MODEL`.
+- Judge model: recorded from `JUDGE_MODEL`, falling back to `AXON_HEADLESS_GEMINI_MODEL` (the legacy `OPENAI_MODEL` env var was removed in 3.0.0).
 
 Status meanings:
 

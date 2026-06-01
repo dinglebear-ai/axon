@@ -1,0 +1,22 @@
+Discover API endpoints from page HTML and JavaScript bundles
+
+Usage
+  axon endpoints [OPTIONS] <URL>
+
+Arguments
+  <URL>              URL to process
+
+Options
+  --include-bundles <INCLUDE_BUNDLES>
+                                   Fetch and scan first-party JavaScript bundles
+  --first-party-only <FIRST_PARTY_ONLY>
+                                   Return only endpoints on the target page's host
+  --unique-only <UNIQUE_ONLY>      Deduplicate by normalized endpoint URL
+  --max-scripts <MAX_SCRIPTS>      Maximum script bundle URLs to fetch and scan
+  --max-scan-bytes <MAX_SCAN_BYTES>
+                                   Maximum HTML plus JavaScript bytes to scan
+  --verify                         Probe discovered HTTP endpoints without credentials
+  --capture-network                Capture browser network requests. Executes page code and requires Chrome
+  --probe-rpc                      Probe discovered endpoints for JSON-RPC 2.0 / MCP / ACP protocol support
+  --probe-rpc-subdomains           Also probe `mcp.<apex>` subdomain candidates for MCP/JSON-RPC. No-op without --probe-rpc
+  -h, --help                       Print help

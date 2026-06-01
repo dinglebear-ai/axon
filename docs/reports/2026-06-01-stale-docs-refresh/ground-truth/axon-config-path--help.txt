@@ -1,0 +1,7 @@
+Print resolved paths to .env and config.toml
+
+Usage
+  axon config path [OPTIONS]
+
+Options
+  -h, --help                       Print help

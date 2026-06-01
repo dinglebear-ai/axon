@@ -1,0 +1,10 @@
+run-now
+
+Usage
+  axon watch run-now [OPTIONS] <ID>
+
+Arguments
+  <ID>               
+
+Options
+  -h, --help                       Print help

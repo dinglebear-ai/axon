@@ -1,0 +1,26 @@
+Index AI session exports (Claude, Codex, Gemini) into Qdrant
+
+Usage
+  axon sessions [OPTIONS]
+  axon sessions <COMMAND>
+
+Commands
+  status <job_id>      Show a queued job
+  cancel <job_id>      Cancel a queued or running job
+  errors <job_id>      Show job error details
+  list                 List recent jobs
+  cleanup              Remove old terminal jobs
+  clear                Clear job history
+  worker               Run an inline worker
+  recover              Reclaim stale or interrupted jobs
+
+Options
+  --claude                         Index Claude Code sessions
+  --codex                          Index Codex sessions
+  --gemini                         Index Gemini sessions
+  --project <NAME>                 Filter sessions by project name (substring match)
+  --wait <bool>                    Block until async jobs complete
+  --active                         Show only active jobs
+  --recent                         Show active and completed jobs
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

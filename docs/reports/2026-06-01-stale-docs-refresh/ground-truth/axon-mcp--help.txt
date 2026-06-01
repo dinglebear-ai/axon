@@ -1,0 +1,8 @@
+Start MCP stdio or unified HTTP runtime
+
+Usage
+  axon mcp [OPTIONS]
+
+Options
+  --transport <TRANSPORT>          MCP transport: stdio, http, or both
+  -h, --help                       Print help

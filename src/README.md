@@ -28,5 +28,5 @@ These top-level Rust files re-export module roots used by the workspace crate gr
 
 ## Related Docs
 - [Repository README](../README.md)
-- [Architecture](../docs/ARCHITECTURE.md)
+- [Architecture](../docs/architecture/overview.md)
 - [Docs Index](../docs/README.md)

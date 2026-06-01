@@ -1,0 +1,7 @@
+list
+
+Usage
+  axon embed list [OPTIONS]
+
+Options
+  -h, --help                       Print help

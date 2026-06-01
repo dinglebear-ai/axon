@@ -1,0 +1,8 @@
+error: unrecognized subcommand 'status'
+
+  tip: a similar subcommand exists: 'pause'
+
+Usage: axon watch [OPTIONS]
+       axon watch <COMMAND>
+
+For more information, try '--help'.

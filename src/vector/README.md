@@ -36,5 +36,5 @@ Embedding, vector storage, retrieval, and RAG operations.
 
 ## Related Docs
 - [Repository README](../../README.md)
-- [Architecture](../../docs/ARCHITECTURE.md)
+- [Architecture](../../docs/architecture/overview.md)
 - [Docs Index](../../docs/README.md)

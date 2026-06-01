@@ -1,0 +1,13 @@
+create
+
+Usage
+  axon watch create [OPTIONS] <NAME>
+
+Arguments
+  <NAME>             
+
+Options
+  --task-type <TASK_TYPE>          
+  --every-seconds <EVERY_SECONDS>  
+  --task-payload <TASK_PAYLOAD>    
+  -h, --help                       Print help

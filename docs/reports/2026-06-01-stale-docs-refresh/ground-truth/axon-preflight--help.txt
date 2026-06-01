@@ -1,0 +1,7 @@
+Check host prerequisites and service readiness
+
+Usage
+  axon preflight [OPTIONS]
+
+Options
+  -h, --help                       Print help

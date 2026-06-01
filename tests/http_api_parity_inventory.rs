@@ -2,7 +2,7 @@ use axon::services::client_contract::rest_route_contracts;
 use axon::services::types::supported_routes;
 use std::collections::BTreeSet;
 
-const DOC: &str = include_str!("../docs/API-PARITY.md");
+const DOC: &str = include_str!("../docs/reference/api-parity.md");
 
 fn row_for_cli(command: &str) -> Option<&'static str> {
     let needle = format!("| `{command}` |");
@@ -46,7 +46,7 @@ fn parity_doc_covers_every_cli_command_kind() {
     for command in commands {
         assert!(
             row_for_cli(command).is_some(),
-            "docs/API-PARITY.md is missing CLI command row `{command}`"
+            "docs/reference/api-parity.md is missing CLI command row `{command}`"
         );
     }
 }
@@ -57,7 +57,7 @@ fn parity_doc_lists_all_advertised_http_routes() {
         let needle = format!("`{route}`");
         assert!(
             DOC.contains(&needle) || DOC.contains(&route),
-            "docs/API-PARITY.md does not mention advertised HTTP route `{route}`"
+            "docs/reference/api-parity.md does not mention advertised HTTP route `{route}`"
         );
     }
 }
@@ -85,7 +85,7 @@ fn parity_doc_marks_representative_current_http_statuses() {
 
     assert!(
         DOC.contains("`POST /v1/actions` action-envelope endpoint is removed"),
-        "docs/API-PARITY.md should state that /v1/actions is removed"
+        "docs/reference/api-parity.md should state that /v1/actions is removed"
     );
 }
 

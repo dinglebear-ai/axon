@@ -36,5 +36,5 @@ CLI command routing and command handlers for the `axon` binary.
 
 ## Related Docs
 - [Repository README](../../README.md)
-- [Architecture](../../docs/ARCHITECTURE.md)
+- [Architecture](../../docs/architecture/overview.md)
 - [Docs Index](../../docs/README.md)

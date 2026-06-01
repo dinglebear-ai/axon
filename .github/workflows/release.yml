@@ -35,7 +35,7 @@ jobs:
             plugins
             docs
             .github
-            docs/API-PARITY.md
+            docs/reference/api-parity.md
           sparse-checkout-cone-mode: false
             tests
             scripts
@@ -78,7 +78,7 @@ jobs:
             plugins
             docs
             .github
-            docs/API-PARITY.md
+            docs/reference/api-parity.md
           sparse-checkout-cone-mode: false
             tests
             scripts
@@ -124,7 +124,7 @@ jobs:
             plugins
             docs
             .github
-            docs/API-PARITY.md
+            docs/reference/api-parity.md
           sparse-checkout-cone-mode: false
             tests
             scripts
@@ -177,7 +177,7 @@ jobs:
             plugins
             docs
             .github
-            docs/API-PARITY.md
+            docs/reference/api-parity.md
           sparse-checkout-cone-mode: false
             tests
             scripts

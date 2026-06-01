@@ -40,5 +40,5 @@ Source-specific ingestion pipelines for non-crawl content.
 
 ## Related Docs
 - [Repository README](../../README.md)
-- [Architecture](../../docs/ARCHITECTURE.md)
+- [Architecture](../../docs/architecture/overview.md)
 - [Docs Index](../../docs/README.md)

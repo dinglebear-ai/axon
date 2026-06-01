@@ -1,0 +1,76 @@
+  AXON CLI
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Version 4.16.0  |  Spider-powered web and local RAG CLI
+
+  Usage
+  [axon [options] [command]]
+
+  Quick Start
+  axon scrape https://example.com --wait true --skip-embed
+  axon crawl https://docs.rs/spider --wait false
+  axon query "embedding pipeline" --collection cortex
+
+  Global Options
+  -h, --help                   display help
+  --wait <bool>                true waits; false enqueues and returns
+  --collection <name>          vector collection (default cortex)
+  --skip-embed                 fetch/save without indexing into Qdrant
+  --local                      force in-process execution
+  --cache <bool>               reuse prior crawl artifacts when possible
+  --cache-http-only            keep cached crawl flow on the HTTP path
+  --max-pages <n>              crawl page limit (0 = uncapped)
+  --url-glob <pattern[,..]>    expand URL seeds via brace globs (e.g. {1..10}, {a,b})
+  --cron-every-seconds <n>     repeat command every n seconds
+  --cron-max-runs <n>          stop cron loop after n runs
+  --max-depth <n>              crawl depth
+  --output-dir <dir>           output directory
+
+  Commands
+  Web And Extraction
+    scrape               Scrape one or more URLs to markdown
+    crawl                Full site crawl for one or more start URLs
+    map                  Discover all URLs on a site without scraping
+    endpoints            Discover API endpoints from page HTML and JavaScript bundles
+    search               Web search via Tavily, auto-queues crawl jobs for results
+    research             Web research via Tavily AI search with LLM synthesis
+    extract              LLM-powered structured data extraction from URLs
+    screenshot           Capture a full-page screenshot of one or more URLs
+    diff                 Diff two URLs — show what changed between them
+    brand                Analyze a URL's brand identity: colors, fonts, logos, favicon
+
+  Vector And RAG
+    embed                Embed file, directory, or URL into Qdrant
+    query                Semantic vector search over the Qdrant index
+    retrieve             Fetch stored document chunks from Qdrant by URL
+    ask                  RAG: retrieve relevant context, then answer with LLM
+    evaluate             RAG vs baseline with independent LLM judge scoring
+    train                Collect human preference votes for retrieved RAG candidates
+    summarize            Scrape one or more URLs and summarize them with the configured LLM
+    suggest              Suggest new documentation URLs to crawl
+    sources              List all indexed source URLs with chunk counts
+    domains              List indexed domains with document statistics
+    stats                Show Qdrant collection and SQLite job statistics
+    dedupe               Remove duplicate points from the Qdrant collection
+    migrate              Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
+
+  Jobs And Imports
+    status               Show async job queue status and recent activity
+    ingest               Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube)
+    sessions             Index AI session exports (Claude, Codex, Gemini) into Qdrant
+    watch                Manage recurring watch definitions and runs
+    monitor              Monitor job lifecycle events as a line-oriented stream
+    sync                 Reconcile locally produced server-mode artifacts
+
+  Runtime And Setup
+    debug                Run doctor diagnostics plus LLM-assisted troubleshooting
+    doctor               Check connectivity to all required services
+    mcp                  Start MCP stdio or unified HTTP runtime
+    serve                Start service runtimes
+    setup                Initialize and inspect Axon infrastructure
+    preflight            Check host prerequisites and service readiness
+    smoke                Run crawl/ask smoke checks against the running stack
+    compose              Manage the local Docker Compose service stack
+    completions          Generate shell completions (bash, zsh, fish)
+    config               Read or write entries in ~/.axon/.env and ~/.axon/config.toml
+
+  → Run axon <command> --help for command-specific flags

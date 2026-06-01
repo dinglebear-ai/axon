@@ -45,8 +45,8 @@ mcp/
 There is no `src/mcp/config.rs`. The `load_mcp_config()` helper that used to live here was removed when the MCP server adopted the unified `build_config()` path. MCP auth policy lives in `auth.rs`; OAuth state is created through `lab_auth::state::AuthState` when `AXON_MCP_AUTH_MODE=oauth`.
 
 ## Source-of-Truth References
-- Wire contract schema doc: `docs/MCP-TOOL-SCHEMA.md`
-- MCP runtime/design doc: `docs/MCP.md`
+- Wire contract schema doc: `docs/reference/mcp/tool-schema.md`
+- MCP runtime/design doc: `docs/reference/mcp/overview.md`
 - Tool request/response types: `src/mcp/schema.rs`
 - Tool router and dispatch: `src/mcp/server.rs`
 - Handler implementations: `src/mcp/server/handlers_*.rs`
@@ -228,8 +228,8 @@ self.handle_crawl(request).await
 3. Update all three layers together:
    - `schema.rs`
    - `server.rs`
-   - `docs/MCP-TOOL-SCHEMA.md`
-4. If behavior changes materially, also update `docs/MCP.md` and root docs references.
+   - `docs/reference/mcp/tool-schema.md`
+4. If behavior changes materially, also update `docs/reference/mcp/overview.md` and root docs references.
 5. Prefer direct calls into existing Axon job/vector APIs over shelling out.
 
 ## Testing Workflow
@@ -265,7 +265,7 @@ subaction, add at least one smoke case.
 ## Change Checklist (Mandatory)
 - [ ] `schema.rs` updated
 - [ ] `server.rs` routing/handler updated
-- [ ] docs contract updated (`docs/MCP-TOOL-SCHEMA.md`)
+- [ ] docs contract updated (`docs/reference/mcp/tool-schema.md`)
 - [ ] `cargo check --bin axon` still passes
 
 This is the way.

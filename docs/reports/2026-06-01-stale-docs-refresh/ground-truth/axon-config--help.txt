@@ -1,0 +1,15 @@
+Read or write entries in ~/.axon/.env and ~/.axon/config.toml
+
+Usage
+  axon config [OPTIONS]
+  axon config <COMMAND>
+
+Commands
+  list                 List every entry from .env and config.toml (secrets redacted)
+  get                  Print a single value (auto-detects file by key shape)
+  set                  Write a value. Auto-detects file: UPPER_SNAKE to .env, dotted lowercase to config.toml
+  unset                Remove a value from .env or config.toml
+  path                 Print resolved paths to .env and config.toml
+
+Options
+  -h, --help                       Print help

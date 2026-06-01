@@ -1,0 +1,14 @@
+Check connectivity to all required services
+
+Usage
+  axon doctor [OPTIONS]
+  axon doctor <COMMAND>
+
+Commands
+  diagnose             Print doctor output plus LLM diagnosis when configured
+
+Options
+  --tei-url <url>                  Text Embeddings Inference endpoint
+  --qdrant-url <url>               Qdrant endpoint
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

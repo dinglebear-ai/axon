@@ -1,0 +1,13 @@
+Write a value. Auto-detects file: UPPER_SNAKE to .env, dotted lowercase to config.toml
+
+Usage
+  axon config set [OPTIONS] <KEY> <VALUE>
+
+Arguments
+  <KEY>              
+  <VALUE>            
+
+Options
+  --env                            Force write to .env regardless of key shape
+  --toml                           Force write to config.toml regardless of key shape
+  -h, --help                       Print help

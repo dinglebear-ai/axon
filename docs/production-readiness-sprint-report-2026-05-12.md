@@ -513,17 +513,17 @@ README production rewrite target:
 Detailed docs that should exist and be current:
 
 - `docs/INSTALL.md`: one-line installer and plugin install.
-- `docs/CONFIG.md`: exact `.env` vs `config.toml` contract.
+- `docs/guides/configuration.md`: exact `.env` vs `config.toml` contract.
 - `docs/DOCKER.md`: compose services, GPU, ports, volumes, upgrades.
 - `docs/GEMINI.md`: required Gemini CLI auth, mount behavior, checks.
-- `docs/MCP.md`: transports, auth, Claude plugin integration.
+- `docs/reference/mcp/overview.md`: transports, auth, Claude plugin integration.
 - `docs/CLI.md`: generated command reference or generated links.
 - `docs/FIRST-RUN.md`: successful first crawl plus ask in under 2 minutes when cached.
 - `docs/TROUBLESHOOTING.md`: fastest commands and common failures.
 - `docs/DEVELOPMENT.md`: dev setup, local build, test gates.
-- `docs/ARCHITECTURE.md`: source-aligned architecture after removing systemd-managed binary deployment while retaining Docker Compose deployment, including remote SSH orchestration when supported.
-- `docs/OPERATIONS.md`: logs, backups, upgrades, health checks.
-- `docs/SECURITY.md`: token auth, URL validation, secrets, local binds, destructive operations.
+- `docs/architecture/overview.md`: source-aligned architecture after removing systemd-managed binary deployment while retaining Docker Compose deployment, including remote SSH orchestration when supported.
+- `docs/operations/operations.md`: logs, backups, upgrades, health checks.
+- `docs/operations/security.md`: token auth, URL validation, secrets, local binds, destructive operations.
 
 Docs policy:
 
@@ -703,7 +703,7 @@ Acceptance criteria:
 
 - A test enumerates `.env.example` keys and classifies each as allowed env.
 - A test verifies `config.example.toml` parses.
-- README and `docs/CONFIG.md` describe one clear precedence model.
+- README and `docs/guides/configuration.md` describe one clear precedence model.
 - `OPENAI_*`, `AXON_LITE`, and PG/Redis/AMQP settings are removed or hidden from production docs; graph settings are removed.
 
 ### Phase 2: Docker Compose Setup
@@ -774,7 +774,7 @@ Outcome:
 Acceptance criteria:
 
 - README is accurate and points to detailed docs.
-- `docs/CONFIG.md`, `docs/DOCKER.md`, `docs/INSTALL.md`, `docs/MCP.md`, `docs/CLI.md`, `docs/TROUBLESHOOTING.md`, and `docs/DEVELOPMENT.md` are source-aligned.
+- `docs/guides/configuration.md`, `docs/DOCKER.md`, `docs/INSTALL.md`, `docs/reference/mcp/overview.md`, `docs/CLI.md`, `docs/TROUBLESHOOTING.md`, and `docs/DEVELOPMENT.md` are source-aligned.
 - Active docs inventory is explicit.
 - Archive/plans/reports/sessions are marked non-authoritative.
 - Stale-doc audit rerun shows no production-blocking drift.
