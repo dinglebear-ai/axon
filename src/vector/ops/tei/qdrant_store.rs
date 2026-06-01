@@ -325,21 +325,31 @@ pub(super) async fn ensure_collection(
     }
 
     let create = serde_json::json!({
+        // Memory-bounded large-collection recipe: keep the raw f32 vectors on
+        // disk (they're only needed for rescore), but pin the small int8
+        // quantized vectors AND the HNSW graph in RAM so search never pays a
+        // cold mmap page-fault. Without `quantization.always_ram` the quantized
+        // set is evictable by OS page-cache pressure (e.g. a concurrent crawl),
+        // which intermittently spikes search latency from ~40ms to 20-30s and
+        // trips the 30s internal HTTP client timeout. `vectors.on_disk` must
+        // stay true here: with always_ram quantization the raw vectors don't
+        // belong in RAM too, or a 3.95M-point collection needs ~19GB.
         "vectors": {
-            "dense": {"size": dim, "distance": "Cosine"}
+            "dense": {"size": dim, "distance": "Cosine", "on_disk": true}
         },
         "sparse_vectors": {
             "bm42": {"modifier": "idf"}
         },
         "hnsw_config": {
             "m": 32,
-            "ef_construct": 256
+            "ef_construct": 256,
+            "on_disk": false
         },
         "quantization_config": {
             "scalar": {
                 "type": "int8",
                 "quantile": 0.99,
-                "always_ram": false
+                "always_ram": true
             }
         }
     });
