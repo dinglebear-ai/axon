@@ -11,6 +11,9 @@ use std::time::Duration;
 
 const PLUGIN_HOOK_TIMEOUT_SECS: u64 = 360;
 
+mod plugin_options;
+pub use plugin_options::apply_plugin_options;
+
 const USAGE_LINES: &[&str] = &[
     "axon setup",
     "axon setup init [--auth-mode bearer|oauth] [--mcp-host HOST] [--mcp-port PORT]",
@@ -160,6 +163,11 @@ fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    // Belt-and-suspenders: the env-var mapping is applied early (before
+    // parse_args) by `apply_plugin_options()` in `run()`. Re-applying here is
+    // harmless and covers any direct caller that bypasses the early path. The
+    // EARLY call is the one that matters for Config::load.
+    apply_plugin_options();
     // Keep the user's terminal copy in ~/.local/bin fresh each session.
     let _ = install_self();
     let no_setup = cfg.positional.iter().any(|value| value == "--no-setup");
