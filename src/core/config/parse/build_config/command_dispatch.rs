@@ -456,6 +456,9 @@ fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
             let init = *init;
             out.positional = setup_init_positionals(init);
         }
+        Some(SetupSubcommand::Install) => {
+            out.positional = vec!["install".to_string()];
+        }
         Some(SetupSubcommand::Targets) => {
             out.positional = vec!["targets".to_string()];
         }
