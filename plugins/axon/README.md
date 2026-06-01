@@ -12,9 +12,9 @@ claude plugin install <path>
 
 The plugin manifest declares a minimal `userConfig` block. Claude Code prompts for the shared Axon server URL, bearer token, optional Tavily/GitHub/Reddit credentials, and optional OAuth settings. Qdrant, TEI, Chrome, Qwen3 embedding, and LLM backend settings are configured by the shared Docker setup path, not by plugin prompts.
 
-The SessionStart hook (`scripts/plugin-setup.sh`) delegates to the binary-owned hook setup flow:
+The SessionStart hook invokes `${CLAUDE_PLUGIN_ROOT}/bin/axon setup plugin-hook` directly. The binary owns the full hook setup flow, including mapping the `CLAUDE_PLUGIN_OPTION_*` plugin options to its `AXON_*` env vars before loading config:
 
-1. If `axon` is absent, run the release installer.
+1. Map plugin options (server URL, bearer token, Tavily/GitHub/Reddit credentials, OAuth settings) to `AXON_*` env vars.
 2. Run `axon setup plugin-hook`.
 3. Let the binary perform check-first repair and classify blocking setup failures separately from advisory smoke/prewarm failures.
 4. Preserve existing `~/.axon/.env` and `~/.axon/config.toml`; setup only fills missing runtime values.

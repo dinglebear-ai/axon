@@ -110,7 +110,50 @@ fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
     })
 }
 
+/// Returns true if the process argv is the `setup plugin-hook` (or `setup hook`)
+/// invocation. Inspected from raw argv before the Config is built so the plugin
+/// env-var mapping can run before `parse_args()` reads the AXON_* env vars.
+///
+/// Scans for `setup` followed by `plugin-hook`/`hook`, skipping the leading
+/// program name and tolerating global flags that may precede the subcommand.
+fn is_plugin_hook_invocation<I, S>(args: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut seen_setup = false;
+    for (idx, arg) in args.into_iter().enumerate() {
+        if idx == 0 {
+            continue; // program name
+        }
+        let s = arg.as_ref().to_string_lossy();
+        if !seen_setup {
+            if s == "setup" {
+                seen_setup = true;
+            }
+        } else if s == "plugin-hook" || s == "hook" {
+            return true;
+        } else if !s.starts_with('-') {
+            // First non-flag token after `setup` is the subcommand; if it
+            // isn't plugin-hook/hook, this isn't the hook invocation.
+            return false;
+        }
+    }
+    false
+}
+
 pub async fn run() -> Result<(), Box<dyn Error>> {
+    // CRITICAL ORDERING: the `setup plugin-hook` invocation must apply the
+    // Claude Code plugin-option → AXON_* env-var mapping BEFORE parse_args()
+    // builds the Config (parse_args reads the AXON_* env vars). This is the
+    // Rust replacement for the bash `plugin-setup.sh` SessionStart hook, which
+    // used to `export` these env vars before exec'ing `axon`. Detect the
+    // invocation from raw argv (the Config doesn't exist yet) and apply the
+    // mapping early; doing it in the command handler would be too late.
+    if is_plugin_hook_invocation(std::env::args_os()) {
+        cli::commands::apply_plugin_options();
+    }
+
     // Parse CLI args first so the user's --color choice is installed before
     // anything (including the tracing-subscriber writer) reads it. clap exits
     // on --help/--version, so init_tracing's appender guard isn't needed yet.

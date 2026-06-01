@@ -73,7 +73,7 @@ pub use screenshot::run_screenshot;
 pub use search::run_search;
 pub use serve::run_serve;
 pub use sessions::run_sessions;
-pub use setup::run_setup;
+pub use setup::{apply_plugin_options, run_setup};
 pub use sources::run_sources;
 pub use stats::run_stats;
 pub use status::run_status;
