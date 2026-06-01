@@ -90,6 +90,8 @@ pub async fn route_request(
                     "respect_robots",
                     "discover_sitemaps",
                     "sitemap_since_days",
+                    "discover_llms_txt",
+                    "max_llms_txt_urls",
                     "delay_ms",
                 ],
             )?,

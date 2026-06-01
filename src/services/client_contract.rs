@@ -61,6 +61,8 @@ pub struct RestCrawlRequest {
     pub discover_sitemaps: Option<bool>,
     pub max_sitemaps: Option<usize>,
     pub sitemap_since_days: Option<u32>,
+    pub discover_llms_txt: Option<bool>,
+    pub max_llms_txt_urls: Option<usize>,
     pub delay_ms: Option<u64>,
     pub collection: Option<String>,
     #[serde(default)]
@@ -287,6 +289,8 @@ pub struct ClientCrawlRequest {
     pub discover_sitemaps: Option<bool>,
     pub max_sitemaps: Option<usize>,
     pub sitemap_since_days: Option<u32>,
+    pub discover_llms_txt: Option<bool>,
+    pub max_llms_txt_urls: Option<usize>,
     pub delay_ms: Option<u64>,
     #[serde(default)]
     pub headers: Vec<(String, String)>,
@@ -306,6 +310,8 @@ impl From<ClientCrawlRequest> for RestCrawlRequest {
             discover_sitemaps: req.discover_sitemaps,
             max_sitemaps: req.max_sitemaps,
             sitemap_since_days: req.sitemap_since_days,
+            discover_llms_txt: req.discover_llms_txt,
+            max_llms_txt_urls: req.max_llms_txt_urls,
             delay_ms: req.delay_ms,
             collection: None,
             headers: req

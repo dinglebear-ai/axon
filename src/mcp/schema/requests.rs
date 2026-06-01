@@ -27,6 +27,8 @@ pub struct CrawlRequest {
     pub respect_robots: Option<bool>,
     pub discover_sitemaps: Option<bool>,
     pub sitemap_since_days: Option<u32>,
+    pub discover_llms_txt: Option<bool>,
+    pub max_llms_txt_urls: Option<usize>,
     pub render_mode: Option<McpRenderMode>,
     pub delay_ms: Option<u64>,
 }

@@ -292,6 +292,8 @@ pub(super) fn apply_crawl_overrides(cfg: &Config, req: &CrawlRequest) -> Config 
         respect_robots: req.respect_robots,
         discover_sitemaps: req.discover_sitemaps,
         sitemap_since_days: req.sitemap_since_days,
+        discover_llms_txt: req.discover_llms_txt,
+        max_llms_txt_urls: req.max_llms_txt_urls,
         render_mode: req.render_mode.map(map_render_mode),
         delay_ms: req.delay_ms,
         ..ConfigOverrides::default()

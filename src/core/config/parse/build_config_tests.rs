@@ -229,6 +229,25 @@ fn migrated_crawl_tuning_reads_from_toml() {
 
 #[allow(unsafe_code)]
 #[test]
+fn parses_llms_txt_scrape_keys() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[scrape]\ndiscover-llms-txt = false\nmax-llms-txt-urls = 42\n"
+    )
+    .unwrap();
+
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        let cfg = into_config_via_args(&["crawl", "https://example.com"]).unwrap();
+        assert!(!cfg.discover_llms_txt);
+        assert_eq!(cfg.max_llms_txt_urls, 42);
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn migrated_worker_tuning_reads_from_toml_and_watchdog_env_still_wins() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();

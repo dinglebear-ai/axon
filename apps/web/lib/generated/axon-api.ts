@@ -114,10 +114,12 @@ export type components = {
         "RestCrawlRequest": {
             "collection"?: string | null;
             "delay_ms"?: number | null;
+            "discover_llms_txt"?: boolean | null;
             "discover_sitemaps"?: boolean | null;
             "headers"?: string[];
             "include_subdomains"?: boolean | null;
             "max_depth"?: number | null;
+            "max_llms_txt_urls"?: number | null;
             "max_pages"?: number | null;
             "max_sitemaps"?: number | null;
             "render_mode"?: null | components['schemas']['RenderMode'];

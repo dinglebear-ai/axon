@@ -38,6 +38,7 @@ pub(super) async fn first_run_crawl(
         include_subdomains: Some(false),
         respect_robots: Some(false),
         discover_sitemaps: Some(false),
+        discover_llms_txt: Some(false),
         render_mode: Some(RenderMode::AutoSwitch),
         ..ConfigOverrides::default()
     });

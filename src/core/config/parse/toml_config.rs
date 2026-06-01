@@ -49,6 +49,10 @@ pub(super) struct TomlScrapeSection {
     pub sitemap_since_days: Option<u32>,
     /// Maximum number of sitemap documents to parse. Default 512.
     pub max_sitemaps: Option<usize>,
+    /// Probe `/llms.txt` at the site root and merge its links into backfill/map. Default true.
+    pub discover_llms_txt: Option<bool>,
+    /// Maximum number of URLs to take from a single `/llms.txt`. Default 512.
+    pub max_llms_txt_urls: Option<usize>,
     /// Delay between requests in milliseconds. Default 0.
     pub delay_ms: Option<u64>,
     /// Per-request HTTP timeout in milliseconds. Default comes from performance profile.

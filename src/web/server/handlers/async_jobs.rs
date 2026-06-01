@@ -106,6 +106,8 @@ pub(crate) async fn start_crawl(
         discover_sitemaps: req.discover_sitemaps,
         sitemap_since_days: req.sitemap_since_days,
         max_sitemaps: req.max_sitemaps,
+        discover_llms_txt: req.discover_llms_txt,
+        max_llms_txt_urls: req.max_llms_txt_urls,
         render_mode: req.render_mode,
         delay_ms: req.delay_ms,
         collection: req.collection,

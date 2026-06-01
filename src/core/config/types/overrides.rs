@@ -98,6 +98,12 @@ pub struct ConfigOverrides {
     /// Override `Config::max_sitemaps`.
     pub max_sitemaps: Option<usize>,
 
+    /// Override `Config::discover_llms_txt`.
+    pub discover_llms_txt: Option<bool>,
+
+    /// Override `Config::max_llms_txt_urls`.
+    pub max_llms_txt_urls: Option<usize>,
+
     /// Override `Config::delay_ms` (inter-request delay for polite crawling).
     pub delay_ms: Option<u64>,
 
@@ -211,6 +217,12 @@ impl Config {
         }
         if let Some(v) = overrides.max_sitemaps {
             cfg.max_sitemaps = v;
+        }
+        if let Some(v) = overrides.discover_llms_txt {
+            cfg.discover_llms_txt = v;
+        }
+        if let Some(v) = overrides.max_llms_txt_urls {
+            cfg.max_llms_txt_urls = v;
         }
         if let Some(v) = overrides.delay_ms {
             cfg.delay_ms = v;

@@ -49,6 +49,8 @@ impl Default for Config {
             endpoints_probe_rpc: false,
             endpoints_probe_rpc_subdomains: false,
             max_sitemaps: 512,
+            discover_llms_txt: true,
+            max_llms_txt_urls: 512,
             cache: true,
             cache_http_only: false,
             format: ScrapeFormat::Markdown,
@@ -307,6 +309,8 @@ impl fmt::Debug for Config {
                 &self.endpoints_probe_rpc_subdomains,
             )
             .field("max_sitemaps", &self.max_sitemaps)
+            .field("discover_llms_txt", &self.discover_llms_txt)
+            .field("max_llms_txt_urls", &self.max_llms_txt_urls)
             .field("cache", &self.cache)
             .field("cache_http_only", &self.cache_http_only)
             .field("format", &self.format)

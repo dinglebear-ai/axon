@@ -77,6 +77,12 @@ pub(crate) async fn v1_crawl_submit(
     if let Some(sitemap_since_days) = req.sitemap_since_days {
         cfg.sitemap_since_days = sitemap_since_days;
     }
+    if let Some(discover_llms_txt) = req.discover_llms_txt {
+        cfg.discover_llms_txt = discover_llms_txt;
+    }
+    if let Some(max_llms_txt_urls) = req.max_llms_txt_urls {
+        cfg.max_llms_txt_urls = max_llms_txt_urls;
+    }
     if let Some(delay_ms) = req.delay_ms {
         cfg.delay_ms = delay_ms;
     }
