@@ -22,6 +22,5 @@
     "hybrid-search"
   ],
   "skills": "./skills",
-  "agents": "./agents/researcher.md",
-  "hooks": "./hooks/hooks.json"
+  "agents": "./agents/researcher.md"
 }
