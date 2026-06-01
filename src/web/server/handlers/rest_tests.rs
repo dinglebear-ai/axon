@@ -799,7 +799,7 @@ async fn watch_create_rejects_empty_name() {
         .post(format!("{base}/v1/watch/create"))
         .json(&serde_json::json!({
             "name": "",
-            "task_type": "refresh",
+            "task_type": "watch",
             "task_payload": {},
             "every_seconds": 60,
             "enabled": true,
@@ -828,7 +828,7 @@ async fn watch_create_rejects_zero_interval() {
         .post(format!("{base}/v1/watch/create"))
         .json(&serde_json::json!({
             "name": "test-watch",
-            "task_type": "refresh",
+            "task_type": "watch",
             "task_payload": {},
             "every_seconds": 0,
             "enabled": true,
@@ -872,7 +872,7 @@ async fn watch_create_rejects_unsupported_task_type() {
 
 #[tokio::test]
 #[serial]
-async fn watch_create_refresh_requires_non_empty_url_array() {
+async fn watch_create_requires_non_empty_url_array() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
@@ -887,7 +887,7 @@ async fn watch_create_refresh_requires_non_empty_url_array() {
             .post(format!("{base}/v1/watch/create"))
             .json(&serde_json::json!({
                 "name": "test",
-                "task_type": "refresh",
+                "task_type": "watch",
                 "task_payload": payload,
                 "every_seconds": 60,
                 "enabled": true,

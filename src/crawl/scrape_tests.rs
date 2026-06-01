@@ -150,17 +150,57 @@ fn test_select_output_json_includes_description() {
 }
 
 #[test]
-fn test_select_output_json_has_all_five_fields() {
+fn test_select_output_json_has_all_six_fields() {
     let html = r#"<html><head><title>T</title><meta name="description" content="D"></head><body><p>B</p></body></html>"#;
     let result = select_output(ScrapeFormat::Json, "https://example.com", html, 200, None)
         .expect("select_output should succeed");
     let parsed: serde_json::Value =
         serde_json::from_str(&result).expect("output should be valid JSON");
     let obj = parsed.as_object().expect("JSON output must be an object");
-    for field in &["url", "status_code", "markdown", "title", "description"] {
+    for field in &[
+        "url",
+        "status_code",
+        "markdown",
+        "title",
+        "description",
+        "links",
+    ] {
         assert!(obj.contains_key(*field), "missing required field: {field}");
     }
-    assert_eq!(obj.len(), 5);
+    assert_eq!(obj.len(), 6);
+}
+
+#[test]
+fn test_build_scrape_json_populates_links_from_anchors() {
+    let html = r##"<html><head><title>T</title></head><body>
+        <a href="https://example.com/docs/a">A</a>
+        <a href="/docs/b">B</a>
+        <a href="#frag">skip-fragment</a>
+        <a href="mailto:x@y.z">skip-mailto</a>
+    </body></html>"##;
+    let parsed = build_scrape_json("https://example.com/docs", html, 200, None);
+    let links = parsed["links"].as_array().expect("links must be an array");
+    let hrefs: Vec<&str> = links.iter().filter_map(|l| l["href"].as_str()).collect();
+    // Absolute and root-relative anchors are captured (relative resolved against
+    // the base URL); fragments and mailto links are skipped.
+    assert!(
+        hrefs.contains(&"https://example.com/docs/a"),
+        "got {hrefs:?}"
+    );
+    assert!(
+        hrefs.contains(&"https://example.com/docs/b"),
+        "got {hrefs:?}"
+    );
+    assert!(
+        !hrefs.iter().any(|h| h.contains("mailto")),
+        "mailto should be filtered: {hrefs:?}"
+    );
+    // Each entry carries the {href, text} shape extract_links_from_payload reads.
+    assert!(
+        links
+            .iter()
+            .all(|l| l.get("href").is_some() && l.get("text").is_some())
+    );
 }
 
 #[test]
@@ -195,7 +235,14 @@ fn test_select_output_json_has_all_required_fields() {
     let parsed: serde_json::Value =
         serde_json::from_str(&result).expect("output should be valid JSON");
     let obj = parsed.as_object().expect("JSON output must be an object");
-    let required = ["url", "status_code", "title", "description", "markdown"];
+    let required = [
+        "url",
+        "status_code",
+        "title",
+        "description",
+        "markdown",
+        "links",
+    ];
     for field in &required {
         assert!(obj.contains_key(*field), "missing required field: {field}");
     }

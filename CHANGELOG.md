@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.18.0] - 2026-05-31
+
+### Added
+
+- URL change-detection watch: the `watch` task type (replacing the stateless `refresh` task) now detects content changes per URL each scheduler tick and crawls only the changed subtrees. Per URL: a cheap conditional ETag/Last-Modified probe (304 short-circuits), then scrape → normalize + `ignore_patterns` noise filter → SHA-256 fast-equal skip → reuse `services::diff::compute_diff` against the stored snapshot → a meaningfulness threshold (`change_threshold_words`, link changes always count). Meaningful changes get a best-effort Gemini AI summary and a `url-change` artifact (unified diff + summary + link/word deltas), are clustered by common path prefix, and one depth-bounded crawl is enqueued per cluster (skipping clusters whose prior crawl is still in flight). New `axon_watch_url_state` table (migration `0007`) holds the latest snapshot + validators. `task_payload` gains `max_depth`, `ignore_patterns`, `change_threshold_words`, and `summarize`; payloads are validated at create time (non-empty `urls`, compilable `ignore_patterns`) across CLI and both HTTP create paths.
+
+### Changed
+
+- `SUPPORTED_TASK_TYPES` is now `["watch"]`; the `refresh` task type is removed.
 
 ## [4.17.0] - 2026-06-01
 

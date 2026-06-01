@@ -17,9 +17,9 @@ fn parse_watch_create_with_every_and_type() {
         "http://127.0.0.1:53333",
         "watch",
         "create",
-        "docs-refresh",
+        "docs-watch",
         "--task-type",
-        "refresh",
+        "watch",
         "--every-seconds",
         "300",
     ]);
@@ -29,9 +29,9 @@ fn parse_watch_create_with_every_and_type() {
         cfg.positional,
         vec![
             "create".to_string(),
-            "docs-refresh".to_string(),
+            "docs-watch".to_string(),
             "--task-type".to_string(),
-            "refresh".to_string(),
+            "watch".to_string(),
             "--every-seconds".to_string(),
             "300".to_string(),
         ]

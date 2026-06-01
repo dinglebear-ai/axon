@@ -17,7 +17,7 @@ async fn sqlite_watch_create_and_list_round_trip() -> Result<(), Box<dyn Error>>
         &cfg,
         &WatchDefCreate {
             name: "sqlite-watch".to_string(),
-            task_type: "refresh".to_string(),
+            task_type: "watch".to_string(),
             task_payload: serde_json::json!({"urls":["https://example.com"]}),
             every_seconds: 60,
             enabled: true,
@@ -34,13 +34,13 @@ async fn sqlite_watch_create_and_list_round_trip() -> Result<(), Box<dyn Error>>
 
 #[test]
 fn validate_task_type_accepts_supported_and_rejects_others() {
-    assert!(validate_task_type("refresh").is_ok());
+    assert!(validate_task_type("watch").is_ok());
     assert!(validate_task_type("crawl").is_err());
     assert!(validate_task_type("").is_err());
     // Surrounding whitespace is rejected — the stored value would otherwise
     // fail the verbatim dispatch match and the watch could never run.
-    assert!(validate_task_type(" refresh").is_err());
-    assert!(validate_task_type("refresh ").is_err());
+    assert!(validate_task_type(" watch").is_err());
+    assert!(validate_task_type("watch ").is_err());
 }
 
 #[test]
@@ -55,6 +55,50 @@ fn validate_every_seconds_enforces_shared_bounds() {
     assert!(validate_every_seconds(MAX_WATCH_INTERVAL_SECS + 1).is_err());
 }
 
+#[test]
+fn validate_task_payload_accepts_valid() {
+    let p = serde_json::json!({
+        "urls": ["https://example.com/a", "https://example.com/b"],
+        "ignore_patterns": ["^Last updated:"],
+        "max_depth": 3
+    });
+    assert!(validate_task_payload(&p).is_ok());
+}
+
+#[test]
+fn validate_task_payload_rejects_empty_urls() {
+    let p = serde_json::json!({ "urls": [] });
+    assert!(validate_task_payload(&p).is_err());
+}
+
+#[test]
+fn validate_task_payload_rejects_non_string_url() {
+    let p = serde_json::json!({ "urls": ["https://example.com", 42] });
+    assert!(validate_task_payload(&p).is_err());
+}
+
+#[test]
+fn validate_task_payload_rejects_too_many_urls() {
+    let urls: Vec<String> = (0..=MAX_WATCH_URLS)
+        .map(|i| format!("https://example.com/{i}"))
+        .collect();
+    let p = serde_json::json!({ "urls": urls });
+    assert!(validate_task_payload(&p).is_err());
+}
+
+#[test]
+fn validate_task_payload_rejects_bad_ignore_regex() {
+    let p = serde_json::json!({ "urls": ["https://example.com"], "ignore_patterns": ["("] });
+    assert!(validate_task_payload(&p).is_err());
+}
+
+#[test]
+fn validate_task_payload_rejects_over_limit_max_depth() {
+    let p =
+        serde_json::json!({ "urls": ["https://example.com"], "max_depth": MAX_WATCH_DEPTH + 1 });
+    assert!(validate_task_payload(&p).is_err());
+}
+
 #[tokio::test]
 async fn lease_advances_next_run_at_for_single_flight() -> Result<(), Box<dyn Error>> {
     // A run that outlives its lease TTL must not be re-leased: leasing advances
@@ -67,7 +111,7 @@ async fn lease_advances_next_run_at_for_single_flight() -> Result<(), Box<dyn Er
         &pool,
         &WatchDefCreate {
             name: "long-runner".to_string(),
-            task_type: "refresh".to_string(),
+            task_type: "watch".to_string(),
             task_payload: serde_json::json!({"urls": ["https://example.com"]}),
             every_seconds: 60,
             enabled: true,
@@ -108,7 +152,7 @@ async fn lease_due_watches_leases_due_skips_future_and_already_leased() -> Resul
 
     let make = |name: &str, next_run: DateTime<Utc>| WatchDefCreate {
         name: name.to_string(),
-        task_type: "refresh".to_string(),
+        task_type: "watch".to_string(),
         task_payload: serde_json::json!({"urls": ["https://example.com"]}),
         every_seconds: 60,
         enabled: true,
@@ -156,7 +200,7 @@ async fn lease_due_watches_skips_disabled() -> Result<(), Box<dyn Error>> {
         &pool,
         &WatchDefCreate {
             name: "disabled".to_string(),
-            task_type: "refresh".to_string(),
+            task_type: "watch".to_string(),
             task_payload: serde_json::json!({"urls": ["https://example.com"]}),
             every_seconds: 60,
             enabled: false,
@@ -181,7 +225,7 @@ async fn sqlite_watch_run_now_records_completed_run() -> Result<(), Box<dyn Erro
         &cfg,
         &WatchDefCreate {
             name: "sqlite-watch-run".to_string(),
-            task_type: "refresh".to_string(),
+            task_type: "watch".to_string(),
             task_payload: serde_json::json!({"urls":["https://example.com"]}),
             every_seconds: 60,
             enabled: true,
@@ -205,5 +249,59 @@ async fn sqlite_watch_run_now_records_completed_run() -> Result<(), Box<dyn Erro
         .map_err(|e| -> Box<dyn Error> { e.into() })?;
     assert_eq!(run.watch_id, watch.id);
     assert_eq!(run.status, WATCH_RUN_STATUS_COMPLETED);
+    Ok(())
+}
+
+#[tokio::test]
+async fn watch_first_run_seeds_crawl_and_writes_artifact() -> Result<(), Box<dyn Error>> {
+    let temp = NamedTempFile::new()?;
+    let mut cfg = sqlite_cfg(temp.path());
+    cfg.output_dir = std::env::temp_dir().join(format!("axon-watch-cd-{}", Uuid::new_v4()));
+    cfg.embed = false;
+    let watch = create_watch_def(
+        &cfg,
+        &WatchDefCreate {
+            name: "cd-seed".into(),
+            task_type: "watch".into(),
+            task_payload: serde_json::json!({"urls": ["https://example.com/"], "summarize": false}),
+            every_seconds: 60,
+            enabled: true,
+            next_run_at: Utc::now(),
+        },
+    )
+    .await?;
+
+    let (cfg_c, watch_c) = (cfg.clone(), watch.clone());
+    let run = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(run_watch_now(&cfg_c, &watch_c))
+                .map_err(|e| e.to_string())
+        })
+        .unwrap()
+        .join()
+        .unwrap()
+        .map_err(|e| -> Box<dyn Error> { e.into() })?;
+    assert_eq!(run.status, WATCH_RUN_STATUS_COMPLETED);
+
+    let pool = crate::jobs::store::open_sqlite_pool(&temp.path().to_string_lossy()).await?;
+    let crawls: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(crawls, 1, "first run seeds one crawl");
+    let arts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM axon_watch_run_artifacts WHERE kind='url-change'")
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(arts, 1, "first run writes one change artifact");
+    assert_eq!(
+        run.result_json
+            .as_ref()
+            .and_then(|j| j.get("changed"))
+            .and_then(|v| v.as_u64()),
+        Some(1)
+    );
     Ok(())
 }

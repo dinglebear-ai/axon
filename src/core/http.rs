@@ -9,6 +9,7 @@
 mod antibot;
 mod cdp;
 mod client;
+mod conditional;
 mod error;
 mod headers;
 mod normalize;
@@ -25,6 +26,7 @@ pub use antibot::{ChallengeDetection, detect_challenge};
 pub(crate) use client::internal_service_http_client;
 pub use client::{build_client, fetch_html, http_client};
 pub(crate) use client::{build_client_no_redirect, build_client_without_ssrf_resolver};
+pub use conditional::{Probe, conditional_probe};
 pub use error::HttpError;
 pub use headers::parse_custom_headers;
 pub use normalize::normalize_url;

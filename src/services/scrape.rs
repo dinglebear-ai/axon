@@ -91,6 +91,8 @@ pub async fn scrape(
         match vertical_result {
             Ok(Some(result)) => {
                 let doc = result.map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+                // TODO(watch): vertical payloads omit `links`, so watch
+                // link-change detection is markdown-only for vertical URLs.
                 let payload = serde_json::json!({ "url": doc.url, "markdown": doc.markdown });
                 let mut scrape_result = map_scrape_payload(payload)?;
                 scrape_result.backend = Some(DocumentBackend::LiveScrape);

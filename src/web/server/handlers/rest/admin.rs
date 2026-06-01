@@ -241,44 +241,24 @@ pub(crate) async fn v1_watch_create(
             format!("task_payload exceeds {MAX_TASK_PAYLOAD_BYTES} byte limit"),
         );
     }
-    // For "refresh" tasks, task_payload.urls must be a non-empty string array
-    // and all URLs must pass SSRF validation. Validate at create time so the
-    // watch definition is rejected immediately rather than failing silently
-    // on every scheduled run.
-    if input.task_type.as_str() == "refresh" {
-        let urls = input
-            .task_payload
-            .get("urls")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                rest_error(
-                    StatusCode::BAD_REQUEST,
-                    "bad_request",
-                    "task_payload.urls is required for refresh tasks and must be an array".into(),
-                )
-            });
-        let urls = match urls {
-            Ok(u) => u,
-            Err(r) => return r,
-        };
-        if urls.is_empty() {
-            return rest_error(
-                StatusCode::BAD_REQUEST,
-                "bad_request",
-                "task_payload.urls must not be empty for refresh tasks".into(),
-            );
-        }
+    // Validate the watch task_payload at create time: urls must be a non-empty
+    // string array and ignore_patterns must compile. Reject immediately rather
+    // than failing silently on every scheduled run.
+    if let Err(msg) = crate::jobs::watch::validate_task_payload(&input.task_payload) {
+        return rest_error(StatusCode::BAD_REQUEST, "bad_request", msg);
+    }
+    // Additionally SSRF-guard every watched URL at create time.
+    if let Some(urls) = input.task_payload.get("urls").and_then(|v| v.as_array()) {
         for url_val in urls {
-            let url = url_val.as_str().ok_or_else(|| {
-                rest_error(
-                    StatusCode::BAD_REQUEST,
-                    "bad_request",
-                    "task_payload.urls entries must be strings".into(),
-                )
-            });
-            let url = match url {
-                Ok(u) => u,
-                Err(r) => return r,
+            let url = match url_val.as_str() {
+                Some(u) => u,
+                None => {
+                    return rest_error(
+                        StatusCode::BAD_REQUEST,
+                        "bad_request",
+                        "task_payload.urls entries must be strings".into(),
+                    );
+                }
             };
             if let Err(e) = crate::core::http::validate_url(url) {
                 return rest_error(

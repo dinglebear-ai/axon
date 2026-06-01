@@ -7,13 +7,21 @@ use sqlx::SqlitePool;
 use std::error::Error;
 use uuid::Uuid;
 
+pub(crate) mod change_detect;
+pub(crate) mod cluster;
+pub(crate) mod dispatch;
+pub(crate) mod filter;
+pub(crate) mod orchestrate;
+pub(crate) mod report;
+pub(crate) mod url_state;
+
 pub const WATCH_RUN_STATUS_RUNNING: &str = "running";
 pub const WATCH_RUN_STATUS_COMPLETED: &str = "completed";
 pub const WATCH_RUN_STATUS_FAILED: &str = "failed";
 
 /// Task types a watch may carry. A `task_type` outside this set can never run,
 /// so every create path (CLI, HTTP) must validate against this single list.
-pub const SUPPORTED_TASK_TYPES: &[&str] = &["refresh"];
+pub const SUPPORTED_TASK_TYPES: &[&str] = &["watch"];
 
 /// Validate a `task_type` at create time so callers never persist a watch that
 /// can never execute. Rejects surrounding whitespace (the stored value would
@@ -29,6 +37,54 @@ pub fn validate_task_type(task_type: &str) -> Result<(), String> {
             task_type,
             SUPPORTED_TASK_TYPES.join(", ")
         ));
+    }
+    Ok(())
+}
+
+/// Maximum number of URLs a single watch may track. Bounds per-tick work and
+/// the persisted payload.
+pub const MAX_WATCH_URLS: usize = 256;
+/// Maximum crawl depth a watch payload may request for change-triggered crawls.
+pub const MAX_WATCH_DEPTH: u64 = 10;
+
+/// Validate a watch's `task_payload` at create time: `urls` non-empty (and
+/// within [`MAX_WATCH_URLS`]), every `ignore_patterns` entry compiles as a
+/// regex, and any `max_depth` is within [`MAX_WATCH_DEPTH`]. Shared by CLI +
+/// HTTP create.
+pub fn validate_task_payload(payload: &serde_json::Value) -> Result<(), String> {
+    let urls = payload
+        .get("urls")
+        .and_then(|v| v.as_array())
+        .ok_or("task_payload.urls must be a non-empty array")?;
+    if urls.is_empty() || !urls.iter().all(|u| u.is_string()) {
+        return Err("task_payload.urls must be a non-empty array of strings".to_string());
+    }
+    if urls.len() > MAX_WATCH_URLS {
+        return Err(format!(
+            "task_payload.urls has {} entries; maximum is {MAX_WATCH_URLS}",
+            urls.len()
+        ));
+    }
+    if let Some(depth) = payload.get("max_depth") {
+        let n = depth
+            .as_u64()
+            .ok_or("task_payload.max_depth must be a non-negative integer")?;
+        if n > MAX_WATCH_DEPTH {
+            return Err(format!(
+                "task_payload.max_depth is {n}; maximum is {MAX_WATCH_DEPTH}"
+            ));
+        }
+    }
+    if let Some(pats) = payload.get("ignore_patterns") {
+        let arr = pats
+            .as_array()
+            .ok_or("ignore_patterns must be an array of strings")?;
+        for p in arr {
+            let s = p
+                .as_str()
+                .ok_or("ignore_patterns entries must be strings")?;
+            regex::Regex::new(s).map_err(|e| format!("invalid ignore_pattern '{s}': {e}"))?;
+        }
     }
     Ok(())
 }
@@ -445,7 +501,7 @@ pub async fn run_watch_now_with_pool(
     // the future stays `Send` for the axum runtime behind `/v1/watch/{id}/run`.
     // A COMPLETED write that fails falls through to the FAILED finalize below so
     // the run is never wedged in `running` — nothing reclaims stale runs.
-    let outcome: Result<serde_json::Value, String> = run_watch_task(cfg, watch).await;
+    let outcome: Result<serde_json::Value, String> = run_watch_task(cfg, pool, run.id, watch).await;
     let err_text = match outcome {
         Ok(payload) => match finalize_completed(pool, watch, run.id, &payload).await {
             Ok(()) => return Ok(get_watch_run_with_pool(pool, run.id).await?.unwrap_or(run)),
@@ -498,41 +554,21 @@ async fn finalize_completed(
 }
 
 /// Execute a watch's task → result payload, or a human-readable failure message.
-/// Pure compute + scrape; the caller owns the single finalize write.
-async fn run_watch_task(cfg: &Config, watch: &WatchDef) -> Result<serde_json::Value, String> {
+/// Pure compute + scrape; the caller owns the single finalize write. Receives
+/// the caller's `pool` and the real `run_id` so the orchestrator never has to
+/// re-derive the current run (which was racy when a `run-now` overlapped a
+/// scheduled run) or open a fresh per-run pool.
+async fn run_watch_task(
+    cfg: &Config,
+    pool: &SqlitePool,
+    run_id: Uuid,
+    watch: &WatchDef,
+) -> Result<serde_json::Value, String> {
     match watch.task_type.as_str() {
-        "refresh" => {
-            let urls = watch
-                .task_payload
-                .get("urls")
-                .and_then(|value| serde_json::from_value::<Vec<String>>(value.clone()).ok())
-                .unwrap_or_default();
-            if urls.is_empty() {
-                return Err("watch refresh task requires task_payload.urls".to_string());
-            }
-            let mut checked = 0usize;
-            let mut failed = 0usize;
-            let mut refreshed = Vec::new();
-            for url in &urls {
-                checked += 1;
-                match crate::services::scrape::scrape(cfg, url, None).await {
-                    Ok(result) => refreshed.push(serde_json::json!({
-                        "url": result.url,
-                        "markdown_chars": result.markdown.chars().count(),
-                    })),
-                    Err(_) => failed += 1,
-                }
-            }
-            Ok(serde_json::json!({
-                "mode": "stateless-refresh",
-                "checked": checked,
-                "changed": 0,
-                "unchanged": checked.saturating_sub(failed),
-                "failed": failed,
-                "urls": urls,
-                "refreshed": refreshed,
-            }))
-        }
+        // "refresh" is the prior release's task_type for this same handler.
+        // Accepted here (EXECUTION only) for back-compat so persisted rows keep
+        // running; new creates still require "watch" (see SUPPORTED_TASK_TYPES).
+        "watch" | "refresh" => orchestrate::run_url_watch(cfg, pool, run_id, watch).await,
         other => Err(format!("unsupported watch task_type: {other}")),
     }
 }
