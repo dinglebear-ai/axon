@@ -67,3 +67,38 @@ fn env_bool_opt_returns_some_false_when_set_to_0() {
     assert_eq!(env_bool_opt("AXON_TEST_BOOL_OPT_FALSE"), Some(false));
     unsafe { env::remove_var("AXON_TEST_BOOL_OPT_FALSE") };
 }
+
+#[test]
+fn parse_path_budgets_parses_valid_entries() {
+    let raw = vec!["/blog=100".to_string(), "*=1000".to_string()];
+    let budgets = parse_path_budgets(&raw);
+    assert_eq!(
+        budgets,
+        vec![("/blog".to_string(), 100), ("*".to_string(), 1000)]
+    );
+}
+
+#[test]
+fn parse_path_budgets_rsplit_keeps_path_with_equals() {
+    // rsplit_once on the LAST '=' so a path containing '=' (query-ish) keeps it.
+    let raw = vec!["/a=b=5".to_string()];
+    let budgets = parse_path_budgets(&raw);
+    assert_eq!(budgets, vec![("/a=b".to_string(), 5)]);
+}
+
+#[test]
+fn parse_path_budgets_skips_malformed_entries() {
+    let raw = vec![
+        "noequals".to_string(),  // missing '='
+        "=10".to_string(),       // empty path
+        "/docs=abc".to_string(), // non-numeric cap
+        "/ok=42".to_string(),    // valid — survives
+    ];
+    let budgets = parse_path_budgets(&raw);
+    assert_eq!(budgets, vec![("/ok".to_string(), 42)]);
+}
+
+#[test]
+fn parse_path_budgets_empty_input_is_empty() {
+    assert!(parse_path_budgets(&[]).is_empty());
+}

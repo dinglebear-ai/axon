@@ -121,6 +121,37 @@ pub(super) fn validate_custom_headers(headers: Vec<String>) -> Result<Vec<String
     Ok(headers)
 }
 
+/// Parse repeatable `--budget PATH=N` entries into owned `(path, cap)` pairs
+/// for spider's per-path crawl budget (bead axon_rust-37zv). Malformed entries
+/// (missing `=`, empty path, non-numeric N) are skipped with a warning rather
+/// than failing the whole parse. The path is used verbatim as the budget key;
+/// `*` is the wildcard recognized by spider for all paths.
+pub(super) fn parse_path_budgets(raw: &[String]) -> Vec<(String, u32)> {
+    let mut out = Vec::new();
+    for entry in raw {
+        let Some((path, cap)) = entry.rsplit_once('=') else {
+            crate::core::logging::log_warn(&format!(
+                "--budget missing '=' separator, ignoring: {entry:?}"
+            ));
+            continue;
+        };
+        let path = path.trim();
+        if path.is_empty() {
+            crate::core::logging::log_warn(&format!(
+                "--budget has empty path, ignoring: {entry:?}"
+            ));
+            continue;
+        }
+        match cap.trim().parse::<u32>() {
+            Ok(cap) => out.push((path.to_string(), cap)),
+            Err(_) => crate::core::logging::log_warn(&format!(
+                "--budget cap is not a non-negative integer, ignoring: {entry:?}"
+            )),
+        }
+    }
+    out
+}
+
 /// Resolve the MCP transport from explicit CLI flag, falling back to the
 /// env override and then the command-specific default.
 pub(super) fn resolve_mcp_transport(

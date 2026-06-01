@@ -48,6 +48,8 @@ All global flags apply. Key flags:
 | `--max-depth <n>` | `10` | Maximum crawl depth. |
 | `--render-mode <mode>` | `auto-switch` | `http`, `chrome`, `auto-switch`. |
 | `--include-subdomains <bool>` | `false` | Include subdomains under the same parent domain. |
+| `--budget <PATH=N>` | — | Per-path page cap, repeatable (e.g. `--budget /blog=100 --budget '*=1000'`). `*` = all paths. Unset = no budget. |
+| `--etag-conditional` | `false` | Conditional re-crawl: seed spider's ETag cache from `etag.json` so unchanged pages return `304` and are reused (relinked, `changed=false`) instead of re-fetched. Independent of `--cache`. |
 | `--sitemap-only` | `false` | Sync-only path: run sitemap backfill without full crawl. |
 | `--skip-embed` | `false` | Do not queue an embed job from crawl output. |
 | `--json` | `false` | JSON output for job metadata/status responses. |

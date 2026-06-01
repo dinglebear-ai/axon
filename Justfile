@@ -215,7 +215,11 @@ validate-plugin:
     import json
     from pathlib import Path
 
-    manifest = Path(".claude-plugin/plugin.json")
+    # The plugin manifest lives under plugins/axon/ (split out of the repo root
+    # in 557591eb); fall back to the legacy root path for older checkouts.
+    manifest = Path("plugins/axon/.claude-plugin/plugin.json")
+    if not manifest.exists():
+        manifest = Path(".claude-plugin/plugin.json")
     plugin = json.loads(manifest.read_text())
     for key in ["name", "description", "author"]:
         if not plugin.get(key):
@@ -223,7 +227,7 @@ validate-plugin:
     if "version" in plugin:
         raise SystemExit(f"FORBIDDEN: {manifest} version")
 
-    monitors = Path(".claude-plugin/monitors/monitors.json")
+    monitors = manifest.parent / "monitors" / "monitors.json"
     if not monitors.exists():
         raise SystemExit(f"MISSING: {monitors}")
     json.loads(monitors.read_text())

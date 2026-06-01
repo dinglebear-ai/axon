@@ -4,7 +4,7 @@
 > [`docs/FEATURES.md`](FEATURES.md) — that file also covers runtime env-var gates.
 
 **Total feature entries tracked in this inventory: 79 (includes `basic` meta-feature)**
-**Flags enabled in axon_rust: 21 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
+**Flags enabled in axon_rust: 19 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
 
 ---
 
@@ -18,7 +18,7 @@ spider = { version = "2", default-features = false, features = [
     "chrome_headless_new", "chrome_simd",
     "simd", "inline-more", "cache_mem",
     "ua_generator", "headers", "time", "control",
-    "firewall", "hedge",
+    "hedge", "etag_cache",
 ] }
 
 spider_agent       = { version = "2.47.89", default-features = false, features = ["search_tavily", "openai"] }
@@ -32,7 +32,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 
 ## Flags In Use
 
-### spider crate — 21 flags enabled
+### spider crate — 19 flags enabled
 
 | Flag | Category | Where Used in Source |
 |------|----------|----------------------|
@@ -45,6 +45,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 | `chrome_screenshot` | Chrome / Browser | `ScreenshotParams` usage in `src/crawl/engine/runtime.rs`. Powers screenshot capture during crawls |
 | `adblock` | Chrome / Browser | Implicit ad/tracker request filtering during crawl. No local toggle — always active when chrome features are in use |
 | `cache_mem` | Caching | In-memory page/request deduplication during crawls. No local call site; spider uses it internally for request memoization |
+| `etag_cache` | Caching | Conditional re-crawl. `--etag-conditional` seeds the per-`Website` ETag cache from `etag.json`; spider sends `If-None-Match`/`If-Modified-Since` and skips the body on `304`. Wired in `src/crawl/engine/runtime.rs`; cross-run reconciliation in `src/crawl/engine/etag.rs` (bead axon_rust-hiyf) |
 
 | `hedge` | Core | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `src/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
 
@@ -119,6 +120,7 @@ Used in two files for HTML→Markdown content transformation:
 |------|--------|-------|
 | `cache` | — | |
 | `cache_mem` | ✅ | In-memory request deduplication during crawls |
+| `etag_cache` | ✅ | Conditional re-crawl (`--etag-conditional`): seeds ETag cache from `etag.json`, 304-skips reconciled in `etag.rs` (bead axon_rust-hiyf) |
 | `cache_openai` | — | |
 | `cache_gemini` | — | |
 | `cache_chrome_hybrid` | — | |
@@ -192,7 +194,7 @@ Used in two files for HTML→Markdown content transformation:
 
 | Flag | Status | Notes |
 |------|--------|-------|
-| `firewall` | ✅ | Blocks known-bad domains (malware, phishing, spam) before fetch — defense-in-depth with `validate_url()` |
+| `firewall` | — | **NOT enabled.** `spider_firewall`'s build.rs fetches blocklists from `api.github.com` unauthenticated and panics when GitHub rate-limits CI; it doesn't read `GITHUB_TOKEN`. `validate_url()` in `src/core/http/ssrf.rs` remains the primary SSRF guard. Re-enable when upstream supports an auth knob. (See root `CLAUDE.md` → Spider feature flags.) |
 
 ### Search (5)
 
@@ -211,17 +213,17 @@ Used in two files for HTML→Markdown content transformation:
 | Category | Total | Enabled |
 |----------|-------|---------|
 
-| Core | 25 | 11 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`) — `glob` is NOT enabled |
+| Core | 25 | 10 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`) — `glob` is NOT enabled |
 
 | Storage | 3 | 0 |
-| Caching | 6 | 1 (`cache_mem`) |
+| Caching | 6 | 2 (`cache_mem`, `etag_cache`) |
 | Chrome / Browser | 17 | 7 (`chrome`, `chrome_stealth`, `chrome_screenshot`, `chrome_store_page`, `chrome_headless_new`, `chrome_simd`, `adblock`) |
-| Firewall | 1 | 1 (`firewall`) |
+| Firewall | 1 | 0 (`firewall` NOT enabled — build.rs rate-limit panic) |
 | WebDriver | 7 | 0 |
 | AI / LLM | 2 | 1 via spider_agent (`openai`) |
 | Spider Cloud | 1 | 0 |
 | Agent | 12 | 1 via spider_agent (`search_tavily`) |
 | Search | 5 | 0 |
-| **Total** | **79** | **21 spider + 2 spider_agent = 23** |
+| **Total** | **79** | **19 spider + 2 spider_agent = 21** |
 
 > `basic` is a meta-feature enabled on the `spider` crate that bundles core crawl behavior. The project uses `default-features = false` on all spider crates, so only explicitly listed features are compiled in.

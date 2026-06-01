@@ -169,6 +169,17 @@ fn apply_limit_and_behavior_settings(cfg: &Config, website: &mut Website, start_
     if cfg.max_pages > 0 {
         website.with_limit(cfg.max_pages);
     }
+    if !cfg.path_budgets.is_empty() {
+        // Keys borrow from `cfg.path_budgets` (owned Strings on the Config,
+        // which outlives this call) so spider's `HashMap<&str, u32>` is valid
+        // for the duration of `with_budget`. Bead axon_rust-37zv.
+        let budget: spider::hashbrown::HashMap<&str, u32> = cfg
+            .path_budgets
+            .iter()
+            .map(|(path, cap)| (path.as_str(), *cap))
+            .collect();
+        website.with_budget(Some(budget));
+    }
     if cfg.respect_robots {
         website.with_respect_robots_txt(true);
     }
@@ -207,6 +218,15 @@ fn apply_request_and_identity_settings(cfg: &Config, website: &mut Website, star
         let url_str = url.as_ref();
 
         if is_junk_discovered_url(url_str) {
+            return (CaseInsensitiveString::default(), None);
+        }
+
+        // Drop media assets (images, fonts, audio, video, archives, PDFs, …)
+        // before they are queued, fetched, or embedded. spider's compile-time
+        // perfect-hash classifier keys on the URL's file extension, so
+        // `.html`/`.htm`/extensionless doc routes pass through unaffected.
+        // Bead axon_rust-mk95.
+        if spider::utils::media_asset::is_media_asset_url(url_str) {
             return (CaseInsensitiveString::default(), None);
         }
 
@@ -288,6 +308,16 @@ pub(super) async fn configure_website_with_crawl_id(
         if cfg.cache_http_only {
             website.with_cache_skip_browser(true);
         }
+    }
+
+    // Conditional re-crawl: enable spider's ETag cache so seeded validators drive
+    // If-None-Match / If-Modified-Since requests. On a 304 spider drops the page
+    // silently; the engine reconciles those drops back into the manifest after the
+    // crawl (see src/crawl/engine/etag.rs). Crawl path only — single-page scrape
+    // would lose content on a 304 and has no reconciliation seam. Bead
+    // axon_rust-hiyf.
+    if cfg.etag_conditional {
+        website.configuration.with_etag_cache(true);
     }
 
     website = apply_browser_settings(cfg, website, mode).await?;

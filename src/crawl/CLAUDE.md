@@ -19,7 +19,9 @@ crawl/
 │   │   └── util.rs            # Shared collector helpers
 │   ├── map.rs             # Map-mode helpers
 │   ├── map/               # `crawl_and_collect_map()` lives here (engine/map/strategy.rs)
-│   ├── sitemap.rs         # `append_sitemap_backfill()`, sitemap discovery + filtering, `<lastmod>` parsing
+│   ├── sitemap.rs         # `append_sitemap_backfill()`, sitemap discovery + filtering, `<lastmod>` parsing, `should_retry_status` (52x dead-host classification)
+│   ├── etag.rs            # Conditional re-crawl (ETag/304): sidecar seed/persist + visited-set-gated reconciliation (axon_rust-hiyf)
+│   ├── etag_tests.rs      # sidecar tests for etag.rs
 │   ├── thin_refetch.rs    # Re-fetch thin pages with Chrome
 │   ├── cdp_render.rs      # Chrome DevTools Protocol render path
 │   ├── url_utils.rs       # `is_junk_discovered_url`, `derive_auto_whitelist_pattern`, helpers
@@ -82,7 +84,7 @@ All three are feature-gated by `cfg.enable_*` toggles introduced in `zehr`; defa
 Chrome requires `AXON_CHROME_REMOTE_URL` set. If not set, HTTP result is kept.
 
 ### Link Filter (`set_on_link_find`)
-`runtime.rs` registers `website.set_on_link_find()` in `apply_request_and_identity_settings()`. It fires on every discovered link **before** the blacklist regex and before any fetch. Two guards run in order:
+`runtime.rs` registers `website.set_on_link_find()` in `apply_request_and_identity_settings()`. It fires on every discovered link **before** the blacklist regex and before any fetch. In-callback guards run in order **junk → media-asset → cross-domain**; auto path-prefix scoping (below) is applied earlier, in `configure_website()`, before the callback:
 
 **1. Junk URL detection** (`is_junk_discovered_url` in `url_utils.rs`):
 
@@ -95,6 +97,10 @@ Heuristics (each sufficient to reject, checked against the full URL then path-on
 - JS string concat artifact: `'%20` or `%20'` in path
 
 The `&amp;` check is applied to the full URL (not path-only) because it typically appears in query strings (e.g. `?since=daily&amp;lang=en`).
+
+**1b. Media-asset rejection** (`spider::utils::media_asset::is_media_asset_url`, bead axon_rust-mk95):
+
+Runs immediately after junk detection. Spider's compile-time perfect-hash classifier keys on the URL's file extension and drops images, fonts, audio, video, archives, and PDFs before they are queued, fetched, or embedded. `.html`/`.htm`/extensionless doc routes pass through unaffected. This replaced the previous hand-rolled media heuristics.
 
 **2. Auto path-prefix scoping** (`derive_auto_whitelist_pattern` in `url_utils.rs`):
 
@@ -136,6 +142,17 @@ Use `--sitemap-since-days N` to restrict backfill to URLs whose `<lastmod>` fall
 
 ### Locale Path Filtering
 `--exclude-path-prefix` (and the built-in locale list) treats `/` and `-` as word boundaries. `/ja` blocks both `/ja/docs` and `/ja-jp/docs`. Pass `none` to disable all locale filtering.
+
+### Conditional Re-crawl (ETag/304) — `etag.rs` (bead axon_rust-hiyf)
+Opt-in via `--etag-conditional` (independent of `--cache`). Enables spider's `etag_cache` feature and seeds the per-`Website` cache from a persisted `etag.json` sidecar (next to `manifest.jsonl`), so re-crawls send `If-None-Match`/`If-Modified-Since` and unchanged pages return a bodyless `304`.
+
+**The 304 reconciliation gotcha (do NOT regress):** spider's 304 short-circuit returns `Default::default()` *inside* the per-URL fetch task, so a 304'd page **never enters the broadcast** — the collector would otherwise drop it as `Empty` and lose content. `reconcile_unmodified()` re-emits the previous manifest entry (`changed=false`, markdown relinked from `markdown.old`) for the silent skips. The reconcile set is `seeded ∩ previous_manifest − arrived ∩ visited`, where `visited = website.get_links()` canonicalized. **The visited-set gate is load-bearing:** a 304 skip is in `links_visited` (spider scheduled + fetched it); a no-longer-discovered page is not — so deleted pages are excluded rather than resurrected as zombies. `relink_reused_page` refuses symlinked `markdown.old` entries. Wired on the crawl path only; single-page `scrape` is intentionally excluded.
+
+### 52x Dead-host Retry Classification — `should_retry_status` in `sitemap.rs` (bead axon_rust-6i30)
+spider 2.51 returns precise synthetic codes: `521` refused, `524` timeout, `525` DNS/NXDOMAIN, `526` host/TLS unreachable (`525` is marked permanent only when proxy + independent local DNS agree). `should_retry_status()` excludes permanent `525`/`526` so the retry budget isn't burned re-resolving dead hosts; transient `52x` and genuine upstream `5xx` stay retryable.
+
+### Per-path Budgets — `with_budget` in `runtime.rs` (bead axon_rust-37zv)
+Repeatable `--budget PATH=N` flag caps pages crawled under each path prefix (`*` = all paths), e.g. `--budget /blog=100 --budget '*=1000'`. Parsed into `cfg.path_budgets` (owned `String` keys held on `Config` so the `&str` keys passed to `Website::with_budget` outlive the call). Unset = no budget (current behavior).
 
 ## Testing
 

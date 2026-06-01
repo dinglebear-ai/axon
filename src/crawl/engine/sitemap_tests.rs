@@ -109,6 +109,35 @@ fn request_timeout_secs_rounds_up_with_minimum_one_second() {
 }
 
 #[test]
+fn should_retry_status_permanent_dead_hosts_not_retried() {
+    use reqwest::StatusCode;
+    // 525 (DNS/NXDOMAIN) and 526 (host/TLS unreachable) are permanent —
+    // retrying re-resolves a host that will never resolve (dead-host bead axon_rust-6i30).
+    assert!(!should_retry_status(StatusCode::from_u16(525).unwrap()));
+    assert!(!should_retry_status(StatusCode::from_u16(526).unwrap()));
+}
+
+#[test]
+fn should_retry_status_transient_5xx_and_52x_still_retried() {
+    use reqwest::StatusCode;
+    // Genuine upstream 5xx and transient spider synthetic codes (refused /
+    // timeout) remain retryable.
+    assert!(should_retry_status(StatusCode::INTERNAL_SERVER_ERROR));
+    assert!(should_retry_status(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(should_retry_status(StatusCode::TOO_MANY_REQUESTS));
+    assert!(should_retry_status(StatusCode::from_u16(521).unwrap())); // refused
+    assert!(should_retry_status(StatusCode::from_u16(524).unwrap())); // timeout
+}
+
+#[test]
+fn should_retry_status_success_and_4xx_not_retried() {
+    use reqwest::StatusCode;
+    assert!(!should_retry_status(StatusCode::OK));
+    assert!(!should_retry_status(StatusCode::NOT_FOUND));
+    assert!(!should_retry_status(StatusCode::FORBIDDEN));
+}
+
+#[test]
 fn markdown_url_uses_passthrough() {
     assert!(is_already_markdown("https://x.com/docs/api.md"));
     assert!(is_already_markdown("https://x.com/llms.txt"));

@@ -9,7 +9,8 @@ use super::super::super::cli::GlobalArgs;
 use super::super::super::types::{ClientMode, CommandKind, Config};
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
-    env_port, parse_csv_env, parse_origin_allowlist, resolve_mcp_transport, validate_custom_headers,
+    env_port, parse_csv_env, parse_origin_allowlist, parse_path_budgets, resolve_mcp_transport,
+    validate_custom_headers,
 };
 use super::super::toml_config::TomlConfig;
 use super::super::tuning;
@@ -99,6 +100,8 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.max_llms_txt_urls = scrape.max_llms_txt_urls.unwrap_or(512);
     cfg.cache = g.cache;
     cfg.cache_http_only = g.cache_http_only;
+    cfg.etag_conditional = g.etag_conditional;
+    cfg.path_budgets = parse_path_budgets(&g.path_budgets);
     cfg.format = g.format;
 }
 
