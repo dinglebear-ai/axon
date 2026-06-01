@@ -308,6 +308,8 @@ fn crawl_server_rest_plan(cfg: &Config) -> Result<ServerRestPlan, ServerPlanErro
             discover_sitemaps: Some(cfg.discover_sitemaps),
             max_sitemaps: Some(cfg.max_sitemaps),
             sitemap_since_days: Some(cfg.sitemap_since_days),
+            discover_llms_txt: Some(cfg.discover_llms_txt),
+            max_llms_txt_urls: Some(cfg.max_llms_txt_urls),
             delay_ms: Some(cfg.delay_ms),
             collection: Some(cfg.collection.clone()),
             headers: cfg.custom_headers.clone(),

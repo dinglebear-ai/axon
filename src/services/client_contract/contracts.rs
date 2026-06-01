@@ -47,10 +47,12 @@ const REST_ROUTE_CONTRACTS: &[RestRouteContract] = &[
         fields: &[
             "collection",
             "delay_ms",
+            "discover_llms_txt",
             "discover_sitemaps",
             "headers",
             "include_subdomains",
             "max_depth",
+            "max_llms_txt_urls",
             "max_pages",
             "max_sitemaps",
             "render_mode",

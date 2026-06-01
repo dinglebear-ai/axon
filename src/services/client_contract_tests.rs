@@ -78,6 +78,8 @@ fn crawl_request_serializes_all_routing_knobs() {
         discover_sitemaps: Some(true),
         max_sitemaps: Some(32),
         sitemap_since_days: Some(7),
+        discover_llms_txt: Some(true),
+        max_llms_txt_urls: Some(64),
         delay_ms: Some(25),
         headers: vec![("x-test".to_string(), "1".to_string())],
         route_preference: ClientRoutePreference::ServerRequired,

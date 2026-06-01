@@ -5,7 +5,7 @@ use crate::core::content::{
     to_markdown, url_to_stable_filename,
 };
 use crate::core::http::{build_client, validate_url};
-use crate::core::logging::log_info;
+use crate::core::logging::{log_info, log_warn};
 use crate::crawl::manifest::ManifestEntry;
 use sha2::{Digest, Sha256};
 use spider::url::Url;
@@ -32,15 +32,92 @@ pub struct SitemapDiscovery {
     pub failed_fetches: usize,
 }
 
+/// Default body cap for the `/llms.txt` discovery document (and small docs like robots.txt).
+/// Guards the discovery path — NOT general HTML/sitemap fetches — against OOM from a
+/// malicious/misconfigured host. 512 KB comfortably exceeds a real llms.txt link index.
+pub(crate) const DISCOVERY_MAX_BODY_BYTES: u64 = 512 * 1024;
+
+/// Body cap for `sitemap.xml`. The sitemap protocol ceiling is 50 MB uncompressed, so the
+/// cap must be generous enough not to drop large-but-valid sitemaps.
+pub(crate) const SITEMAP_MAX_BODY_BYTES: u64 = 50 * 1024 * 1024;
+
+/// Join `path` onto the origin of `parsed`, producing a correctly-formatted absolute URL.
+///
+/// `Url::join` with a leading-slash path replaces the path while preserving scheme, host,
+/// and port — and crucially brackets IPv6 literals in the authority (`[::1]:8080`), which
+/// `format!("{host}:{port}")` does NOT (`host_str()` returns the address without brackets,
+/// yielding an invalid authority for IPv6 hosts).
+pub(crate) fn join_origin_path(parsed: &Url, path: &str) -> Result<String, Box<dyn Error>> {
+    // Strip any userinfo (`user:pass@`) so credentials never propagate into discovery
+    // requests or logs — join only the origin (scheme://host:port) with `path`. The
+    // setters only fail on cannot-be-a-base URLs, which http(s) origins never are.
+    let mut origin = parsed.clone();
+    let _ = origin.set_username("");
+    let _ = origin.set_password(None);
+    Ok(origin.join(path)?.to_string())
+}
+
 fn should_retry_status(status: reqwest::StatusCode) -> bool {
     status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
-fn request_timeout_secs(cfg: &Config) -> u64 {
+pub(crate) fn request_timeout_secs(cfg: &Config) -> u64 {
     cfg.request_timeout_ms
         .unwrap_or(30_000)
         .div_ceil(1000)
         .max(1)
+}
+
+/// Read a successful response body, optionally capped at `max_bytes`.
+///
+/// - `Some(cap)` → streamed read with a hard byte cap and lossy UTF-8 decode (fine for
+///   llms.txt/sitemap, which are UTF-8 by spec; lossy is strictly safer than dropping the
+///   whole doc on a stray byte). Oversized bodies return `None`.
+/// - `None` → charset-aware, lossy, uncapped `resp.text()` — matches `main`'s behavior for
+///   HTML page backfill and any caller that must not silently drop large or non-UTF8 bodies.
+async fn read_body_capped(
+    resp: reqwest::Response,
+    url: &str,
+    max_bytes: Option<u64>,
+) -> Option<String> {
+    let Some(cap) = max_bytes else {
+        return match resp.text().await {
+            Ok(text) => Some(text),
+            Err(e) => {
+                log_warn(&format!("command=fetch body read failed url={url}: {e}"));
+                None
+            }
+        };
+    };
+    if resp.content_length().is_some_and(|len| len > cap) {
+        log_warn(&format!(
+            "command=fetch oversized body rejected (content-length) cap_bytes={cap} url={url}"
+        ));
+        return None;
+    }
+    let mut collected: Vec<u8> = Vec::new();
+    let mut stream = resp;
+    loop {
+        match stream.chunk().await {
+            Ok(Some(chunk)) => {
+                if collected.len() as u64 + chunk.len() as u64 > cap {
+                    log_warn(&format!(
+                        "command=fetch oversized body rejected (mid-stream) cap_bytes={cap} url={url}"
+                    ));
+                    return None;
+                }
+                collected.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(e) => {
+                log_warn(&format!("command=fetch stream error url={url}: {e}"));
+                return None;
+            }
+        }
+    }
+    // Lossy decode: replace malformed bytes rather than dropping the entire document
+    // (a regression vs reqwest::Response::text(), which decodes charset-aware/lossily).
+    Some(String::from_utf8_lossy(&collected).into_owned())
 }
 
 pub(crate) async fn fetch_text_with_retry(
@@ -48,6 +125,7 @@ pub(crate) async fn fetch_text_with_retry(
     url: &str,
     retries: usize,
     backoff_ms: u64,
+    max_bytes: Option<u64>,
 ) -> Option<String> {
     if validate_url(url).is_err() {
         return None;
@@ -58,13 +136,27 @@ pub(crate) async fn fetch_text_with_retry(
             Ok(resp) => {
                 let status = resp.status();
                 if status.is_success() {
-                    return resp.text().await.ok();
+                    return read_body_capped(resp, url, max_bytes).await;
                 }
-                if attempt >= retries || !should_retry_status(status) {
+                if !should_retry_status(status) {
+                    // True 404/non-retryable absence stays low-noise (no warn).
+                    return None;
+                }
+                if attempt >= retries {
+                    // Retryable status (429/5xx) that never recovered — worth a warn.
+                    log_warn(&format!(
+                        "command=fetch status={} retries exhausted url={url}",
+                        status.as_u16()
+                    ));
                     return None;
                 }
             }
-            Err(_) if attempt >= retries => return None,
+            Err(_) if attempt >= retries => {
+                log_warn(&format!(
+                    "command=fetch transport error, retries exhausted url={url}"
+                ));
+                return None;
+            }
             Err(_) => {}
         }
 
@@ -76,14 +168,19 @@ pub(crate) async fn fetch_text_with_retry(
     }
 }
 
-fn sitemap_seed_queue(scheme: &str, host: &str) -> VecDeque<String> {
-    VecDeque::from([
-        format!("{scheme}://{host}/sitemap.xml"),
-        format!("{scheme}://{host}/sitemap_index.xml"),
-        format!("{scheme}://{host}/sitemap-index.xml"),
-        format!("{scheme}://{host}/wp-sitemap.xml"),
-        format!("{scheme}://{host}/sitemap/sitemap-index.xml"),
-    ])
+/// Seed the queue with default sitemap paths. Uses `join_origin_path` so IPv6 authorities
+/// are bracketed correctly (and non-standard ports preserved).
+fn sitemap_seed_queue(parsed: &Url) -> VecDeque<String> {
+    [
+        "/sitemap.xml",
+        "/sitemap_index.xml",
+        "/sitemap-index.xml",
+        "/wp-sitemap.xml",
+        "/sitemap/sitemap-index.xml",
+    ]
+    .into_iter()
+    .filter_map(|path| join_origin_path(parsed, path).ok())
+    .collect()
 }
 
 /// Returns `true` if `lastmod` (ISO 8601 date or datetime string) falls within the last
@@ -99,7 +196,10 @@ fn lastmod_is_recent(lastmod: &str, since_days: u32) -> bool {
     }
 }
 
-fn sitemap_loc_in_scope(
+/// Returns the canonicalized URL if `loc` is in scope for a crawl/discovery rooted at
+/// `start_host`/`start_path`, else `None`. Shared by sitemap and llms.txt discovery.
+/// Same-host by default; honors `cfg.include_subdomains` and `cfg.exclude_path_prefix`.
+pub(crate) fn loc_in_scope(
     cfg: &Config,
     loc: &str,
     start_host: &str,
@@ -151,9 +251,15 @@ async fn process_sitemap_batch(
             #[cfg(test)]
             crate::core::http::set_allow_loopback(loopback_flag);
 
-            fetch_text_with_retry(&http, &sitemap_url, retries, backoff)
-                .await
-                .map(|xml| (sitemap_url, xml))
+            fetch_text_with_retry(
+                &http,
+                &sitemap_url,
+                retries,
+                backoff,
+                Some(SITEMAP_MAX_BODY_BYTES),
+            )
+            .await
+            .map(|xml| (sitemap_url, xml))
         });
     }
 
@@ -179,7 +285,7 @@ async fn process_sitemap_batch(
                 {
                     continue;
                 }
-                if let Some(canonical_loc) = sitemap_loc_in_scope(
+                if let Some(canonical_loc) = loc_in_scope(
                     cfg,
                     &loc,
                     scope.start_host,
@@ -191,7 +297,7 @@ async fn process_sitemap_batch(
             }
         } else {
             for loc in extract_loc_values(&xml) {
-                if let Some(canonical_loc) = sitemap_loc_in_scope(
+                if let Some(canonical_loc) = loc_in_scope(
                     cfg,
                     &loc,
                     scope.start_host,
@@ -221,14 +327,21 @@ async fn process_sitemap_batch(
 /// into `queue`. Returns the count of declared sitemaps found.
 async fn enqueue_robots_sitemaps(
     client: &reqwest::Client,
-    scheme: &str,
-    host: &str,
+    parsed: &Url,
     cfg: &Config,
     queue: &mut VecDeque<String>,
 ) -> usize {
-    let robots_url = format!("{scheme}://{host}/robots.txt");
-    let Some(robots_txt) =
-        fetch_text_with_retry(client, &robots_url, cfg.fetch_retries, cfg.retry_backoff_ms).await
+    let Ok(robots_url) = join_origin_path(parsed, "/robots.txt") else {
+        return 0;
+    };
+    let Some(robots_txt) = fetch_text_with_retry(
+        client,
+        &robots_url,
+        cfg.fetch_retries,
+        cfg.retry_backoff_ms,
+        Some(DISCOVERY_MAX_BODY_BYTES),
+    )
+    .await
     else {
         return 0;
     };
@@ -244,26 +357,20 @@ pub async fn discover_sitemap_urls(
 ) -> Result<SitemapDiscovery, Box<dyn Error>> {
     let parsed = Url::parse(start_url)
         .map_err(|e| format!("invalid start URL for sitemap discovery {start_url}: {e}"))?;
-    let scheme = parsed.scheme().to_string();
+    // Scheme/host/port (incl. correct IPv6 bracketing and non-standard ports) are derived
+    // by joining paths onto `parsed` directly, so no manual authority string is built here.
     let bare_host = parsed
         .host_str()
         .ok_or_else(|| format!("missing host in sitemap start URL {start_url}"))?
         .to_string();
-    // Include port when non-standard — without this, sitemap URLs targeting
-    // hosts on custom ports (e.g. dev servers, test mocks) silently hit 80/443.
-    let host = match parsed.port() {
-        Some(port) => format!("{bare_host}:{port}"),
-        None => bare_host.clone(),
-    };
 
-    let mut queue = sitemap_seed_queue(&scheme, &host);
+    let mut queue = sitemap_seed_queue(&parsed);
     let seeded_default_sitemaps = queue.len();
 
     let client = build_client(request_timeout_secs(cfg), None).map_err(|e| {
         format!("failed to build HTTP client for sitemap discovery of {start_url}: {e}")
     })?;
-    let robots_declared_sitemaps =
-        enqueue_robots_sitemaps(&client, &scheme, &host, cfg, &mut queue).await;
+    let robots_declared_sitemaps = enqueue_robots_sitemaps(&client, &parsed, cfg, &mut queue).await;
 
     let mut seen_sitemaps = HashSet::new();
     let mut out = HashSet::new();
@@ -366,6 +473,15 @@ pub struct BackfillStats {
     pub failed: usize,
 }
 
+/// Raw markdown/text targets (e.g. llms.txt-listed `.md` docs) must skip the HTML→markdown
+/// transform — `to_markdown(main_content:true)` would strip them to nothing and drop them as thin.
+pub(crate) fn is_already_markdown(url: &str) -> bool {
+    // Compare only the path, ignoring query/fragment.
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".txt")
+}
+
 /// Fetch `url`, convert to markdown, and classify as thin/dropped.
 /// Returns `(url, None)` on fetch failure, `(url, Some(...))` otherwise.
 async fn fetch_and_convert_backfill_url(
@@ -377,10 +493,17 @@ async fn fetch_and_convert_backfill_url(
     drop_thin: bool,
     selector_config: Option<spider_transformations::transformation::content::SelectorConfiguration>,
 ) -> (String, Option<(String, usize, bool, bool)>) {
-    let Some(html) = fetch_text_with_retry(&http, &url, retries, backoff).await else {
+    // HTML page backfill: pass `None` to preserve `main`'s uncapped, charset-aware decode.
+    // Real HTML pages can exceed the discovery cap and may not be strict UTF-8.
+    let Some(html) = fetch_text_with_retry(&http, &url, retries, backoff, None).await else {
         return (url, None);
     };
-    let trimmed = to_markdown(&html, selector_config.as_ref());
+    let trimmed = if is_already_markdown(&url) {
+        // Already markdown/plaintext — pass through verbatim, do not run the HTML transform.
+        html.trim().to_string()
+    } else {
+        to_markdown(&html, selector_config.as_ref())
+    };
     let markdown_chars = trimmed.len();
     let is_thin = markdown_chars < min_chars;
     let dropped = is_thin && drop_thin;

@@ -131,6 +131,8 @@ async fn services_action_api_dispatches_crawl_list_lifecycle() {
             respect_robots: None,
             discover_sitemaps: None,
             sitemap_since_days: None,
+            discover_llms_txt: None,
+            max_llms_txt_urls: None,
             render_mode: None,
             delay_ms: None,
         }),

@@ -420,6 +420,10 @@ Pages with fewer than `--min-markdown-chars` (default: 200) are flagged as thin.
 ### Sitemap backfill
 After a crawl, `append_sitemap_backfill()` discovers URLs via sitemap.xml that the crawler missed and fetches them individually. Respects `--max-sitemaps` (default: 512) and `--include-subdomains`. Use `--sitemap-since-days N` to restrict backfill to URLs whose `<lastmod>` falls within the last N days; URLs without `<lastmod>` are always included.
 
+### llms.txt probe
+
+After a crawl (and during `map`), if `cfg.discover_llms_txt` (default true; first-run panel default false), axon fetches `/llms.txt` at the site root, parses its markdown links, scopes them like sitemap URLs, and caps them to `max_llms_txt_urls` (512). The scoped links are unioned (deduped, no blanket truncation) with sitemap discovery into one `append_candidate_backfill` pass, both sources discovered concurrently in the crawl runner. The cap bounds only the llms.txt fan-out — sitemap-URL backfill stays uncapped. Raw `.md`/`.markdown`/`.txt` targets skip the HTML→markdown transform (else they'd be dropped as thin). `fetch_text_with_retry` caps the `/llms.txt` document at 512 KB and `sitemap.xml` at 50 MB; HTML page backfill is uncapped and charset-aware. `llms-full.txt` is intentionally NOT parsed — it is a content dump, not a link index.
+
 
 The compose file sets `context: .` — run `docker compose build` from this directory, not from a parent workspace.
 

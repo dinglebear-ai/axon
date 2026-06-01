@@ -149,6 +149,14 @@ CRAWL_FIELD_DESCRIPTIONS: dict[str, tuple[str, str]] = {
         "0",
         "Only backfill sitemap URLs with `<lastmod>` within last N days (0 = no filter)",
     ),
+    "discover_llms_txt": (
+        "true",
+        "Probe `/llms.txt` at the site root and merge its links into the backfill candidate set and `map` discovery",
+    ),
+    "max_llms_txt_urls": (
+        "512",
+        "Max URLs taken from a single `/llms.txt` after scope filtering (0 = unlimited)",
+    ),
     "render_mode": ("`auto_switch`", "`http`, `chrome`, `auto_switch`"),
     "delay_ms": ("0", "Per-request delay ms"),
 }

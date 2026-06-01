@@ -95,6 +95,8 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.endpoints_probe_rpc = inputs.dispatched.endpoints_probe_rpc;
     cfg.endpoints_probe_rpc_subdomains = inputs.dispatched.endpoints_probe_rpc_subdomains;
     cfg.max_sitemaps = scrape.max_sitemaps.unwrap_or(512);
+    cfg.discover_llms_txt = scrape.discover_llms_txt.unwrap_or(true);
+    cfg.max_llms_txt_urls = scrape.max_llms_txt_urls.unwrap_or(512);
     cfg.cache = g.cache;
     cfg.cache_http_only = g.cache_http_only;
     cfg.format = g.format;

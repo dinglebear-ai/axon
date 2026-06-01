@@ -1,6 +1,7 @@
 mod cdp_render;
 mod collector;
 mod dir_ops;
+pub(crate) mod llms_txt;
 pub(crate) mod map;
 mod runtime;
 pub(crate) mod sitemap;
@@ -28,6 +29,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc::Sender;
 
+pub(crate) use llms_txt::discover_llms_txt_urls;
 pub use map::MapResult;
 pub(crate) use map::{append_html_anchor_backfill, map_with_sitemap};
 #[cfg(test)]

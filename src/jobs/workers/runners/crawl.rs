@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::super::progress::spawn_crawl_progress_persister;
 use crate::core::config::Config;
+use crate::core::logging::log_warn;
 use crate::core::ui::{accent, symbol_for_status};
 use crate::jobs::backend::{JobPayload, lift_err};
 use crate::jobs::config_snapshot::apply_config_snapshot_for_container;
@@ -159,6 +160,65 @@ async fn validate_crawl_job_url(
     }
 }
 
+/// Post-crawl backfill fires if EITHER sitemap OR llms.txt discovery is enabled. This is an
+/// OR gate: `discover_sitemaps=false` + `discover_llms_txt=true` must still run backfill.
+fn backfill_enabled(cfg: &Config) -> bool {
+    cfg.discover_sitemaps || cfg.discover_llms_txt
+}
+
+/// Sitemap discovery for the backfill merge. Gated on `discover_sitemaps`; logs a warning
+/// (and returns the empty set) on discovery failure instead of swallowing the error, and
+/// surfaces `failed_fetches` before dropping the diagnostics to the bare URL list.
+async fn discover_sitemap_for_backfill(cfg: &Config, url: &str) -> Vec<String> {
+    if !cfg.discover_sitemaps {
+        return Vec::new();
+    }
+    match crate::crawl::engine::discover_sitemap_urls(cfg, url).await {
+        Ok(discovery) => {
+            if discovery.failed_fetches > 0 {
+                log_warn(&format!(
+                    "command=sitemap discovery failed_fetches={} discovered_urls={} url={url}",
+                    discovery.failed_fetches, discovery.discovered_urls
+                ));
+            }
+            discovery.urls
+        }
+        Err(e) => {
+            log_warn(&format!("command=sitemap discovery failed url={url}: {e}"));
+            Vec::new()
+        }
+    }
+}
+
+/// llms.txt discovery for the backfill merge. Gated on `discover_llms_txt`; logs a warning
+/// (and returns the empty set) on discovery failure instead of swallowing the error.
+async fn discover_llms_for_backfill(cfg: &Config, url: &str) -> Vec<String> {
+    if !cfg.discover_llms_txt {
+        return Vec::new();
+    }
+    match crate::crawl::engine::discover_llms_txt_urls(cfg, url).await {
+        Ok(urls) => urls,
+        Err(e) => {
+            log_warn(&format!("command=llms_txt discovery failed url={url}: {e}"));
+            Vec::new()
+        }
+    }
+}
+
+/// Union sitemap + llms.txt candidates, canonicalize + dedupe (sitemap wins on collision —
+/// chained first). NO blanket truncation: sitemap volume is bounded upstream by
+/// `max_sitemaps` and the llms fan-out is capped at its source (`max_llms_txt_urls`).
+/// Capping here would shrink sitemap backfill below `main`'s — a regression.
+fn merge_candidates(sitemap: Vec<String>, llms: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    sitemap
+        .into_iter()
+        .chain(llms)
+        .filter_map(|u| crate::crawl::engine::canonicalize_url_for_dedupe(&u))
+        .filter(|u| seen.insert(u.clone()))
+        .collect()
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "keeps cancellation context explicit"
@@ -174,20 +234,38 @@ async fn maybe_append_sitemap_backfill(
     summary: &mut crate::crawl::engine::CrawlSummary,
     cancel_token: Option<&CancellationToken>,
 ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-    if !effective_cfg.discover_sitemaps {
+    if !backfill_enabled(effective_cfg) {
         return Ok(None);
     }
 
     let backfill_fut = async {
-        crate::crawl::engine::append_sitemap_backfill(
+        // Discover both sources concurrently (each gated on its flag), union + dedupe,
+        // then run a single fetch/convert/manifest pass over the merged candidate set.
+        let (sitemap_res, llms_res) = tokio::join!(
+            discover_sitemap_for_backfill(effective_cfg, url),
+            discover_llms_for_backfill(effective_cfg, url),
+        );
+
+        let merged = merge_candidates(sitemap_res, llms_res);
+        if merged.is_empty() {
+            return Ok(());
+        }
+        let stats = crate::crawl::engine::append_candidate_backfill(
             effective_cfg,
-            url,
             job_output_dir,
             seen_urls,
+            merged,
             summary,
         )
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        if stats.0.failed > 0 {
+            log_warn(&format!(
+                "command=backfill candidate fetch/write failures={} candidates={} written={} url={url}",
+                stats.0.failed, stats.0.candidates, stats.0.written
+            ));
+        }
+        Ok(())
     };
     let backfill_result = match cancel_token {
         Some(token) => tokio::select! {

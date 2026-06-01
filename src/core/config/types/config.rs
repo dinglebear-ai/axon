@@ -130,6 +130,15 @@ pub struct Config {
     /// (0 = unlimited). TOML: `scrape.max-sitemaps`.
     pub max_sitemaps: usize,
 
+    /// Probe `/llms.txt` at the site root and backfill its listed URLs after the main crawl,
+    /// and merge them into `map` discovery. TOML: `scrape.discover-llms-txt`.
+    pub discover_llms_txt: bool,
+
+    /// Maximum number of URLs to take from a single `/llms.txt` after scope filtering
+    /// (0 = unlimited). A flat llms.txt has no document-count bound, so this caps fan-out.
+    /// TOML: `scrape.max-llms-txt-urls`.
+    pub max_llms_txt_urls: usize,
+
     /// Enable Spider's built-in crawl-result caching. Flag: `--cache`.
     pub cache: bool,
 

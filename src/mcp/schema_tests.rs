@@ -563,6 +563,27 @@ fn crawl_unknown_subaction_returns_error() {
 }
 
 #[test]
+fn llms_txt_request_fields_roundtrip_and_map() {
+    let raw = obj(json!({
+        "action": "crawl",
+        "subaction": "start",
+        "urls": ["https://x.com"],
+        "discover_llms_txt": false,
+        "max_llms_txt_urls": 50
+    }));
+    let parsed = parse_axon_request(raw).expect("crawl request parses");
+    let AxonRequest::Crawl(req) = parsed else {
+        panic!("expected crawl request");
+    };
+    assert_eq!(req.discover_llms_txt, Some(false));
+    assert_eq!(req.max_llms_txt_urls, Some(50));
+    // Serialize back and confirm snake_case wire names (guards a silent casing mismatch).
+    let out = serde_json::to_string(&req).unwrap();
+    assert!(out.contains("discover_llms_txt"));
+    assert!(out.contains("max_llms_txt_urls"));
+}
+
+#[test]
 fn crawl_deny_unknown_fields() {
     // CrawlRequest uses #[serde(deny_unknown_fields)]
     let raw = obj(json!({

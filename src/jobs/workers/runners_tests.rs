@@ -32,6 +32,8 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.llm_completion_timeout_secs = 17;
     submitted.chrome_proxy = Some("http://submitted-proxy:8080".to_string());
     submitted.custom_headers = vec!["Authorization: Bearer submitted".to_string()];
+    submitted.discover_llms_txt = false;
+    submitted.max_llms_txt_urls = 77;
 
     let mut worker = Config::test_default();
     worker.collection = "worker_collection".to_string();
@@ -56,6 +58,8 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     worker.llm_completion_timeout_secs = 99;
     worker.chrome_proxy = Some("http://worker-proxy:8080".to_string());
     worker.custom_headers = vec!["Authorization: Bearer worker".to_string()];
+    worker.discover_llms_txt = true;
+    worker.max_llms_txt_urls = 512;
 
     let config_json = match config_snapshot_json(&submitted) {
         Ok(json) => json,
@@ -100,6 +104,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
         effective.custom_headers,
         vec!["Authorization: Bearer submitted".to_string()]
     );
+    // llms.txt overrides must survive the enqueue→worker snapshot round-trip,
+    // matching the sitemap-discovery parity (async crawl is the common override path).
+    assert!(!effective.discover_llms_txt);
+    assert_eq!(effective.max_llms_txt_urls, 77);
 }
 
 #[test]

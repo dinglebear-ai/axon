@@ -106,6 +106,10 @@ pub(crate) struct CrawlSubmitBody {
     #[serde(default)]
     pub sitemap_since_days: Option<u32>,
     #[serde(default)]
+    pub discover_llms_txt: Option<bool>,
+    #[serde(default)]
+    pub max_llms_txt_urls: Option<usize>,
+    #[serde(default)]
     pub delay_ms: Option<u64>,
     #[serde(default)]
     pub headers: Vec<(String, String)>,

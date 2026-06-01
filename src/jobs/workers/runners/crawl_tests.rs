@@ -1,4 +1,4 @@
-use super::{build_crawl_result_json, run_crawl_job};
+use super::{backfill_enabled, build_crawl_result_json, merge_candidates, run_crawl_job};
 use crate::core::config::Config;
 use crate::crawl::engine::{CrawlDiagnostic, CrawlSummary};
 use crate::jobs::backend::JobPayload;
@@ -212,5 +212,64 @@ fn crawl_result_json_preserves_caller_path_and_worker_path() {
     assert_eq!(
         obj.get("sitemap_backfill_error").and_then(|v| v.as_str()),
         Some("sitemap fetch failed")
+    );
+}
+
+#[test]
+fn merge_candidates_unions_and_dedupes() {
+    let s = vec!["https://x.com/a".to_string(), "https://x.com/b".to_string()];
+    let l = vec!["https://x.com/b".to_string(), "https://x.com/c".to_string()];
+    let out = merge_candidates(s, l);
+    assert_eq!(out.len(), 3, "b deduped across sitemap + llms");
+}
+
+/// Regression guard: the sitemap contribution must NEVER be truncated by an llms-derived
+/// cap. On `main`, `append_sitemap_backfill` passed every discovered sitemap URL to backfill
+/// with no url-count cap; `merge_candidates` must preserve that. Here the sitemap set is far
+/// larger than `max_llms_txt_urls` would be — all sitemap URLs survive the merge.
+#[test]
+fn merge_candidates_never_drops_sitemap_urls() {
+    let sitemap: Vec<String> = (0..1000).map(|i| format!("https://x.com/s/{i}")).collect();
+    let llms = vec!["https://x.com/llms-only".to_string()];
+    let out = merge_candidates(sitemap.clone(), llms);
+    assert_eq!(
+        out.len(),
+        1001,
+        "all 1000 sitemap URLs must survive plus the 1 llms URL — no blanket cap"
+    );
+    for s in &sitemap {
+        assert!(out.contains(s), "sitemap URL {s} must not be dropped");
+    }
+}
+
+/// The backfill gate is an OR, not an AND: with sitemaps disabled but llms.txt enabled,
+/// backfill must still fire so the `/llms.txt` candidates are fetched.
+#[test]
+fn backfill_gate_fires_for_llms_only() {
+    let both_off = Config {
+        discover_sitemaps: false,
+        discover_llms_txt: false,
+        ..Config::default()
+    };
+    assert!(!backfill_enabled(&both_off), "both off → no backfill");
+
+    let llms_only = Config {
+        discover_sitemaps: false,
+        discover_llms_txt: true,
+        ..Config::default()
+    };
+    assert!(
+        backfill_enabled(&llms_only),
+        "sitemaps off + llms on → backfill must still fire"
+    );
+
+    let sitemap_only = Config {
+        discover_sitemaps: true,
+        discover_llms_txt: false,
+        ..Config::default()
+    };
+    assert!(
+        backfill_enabled(&sitemap_only),
+        "sitemaps on + llms off → backfill fires"
     );
 }
