@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.1] - 2026-06-01
+
+### Added
+
+- `axon setup install`: copies the running axon binary into `~/.local/bin/axon` so it is callable as a bare command in your own terminal, independent of Claude Code. The plugin SessionStart hook self-installs each session (survives `/plugin update`). The plugin now bundles the release binary at `plugins/axon/bin/axon` via Git LFS.
+
+### Changed
+
+- `ask.retrieve` tracing span no longer records the `timing` argument as a field.
+
+### Removed
+
+- Dropped the committed root `bin/axon`; the plugin ships its binary at `plugins/axon/bin/axon`.
+
 ## [4.18.0] - 2026-05-31
 
 ### Added

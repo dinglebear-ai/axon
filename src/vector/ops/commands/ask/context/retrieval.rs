@@ -109,7 +109,7 @@ pub(super) fn apply_mode_aware_rerank_with_trace(
 
 #[tracing::instrument(
     name = "ask.retrieve",
-    skip(cfg, query),
+    skip(cfg, query, timing),
     fields(collection = %cfg.collection, query_len = query.len())
 )]
 pub(super) async fn retrieve_ask_candidates(
