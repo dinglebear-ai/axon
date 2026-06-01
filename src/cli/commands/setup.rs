@@ -38,9 +38,48 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         Some("preflight" | "check") => {
             run_local_setup_command(cfg, LocalSetupMode::Preflight).await
         }
+        Some("install") => run_install_setup_command(cfg).await,
         Some("targets") => run_targets_command(cfg),
         _ => print_usage(cfg),
     }
+}
+
+
+/// Copy the running axon binary into ~/.local/bin so it is callable as a bare
+/// command in the user's own terminal. Copy (not symlink) so it survives
+/// `/plugin update`.
+fn install_self() -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let name = exe.file_name().ok_or("cannot determine binary name")?;
+    let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
+    let bin_dir = std::path::PathBuf::from(home).join(".local").join("bin");
+    std::fs::create_dir_all(&bin_dir)?;
+    let dest = bin_dir.join(name);
+    if dest == exe {
+        return Ok(dest);
+    }
+    let tmp = bin_dir.join(format!(".{}.tmp", name.to_string_lossy()));
+    std::fs::copy(&exe, &tmp)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+    }
+    std::fs::rename(&tmp, &dest)?;
+    let on_path = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|d| d == bin_dir))
+        .unwrap_or(false);
+    if !on_path {
+        eprintln!("note: {} is not on your PATH; add:  export PATH=\"$HOME/.local/bin:$PATH\"", bin_dir.display());
+    }
+    Ok(dest)
+}
+
+async fn run_install_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let _ = cfg;
+    let dest = install_self()?;
+    println!("installed -> {}", dest.display());
+    Ok(())
 }
 
 async fn run_setup_init_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -119,6 +158,8 @@ fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    // Keep the user's terminal copy in ~/.local/bin fresh each session.
+    let _ = install_self();
     let no_setup = cfg.positional.iter().any(|value| value == "--no-setup");
     let result = tokio::time::timeout(
         Duration::from_secs(PLUGIN_HOOK_TIMEOUT_SECS),

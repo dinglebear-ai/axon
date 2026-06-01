@@ -190,6 +190,8 @@ pub(super) enum SetupSubcommand {
     Check,
     /// List SSH host aliases discovered from ~/.ssh/config (informational).
     Targets,
+    /// Copy the axon binary into ~/.local/bin for terminal use.
+    Install,
 }
 
 #[derive(Debug, Args)]
