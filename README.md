@@ -1,6 +1,6 @@
 # Axon
 
-Version: 4.18.1
+Version: 4.18.2
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -361,7 +361,7 @@ Common failures:
 - `config.example.toml` — non-secret tuning template.
 - `.claude-plugin/plugin.json` — Claude plugin manifest.
 - `scripts/plugin-setup.sh` — plugin hook delegating to shared setup.
-- `docs/MCP-TOOL-SCHEMA.md` — generated MCP wire contract.
+- `docs/reference/mcp/tool-schema.md` — generated MCP wire contract.
 
 ## License
 

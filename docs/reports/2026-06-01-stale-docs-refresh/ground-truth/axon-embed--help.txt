@@ -1,0 +1,27 @@
+Embed file, directory, or URL into Qdrant
+
+Usage
+  axon embed [OPTIONS] [INPUT]
+  axon embed <COMMAND>
+
+Commands
+  status <job_id>      Show a queued job
+  cancel <job_id>      Cancel a queued or running job
+  errors <job_id>      Show job error details
+  list                 List recent jobs
+  cleanup              Remove old terminal jobs
+  clear                Clear job history
+  worker               Run an inline worker
+  recover              Reclaim stale or interrupted jobs
+
+Arguments
+  [INPUT]            File, directory, URL, or raw text to embed
+
+Options
+  --collection <name>              Qdrant collection name
+  --wait <bool>                    Block until the embed job completes
+  --batch-concurrency <n>          Concurrent embed batch operations
+  --tei-url <url>                  Text Embeddings Inference endpoint
+  --qdrant-url <url>               Qdrant endpoint
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

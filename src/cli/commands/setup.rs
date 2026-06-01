@@ -44,7 +44,6 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 }
 
-
 /// Copy the running axon binary into ~/.local/bin so it is callable as a bare
 /// command in the user's own terminal. Copy (not symlink) so it survives
 /// `/plugin update`.
@@ -70,7 +69,10 @@ fn install_self() -> Result<std::path::PathBuf, Box<dyn Error>> {
         .map(|p| std::env::split_paths(&p).any(|d| d == bin_dir))
         .unwrap_or(false);
     if !on_path {
-        eprintln!("note: {} is not on your PATH; add:  export PATH=\"$HOME/.local/bin:$PATH\"", bin_dir.display());
+        eprintln!(
+            "note: {} is not on your PATH; add:  export PATH=\"$HOME/.local/bin:$PATH\"",
+            bin_dir.display()
+        );
     }
     Ok(dest)
 }

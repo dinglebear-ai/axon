@@ -1,0 +1,7 @@
+Run crawl/ask smoke checks against the running stack
+
+Usage
+  axon smoke [OPTIONS]
+
+Options
+  -h, --help                       Print help

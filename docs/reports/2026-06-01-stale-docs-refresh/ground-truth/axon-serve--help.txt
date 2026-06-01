@@ -1,0 +1,12 @@
+Start service runtimes
+
+Usage
+  axon serve [OPTIONS]
+  axon serve <COMMAND>
+
+Commands
+  mcp                  Start unified web + MCP HTTP runtime
+
+Options
+  --transport <mode>               MCP transport for `serve mcp`
+  -h, --help                       Print help

@@ -7,8 +7,7 @@ use std::pin::Pin;
 type CommandFn = for<'a> fn(
     &'a Config,
     &'a ServiceContext,
-)
-    -> Pin<Box<dyn Future<Output = Result<(), Box<dyn Error>>> + 'a>>;
+) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn Error>>> + 'a>>;
 
 #[allow(dead_code)]
 fn _assert_command_signatures(

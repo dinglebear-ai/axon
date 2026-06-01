@@ -1,0 +1,12 @@
+Remove a value from .env or config.toml
+
+Usage
+  axon config unset [OPTIONS] <KEY>
+
+Arguments
+  <KEY>              
+
+Options
+  --env                            
+  --toml                           
+  -h, --help                       Print help

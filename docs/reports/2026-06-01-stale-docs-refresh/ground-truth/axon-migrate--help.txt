@@ -1,0 +1,15 @@
+Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
+
+Usage
+  axon migrate [OPTIONS]
+
+Options
+  --from <FROM>                    Source collection to migrate from (must use unnamed dense vectors)
+  --to <TO>                        Destination collection to create with named dense + bm42 sparse vectors
+  --collection <name>              Qdrant collection name
+  --limit <n>                      Maximum number of results
+  --since <date>                   Filter to content indexed on or after this date
+  --before <date>                  Filter to content indexed on or before this date
+  --no-hybrid-search               Force dense-only retrieval
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRIX = ROOT / "docs/config/env-migration-matrix.toml"
+MATRIX = ROOT / "docs/reference/env-matrix.toml"
 
 ENV_RE = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 SCAN_GLOBS = [
@@ -17,12 +17,12 @@ SCAN_GLOBS = [
     "docker-compose.prod.yaml",
     ".env.example",
     "config.example.toml",
-    "docs/CONFIG.md",
-    "docs/mcp/ENV.md",
-    "docs/auth/MCP-AUTH.md",
-    "docs/SETUP.md",
-    "docs/DEPLOYMENT.md",
-    "docs/SECURITY.md",
+    "docs/guides/configuration.md",
+    "docs/reference/mcp/env.md",
+    "docs/operations/auth/mcp-auth.md",
+    "docs/guides/getting-started.md",
+    "docs/operations/deployment.md",
+    "docs/operations/security.md",
 ]
 
 PREFIXES = (

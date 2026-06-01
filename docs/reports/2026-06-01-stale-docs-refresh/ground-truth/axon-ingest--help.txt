@@ -1,0 +1,35 @@
+Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube)
+
+Usage
+  axon ingest [OPTIONS] [TARGET]
+  axon ingest <COMMAND>
+
+Commands
+  status <job_id>      Show a queued job
+  cancel <job_id>      Cancel a queued or running job
+  errors <job_id>      Show job error details
+  list                 List recent jobs
+  cleanup              Remove old terminal jobs
+  clear                Clear job history
+  worker               Run an inline worker
+  recover              Reclaim stale or interrupted jobs
+
+Arguments
+  [TARGET]           Ingest target: GitHub slug, GitLab/Gitea URL, git:https URL, YouTube URL/@handle, or Reddit target
+
+Options
+  --include-source                 (GitHub only) Also index source code files in addition to markdown, issues, and PRs
+  --no-source                      (GitHub only) Skip source code files when ingesting a GitHub repository (default: include source)
+  --max-issues <MAX_ISSUES>        Maximum issues to fetch per repository (0 = unlimited, default 100)
+  --max-prs <MAX_PRS>              Maximum pull requests to fetch per repository (0 = unlimited, default 100)
+  --sort <SORT>                    Subreddit sorting (hot, top, new, rising)
+  --time <TIME>                    Time range for top sort (hour, day, week, month, year, all)
+  --max-posts <MAX_POSTS>          Maximum posts to fetch (0 for unlimited)
+  --min-score <MIN_SCORE>          Minimum score threshold for posts and comments
+  --depth <DEPTH>                  Comment traversal depth
+  --scrape-links                   Scrape content of linked URLs in link posts
+  --wait <bool>                    Block until async jobs complete
+  --active                         Show only active jobs
+  --recent                         Show active and completed jobs
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

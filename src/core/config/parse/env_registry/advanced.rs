@@ -479,7 +479,7 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     // Dynamic per-vertical TTL override: AXON_VERTICAL_CACHE_TTL_<NAME>=secs.
-    // Represented by the GITHUB example found in docs/CONFIG.md; the prefix
+    // Represented by the GITHUB example found in docs/guides/configuration.md; the prefix
     // pattern means any concrete key belongs here as trusted operator input.
     spec(
         "AXON_VERTICAL_CACHE_TTL_GITHUB",

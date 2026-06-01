@@ -3,7 +3,7 @@
 //! Each variant of [`ServiceTaxonomyError`] maps to a stable machine-readable
 //! MCP error code so agents can branch on retry strategy without parsing
 //! human-readable messages. The wire contract is documented in
-//! `docs/MCP-TOOL-SCHEMA.md`.
+//! `docs/reference/mcp/tool-schema.md`.
 
 use serde_json::{Value, json};
 use std::error::Error as StdError;
@@ -137,7 +137,7 @@ impl ServiceTaxonomyError {
     }
 
     /// Whether an agent should retry this operation. Encodes the locked MCP
-    /// contract — see `docs/MCP-TOOL-SCHEMA.md`.
+    /// contract — see `docs/reference/mcp/tool-schema.md`.
     pub fn retriable(&self) -> bool {
         match self {
             Self::ChallengeDetected { recoverable, .. } => *recoverable,
@@ -236,7 +236,7 @@ impl ServiceTaxonomyError {
     }
 
     /// Build the complete MCP error envelope for this variant. The shape
-    /// matches the contract documented in `docs/MCP-TOOL-SCHEMA.md`:
+    /// matches the contract documented in `docs/reference/mcp/tool-schema.md`:
     ///
     /// ```json
     /// { "error": { "code": "...", "retriable": true, "source": "...", "details": {...} } }

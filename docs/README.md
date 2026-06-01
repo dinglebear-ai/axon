@@ -1,6 +1,6 @@
 # Axon Documentation
 
-Web crawl, scrape, extract, embed, and query -- all in one binary backed by a self-hosted RAG stack.
+Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
 ## What is Axon
 
@@ -8,92 +8,89 @@ Axon is a trimodal application:
 
 | Mode | Entry point | Port | Purpose |
 |------|-------------|------|---------|
-| CLI | `axon <command>` | -- | Interactive command-line tool for crawl, scrape, summarize, embed, query, ask |
+| CLI | `axon <command>` | — | Interactive command-line tool for crawl, scrape, summarize, embed, query, ask |
 | MCP server | `axon mcp` | 8001 | Single-tool MCP server exposing all CLI operations to AI agents |
 | Web panel + HTTP API | `axon serve` | 8001 | Unified HTTP server for web panel, MCP, and direct `/v1` REST routes |
 
 All three modes share the same Rust binary, the same services layer, and the same infrastructure stack.
 
-## Structured documentation
+## Documentation map
 
-### Root
+Living/reference docs are grouped by intent. Dated, point-in-time records (session logs,
+reviews, plans) live under the history directories at the bottom.
 
-| File | Description |
-|------|-------------|
-| [README.md](README.md) | This file -- documentation index |
-| [SETUP.md](SETUP.md) | Step-by-step setup for local dev and Docker |
-| [CONFIG.md](CONFIG.md) | Configuration reference -- `~/.axon/config.toml` and environment variables |
-| [CHECKLIST.md](CHECKLIST.md) | Pre-release quality checklist |
-| [GUARDRAILS.md](GUARDRAILS.md) | Security guardrails and safety patterns |
-| [INVENTORY.md](INVENTORY.md) | Complete component inventory |
+### `guides/` — getting started & task-oriented how-to
 
-### mcp/
+| Doc | Description |
+|-----|-------------|
+| [guides/getting-started.md](guides/getting-started.md) | Step-by-step setup for local dev and Docker |
+| [guides/configuration.md](guides/configuration.md) | Configuration reference — `~/.axon/config.toml` and environment variables |
+| [guides/ask-rag.md](guides/ask-rag.md) | The `ask` RAG pipeline — retrieval, synthesis, citations |
+| [guides/reindexing.md](guides/reindexing.md) | Re-indexing and payload schema upgrades |
+| [guides/context-injection.md](guides/context-injection.md) | Context-injection mechanics |
+| [guides/ingest/](guides/ingest/) | Ingest pipeline + per-source deep-dives (GitHub, GitLab, Reddit, YouTube, sessions) |
 
-| File | Description |
-|------|-------------|
-| [mcp/CLAUDE.md](mcp/CLAUDE.md) | Index for MCP docs |
-| [mcp/TOOLS.md](mcp/TOOLS.md) | Tool actions, subactions, parameters, examples |
-| [mcp/ENV.md](mcp/ENV.md) | MCP-specific environment variables |
-| [mcp/TRANSPORT.md](mcp/TRANSPORT.md) | stdio, HTTP, streamable-http transport config |
-| [mcp/DEPLOY.md](mcp/DEPLOY.md) | Deployment patterns -- local, Docker, SQLite runtime |
-| [mcp/CONNECT.md](mcp/CONNECT.md) | Connect from Claude Code, Codex, Gemini |
-| [mcp/DEV.md](mcp/DEV.md) | MCP development workflow |
-| [mcp/PATTERNS.md](mcp/PATTERNS.md) | Code patterns -- dispatch, artifacts, error handling |
+### `reference/` — factual reference
 
-### repo/
+| Doc | Description |
+|-----|-------------|
+| [reference/commands/](reference/commands/) | CLI reference — one page per command |
+| [reference/mcp/](reference/mcp/) | MCP server: overview, tool schema, transport, connect, deploy, env, tools, patterns |
+| [reference/http-api.md](reference/http-api.md) | HTTP API surface (`axon serve`) |
+| [reference/api-parity.md](reference/api-parity.md) | CLI ↔ MCP ↔ HTTP action parity matrix |
+| [reference/endpoints.md](reference/endpoints.md) | `endpoints` discovery — API/RPC endpoint extraction |
+| [reference/shell-completions.md](reference/shell-completions.md) | Shell completion generation |
+| [reference/cargo-features.md](reference/cargo-features.md) | Cargo feature flag matrix |
+| [reference/spider-feature-flags.md](reference/spider-feature-flags.md) | Spider.rs feature flags and observable behavior |
+| [reference/job-lifecycle.md](reference/job-lifecycle.md) | Async job state machine (SQLite-backed) |
+| [reference/inventory.md](reference/inventory.md) | Complete component + command inventory |
+| [reference/qdrant-payload-schema.md](reference/qdrant-payload-schema.md) | Qdrant point payload contract |
+| [reference/env-matrix.md](reference/env-matrix.md) | Environment variable migration matrix |
 
-| File | Description |
-|------|-------------|
-| [repo/CLAUDE.md](repo/CLAUDE.md) | Index for repo docs |
-| [repo/REPO.md](repo/REPO.md) | Directory tree, workspace crates, root files |
-| [repo/RECIPES.md](repo/RECIPES.md) | Justfile recipes reference |
-| [repo/SCRIPTS.md](repo/SCRIPTS.md) | Scripts directory reference |
-| [repo/RULES.md](repo/RULES.md) | Coding rules, git workflow, versioning |
-| [repo/MEMORY.md](repo/MEMORY.md) | Memory and knowledge persistence |
+### `architecture/` — system design
 
-### stack/
+| Doc | Description |
+|-----|-------------|
+| [architecture/overview.md](architecture/overview.md) | System architecture diagrams and data flow |
+| [architecture/stack/](architecture/stack/) | Trimodal architecture, technology choices, prerequisites |
+| [architecture/specs/](architecture/specs/) | Feature specifications (server-mode tiers/routing, vertical extractors, android) |
 
-| File | Description |
-|------|-------------|
-| [stack/CLAUDE.md](stack/CLAUDE.md) | Index for stack docs |
-| [stack/ARCH.md](stack/ARCH.md) | Trimodal architecture, worker topology, data flow |
-| [stack/TECH.md](stack/TECH.md) | Technology choices -- Rust, Spider, Qdrant, hybrid search |
-| [stack/PRE-REQS.md](stack/PRE-REQS.md) | Prerequisites and dependency installation |
+### `operations/` — running it in production
 
-## Existing documentation
+| Doc | Description |
+|-----|-------------|
+| [operations/deployment.md](operations/deployment.md) | Production deployment guide |
+| [operations/operations.md](operations/operations.md) | Operational runbooks and recovery procedures |
+| [operations/performance.md](operations/performance.md) | Tuning guide and benchmark results |
+| [operations/security.md](operations/security.md) | Security model, SSRF guards, port boundaries |
+| [operations/auth/](operations/auth/) | Authentication — MCP auth + static API token |
 
-### Core docs
+### `contributing/` — development & repo conventions
 
-- [Architecture](./ARCHITECTURE.md) -- detailed system architecture
-- [Deployment](./DEPLOYMENT.md) -- production deployment guide
-- [Operations](./OPERATIONS.md) -- operational runbooks
-- [Performance](./PERFORMANCE.md) -- tuning and benchmarks
-- [Security](./SECURITY.md) -- security model
-- [Job Lifecycle](./JOB-LIFECYCLE.md) -- async job state machine
-- [Testing](./TESTING.md) -- test patterns and coverage
+| Doc | Description |
+|-----|-------------|
+| [contributing/rust.md](contributing/rust.md) | Rust conventions and best practices |
+| [contributing/testing.md](contributing/testing.md) | Test strategy, how to run, coverage targets |
+| [contributing/monolith-policy.md](contributing/monolith-policy.md) | File/function size policy and enforcement |
+| [contributing/guardrails.md](contributing/guardrails.md) | Security guardrails and safety patterns |
+| [contributing/checklist.md](contributing/checklist.md) | Pre-release quality checklist |
+| [contributing/feature-delivery-framework.md](contributing/feature-delivery-framework.md) | Feature development process |
+| [contributing/desktop-palette-testing.md](contributing/desktop-palette-testing.md) | Desktop palette testing harness |
+| [contributing/repo/](contributing/repo/) | Repo tree, coding rules, Justfile recipes, scripts, memory |
 
-### MCP docs
+### History (dated records — not kept up to date)
 
-- [MCP Runtime Guide](./MCP.md) -- MCP server internals
-- [MCP Tool Schema](./MCP-TOOL-SCHEMA.md) -- wire contract (source of truth)
-
-### Guide directories
-
-- [commands/](./commands/) -- CLI command deep-dives
-- [ingest/](./ingest/) -- ingest pipeline docs
-- [auth/](./auth/) -- authentication patterns
-- [services/](./services/) -- service layer docs
-- [sessions/](./sessions/) -- session ingestion
-- [superpowers/](./superpowers/) -- advanced workflows
-
-### Working directories
-
-- [plans/](./plans/) -- feature plans and proposals
-- [reports/](./reports/) -- analysis reports
+- [sessions/](sessions/) — session logs (`YYYY-MM-DD-HH-MM-description.md`)
+- [reports/](reports/) — code reviews, audits, analysis
+- [plans/](plans/) — implementation plans (`plans/complete/` = archived)
+- [superpowers/](superpowers/) — superpowers plans/specs
+- [perf/](perf/) — dated performance snapshots
+- [archive/](archive/) — historical removed-runtime docs (do not edit)
+- [eval/](eval/) — evaluation datasets and fixtures
 
 ## Quick links
 
-- **First time?** Start with [SETUP.md](SETUP.md), then [stack/ARCH.md](stack/ARCH.md)
-- **MCP integration?** [mcp/CONNECT.md](mcp/CONNECT.md) then [mcp/TOOLS.md](mcp/TOOLS.md)
-- **Contributing?** [repo/RULES.md](repo/RULES.md) then [repo/RECIPES.md](repo/RECIPES.md)
-- **Deploying?** [mcp/DEPLOY.md](mcp/DEPLOY.md) then [CONFIG.md](CONFIG.md)
+- **First time?** [guides/getting-started.md](guides/getting-started.md), then [architecture/stack/arch.md](architecture/stack/arch.md)
+- **MCP integration?** [reference/mcp/connect.md](reference/mcp/connect.md), then [reference/mcp/tools.md](reference/mcp/tools.md)
+- **Contributing?** [contributing/repo/rules.md](contributing/repo/rules.md), then [contributing/repo/recipes.md](contributing/repo/recipes.md)
+- **Deploying?** [reference/mcp/deploy.md](reference/mcp/deploy.md), then [guides/configuration.md](guides/configuration.md)

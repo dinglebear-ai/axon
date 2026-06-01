@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify docs/MCP-TOOL-SCHEMA.md is in sync with src/mcp/schema.rs.
+# Verify docs/reference/mcp/tool-schema.md is in sync with src/mcp/schema.rs.
 #
 # Previously this ran the generator inside the pre-commit hook and silently
 # `git add`ed the regenerated doc into the in-flight commit. That's
@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-DOC_PATH="docs/MCP-TOOL-SCHEMA.md"
+DOC_PATH="docs/reference/mcp/tool-schema.md"
 GEN_SCRIPT="scripts/generate_mcp_schema_doc.py"
 
 if [ ! -f "${GEN_SCRIPT}" ]; then

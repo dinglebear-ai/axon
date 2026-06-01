@@ -1,0 +1,10 @@
+List every entry from .env and config.toml (secrets redacted)
+
+Usage
+  axon config list [OPTIONS]
+
+Options
+  --env                            Restrict listing to .env entries
+  --toml                           Restrict listing to config.toml entries
+  --reveal                         Reveal secret values instead of showing `***`
+  -h, --help                       Print help

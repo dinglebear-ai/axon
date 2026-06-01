@@ -1,0 +1,11 @@
+history
+
+Usage
+  axon watch history [OPTIONS] <ID>
+
+Arguments
+  <ID>               
+
+Options
+  --limit <LIMIT>                  
+  -h, --help                       Print help

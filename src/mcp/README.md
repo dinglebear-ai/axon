@@ -19,8 +19,8 @@ Axon MCP server crate backing the `axon mcp` command.
 - MCP Apps capability is advertised so compatible hosts can render the dashboard widget
 
 See source-of-truth docs:
-- `docs/MCP.md`
-- `docs/MCP-TOOL-SCHEMA.md`
+- `docs/reference/mcp/overview.md`
+- `docs/reference/mcp/tool-schema.md`
 
 ## Local Development
 ```bash
@@ -30,7 +30,7 @@ cargo run --bin axon -- mcp --transport stdio
 cargo run --bin axon -- mcp --transport both
 ```
 
-HTTP MCP transport is the default, and the CLI also supports stdio-only and dual-transport modes. See `docs/MCP.md`.
+HTTP MCP transport is the default, and the CLI also supports stdio-only and dual-transport modes. See `docs/reference/mcp/overview.md`.
 
 ## Schema Validation / Smoke Tests
 Primary MCP smoke path:
@@ -52,10 +52,10 @@ actions were removed.
 When changing tool behavior, update in the same commit:
 1. `src/mcp/schema.rs`
 2. `src/mcp/server.rs`
-3. `docs/MCP.md`
-4. `docs/MCP-TOOL-SCHEMA.md`
+3. `docs/reference/mcp/overview.md`
+4. `docs/reference/mcp/tool-schema.md`
 
 ## Related Docs
 - [Repository README](../../README.md)
-- [Architecture](../../docs/ARCHITECTURE.md)
-- [MCP Runtime Guide](../../docs/MCP.md)
+- [Architecture](../../docs/architecture/overview.md)
+- [MCP Runtime Guide](../../docs/reference/mcp/overview.md)

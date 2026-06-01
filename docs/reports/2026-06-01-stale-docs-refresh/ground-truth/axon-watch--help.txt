@@ -1,0 +1,24 @@
+Manage recurring watch definitions and runs
+
+Usage
+  axon watch [OPTIONS]
+  axon watch <COMMAND>
+
+Commands
+  create               Create a recurring watch definition
+  list                 List watch definitions
+  get                  Show a watch definition
+  update               Update a watch definition
+  run-now              Run a watch immediately
+  pause                Pause a watch
+  resume               Resume a paused watch
+  delete               Delete a watch definition
+  history              Show watch run history
+  artifacts            List artifacts for a watch run
+
+Options
+  --wait <bool>                    Block until async jobs complete
+  --active                         Show only active jobs
+  --recent                         Show active and completed jobs
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

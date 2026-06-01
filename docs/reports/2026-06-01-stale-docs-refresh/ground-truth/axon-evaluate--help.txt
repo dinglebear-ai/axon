@@ -1,0 +1,20 @@
+RAG vs baseline with independent LLM judge scoring
+
+Usage
+  axon evaluate [OPTIONS] [TEXT]...
+
+Arguments
+  [TEXT]...          Text query or prompt
+
+Options
+  --diagnostics                    
+  --responses-mode <RESPONSES_MODE>
+                                   
+  --retrieval-ab                   Replace the no-context baseline with a second RAG run that has hybrid retrieval disabled. The judge then compares hybrid-RAG vs dense-only-RAG
+  --collection <name>              Qdrant collection name
+  --limit <n>                      Maximum number of results
+  --since <date>                   Filter to content indexed on or after this date
+  --before <date>                  Filter to content indexed on or before this date
+  --no-hybrid-search               Force dense-only retrieval
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

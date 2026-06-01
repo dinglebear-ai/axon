@@ -1,0 +1,10 @@
+Scrape one or more URLs and summarize them with the configured LLM
+
+Usage
+  axon summarize [OPTIONS] [URL]...
+
+Arguments
+  [URL]...           URL to process
+
+Options
+  -h, --help                       Print help

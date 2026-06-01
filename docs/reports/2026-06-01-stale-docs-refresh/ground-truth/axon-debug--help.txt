@@ -1,0 +1,13 @@
+Run doctor diagnostics plus LLM-assisted troubleshooting
+
+Usage
+  axon debug [OPTIONS] [TEXT]...
+
+Arguments
+  [TEXT]...          Text query or prompt
+
+Options
+  --tei-url <url>                  Text Embeddings Inference endpoint
+  --qdrant-url <url>               Qdrant endpoint
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

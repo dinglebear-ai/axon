@@ -1,0 +1,13 @@
+Web search via Tavily, auto-queues crawl jobs for results
+
+Usage
+  axon search [OPTIONS] [TEXT]...
+
+Arguments
+  [TEXT]...          Text query or prompt
+
+Options
+  --limit <n>                      Maximum number of search results
+  --search-time-range <range>      Restrict search to day, week, month, or year
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

@@ -1,0 +1,11 @@
+Monitor job lifecycle events as a line-oriented stream
+
+Usage
+  axon monitor [OPTIONS]
+  axon monitor <COMMAND>
+
+Commands
+  jobs                 Emit job lifecycle events
+
+Options
+  -h, --help                       Print help

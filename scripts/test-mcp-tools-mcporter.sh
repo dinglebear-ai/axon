@@ -366,9 +366,9 @@ run_suite() {
   run_json_case "${prefix}_extract_list" '.ok == true and .action == "extract" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:extract subaction:list limit:5 offset:0
 
   if [[ "$URL_MODE" == "1" ]]; then
-    run_error_case "${prefix}_embed_start_unavailable" "local file embedding via MCP is disabled" call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/MCP.md\"}"
+    run_error_case "${prefix}_embed_start_unavailable" "local file embedding via MCP is disabled" call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
   else
-    run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/MCP.md\"}"
+    run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
     local embed_job_id
     embed_job_id="$(extract_json_field "$OUTDIR/${prefix}_embed_start.log" '.data.job_id')"
     run_json_case "${prefix}_embed_status" '.ok == true and .action == "embed" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:embed subaction:status job_id:"$embed_job_id"

@@ -1,0 +1,10 @@
+Generate shell completions (bash, zsh, fish)
+
+Usage
+  axon completions [OPTIONS] <SHELL>
+
+Arguments
+  <SHELL>            
+
+Options
+  -h, --help                       Print help

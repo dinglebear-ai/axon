@@ -1,0 +1,7 @@
+list
+
+Usage
+  axon watch list [OPTIONS]
+
+Options
+  -h, --help                       Print help

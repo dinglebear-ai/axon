@@ -1,0 +1,30 @@
+LLM-powered structured data extraction from URLs
+
+Usage
+  axon extract [OPTIONS] [URL]...
+  axon extract <COMMAND>
+
+Commands
+  status <job_id>      Show a queued job
+  cancel <job_id>      Cancel a queued or running job
+  errors <job_id>      Show job error details
+  list                 List recent jobs
+  cleanup              Remove old terminal jobs
+  clear                Clear job history
+  worker               Run an inline worker
+  recover              Reclaim stale or interrupted jobs
+
+Arguments
+  [URL]...           URL to process
+
+Options
+  --max-pages <n>                  Maximum pages to crawl
+  --max-depth <n>                  Maximum crawl depth
+  --render-mode <mode>             Page fetch mode: http, chrome, or auto-switch
+  --include-subdomains <bool>      Include subdomains in crawl scope
+  --header <HEADER>                Custom HTTP request header
+  --skip-embed                     Fetch/save without indexing into Qdrant
+  --collection <name>              Qdrant collection name
+  --wait <bool>                    Block until async jobs complete
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

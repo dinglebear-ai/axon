@@ -45,5 +45,5 @@ Async job runtime and lifecycle management for axon's SQLite backend.
 
 ## Related Docs
 - [Repository README](../../README.md)
-- [Architecture](../../docs/ARCHITECTURE.md)
+- [Architecture](../../docs/architecture/overview.md)
 - [Docs Index](../../docs/README.md)

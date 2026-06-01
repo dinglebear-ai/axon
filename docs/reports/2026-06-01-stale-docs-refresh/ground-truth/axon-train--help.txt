@@ -1,0 +1,18 @@
+Collect human preference votes for retrieved RAG candidates
+
+Usage
+  axon train [OPTIONS] [TEXT]...
+
+Arguments
+  [TEXT]...          Text query or prompt
+
+Options
+  --best <RANK>                    Record this 1-based candidate rank without prompting
+  --notes <NOTES>                  Optional note stored with the preference event
+  --collection <name>              Qdrant collection name
+  --limit <n>                      Maximum number of results
+  --since <date>                   Filter to content indexed on or after this date
+  --before <date>                  Filter to content indexed on or before this date
+  --no-hybrid-search               Force dense-only retrieval
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

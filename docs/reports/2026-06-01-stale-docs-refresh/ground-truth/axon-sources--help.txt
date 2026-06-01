@@ -1,0 +1,15 @@
+List all indexed source URLs with chunk counts
+
+Usage
+  axon sources [OPTIONS]
+
+Options
+  --domain <DOMAIN>                Filter source URLs by exact indexed domain/host
+  --all                            Export every matching URL for --domain instead of the default bounded page
+  --collection <name>              Qdrant collection name
+  --limit <n>                      Maximum number of results
+  --since <date>                   Filter to content indexed on or after this date
+  --before <date>                  Filter to content indexed on or before this date
+  --no-hybrid-search               Force dense-only retrieval
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

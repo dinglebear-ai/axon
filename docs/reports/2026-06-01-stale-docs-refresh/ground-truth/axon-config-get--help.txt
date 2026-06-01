@@ -1,0 +1,13 @@
+Print a single value (auto-detects file by key shape)
+
+Usage
+  axon config get [OPTIONS] <KEY>
+
+Arguments
+  <KEY>              UPPER_SNAKE for .env, dotted lowercase for config.toml
+
+Options
+  --env                            Force read from .env regardless of key shape
+  --toml                           Force read from config.toml regardless of key shape
+  --reveal                         Reveal secret values instead of showing `***`
+  -h, --help                       Print help

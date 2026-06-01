@@ -1,0 +1,13 @@
+Remove duplicate points from the Qdrant collection
+
+Usage
+  axon dedupe [OPTIONS]
+
+Options
+  --collection <name>              Qdrant collection name
+  --limit <n>                      Maximum number of results
+  --since <date>                   Filter to content indexed on or after this date
+  --before <date>                  Filter to content indexed on or before this date
+  --no-hybrid-search               Force dense-only retrieval
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help

@@ -1,0 +1,11 @@
+Show async job queue status and recent activity
+
+Usage
+  axon status [OPTIONS]
+
+Options
+  --active                         Show only active jobs
+  --recent                         Show active and completed jobs
+  --reclaimed                      Show only watchdog-reclaimed jobs
+  --json                           Output machine-readable JSON
+  -h, --help                       Print help
