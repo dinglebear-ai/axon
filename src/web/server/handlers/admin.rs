@@ -209,21 +209,12 @@ pub(crate) async fn create_watch(
     {
         return Err(HttpError::bad_request("task_payload exceeds 64 KiB limit"));
     }
-    // Validate refresh task URLs at create time so the watch doesn't silently
-    // fail every run.
-    if task_type == "refresh" {
-        let urls = req
-            .task_payload
-            .get("urls")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                HttpError::bad_request("task_payload.urls is required for refresh tasks")
-            })?;
-        if urls.is_empty() {
-            return Err(HttpError::bad_request(
-                "task_payload.urls must not be empty",
-            ));
-        }
+    // Validate the watch task_payload at create time so the watch doesn't
+    // silently fail every run: urls non-empty + ignore_patterns compile.
+    crate::jobs::watch::validate_task_payload(&req.task_payload)
+        .map_err(|msg| HttpError::bad_request(&msg))?;
+    // Additionally SSRF-guard every watched URL at create time.
+    if let Some(urls) = req.task_payload.get("urls").and_then(|v| v.as_array()) {
         for url_val in urls {
             let url = url_val.as_str().ok_or_else(|| {
                 HttpError::bad_request("task_payload.urls entries must be strings")

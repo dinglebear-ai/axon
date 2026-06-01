@@ -71,7 +71,7 @@ MCP docs:
 | `screenshot <url>` | Capture a full-page screenshot via headless Chrome | No |
 | `dedupe` | Deduplicate near-identical chunks within a Qdrant collection | No |
 | `completions <shell>` | Emit shell completion scripts | No |
-| `watch <sub>` | Scheduled task management. SQLite-backed implementations: `create`, `list`, `run-now`, `history`. Schema-defined but not yet implemented: `get`, `update`, `pause`, `resume`, `delete`, `artifacts`. | Depends |
+| `watch <sub>` | URL change-detection scheduler. A `watch` (task_type `watch`, the only supported type) diffs each URL against a stored snapshot every tick (conditional probe + `compute_diff` + `ignore_patterns` + threshold), summarizes meaningful changes via the LLM, records `url-change` artifacts, and enqueues clustered depth-bounded crawls (skipping in-flight clusters). SQLite-backed implementations: `create`, `list`, `run-now`, `history`. Schema-defined but not yet implemented: `get`, `update`, `pause`, `resume`, `delete`, `artifacts`. | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
 | `config <sub>` | Read/write entries in `~/.axon/.env` and `~/.axon/config.toml`. Subcommands: `list`, `get`, `set`, `unset`, `path`. Auto-routes by key shape (UPPER_SNAKE → .env, dotted lowercase → config.toml) with `--env`/`--toml` overrides. Secrets are redacted by default; pass `--reveal` to show them. | No |
 
@@ -358,7 +358,7 @@ axon scrape https://example.com           # SQLite/in-process runtime (only mode
 
 **Supported commands:** scrape, summarize, diff, brand, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
 
-**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch.rs` and work today. Enabled watches also **fire automatically**: the in-process scheduler loop in `src/jobs/workers/watch_scheduler.rs` (spawned by `spawn_workers`, so active under `axon serve`/`axon mcp`) leases due watches (`next_run_at <= now`) each `AXON_WATCH_TICK_SECS` and runs them, advancing `next_run_at` by `every_seconds`. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
+**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch.rs` and work today. A `watch` task (the only supported `task_type`) is a **URL change detector**: each run probes/scrapes every URL, filters noise (`ignore_patterns`), reuses `services::diff::compute_diff` against the stored `axon_watch_url_state` snapshot, applies a meaningfulness threshold, summarizes real changes via the Gemini `llm_backend`, writes `url-change` artifacts, and enqueues one crawl per common-prefix cluster (in-flight-guarded). The change-detection logic lives in `src/jobs/watch/{change_detect,cluster,dispatch,filter,report,url_state,orchestrate}.rs` with the conditional probe in `src/core/http/conditional.rs`. Enabled watches also **fire automatically**: the in-process scheduler loop in `src/jobs/workers/watch_scheduler.rs` (spawned by `spawn_workers`, so active under `axon serve`/`axon mcp`) leases due watches (`next_run_at <= now`) each `AXON_WATCH_TICK_SECS` and runs them, advancing `next_run_at` by `every_seconds`. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
 
 ```bash
 # Env vars for runtime tuning
@@ -544,8 +544,9 @@ Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Schema lives 
 | `axon_extract_jobs` | `id`, `status`, `urls_json`, `config_json`, `result_json` |
 | `axon_embed_jobs` | `id`, `status`, `input_text`, `config_json`, `result_json` |
 | `axon_ingest_jobs` | `id`, `source_type`, `target`, `status`, `config_json`, `result_json` — partial index on pending |
+| `axon_watch_url_state` | `watch_id`, `url`, `etag`, `last_modified`, `content_hash`, `last_markdown`, `last_links_json`, `last_checked_at`, `last_changed_at`, `last_crawl_job_id` — per-URL change-detection snapshot (migration `0007`), PK `(watch_id, url)`, FK → `axon_watch_defs(id)` ON DELETE CASCADE |
 
-All tables share: `created_at`, `updated_at`, `started_at`, `finished_at`, `error_text`.
+The **job** tables (`axon_*_jobs`) share: `created_at`, `updated_at`, `started_at`, `finished_at`, `error_text`. `axon_watch_url_state` is a snapshot table and does not carry those columns.
 
 `axon_ingest_jobs` differs from the others: it uses `source_type` (`github`/`gitlab`/`gitea`/`git`/`reddit`/`youtube`) + `target` instead of `url` or `urls_json` to identify the ingest target.
 

@@ -295,22 +295,39 @@ pub(crate) async fn fetch_single_page(
 
 // ── Output formatting (pure functions) ───────────────────────────────────────
 
-/// Build the canonical 5-field JSON response for a scraped page.
+/// Maximum anchor hrefs captured into the `links` field of a scrape payload.
+/// Large enough to capture a documentation page's full link set so the watch
+/// change-detector sees a stable run-to-run snapshot, bounded so an
+/// adversarially link-dense page can't bloat the payload.
+const SCRAPE_LINKS_LIMIT: usize = 512;
+
+/// Build the canonical 6-field JSON response for a scraped page.
 ///
-/// Performs markdown conversion, title extraction, and description extraction
-/// in one place. All JSON-producing paths delegate here.
+/// Performs markdown conversion, title extraction, description extraction, and
+/// anchor-link extraction in one place. All JSON-producing paths delegate here.
+///
+/// The `links` field is an array of `{href, text}` objects (text is currently
+/// empty — diffing compares by href). It is the input the watch change-detector
+/// reuses via `services::diff::extract_links_from_payload` to detect link
+/// additions/removals; other payload consumers ignore it.
 pub fn build_scrape_json(
     url: &str,
     html: &str,
     status_code: u16,
     selector_config: Option<&SelectorConfiguration>,
 ) -> serde_json::Value {
+    let links: Vec<serde_json::Value> =
+        crate::core::content::extract_anchor_hrefs(url, html, SCRAPE_LINKS_LIMIT)
+            .into_iter()
+            .map(|href| serde_json::json!({ "href": href, "text": "" }))
+            .collect();
     serde_json::json!({
         "url": url,
         "status_code": status_code,
         "markdown": to_markdown(html, selector_config),
         "title": find_between(html, "<title>", "</title>").unwrap_or(""),
         "description": extract_meta_description(html).unwrap_or_default(),
+        "links": links,
     })
 }
 

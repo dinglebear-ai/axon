@@ -92,6 +92,14 @@ pub fn extract_links(html: &str, limit: usize) -> Vec<String> {
     out
 }
 
+/// Extract anchor (`<a href>`) targets, resolving relative hrefs against
+/// `base_url`. Unlike [`extract_links`], this resolves relative links to
+/// absolute URLs (so a watch's link snapshot is stable run-to-run).
+///
+/// Scoped to `<a>` opening tags only: a two-pass scan finds each real anchor tag
+/// (rejecting `<area`, `<aside`, `<abbr`, …) then reads `href=` within that tag's
+/// body. This prevents matching href-like attributes on other elements
+/// (`<link href>`, `<base href>`, `<area href>`) that are not navigational links.
 pub fn extract_anchor_hrefs(base_url: &str, html: &str, limit: usize) -> Vec<String> {
     let Some(base) = Url::parse(base_url).ok() else {
         return Vec::new();
@@ -100,51 +108,82 @@ pub fn extract_anchor_hrefs(base_url: &str, html: &str, limit: usize) -> Vec<Str
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     let mut pos = 0usize;
+    let bytes = html.as_bytes();
 
-    while let Some(rel) = html[pos..].find("href=") {
-        let marker = pos + rel + 5;
-        let Some(quote) = html[marker..].chars().next() else {
+    // Only extract href= values that appear inside <a ...> tags.
+    while pos < html.len() {
+        let Some(a_rel) = html[pos..].find("<a") else {
             break;
         };
+        let a_start = pos + a_rel;
+        let after_a = a_start + 2;
 
-        if quote != '"' && quote != '\'' {
-            pos = marker;
+        // The character after "<a" must be whitespace or ">" so we don't match
+        // <area, <aside, <abbr, etc.
+        let next_byte = bytes.get(after_a).copied();
+        if !matches!(
+            next_byte,
+            Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') | Some(b'>')
+        ) {
+            pos = after_a;
             continue;
         }
 
-        let value_start = marker + quote.len_utf8();
-        let remain = &html[value_start..];
-        let Some(value_end_rel) = remain.find(quote) else {
+        // Find the closing > of this opening tag.
+        let Some(tag_end_rel) = html[after_a..].find('>') else {
             break;
         };
+        let tag_body = &html[after_a..after_a + tag_end_rel];
 
-        let raw = remain[..value_end_rel].trim();
-        pos = value_start + value_end_rel + quote.len_utf8();
+        // Search for href=" or href=' within this tag body only.
+        let mut tag_pos = 0usize;
+        while let Some(href_rel) = tag_body[tag_pos..].find("href=") {
+            let href_at = tag_pos + href_rel;
+            let marker = href_at + 5;
+            // Require an attribute boundary before `href=` so we don't match
+            // `data-href=`, `xhref=`, etc. The byte after `<a` is whitespace, so
+            // `href_at` is never 0 for a genuine href attribute.
+            if href_at != 0 && !tag_body.as_bytes()[href_at - 1].is_ascii_whitespace() {
+                tag_pos = marker;
+                continue;
+            }
+            let Some(quote) = tag_body[marker..].chars().next() else {
+                break;
+            };
+            if quote != '"' && quote != '\'' {
+                tag_pos = marker;
+                continue;
+            }
+            let value_start = marker + quote.len_utf8();
+            let remain = &tag_body[value_start..];
+            let Some(value_end_rel) = remain.find(quote) else {
+                break;
+            };
+            let raw = remain[..value_end_rel].trim();
+            tag_pos = value_start + value_end_rel + quote.len_utf8();
 
-        if raw.is_empty()
-            || raw.starts_with('#')
-            || raw.starts_with("javascript:")
-            || raw.starts_with("mailto:")
-        {
-            continue;
-        }
-
-        let Ok(resolved) = base.join(raw) else {
-            continue;
-        };
-
-        match resolved.scheme() {
-            "http" | "https" => {
+            if raw.is_empty()
+                || raw.starts_with('#')
+                || raw.starts_with("javascript:")
+                || raw.starts_with("mailto:")
+            {
+                continue;
+            }
+            let Ok(resolved) = base.join(raw) else {
+                continue;
+            };
+            if matches!(resolved.scheme(), "http" | "https") {
                 let link = resolved.to_string();
                 if seen.insert(link.clone()) {
                     out.push(link);
                     if out.len() >= limit {
-                        break;
+                        return out;
                     }
                 }
             }
-            _ => {}
         }
+
+        pos = after_a + tag_end_rel + 1;
     }
 
     out

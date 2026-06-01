@@ -27,7 +27,7 @@ fn parse_watch_runtime_args_rejects_unknown_argument() {
         "create".to_string(),
         "demo".to_string(),
         "--task-type".to_string(),
-        "refresh".to_string(),
+        "watch".to_string(),
         "--every-seconds".to_string(),
         "30".to_string(),
         "--bogus".to_string(),
@@ -39,16 +39,9 @@ fn parse_watch_runtime_args_rejects_unknown_argument() {
 #[tokio::test]
 async fn handle_watch_create_requires_every_seconds() {
     let cfg = Config::test_default();
-    let err = handle_watch_create(
-        &cfg,
-        None,
-        "demo".to_string(),
-        "refresh".to_string(),
-        0,
-        None,
-    )
-    .await
-    .expect_err("out-of-bounds interval should error");
+    let err = handle_watch_create(&cfg, None, "demo".to_string(), "watch".to_string(), 0, None)
+        .await
+        .expect_err("out-of-bounds interval should error");
     // CLI now shares validate_every_seconds with the HTTP create paths, so the
     // message is the centralized bounds text rather than a CLI-flag-specific one.
     assert!(err.to_string().contains("every_seconds must be between"));
@@ -61,7 +54,7 @@ async fn handle_watch_create_rejects_invalid_task_payload_json() {
         &cfg,
         None,
         "demo".to_string(),
-        "refresh".to_string(),
+        "watch".to_string(),
         30,
         Some("{oops".to_string()),
     )

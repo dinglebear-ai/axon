@@ -183,7 +183,10 @@ fn compute_link_changes(
 }
 
 /// Extract links from a scrape payload's `links` field if present.
-fn extract_links_from_payload(payload: &serde_json::Value) -> Vec<LinkEntry> {
+///
+/// Exposed as `pub(crate)` so the watch change-detector can reuse it to build a
+/// fresh link snapshot from a scrape payload.
+pub(crate) fn extract_links_from_payload(payload: &serde_json::Value) -> Vec<LinkEntry> {
     payload
         .get("links")
         .and_then(|v| v.as_array())
