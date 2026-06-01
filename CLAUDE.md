@@ -106,6 +106,8 @@ All flags are `--global` (usable with any subcommand).
 |------|------|---------|-------------|
 | `--max-pages <n>` | u32 | `0` | Page cap for crawl (0 = uncapped, default). |
 | `--max-depth <n>` | usize | `5` | Maximum crawl depth from start URL. |
+| `--budget <PATH=N>` | string | — | Per-path page cap (repeatable), e.g. `--budget /blog=100 --budget '*=1000'`. `*` applies to all paths. Unset = no budget. Wired to spider's `with_budget`. |
+| `--etag-conditional` | flag | `false` | Conditional re-crawl: seed spider's ETag cache from a persisted `etag.json` sidecar so unchanged pages return 304 and are reused from the previous run instead of re-fetched. Independent of `--cache`. 304 skips are reconciled back into the manifest as `changed=false` entries, gated on spider's visited set so deleted/undiscovered pages are not resurrected. |
 | `--render-mode <mode>` | enum | `auto-switch` | `http`, `chrome`, or `auto-switch`. Auto-switch tries HTTP first, falls back to Chrome if >60% thin pages. |
 | `--format <fmt>` | enum | `markdown` | Output format: `markdown`, `html`, `rawHtml`, `json`. |
 | `--include-subdomains <bool>` | bool | `false` | Crawl all subdomains of the start URL's parent domain. Disabled by default — enable with `--include-subdomains true`. |

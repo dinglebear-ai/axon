@@ -42,6 +42,12 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, action = ArgAction::SetTrue)]
     pub(in crate::core::config) cache_http_only: bool,
 
+    /// Enable conditional re-crawl (ETag / If-Modified-Since). Re-crawls send
+    /// validators and 304-unchanged pages are reused from the previous run
+    /// instead of being re-fetched. Independent of `--cache`.
+    #[arg(global = true, long, action = ArgAction::SetTrue)]
+    pub(in crate::core::config) etag_conditional: bool,
+
     /// Output format: markdown, html, rawHtml, json
     #[arg(global = true, long, value_enum, default_value_t = ScrapeFormat::Markdown)]
     pub(in crate::core::config) format: ScrapeFormat,
@@ -201,6 +207,12 @@ pub(in crate::core::config) struct GlobalArgs {
     /// Custom HTTP request header in 'Key: Value' format (repeatable)
     #[arg(global = true, long = "header", value_name = "HEADER")]
     pub(in crate::core::config) custom_headers: Vec<String>,
+
+    /// Per-path crawl budget in 'PATH=N' format, e.g. '/blog=100' or '*=1000'
+    /// (repeatable). Caps the number of pages crawled under each path prefix;
+    /// '*' applies to all paths. Unset = no budget (current behavior).
+    #[arg(global = true, long = "budget", value_name = "PATH=N")]
+    pub(in crate::core::config) path_budgets: Vec<String>,
 
     /// Disable hybrid (dense + BM42 sparse + RRF) search; force dense-only retrieval.
     /// Overrides `AXON_HYBRID_SEARCH=true`. Useful for A/B comparing retrieval quality.

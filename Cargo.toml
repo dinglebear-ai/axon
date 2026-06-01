@@ -83,6 +83,10 @@ spider = { version = "2", default-features = false, features = [
   "time",
   "control",
   "hedge",
+  # Conditional re-crawl: sends If-None-Match / If-Modified-Since and skips
+  # the body on 304 Not Modified. Wired in src/crawl/engine/runtime.rs and
+  # reconciled cross-run in src/crawl/engine/etag.rs (bead axon_rust-hiyf).
+  "etag_cache",
 ] }
 spider_agent = { version = "2.47.89", default-features = false, features = [
   "search_tavily",

@@ -1,6 +1,7 @@
 mod cdp_render;
 mod collector;
 mod dir_ops;
+pub(crate) mod etag;
 pub(crate) mod llms_txt;
 pub(crate) mod map;
 mod runtime;
@@ -184,6 +185,14 @@ pub async fn run_crawl_once(
     let mut website = runtime::configure_website_with_crawl_id(cfg, start_url, mode, crawl_id)
         .await
         .map_err(|e| format!("failed to configure crawl website for {start_url}: {e}"))?;
+
+    // Conditional re-crawl seeding (bead axon_rust-hiyf): load persisted ETag
+    // validators and seed spider's per-Website cache before the crawl so unchanged
+    // pages 304 and are skipped. The seeded set drives post-crawl reconciliation of
+    // those silent skips. Empty/absent sidecar → empty seed → no reconciliation.
+    let (etag_previous_sidecar, etag_seeded_urls) =
+        etag::load_and_seed(cfg, &mut website, output_dir).await;
+
     // Buffer at least max_pages worth of messages to prevent silent page drops
     // under high-throughput crawls (extreme/max profiles). Clamp to 16 384 so
     // a large --max-pages value can't allocate an unbounded broadcast ring buffer.
@@ -249,6 +258,33 @@ pub async fn run_crawl_once(
         .map_err(|e| format!("collector join failure for {start_url}: {e}"))?
         .map_err(|e| format!("collector failure for {start_url}: {e}"))?;
     summary.elapsed_ms = crawl_start.elapsed().as_millis();
+
+    // Conditional re-crawl reconciliation + persistence (bead axon_rust-hiyf).
+    // MUST run before the recycling bin is purged below — reconciliation relinks
+    // reused markdown out of markdown.old. `urls` already contains every URL that
+    // arrived in the broadcast (inserted before the status check), so seeded URLs
+    // absent from it are exactly spider's silent 304 skips.
+    if cfg.etag_conditional {
+        // Gate reconciliation on spider's visited set so only genuine 304 skips
+        // (URLs spider actually scheduled + fetched this run) are reused — never
+        // pages that are no longer discovered (PR #153 review; bead axon_rust-hiyf).
+        // Canonicalize into the same key space as `urls`/`previous_manifest`.
+        let etag_visited: HashSet<String> = website
+            .get_links()
+            .iter()
+            .filter_map(|u| canonicalize_url_for_dedupe(u.as_ref()))
+            .collect();
+        let reused = etag::reconcile_unmodified(
+            output_dir,
+            &previous_manifest,
+            &etag_seeded_urls,
+            &urls,
+            &etag_visited,
+        )
+        .await;
+        summary.reused_pages += reused as u32;
+        etag::persist_next_sidecar(output_dir, &website, &etag_previous_sidecar, &urls).await;
+    }
 
     if dir_ops::path_exists(&recycling_bin).await {
         tokio::fs::remove_dir_all(&recycling_bin)
