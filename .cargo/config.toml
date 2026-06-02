@@ -11,19 +11,16 @@
 # =============================================================================
 
 [build]
-# Disable the global sccache wrapper (~/.cargo/config.toml sets
-# build.rustc-wrapper = ".../sccache-wrapper") for THIS repo only.
-#
-# The wrapper shares one sccache server across all of Jacob's repos and
-# worktrees ("cacheable across worktrees" by design). When the sibling
-# .worktrees/* checkouts diverge from this tree, sccache serves a successful
-# compile of the *other* worktree's source for same-named crates, yielding
-# phantom errors that reference code which does not exist here (e.g. E0463
-# "can't find crate for spider", or a struct field that was removed). The
-# failures are non-deterministic — clean on a cache hit, broken on a miss —
-# and break `cargo build` / `just verify` here while `RUSTC_WRAPPER=''` is
-# rock-solid. An empty value disables the wrapper without touching the global
-# setup. Remove this once the cache key disambiguates worktrees correctly.
+# sccache wrapper disabled for THIS repo. axon depends on sqlx, whose proc-macro
+# (sqlx_macros) dynamically links libssl.so.3. sccache-dist's build-server sandbox
+# contains ONLY the shipped Rust toolchain — not arbitrary system libs like
+# openssl — so distributing an sqlx-using compile fails on the server with:
+#   libsqlx_macros-*.so: libssl.so.3: cannot open shared object file
+# Confirmed 2026-06-02 by a clean dist build (rc=101 on `sqlx`, after 629 crates
+# distributed fine). This is a native-linking-proc-macro limitation of sccache-dist
+# (same class as lab's boa_engine). The earlier cross-worktree cache-collision
+# rationale is obsolete (path-sensitive keys) — THIS dist limitation is the live one.
+# Re-enable only if dist is disabled globally or the servers can satisfy such libs.
 rustc-wrapper = ""
 
 [alias]

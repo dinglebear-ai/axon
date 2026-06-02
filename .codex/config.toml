@@ -1,0 +1,5 @@
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+CLAUDE_ENV_FILE = "/home/jmagar/workspace/axon/.claude/claude-env.sh"
