@@ -86,26 +86,10 @@ pub(super) async fn build_context_from_candidates(
         skip_full_docs: skip_decision.skip,
         skip_reason: skip_decision.reason,
     });
-    let top_chunks_selected = append_top_chunks_phase(
-        AppendTopChunksInputs {
-            reranked,
-            top_chunk_indices,
-            planned_full_doc_urls_set: &planned_full_doc_urls_set,
-            separator: CONTEXT_SEPARATOR,
-            max_context_chars,
-        },
-        &mut context_entries,
-        &mut context_char_count,
-        &mut source_idx,
-    );
-    let selected_top_chunk_indices = selected_top_chunk_indices(
-        reranked,
-        top_chunk_indices,
-        &planned_full_doc_urls_set,
-        top_chunks_selected,
-    );
     let mut inserted_full_doc_urls: HashSet<String> = HashSet::new();
 
+    // Full documents are inserted BEFORE top chunks so authoritative complete
+    // pages get budget priority over individual chunks. (bd axon_rust-5map)
     let (full_docs_selected, next_source_idx) = append_full_docs_phase(
         FullDocsPhaseInputs {
             cfg,
@@ -128,6 +112,25 @@ pub(super) async fn build_context_from_candidates(
     )
     .await?;
     source_idx = next_source_idx;
+
+    let top_chunks_selected = append_top_chunks_phase(
+        AppendTopChunksInputs {
+            reranked,
+            top_chunk_indices,
+            planned_full_doc_urls_set: &planned_full_doc_urls_set,
+            separator: CONTEXT_SEPARATOR,
+            max_context_chars,
+        },
+        &mut context_entries,
+        &mut context_char_count,
+        &mut source_idx,
+    );
+    let selected_top_chunk_indices = selected_top_chunk_indices(
+        reranked,
+        top_chunk_indices,
+        &planned_full_doc_urls_set,
+        top_chunks_selected,
+    );
 
     let supplemental_started = std::time::Instant::now();
     let (supplemental, supplemental_count) = maybe_inject_supplemental(
