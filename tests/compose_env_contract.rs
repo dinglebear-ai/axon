@@ -434,6 +434,7 @@ fn env_example_only_contains_production_runtime_keys() {
         // Ingest + search creds
         "HF_TOKEN",
         "TAVILY_API_KEY",
+        "AXON_SEARXNG_URL",
         "GITHUB_TOKEN",
         "GITLAB_TOKEN",
         "GITEA_TOKEN",
