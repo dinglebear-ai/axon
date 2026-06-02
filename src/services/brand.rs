@@ -14,6 +14,7 @@ use std::error::Error;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use reqwest::header::HeaderMap;
 use scraper::{Html, Selector};
 use tokio::sync::mpsc;
 use url::Url;
@@ -90,7 +91,7 @@ pub async fn brand(
     let client = http_client()?;
     let response = client
         .get(normalized.as_ref())
-        .headers(custom_headers)
+        .headers(custom_headers.clone())
         .send()
         .await?;
     if !response.status().is_success() {
@@ -101,6 +102,14 @@ pub async fn brand(
         .into());
     }
     let html = response.text().await?;
+    let linked_css = fetch_linked_stylesheets(
+        client,
+        &html,
+        normalized.as_ref(),
+        custom_headers.clone(),
+        &tx,
+    )
+    .await;
 
     emit(
         &tx,
@@ -111,7 +120,8 @@ pub async fn brand(
     )
     .await;
 
-    let mut result = extract_brand_from_html(&html, Some(normalized.as_ref()));
+    let mut result =
+        extract_brand_from_html_with_css(&html, Some(normalized.as_ref()), &linked_css);
     result.url = normalized.into_owned();
     Ok(result)
 }
@@ -120,14 +130,27 @@ pub async fn brand(
 
 /// Extract brand identity from raw HTML.
 /// `page_url` is used only for resolving relative paths.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn extract_brand_from_html(html: &str, page_url: Option<&str>) -> BrandResult {
+    extract_brand_from_html_with_css(html, page_url, &[])
+}
+
+fn extract_brand_from_html_with_css(
+    html: &str,
+    page_url: Option<&str>,
+    linked_css: &[String],
+) -> BrandResult {
     let doc = Html::parse_document(html);
     let base_url = page_url.and_then(|u| Url::parse(u).ok());
 
     let name = extract_brand_name(&doc);
     let css_sources = collect_css(&doc);
+    let mut font_sources = collect_css(&doc);
+    for css in linked_css {
+        parse_declarations(css, &mut font_sources);
+    }
     let colors_out = colors::extract_colors(&css_sources, name.as_deref());
-    let fonts_out = fonts::extract_fonts(&css_sources, name.as_deref());
+    let fonts_out = fonts::extract_fonts(&font_sources, name.as_deref());
     let logo_url = find_logo(&doc, base_url.as_ref());
     let favicon_url = find_favicon(&doc, base_url.as_ref());
     let logos = find_all_logos(&doc, base_url.as_ref());
@@ -143,6 +166,83 @@ pub(crate) fn extract_brand_from_html(html: &str, page_url: Option<&str>) -> Bra
         favicon_url,
         og_image,
     }
+}
+
+async fn fetch_linked_stylesheets(
+    client: &reqwest::Client,
+    html: &str,
+    page_url: &str,
+    headers: HeaderMap,
+    tx: &Option<mpsc::Sender<ServiceEvent>>,
+) -> Vec<String> {
+    let stylesheet_urls = {
+        let doc = Html::parse_document(html);
+        let base_url = Url::parse(page_url).ok();
+        linked_stylesheet_urls(&doc, base_url.as_ref())
+    };
+    let mut stylesheets = Vec::new();
+
+    for href in stylesheet_urls.into_iter().take(16) {
+        match fetch_stylesheet(client, &href, headers.clone()).await {
+            Ok(css) => stylesheets.push(css),
+            Err(err) => {
+                let message = format!("brand: skipping stylesheet {href}: {err}");
+                emit(
+                    tx,
+                    ServiceEvent::Log {
+                        level: LogLevel::Warn,
+                        message,
+                    },
+                )
+                .await;
+            }
+        }
+    }
+
+    stylesheets
+}
+
+async fn fetch_stylesheet(
+    client: &reqwest::Client,
+    url: &str,
+    headers: HeaderMap,
+) -> Result<String, String> {
+    validate_url(url).map_err(|e| format!("invalid stylesheet url {url}: {e}"))?;
+    let response = client
+        .get(url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    response.text().await.map_err(|e| e.to_string())
+}
+
+fn linked_stylesheet_urls(doc: &Html, base_url: Option<&Url>) -> Vec<String> {
+    let mut urls = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for el in doc.select(sel!("link[rel]")) {
+        let rel = el.value().attr("rel").unwrap_or("").to_ascii_lowercase();
+        if !rel.split_whitespace().any(|part| part == "stylesheet") {
+            continue;
+        }
+        let media = el.value().attr("media").unwrap_or("").to_ascii_lowercase();
+        if media == "print" {
+            continue;
+        }
+        let Some(href) = el.value().attr("href") else {
+            continue;
+        };
+        let url = resolve_url(href, base_url);
+        if seen.insert(url.clone()) {
+            urls.push(url);
+        }
+    }
+
+    urls
 }
 
 // ── CSS collection ───────────────────────────────────────────────────────────
