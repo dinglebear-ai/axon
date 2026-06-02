@@ -303,6 +303,11 @@ pub struct Config {
     /// Tavily search API key. Env: `TAVILY_API_KEY`. **Secret.**
     pub tavily_api_key: String,
 
+    /// Base URL of a self-hosted SearXNG instance used as the `research` search
+    /// backend (e.g. `https://searx.example.com`). When set, `research` queries
+    /// SearXNG's JSON API instead of Tavily. Env: `AXON_SEARXNG_URL`.
+    pub searxng_url: String,
+
     /// Allowed cross-origin browser origins for the MCP HTTP surface.
     /// Env: `AXON_MCP_ALLOWED_ORIGINS` (comma-separated).
     pub mcp_allowed_origins: Vec<String>,

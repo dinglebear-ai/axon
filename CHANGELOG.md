@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.20.0] - 2026-06-02
+
+### Added
+
+- **`research` can use a self-hosted SearXNG instance instead of Tavily.** Set `AXON_SEARXNG_URL` (e.g. `https://searx.example.com`) and `research` queries SearXNG's JSON API (`/search?format=json`); when unset it falls back to Tavily as before. SearXNG must have the `json` output format enabled in `settings.yml`. New `src/services/search/searxng.rs` client; requests go through the SSRF-guarded shared HTTP client.
+
+### Changed
+
+- **`research` now synthesizes over full page content, not just search snippets.** Previously the LLM only saw each result's short search excerpt (snippet-starved). It now fetches the top sources' full pages (HTTP render, vertical extractors disabled so Reddit/YouTube URLs yield raw text, per-URL failures tolerated and fall back to that source's snippet) and synthesizes over them, truncated per-source to a slice of the model-aware context budget. On Gemini, a representative query went from ~150-char snippets to multi-thousand-char full pages per source (e.g. the canonical plugins-reference page contributed ~55KB). Adds latency (one page fetch per source); bounded to the top `RESEARCH_FETCH_MAX_URLS` sources, fetched concurrently.
+- **`summarize` context budget now scales with the model.** It already reused `ask_max_context_chars` but clamped it to a fixed 120k ceiling; that cap is removed so big-context models (Gemini/Claude 1M, Codex 400k) can summarize larger pages / more documents in one pass, with an 8k floor retained.
+
 ## [4.19.0] - 2026-06-02
 
 ### Changed
