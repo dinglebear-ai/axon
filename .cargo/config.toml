@@ -10,18 +10,14 @@
 # canonical family reference.
 # =============================================================================
 
-[build]
-# sccache wrapper disabled for THIS repo. axon depends on sqlx, whose proc-macro
-# (sqlx_macros) dynamically links libssl.so.3. sccache-dist's build-server sandbox
-# contains ONLY the shipped Rust toolchain — not arbitrary system libs like
-# openssl — so distributing an sqlx-using compile fails on the server with:
-#   libsqlx_macros-*.so: libssl.so.3: cannot open shared object file
-# Confirmed 2026-06-02 by a clean dist build (rc=101 on `sqlx`, after 629 crates
-# distributed fine). This is a native-linking-proc-macro limitation of sccache-dist
-# (same class as lab's boa_engine). The earlier cross-worktree cache-collision
-# rationale is obsolete (path-sensitive keys) — THIS dist limitation is the live one.
-# Re-enable only if dist is disabled globally or the servers can satisfy such libs.
-rustc-wrapper = ""
+# sccache: axon uses the global wrapper (~/.cargo/config.toml) = LOCAL sccache.
+# No repo bypass is needed: distributed compilation (sccache-dist) is DISABLED
+# fleet-wide (2026-06-02) because its build-server sandbox can't load sqlx_macros'
+# libssl.so.3 (native-linking-proc-macro limitation; same class as lab's boa_engine).
+# Local sccache compiles + caches axon fine (dookie has libssl). The old cross-
+# worktree cache-collision rationale is also obsolete (path-sensitive keys).
+# See ~/.config/sccache/config and ~/docs/sccache-setup.md. If dist is ever
+# re-enabled, restore `[build]` + `rustc-wrapper = ""` here.
 
 [alias]
 # The `cargo xtask` convention: `cargo xtask <cmd>` delegates to the xtask crate.
