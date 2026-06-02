@@ -114,3 +114,11 @@ async fn synthesize_returns_none_source_for_empty_extractions() {
     assert!(matches!(source, SummarySource::None));
     assert_eq!(usage.total_tokens, 0);
 }
+
+#[test]
+fn truncate_chars_respects_char_boundary_and_passthrough() {
+    assert_eq!(truncate_chars("hello world", 5), "hello");
+    assert_eq!(truncate_chars("hi", 10), "hi");
+    // Multi-byte: 3 chars of a 4-char string, no panic on byte boundary.
+    assert_eq!(truncate_chars("héllo", 3), "hél");
+}

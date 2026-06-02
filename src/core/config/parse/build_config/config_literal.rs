@@ -191,6 +191,9 @@ fn populate_services_and_ask_basics(
     cfg.openai_api_key = non_empty_env("AXON_OPENAI_API_KEY").unwrap_or_default();
     cfg.openai_model = non_empty_env("AXON_OPENAI_MODEL").unwrap_or_default();
     cfg.tavily_api_key = env::var("TAVILY_API_KEY").ok().unwrap_or_default();
+    cfg.searxng_url = non_empty_env("AXON_SEARXNG_URL")
+        .map(|u| u.trim_end_matches('/').to_string())
+        .unwrap_or_default();
     cfg.mcp_allowed_origins = env::var("AXON_MCP_ALLOWED_ORIGINS")
         .ok()
         .map(|raw| parse_origin_allowlist(&raw))

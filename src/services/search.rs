@@ -1,3 +1,4 @@
+mod searxng;
 mod synthesis;
 
 pub use synthesis::research;

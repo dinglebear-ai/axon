@@ -20,6 +20,14 @@ const TAVILY_BACKOFF_BASE: Duration = Duration::from_millis(750);
 const FALLBACK_MAX_EXTRACTIONS: usize = 3;
 /// Fallback summary truncates each snippet at this many characters.
 const FALLBACK_SNIPPET_CHARS: usize = 180;
+/// Max source pages to fetch full content for during research synthesis.
+const RESEARCH_FETCH_MAX_URLS: usize = 12;
+/// Concurrent page fetches during research full-content synthesis.
+const RESEARCH_FETCH_CONCURRENCY: usize = 8;
+/// Floor for the research synthesis context budget (chars).
+const MIN_RESEARCH_CONTEXT_CHARS: usize = 8_000;
+/// Floor for the per-source content slice (chars) so each source contributes.
+const MIN_PER_SOURCE_CHARS: usize = 500;
 
 /// Execute a Tavily AI research query with LLM synthesis.
 ///
@@ -39,16 +47,10 @@ pub async fn research_payload(
     time_range: Option<TimeRange>,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ResearchPayload, Box<dyn Error>> {
-    use spider_agent::{Agent, SearchOptions as SpiderSearchOptions};
     use std::time::Instant;
 
     let started = Instant::now();
-    super::ensure_tavily_configured(cfg, "research")?;
     super::enforce_pagination_window(limit, offset)?;
-
-    let agent = Agent::builder()
-        .with_search_tavily(&cfg.tavily_api_key)
-        .build()?;
 
     emit(
         &tx,
@@ -59,36 +61,27 @@ pub async fn research_payload(
     )
     .await;
 
-    let mut search_options = SpiderSearchOptions::new().with_limit((limit + offset).max(1));
-    if let Some(tr) = time_range {
-        search_options = search_options.with_time_range(tr);
-    }
-
-    let search_results = tavily_search_with_retry(&agent, query, search_options).await?;
-
-    // Use Tavily's content excerpts directly — skip redundant fetch+extract.
-    let page = search_results
-        .results
-        .iter()
+    let page: Vec<RawHit> = gather_hits(cfg, query, limit, offset, time_range)
+        .await?
+        .into_iter()
         .skip(offset)
         .take(limit)
-        .collect::<Vec<_>>();
+        .collect();
 
-    let mut search_results_typed: Vec<ResearchHit> = Vec::with_capacity(page.len());
-    let mut extractions: Vec<ResearchExtraction> = Vec::with_capacity(page.len());
-    for r in &page {
-        search_results_typed.push(ResearchHit {
-            position: r.position,
-            title: r.title.clone(),
-            url: r.url.clone(),
-            snippet: r.snippet.clone(),
-        });
-        extractions.push(ResearchExtraction {
-            url: r.url.clone(),
-            title: r.title.clone(),
-            extracted: r.snippet.clone().unwrap_or_default(),
-        });
-    }
+    let search_results_typed: Vec<ResearchHit> = page
+        .iter()
+        .enumerate()
+        .map(|(i, h)| ResearchHit {
+            position: offset + i + 1,
+            title: h.title.clone(),
+            url: h.url.clone(),
+            snippet: (!h.snippet.trim().is_empty()).then(|| h.snippet.clone()),
+        })
+        .collect();
+
+    // Synthesize over full page content (not just search snippets); falls back
+    // to the snippet per-URL when a fetch fails. (bd axon_rust-wm3z)
+    let extractions = build_extractions(cfg, &page, tx.clone()).await;
 
     emit(
         &tx,
@@ -118,6 +111,151 @@ pub async fn research_payload(
             total: started.elapsed().as_millis(),
         },
     })
+}
+
+/// A normalized search hit from either backend (SearXNG or Tavily).
+struct RawHit {
+    url: String,
+    title: String,
+    snippet: String,
+}
+
+/// Run the configured search backend: SearXNG when `cfg.searxng_url` is set,
+/// otherwise Tavily (with bounded retry). Returns `limit + offset` hits.
+async fn gather_hits(
+    cfg: &Config,
+    query: &str,
+    limit: usize,
+    offset: usize,
+    time_range: Option<TimeRange>,
+) -> Result<Vec<RawHit>, Box<dyn Error>> {
+    let count = (limit + offset).max(1);
+    if !cfg.searxng_url.is_empty() {
+        let hits = super::searxng::searxng_search(cfg, query, count, time_range).await?;
+        return Ok(hits
+            .into_iter()
+            .map(|h| RawHit {
+                url: h.url,
+                title: h.title,
+                snippet: h.snippet,
+            })
+            .collect());
+    }
+
+    use spider_agent::{Agent, SearchOptions as SpiderSearchOptions};
+    super::ensure_tavily_configured(cfg, "research")?;
+    let agent = Agent::builder()
+        .with_search_tavily(&cfg.tavily_api_key)
+        .build()?;
+    let mut search_options = SpiderSearchOptions::new().with_limit(count);
+    if let Some(tr) = time_range {
+        search_options = search_options.with_time_range(tr);
+    }
+    let results = tavily_search_with_retry(&agent, query, search_options).await?;
+    Ok(results
+        .results
+        .into_iter()
+        .map(|r| RawHit {
+            url: r.url,
+            title: r.title,
+            snippet: r.snippet.unwrap_or_default(),
+        })
+        .collect())
+}
+
+/// Build synthesis extractions: fetch full page content for the top sources
+/// (HTTP-only to bound latency), fall back to the search snippet per-URL, then
+/// truncate each source to a per-source slice of the model-aware context budget.
+async fn build_extractions(
+    cfg: &Config,
+    page: &[RawHit],
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Vec<ResearchExtraction> {
+    if page.is_empty() {
+        return Vec::new();
+    }
+    let urls: Vec<String> = page
+        .iter()
+        .take(RESEARCH_FETCH_MAX_URLS)
+        .map(|h| h.url.clone())
+        .collect();
+    let fetched = fetch_full_content(cfg, &urls, tx).await;
+
+    // `ask_max_context_chars` already scales with the model tier (Gemini/Claude
+    // 1M, Codex 400k, else 40k). Split it across the sources.
+    let budget = cfg.ask_max_context_chars.max(MIN_RESEARCH_CONTEXT_CHARS);
+    let per_source = (budget / page.len().max(1)).max(MIN_PER_SOURCE_CHARS);
+
+    page.iter()
+        .map(|h| {
+            let full = fetched.get(&h.url).map(String::as_str).unwrap_or("");
+            // Prefer fetched full content when it is richer than the snippet.
+            let content = if full.trim().chars().count() > h.snippet.trim().chars().count() {
+                full
+            } else {
+                h.snippet.as_str()
+            };
+            ResearchExtraction {
+                url: h.url.clone(),
+                title: h.title.clone(),
+                extracted: truncate_chars(content.trim(), per_source).to_string(),
+            }
+        })
+        .collect()
+}
+
+/// Scrape full page content (markdown, HTTP render, no embedding, verticals
+/// off) for `urls`, concurrently and tolerant of per-URL failures. Returns a
+/// `url -> markdown` map; any URL that fails is simply omitted so the caller
+/// falls back to that source's snippet. Verticals are disabled so result URLs
+/// like Reddit/YouTube yield raw page text instead of routing to credentialed
+/// structured extractors that would otherwise error.
+async fn fetch_full_content(
+    cfg: &Config,
+    urls: &[String],
+    _tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> std::collections::HashMap<String, String> {
+    use crate::core::config::{ConfigOverrides, RenderMode, ScrapeFormat};
+    use futures_util::stream::{self, StreamExt};
+
+    if urls.is_empty() {
+        return std::collections::HashMap::new();
+    }
+    let mut scrape_cfg = cfg.apply_overrides(&ConfigOverrides {
+        format: Some(ScrapeFormat::Markdown),
+        output_path: Some(None),
+        embed: Some(false),
+        render_mode: Some(RenderMode::Http),
+        ..ConfigOverrides::default()
+    });
+    scrape_cfg.enable_verticals = false;
+    let cfg_ref = &scrape_cfg;
+
+    let fetched: Vec<(String, String)> = stream::iter(urls.iter().cloned())
+        .map(move |url| async move {
+            match crate::services::scrape::scrape(cfg_ref, &url, None).await {
+                Ok(r) if !r.markdown.trim().is_empty() => Some((r.url, r.markdown)),
+                Ok(_) => None,
+                Err(e) => {
+                    log_warn(&format!("research: scrape failed for {url}: {e}"));
+                    None
+                }
+            }
+        })
+        .buffer_unordered(RESEARCH_FETCH_CONCURRENCY)
+        .filter_map(|r| async move { r })
+        .collect()
+        .await;
+
+    fetched.into_iter().collect()
+}
+
+/// Truncate to at most `max_chars` characters on a char boundary.
+fn truncate_chars(value: &str, max_chars: usize) -> &str {
+    match value.char_indices().nth(max_chars) {
+        Some((idx, _)) => &value[..idx],
+        None => value,
+    }
 }
 
 /// Run a Tavily AI research query with LLM synthesis and return a typed [`ResearchResult`].
