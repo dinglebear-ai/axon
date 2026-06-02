@@ -103,6 +103,7 @@ impl Default for Config {
             openai_model: String::new(),
             tavily_api_key: String::new(),
             searxng_url: String::new(),
+            research_full_content: true,
             mcp_allowed_origins: vec![],
             ask_diagnostics: false,
             ask_explain: false,

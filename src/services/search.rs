@@ -174,8 +174,29 @@ pub async fn search_results(
     offset: usize,
     time_range: Option<TimeRange>,
 ) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    ensure_tavily_configured(cfg, "search")?;
     enforce_pagination_window(limit, offset)?;
+
+    // Prefer self-hosted SearXNG when configured; fall back to Tavily otherwise.
+    if !cfg.searxng_url.is_empty() {
+        let total = limit.saturating_add(offset).max(1);
+        let hits = searxng::searxng_search(cfg, query, total, time_range).await?;
+        return Ok(hits
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .enumerate()
+            .map(|(i, h)| {
+                serde_json::json!({
+                    "position": offset + i + 1,
+                    "title": h.title,
+                    "url": h.url,
+                    "snippet": h.snippet,
+                })
+            })
+            .collect());
+    }
+
+    ensure_tavily_configured(cfg, "search")?;
     let total = limit.saturating_add(offset).max(1);
     let mut search_opts = SpiderSearchOptions::new().with_limit(total);
     if let Some(tr) = time_range {

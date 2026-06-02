@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`research` can use a self-hosted SearXNG instance instead of Tavily.** Set `AXON_SEARXNG_URL` (e.g. `https://searx.example.com`) and `research` queries SearXNG's JSON API (`/search?format=json`); when unset it falls back to Tavily as before. SearXNG must have the `json` output format enabled in `settings.yml`. New `src/services/search/searxng.rs` client; requests go through the SSRF-guarded shared HTTP client.
+- **`research` and `search` can use a self-hosted SearXNG instance instead of Tavily.** Set `AXON_SEARXNG_URL` (e.g. `https://searx.example.com`) and both commands query SearXNG's JSON API (`/search?format=json`); when unset they fall back to Tavily as before. SearXNG must have the `json` output format enabled in `settings.yml`. New `src/services/search/searxng.rs` client (with httpmock-backed tests for the success / `403`-when-json-disabled / blank-url-filter paths); requests go through the SSRF-guarded shared HTTP client.
+- **`AXON_RESEARCH_FULL_CONTENT` toggle.** Defaults to `true` (full-page synthesis); set `false`/`0`/`no`/`off` to make `research` synthesize over search snippets only — much faster when you don't need deep sourcing.
 
 ### Changed
 

@@ -308,6 +308,12 @@ pub struct Config {
     /// SearXNG's JSON API instead of Tavily. Env: `AXON_SEARXNG_URL`.
     pub searxng_url: String,
 
+    /// When true (default), `research` fetches each top source's full page and
+    /// synthesizes over it; when false it synthesizes over search snippets only
+    /// (much faster). Env: `AXON_RESEARCH_FULL_CONTENT` (`false`/`0`/`no`/`off`
+    /// to disable).
+    pub research_full_content: bool,
+
     /// Allowed cross-origin browser origins for the MCP HTTP surface.
     /// Env: `AXON_MCP_ALLOWED_ORIGINS` (comma-separated).
     pub mcp_allowed_origins: Vec<String>,

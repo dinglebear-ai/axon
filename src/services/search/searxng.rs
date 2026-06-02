@@ -17,6 +17,7 @@ use spider_agent::TimeRange;
 use std::error::Error;
 
 /// One SearXNG result, normalized to the fields `research` consumes.
+#[derive(Debug)]
 pub(super) struct SearxHit {
     pub url: String,
     pub title: String,
