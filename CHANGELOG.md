@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.5] - 2026-06-01
+
+### Fixed
+
+- **Plugin-hook `/readyz` probe respects the configured MCP HTTP bind.** The 4.18.4 fast-path probed a hardcoded `127.0.0.1:8001`; it now resolves the host/port from `AXON_MCP_HTTP_HOST` / `AXON_MCP_HTTP_PORT` in the environment (populated from `~/.axon/.env` at startup, the same knobs `setup init` writes), so a non-default port is probed correctly instead of always falling through to a redeploy. The env is read directly rather than via `cfg.mcp_http_port`, because the config layer gates those host/trusted-bootstrap keys for the `setup plugin-hook` command (leaving `cfg.mcp_http_port` at its `8001` default) — reading the env matches how the `setup`/`preflight` readiness check already resolves the axon URL. Bind-all hosts (`0.0.0.0`/`::`) are probed over loopback and IPv6 literals are bracketed. Also de-hardcodes the same `:8001` assumption in the readiness check. URL building is unit-tested via `axon_readyz_url`.
+
 ## [4.18.4] - 2026-06-01
 
 ### Fixed

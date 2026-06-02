@@ -20,7 +20,8 @@ The SessionStart hook invokes `${CLAUDE_PLUGIN_ROOT}/bin/axon setup plugin-hook`
 4. Preserve existing `~/.axon/.env` and `~/.axon/config.toml`; setup only fills missing runtime values.
 
 **Already-healthy fast path:** before doing any of the above setup work, the hook
-probes `http://127.0.0.1:8001/readyz` once (3s). Because `/readyz` asserts qdrant +
+probes `/readyz` once (3s) at the configured bind (`AXON_MCP_HTTP_HOST`/`AXON_MCP_HTTP_PORT`
+from `~/.axon/.env`, default `127.0.0.1:8001`). Because `/readyz` asserts qdrant +
 tei readiness, a success means the stack is already deployed — the hook then exits
 `0` silently (no preflight, no `compose pull`/`up`, no stdout in human mode). It only
 runs the full setup path when `/readyz` is unreachable. This keeps session start

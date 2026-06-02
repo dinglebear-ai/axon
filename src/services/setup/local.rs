@@ -44,9 +44,38 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
 /// skip preflight/compose entirely on an already-running host — a missing
 /// prerequisite tool (e.g. nvidia-smi) must never trigger a redeploy when the
 /// stack is plainly up. Single-shot with a short timeout; never blocks startup.
+///
+/// The host/port are read from `AXON_MCP_HTTP_HOST` / `AXON_MCP_HTTP_PORT` in the
+/// environment (populated from `~/.axon/.env` at startup), falling back to
+/// `127.0.0.1:8001`. This deliberately reads the env directly rather than
+/// `cfg.mcp_http_port`: the config layer gates those keys behind a host/trusted
+/// classification, so for the `setup plugin-hook` command `cfg.mcp_http_port`
+/// stays at the default. The deployed `.env` value is the authoritative bind, and
+/// this matches how the `setup`/`preflight` readiness check resolves the axon URL.
 pub async fn stack_already_healthy() -> bool {
-    let url = format!("{}/readyz", DEFAULT_SERVER_URL.trim_end_matches('/'));
+    let host = std::env::var("AXON_MCP_HTTP_HOST").unwrap_or_default();
+    let port = std::env::var("AXON_MCP_HTTP_PORT")
+        .ok()
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .unwrap_or(8001);
+    let url = axon_readyz_url(&host, port);
     runtime::probe_http_once(&url, std::time::Duration::from_secs(3)).await
+}
+
+/// Builds the local axon `/readyz` URL from the configured MCP HTTP bind. A
+/// bind-all or empty host is probed over loopback (where the server is reachable
+/// locally); IPv6 literals are bracketed.
+fn axon_readyz_url(host: &str, port: u16) -> String {
+    let host = match host.trim() {
+        "" | "0.0.0.0" | "::" | "[::]" | "*" => "127.0.0.1",
+        other => other,
+    };
+    let host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.to_string()
+    };
+    format!("http://{host}:{port}/readyz")
 }
 
 pub async fn run_local_setup_with_options(
@@ -338,6 +367,10 @@ async fn run_readiness_phases(env_values: &BTreeMap<String, String>) -> Vec<Loca
     let qdrant_url = env_value(env_values, "QDRANT_URL", DEFAULT_QDRANT_URL);
     let tei_url = env_value(env_values, "TEI_URL", DEFAULT_TEI_URL);
     let chrome_url = env_value(env_values, "AXON_CHROME_REMOTE_URL", DEFAULT_CHROME_URL);
+    let axon_host = env_value(env_values, "AXON_MCP_HTTP_HOST", "127.0.0.1");
+    let axon_port = env_value(env_values, "AXON_MCP_HTTP_PORT", "8001")
+        .parse::<u16>()
+        .unwrap_or(8001);
 
     vec![
         runtime::wait_http(
@@ -347,7 +380,7 @@ async fn run_readiness_phases(env_values: &BTreeMap<String, String>) -> Vec<Loca
         .await,
         runtime::wait_http("tei", format!("{}/health", tei_url.trim_end_matches('/'))).await,
         runtime::wait_http("chrome", chrome_url).await,
-        runtime::wait_http("axon", "http://127.0.0.1:8001/readyz").await,
+        runtime::wait_http("axon", axon_readyz_url(&axon_host, axon_port)).await,
     ]
 }
 
@@ -440,3 +473,7 @@ fn skipped_phase(name: &'static str, detail: &str) -> LocalSetupPhase {
         elapsed_ms: 0,
     }
 }
+
+#[cfg(test)]
+#[path = "local_tests.rs"]
+mod tests;
