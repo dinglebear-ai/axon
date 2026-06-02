@@ -293,13 +293,26 @@ QDRANT_URL=http://axon-qdrant:6333
 # TEI embeddings (on axon network — container DNS)
 TEI_URL=http://axon-tei:80
 
-# LLM / Gemini headless completion settings
-# Gemini CLI is required for ask/summarize/evaluate/suggest/extract fallback/debug/research synthesis.
+# LLM completion backend selection
+# AXON_LLM_BACKEND selects the synthesis path for ask/summarize/evaluate/suggest/
+# extract fallback/debug/research. Two backends:
+#   gemini-headless (default; also accepts "gemini"/"headless"/empty) — Gemini CLI
+#   openai-compat — any OpenAI-compatible /v1/chat/completions endpoint
+AXON_LLM_BACKEND=gemini-headless
+AXON_LLM_COMPLETION_CONCURRENCY=4
+AXON_LLM_COMPLETION_TIMEOUT_SECS=300
+
+# Gemini headless backend (used when AXON_LLM_BACKEND=gemini-headless)
 AXON_HEADLESS_GEMINI_CMD=gemini
 AXON_HEADLESS_GEMINI_HOME=
 AXON_HEADLESS_GEMINI_MODEL=
-AXON_LLM_COMPLETION_CONCURRENCY=4
-AXON_LLM_COMPLETION_TIMEOUT_SECS=300
+
+# OpenAI-compatible backend (used when AXON_LLM_BACKEND=openai-compat)
+# BASE_URL is the API root (axon appends /chat/completions itself — do NOT include
+# it; include /v1 if the endpoint serves /v1/chat/completions).
+AXON_OPENAI_BASE_URL=
+AXON_OPENAI_MODEL=
+AXON_OPENAI_API_KEY=
 
 # CDP endpoint for headless_browser (axon-chrome management API)
 AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
@@ -385,8 +398,12 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 ### `crawl_raw()` vs `crawl()`
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
-### Gemini headless completion path
-All LLM operations — `ask`, `summarize`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`). Deterministic and vertical extractors in `src/extract/` and `src/core/content/deterministic.rs` run pure Rust without LLM calls; Gemini is invoked only when deterministic extraction yields nothing (the LLM fallback path). `AXON_HEADLESS_GEMINI_MODEL` is the model override knob. The legacy `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0.
+### LLM completion backend (`AXON_LLM_BACKEND`)
+All LLM operations — `ask`, `summarize`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the backend selected by `AXON_LLM_BACKEND`, dispatched in `src/services/llm_backend.rs` on `LlmBackendKind`:
+- **`gemini-headless`** (default; also accepts `gemini`/`headless`/empty) — Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`, model override `AXON_HEADLESS_GEMINI_MODEL`). Implemented in `src/services/llm_backend/` Gemini dispatch.
+- **`openai-compat`** — any OpenAI-compatible endpoint (`src/services/llm_backend/openai_compat.rs`). Requires `AXON_OPENAI_BASE_URL` (the API root — the code appends `/chat/completions` and errors if you include it; include `/v1` when the endpoint serves `/v1/chat/completions`) and `AXON_OPENAI_MODEL`; `AXON_OPENAI_API_KEY` is optional (sent as a bearer token when set). llama.cpp and proxy endpoints both work.
+
+Deterministic and vertical extractors in `src/extract/` and `src/core/content/deterministic.rs` run pure Rust without LLM calls; the LLM is invoked only when deterministic extraction yields nothing (the fallback path). The legacy un-prefixed `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0 and replaced by the `AXON_LLM_BACKEND` + `AXON_OPENAI_*` scheme above.
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).
