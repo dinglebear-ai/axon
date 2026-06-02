@@ -1,6 +1,6 @@
 # Axon
 
-Version: 4.18.5
+Version: 4.18.6
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -66,7 +66,7 @@ Claude Code plugin install:
 claude plugin install <path-to-this-repo>
 ```
 
-The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook is a thin adapter around `axon setup plugin-hook`, which probes `/readyz` first and **exits silently when the stack is already healthy** — only falling back to preflight + the setup wrapper when the stack is down or local files/services need to be initialized. Use `axon setup plugin-hook --no-setup` when the hook must only check readiness, or the `/axon-deploy` slash command for an explicit deploy. It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
+The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook is a thin adapter around `axon setup plugin-hook`, which is **probe-only and never deploys**: it checks `/readyz` and exits silently when the stack is up, or prints a one-line `run /axon-deploy` advisory when it is down. Provisioning is the `/axon-deploy` slash command (or `axon setup` / `axon compose up`). It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
 
 ## Setup Flow
 
@@ -91,8 +91,7 @@ axon compose down     # stop services
 axon compose restart  # restart services
 axon compose rebuild  # rebuild the Axon image and start services
 axon smoke          # TEI prewarm + crawl/ask proof
-axon setup plugin-hook  # hook-safe preflight path for Claude Code SessionStart
-axon setup plugin-hook --no-setup   # preflight only; does not mutate files or services
+axon setup plugin-hook  # probe-only SessionStart path (never deploys; advises /axon-deploy when down)
 axon setup targets  # list SSH aliases discovered from ~/.ssh/config (informational)
 ```
 

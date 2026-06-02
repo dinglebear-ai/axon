@@ -4,12 +4,8 @@ use crate::core::ui::{accent, muted, primary, print_aurora_table, symbol_for_sta
 use crate::services::setup::{
     self, ComposeAction, LocalSetupInitOptions, LocalSetupMode, LocalSetupStatus,
 };
-use serde::Serialize;
 use serde_json::json;
 use std::error::Error;
-use std::time::Duration;
-
-const PLUGIN_HOOK_TIMEOUT_SECS: u64 = 360;
 
 mod plugin_options;
 pub use plugin_options::apply_plugin_options;
@@ -21,7 +17,6 @@ const USAGE_LINES: &[&str] = &[
     "axon smoke",
     "axon compose up|down|restart|rebuild",
     "axon setup plugin-hook",
-    "axon setup plugin-hook --no-setup",
 ];
 
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -163,74 +158,44 @@ fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    // Belt-and-suspenders: the env-var mapping is applied early (before
-    // parse_args) by `apply_plugin_options()` in `run()`. Re-applying here is
-    // harmless and covers any direct caller that bypasses the early path. The
-    // EARLY call is the one that matters for Config::load.
+    // The env-var mapping is applied early (before parse_args) by
+    // `apply_plugin_options()` in `run()`. Re-applying here is harmless and
+    // covers any direct caller that bypasses the early path.
     apply_plugin_options();
     // Keep the user's terminal copy in ~/.local/bin fresh each session.
     let _ = install_self();
 
-    // Fast path: if the stack already answers /readyz, the deploy is done. Skip
-    // preflight + compose entirely and stay silent in human mode so an
-    // already-running host doesn't redeploy (or emit noise) every session start.
-    // A missing prerequisite tool must not force a redeploy when axon is up.
+    // The SessionStart hook NEVER deploys — provisioning is the `/axon-deploy`
+    // slash command. The hook only probes whether the stack is already serving:
+    //   - /readyz up   → already deployed; exit silently (success)
+    //   - /readyz down → advise running /axon-deploy; exit success (non-blocking)
+    // It never runs preflight or `docker compose`.
     if setup::stack_already_healthy().await {
         if cfg.json_output {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
+                serde_json::to_string_pretty(&json!({
                     "exit_policy": "success",
                     "stack": "already_healthy",
-                    "ran_setup": false,
                 }))?
             );
         }
         return Ok(());
     }
 
-    let no_setup = cfg.positional.iter().any(|value| value == "--no-setup");
-    let result = tokio::time::timeout(
-        Duration::from_secs(PLUGIN_HOOK_TIMEOUT_SECS),
-        build_plugin_hook_report(no_setup),
-    )
-    .await;
-
-    let report = match result {
-        Ok(report) => report?,
-        Err(_) => {
-            let timeout = PluginHookTimeoutReport {
-                exit_policy: PluginHookExitPolicy::BlockingFailure,
-                timed_out: true,
-                timeout_seconds: PLUGIN_HOOK_TIMEOUT_SECS,
-                blocking_failures: vec!["plugin-hook-timeout".to_string()],
-                advisory_failures: Vec::new(),
-            };
-            if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&timeout)?);
-            } else {
-                eprintln!(
-                    "axon setup plugin-hook exceeded {}s",
-                    PLUGIN_HOOK_TIMEOUT_SECS
-                );
-            }
-            return Err("axon setup plugin-hook exceeded timeout".into());
-        }
-    };
-
-    print_plugin_hook_report(cfg, &report)?;
-    fail_if_plugin_hook_failed(&report)
-}
-
-async fn build_plugin_hook_report(no_setup: bool) -> Result<PluginHookReport, Box<dyn Error>> {
-    let check = setup::run_local_setup(LocalSetupMode::Preflight).await?;
-    let needs_setup = check.has_errors || check.exceeded_hard_max;
-    let setup = if needs_setup && !no_setup {
-        Some(setup::run_local_setup(LocalSetupMode::Setup).await?)
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "exit_policy": "success",
+                "stack": "down",
+                "action": "run /axon-deploy",
+            }))?
+        );
     } else {
-        None
-    };
-    Ok(PluginHookReport::new(check, setup, no_setup))
+        eprintln!("axon stack not reachable on /readyz — run /axon-deploy to start it");
+    }
+    Ok(())
 }
 
 fn parse_init_options(args: &[String]) -> Result<LocalSetupInitOptions, Box<dyn Error>> {
@@ -279,140 +244,6 @@ fn fail_if_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn 
     } else {
         Ok(())
     }
-}
-
-fn fail_if_plugin_hook_failed(report: &PluginHookReport) -> Result<(), Box<dyn Error>> {
-    match report.exit_policy {
-        PluginHookExitPolicy::Success => Ok(()),
-        PluginHookExitPolicy::AdvisoryFailure => {
-            eprintln!(
-                "axon setup plugin-hook: continuing after advisory setup failures; inspect setup report"
-            );
-            Ok(())
-        }
-        PluginHookExitPolicy::BlockingFailure => Err(format!(
-            "axon setup plugin-hook completed with blocking failed phases: {}",
-            report.blocking_failures.join(", ")
-        )
-        .into()),
-    }
-}
-
-fn print_plugin_hook_report(cfg: &Config, report: &PluginHookReport) -> Result<(), Box<dyn Error>> {
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(report)?);
-        Ok(())
-    } else {
-        print_local_setup_report(cfg, &report.check)?;
-        if let Some(setup) = &report.setup {
-            print_local_setup_report(cfg, setup)?;
-        }
-        println!(
-            "{} {}",
-            muted("plugin hook policy:"),
-            accent(&format!("{:?}", report.exit_policy))
-        );
-        println!(
-            "{} {}",
-            muted("plugin hook ran setup:"),
-            accent(&report.ran_setup.to_string())
-        );
-        if !report.blocking_failures.is_empty() {
-            println!(
-                "{} {}",
-                primary("blocking failures:"),
-                report.blocking_failures.join(", ")
-            );
-        }
-        if !report.advisory_failures.is_empty() {
-            println!(
-                "{} {}",
-                muted("advisory failures:"),
-                report.advisory_failures.join(", ")
-            );
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum PluginHookExitPolicy {
-    Success,
-    AdvisoryFailure,
-    BlockingFailure,
-}
-
-#[derive(Debug, Serialize)]
-struct PluginHookReport {
-    exit_policy: PluginHookExitPolicy,
-    ran_setup: bool,
-    no_setup: bool,
-    blocking_failures: Vec<String>,
-    advisory_failures: Vec<String>,
-    check: setup::LocalSetupReport,
-    setup: Option<setup::LocalSetupReport>,
-}
-
-impl PluginHookReport {
-    fn new(
-        check: setup::LocalSetupReport,
-        setup: Option<setup::LocalSetupReport>,
-        no_setup: bool,
-    ) -> Self {
-        let active = setup.as_ref().unwrap_or(&check);
-        let blocking_failures = blocking_failures(active);
-        let advisory_failures = advisory_failures(active);
-        let exit_policy = if !blocking_failures.is_empty() {
-            PluginHookExitPolicy::BlockingFailure
-        } else if !advisory_failures.is_empty() || active.exceeded_hard_max {
-            PluginHookExitPolicy::AdvisoryFailure
-        } else {
-            PluginHookExitPolicy::Success
-        };
-        Self {
-            exit_policy,
-            ran_setup: setup.is_some(),
-            no_setup,
-            blocking_failures,
-            advisory_failures,
-            check,
-            setup,
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct PluginHookTimeoutReport {
-    exit_policy: PluginHookExitPolicy,
-    timed_out: bool,
-    timeout_seconds: u64,
-    blocking_failures: Vec<String>,
-    advisory_failures: Vec<String>,
-}
-
-fn blocking_failures(report: &setup::LocalSetupReport) -> Vec<String> {
-    let mut failures: Vec<String> = report
-        .phases
-        .iter()
-        .filter(|phase| {
-            matches!(phase.status, LocalSetupStatus::Error) && !phase.is_hook_advisory()
-        })
-        .map(|phase| phase.name.to_string())
-        .collect();
-    if report.exceeded_hard_max {
-        failures.push("setup-hard-max".to_string());
-    }
-    failures
-}
-
-fn advisory_failures(report: &setup::LocalSetupReport) -> Vec<String> {
-    report
-        .phases
-        .iter()
-        .filter(|phase| matches!(phase.status, LocalSetupStatus::Error) && phase.is_hook_advisory())
-        .map(|phase| phase.name.to_string())
-        .collect()
 }
 
 fn print_local_setup_report(

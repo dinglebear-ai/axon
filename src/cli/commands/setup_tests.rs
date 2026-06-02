@@ -39,23 +39,3 @@ fn setup_failure_gate_rejects_error_reports() {
 fn setup_failure_gate_allows_warning_reports() {
     assert!(fail_if_setup_failed(&report_with(LocalSetupStatus::Warn)).is_ok());
 }
-
-#[test]
-fn hook_failure_gate_rejects_blocking_setup_errors() {
-    let report = PluginHookReport::new(
-        report_with_phase("docker", LocalSetupStatus::Error),
-        None,
-        false,
-    );
-    assert!(fail_if_plugin_hook_failed(&report).is_err());
-}
-
-#[test]
-fn hook_failure_gate_allows_advisory_smoke_errors() {
-    let report = PluginHookReport::new(
-        report_with_phase("ask-smoke", LocalSetupStatus::Error),
-        None,
-        false,
-    );
-    assert!(fail_if_plugin_hook_failed(&report).is_ok());
-}
