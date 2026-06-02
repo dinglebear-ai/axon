@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.19.0] - 2026-06-02
+
+### Changed
+
+- **`ask` context quality: chunk-cap raised, mirror sources demoted, near-duplicate collapse.** Diagnosis via `ask --explain` showed good index coverage but a starved LLM context: only 6 chunks / ~7 KB of a 20 KB budget reached the model, and a low-rerank GitHub *mirror* of the canonical docs page was force-promoted to the `#1` full-doc slot by the dominant-host bonus (github.com "dominates" a mirror-heavy index). Three coordinated fixes:
+  - **Chunk limit.** `AXON_ASK_CHUNK_LIMIT` default raised 20 → 24, clamp widened 3–40 → 3–64. Previously-dropped canonical chunks (`plugins-reference`, `plugin-hints`) now reach the LLM; context fills toward the budget instead of leaving ~64% empty.
+  - **Mirror demotion in full-doc selection** (`src/vector/ops/commands/ask/context/build/selection.rs`). A VCS-mirror URL (generic `/blob/`, `/tree/`, `/raw/`, `*usercontent*` markers — no host/repo hardcoding) is excluded from host-dominance and never wins the canonical full-doc slot. For the motivating query the planned full-doc flips from a GitHub mirror to the canonical `code.claude.com/docs/en/plugins`.
+  - **Near-duplicate collapse** (`src/vector/ops/commands/ask/context/dedup.rs`, new). Before context selection, reranked candidates are clustered by normalized shingle-Jaccard and collapsed to a single canonical representative (authoritative-domain > docs-path > not-a-mirror-blob > shallower-path > rerank), so identical mirror chunks can't each consume a slot. Conservative threshold (0.50): a defensive net for truly near-identical chunks — it does not collapse distinct sections of the same page. Drops are surfaced in `--explain` warnings.
+  - No regression on the tracked retrieval fixture sweep (8/9 before and after; the one miss is a pre-existing docs.rs corpus gap).
+- **`ask` retrieval depth now scales with the configured LLM's context window** (`tuning.rs`). A single model tier — derived from the backend/model (`gemini-headless` or a `gemini`/`gemma`/`claude` model → Large ≈1M tokens; `codex` → Medium ≈400k; anything else → Small, assume <50k) — drives four defaults so larger-window models receive proportionally more context:
+
+  | knob | Large | Medium | Small |
+  |------|------:|-------:|------:|
+  | `ask_max_context_chars` | 1,000,000 | 400,000 | 40,000 |
+  | `ask_chunk_limit` | 50 | 28 | 10 |
+  | `ask_candidate_limit` | 250 | 150 | 60 |
+  | `ask_hybrid_candidates` | 200 | 120 | 60 |
+
+  All four remain overridable by their existing env/TOML knobs (explicit values still win). Effects on Gemini for a representative query: chunks injected 13 → 49, context ~14KB → ~93KB, and large authoritative full documents now fit (e.g. the 21KB canonical plugins page enters as a complete full-doc instead of a single supplemental chunk). Trade-off: a deeper candidate pool raises retrieval latency on heavy queries — dial the knobs down via env/TOML if needed. No fixture-sweep regression (8/9; top-domain coverage improved).
+- **Full documents get context-budget priority over individual chunks** (`build.rs`). Planned full-docs are now inserted before top chunks, so an authoritative complete page survives budget pressure instead of being dropped (it previously had to fit in whatever budget the chunks left). Final context order is still re-sorted by score, so this changes only what is dropped when the budget is tight, not display order. A full-doc larger than the *entire* `ask_max_context_chars` budget intentionally falls back to chunk coverage (its top chunk re-enters via supplemental backfill) to preserve diversity across distinct authoritative pages. No fixture-sweep regression.
+
 ## [4.18.6] - 2026-06-02
 
 ### Changed

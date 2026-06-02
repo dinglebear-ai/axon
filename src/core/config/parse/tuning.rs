@@ -4,9 +4,15 @@ use super::toml_config::{TomlConfig, load_toml_config};
 use crate::core::config::types::Config;
 
 pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
-    cfg.ask_max_context_chars = ask_max_context_chars(toml);
-    cfg.ask_candidate_limit = ask_candidate_limit(toml);
-    cfg.ask_chunk_limit = ask_chunk_limit(toml);
+    // Computed into locals first: these defaults read the resolved LLM
+    // backend/model off `cfg` (model-aware retrieval depth), which can't be
+    // borrowed while assigning the field in the same expression.
+    let max_context_chars = ask_max_context_chars(cfg, toml);
+    let candidate_limit = ask_candidate_limit(cfg, toml);
+    let chunk_limit = ask_chunk_limit(cfg, toml);
+    cfg.ask_max_context_chars = max_context_chars;
+    cfg.ask_candidate_limit = candidate_limit;
+    cfg.ask_chunk_limit = chunk_limit;
     cfg.ask_full_docs = resolve_clamped_usize("AXON_ASK_FULL_DOCS", toml.ask.full_docs, 6, 1, 20);
     cfg.ask_backfill_chunks = resolve_clamped_usize(
         "AXON_ASK_BACKFILL_CHUNKS",
@@ -45,9 +51,10 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         5,
     );
 
+    let ask_hybrid = ask_hybrid_candidates(cfg, toml);
     cfg.hybrid_search_enabled = hybrid_search_enabled(toml);
     cfg.hybrid_search_candidates = hybrid_search_candidates(toml);
-    cfg.ask_hybrid_candidates = ask_hybrid_candidates(toml);
+    cfg.ask_hybrid_candidates = ask_hybrid;
     cfg.ask_cache_enabled = toml.ask.cache.enabled.unwrap_or(false);
     cfg.ask_cache_max_capacity_bytes = toml
         .ask
@@ -228,28 +235,104 @@ fn resolve_clamped_f64(
         .unwrap_or(default)
 }
 
-fn ask_max_context_chars(toml: &TomlConfig) -> usize {
+fn ask_max_context_chars(cfg: &Config, toml: &TomlConfig) -> usize {
+    // Default scales with the configured model's context window (overridable by
+    // env/TOML). An explicit `AXON_ASK_MAX_CONTEXT_CHARS` or `ask.max-context-chars`
+    // still wins; this only changes the fallback when neither is set.
     resolve_clamped_usize(
         "AXON_ASK_MAX_CONTEXT_CHARS",
         toml.ask.max_context_chars,
-        300_000,
+        model_context_char_budget(cfg),
         20_000,
         1_000_000,
     )
 }
 
-fn ask_candidate_limit(toml: &TomlConfig) -> usize {
+/// Context-window size class of the configured LLM. Drives the `ask` retrieval
+/// depth (context budget, chunk count, candidate pool) so larger-window models
+/// receive proportionally more context. Detection: the gemini-headless backend
+/// is always Google; otherwise the OpenAI-compatible model name is sniffed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum AskModelTier {
+    /// ~1M-token windows — Gemini, Claude.
+    Large,
+    /// ~400k-token window — Codex.
+    Medium,
+    /// Unknown model — assume a < 50k-token window.
+    Small,
+}
+
+fn ask_model_tier(cfg: &Config) -> AskModelTier {
+    use crate::services::llm_backend::LlmBackendKind;
+    let model = cfg.openai_model.to_ascii_lowercase();
+    let is_google = matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
+        || model.contains("gemini")
+        || model.contains("gemma");
+    if is_google || model.contains("claude") {
+        AskModelTier::Large
+    } else if model.contains("codex") {
+        AskModelTier::Medium
+    } else {
+        AskModelTier::Small
+    }
+}
+
+/// Context-char budget default per tier (≈ window-in-tokens as a char count,
+/// i.e. retrieved context is roughly a quarter of the window).
+fn model_context_char_budget(cfg: &Config) -> usize {
+    match ask_model_tier(cfg) {
+        AskModelTier::Large => 1_000_000,
+        AskModelTier::Medium => 400_000,
+        AskModelTier::Small => 40_000,
+    }
+}
+
+/// Max chunks injected into the LLM context per tier.
+fn model_chunk_limit(cfg: &Config) -> usize {
+    match ask_model_tier(cfg) {
+        AskModelTier::Large => 50,
+        AskModelTier::Medium => 28,
+        AskModelTier::Small => 10,
+    }
+}
+
+/// Candidate pool fetched from Qdrant before reranking per tier. Must be large
+/// enough to feed the tier's chunk limit (chunks selected can't exceed it).
+fn model_candidate_limit(cfg: &Config) -> usize {
+    match ask_model_tier(cfg) {
+        AskModelTier::Large => 250,
+        AskModelTier::Medium => 150,
+        AskModelTier::Small => 60,
+    }
+}
+
+/// Hybrid (dense+sparse) prefetch window per arm before RRF fusion, per tier.
+fn model_hybrid_candidates(cfg: &Config) -> usize {
+    match ask_model_tier(cfg) {
+        AskModelTier::Large => 200,
+        AskModelTier::Medium => 120,
+        AskModelTier::Small => 60,
+    }
+}
+
+fn ask_candidate_limit(cfg: &Config, toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "AXON_ASK_CANDIDATE_LIMIT",
         toml.ask.candidate_limit,
-        250,
+        model_candidate_limit(cfg),
         8,
         300,
     )
 }
 
-fn ask_chunk_limit(toml: &TomlConfig) -> usize {
-    resolve_clamped_usize("AXON_ASK_CHUNK_LIMIT", toml.ask.chunk_limit, 20, 3, 40)
+fn ask_chunk_limit(cfg: &Config, toml: &TomlConfig) -> usize {
+    resolve_clamped_usize(
+        "AXON_ASK_CHUNK_LIMIT",
+        toml.ask.chunk_limit,
+        model_chunk_limit(cfg),
+        3,
+        64,
+    )
 }
 
 fn ask_min_relevance_score(toml: &TomlConfig) -> f64 {
@@ -278,11 +361,11 @@ fn hybrid_search_candidates(toml: &TomlConfig) -> usize {
     )
 }
 
-fn ask_hybrid_candidates(toml: &TomlConfig) -> usize {
+fn ask_hybrid_candidates(cfg: &Config, toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "AXON_ASK_HYBRID_CANDIDATES",
         toml.search.ask_hybrid_candidates,
-        150,
+        model_hybrid_candidates(cfg),
         10,
         500,
     )
@@ -386,3 +469,7 @@ fn max_pending(toml: &TomlConfig, kind: &str) -> usize {
     };
     resolve_clamped_usize(env_key, toml_value, default, 0, 10_000)
 }
+
+#[cfg(test)]
+#[path = "tuning_tests.rs"]
+mod tests;

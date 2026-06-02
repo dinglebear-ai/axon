@@ -331,7 +331,7 @@ fn toml_ask_chunk_limit_clamps_upper_bound() {
         env::remove_var("AXON_ASK_CHUNK_LIMIT");
         got = into_config_via_args(&["status"]).unwrap().ask_chunk_limit;
     });
-    assert_eq!(got, 40);
+    assert_eq!(got, 64);
 }
 
 #[allow(unsafe_code)]
