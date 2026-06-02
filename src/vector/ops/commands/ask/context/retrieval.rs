@@ -140,7 +140,7 @@ pub(super) async fn retrieve_ask_candidates(
         mode,
         rrf_mode,
         retrieval_score_kind,
-        warnings,
+        mut warnings,
     } = retrieve_and_build_candidates(
         cfg,
         query,
@@ -195,6 +195,16 @@ pub(super) async fn retrieve_ask_candidates(
             "No candidates met relevance threshold {:.3}; lower AXON_ASK_MIN_RELEVANCE_SCORE",
             ask_tuning.ask_min_relevance_score
         ));
+    }
+
+    // Collapse near-duplicate copies (e.g. a docs page mirrored into a GitHub
+    // repo) so mirror chunks don't each consume a context slot and crowd out
+    // distinct sources. Keeps the canonical representative per cluster.
+    let (reranked, dedup_report) =
+        super::dedup::dedup_near_duplicates(reranked, &ask_tuning.ask_authoritative_domains);
+    if let Some(warning) = dedup_report.warning() {
+        log_info(&format!("ask dedup: {warning}"));
+        warnings.push(warning);
     }
 
     log_debug(&format!(

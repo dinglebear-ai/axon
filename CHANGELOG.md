@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.19.0] - 2026-06-02
+
+### Changed
+
+- **`ask` context quality: chunk-cap raised, mirror sources demoted, near-duplicate collapse.** Diagnosis via `ask --explain` showed good index coverage but a starved LLM context: only 6 chunks / ~7 KB of a 20 KB budget reached the model, and a low-rerank GitHub *mirror* of the canonical docs page was force-promoted to the `#1` full-doc slot by the dominant-host bonus (github.com "dominates" a mirror-heavy index). Three coordinated fixes:
+  - **Chunk limit.** `AXON_ASK_CHUNK_LIMIT` default raised 20 → 24, clamp widened 3–40 → 3–64. Previously-dropped canonical chunks (`plugins-reference`, `plugin-hints`) now reach the LLM; context fills toward the budget instead of leaving ~64% empty.
+  - **Mirror demotion in full-doc selection** (`src/vector/ops/commands/ask/context/build/selection.rs`). A VCS-mirror URL (generic `/blob/`, `/tree/`, `/raw/`, `*usercontent*` markers — no host/repo hardcoding) is excluded from host-dominance and never wins the canonical full-doc slot. For the motivating query the planned full-doc flips from a GitHub mirror to the canonical `code.claude.com/docs/en/plugins`.
+  - **Near-duplicate collapse** (`src/vector/ops/commands/ask/context/dedup.rs`, new). Before context selection, reranked candidates are clustered by normalized shingle-Jaccard and collapsed to a single canonical representative (authoritative-domain > docs-path > not-a-mirror-blob > shallower-path > rerank), so identical mirror chunks can't each consume a slot. Conservative threshold (0.50): a defensive net for truly near-identical chunks — it does not collapse distinct sections of the same page. Drops are surfaced in `--explain` warnings.
+  - No regression on the tracked retrieval fixture sweep (8/9 before and after; the one miss is a pre-existing docs.rs corpus gap).
+
 ## [4.18.6] - 2026-06-02
 
 ### Changed

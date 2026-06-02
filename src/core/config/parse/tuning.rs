@@ -249,7 +249,7 @@ fn ask_candidate_limit(toml: &TomlConfig) -> usize {
 }
 
 fn ask_chunk_limit(toml: &TomlConfig) -> usize {
-    resolve_clamped_usize("AXON_ASK_CHUNK_LIMIT", toml.ask.chunk_limit, 20, 3, 40)
+    resolve_clamped_usize("AXON_ASK_CHUNK_LIMIT", toml.ask.chunk_limit, 24, 3, 64)
 }
 
 fn ask_min_relevance_score(toml: &TomlConfig) -> f64 {
