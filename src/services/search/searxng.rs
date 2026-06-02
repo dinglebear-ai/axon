@@ -59,6 +59,12 @@ pub(super) async fn searxng_search(
     time_range: Option<TimeRange>,
 ) -> Result<Vec<SearxHit>, Box<dyn Error>> {
     let endpoint = format!("{}/search", cfg.searxng_url.trim_end_matches('/'));
+    // Parse-time SSRF guard: the shared client's resolver is bypassed for literal
+    // IP hosts, so a `searxng_url` like `http://127.0.0.1:8080` would otherwise
+    // reach internal services. `validate_url` rejects loopback/private/blocked
+    // hosts up front (honors the test-only ALLOW_LOOPBACK thread-local).
+    crate::core::http::validate_url(&endpoint)
+        .map_err(|e| -> Box<dyn Error> { format!("invalid AXON_SEARXNG_URL: {e}").into() })?;
     let client =
         http_client().map_err(|e| -> Box<dyn Error> { format!("http client: {e}").into() })?;
 
