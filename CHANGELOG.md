@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.6] - 2026-06-02
+
+### Changed
+
+- **Plugin SessionStart hook no longer deploys — it is now probe-only.** `axon setup plugin-hook` previously ran preflight + `docker compose pull`/`up` on the down-path (and on any prerequisite-check failure). Deploying from a session-start hook was the wrong place for it; provisioning now belongs solely to the `/axon-deploy` slash command. The hook now only probes `/readyz`:
+  - **up** → exit silently (success), as before;
+  - **down** → print a one-line advisory `axon stack not reachable on /readyz — run /axon-deploy to start it` and exit success (non-blocking). It never runs preflight or compose.
+
+  This removes the preflight/compose/report machinery from the hook path (`build_plugin_hook_report`, `PluginHookReport`, exit-policy classification, the 360s timeout wrapper, and the `--no-setup` flag's effect). `axon setup`, `axon preflight`, `axon compose …`, and `axon smoke` are unchanged and remain the explicit ways to provision/inspect the stack.
+
 ## [4.18.5] - 2026-06-01
 
 ### Fixed

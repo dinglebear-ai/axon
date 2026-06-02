@@ -16,7 +16,7 @@ axon compose restart [--json]
 axon compose rebuild [--json]
 axon smoke [--json]
 axon setup targets [--json]
-axon setup plugin-hook [--no-setup] [--json]
+axon setup plugin-hook [--json]
 ```
 
 ## Commands
@@ -33,25 +33,22 @@ axon setup plugin-hook [--no-setup] [--json]
 | `compose rebuild` | Rebuild the Axon image and start the Docker service stack. |
 | `smoke` | Prewarm TEI, crawl `example.com`, and run a simple `ask` proof. |
 | `setup targets` | List concrete SSH aliases from `~/.ssh/config`. |
-| `setup plugin-hook` | Hook-safe path used by Claude Code SessionStart. Probes `/readyz` first and exits silently when the stack is already healthy; only runs preflight + compose when the stack is down. Use `--no-setup` for check-only mode. |
+| `setup plugin-hook` | Probe-only path used by Claude Code SessionStart. Checks `/readyz`; exits silently when the stack is up, or advises `/axon-deploy` when it is down. Never deploys. |
 
 ## `setup plugin-hook` Behavior
 
-Run by the plugin's SessionStart hook on every session start. To avoid redeploying
-(or emitting noise on) an already-running host, it short-circuits:
+Run by the plugin's SessionStart hook on every session start. **It never deploys** —
+provisioning is the `/axon-deploy` slash command (or `axon setup` / `axon compose up`).
+The hook only does:
 
 1. Refresh the user's `~/.local/bin/axon` copy and apply plugin env options.
-2. **Probe `/readyz` once (3s timeout)** at the configured bind (`AXON_MCP_HTTP_HOST`/`AXON_MCP_HTTP_PORT` from `~/.axon/.env`, default `127.0.0.1:8001`; bind-all hosts are probed over loopback). `/readyz` itself
-   asserts qdrant + tei readiness, so a 200 means the whole stack is up. When it
-   succeeds the hook exits `0` immediately — **no preflight, no `compose pull`/`up`,
-   and no stdout** in human mode (`--json` prints `{"stack":"already_healthy",...}`).
-3. **If `/readyz` is unreachable**, fall through to the normal path: run preflight
-   checks, and if prerequisites pass but the stack isn't up, run `compose pull` +
-   `up -d` followed by readiness checks.
+2. **Probe `/readyz` once (3s timeout)** at the configured bind (`AXON_MCP_HTTP_HOST`/`AXON_MCP_HTTP_PORT` from `~/.axon/.env`, default `127.0.0.1:8001`; bind-all hosts are probed over loopback). `/readyz` itself asserts qdrant + tei readiness, so a 200 means the whole stack is up.
+   - **Up** → exit `0` immediately, **no stdout** in human mode (`--json` prints `{"stack":"already_healthy",...}`).
+   - **Down** → print one line, `axon stack not reachable on /readyz — run /axon-deploy to start it`, and exit `0` (non-blocking advisory; `--json` prints `{"stack":"down","action":"run /axon-deploy",...}`).
 
-This means a missing host prerequisite (e.g. `nvidia-smi`) no longer forces a
-redeploy when axon is plainly serving. For an explicit deploy/restart, use
-`axon compose up` directly or the `/axon-deploy` plugin slash command.
+The hook runs **no** preflight checks and **no** `docker compose`. To provision or
+restart the stack, use the `/axon-deploy` plugin slash command, or `axon setup` /
+`axon compose up|restart|rebuild` directly.
 
 ## `setup init` Options
 
@@ -98,5 +95,5 @@ axon setup init --auth-mode oauth \
 axon compose up
 axon preflight
 axon smoke
-axon setup plugin-hook --no-setup
+axon setup plugin-hook
 ```
