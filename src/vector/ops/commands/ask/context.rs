@@ -2,6 +2,7 @@ use crate::core::config::Config;
 use anyhow::Result;
 
 mod build;
+mod dedup;
 mod heuristics;
 mod query_rewrite;
 mod retrieval;

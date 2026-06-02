@@ -90,6 +90,14 @@ pub fn append_full_docs_to_context(
             source_idx, source, text
         );
         let score = url_to_score.get(&url).copied().unwrap_or(0.0);
+        // All-or-nothing: a full document larger than the remaining budget is
+        // dropped rather than truncated. With full-doc insertion ordered before
+        // top chunks (see build.rs), a doc that *fits* is guaranteed budget;
+        // a doc larger than the entire `max_context_chars` budget intentionally
+        // falls back to chunk coverage (its top chunk re-enters via supplemental
+        // backfill), which preserves diversity across distinct authoritative
+        // pages instead of letting one oversized page evict everything else.
+        // (bd axon_rust-5map)
         if !push_context_entry(
             context_entries,
             context_char_count,

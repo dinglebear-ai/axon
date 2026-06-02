@@ -145,7 +145,7 @@ fn full_doc_candidate_indices(
         .map(|(idx, candidate)| {
             (
                 idx,
-                is_dominant_host(&candidate.url, &dominant_hosts),
+                is_dominant_host(&candidate.url, &candidate.path, &dominant_hosts),
                 full_doc_selection_score(candidate, query_tokens, &dominant_hosts),
             )
         })
@@ -165,7 +165,13 @@ fn full_doc_candidate_indices(
     scored.into_iter().map(|(idx, _, _)| idx).collect()
 }
 
-fn is_dominant_host(url: &str, dominant_hosts: &HashSet<String>) -> bool {
+fn is_dominant_host(url: &str, path: &str, dominant_hosts: &HashSet<String>) -> bool {
+    // A VCS-mirror copy never counts as the dominant/canonical source even when
+    // its host (e.g. github.com) holds the most chunks — that "dominance" is an
+    // artifact of the index mirroring docs, not of the page being authoritative.
+    if super::super::dedup::is_mirror_shaped(url, path) {
+        return false;
+    }
     dominant_hosts.is_empty()
         || host_from_url(url).is_some_and(|host| dominant_hosts.contains(&host))
 }
@@ -196,7 +202,7 @@ pub(super) fn full_doc_selection_score(
     candidate.rerank_score
         + (url_matches as f64 * 0.55).min(1.65)
         + (chunk_matches as f64 * 0.03).min(0.18)
-        + dominant_host_adjustment(&candidate.url, dominant_hosts)
+        + dominant_host_adjustment(&candidate.url, &candidate.path, dominant_hosts)
         + if coverage >= 0.25 { 0.18 } else { 0.0 }
 }
 
@@ -214,7 +220,12 @@ pub(super) fn dominant_retrieval_hosts(reranked: &[ranking::AskCandidate]) -> Ha
         .collect()
 }
 
-fn dominant_host_adjustment(url: &str, dominant_hosts: &HashSet<String>) -> f64 {
+fn dominant_host_adjustment(url: &str, path: &str, dominant_hosts: &HashSet<String>) -> f64 {
+    // Mirror copies are demoted, not boosted: they must not win the canonical
+    // full-doc slot just because their host dominates the (mirror-heavy) index.
+    if super::super::dedup::is_mirror_shaped(url, path) {
+        return -0.35;
+    }
     if dominant_hosts.is_empty() {
         return 0.0;
     }
@@ -247,7 +258,8 @@ fn include_preferred_top_chunk_docs(
         .copied()
         .filter(|&idx| {
             let candidate = &reranked[idx];
-            host_from_url(&candidate.url).is_some_and(|host| dominant_hosts.contains(&host))
+            !super::super::dedup::is_mirror_shaped(&candidate.url, &candidate.path)
+                && host_from_url(&candidate.url).is_some_and(|host| dominant_hosts.contains(&host))
                 && entity_tokens
                     .iter()
                     .any(|token| token_matches_path_token(token, &candidate.url_tokens))
