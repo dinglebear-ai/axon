@@ -170,6 +170,25 @@ async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error
     apply_plugin_options();
     // Keep the user's terminal copy in ~/.local/bin fresh each session.
     let _ = install_self();
+
+    // Fast path: if the stack already answers /readyz, the deploy is done. Skip
+    // preflight + compose entirely and stay silent in human mode so an
+    // already-running host doesn't redeploy (or emit noise) every session start.
+    // A missing prerequisite tool must not force a redeploy when axon is up.
+    if setup::stack_already_healthy().await {
+        if cfg.json_output {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "exit_policy": "success",
+                    "stack": "already_healthy",
+                    "ran_setup": false,
+                }))?
+            );
+        }
+        return Ok(());
+    }
+
     let no_setup = cfg.positional.iter().any(|value| value == "--no-setup");
     let result = tokio::time::timeout(
         Duration::from_secs(PLUGIN_HOOK_TIMEOUT_SECS),

@@ -37,6 +37,18 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
     run_local_setup_with_options(mode, LocalSetupInitOptions::default()).await
 }
 
+/// Returns true when the axon server already answers `/readyz` with success.
+///
+/// `/readyz` itself asserts the downstream stack (qdrant + tei), so a 200 here is
+/// a complete "already deployed and serving" signal. The plugin hook uses this to
+/// skip preflight/compose entirely on an already-running host — a missing
+/// prerequisite tool (e.g. nvidia-smi) must never trigger a redeploy when the
+/// stack is plainly up. Single-shot with a short timeout; never blocks startup.
+pub async fn stack_already_healthy() -> bool {
+    let url = format!("{}/readyz", DEFAULT_SERVER_URL.trim_end_matches('/'));
+    runtime::probe_http_once(&url, std::time::Duration::from_secs(3)).await
+}
+
 pub async fn run_local_setup_with_options(
     mode: LocalSetupMode,
     options: LocalSetupInitOptions,

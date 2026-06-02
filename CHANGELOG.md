@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.4] - 2026-06-01
+
+### Fixed
+
+- **Plugin SessionStart hook no longer redeploys an already-healthy stack.** `axon setup plugin-hook` now probes `/readyz` (single-shot, 3s) before doing anything: if the axon server answers (which itself asserts qdrant + tei are ready), the hook short-circuits to success and stays **silent** in human mode — no preflight, no `compose pull`/`up`. Previously any failed preflight prerequisite check (e.g. a missing `nvidia-smi`) set `needs_setup = true` and forced a full compose redeploy on every session start, producing spurious `compose-pull`/`compose-up` blocking failures on hosts where the stack was already up. The auto-deploy-when-down behavior is preserved: an unreachable `/readyz` still falls through to the normal preflight + setup path.
+
+### Added
+
+- **`/axon-deploy` slash command.** Explicit on-demand deploy/restart/rebuild of the axon stack (`axon compose up|restart|rebuild` + `axon doctor`), as the manual counterpart to the now-silent session-start hook. Registered via `"commands": "./commands/"` in the plugin manifest.
+
 ## [4.18.3] - 2026-06-01
 
 ### Fixed

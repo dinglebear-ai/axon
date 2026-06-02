@@ -19,7 +19,20 @@ The SessionStart hook invokes `${CLAUDE_PLUGIN_ROOT}/bin/axon setup plugin-hook`
 3. Let the binary perform check-first repair and classify blocking setup failures separately from advisory smoke/prewarm failures.
 4. Preserve existing `~/.axon/.env` and `~/.axon/config.toml`; setup only fills missing runtime values.
 
+**Already-healthy fast path:** before doing any of the above setup work, the hook
+probes `http://127.0.0.1:8001/readyz` once (3s). Because `/readyz` asserts qdrant +
+tei readiness, a success means the stack is already deployed — the hook then exits
+`0` silently (no preflight, no `compose pull`/`up`, no stdout in human mode). It only
+runs the full setup path when `/readyz` is unreachable. This keeps session start
+quiet on running hosts while still auto-deploying a genuinely-down stack.
+
 No systemd unit is created, and the plugin-cache binary is not symlinked into `~/.local/bin`. Docker Compose is the only production deployment target. The `.mcp.json` connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/axon-deploy [up\|restart\|rebuild]` | Explicit on-demand deploy/restart/rebuild of the stack (`axon compose …` + `axon doctor`). The manual counterpart to the now-silent SessionStart hook. |
 
 `~/.axon` is the canonical appdata root for plugin deployments too. Keep `~/.axon/.env`, `~/.axon/config.toml`, jobs, artifacts, output, logs, and service data there.
 

@@ -33,7 +33,25 @@ axon setup plugin-hook [--no-setup] [--json]
 | `compose rebuild` | Rebuild the Axon image and start the Docker service stack. |
 | `smoke` | Prewarm TEI, crawl `example.com`, and run a simple `ask` proof. |
 | `setup targets` | List concrete SSH aliases from `~/.ssh/config`. |
-| `setup plugin-hook` | Hook-safe preflight path used by Claude Code SessionStart. Use `--no-setup` for check-only mode. |
+| `setup plugin-hook` | Hook-safe path used by Claude Code SessionStart. Probes `/readyz` first and exits silently when the stack is already healthy; only runs preflight + compose when the stack is down. Use `--no-setup` for check-only mode. |
+
+## `setup plugin-hook` Behavior
+
+Run by the plugin's SessionStart hook on every session start. To avoid redeploying
+(or emitting noise on) an already-running host, it short-circuits:
+
+1. Refresh the user's `~/.local/bin/axon` copy and apply plugin env options.
+2. **Probe `http://127.0.0.1:8001/readyz` once (3s timeout).** `/readyz` itself
+   asserts qdrant + tei readiness, so a 200 means the whole stack is up. When it
+   succeeds the hook exits `0` immediately — **no preflight, no `compose pull`/`up`,
+   and no stdout** in human mode (`--json` prints `{"stack":"already_healthy",...}`).
+3. **If `/readyz` is unreachable**, fall through to the normal path: run preflight
+   checks, and if prerequisites pass but the stack isn't up, run `compose pull` +
+   `up -d` followed by readiness checks.
+
+This means a missing host prerequisite (e.g. `nvidia-smi`) no longer forces a
+redeploy when axon is plainly serving. For an explicit deploy/restart, use
+`axon compose up` directly or the `/axon-deploy` plugin slash command.
 
 ## `setup init` Options
 

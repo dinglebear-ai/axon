@@ -3,6 +3,23 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
 
+/// Single-shot health probe — no retry loop. Unlike `wait_http` (which polls for
+/// up to 60s while a freshly-started container boots), this answers the narrow
+/// question "is the endpoint serving right now?" so an already-deployed host can
+/// short-circuit the plugin hook before any preflight/compose work runs.
+pub(super) async fn probe_http_once(url: &str, timeout: Duration) -> bool {
+    let client = match reqwest::Client::builder().timeout(timeout).build() {
+        Ok(client) => client,
+        Err(_) => return false,
+    };
+    client
+        .get(url)
+        .send()
+        .await
+        .map(|response| response.status().is_success())
+        .unwrap_or(false)
+}
+
 pub(super) async fn run_compose<const N: usize>(
     compose_dir: &Path,
     env_path: &Path,
