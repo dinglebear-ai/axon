@@ -132,7 +132,7 @@ impl Default for AskConfig {
         Self {
             ask_max_context_chars: 300_000,
             ask_candidate_limit: 250,
-            ask_chunk_limit: 20,
+            ask_chunk_limit: 24,
             ask_full_docs: 6,
             ask_backfill_chunks: 5,
             ask_doc_fetch_concurrency: 4,

@@ -346,7 +346,7 @@ pub struct Config {
     pub ask_candidate_limit: usize,
 
     /// Maximum chunks included in the LLM context after reranking.
-    /// Env: `AXON_ASK_CHUNK_LIMIT` (clamped 3–40). Default: 20.
+    /// Env: `AXON_ASK_CHUNK_LIMIT` (clamped 3–64). Default: 24.
     pub ask_chunk_limit: usize,
 
     /// Number of top-scoring documents for which full-doc backfill is attempted.
