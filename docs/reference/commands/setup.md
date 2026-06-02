@@ -41,7 +41,7 @@ Run by the plugin's SessionStart hook on every session start. To avoid redeployi
 (or emitting noise on) an already-running host, it short-circuits:
 
 1. Refresh the user's `~/.local/bin/axon` copy and apply plugin env options.
-2. **Probe `http://127.0.0.1:8001/readyz` once (3s timeout).** `/readyz` itself
+2. **Probe `/readyz` once (3s timeout)** at the configured bind (`AXON_MCP_HTTP_HOST`/`AXON_MCP_HTTP_PORT` from `~/.axon/.env`, default `127.0.0.1:8001`; bind-all hosts are probed over loopback). `/readyz` itself
    asserts qdrant + tei readiness, so a 200 means the whole stack is up. When it
    succeeds the hook exits `0` immediately — **no preflight, no `compose pull`/`up`,
    and no stdout** in human mode (`--json` prints `{"stack":"already_healthy",...}`).
