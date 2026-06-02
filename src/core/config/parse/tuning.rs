@@ -4,7 +4,11 @@ use super::toml_config::{TomlConfig, load_toml_config};
 use crate::core::config::types::Config;
 
 pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
-    cfg.ask_max_context_chars = ask_max_context_chars(toml);
+    // Computed into a local first: `ask_max_context_chars` reads the resolved
+    // LLM backend/model off `cfg`, which can't be borrowed while assigning the
+    // field in the same expression.
+    let max_context_chars = ask_max_context_chars(cfg, toml);
+    cfg.ask_max_context_chars = max_context_chars;
     cfg.ask_candidate_limit = ask_candidate_limit(toml);
     cfg.ask_chunk_limit = ask_chunk_limit(toml);
     cfg.ask_full_docs = resolve_clamped_usize("AXON_ASK_FULL_DOCS", toml.ask.full_docs, 6, 1, 20);
@@ -228,14 +232,37 @@ fn resolve_clamped_f64(
         .unwrap_or(default)
 }
 
-fn ask_max_context_chars(toml: &TomlConfig) -> usize {
+fn ask_max_context_chars(cfg: &Config, toml: &TomlConfig) -> usize {
+    // Default scales with the configured model's context window (overridable by
+    // env/TOML). An explicit `AXON_ASK_MAX_CONTEXT_CHARS` or `ask.max-context-chars`
+    // still wins; this only changes the fallback when neither is set.
     resolve_clamped_usize(
         "AXON_ASK_MAX_CONTEXT_CHARS",
         toml.ask.max_context_chars,
-        300_000,
+        model_context_char_budget(cfg),
         20_000,
         1_000_000,
     )
+}
+
+/// Per-model `ask` context-char budget, derived from the configured LLM's
+/// context window. Retrieved context is only part of the prompt, so each tier is
+/// roughly a quarter of the window in tokens (≈ window-in-tokens as a char
+/// count). Detection: the gemini-headless backend is always Google; otherwise
+/// the OpenAI-compatible model name is sniffed.
+fn model_context_char_budget(cfg: &Config) -> usize {
+    use crate::services::llm_backend::LlmBackendKind;
+    let model = cfg.openai_model.to_ascii_lowercase();
+    let is_google = matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
+        || model.contains("gemini")
+        || model.contains("gemma");
+    if is_google || model.contains("claude") {
+        1_000_000 // Gemini / Claude — ~1M-token windows
+    } else if model.contains("codex") {
+        400_000 // Codex — ~400k-token window
+    } else {
+        40_000 // unknown model — assume a < 50k-token window
+    }
 }
 
 fn ask_candidate_limit(toml: &TomlConfig) -> usize {
@@ -386,3 +413,7 @@ fn max_pending(toml: &TomlConfig, kind: &str) -> usize {
     };
     resolve_clamped_usize(env_key, toml_value, default, 0, 10_000)
 }
+
+#[cfg(test)]
+#[path = "tuning_tests.rs"]
+mod tests;
