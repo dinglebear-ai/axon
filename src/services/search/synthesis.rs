@@ -174,12 +174,18 @@ async fn build_extractions(
     if page.is_empty() {
         return Vec::new();
     }
-    let urls: Vec<String> = page
-        .iter()
-        .take(RESEARCH_FETCH_MAX_URLS)
-        .map(|h| h.url.clone())
-        .collect();
-    let fetched = fetch_full_content(cfg, &urls, tx).await;
+    // Full-content fetch is the default; `AXON_RESEARCH_FULL_CONTENT=false`
+    // synthesizes over snippets only (skips the per-source page fetch).
+    let fetched = if cfg.research_full_content {
+        let urls: Vec<String> = page
+            .iter()
+            .take(RESEARCH_FETCH_MAX_URLS)
+            .map(|h| h.url.clone())
+            .collect();
+        fetch_full_content(cfg, &urls, tx).await
+    } else {
+        std::collections::HashMap::new()
+    };
 
     // `ask_max_context_chars` already scales with the model tier (Gemini/Claude
     // 1M, Codex 400k, else 40k). Split it across the sources.

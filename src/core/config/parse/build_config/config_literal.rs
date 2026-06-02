@@ -194,6 +194,14 @@ fn populate_services_and_ask_basics(
     cfg.searxng_url = non_empty_env("AXON_SEARXNG_URL")
         .map(|u| u.trim_end_matches('/').to_string())
         .unwrap_or_default();
+    cfg.research_full_content = non_empty_env("AXON_RESEARCH_FULL_CONTENT")
+        .map(|v| {
+            !matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "false" | "0" | "no" | "off"
+            )
+        })
+        .unwrap_or(true);
     cfg.mcp_allowed_origins = env::var("AXON_MCP_ALLOWED_ORIGINS")
         .ok()
         .map(|raw| parse_origin_allowlist(&raw))
