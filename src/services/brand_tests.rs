@@ -1,5 +1,9 @@
 use super::*;
 
+use crate::core::config::Config;
+use crate::core::http::set_allow_loopback;
+use httpmock::prelude::*;
+
 #[test]
 fn test_extracts_hex_colors() {
     let html = r#"<html><head><style>
@@ -51,6 +55,44 @@ fn test_extracts_fonts() {
     assert!(
         !brand.fonts.contains(&"monospace".to_string()),
         "generic should be excluded"
+    );
+}
+
+#[tokio::test]
+async fn test_brand_fetches_linked_stylesheet_fonts() {
+    set_allow_loopback(true);
+    let server = MockServer::start();
+    let stylesheet = server.mock(|when, then| {
+        when.method(GET).path("/site.css");
+        then.status(200)
+            .header("content-type", "text/css")
+            .body(r#"body { font-family: "Graphik", sans-serif; }"#);
+    });
+    let page = server.mock(|when, then| {
+        when.method(GET).path("/");
+        then.status(200).body(
+            r#"
+            <html>
+                <head>
+                    <meta name="application-name" content="Example">
+                    <link rel="stylesheet" href="/site.css">
+                </head>
+                <body></body>
+            </html>
+        "#,
+        );
+    });
+
+    let result = brand(&Config::default(), &server.url("/"), None)
+        .await
+        .expect("brand result");
+
+    page.assert();
+    stylesheet.assert();
+    assert!(
+        result.fonts.contains(&"graphik".to_string()),
+        "linked stylesheet font should be included, got {:?}",
+        result.fonts
     );
 }
 
