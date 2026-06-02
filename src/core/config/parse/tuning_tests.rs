@@ -38,3 +38,51 @@ fn unknown_model_assumes_small_window() {
     let cfg = cfg_with(LlmBackendKind::OpenAiCompat, "llama-3.1-8b-instruct");
     assert_eq!(model_context_char_budget(&cfg), 40_000);
 }
+
+#[test]
+fn chunk_limit_scales_with_tier() {
+    assert_eq!(
+        model_chunk_limit(&cfg_with(LlmBackendKind::GeminiHeadless, "")),
+        50
+    );
+    assert_eq!(
+        model_chunk_limit(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5-codex")),
+        28
+    );
+    assert_eq!(
+        model_chunk_limit(&cfg_with(LlmBackendKind::OpenAiCompat, "llama-3.1-8b")),
+        10
+    );
+}
+
+#[test]
+fn candidate_pool_scales_with_tier() {
+    assert_eq!(
+        model_candidate_limit(&cfg_with(LlmBackendKind::GeminiHeadless, "")),
+        250
+    );
+    assert_eq!(
+        model_candidate_limit(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5-codex")),
+        150
+    );
+    assert_eq!(
+        model_candidate_limit(&cfg_with(LlmBackendKind::OpenAiCompat, "llama-3.1-8b")),
+        60
+    );
+}
+
+#[test]
+fn model_tier_classifies_known_families() {
+    assert_eq!(
+        ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "claude-opus-4-8")),
+        AskModelTier::Large
+    );
+    assert_eq!(
+        ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5-codex")),
+        AskModelTier::Medium
+    );
+    assert_eq!(
+        ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "mistral-large")),
+        AskModelTier::Small
+    );
+}
