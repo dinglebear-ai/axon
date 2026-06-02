@@ -60,6 +60,8 @@ async fn searxng_search_parses_mock_results() {
         .await;
     let mut cfg = Config::test_default();
     cfg.searxng_url = server.base_url();
+    // validate_url() rejects the loopback mock host without this.
+    crate::core::http::set_allow_loopback(true);
     let hits = searxng_search(&cfg, "q", 10, None).await.expect("ok");
     assert_eq!(hits.len(), 2);
     assert_eq!(hits[0].url, "https://a.example/x");
@@ -80,6 +82,8 @@ async fn searxng_search_errors_when_json_format_disabled_403() {
         .await;
     let mut cfg = Config::test_default();
     cfg.searxng_url = server.base_url();
+    // validate_url() rejects the loopback mock host without this.
+    crate::core::http::set_allow_loopback(true);
     let err = searxng_search(&cfg, "q", 10, None)
         .await
         .expect_err("403 should error");
@@ -105,6 +109,8 @@ async fn searxng_search_filters_blank_urls_and_respects_count() {
         .await;
     let mut cfg = Config::test_default();
     cfg.searxng_url = server.base_url();
+    // validate_url() rejects the loopback mock host without this.
+    crate::core::http::set_allow_loopback(true);
     let hits = searxng_search(&cfg, "q", 1, None).await.expect("ok");
     assert_eq!(hits.len(), 1, "blank url filtered, then take(1)");
     assert_eq!(hits[0].url, "https://a/1");

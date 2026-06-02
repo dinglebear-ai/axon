@@ -174,25 +174,34 @@ async fn build_extractions(
     if page.is_empty() {
         return Vec::new();
     }
+    // Only synthesize over the top-N sources (the same window we fetch full
+    // content for), so a large `--limit` doesn't inflate synthesis cost/latency
+    // or the context budget.
+    let sources = &page[..page.len().min(RESEARCH_FETCH_MAX_URLS)];
+
     // Full-content fetch is the default; `AXON_RESEARCH_FULL_CONTENT=false`
     // synthesizes over snippets only (skips the per-source page fetch).
     let fetched = if cfg.research_full_content {
-        let urls: Vec<String> = page
-            .iter()
-            .take(RESEARCH_FETCH_MAX_URLS)
-            .map(|h| h.url.clone())
-            .collect();
+        let urls: Vec<String> = sources.iter().map(|h| h.url.clone()).collect();
         fetch_full_content(cfg, &urls, tx).await
     } else {
         std::collections::HashMap::new()
     };
 
     // `ask_max_context_chars` already scales with the model tier (Gemini/Claude
-    // 1M, Codex 400k, else 40k). Split it across the sources.
+    // 1M, Codex 400k, else 40k). Split it across the synthesized sources. When
+    // the per-source floor would overflow the budget (many sources), drop the
+    // floor so total context stays within budget.
     let budget = cfg.ask_max_context_chars.max(MIN_RESEARCH_CONTEXT_CHARS);
-    let per_source = (budget / page.len().max(1)).max(MIN_PER_SOURCE_CHARS);
+    let source_count = sources.len().max(1);
+    let per_source = if source_count.saturating_mul(MIN_PER_SOURCE_CHARS) > budget {
+        (budget / source_count).max(1)
+    } else {
+        (budget / source_count).max(MIN_PER_SOURCE_CHARS)
+    };
 
-    page.iter()
+    sources
+        .iter()
         .map(|h| {
             let full = fetched.get(&h.url).map(String::as_str).unwrap_or("");
             // Prefer fetched full content when it is richer than the snippet.
@@ -240,7 +249,11 @@ async fn fetch_full_content(
     let fetched: Vec<(String, String)> = stream::iter(urls.iter().cloned())
         .map(move |url| async move {
             match crate::services::scrape::scrape(cfg_ref, &url, None).await {
-                Ok(r) if !r.markdown.trim().is_empty() => Some((r.url, r.markdown)),
+                // Key by the *input* url: the scrape service may normalize/redirect
+                // its returned `r.url`, and build_extractions looks up by the
+                // original hit url — keying on `r.url` would miss and fall back to
+                // the snippet even on a successful fetch.
+                Ok(r) if !r.markdown.trim().is_empty() => Some((url, r.markdown)),
                 Ok(_) => None,
                 Err(e) => {
                     log_warn(&format!("research: scrape failed for {url}: {e}"));
