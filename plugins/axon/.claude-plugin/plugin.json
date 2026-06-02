@@ -22,5 +22,6 @@
     "hybrid-search"
   ],
   "skills": "./skills",
+  "commands": "./commands/",
   "agents": "./agents/researcher.md"
 }
