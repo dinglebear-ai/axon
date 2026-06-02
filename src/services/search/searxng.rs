@@ -16,6 +16,10 @@ use serde::Deserialize;
 use spider_agent::TimeRange;
 use std::error::Error;
 
+/// Max SearXNG result pages to walk when satisfying a large `count` (offset +
+/// limit). Bounds latency for deep pagination.
+const MAX_SEARXNG_PAGES: usize = 5;
+
 /// One SearXNG result, normalized to the fields `research` consumes.
 #[derive(Debug)]
 pub(super) struct SearxHit {
@@ -68,42 +72,66 @@ pub(super) async fn searxng_search(
     let client =
         http_client().map_err(|e| -> Box<dyn Error> { format!("http client: {e}").into() })?;
 
-    let mut params: Vec<(&str, String)> =
-        vec![("q", query.to_string()), ("format", "json".to_string())];
-    if let Some(tr) = time_range.and_then(time_range_param) {
-        params.push(("time_range", tr.to_string()));
-    }
+    let time_range = time_range.and_then(time_range_param);
 
-    let resp = client
-        .get(&endpoint)
-        .query(&params)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| -> Box<dyn Error> { format!("searxng request failed: {e}").into() })?
-        .error_for_status()
-        .map_err(|e| -> Box<dyn Error> {
-            format!("searxng returned an error status: {e}").into()
+    // SearXNG has no result-count param and paginates by `pageno` (~10/page).
+    // Walk successive pages until we have `count` unique hits, a page returns
+    // nothing new, or the page cap is hit. Cross-page URL dedup handles the
+    // overlap a metasearch engine can return on adjacent pages.
+    let mut hits: Vec<SearxHit> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for pageno in 1..=MAX_SEARXNG_PAGES {
+        if hits.len() >= count {
+            break;
+        }
+        let mut params: Vec<(&str, String)> = vec![
+            ("q", query.to_string()),
+            ("format", "json".to_string()),
+            ("pageno", pageno.to_string()),
+        ];
+        if let Some(tr) = time_range {
+            params.push(("time_range", tr.to_string()));
+        }
+
+        let resp = client
+            .get(&endpoint)
+            .query(&params)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| -> Box<dyn Error> { format!("searxng request failed: {e}").into() })?
+            .error_for_status()
+            .map_err(|e| -> Box<dyn Error> {
+                format!("searxng returned an error status: {e}").into()
+            })?;
+        let parsed: SearxResponse = resp.json().await.map_err(|e| -> Box<dyn Error> {
+            format!(
+                "searxng JSON decode failed (is the `json` output format enabled in settings.yml?): {e}"
+            )
+            .into()
         })?;
 
-    let parsed: SearxResponse = resp.json().await.map_err(|e| -> Box<dyn Error> {
-        format!(
-            "searxng JSON decode failed (is the `json` output format enabled in settings.yml?): {e}"
-        )
-        .into()
-    })?;
+        let before = hits.len();
+        for r in parsed.results {
+            if hits.len() >= count {
+                break;
+            }
+            if r.url.is_empty() || !seen.insert(r.url.clone()) {
+                continue;
+            }
+            hits.push(SearxHit {
+                url: r.url,
+                title: r.title,
+                snippet: r.content,
+            });
+        }
+        // No new unique results on this page → no point fetching further.
+        if hits.len() == before {
+            break;
+        }
+    }
 
-    Ok(parsed
-        .results
-        .into_iter()
-        .filter(|r| !r.url.is_empty())
-        .take(count)
-        .map(|r| SearxHit {
-            url: r.url,
-            title: r.title,
-            snippet: r.content,
-        })
-        .collect())
+    Ok(hits)
 }
 
 #[cfg(test)]
