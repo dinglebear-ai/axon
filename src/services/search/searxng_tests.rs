@@ -3,16 +3,19 @@ use super::*;
 /// Panic-safe guard: enables the loopback allowance for httpmock servers on
 /// 127.0.0.1 and restores it on drop, so a panicking test can't leak the flag
 /// into other SSRF-sensitive tests on the same thread.
-struct LoopbackGuard;
+struct LoopbackGuard {
+    previous: bool,
+}
 impl LoopbackGuard {
     fn enable() -> Self {
+        let previous = crate::core::http::get_allow_loopback();
         crate::core::http::set_allow_loopback(true);
-        LoopbackGuard
+        LoopbackGuard { previous }
     }
 }
 impl Drop for LoopbackGuard {
     fn drop(&mut self) {
-        crate::core::http::set_allow_loopback(false);
+        crate::core::http::set_allow_loopback(self.previous);
     }
 }
 
