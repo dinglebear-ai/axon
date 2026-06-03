@@ -17,8 +17,10 @@ use spider_agent::TimeRange;
 use std::error::Error;
 
 /// Max SearXNG result pages to walk when satisfying a large `count` (offset +
-/// limit). Bounds latency for deep pagination.
-const MAX_SEARXNG_PAGES: usize = 5;
+/// limit). Bounds latency/cost for deep pagination; the caller's
+/// `enforce_pagination_window` already caps `offset + limit`, so 10 pages
+/// (~100-200 results) comfortably covers the allowed window.
+const MAX_SEARXNG_PAGES: usize = 10;
 
 /// One SearXNG result, normalized to the fields `research` consumes.
 #[derive(Debug)]
@@ -111,7 +113,12 @@ pub(super) async fn searxng_search(
             .into()
         })?;
 
-        let before = hits.len();
+        // Stop only when the upstream page is genuinely empty (results
+        // exhausted). A page that is all duplicates after dedup does NOT mean
+        // later pages have nothing new, so we keep going up to MAX_SEARXNG_PAGES.
+        if parsed.results.is_empty() {
+            break;
+        }
         for r in parsed.results {
             if hits.len() >= count {
                 break;
@@ -124,10 +131,6 @@ pub(super) async fn searxng_search(
                 title: r.title,
                 snippet: r.content,
             });
-        }
-        // No new unique results on this page → no point fetching further.
-        if hits.len() == before {
-            break;
         }
     }
 

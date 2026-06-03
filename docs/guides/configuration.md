@@ -250,7 +250,9 @@ temporary overrides and legacy scripts.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TAVILY_API_KEY` | -- | Tavily AI Search API key |
+| `TAVILY_API_KEY` | -- | Tavily AI Search API key (fallback when `AXON_SEARXNG_URL` is unset) |
+| `AXON_SEARXNG_URL` | -- | Base URL of a self-hosted SearXNG instance (e.g. `https://searx.example.com`). When set, `search` and `research` use SearXNG's JSON API instead of Tavily. SearXNG must have the `json` output format enabled in `settings.yml`. |
+| `AXON_RESEARCH_FULL_CONTENT` | `true` | When true, `research` fetches each top source's full page and synthesizes over it; set `false`/`0`/`no`/`off` to synthesize over search snippets only (faster). |
 
 ### Ingest credentials
 
