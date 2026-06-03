@@ -135,7 +135,7 @@ container-up:
     "${compose[@]}" up -d axon --no-deps
     "${compose[@]}" ps axon
 
-# Build release binary, sync PATH symlinks, rebuild local dev runtime image, restart container.
+# Build release binary when stale, sync PATH symlinks, refresh local dev runtime if needed, restart container.
 # Synchronous version of what `scripts/axon` does automatically in the background.
 sync-container:
     #!/usr/bin/env bash
@@ -147,13 +147,30 @@ sync-container:
     if command -v mold >/dev/null 2>&1; then
       export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
     fi
-    cargo build --release --locked --bin axon
 
     AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
     case "$AXON_TARGET_DIR" in
       /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;;
       *) AXON_BIN="$repo/$AXON_TARGET_DIR/release/axon" ;;
     esac
+
+    release_stale=0
+    if [ ! -x "$AXON_BIN" ]; then
+      release_stale=1
+    else
+      while IFS= read -r -d '' input; do
+        if [ "$input" -nt "$AXON_BIN" ]; then
+          release_stale=1
+          break
+        fi
+      done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo build.rs src config.example.toml config migrations apps/web/out assets)
+    fi
+    if [ "$release_stale" -eq 1 ]; then
+      cargo build --release --locked --bin axon
+    else
+      echo "release binary is current: $AXON_BIN"
+    fi
+
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
     while IFS= read -r -d '' plugin_bin; do
@@ -168,9 +185,27 @@ sync-container:
     fi
     export AXON_DEV_TARGET_DIR="$(dirname "$AXON_BIN")"
     compose+=(-f docker-compose.yaml)
-    "${compose[@]}" build axon
-    "${compose[@]}" up -d axon --no-deps
-    touch "${AXON_TARGET_DIR}/.container-built"
+    container_sentinel="$AXON_TARGET_DIR/.container-built"
+    image_stale=0
+    if ! docker image inspect axon:dev-runtime >/dev/null 2>&1; then
+      image_stale=1
+    else
+      while IFS= read -r -d '' input; do
+        if [ "$input" -nt "$container_sentinel" ] 2>/dev/null; then
+          image_stale=1
+          break
+        fi
+      done < <(git ls-files -z -- config/Dockerfile docker-compose.prod.yaml docker-compose.yaml config/chrome)
+    fi
+    if [ "$image_stale" -eq 1 ]; then
+      "${compose[@]}" build axon
+      touch "$container_sentinel"
+      "${compose[@]}" up -d axon --no-deps
+    else
+      echo "dev runtime image is current"
+      "${compose[@]}" up -d axon --no-deps --no-build
+    fi
+    "${compose[@]}" restart axon
     "${compose[@]}" ps axon
     echo "container synced"
 
