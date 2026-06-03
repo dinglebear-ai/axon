@@ -137,11 +137,11 @@ sha2 = "0.11"
 hex = "0.4"
 reflink-copy = "0.1"
 dotenvy = "0.15"
-# rmcp 1.5+ is required: 1.5 introduced the HTTP Parts injection into
+# rmcp 1.7+ is required: 1.5 introduced the HTTP Parts injection into
 # RequestContext::extensions that our OAuth scope check relies on
-# (ctx.extensions.get::<http::request::Parts>()). Pin to >=1.5 to avoid
-# silently landing on an earlier version that lacks this feature.
-rmcp = { version = "1.5", features = [
+# (ctx.extensions.get::<http::request::Parts>()), and 1.7 adds MCP task
+# support/progress APIs needed for long-running job-backed tool calls.
+rmcp = { version = "1.7.0", features = [
   "server",
   "macros",
   "transport-io",
