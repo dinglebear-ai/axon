@@ -52,6 +52,8 @@ pub struct AxonToolResponse {
     pub ok: bool,
     pub action: String,
     pub subaction: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     pub data: Value,
 }
 
@@ -61,8 +63,14 @@ impl AxonToolResponse {
             ok: true,
             action: action.to_string(),
             subaction: subaction.to_string(),
+            warnings: Vec::new(),
             data,
         }
+    }
+
+    pub fn with_warning(mut self, warning: String) -> Self {
+        self.warnings.push(warning);
+        self
     }
 }
 

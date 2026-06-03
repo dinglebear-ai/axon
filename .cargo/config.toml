@@ -10,14 +10,10 @@
 # canonical family reference.
 # =============================================================================
 
-# sccache: axon uses the global wrapper (~/.cargo/config.toml) = LOCAL sccache.
-# No repo bypass is needed: distributed compilation (sccache-dist) is DISABLED
-# fleet-wide (2026-06-02) because its build-server sandbox can't load sqlx_macros'
-# libssl.so.3 (native-linking-proc-macro limitation; same class as lab's boa_engine).
-# Local sccache compiles + caches axon fine (dookie has libssl). The old cross-
-# worktree cache-collision rationale is also obsolete (path-sensitive keys).
-# See ~/.config/sccache/config and ~/docs/sccache-setup.md. If dist is ever
-# re-enabled, restore `[build]` + `rustc-wrapper = ""` here.
+# This wrapper preserves local sccache delegation while copying every completed
+# debug/release axon binary into the local PATH and plugin bundle locations.
+[build]
+rustc-wrapper = "scripts/cargo-rustc-wrapper"
 
 [alias]
 # The `cargo xtask` convention: `cargo xtask <cmd>` delegates to the xtask crate.

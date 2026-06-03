@@ -8,6 +8,25 @@ fn obj(v: Value) -> Map<String, Value> {
     }
 }
 
+#[test]
+fn axon_tool_response_serializes_warnings_when_present() {
+    let mut response = AxonToolResponse::ok("status", "", json!({ "ok": true }));
+    response.warnings.push("outdated axon binary".to_string());
+
+    let value = serde_json::to_value(&response).expect("serialize response");
+
+    assert_eq!(value["warnings"][0], "outdated axon binary");
+}
+
+#[test]
+fn axon_tool_response_skips_empty_warnings() {
+    let response = AxonToolResponse::ok("status", "", json!({ "ok": true }));
+
+    let value = serde_json::to_value(&response).expect("serialize response");
+
+    assert!(value.get("warnings").is_none());
+}
+
 // --- valid action routing ---
 
 #[test]

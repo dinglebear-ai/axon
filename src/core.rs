@@ -1,3 +1,4 @@
+pub mod binary_status;
 pub mod config;
 pub mod content;
 pub mod endpoints;
