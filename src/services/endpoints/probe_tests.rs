@@ -1,25 +1,7 @@
 use super::*;
-use crate::core::http::{build_client, get_allow_loopback, set_allow_loopback};
+use crate::core::http::{LoopbackGuard, build_client};
 use httpmock::prelude::*;
 use serial_test::serial;
-
-struct LoopbackGuard {
-    previous: bool,
-}
-
-impl LoopbackGuard {
-    fn allow() -> Self {
-        let previous = get_allow_loopback();
-        set_allow_loopback(true);
-        Self { previous }
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(self.previous);
-    }
-}
 
 fn probe_client() -> reqwest::Client {
     build_client(PROBE_TIMEOUT_SECS, Some(axon_ua())).expect("probe client")

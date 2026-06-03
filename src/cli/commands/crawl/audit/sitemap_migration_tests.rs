@@ -10,27 +10,12 @@
 
 use super::sitemap::discover_sitemap_urls_with_robots;
 use crate::core::config::Config;
-use crate::core::http::set_allow_loopback;
+use crate::core::http::LoopbackGuard;
 use httpmock::prelude::*;
 use serial_test::serial;
 
 /// RAII guard: sets the global loopback bypass to `true` on creation
 /// and restores `false` on drop.
-struct LoopbackGuard;
-
-impl LoopbackGuard {
-    fn new() -> Self {
-        set_allow_loopback(true);
-        Self
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(false);
-    }
-}
-
 fn test_config() -> Config {
     Config {
         fetch_retries: 0,
@@ -59,7 +44,7 @@ fn sitemap_xml(urls: &[&str]) -> String {
 #[tokio::test]
 #[serial]
 async fn discover_sitemap_urls_includes_robots_declared_entries() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url(); // http://127.0.0.1:PORT
 
@@ -126,7 +111,7 @@ async fn discover_sitemap_urls_includes_robots_declared_entries() {
 #[tokio::test]
 #[serial]
 async fn discover_sitemap_urls_applies_exclude_path_prefix() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -191,7 +176,7 @@ async fn discover_sitemap_urls_applies_exclude_path_prefix() {
 #[tokio::test]
 #[serial]
 async fn discover_sitemap_urls_respects_include_subdomains_false() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url(); // http://127.0.0.1:PORT
 

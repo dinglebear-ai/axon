@@ -11,7 +11,7 @@
 //! that assert loopback is blocked.
 
 use crate::core::config::Config;
-use crate::core::http::set_allow_loopback;
+use crate::core::http::LoopbackGuard;
 use crate::crawl::engine::append_sitemap_backfill;
 use crate::crawl::manifest::{ManifestEntry, read_manifest_data};
 use httpmock::prelude::*;
@@ -22,21 +22,6 @@ use tempfile::TempDir;
 
 /// RAII guard: sets the global loopback bypass to `true` on creation
 /// and restores `false` on drop.
-struct LoopbackGuard;
-
-impl LoopbackGuard {
-    fn new() -> Self {
-        set_allow_loopback(true);
-        Self
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(false);
-    }
-}
-
 fn test_config(output_dir: PathBuf) -> Config {
     Config {
         fetch_retries: 0,
@@ -71,7 +56,7 @@ fn sitemap_xml(urls: &[&str]) -> String {
 #[tokio::test]
 #[serial]
 async fn sync_crawl_uses_engine_backfill_metrics_not_cli_loop() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
     let tmp = TempDir::new().expect("tempdir");
@@ -156,7 +141,7 @@ async fn sync_crawl_uses_engine_backfill_metrics_not_cli_loop() {
 #[tokio::test]
 #[serial]
 async fn sync_crawl_does_not_append_manifest_via_cli_backfill_codepath() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
     let tmp = TempDir::new().expect("tempdir");

@@ -1,28 +1,10 @@
 use super::*;
-use crate::core::http::{get_allow_loopback, set_allow_loopback};
+use crate::core::http::LoopbackGuard;
 use crate::services::types::{EndpointKind, EndpointSourceKind};
 use httpmock::Method::{HEAD, OPTIONS};
 use httpmock::prelude::*;
 use serial_test::serial;
 use std::sync::{Arc, Mutex};
-
-struct LoopbackGuard {
-    previous: bool,
-}
-
-impl LoopbackGuard {
-    fn allow() -> Self {
-        let previous = get_allow_loopback();
-        set_allow_loopback(true);
-        Self { previous }
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(self.previous);
-    }
-}
 
 #[tokio::test]
 #[serial]

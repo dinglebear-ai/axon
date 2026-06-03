@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::core::config::Config;
-use crate::core::http::set_allow_loopback;
+use crate::core::http::LoopbackGuard;
 use httpmock::prelude::*;
 
 #[test]
@@ -60,7 +60,7 @@ fn test_extracts_fonts() {
 
 #[tokio::test]
 async fn test_brand_fetches_linked_stylesheet_fonts() {
-    set_allow_loopback(true);
+    let _loopback = LoopbackGuard::allow();
     let server = MockServer::start();
     let stylesheet = server.mock(|when, then| {
         when.method(GET).path("/site.css");

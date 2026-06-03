@@ -70,26 +70,10 @@ fn candidates_skip_subdomain_for_ip() {
     assert_eq!(c.len(), 2);
 }
 
-use crate::core::http::{get_allow_loopback, set_allow_loopback};
+use crate::core::http::LoopbackGuard;
 use crate::services::types::{EndpointReport, EndpointSourceKind, McpProbeOutcome};
 use httpmock::prelude::*;
 use serial_test::serial;
-
-struct LoopbackGuard {
-    previous: bool,
-}
-impl LoopbackGuard {
-    fn allow() -> Self {
-        let previous = get_allow_loopback();
-        set_allow_loopback(true);
-        Self { previous }
-    }
-}
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(self.previous);
-    }
-}
 
 fn empty_report(url: &str) -> EndpointReport {
     EndpointReport {
@@ -147,7 +131,7 @@ async fn synthesized_same_host_mcp_confirms() {
 #[serial]
 async fn synthesized_candidate_blocked_when_loopback_disallowed() {
     // No LoopbackGuard → SSRF guard blocks 127.0.0.1.
-    set_allow_loopback(false);
+    let _loopback = LoopbackGuard::block();
     let client = crate::core::http::build_client(3, Some(crate::core::http::axon_ua())).unwrap();
     let mut report = empty_report("http://127.0.0.1:9/x");
 

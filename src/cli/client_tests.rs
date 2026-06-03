@@ -3,28 +3,13 @@
 use super::{
     SERVER_POLL_TIMEOUT_SECS, ServerClient, ServerClientErrorKind, check_cleartext_token_allowed,
 };
-use crate::core::http::set_allow_loopback;
+use crate::core::http::LoopbackGuard;
 use httpmock::prelude::*;
 use serde_json::json;
 use serial_test::serial;
 
 const TOKEN_ENV: &str = "AXON_MCP_HTTP_TOKEN";
 const INSECURE_ENV: &str = "AXON_SERVER_INSECURE";
-
-struct LoopbackGuard;
-
-impl LoopbackGuard {
-    fn new() -> Self {
-        set_allow_loopback(true);
-        Self
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(false);
-    }
-}
 
 struct EnvGuard {
     key: &'static str,
@@ -77,7 +62,7 @@ fn cleartext_guard_allows_generic_override() {
 #[tokio::test]
 #[serial]
 async fn post_json_attaches_bearer_token() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, Some("client-token"));
     let _i = EnvGuard::set(INSECURE_ENV, None);
     let server = MockServer::start();
@@ -108,7 +93,7 @@ async fn post_json_attaches_bearer_token() {
 #[tokio::test]
 #[serial]
 async fn get_json_preserves_query_string() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
@@ -134,7 +119,7 @@ async fn get_json_preserves_query_string() {
 #[tokio::test]
 #[serial]
 async fn post_json_classifies_auth_status() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     server.mock(|when, then| {
@@ -159,7 +144,7 @@ async fn post_json_classifies_auth_status() {
 #[tokio::test]
 #[serial]
 async fn post_json_classifies_schema_version_mismatch() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     server.mock(|when, then| {

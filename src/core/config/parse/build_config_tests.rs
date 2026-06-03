@@ -65,6 +65,24 @@ pub(super) fn into_config_via_args(extra: &[&str]) -> Result<Config, String> {
     into_config_with_sources(cli, output_dir_was_explicit, collection_was_explicit)
 }
 
+#[test]
+fn extract_defaults_to_single_page_but_explicit_zero_stays_uncapped() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let default_extract = into_config_via_args(&["extract", "https://example.com/page"])
+        .expect("extract config should parse");
+    assert_eq!(default_extract.max_pages, 1);
+
+    let explicit_uncapped =
+        into_config_via_args(&["--max-pages", "0", "extract", "https://example.com/page"])
+            .expect("extract config with explicit max-pages should parse");
+    assert_eq!(explicit_uncapped.max_pages, 0);
+
+    let default_crawl =
+        into_config_via_args(&["crawl", "https://example.com"]).expect("crawl config should parse");
+    assert_eq!(default_crawl.max_pages, 0);
+}
+
 /// Save/restore an env var around a test body so panics don't leak state.
 #[allow(unsafe_code)]
 pub(super) fn with_env_saved<F: FnOnce()>(keys: &[&str], body: F) {

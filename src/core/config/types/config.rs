@@ -39,7 +39,7 @@ pub struct Config {
     /// Optional free-form note stored with `train` preference events.
     pub train_notes: Option<String>,
 
-    /// Maximum pages to crawl (0 = uncapped). Flag: `--max-pages`.
+    /// Maximum pages to crawl (0 = uncapped; extract defaults to 1 when omitted). Flag: `--max-pages`.
     pub max_pages: u32,
 
     /// Maximum crawl depth from the start URL. Flag: `--max-depth`.

@@ -223,6 +223,10 @@ fn all_fallback_attempts_failed(
         && results.is_empty()
 }
 
+fn uses_single_page_extract_path(limit: u32) -> bool {
+    limit == 1
+}
+
 /// Fetch a single URL directly with reqwest and extract structured data from it.
 ///
 /// Bypasses spider entirely — spider normalises deep URL paths to the domain
@@ -323,7 +327,7 @@ pub async fn run_extract_with_engine(
     // requests for /wiki/Rust or /recipe/12345 land on the site homepage instead.
     // For Chrome mode, we use spider with limit=1 to get stealth + fingerprint
     // patches. For HTTP mode, plain reqwest fetches the exact URL directly.
-    if wcfg.limit == 1 {
+    if uses_single_page_extract_path(wcfg.limit) {
         return match wcfg.render_mode {
             RenderMode::Chrome => {
                 run_single_url_extract_chrome(&start_url, engine, &wcfg, fallback_cfg).await

@@ -15,7 +15,7 @@
 use super::{ask_via_server, hint_for_ask_error};
 use crate::cli::client::check_cleartext_token_allowed;
 use crate::core::config::Config;
-use crate::core::http::set_allow_loopback;
+use crate::core::http::LoopbackGuard;
 use httpmock::prelude::*;
 use serde_json::json;
 use serial_test::serial;
@@ -23,21 +23,6 @@ use std::net::TcpListener;
 
 const TOKEN_ENV: &str = "AXON_MCP_HTTP_TOKEN";
 const INSECURE_ENV: &str = "AXON_SERVER_INSECURE";
-
-struct LoopbackGuard;
-
-impl LoopbackGuard {
-    fn new() -> Self {
-        set_allow_loopback(true);
-        Self
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(false);
-    }
-}
 
 /// Snapshots an env var on construction and restores it on drop.
 /// The value `None` means "unset on restore".
@@ -190,7 +175,7 @@ fn cleartext_gate_opt_in_via_env() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_returns_parsed_result_on_200() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
@@ -212,7 +197,7 @@ async fn ask_via_server_returns_parsed_result_on_200() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_forwards_ask_overrides() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
@@ -264,7 +249,7 @@ async fn ask_via_server_forwards_ask_overrides() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_forwards_explain_and_implies_diagnostics() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
@@ -290,7 +275,7 @@ async fn ask_via_server_forwards_explain_and_implies_diagnostics() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_401_yields_token_mismatch_hint() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     server.mock(|when, then| {
@@ -310,7 +295,7 @@ async fn ask_via_server_401_yields_token_mismatch_hint() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_500_includes_body_in_error() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     server.mock(|when, then| {
@@ -329,7 +314,7 @@ async fn ask_via_server_500_includes_body_in_error() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_malformed_json_yields_decode_error() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     server.mock(|when, then| {
@@ -350,7 +335,7 @@ async fn ask_via_server_malformed_json_yields_decode_error() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_connection_refused_uses_connect_prefix() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let addr = {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -397,7 +382,7 @@ async fn ask_via_server_refuses_token_over_http_to_non_loopback() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_attaches_bearer_on_loopback_http() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, Some("loopback-token"));
     let _i = EnvGuard::set(INSECURE_ENV, None);
 
@@ -421,7 +406,7 @@ async fn ask_via_server_attaches_bearer_on_loopback_http() {
 #[tokio::test]
 #[serial]
 async fn ask_via_server_omits_bearer_when_token_is_whitespace() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, Some("   "));
     let _i = EnvGuard::set(INSECURE_ENV, None);
 
@@ -451,7 +436,7 @@ async fn ask_via_server_omits_bearer_when_token_is_whitespace() {
 #[tokio::test]
 #[serial]
 async fn payload_omits_since_before_when_none() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
@@ -481,7 +466,7 @@ async fn payload_omits_since_before_when_none() {
 #[tokio::test]
 #[serial]
 async fn payload_includes_since_before_when_set() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
@@ -508,7 +493,7 @@ async fn payload_includes_since_before_when_set() {
 #[tokio::test]
 #[serial]
 async fn endpoint_normalizes_trailing_slash_variants() {
-    let _lo = LoopbackGuard::new();
+    let _lo = LoopbackGuard::allow();
     let _t = EnvGuard::set(TOKEN_ENV, None);
     let server = MockServer::start();
     server.mock(|when, then| {

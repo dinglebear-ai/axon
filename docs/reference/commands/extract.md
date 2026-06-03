@@ -46,7 +46,7 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--query <text>` | — | Extraction prompt (recommended; empty prompt skips the LLM pass). |
 | `--wait <bool>` | `false` | `false`: enqueue extract job. `true`: run extraction inline and block. |
-| `--max-pages <n>` | `0` | Passed to extract web runner as crawl/page limit. |
+| `--max-pages <n>` | `1` when omitted, `0` when explicitly uncapped | Passed to extract web runner as crawl/page limit. |
 | `--output-dir <dir>` | `.cache/axon-rust/output` | Base path for extract artifacts. |
 | `--output <path>` | — | Summary JSON output path (sync mode). |
 | `--json` | `false` | JSON output for enqueue/status and sync summary. |
