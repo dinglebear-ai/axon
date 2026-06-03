@@ -8,6 +8,7 @@ use crate::services::events::ServiceEvent;
 use crate::services::query as query_svc;
 use crate::services::types::AskResult;
 use std::error::Error;
+use std::io::Write;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -234,12 +235,14 @@ pub(crate) fn print_ask_human(cfg: &Config, query: &str, active_session: &str, r
         return;
     }
 
-    if !cfg.ask_stream {
+    if cfg.ask_stream {
+        // Tokens were already streamed to stdout by the consumer; skip re-printing.
+    } else {
         println!("{}", primary("Conversation"));
         println!("  {} {}", primary("You:"), query);
         println!("  {}", primary("Assistant:"));
+        println!("{}", result.answer);
     }
-    println!("{}", result.answer);
 
     println!(
         "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms",
@@ -276,17 +279,19 @@ async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<
 
     let mut consumer = event_rx.map(|mut rx| {
         tokio::spawn(async move {
+            let mut stdout = std::io::stdout();
             let mut started = false;
             while let Some(event) = rx.recv().await {
                 if let ServiceEvent::SynthesisDelta { text } = event {
                     if !started {
                         started = true;
                     }
-                    eprint!("{text}");
+                    let _ = stdout.write_all(text.as_bytes());
+                    let _ = stdout.flush();
                 }
             }
             if started {
-                eprintln!();
+                let _ = writeln!(stdout);
             }
         })
     });
@@ -309,7 +314,7 @@ async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<
             .is_err()
     {
         task.abort();
-        log_warn("ask synthesis consumer timed out draining stderr");
+        log_warn("ask synthesis consumer timed out");
     }
 
     result

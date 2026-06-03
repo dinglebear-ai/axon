@@ -6,6 +6,7 @@ use crate::services::events::ServiceEvent;
 use crate::services::summarize as summarize_svc;
 use crate::services::types::SummarizeResult;
 use std::error::Error;
+use std::io::Write;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -33,18 +34,19 @@ pub async fn run_summarize(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     let mut consumer = event_rx.map(|mut rx| {
         tokio::spawn(async move {
+            let mut stdout = std::io::stdout();
             let mut started = false;
             while let Some(event) = rx.recv().await {
                 if let ServiceEvent::SynthesisDelta { text } = event {
                     if !started {
-                        eprint!("  ");
                         started = true;
                     }
-                    eprint!("{text}");
+                    let _ = stdout.write_all(text.as_bytes());
+                    let _ = stdout.flush();
                 }
             }
             if started {
-                eprintln!();
+                let _ = writeln!(stdout);
             }
         })
     });
@@ -57,7 +59,7 @@ pub async fn run_summarize(cfg: &Config) -> Result<(), Box<dyn Error>> {
             .is_err()
     {
         task.abort();
-        log_warn("summarize synthesis consumer timed out draining stderr");
+        log_warn("summarize synthesis consumer timed out");
     }
 
     emit_summarize_result(cfg, &result)?;
