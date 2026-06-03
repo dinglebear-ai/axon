@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.20.2] - 2026-06-03
+
+### Fixed
+
+- **`ask` streaming tokens now go to stdout (not stderr) with explicit `flush()` per token.** Previously tokens were `eprint!`-ed to stderr and the full answer was then re-printed on stdout — the answer appeared twice. Now the consumer does `stdout.write_all()` + `stdout.flush()` per token, and `print_ask_human` skips reprinting the answer when stream mode is active.
+- **`summarize` and `research` streaming tokens moved from stderr to stdout** with the same `write_all` + `flush` pattern, making the output pipe-safe and visually progressive in all three streaming commands.
+
 ## [4.20.1] - 2026-06-03
 
 ### Fixed

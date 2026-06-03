@@ -9,6 +9,7 @@ use crate::services::types::{
     ResearchExtraction, ResearchPayload, SearchOptions as ServiceSearchOptions, SummarySource,
 };
 use std::error::Error;
+use std::io::Write;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -57,6 +58,7 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(RESEARCH_EVENT_CHANNEL);
     let show_progress = !cfg.json_output;
     let mut consumer = tokio::spawn(async move {
+        let mut stdout = std::io::stdout();
         let mut in_synthesis = false;
         while let Some(event) = event_rx.recv().await {
             if !show_progress {
@@ -65,7 +67,8 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
             match event {
                 ServiceEvent::Log { message, .. } => {
                     if in_synthesis {
-                        eprintln!();
+                        let _ = writeln!(stdout);
+                        let _ = stdout.flush();
                         in_synthesis = false;
                     }
                     if message == "phase:searching" {
@@ -76,16 +79,17 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 }
                 ServiceEvent::SynthesisDelta { text } => {
                     if !in_synthesis {
-                        eprint!("  ");
                         in_synthesis = true;
                     }
-                    eprint!("{text}");
+                    let _ = stdout.write_all(text.as_bytes());
+                    let _ = stdout.flush();
                 }
                 _ => {}
             }
         }
         if in_synthesis {
-            eprintln!();
+            let _ = writeln!(stdout);
+            let _ = stdout.flush();
         }
     });
 
