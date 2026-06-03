@@ -334,6 +334,21 @@ fn build_timing_json(
     obj.insert("llm".into(), ms(llm_ms));
     obj.insert("total".into(), ms(total_ms));
 
+    // Always emit streamed + ttft even without diagnostics.
+    if let AskTiming::Disabled {
+        streamed,
+        llm_ttft_ms,
+        ..
+    } = timing
+    {
+        if let Some(v) = streamed {
+            obj.insert("streamed".into(), (*v).into());
+        }
+        if let Some(v) = llm_ttft_ms {
+            obj.insert("llm_ttft_ms".into(), ms(*v));
+        }
+        return serde_json::Value::Object(obj);
+    }
     let Some(e) = timing.enabled() else {
         return serde_json::Value::Object(obj);
     };

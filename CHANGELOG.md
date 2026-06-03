@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.20.3] - 2026-06-03
+
+### Fixed
+
+- **`ask` timing line now shows `streamed=yes/no` and `ttft=Xms` in normal (non-diagnostics) mode.** `set_streamed` and `set_ttft` were no-ops when `AskTiming::Disabled` (the default path without `--ask-diagnostics`). Promoted `streamed` and `llm_ttft_ms` to the `Disabled` variant so they are always captured and emitted.
+
 ## [4.20.2] - 2026-06-03
 
 ### Fixed

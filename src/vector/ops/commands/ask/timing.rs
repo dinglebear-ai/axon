@@ -11,9 +11,13 @@ use std::time::Instant;
 /// the pipeline.
 #[derive(Debug, Clone)]
 pub(crate) enum AskTiming {
-    /// Diagnostics off — only carries `request_start` for the disabled-eval
-    /// path so the helper can be constructed without `Some(Instant)` plumbing.
-    Disabled { request_start: Option<Instant> },
+    /// Diagnostics off — carries `request_start` plus the two fields that are
+    /// always emitted in the timing line (`streamed`, `llm_ttft_ms`).
+    Disabled {
+        request_start: Option<Instant>,
+        streamed: Option<bool>,
+        llm_ttft_ms: Option<u128>,
+    },
     /// Diagnostics on — every slot captures.
     Enabled(Box<EnabledAskTiming>),
 }
@@ -56,6 +60,8 @@ impl AskTiming {
         } else {
             AskTiming::Disabled {
                 request_start: Some(request_start),
+                streamed: None,
+                llm_ttft_ms: None,
             }
         }
     }
@@ -65,13 +71,15 @@ impl AskTiming {
     pub(crate) fn disabled() -> Self {
         AskTiming::Disabled {
             request_start: None,
+            streamed: None,
+            llm_ttft_ms: None,
         }
     }
 
     /// Returns the captured request-start `Instant` when one exists.
     pub(crate) fn request_start(&self) -> Option<Instant> {
         match self {
-            AskTiming::Disabled { request_start } => *request_start,
+            AskTiming::Disabled { request_start, .. } => *request_start,
             AskTiming::Enabled(e) => Some(e.request_start),
         }
     }
@@ -110,14 +118,18 @@ impl AskTiming {
     }
 
     pub(crate) fn set_ttft(&mut self, ttft_ms: u128) {
-        if let AskTiming::Enabled(e) = self {
-            e.llm_ttft_ms = Some(ttft_ms);
+        match self {
+            AskTiming::Disabled { llm_ttft_ms, .. } => *llm_ttft_ms = Some(ttft_ms),
+            AskTiming::Enabled(e) => e.llm_ttft_ms = Some(ttft_ms),
         }
     }
 
     pub(crate) fn set_streamed(&mut self, streamed: bool) {
-        if let AskTiming::Enabled(e) = self {
-            e.streamed = Some(streamed);
+        match self {
+            AskTiming::Disabled {
+                streamed: s_slot, ..
+            } => *s_slot = Some(streamed),
+            AskTiming::Enabled(e) => e.streamed = Some(streamed),
         }
     }
 }
