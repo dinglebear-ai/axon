@@ -23,6 +23,11 @@ mod server_authz;
 mod services_migration_tests;
 #[path = "server/stdio.rs"]
 mod stdio_runner;
+#[path = "server/tool_schema.rs"]
+mod tool_schema;
+#[cfg(test)]
+#[path = "server/tool_schema_tests.rs"]
+mod tool_schema_tests;
 
 use super::auth::AuthPolicy;
 use super::schema::{AxonRequest, parse_axon_request};
@@ -44,6 +49,7 @@ use rmcp::{
     service::RequestContext,
     tool, tool_handler, tool_router,
 };
+use serde_json::Value;
 pub use server_authz::required_scope_for;
 use server_authz::required_scope_for_tool;
 use std::sync::{Arc, LazyLock};
@@ -54,14 +60,7 @@ const STATUS_DASHBOARD_URI: &str = "ui://axon/status-dashboard";
 const MCP_APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
 static STATUS_DASHBOARD_HTML: &str = include_str!("assets/status_dashboard.html");
 
-static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(|| {
-    let schema = rmcp::schemars::schema_for!(AxonRequest);
-    let schema_json = serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string());
-    format!(
-        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` is required for subaction families\n- `response_mode` supports `path|inline|both|auto_inline`; most actions default to `path`, while `scrape` and `retrieve` default to inline paged document reads\n\n## JSON Schema\n\n```json\n{}\n```\n",
-        MCP_TOOL_SCHEMA_URI, schema_json
-    )
-});
+static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(tool_schema::mcp_tool_schema_markdown);
 
 #[derive(Clone)]
 pub struct AxonMcpServer {
@@ -132,12 +131,13 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff."
+        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff.",
+        input_schema = tool_schema::axon_tool_input_schema()
     )]
     async fn axon<'a>(
         &'a self,
         peer: rmcp::Peer<RoleServer>,
-        Parameters(raw): Parameters<serde_json::Map<String, serde_json::Value>>,
+        Parameters(raw): Parameters<serde_json::Map<String, Value>>,
     ) -> Result<String, ErrorData> {
         let action = raw
             .get("action")
@@ -296,14 +296,14 @@ impl ServerHandler for AxonMcpServer {
             .arguments
             .as_ref()
             .and_then(|m| m.get("action"))
-            .and_then(serde_json::Value::as_str)
+            .and_then(Value::as_str)
             .unwrap_or("")
             .to_owned();
         let subaction: String = request
             .arguments
             .as_ref()
             .and_then(|m| m.get("subaction"))
-            .and_then(serde_json::Value::as_str)
+            .and_then(Value::as_str)
             .unwrap_or("")
             .to_owned();
 
