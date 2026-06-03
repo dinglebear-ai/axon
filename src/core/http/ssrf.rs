@@ -32,6 +32,34 @@ pub(crate) fn get_allow_loopback() -> bool {
     ALLOW_LOOPBACK.with(|c| c.get())
 }
 
+/// Test-only guard that restores the previous thread-local loopback bypass.
+#[cfg(test)]
+pub(crate) struct LoopbackGuard(bool);
+
+#[cfg(test)]
+impl LoopbackGuard {
+    pub(crate) fn set(allow: bool) -> Self {
+        let previous = get_allow_loopback();
+        set_allow_loopback(allow);
+        Self(previous)
+    }
+
+    pub(crate) fn allow() -> Self {
+        Self::set(true)
+    }
+
+    pub(crate) fn block() -> Self {
+        Self::set(false)
+    }
+}
+
+#[cfg(test)]
+impl Drop for LoopbackGuard {
+    fn drop(&mut self) {
+        set_allow_loopback(self.0);
+    }
+}
+
 /// Reject URLs that would allow SSRF attacks.
 ///
 /// Blocks:

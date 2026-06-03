@@ -1,26 +1,8 @@
 use super::*;
+use crate::core::http::LoopbackGuard;
 use crate::crawl::engine::canonicalize_url_for_dedupe;
 use crate::crawl::manifest::ManifestEntry;
 use std::collections::{HashMap, HashSet};
-
-/// RAII guard for the thread-local loopback bypass. Enables it for the lifetime
-/// of the guard and restores the prior value on drop — panic-safe, so a failing
-/// test cannot leak `allow_loopback = true` into other tests on the same thread.
-struct LoopbackGuard(bool);
-
-impl LoopbackGuard {
-    fn enable() -> Self {
-        let prev = crate::core::http::get_allow_loopback();
-        crate::core::http::set_allow_loopback(true);
-        LoopbackGuard(prev)
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        crate::core::http::set_allow_loopback(self.0);
-    }
-}
 
 /// Run an async test body on a current-thread runtime hosted on a 16 MB-stack
 /// thread. A live `crawl_raw()` recurses deep enough through spider's pipeline to
@@ -391,7 +373,7 @@ fn seeded_validators_drive_conditional_request_and_304_drops_page() {
     block_on_big_stack(async {
         use httpmock::prelude::*;
 
-        let _loopback = LoopbackGuard::enable();
+        let _loopback = LoopbackGuard::allow();
 
         let server = MockServer::start();
         let stable_path = "/stable";
@@ -476,7 +458,7 @@ fn run1_populates_sidecar_with_seedable_key() {
     block_on_big_stack(async {
         use httpmock::prelude::*;
 
-        let _loopback = LoopbackGuard::enable();
+        let _loopback = LoopbackGuard::allow();
 
         let server = MockServer::start();
         let leaf_path = "/leaf";

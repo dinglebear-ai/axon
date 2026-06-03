@@ -89,7 +89,10 @@ const EMBED_OPTIONS: &[(&str, &str)] = &[
 ];
 
 const WEB_OPTIONS: &[(&str, &str)] = &[
-    ("--max-pages <n>", "Maximum pages to crawl"),
+    (
+        "--max-pages <n>",
+        "Maximum pages to crawl (extract defaults to 1 when omitted)",
+    ),
     ("--max-depth <n>", "Maximum crawl depth"),
     (
         "--render-mode <mode>",
@@ -239,7 +242,10 @@ fn print_top_level_help() {
         "--cache-http-only",
         "keep cached crawl flow on the HTTP path",
     );
-    row("--max-pages <n>", "crawl page limit (0 = uncapped)");
+    row(
+        "--max-pages <n>",
+        "crawl page limit (0 = uncapped; extract default 1)",
+    );
     row(
         "--url-glob <pattern[,..]>",
         "expand URL seeds via brace globs (e.g. {1..10}, {a,b})",

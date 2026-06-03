@@ -31,6 +31,8 @@ pub use error::HttpError;
 pub use headers::parse_custom_headers;
 pub use normalize::normalize_url;
 #[cfg(test)]
+pub(crate) use ssrf::LoopbackGuard;
+#[cfg(test)]
 pub(crate) use ssrf::validate_resolved_ips;
 #[cfg(test)]
 pub(crate) use ssrf::{get_allow_loopback, set_allow_loopback};

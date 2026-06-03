@@ -7,28 +7,13 @@
 
 use super::map_payload;
 use crate::core::config::{Config, MapFallback, RenderMode};
-use crate::core::http::set_allow_loopback;
+use crate::core::http::LoopbackGuard;
 use httpmock::prelude::*;
 use serial_test::serial;
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
-
-struct LoopbackGuard;
-
-impl LoopbackGuard {
-    fn new() -> Self {
-        set_allow_loopback(true);
-        Self
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(false);
-    }
-}
 
 fn base_config() -> Config {
     Config {
@@ -111,7 +96,7 @@ fn mock_index_seeds_404(server: &MockServer) {
 #[tokio::test]
 #[serial]
 async fn test_sitemap_first_uses_sitemap_urls() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -166,7 +151,7 @@ async fn test_sitemap_first_uses_sitemap_urls() {
 #[tokio::test]
 #[serial]
 async fn test_out_of_scope_sitemap_no_anchor_fallback() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -217,7 +202,7 @@ async fn test_out_of_scope_sitemap_no_anchor_fallback() {
 #[tokio::test]
 #[serial]
 async fn test_bounded_structure_fallback_uses_anchor_hrefs() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -265,7 +250,7 @@ async fn test_bounded_structure_fallback_uses_anchor_hrefs() {
 #[tokio::test]
 #[serial]
 async fn test_structure_mode_does_not_crawl() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -321,7 +306,7 @@ async fn test_structure_mode_does_not_crawl() {
 #[tokio::test]
 #[serial]
 async fn test_sitemap_index_recursion() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -378,7 +363,7 @@ async fn test_sitemap_index_recursion() {
 #[tokio::test]
 #[serial]
 async fn test_sitemap_out_of_host_urls_filtered() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -434,7 +419,7 @@ async fn test_sitemap_out_of_host_urls_filtered() {
 #[tokio::test]
 #[serial]
 async fn test_map_fallback_crawl_opt_in() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -485,7 +470,7 @@ async fn test_map_fallback_crawl_opt_in() {
 #[tokio::test]
 #[serial]
 async fn test_bounded_structure_cross_origin_filtered() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -532,7 +517,7 @@ async fn test_bounded_structure_cross_origin_filtered() {
 #[tokio::test]
 #[serial]
 async fn test_pages_seen_zero_in_sitemap_mode() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -574,7 +559,7 @@ async fn test_pages_seen_zero_in_sitemap_mode() {
 #[tokio::test]
 #[serial]
 async fn test_warning_when_bounded_structure_too_few_urls() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -622,7 +607,7 @@ async fn test_warning_when_bounded_structure_too_few_urls() {
 #[tokio::test]
 #[serial]
 async fn test_discover_sitemaps_false_skips_sitemap_fetch() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -740,7 +725,7 @@ fn llms_txt_body(urls: &[&str]) -> String {
 #[tokio::test]
 #[serial]
 async fn map_unions_sitemap_and_llms_txt_deduped() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -790,7 +775,7 @@ async fn map_unions_sitemap_and_llms_txt_deduped() {
 #[tokio::test]
 #[serial]
 async fn map_skips_llms_txt_when_disabled() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
@@ -842,7 +827,7 @@ async fn map_skips_llms_txt_when_disabled() {
 #[tokio::test]
 #[serial]
 async fn map_llms_only_when_no_sitemap() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 

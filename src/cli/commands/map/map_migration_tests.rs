@@ -19,27 +19,12 @@
 
 use super::map_payload;
 use crate::core::config::{Config, RenderMode};
-use crate::core::http::set_allow_loopback;
+use crate::core::http::LoopbackGuard;
 use httpmock::prelude::*;
 use serial_test::serial;
 
 /// RAII guard: sets the global loopback bypass to `true` on creation
 /// and restores `false` on drop.
-struct LoopbackGuard;
-
-impl LoopbackGuard {
-    fn new() -> Self {
-        set_allow_loopback(true);
-        Self
-    }
-}
-
-impl Drop for LoopbackGuard {
-    fn drop(&mut self) {
-        set_allow_loopback(false);
-    }
-}
-
 fn test_config() -> Config {
     Config {
         json_output: true,
@@ -136,7 +121,7 @@ fn setup_server_with_duplicate_sitemap(server: &MockServer) {
 #[tokio::test]
 #[serial]
 async fn map_payload_returns_unique_urls_without_cli_side_dedup() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     setup_server_with_duplicate_sitemap(&server);
 
@@ -196,7 +181,7 @@ async fn map_payload_returns_unique_urls_without_cli_side_dedup() {
 #[tokio::test]
 #[serial]
 async fn map_payload_reports_sitemap_url_count_consistently() {
-    let _guard = LoopbackGuard::new();
+    let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     setup_server_with_duplicate_sitemap(&server);
 

@@ -1,4 +1,6 @@
 use super::*;
+use crate::core::http::LoopbackGuard;
+use httpmock::prelude::*;
 
 /// When Chrome mode is requested but no chrome_remote_url is configured,
 /// the extract engine must fall back to the HTTP path gracefully rather
@@ -35,4 +37,53 @@ async fn extract_chrome_mode_without_remote_url_falls_back_to_http() {
             );
         }
     }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn extract_limit_one_uses_exact_single_url_path() {
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start();
+    let root = server.mock(|when, then| {
+        when.method(GET).path("/");
+        then.status(200)
+            .body(r#"<html><head><meta property="og:title" content="wrong root"></head></html>"#);
+    });
+    let target = server.mock(|when, then| {
+        when.method(GET).path("/docs/page");
+        then.status(200)
+            .body(r#"<html><head><meta property="og:title" content="right target"></head></html>"#);
+    });
+
+    let engine = Arc::new(DeterministicExtractionEngine::with_default_parsers());
+    let wcfg = ExtractWebConfig {
+        start_url: format!("{}/docs/page", server.base_url()),
+        prompt: String::new(),
+        limit: 1,
+        llm_backend: crate::services::llm_backend::LlmBackendConfig::default(),
+        custom_headers: vec![],
+        render_mode: RenderMode::Http,
+        chrome_remote_url: None,
+        bypass_csp: false,
+        accept_invalid_certs: false,
+        request_timeout_ms: Some(1000),
+        fetch_retries: 0,
+        user_agent: None,
+        chrome_network_idle_timeout_secs: 0,
+    };
+
+    let run = run_extract_with_engine(wcfg, engine).await.unwrap();
+
+    root.assert_calls(0);
+    target.assert_calls(1);
+    assert_eq!(run.pages_visited, 1);
+    assert_eq!(run.results.len(), 1);
+    assert_eq!(run.results[0]["og:title"], "right target");
+}
+
+#[test]
+fn extract_single_page_gate_preserves_explicit_multi_page_limits() {
+    assert!(!uses_single_page_extract_path(0));
+    assert!(uses_single_page_extract_path(1));
+    assert!(!uses_single_page_extract_path(2));
+    assert!(!uses_single_page_extract_path(25));
 }
