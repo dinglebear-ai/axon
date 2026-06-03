@@ -30,7 +30,7 @@ mod tool_schema;
 mod tool_schema_tests;
 
 use super::auth::AuthPolicy;
-use super::schema::{AxonRequest, parse_axon_request};
+use super::schema::{AxonRequest, AxonToolResponse, parse_axon_request};
 use super::thin_client;
 use crate::core::config::Config;
 use crate::services::context::ServiceContext;
@@ -161,6 +161,7 @@ impl AxonMcpServer {
             .await
             .map_err(map_thin_client_error)?
         {
+            let response = append_stale_binary_warning_value(response);
             return serde_json::to_string(&response)
                 .map_err(|e| internal_error(format!("serialize {action} response: {e}")));
         }
@@ -202,6 +203,7 @@ impl AxonMcpServer {
                 ));
             }
         };
+        let response = append_stale_binary_warning(response);
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
     }
@@ -233,6 +235,32 @@ fn map_thin_client_error(err: thin_client::ThinClientError) -> ErrorData {
         thin_client::ThinClientError::InvalidRequest(message) => invalid_params(message),
         other => internal_error(format!("MCP thin client route failed: {other}")),
     }
+}
+
+fn append_stale_binary_warning(response: AxonToolResponse) -> AxonToolResponse {
+    match crate::core::binary_status::stale_binary_warning() {
+        Some(warning) => response.with_warning(warning),
+        None => response,
+    }
+}
+
+fn append_stale_binary_warning_value(mut response: Value) -> Value {
+    let Some(warning) = crate::core::binary_status::stale_binary_warning() else {
+        return response;
+    };
+    let Value::Object(ref mut object) = response else {
+        return response;
+    };
+    match object.get_mut("warnings") {
+        Some(Value::Array(warnings)) => warnings.push(Value::String(warning)),
+        _ => {
+            object.insert(
+                "warnings".to_string(),
+                Value::Array(vec![Value::String(warning)]),
+            );
+        }
+    }
+    response
 }
 
 fn mcp_tool_schema_markdown() -> &'static str {
@@ -393,7 +421,7 @@ impl ServerHandler for AxonMcpServer {
             "- `summarize` — scrape URL context + configured LLM summary\n",
             "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",
             "- `suggest` — propose new crawl targets from indexed source coverage\n",
-            "- `research` — Tavily AI search with LLM synthesis\n",
+            "- `research` — SearXNG/Tavily web research with LLM synthesis\n",
             "- `extract` — structured data extraction via LLM\n",
             "- `status` / `doctor` — job queue health and service diagnostics\n",
             "- `artifacts` — read/grep/inspect large output files\n",
