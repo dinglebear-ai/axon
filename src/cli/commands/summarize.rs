@@ -1,10 +1,16 @@
 use super::common::parse_urls;
 use crate::core::config::Config;
-use crate::core::logging::{log_done, log_info};
+use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_option, print_phase};
+use crate::services::events::ServiceEvent;
 use crate::services::summarize as summarize_svc;
 use crate::services::types::SummarizeResult;
 use std::error::Error;
+use std::time::Duration;
+use tokio::sync::mpsc;
+
+/// Timeout for draining the streaming consumer after summarize returns.
+const SUMMARIZE_CONSUMER_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub async fn run_summarize(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let urls = parse_urls(cfg);
@@ -17,7 +23,44 @@ pub async fn run_summarize(cfg: &Config) -> Result<(), Box<dyn Error>> {
         urls.len(),
         cfg.render_mode
     ));
-    let result = summarize_svc::summarize(cfg, &urls, None).await?;
+
+    let (event_tx, event_rx) = if !cfg.json_output {
+        let (tx, rx) = mpsc::channel::<ServiceEvent>(256);
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+
+    let mut consumer = event_rx.map(|mut rx| {
+        tokio::spawn(async move {
+            let mut started = false;
+            while let Some(event) = rx.recv().await {
+                if let ServiceEvent::SynthesisDelta { text } = event {
+                    if !started {
+                        eprint!("  ");
+                        started = true;
+                    }
+                    eprint!("{text}");
+                }
+            }
+            if started {
+                eprintln!();
+            }
+        })
+    });
+
+    let result = summarize_svc::summarize(cfg, &urls, event_tx).await?;
+
+    if let Some(ref mut task) = consumer {
+        if tokio::time::timeout(SUMMARIZE_CONSUMER_DRAIN_TIMEOUT, &mut *task)
+            .await
+            .is_err()
+        {
+            task.abort();
+            log_warn("summarize synthesis consumer timed out draining stderr");
+        }
+    }
+
     emit_summarize_result(cfg, &result)?;
     log_done(&format!(
         "command=summarize urls={} context_chars={} truncated={}",

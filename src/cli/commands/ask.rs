@@ -4,9 +4,12 @@ use crate::core::config::Config;
 use crate::core::logging::{log_info, log_warn};
 use crate::core::ui::{muted, primary};
 use crate::services::error::diagnostics_from_error;
+use crate::services::events::ServiceEvent;
 use crate::services::query as query_svc;
 use crate::services::types::AskResult;
 use std::error::Error;
+use std::time::Duration;
+use tokio::sync::mpsc;
 
 mod followup;
 
@@ -42,7 +45,7 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     if ask_cfg.ask_stream && !ask_cfg.json_output && !ask_cfg.ask_explain {
         println!("{}", primary("Conversation"));
-        println!("  {} {}", primary("You:"), query);
+        println!("  {} {}", primary("You:"), &query);
         println!("  {}", primary("Assistant:"));
     }
 
@@ -231,14 +234,12 @@ pub(crate) fn print_ask_human(cfg: &Config, query: &str, active_session: &str, r
         return;
     }
 
-    if cfg.ask_stream {
-        println!();
-    } else {
+    if !cfg.ask_stream {
         println!("{}", primary("Conversation"));
         println!("  {} {}", primary("You:"), query);
         println!("  {}", primary("Assistant:"));
-        println!("{}", result.answer);
     }
+    println!("{}", result.answer);
 
     println!(
         "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms",
@@ -262,8 +263,35 @@ fn print_ask_warnings(result: &AskResult) {
     }
 }
 
+/// Timeout for draining the streaming consumer after the ask call returns.
+const ASK_CONSUMER_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
+
 async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<dyn Error>> {
-    match query_svc::ask(cfg, query, None).await {
+    let (event_tx, event_rx) = if cfg.ask_stream && !cfg.json_output {
+        let (tx, rx) = mpsc::channel::<ServiceEvent>(256);
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+
+    let mut consumer = event_rx.map(|mut rx| {
+        tokio::spawn(async move {
+            let mut started = false;
+            while let Some(event) = rx.recv().await {
+                if let ServiceEvent::SynthesisDelta { text } = event {
+                    if !started {
+                        started = true;
+                    }
+                    eprint!("{text}");
+                }
+            }
+            if started {
+                eprintln!();
+            }
+        })
+    });
+
+    let result = match query_svc::ask(cfg, query, event_tx).await {
         Ok(result) => Ok(result),
         Err(err) => {
             if cfg.ask_diagnostics
@@ -273,7 +301,19 @@ async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<
             }
             Err(err)
         }
+    };
+
+    if let Some(ref mut task) = consumer {
+        if tokio::time::timeout(ASK_CONSUMER_DRAIN_TIMEOUT, &mut *task)
+            .await
+            .is_err()
+        {
+            task.abort();
+            log_warn("ask synthesis consumer timed out draining stderr");
+        }
     }
+
+    result
 }
 
 /// Map an `ask_via_server` error message prefix to a short user hint.

@@ -1,4 +1,5 @@
 use crate::core::config::{Config, ConfigOverrides, ScrapeFormat};
+use crate::core::logging::log_warn;
 use crate::services::document::{
     decode_document_cursor_backend, is_stale, paginate_document, read_latest_stored_source,
 };
@@ -15,6 +16,7 @@ use crate::vector::ops::commands::evaluate_payload;
 use crate::vector::ops::commands::query_results;
 use crate::vector::ops::qdrant::{DirectRetrieveResult, retrieve_result};
 use std::error::Error;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -377,6 +379,9 @@ async fn resolve_live_scrape_document(
 }
 
 /// RAG ask: retrieve relevant context, then answer with LLM.
+///
+/// When `cfg.ask_stream` is true and `tx` is `Some`, synthesis tokens are
+/// forwarded as `ServiceEvent::SynthesisDelta` events as they arrive.
 #[must_use = "ask returns a Result that should be handled"]
 pub async fn ask(
     cfg: &Config,
@@ -394,15 +399,27 @@ pub async fn ask(
         },
     )
     .await;
-    let payload = ask_payload(cfg, question)
-        .await
-        .map_err(|e| -> Box<dyn Error> {
-            let message = format!(
-                "ask failed for {}: {e}",
-                question.chars().take(80).collect::<String>()
-            );
-            wrap_service_error(message, e.as_ref())
-        })?;
+    let payload = if cfg.ask_stream && tx.is_some() {
+        ask_payload_with_deltas(cfg, question, ask_delta_handler(tx.clone()))
+            .await
+            .map_err(|e| -> Box<dyn Error> {
+                let message = format!(
+                    "ask failed for {}: {e}",
+                    question.chars().take(80).collect::<String>()
+                );
+                wrap_service_error(message, e.root_cause())
+            })?
+    } else {
+        ask_payload(cfg, question)
+            .await
+            .map_err(|e| -> Box<dyn Error> {
+                let message = format!(
+                    "ask failed for {}: {e}",
+                    question.chars().take(80).collect::<String>()
+                );
+                wrap_service_error(message, e.as_ref())
+            })?
+    };
     emit(
         &tx,
         ServiceEvent::Log {
@@ -412,6 +429,22 @@ pub async fn ask(
     )
     .await;
     map_ask_payload(payload)
+}
+
+fn ask_delta_handler(tx: Option<mpsc::Sender<ServiceEvent>>) -> impl FnMut(&str) + Send {
+    static WARNED_ONCE: AtomicBool = AtomicBool::new(false);
+    move |delta| {
+        if let Some(ref sender) = tx
+            && let Err(e) = sender.try_send(ServiceEvent::SynthesisDelta {
+                text: delta.to_string(),
+            })
+            && !WARNED_ONCE.swap(true, Ordering::Relaxed)
+        {
+            log_warn(&format!(
+                "ask synthesis_delta dropped (subsequent drops suppressed): {e}"
+            ));
+        }
+    }
 }
 
 /// RAG ask with token deltas emitted as the LLM streams.
