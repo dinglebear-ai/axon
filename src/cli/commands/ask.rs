@@ -303,14 +303,13 @@ async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<
         }
     };
 
-    if let Some(ref mut task) = consumer {
-        if tokio::time::timeout(ASK_CONSUMER_DRAIN_TIMEOUT, &mut *task)
+    if let Some(ref mut task) = consumer
+        && tokio::time::timeout(ASK_CONSUMER_DRAIN_TIMEOUT, &mut *task)
             .await
             .is_err()
-        {
-            task.abort();
-            log_warn("ask synthesis consumer timed out draining stderr");
-        }
+    {
+        task.abort();
+        log_warn("ask synthesis consumer timed out draining stderr");
     }
 
     result

@@ -51,14 +51,13 @@ pub async fn run_summarize(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     let result = summarize_svc::summarize(cfg, &urls, event_tx).await?;
 
-    if let Some(ref mut task) = consumer {
-        if tokio::time::timeout(SUMMARIZE_CONSUMER_DRAIN_TIMEOUT, &mut *task)
+    if let Some(ref mut task) = consumer
+        && tokio::time::timeout(SUMMARIZE_CONSUMER_DRAIN_TIMEOUT, &mut *task)
             .await
             .is_err()
-        {
-            task.abort();
-            log_warn("summarize synthesis consumer timed out draining stderr");
-        }
+    {
+        task.abort();
+        log_warn("summarize synthesis consumer timed out draining stderr");
     }
 
     emit_summarize_result(cfg, &result)?;
