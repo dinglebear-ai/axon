@@ -69,6 +69,44 @@ fn ask_server_mode_renders_human_by_default() {
 }
 
 #[test]
+fn ask_server_mode_streams_by_default() {
+    let server = MockServer::start();
+    let stream = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/ask/stream")
+            .body_includes("What is Axon?");
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(
+                "event: delta\n\
+                 data: {\"type\":\"delta\",\"text\":\"Axon streams\"}\n\n\
+                 event: done\n\
+                 data: {\"type\":\"done\",\"result\":{\"answer\":\"Axon streams by default.\",\"query\":\"What is Axon?\",\"session\":\"default\",\"timing_ms\":{\"retrieval\":1,\"context_build\":2,\"llm\":3,\"total\":6}}}\n\n",
+            );
+    });
+    let legacy = server.mock(|when, then| {
+        when.method(POST).path("/v1/ask");
+        then.status(500)
+            .json_body(json!({ "error": "non-stream endpoint should not be used" }));
+    });
+    let home = TempDir::new().expect("temp home");
+
+    let output = axon_with_home(&home, &server.base_url(), &["ask", "What is Axon?"])
+        .output()
+        .expect("run axon");
+
+    assert!(
+        output.status.success(),
+        "ask should stream via server mode\n{}",
+        output_text(&output)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Axon streams"), "{stdout}");
+    stream.assert_calls(1);
+    legacy.assert_calls(0);
+}
+
+#[test]
 fn ask_server_mode_renders_json_only_with_json_flag() {
     let server = MockServer::start();
     let action = server.mock(|when, then| {
@@ -106,6 +144,90 @@ fn ask_server_mode_renders_json_only_with_json_flag() {
     assert_eq!(value["answer"], "Axon is a local RAG system.");
     assert_eq!(value["query"], "What is Axon?");
     action.assert_calls(1);
+}
+
+#[test]
+fn research_server_mode_streams_by_default() {
+    let server = MockServer::start();
+    let stream = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/research/stream")
+            .body_includes("streaming research");
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(
+                "event: delta\n\
+                 data: {\"type\":\"delta\",\"text\":\"Research delta\"}\n\n\
+                 event: done\n\
+                 data: {\"type\":\"done\",\"result\":{\"query\":\"streaming research\",\"limit\":10,\"offset\":0,\"summary\":\"Research delta complete\",\"summary_source\":\"llm\",\"search_results\":[],\"extractions\":[],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0},\"timing_ms\":{\"total\":7}}}\n\n",
+            );
+    });
+    let legacy = server.mock(|when, then| {
+        when.method(POST).path("/v1/research");
+        then.status(500)
+            .json_body(json!({ "error": "non-stream endpoint should not be used" }));
+    });
+    let home = TempDir::new().expect("temp home");
+
+    let output = axon_with_home(
+        &home,
+        &server.base_url(),
+        &["research", "streaming research"],
+    )
+    .output()
+    .expect("run axon");
+
+    assert!(
+        output.status.success(),
+        "research should stream via server mode\n{}",
+        output_text(&output)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Research delta"), "{stdout}");
+    stream.assert_calls(1);
+    legacy.assert_calls(0);
+}
+
+#[test]
+fn summarize_server_mode_streams_by_default() {
+    let server = MockServer::start();
+    let stream = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/summarize/stream")
+            .body_includes("https://example.com");
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(
+                "event: delta\n\
+                 data: {\"type\":\"delta\",\"text\":\"Summary delta\"}\n\n\
+                 event: done\n\
+                 data: {\"type\":\"done\",\"result\":{\"urls\":[\"https://example.com\"],\"documents\":[],\"summary\":\"Summary delta complete\",\"context_chars\":0,\"context_truncated\":false,\"usage\":null,\"timing_ms\":{\"scrape\":1,\"llm\":2,\"total\":3}}}\n\n",
+            );
+    });
+    let legacy = server.mock(|when, then| {
+        when.method(POST).path("/v1/summarize");
+        then.status(500)
+            .json_body(json!({ "error": "non-stream endpoint should not be used" }));
+    });
+    let home = TempDir::new().expect("temp home");
+
+    let output = axon_with_home(
+        &home,
+        &server.base_url(),
+        &["summarize", "https://example.com"],
+    )
+    .output()
+    .expect("run axon");
+
+    assert!(
+        output.status.success(),
+        "summarize should stream via server mode\n{}",
+        output_text(&output)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Summary delta"), "{stdout}");
+    stream.assert_calls(1);
+    legacy.assert_calls(0);
 }
 
 #[test]

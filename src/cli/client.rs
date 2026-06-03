@@ -1,4 +1,5 @@
 use crate::core::http::build_client_without_ssrf_resolver;
+use futures_util::StreamExt;
 use reqwest::StatusCode;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -123,6 +124,37 @@ impl ServerClient {
         decode_response(resp, &endpoint, response_label).await
     }
 
+    pub async fn post_json_sse<T, F>(
+        &self,
+        path: &str,
+        request: &T,
+        response_label: &'static str,
+        mut on_delta: F,
+    ) -> Result<serde_json::Value, ServerClientError>
+    where
+        T: Serialize + ?Sized,
+        F: FnMut(&str),
+    {
+        let endpoint = self.endpoint(path);
+        let mut req = self
+            .client
+            .post(endpoint.clone())
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .json(request);
+        if let Some(token) = bearer_token() {
+            check_cleartext_token_allowed(&self.base_url)?;
+            req = req.bearer_auth(token);
+        }
+
+        let resp = req.send().await.map_err(|e| {
+            ServerClientError::new(
+                ServerClientErrorKind::Connect,
+                format!("connect to {endpoint}: {e}"),
+            )
+        })?;
+        decode_sse_response(resp, &endpoint, response_label, &mut on_delta).await
+    }
+
     pub async fn delete_json<R>(
         &self,
         path: &str,
@@ -161,6 +193,137 @@ impl ServerClient {
         endpoint.set_path(&base_path);
         endpoint.set_query(query.filter(|query| !query.is_empty()));
         endpoint
+    }
+}
+
+async fn decode_sse_response<F>(
+    resp: reqwest::Response,
+    endpoint: &reqwest::Url,
+    response_label: &'static str,
+    on_delta: &mut F,
+) -> Result<serde_json::Value, ServerClientError>
+where
+    F: FnMut(&str),
+{
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<body read failed: {e}>"));
+        let kind = classify_status(status, &body);
+        return Err(ServerClientError::new(
+            kind,
+            format!("server returned {status}: {body}"),
+        ));
+    }
+
+    let mut stream = resp.bytes_stream();
+    let mut buffer = String::new();
+    let mut final_result: Option<serde_json::Value> = None;
+    while let Some(chunk) = stream.next().await {
+        let bytes = chunk.map_err(|e| {
+            ServerClientError::new(
+                ServerClientErrorKind::Decode,
+                format!("decode {response_label} stream from {endpoint}: {e}"),
+            )
+        })?;
+        let text = std::str::from_utf8(&bytes).map_err(|e| {
+            ServerClientError::new(
+                ServerClientErrorKind::Decode,
+                format!("decode {response_label} utf8 stream from {endpoint}: {e}"),
+            )
+        })?;
+        buffer.push_str(text);
+        while let Some((frame, rest)) = buffer.split_once("\n\n") {
+            let frame = frame.to_string();
+            buffer = rest.to_string();
+            if let Some(result) = handle_sse_frame(&frame, response_label, endpoint, on_delta)? {
+                final_result = Some(result);
+            }
+        }
+    }
+    if !buffer.trim().is_empty()
+        && let Some(result) = handle_sse_frame(&buffer, response_label, endpoint, on_delta)?
+    {
+        final_result = Some(result);
+    }
+    final_result.ok_or_else(|| {
+        ServerClientError::new(
+            ServerClientErrorKind::Decode,
+            format!("decode {response_label} stream from {endpoint}: missing done event"),
+        )
+    })
+}
+
+fn handle_sse_frame<F>(
+    frame: &str,
+    response_label: &'static str,
+    endpoint: &reqwest::Url,
+    on_delta: &mut F,
+) -> Result<Option<serde_json::Value>, ServerClientError>
+where
+    F: FnMut(&str),
+{
+    let data = frame
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .map(str::trim_start)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if data.trim().is_empty() {
+        return Ok(None);
+    }
+    let value: serde_json::Value = serde_json::from_str(&data).map_err(|e| {
+        ServerClientError::new(
+            ServerClientErrorKind::Decode,
+            format!("decode {response_label} SSE JSON from {endpoint}: {e}"),
+        )
+    })?;
+    match value.get("type").and_then(serde_json::Value::as_str) {
+        Some("delta") => {
+            if let Some(text) = value.get("text").and_then(serde_json::Value::as_str) {
+                on_delta(text);
+            }
+            Ok(None)
+        }
+        Some("done") => Ok(Some(
+            value
+                .get("result")
+                .cloned()
+                .or_else(|| value.get("payload").cloned())
+                .or_else(|| {
+                    value.get("answer").map(|answer| {
+                        serde_json::json!({
+                            "answer": answer,
+                            "query": "",
+                            "timing_ms": {
+                                "retrieval": 0,
+                                "context_build": 0,
+                                "llm": 0,
+                                "total": 0
+                            }
+                        })
+                    })
+                })
+                .ok_or_else(|| {
+                    ServerClientError::new(
+                        ServerClientErrorKind::Decode,
+                        format!(
+                            "decode {response_label} done event from {endpoint}: missing result"
+                        ),
+                    )
+                })?,
+        )),
+        Some("error") => Err(ServerClientError::new(
+            ServerClientErrorKind::Status,
+            value
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("stream returned error")
+                .to_string(),
+        )),
+        _ => Ok(None),
     }
 }
 

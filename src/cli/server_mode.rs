@@ -5,6 +5,7 @@ use crate::cli;
 use crate::cli::route::{CommandRoute, plan_command_route};
 use crate::core::config::{CommandKind, Config};
 use std::error::Error;
+use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -44,7 +45,11 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
     }
     let plan = plan::server_rest_plan(cfg)?;
     let client = Arc::new(cli::client::ServerClient::new(server_url)?);
-    let result = request_server_rest(&client, &plan).await?;
+    let result = if should_stream_server_result(cfg) {
+        request_server_streaming_rest(&client, &plan).await?
+    } else {
+        request_server_rest(&client, &plan).await?
+    };
     if cfg.wait
         && let Some(family) = plan.poll_family
     {
@@ -123,6 +128,17 @@ async fn run_server_mode_sessions(
     }
 }
 
+fn should_stream_server_result(cfg: &Config) -> bool {
+    if cfg.json_output {
+        return false;
+    }
+    match cfg.command {
+        CommandKind::Ask => cfg.ask_stream && !cfg.ask_explain,
+        CommandKind::Research | CommandKind::Summarize => true,
+        _ => false,
+    }
+}
+
 async fn request_server_rest(
     client: &Arc<cli::client::ServerClient>,
     plan: &plan::ServerRestPlan,
@@ -142,6 +158,30 @@ async fn request_server_rest(
             .map_err(|err| server_client_error(plan.label, err)),
         method => Err(format!("unsupported server mode method: {method}").into()),
     }
+}
+
+async fn request_server_streaming_rest(
+    client: &Arc<cli::client::ServerClient>,
+    plan: &plan::ServerRestPlan,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    if plan.method != "POST" {
+        return request_server_rest(client, plan).await;
+    }
+    let stream_path = format!("{}/stream", plan.path.trim_end_matches('/'));
+    let mut stdout = std::io::stdout();
+    let mut streamed = false;
+    let result = client
+        .post_json_sse(&stream_path, &plan.body, plan.label, |delta| {
+            streamed = true;
+            let _ = stdout.write_all(delta.as_bytes());
+            let _ = stdout.flush();
+        })
+        .await
+        .map_err(|err| server_client_error(plan.label, err))?;
+    if streamed {
+        let _ = writeln!(stdout);
+    }
+    Ok(result)
 }
 
 fn server_client_error(label: &'static str, err: cli::client::ServerClientError) -> Box<dyn Error> {
