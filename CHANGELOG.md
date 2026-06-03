@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.20.1] - 2026-06-03
+
+### Fixed
+
+- **`ask` streaming now works correctly by default.** `ask_stream=true` was the default but the CLI passed `None` for the event channel, so no tokens were streamed and `print_ask_human` skipped printing the answer entirely. Fixed: `run_in_process_ask` now sets up an mpsc channel + consumer task when `!json_output`, passes `Some(tx)` to the service, and `print_ask_human` always prints `result.answer` to stdout.
+- **`summarize` now streams LLM tokens as they arrive.** Previously used `complete_text` (blocking). Now uses `complete_streaming` with a `SynthesisDelta` delta handler, matching the research streaming pattern. The CLI handler sets up a channel + consumer that forwards tokens to stderr while the full summary is always printed to stdout.
+
 ## [4.20.0] - 2026-06-02
 
 ### Added

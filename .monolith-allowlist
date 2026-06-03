@@ -12,6 +12,7 @@ apps/web/components/shell/axon-shell-state.ts  # expires: 2026-06-09 | owner: jm
 apps/web/hooks/ws-messages/provider.ts  # expires: 2026-06-09 | owner: jmagar | split: ws-messages/{provider,reducer,types}.ts
 
 # Rust files still over 500 lines -- needs splitting
+src/services/query.rs  # expires: 2026-07-11 | owner: jmagar | split: query/{ask,retrieve,suggest}.rs
 src/crawl/scrape.rs  # expires: 2026-06-09 | owner: jmagar | split: scrape/{fetch,transform,pipeline}.rs
 src/core/config/parse.rs  # expires: 2026-06-09 | owner: jmagar | split: parse/{args,env,merge}.rs
 src/core/config/types/config.rs  # expires: 2026-06-09 | owner: jmagar | split: config/types/{crawl,embed,job}.rs
