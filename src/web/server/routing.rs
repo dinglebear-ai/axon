@@ -55,8 +55,16 @@ pub(super) fn router(
         .route("/v1/suggest", post(handlers::rag::suggest))
         .route("/v1/scrape", post(handlers::exploration::scrape))
         .route("/v1/summarize", post(handlers::exploration::summarize))
+        .route(
+            "/v1/summarize/stream",
+            post(handlers::exploration::summarize_stream),
+        )
         .route("/v1/search", post(handlers::exploration::search))
         .route("/v1/research", post(handlers::exploration::research))
+        .route(
+            "/v1/research/stream",
+            post(handlers::exploration::research_stream),
+        )
         .nest(
             "/v1/crawl",
             handlers::async_jobs::crawl_router(Arc::clone(&service_context)),

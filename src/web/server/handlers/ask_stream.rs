@@ -1,6 +1,7 @@
 use super::super::error::HttpError;
 use crate::core::config::Config;
 use crate::services::client_contract::RestAskRequest as AskRequestBody;
+use crate::services::events::ServiceEvent;
 use crate::services::query as query_svc;
 use axum::{
     Extension, Json,
@@ -23,10 +24,18 @@ use tokio::sync::mpsc;
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum AskStreamEvent {
-    Meta { phase: &'static str },
-    Delta { text: String },
-    Done { answer: String },
-    Error { message: String },
+    Meta {
+        phase: &'static str,
+    },
+    Delta {
+        text: String,
+    },
+    Done {
+        result: Box<crate::services::types::AskResult>,
+    },
+    Error {
+        message: String,
+    },
 }
 
 fn sse_json(event_name: &'static str, value: &AskStreamEvent) -> Event {
@@ -89,35 +98,42 @@ pub async fn v1_ask_stream(
             return;
         }
 
+        let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(256);
         let delta_tx = tx.clone();
         let delta_disconnected = Arc::clone(&disconnected);
-        let result = query_svc::ask_stream(&req_cfg, &req.query, move |delta| {
-            if delta_disconnected.load(Ordering::Relaxed) {
-                return;
+        let delta_task = tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                if delta_disconnected.load(Ordering::Relaxed) {
+                    return;
+                }
+                if let ServiceEvent::SynthesisDelta { text } = event
+                    && delta_tx
+                        .send(Ok(sse_json("delta", &AskStreamEvent::Delta { text })))
+                        .is_err()
+                {
+                    delta_disconnected.store(true, Ordering::Relaxed);
+                    return;
+                }
             }
-            if delta_tx
-                .send(Ok(sse_json(
-                    "delta",
-                    &AskStreamEvent::Delta {
-                        text: delta.to_string(),
-                    },
-                )))
-                .is_err()
-            {
-                delta_disconnected.store(true, Ordering::Relaxed);
-            }
-        })
-        .await
-        .map_err(|err| err.to_string());
+        });
+        let result = query_svc::ask(&req_cfg, &req.query, Some(event_tx))
+            .await
+            .map_err(|err| err.to_string());
+        let _ = delta_task.await;
 
         if disconnected.load(Ordering::Relaxed) {
             return;
         }
 
         match result {
-            Ok(answer) => {
+            Ok(result) => {
                 if tx
-                    .send(Ok(sse_json("done", &AskStreamEvent::Done { answer })))
+                    .send(Ok(sse_json(
+                        "done",
+                        &AskStreamEvent::Done {
+                            result: Box::new(result),
+                        },
+                    )))
                     .is_err()
                 {
                     disconnected.store(true, Ordering::Relaxed);
