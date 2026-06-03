@@ -244,8 +244,18 @@ pub(crate) fn print_ask_human(cfg: &Config, query: &str, active_session: &str, r
         println!("{}", result.answer);
     }
 
+    let stream_label = match result.timing_ms.streamed {
+        Some(true) => " | streamed=yes",
+        Some(false) => " | streamed=no",
+        None => "",
+    };
+    let ttft_label = result
+        .timing_ms
+        .llm_ttft_ms
+        .map(|ms| format!(" | ttft={ms}ms"))
+        .unwrap_or_default();
     println!(
-        "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms",
+        "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms{ttft_label}{stream_label}",
         muted("Timing:"),
         result.timing_ms.retrieval,
         result.timing_ms.context_build,
