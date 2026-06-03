@@ -323,6 +323,30 @@ compatibility = "canonical"
 reason = "Search/research API secret."
 
 [[env]]
+key = "AXON_SEARXNG_URL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Self-hosted SearXNG base URL for search/research (used instead of Tavily when set)."
+
+[[env]]
+key = "AXON_RESEARCH_FULL_CONTENT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Toggle research full-page-content synthesis vs snippet-only."
+
+[[env]]
 key = "GITHUB_TOKEN"
 classification = "keep-env"
 runtime_placement = "both"

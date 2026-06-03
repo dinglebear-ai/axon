@@ -202,8 +202,10 @@ impl AxonMcpServer {
             req.search_time_range,
             self.cfg.search_limit,
         );
-        if self.cfg.tavily_api_key.is_empty() {
-            return Err(internal_error("TAVILY_API_KEY is required for search"));
+        if self.cfg.tavily_api_key.is_empty() && self.cfg.searxng_url.is_empty() {
+            return Err(internal_error(
+                "search requires AXON_SEARXNG_URL or TAVILY_API_KEY",
+            ));
         }
         let (limit, offset) = (opts.limit, opts.offset);
         let service_context = self
@@ -389,8 +391,10 @@ impl AxonMcpServer {
         &self,
         req: ResearchRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        if self.cfg.tavily_api_key.is_empty() {
-            return Err(internal_error("TAVILY_API_KEY is required for research"));
+        if self.cfg.tavily_api_key.is_empty() && self.cfg.searxng_url.is_empty() {
+            return Err(internal_error(
+                "research requires AXON_SEARXNG_URL or TAVILY_API_KEY",
+            ));
         }
         let backend = crate::services::llm_backend::LlmBackendConfig::from_config(&self.cfg);
         if let Err(err) = crate::services::llm_backend::headless::gemini::validate_config(&backend)

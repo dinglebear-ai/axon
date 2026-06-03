@@ -18,9 +18,9 @@ pub async fn run_search(
     cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    if cfg.tavily_api_key.is_empty() {
+    if cfg.tavily_api_key.is_empty() && cfg.searxng_url.is_empty() {
         return Err(anyhow::anyhow!(
-            "search requires TAVILY_API_KEY — set it in .env (run 'axon doctor' to check service connectivity)"
+            "search requires AXON_SEARXNG_URL or TAVILY_API_KEY — set one in .env (run 'axon doctor' to check service connectivity)"
         )
         .into());
     }

@@ -9,8 +9,8 @@ use super::super::super::cli::GlobalArgs;
 use super::super::super::types::{ClientMode, CommandKind, Config};
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
-    env_port, parse_csv_env, parse_origin_allowlist, parse_path_budgets, resolve_mcp_transport,
-    validate_custom_headers,
+    env_bool, env_port, parse_csv_env, parse_origin_allowlist, parse_path_budgets,
+    resolve_mcp_transport, validate_custom_headers,
 };
 use super::super::toml_config::TomlConfig;
 use super::super::tuning;
@@ -191,6 +191,10 @@ fn populate_services_and_ask_basics(
     cfg.openai_api_key = non_empty_env("AXON_OPENAI_API_KEY").unwrap_or_default();
     cfg.openai_model = non_empty_env("AXON_OPENAI_MODEL").unwrap_or_default();
     cfg.tavily_api_key = env::var("TAVILY_API_KEY").ok().unwrap_or_default();
+    cfg.searxng_url = non_empty_env("AXON_SEARXNG_URL")
+        .map(|u| u.trim_end_matches('/').to_string())
+        .unwrap_or_default();
+    cfg.research_full_content = env_bool("AXON_RESEARCH_FULL_CONTENT", true);
     cfg.mcp_allowed_origins = env::var("AXON_MCP_ALLOWED_ORIGINS")
         .ok()
         .map(|raw| parse_origin_allowlist(&raw))

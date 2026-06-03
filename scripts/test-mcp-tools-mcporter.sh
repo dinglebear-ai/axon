@@ -324,8 +324,8 @@ run_suite() {
   run_json_case "${prefix}_scrape" ".ok == true and .action == \"scrape\" and .subaction == \"scrape\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.markdown | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.markdown | type == \"string\") and (.data.artifact.path | type == \"string\")) or ((.data.inline.url == \"$REAL_PAGE_URL\") and (.data.inline.content | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:scrape url:"$REAL_PAGE_URL"
   run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.content | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.content | type == \"string\") and (.data.artifact.path | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.inline.content | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
   if [[ "$URL_MODE" == "1" ]]; then
-    run_error_case "${prefix}_search_unavailable" "TAVILY_API_KEY is required for search" call_tool action:search query:'rust programming language' limit:3 offset:0
-    run_error_case "${prefix}_research_unavailable" "TAVILY_API_KEY is required for research" call_tool action:research query:'rust async best practices' limit:3 offset:0
+    run_error_case "${prefix}_search_unavailable" "search requires AXON_SEARXNG_URL or TAVILY_API_KEY" call_tool action:search query:'rust programming language' limit:3 offset:0
+    run_error_case "${prefix}_research_unavailable" "research requires AXON_SEARXNG_URL or TAVILY_API_KEY" call_tool action:research query:'rust async best practices' limit:3 offset:0
     run_error_case "${prefix}_ask_unavailable" "ask 'What is this repository?' failed" call_tool action:ask query:'What is this repository?'
     run_error_case "${prefix}_screenshot_unavailable" "screenshot failed" call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   else

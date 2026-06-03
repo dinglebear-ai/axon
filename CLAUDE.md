@@ -46,8 +46,8 @@ MCP docs:
 | `crawl <url>...` | Full site crawl for one or more start URLs | Yes (default) |
 | `map <url>` | Discover all URLs without scraping | No |
 | `extract <urls...>` | LLM-powered structured data extraction | Yes (default) |
-| `search <query>` | Web search via Tavily, auto-queues crawl jobs for results | No |
-| `research <query>` | Web research via Tavily AI search with LLM synthesis | No |
+| `search <query>` | Web search (SearXNG when `AXON_SEARXNG_URL` set, else Tavily), auto-queues crawl jobs for results | No |
+| `research <query>` | Web research with LLM synthesis. Backend: SearXNG when `AXON_SEARXNG_URL` set, else Tavily. Synthesizes over **full-page content** of the top sources (`AXON_RESEARCH_FULL_CONTENT=false` for snippet-only/fast). | No |
 | `embed [input]` | Embed file/dir/URL into Qdrant | Yes (default) |
 | `query <text>` | Semantic vector search | No |
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
@@ -320,8 +320,13 @@ AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
 # Qdrant collection (default: axon)
 AXON_COLLECTION=axon
 
-# Search and research (required for search/research commands)
+# Search and research. Provide a SearXNG instance OR a Tavily key.
+# When AXON_SEARXNG_URL is set, search/research use SearXNG (JSON format must be
+# enabled in its settings.yml); otherwise they fall back to Tavily.
+AXON_SEARXNG_URL=                       # e.g. https://searx.example.com
 TAVILY_API_KEY=your-tavily-api-key
+# research synthesizes over full page content by default; set false for snippet-only.
+AXON_RESEARCH_FULL_CONTENT=true
 
 # Ingest credentials (Reddit required; Git providers optional for private repos and higher rate limits)
 GITHUB_TOKEN=                       # optional — raises GitHub rate limits

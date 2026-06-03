@@ -8,7 +8,6 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 
 const MAX_SUMMARIZE_URLS: usize = 10;
-const DEFAULT_SUMMARIZE_CONTEXT_CHARS: usize = 120_000;
 const MIN_CONTEXT_CHARS: usize = 8_000;
 
 #[must_use = "summarize returns a Result that should be handled"]
@@ -100,8 +99,11 @@ pub async fn summarize(
 }
 
 fn summarize_context_budget(cfg: &Config) -> usize {
-    cfg.ask_max_context_chars
-        .clamp(MIN_CONTEXT_CHARS, DEFAULT_SUMMARIZE_CONTEXT_CHARS)
+    // `ask_max_context_chars` already scales with the configured model's context
+    // window (Gemini/Claude 1M, Codex 400k, else 40k). Use it directly with a
+    // floor, instead of the old fixed 120k ceiling that truncated large pages /
+    // multi-doc summaries on big-context models. (bd axon_rust-kvan)
+    cfg.ask_max_context_chars.max(MIN_CONTEXT_CHARS)
 }
 
 fn summary_system_prompt() -> &'static str {

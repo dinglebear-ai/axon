@@ -264,12 +264,15 @@ fn setup_plugin_hook_json_reports_policy_without_setup() {
         String::from_utf8_lossy(&output.stderr)
     );
     let payload: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    // The plugin-hook is probe-only (4.18.6+): it never deploys or runs setup,
+    // it only reports whether the stack is already serving `/readyz`, emitting
+    // `{exit_policy, stack}`. `stack` is "down" when unreachable (the usual case
+    // under `--no-setup` in CI) or "already_healthy" when a stack is up.
     assert_eq!(payload["exit_policy"], "success");
-    assert_eq!(payload["ran_setup"], false);
-    assert_eq!(payload["no_setup"], true);
-    assert!(payload["blocking_failures"].as_array().unwrap().is_empty());
-    assert!(payload["advisory_failures"].as_array().unwrap().is_empty());
-    assert_eq!(payload["check"]["mode"], "preflight");
-    assert!(payload["setup"].is_null());
+    let stack = payload["stack"].as_str().unwrap_or_default();
+    assert!(
+        stack == "down" || stack == "already_healthy",
+        "unexpected plugin-hook payload: {payload}"
+    );
     assert_preflight_did_not_create_runtime_dirs(home.path());
 }
