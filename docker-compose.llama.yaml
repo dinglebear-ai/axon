@@ -3,9 +3,9 @@ name: llama-cpp
 # Standalone llama.cpp server for a 26B-A4B / active-4B MoE GGUF model.
 #
 # Target:
-#   12 GB VRAM cards where the dense/shared pieces should stay on GPU and MoE
-#   expert tensors should stay in CPU RAM. The model file can live on NVMe, but
-#   good generation performance requires enough system RAM to avoid active swap.
+#   12 GB VRAM cards where llama.cpp should fit model placement, KV cache, and
+#   context to device memory. The model file can live on NVMe, but good
+#   generation performance requires enough system RAM to avoid active swap.
 #
 # Network:
 #   This compose file joins the external ${DOCKER_NETWORK:-axon} network.
@@ -20,8 +20,7 @@ name: llama-cpp
 #
 # Defaults:
 #   - Pull a GGUF quant from Hugging Face via llama.cpp's -hf loader.
-#   - Use -ngl 999 so llama.cpp places all non-MoE layers it can on GPU.
-#   - Use -ncmoe 24 so the first 24 layers' MoE experts stay in CPU RAM.
+#   - Use llama.cpp --fit so it can choose model placement for the target ctx.
 #   - Use q8_0 KV cache and flash attention to reduce VRAM pressure.
 #
 # Override examples:
@@ -38,6 +37,9 @@ x-common-service: &common-service
     nofile:
       soft: 65535
       hard: 65535
+    memlock:
+      soft: -1
+      hard: -1
   logging:
     driver: "json-file"
     options:
@@ -76,12 +78,15 @@ services:
       - --port
       - "8080"
       - --ctx-size
-      - "${LLAMA_CPP_CTX_SIZE:-32768}"
-      - --n-gpu-layers
-      - "${LLAMA_CPP_N_GPU_LAYERS:-999}"
-      - --n-cpu-moe
-      - "${LLAMA_CPP_N_CPU_MOE:-24}"
+      - "${LLAMA_CPP_CTX_SIZE:-131072}"
+      - --fit
+      - "${LLAMA_CPP_FIT:-on}"
+      - --fit-ctx
+      - "${LLAMA_CPP_FIT_CTX:-131072}"
+      - --fit-target
+      - "${LLAMA_CPP_FIT_TARGET:-512}"
       - --no-mmap
+      - --mlock
       - --flash-attn
       - "on"
       - --jinja
@@ -93,9 +98,9 @@ services:
       - --cache-type-v
       - "${LLAMA_CPP_CACHE_TYPE_V:-q8_0}"
       - --batch-size
-      - "${LLAMA_CPP_BATCH_SIZE:-512}"
+      - "${LLAMA_CPP_BATCH_SIZE:-1024}"
       - --ubatch-size
-      - "${LLAMA_CPP_UBATCH_SIZE:-256}"
+      - "${LLAMA_CPP_UBATCH_SIZE:-512}"
       - --parallel
       - "${LLAMA_CPP_PARALLEL:-1}"
       - --threads
