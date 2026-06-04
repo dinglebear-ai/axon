@@ -421,7 +421,7 @@ impl ServerHandler for AxonMcpServer {
             "- `summarize` — scrape URL context + configured LLM summary\n",
             "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",
             "- `suggest` — propose new crawl targets from indexed source coverage\n",
-            "- `research` — SearXNG/Tavily web research with LLM synthesis\n",
+            "- `research` — SearXNG/Tavily web research with LLM synthesis and auto-indexing\n",
             "- `extract` — structured data extraction via LLM\n",
             "- `status` / `doctor` — job queue health and service diagnostics\n",
             "- `artifacts` — read/grep/inspect large output files\n",

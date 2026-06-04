@@ -139,7 +139,7 @@ to disambiguate them from Axon-issued auth secrets above.
 | Variable | Provider | Used by |
 |----------|----------|---------|
 | Gemini CLI auth / `AXON_HEADLESS_GEMINI_CMD` | Gemini headless synthesis | `ask`, `evaluate`, `suggest`, extract LLM fallback, debug, research synthesis |
-| `TAVILY_API_KEY` | Tavily search API | `search`, `research` |
+| `TAVILY_API_KEY` | Tavily search API fallback when `AXON_SEARXNG_URL` is unset | `search`, `research` |
 | `GITHUB_TOKEN` | GitHub | Optional — raises rate limits on `ingest` GitHub targets |
 | `GITLAB_TOKEN` | GitLab | Optional — authenticates private projects and raises rate limits on `ingest` GitLab targets |
 | `GITEA_TOKEN` | Gitea/Forgejo | Optional — authenticates Gitea-compatible API requests |

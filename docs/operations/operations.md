@@ -51,7 +51,7 @@ Required values in `~/.axon/.env`:
 | `TEI_URL` | Default: `http://127.0.0.1:52000` |
 | `AXON_HEADLESS_GEMINI_CMD` | Gemini CLI command — required for `ask`/`evaluate`/`research`/`debug`/`suggest`/extract fallback |
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override |
-| `TAVILY_API_KEY` | Required for `search` and `research` |
+| `TAVILY_API_KEY` | Tavily fallback for `search` and `research` when `AXON_SEARXNG_URL` is unset |
 | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Required for Reddit ingest |
 
 ---

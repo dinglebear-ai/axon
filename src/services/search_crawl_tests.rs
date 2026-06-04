@@ -3,7 +3,7 @@ use crate::core::config::CommandKind;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
 use crate::jobs::config_snapshot::apply_config_snapshot;
 use crate::services::runtime::ServiceJobRuntime;
-use crate::services::types::ServiceJob;
+use crate::services::types::{ResearchHit, ServiceJob};
 use std::error::Error as StdError;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -388,4 +388,44 @@ fn crawl_status_variants() {
         )],
     };
     assert_eq!(crawl_status(&results, &wait_failed), "wait_failed");
+}
+
+#[tokio::test]
+async fn enqueue_research_crawls_embeds_by_default_and_honors_skip_embed() {
+    let mut cfg = make_cfg("research");
+    cfg.embed = true;
+    let runtime = Arc::new(EnqueueCapture::new());
+    let ctx = make_ctx(runtime.clone());
+    let hits = vec![ResearchHit {
+        position: 1,
+        title: "Official Docs".to_string(),
+        url: "http://93.184.216.34/".to_string(),
+        snippet: Some("docs".to_string()),
+    }];
+
+    let output = enqueue_research_crawls(&cfg, &ctx, &hits).await;
+
+    assert_eq!(output.jobs.len(), 1);
+    let payloads = runtime.payloads();
+    let JobPayload::Crawl { config_json, .. } = &payloads[0] else {
+        panic!("expected crawl payload: {:?}", payloads[0]);
+    };
+    let effective = apply_config_snapshot(&Config::test_default(), config_json).expect("snapshot");
+    assert!(effective.embed, "research crawl should embed by default");
+
+    cfg.embed = false;
+    let runtime = Arc::new(EnqueueCapture::new());
+    let ctx = make_ctx(runtime.clone());
+    let output = enqueue_research_crawls(&cfg, &ctx, &hits).await;
+
+    assert_eq!(output.jobs.len(), 1);
+    let payloads = runtime.payloads();
+    let JobPayload::Crawl { config_json, .. } = &payloads[0] else {
+        panic!("expected crawl payload: {:?}", payloads[0]);
+    };
+    let effective = apply_config_snapshot(&Config::test_default(), config_json).expect("snapshot");
+    assert!(
+        !effective.embed,
+        "--skip-embed should carry into research crawl jobs"
+    );
 }

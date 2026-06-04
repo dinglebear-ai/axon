@@ -53,7 +53,7 @@ The MCP server reads existing Axon stack variables at startup:
 | `AXON_OPENAI_BASE_URL` | OpenAI-compatible `/v1` base URL when `AXON_LLM_BACKEND=openai-compat` |
 | `AXON_OPENAI_MODEL` | OpenAI-compatible model name |
 | `AXON_OPENAI_API_KEY` | Optional API key for OpenAI-compatible endpoints |
-| `TAVILY_API_KEY` | Web search and research |
+| `TAVILY_API_KEY` | Tavily fallback for web search and research when `AXON_SEARXNG_URL` is unset |
 | `AXON_COLLECTION` | Default Qdrant collection |
 
 ## Job runtime

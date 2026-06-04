@@ -1,6 +1,11 @@
 name: llama-cpp
 
-# Standalone llama.cpp server for Gemma 4 E4B IT.
+# Standalone llama.cpp server for a 26B-A4B / active-4B MoE GGUF model.
+#
+# Target:
+#   12 GB VRAM cards where the dense/shared pieces should stay on GPU and MoE
+#   expert tensors should stay in CPU RAM. The model file can live on NVMe, but
+#   good generation performance requires enough system RAM to avoid active swap.
 #
 # Network:
 #   This compose file joins the external ${DOCKER_NETWORK:-axon} network.
@@ -13,14 +18,15 @@ name: llama-cpp
 # API:
 #   http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/v1
 #
-# Source model:
-#   https://huggingface.co/google/gemma-4-E4B-it
+# Defaults:
+#   - Pull a GGUF quant from Hugging Face via llama.cpp's -hf loader.
+#   - Use -ngl 999 so llama.cpp places all non-MoE layers it can on GPU.
+#   - Use -ncmoe 24 so the first 24 layers' MoE experts stay in CPU RAM.
+#   - Use q8_0 KV cache and flash attention to reduce VRAM pressure.
 #
-# llama.cpp consumes the GGUF conversion:
-#   https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF
-#
-# The model is downloaded by llama-server on first start and cached under:
-#   ${AXON_HOME:-${HOME}/.axon}/llama-cpp/cache
+# Override examples:
+#   LLAMA_CPP_HF_MODEL=ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M
+#   LLAMA_CPP_MODEL_PATH=/models/model.gguf  # then edit command from -hf to -m
 
 x-common-service: &common-service
   networks:
@@ -56,26 +62,53 @@ services:
     environment:
       TZ: ${TZ:-America/New_York}
       LLAMA_CACHE: /root/.cache/llama.cpp
+      HF_TOKEN: ${HF_TOKEN:-}
     volumes:
       - ${AXON_HOME:-${HOME}/.axon}/llama-cpp/cache:/root/.cache/llama.cpp
+      - ${AXON_HOME:-${HOME}/.axon}/llama-cpp/models:/models
     ports:
       - "${LLAMA_CPP_PORT:-8080}:8080"
     command:
       - -hf
-      - ${LLAMA_CPP_HF_MODEL:-ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M}
+      - ${LLAMA_CPP_HF_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}
       - --host
       - 0.0.0.0
       - --port
       - "8080"
       - --ctx-size
-      - "${LLAMA_CPP_CTX_SIZE:-12288}"
+      - "${LLAMA_CPP_CTX_SIZE:-32768}"
       - --n-gpu-layers
-      - "${LLAMA_CPP_N_GPU_LAYERS:-99}"
+      - "${LLAMA_CPP_N_GPU_LAYERS:-999}"
+      - --n-cpu-moe
+      - "${LLAMA_CPP_N_CPU_MOE:-24}"
+      - --no-mmap
+      - --flash-attn
+      - "on"
       - --jinja
+      - --no-mmproj
+      - --reasoning
+      - "off"
       - --cache-type-k
       - "${LLAMA_CPP_CACHE_TYPE_K:-q8_0}"
       - --cache-type-v
       - "${LLAMA_CPP_CACHE_TYPE_V:-q8_0}"
+      - --batch-size
+      - "${LLAMA_CPP_BATCH_SIZE:-512}"
+      - --ubatch-size
+      - "${LLAMA_CPP_UBATCH_SIZE:-256}"
+      - --parallel
+      - "${LLAMA_CPP_PARALLEL:-1}"
+      - --threads
+      - "${LLAMA_CPP_THREADS:-10}"
+      - --threads-batch
+      - "${LLAMA_CPP_THREADS_BATCH:-12}"
+      - --no-warmup
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 4 http://127.0.0.1:8080/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
 
 networks:
   axon:

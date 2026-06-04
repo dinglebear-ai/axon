@@ -124,7 +124,7 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
         name: "research",
         scope: ActionScope::Read,
-        description: "Run Tavily AI research with synthesis",
+        description: "Run SearXNG/Tavily research with synthesis and auto-indexing",
         cost: "expensive",
     },
     McpActionSpec {

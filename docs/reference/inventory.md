@@ -20,7 +20,7 @@ The full action set is defined by the `AxonRequest` enum in `src/mcp/schema.rs`;
 | `map` | Discover all URLs at a domain without scraping |
 | `endpoints` | Discover API endpoints from page HTML and JS bundles |
 | `query` | Semantic vector search |
-| `research` | Web research via Tavily with LLM synthesis |
+| `research` | Web research via SearXNG/Tavily with LLM synthesis and auto-indexing |
 | `retrieve` | Fetch stored document chunks from Qdrant |
 | `scrape` | Scrape URLs to markdown |
 | `screenshot` | Capture page screenshot via Chrome |

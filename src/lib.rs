@@ -69,7 +69,7 @@ async fn run_once(
         CommandKind::Dedupe => run_dedupe(cfg).await?,
         CommandKind::Ingest => run_ingest(cfg, service_context).await?,
         CommandKind::Sessions => run_sessions(cfg, service_context).await?,
-        CommandKind::Research => run_research(cfg).await?,
+        CommandKind::Research => run_research(cfg, service_context).await?,
         CommandKind::Screenshot => run_screenshot(cfg).await?,
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
