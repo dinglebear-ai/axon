@@ -1,7 +1,7 @@
 use super::{MCP_TOOL_SCHEMA_URI, server_authz};
 use crate::mcp::schema::{
-    ArtifactsSubaction, AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction,
-    IngestSubaction, VerticalScrapeSubaction,
+    AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction,
+    VerticalScrapeSubaction,
 };
 use rmcp::schemars::JsonSchema;
 use serde_json::{Value, json};
@@ -121,7 +121,6 @@ fn axon_subaction_metadata() -> Value {
         "extract": enum_values_for::<ExtractSubaction>(),
         "embed": enum_values_for::<EmbedSubaction>(),
         "ingest": enum_values_for::<IngestSubaction>(),
-        "artifacts": enum_values_for::<ArtifactsSubaction>(),
         "vertical_scrape": enum_values_for::<VerticalScrapeSubaction>(),
     })
 }

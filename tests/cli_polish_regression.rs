@@ -1,5 +1,4 @@
-use std::process::{Command, Output};
-use std::time::{Duration, Instant};
+use std::process::Command;
 
 fn temp_home() -> tempfile::TempDir {
     let home = tempfile::tempdir().expect("temp home");
@@ -21,7 +20,6 @@ fn axon(home: &tempfile::TempDir) -> Command {
         .env_remove("AXON_DATA_DIR")
         .env_remove("AXON_HOME")
         .env_remove("AXON_SQLITE_PATH")
-        .env_remove("AXON_SERVER_URL")
         .env_remove("QDRANT_URL")
         .env_remove("TEI_URL")
         .env_remove("NO_COLOR")
@@ -30,54 +28,10 @@ fn axon(home: &tempfile::TempDir) -> Command {
     cmd
 }
 
-fn output_with_timeout(mut cmd: Command, timeout: Duration) -> Output {
-    let mut child = cmd.spawn().expect("spawn axon");
-    let started = Instant::now();
-
-    loop {
-        if child.try_wait().expect("poll axon").is_some() {
-            return child.wait_with_output().expect("collect axon output");
-        }
-        if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let output = child.wait_with_output().expect("collect timed-out output");
-            panic!(
-                "axon command timed out after {timeout:?}\nstdout={}\nstderr={}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-#[test]
-fn status_watch_with_server_url_stays_on_local_path() {
-    let home = temp_home();
-    let mut cmd = axon(&home);
-    cmd.env("AXON_SERVER_URL", "http://127.0.0.1:9")
-        .arg("--color=never")
-        .arg("status")
-        .arg("--watch");
-    let output = output_with_timeout(cmd, Duration::from_secs(8));
-
-    assert!(
-        output.status.success(),
-        "status --watch should not attempt the dead server, stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        !stderr.contains("server mode status failed"),
-        "watch mode should bypass server dispatch, stderr={stderr}"
-    );
-}
-
 #[test]
 fn status_watch_json_and_quiet_use_one_shot_output() {
     let home = temp_home();
     let json_output = axon(&home)
-        .arg("--local")
         .arg("--color=never")
         .arg("status")
         .arg("--watch")
@@ -93,7 +47,6 @@ fn status_watch_json_and_quiet_use_one_shot_output() {
         .expect("watch+json must remain parseable JSON");
 
     let quiet_output = axon(&home)
-        .arg("--local")
         .arg("--color=never")
         .arg("--quiet")
         .arg("status")
@@ -114,7 +67,6 @@ fn status_watch_json_and_quiet_use_one_shot_output() {
 fn color_auto_does_not_emit_ansi_to_piped_stdout_but_always_does() {
     let home = temp_home();
     let auto_output = axon(&home)
-        .arg("--local")
         .arg("--color=auto")
         .arg("status")
         .output()
@@ -127,7 +79,6 @@ fn color_auto_does_not_emit_ansi_to_piped_stdout_but_always_does() {
     );
 
     let always_output = axon(&home)
-        .arg("--local")
         .arg("--color=always")
         .arg("status")
         .output()
@@ -144,7 +95,6 @@ fn color_auto_does_not_emit_ansi_to_piped_stdout_but_always_does() {
 fn color_never_strips_stderr_logging() {
     let home = temp_home();
     let never_output = axon(&home)
-        .arg("--local")
         .arg("--color=never")
         .arg("status")
         .arg("--json")
@@ -162,7 +112,6 @@ fn color_never_strips_stderr_logging() {
 fn watch_is_rejected_for_non_status_commands() {
     let home = temp_home();
     let output = axon(&home)
-        .arg("--local")
         .arg("sources")
         .arg("--watch")
         .output()

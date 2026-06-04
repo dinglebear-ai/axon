@@ -199,14 +199,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     ));
 
     let cfg_arc = Arc::new(cfg);
-    if cli::server_mode::client_server_dispatch(cfg_arc.as_ref())
-        == cli::server_mode::ClientServerDispatch::Server
-    {
-        cli::server_mode::run_server_mode_command(cfg_arc.as_ref()).await?;
-        log_done(&format!("command={} complete", cfg_arc.command.as_str()));
-        return Ok(());
-    }
-
     // CLI commands use ServiceContext::new() (enqueue-only) unless the command
     // intentionally needs in-process workers. Fire-and-forget submits enqueue
     // and exit; operator `worker` subcommands spawn workers in this process.

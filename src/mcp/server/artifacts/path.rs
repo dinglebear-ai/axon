@@ -172,49 +172,6 @@ fn sanitize_segment(raw: &str, fallback: &str) -> String {
     }
 }
 
-pub async fn validate_artifact_path(raw: &str) -> Result<PathBuf, ErrorData> {
-    let root = tokio::fs::canonicalize(ensure_artifact_root().await?)
-        .await
-        .map_err(|e| internal_error(e.to_string()))?;
-    let candidate = PathBuf::from(raw);
-    if candidate.as_os_str().is_empty() {
-        return Err(invalid_params("artifact path cannot be empty"));
-    }
-    if !candidate.is_absolute() {
-        reject_relative_traversal(&candidate, "artifact path")?;
-    }
-    let canonical = if candidate.is_absolute() {
-        tokio::fs::canonicalize(&candidate)
-            .await
-            .map_err(|e| invalid_params(format!("artifact path not found: {e}")))?
-    } else {
-        // Server-centric cache: try root-relative first (the stable client-facing
-        // identifier), then fall back to CWD-relative for local convenience.
-        let from_root = root.join(&candidate);
-        match tokio::fs::canonicalize(&from_root).await {
-            Ok(p) => p,
-            Err(_) => {
-                let cwd = std::env::current_dir().map_err(|e| internal_error(e.to_string()))?;
-                tokio::fs::canonicalize(cwd.join(&candidate))
-                    .await
-                    .map_err(|e| invalid_params(format!("artifact path not found: {e}")))?
-            }
-        }
-    };
-    // Security boundary: canonicalize() resolves ALL symlinks, so `canonical`
-    // is guaranteed to be a physical path with no symlink components. The
-    // starts_with check is therefore sufficient — a symlink inside the root
-    // that targets outside the root will canonicalize to the outside path and
-    // fail this check.
-    if !canonical.starts_with(&root) {
-        return Err(invalid_params(format!(
-            "artifact path must be inside {}",
-            root.display()
-        )));
-    }
-    Ok(canonical)
-}
-
 fn reject_relative_traversal(candidate: &Path, label: &str) -> Result<(), ErrorData> {
     if candidate.components().any(|c| {
         matches!(

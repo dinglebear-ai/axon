@@ -1,4 +1,3 @@
-use crate::cli::client::ServerClient;
 use crate::core::config::Config;
 use crate::services::context::ServiceContext;
 use crate::services::system::{StatusJobs, load_status_jobs};
@@ -77,7 +76,7 @@ pub async fn run_monitor(
     state.mark_monitor_started_at(chrono::Utc::now());
 
     loop {
-        let (jobs, errors) = match load_monitor_status_jobs(cfg, service_context).await {
+        let (jobs, errors) = match load_monitor_status_jobs(service_context).await {
             Ok(result) => result,
             Err(err) if options.watch => {
                 eprintln!("monitor status failed: {err}; retrying");
@@ -105,51 +104,10 @@ pub async fn run_monitor(
 }
 
 async fn load_monitor_status_jobs(
-    cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(StatusJobs, Vec<String>), Box<dyn Error>> {
-    if !cfg.local_mode
-        && let Some(server_url) = cfg.server_url.as_ref()
-    {
-        let client = ServerClient::new(server_url.clone()).map_err(|e| -> Box<dyn Error> {
-            format!("monitor build server client: {e}").into()
-        })?;
-        let value: Value =
-            client
-                .get_json("/v1/status", "status")
-                .await
-                .map_err(|e| -> Box<dyn Error> {
-                    format!("monitor server status failed: {e}").into()
-                })?;
-        return parse_status_payload_jobs(&value).map(|jobs| (jobs, Vec::new()));
-    }
-
     let (jobs, _totals, errors) = load_status_jobs(service_context).await?;
     Ok((jobs, errors))
-}
-
-fn parse_status_payload_jobs(value: &Value) -> Result<StatusJobs, Box<dyn Error>> {
-    let inner = value
-        .get("payload")
-        .filter(|payload| payload.get("local_crawl_jobs").is_some())
-        .unwrap_or(value);
-
-    Ok(StatusJobs {
-        crawl: parse_job_array(inner, "local_crawl_jobs")?,
-        extract: parse_job_array(inner, "local_extract_jobs")?,
-        embed: parse_job_array(inner, "local_embed_jobs")?,
-        ingest: parse_job_array(inner, "local_ingest_jobs")?,
-    })
-}
-
-fn parse_job_array(value: &Value, key: &str) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
-    serde_json::from_value(
-        value
-            .get(key)
-            .cloned()
-            .unwrap_or_else(|| Value::Array(Vec::new())),
-    )
-    .map_err(|e| format!("monitor status payload field {key}: {e}").into())
 }
 
 pub fn detect_job_events(

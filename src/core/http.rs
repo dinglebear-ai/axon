@@ -23,9 +23,9 @@ mod ua;
 
 // Re-export the full public API so downstream `use crate::core::http::*` continues to work.
 pub use antibot::{ChallengeDetection, detect_challenge};
+pub(crate) use client::build_client_no_redirect;
 pub(crate) use client::internal_service_http_client;
 pub use client::{build_client, fetch_html, http_client};
-pub(crate) use client::{build_client_no_redirect, build_client_without_ssrf_resolver};
 pub use conditional::{Probe, conditional_probe};
 pub use error::HttpError;
 pub use headers::parse_custom_headers;

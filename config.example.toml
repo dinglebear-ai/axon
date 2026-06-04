@@ -22,7 +22,7 @@
 # priority described above.
 
 # Service endpoint URLs are intentionally not configured here.
-# Put QDRANT_URL, TEI_URL, AXON_SERVER_URL, and AXON_CHROME_REMOTE_URL
+# Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL
 # in ~/.axon/.env. QDRANT_URL and TEI_URL also have temporary CLI overrides.
 
 [search]

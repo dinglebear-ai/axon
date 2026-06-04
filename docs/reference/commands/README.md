@@ -3,13 +3,11 @@ Last Modified: 2026-06-01
 
 Index of Axon CLI command docs.
 
-## Client/server mode
+## Local execution
 
-Set `AXON_SERVER_URL` to make supported stateful commands call a running
-`axon serve` process through direct `/v1` REST routes.
-Server-mode commands use server-owned jobs, outputs, screenshots, and
-artifacts; the host CLI does not write local markdown as the source of truth.
-Use `--local` to bypass server mode for one command.
+All CLI commands run in-process (locally, against Qdrant and TEI). There is no
+client/server forwarding — `AXON_SERVER_URL` and `--local` were removed in 5.0.0.
+To expose Axon over HTTP for API clients, run [`serve`](serve.md).
 
 ## Core
 - [ask](ask.md)

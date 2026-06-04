@@ -165,7 +165,6 @@ Use CLI-identical action names:
 - `query`, `retrieve`, `endpoints`
 - `doctor`, `domains`, `sources`, `stats`
 - `search`, `map`
-- `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
 - `scrape`, `summarize`, `research`, `ask`, `evaluate`, `suggest`, `screenshot`, `help`, `status`, `elicit_demo`
 
 Examples:
@@ -202,7 +201,7 @@ code and can trigger real network calls.
 ## Parser Rules
 The server uses strict deserialization:
 - `action` is required and must match canonical schema names exactly
-- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|artifacts`)
+- `subaction` is optional for lifecycle families (`crawl|extract|embed|ingest`); when omitted, handlers default to `start`
 - No fallback fields (`command|op|operation`)
 - No action alias remapping
 - No token normalization (`-`/spaces/case are not rewritten)
@@ -251,7 +250,6 @@ mcporter --config config/mcporter.json call axon.axon action:doctor --output jso
 mcporter --config config/mcporter.json call axon.axon action:scrape url:https://www.rust-lang.org/learn/get-started --output json
 mcporter --config config/mcporter.json call axon.axon action:query query:'rust mcp sdk' --output json
 mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 offset:0 --output json
-mcporter --config config/mcporter.json call axon.axon action:artifacts subaction:list --output json
 ```
 
 What the smoke harness enforces:
@@ -260,25 +258,14 @@ What the smoke harness enforces:
 - Every exposed route has a real smoke case.
 - Suite logs and generated configs live under `.cache/mcporter-test/`.
 
-## Artifact Inspection Workflow
+## Reading Path-Mode Artifacts
 
-Artifact responses written in path mode are pretty-printed JSON. The preferred inspection order (least to most expensive):
+Artifact responses written in path mode are pretty-printed JSON. Path-mode responses also include a `shape` field summarising key/value types, and a `preview`, so you can often understand a result without opening the file.
 
-1. **Shape summary** — path-mode responses include a `shape` field that summarises key/value types without reading the file. Often sufficient.
-2. `artifacts head` — first N lines (default 25). Quick orientation for any artifact.
-3. `artifacts grep pattern="..." context_lines=N` — regex search with context. Targeted lookup.
-4. `artifacts search pattern="..."` — cross-artifact regex search. Find which files contain a term.
-5. `artifacts read pattern="..."` — filtered line dump. Reads whole file but returns only matching lines.
-6. `artifacts read full=true` — full paginated dump. Last resort; explicit opt-in required.
+There is no `artifacts` MCP action (removed in 5.0.0). How to access the `path` field in artifact metadata depends on transport:
 
-### Artifact Lifecycle
-
-- `artifacts list` — all files in artifact dir, sorted newest first (name, bytes, age).
-- `artifacts delete path=<path>` — delete a single file. Path is validated to be within artifact root.
-- `artifacts clean max_age_hours=N` — bulk cleanup. `dry_run` defaults to `true` (preview only).
-  - `max_age_hours` is **required** — there is no default. Caller must declare intent explicitly.
-  - Never deletes files inside `screenshots/` — those are user assets, not ephemeral artifacts.
-  - Set `dry_run=false` to execute the deletion after reviewing the preview.
+- **stdio / local MCP** (the default for the bundled CLI and local clients): the server runs in your process/host, so `path` is a real local filesystem path — open it directly with your normal file tooling.
+- **`axon serve` (MCP-over-HTTP)**: `path` is **server-side** and generally not reachable from a remote client. Request `response_mode=inline` (or rely on `auto_inline` for small payloads) to get the payload back in-band instead.
 
 ### `response_mode` on All Actions
 
@@ -288,23 +275,12 @@ Valid `response_mode` values: `path|inline|both|auto_inline`. The hyphenated `au
 
 **Per-action response overrides (InlineHint):** Some actions override the standard response behavior regardless of `response_mode`:
 
-- **`ask`** and **`research`**: Always write the full payload to an artifact AND include `key_fields.answer` / `key_fields.summary` directly in the path-mode response. This means the LLM answer is always immediately readable without an `artifacts.head` follow-up, regardless of its length.
+- **`ask`** and **`research`**: Always write the full payload to an artifact AND include `key_fields.answer` / `key_fields.summary` directly in the path-mode response. This means the LLM answer is always immediately readable, regardless of its length.
 - **`scrape`** and **`retrieve`**: Default to inline-first paged document responses. Use `cursor` to continue reading large documents, or `response_mode=path|both` when you want an artifact copy for inspection/debugging.
-
-### Unified Artifact Access Model
-
-The artifact cache is server-centric. All clients — local stdio and remote HTTP — should use `artifacts.*` subactions with the `relative_path` field to access artifact content:
-
-```bash
-# Access content via relative_path (works for all clients)
-mcporter call axon.axon action:artifacts subaction:head path:"ask/what-is-hybrid-search.json"
-```
-
-The `path` field (absolute filesystem path) is present in artifact metadata for transparency and debugging only. Do not depend on it — remote clients cannot open server-side paths directly.
 
 ### Auto-inline for Small Payloads
 
-When `response_mode` is omitted or set to `auto_inline`, any payload serializing to ≤ `AXON_INLINE_BYTES_THRESHOLD` bytes (default 8 192) is returned inline without requiring an `artifacts.read` follow-up call. The response includes `"response_mode": "auto-inline"` and the full `data` object. Larger auto-mode payloads fall back to path metadata. Set `AXON_INLINE_BYTES_THRESHOLD=0` to disable automatic inlining.
+When `response_mode` is omitted or set to `auto_inline`, any payload serializing to ≤ `AXON_INLINE_BYTES_THRESHOLD` bytes (default 8 192) is returned inline without requiring a follow-up read. The response includes `"response_mode": "auto-inline"` and the full `data` object. Larger auto-mode payloads fall back to path metadata. Set `AXON_INLINE_BYTES_THRESHOLD=0` to disable automatic inlining.
 
 Document-reading actions are an exception: `scrape` and `retrieve` default to inline paged responses even when `response_mode` is omitted. Both actions share the same continuation contract:
 

@@ -1,6 +1,6 @@
 use super::{
-    DEFAULT_CHROME_URL, DEFAULT_QDRANT_URL, DEFAULT_SERVER_URL, DEFAULT_TEI_URL, LocalSetupPhase,
-    LocalSetupStatus, PhaseTimer,
+    DEFAULT_CHROME_URL, DEFAULT_QDRANT_URL, DEFAULT_TEI_URL, LocalSetupPhase, LocalSetupStatus,
+    PhaseTimer,
 };
 use crate::services::setup::config_store;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -63,12 +63,6 @@ fn ensure_env_file_with_process(
 
     env.entry("AXON_HOME".to_string()).or_insert(home.clone());
     env.entry("AXON_DATA_DIR".to_string()).or_insert(home);
-    insert_process_or_default(
-        &mut env,
-        "AXON_SERVER_URL",
-        DEFAULT_SERVER_URL,
-        &process_value,
-    );
     insert_process_or_default(&mut env, "QDRANT_URL", DEFAULT_QDRANT_URL, &process_value);
     insert_process_or_default(&mut env, "TEI_URL", DEFAULT_TEI_URL, &process_value);
     insert_process_or_default(

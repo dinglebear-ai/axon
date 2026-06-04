@@ -1,5 +1,5 @@
 use super::*;
-use crate::services::system::{StatusJobs, build_status_payload};
+use crate::services::system::StatusJobs;
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
@@ -38,45 +38,31 @@ fn job(status: &str) -> ServiceJob {
 }
 
 #[test]
-fn render_status_payload_matches_local_renderer() {
+fn render_status_jobs_renders_crawl_and_embed_sections() {
     let jobs = StatusJobs {
         crawl: vec![job("completed")],
         extract: Vec::new(),
         embed: vec![job("completed")],
         ingest: Vec::new(),
     };
-    let payload = build_status_payload(
-        &jobs.crawl,
-        &jobs.extract,
-        &jobs.embed,
-        &jobs.ingest,
-        &crate::services::types::StatusTotals::default(),
-    );
 
-    let totals = crate::services::types::StatusTotals::default();
-    let from_jobs = render_status_jobs(&jobs, totals.crawl);
-    let from_payload = render_status_payload(&payload).expect("payload should render");
+    let rendered = render_status_jobs(&jobs, 0);
 
-    assert_eq!(from_payload, from_jobs);
-    assert!(from_payload.contains("Crawl"));
-    assert!(from_payload.contains("Embed"));
-    assert!(from_payload.contains("2 docs"));
+    assert!(rendered.contains("Crawl"));
+    assert!(rendered.contains("Embed"));
+    assert!(rendered.contains("2 docs"));
 }
 
 #[test]
-fn render_status_payload_mentions_when_crawl_rows_are_truncated() {
-    let payload = build_status_payload(
-        &[job("running"), job("pending")],
-        &[],
-        &[],
-        &[],
-        &crate::services::types::StatusTotals {
-            crawl: 24,
-            ..Default::default()
-        },
-    );
+fn render_status_jobs_mentions_when_crawl_rows_are_truncated() {
+    let jobs = StatusJobs {
+        crawl: vec![job("running"), job("pending")],
+        extract: Vec::new(),
+        embed: Vec::new(),
+        ingest: Vec::new(),
+    };
 
-    let rendered = render_status_payload(&payload).expect("payload should render");
+    let rendered = render_status_jobs(&jobs, 24);
 
     assert!(
         rendered.contains("showing 2 of 24"),
@@ -89,20 +75,19 @@ fn render_status_payload_mentions_when_crawl_rows_are_truncated() {
 }
 
 #[test]
-fn render_status_payload_surfaces_reclaimed_pending_crawl_rows() {
+fn render_status_jobs_surfaces_reclaimed_pending_crawl_rows() {
     let mut reclaimed = job("pending");
     reclaimed.error_text = Some(RECLAIMED_ERROR_TEXT.to_string());
     reclaimed.result_json = None;
 
-    let payload = build_status_payload(
-        &[reclaimed],
-        &[],
-        &[],
-        &[],
-        &crate::services::types::StatusTotals::default(),
-    );
+    let jobs = StatusJobs {
+        crawl: vec![reclaimed],
+        extract: Vec::new(),
+        embed: Vec::new(),
+        ingest: Vec::new(),
+    };
 
-    let rendered = render_status_payload(&payload).expect("payload should render");
+    let rendered = render_status_jobs(&jobs, 0);
 
     assert!(
         rendered.contains("recovered after worker shutdown"),
@@ -115,7 +100,7 @@ fn render_status_payload_surfaces_reclaimed_pending_crawl_rows() {
 }
 
 #[test]
-fn render_status_payload_surfaces_reclaimed_running_crawl_rows() {
+fn render_status_jobs_surfaces_reclaimed_running_crawl_rows() {
     let mut reclaimed = job("running");
     reclaimed.error_text = Some(RECLAIMED_ERROR_TEXT.to_string());
     reclaimed.result_json = Some(json!({
@@ -124,15 +109,14 @@ fn render_status_payload_surfaces_reclaimed_running_crawl_rows() {
         "error_pages": 2
     }));
 
-    let payload = build_status_payload(
-        &[reclaimed],
-        &[],
-        &[],
-        &[],
-        &crate::services::types::StatusTotals::default(),
-    );
+    let jobs = StatusJobs {
+        crawl: vec![reclaimed],
+        extract: Vec::new(),
+        embed: Vec::new(),
+        ingest: Vec::new(),
+    };
 
-    let rendered = render_status_payload(&payload).expect("payload should render");
+    let rendered = render_status_jobs(&jobs, 0);
 
     assert!(
         rendered.contains("reclaimed retry"),
@@ -149,20 +133,19 @@ fn render_status_payload_surfaces_reclaimed_running_crawl_rows() {
 }
 
 #[test]
-fn render_status_payload_truncates_long_labels_and_errors() {
+fn render_status_jobs_truncates_long_labels_and_errors() {
     let mut long = job("failed");
     long.url = Some(format!("https://example.com/{}", "x".repeat(240)));
     long.error_text = Some("error: ".to_string() + &"y".repeat(240));
 
-    let payload = build_status_payload(
-        &[long],
-        &[],
-        &[],
-        &[],
-        &crate::services::types::StatusTotals::default(),
-    );
+    let jobs = StatusJobs {
+        crawl: vec![long],
+        extract: Vec::new(),
+        embed: Vec::new(),
+        ingest: Vec::new(),
+    };
 
-    let rendered = render_status_payload(&payload).expect("payload should render");
+    let rendered = render_status_jobs(&jobs, 0);
 
     assert!(
         !rendered.contains(&"x".repeat(180)),
@@ -186,7 +169,7 @@ fn render_status_payload_truncates_long_labels_and_errors() {
 }
 
 #[test]
-fn render_status_payload_keeps_normal_rows_with_progress_under_display_cap() {
+fn render_status_jobs_keeps_normal_rows_with_progress_under_display_cap() {
     let mut crawl = job("completed");
     crawl.url = Some(format!("https://example.com/{}", "long-path/".repeat(30)));
     crawl.result_json = Some(json!({
@@ -201,15 +184,14 @@ fn render_status_payload_keeps_normal_rows_with_progress_under_display_cap() {
         "chunks_embedded": 631679
     }));
 
-    let payload = build_status_payload(
-        &[crawl],
-        &[],
-        &[embed],
-        &[],
-        &crate::services::types::StatusTotals::default(),
-    );
+    let jobs = StatusJobs {
+        crawl: vec![crawl],
+        extract: Vec::new(),
+        embed: vec![embed],
+        ingest: Vec::new(),
+    };
 
-    let rendered = render_status_payload(&payload).expect("payload should render");
+    let rendered = render_status_jobs(&jobs, 0);
 
     let visible = strip_ansi(&rendered);
     assert!(

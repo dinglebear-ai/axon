@@ -391,7 +391,6 @@ fn env_example_only_contains_production_runtime_keys() {
         // Bootstrap + canonical data root
         "AXON_HOME",
         "AXON_DATA_DIR",
-        "AXON_SERVER_URL",
         "AXON_IMAGE",
         "AXON_COLLECTION",
         // MCP HTTP transport + auth

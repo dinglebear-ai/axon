@@ -104,43 +104,6 @@ async fn run_status_impl(
     Ok(())
 }
 
-pub(crate) fn render_status_payload(value: &serde_json::Value) -> Result<String, Box<dyn Error>> {
-    #[derive(serde::Deserialize)]
-    struct StatusPayload {
-        local_crawl_jobs: Vec<ServiceJob>,
-        local_extract_jobs: Vec<ServiceJob>,
-        local_embed_jobs: Vec<ServiceJob>,
-        local_ingest_jobs: Vec<ServiceJob>,
-    }
-
-    // Unwrap the StatusResult envelope ({payload, text, totals}) if the server
-    // returned the full struct rather than just the inner payload JSON.
-    let inner = value
-        .get("payload")
-        .filter(|p| p.get("local_crawl_jobs").is_some())
-        .unwrap_or(value);
-
-    // Defensive: clamp negative totals to 0 so a malformed payload can't
-    // either suppress the truncation note or panic the formatter.
-    let crawl_total = inner
-        .get("totals")
-        .or_else(|| value.get("totals"))
-        .and_then(|t| t.get("crawl"))
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0)
-        .max(0);
-
-    let parsed: StatusPayload = serde_json::from_value(inner.clone())?;
-    let crawl_note = crawl_truncation_note(parsed.local_crawl_jobs.len(), crawl_total);
-    Ok(render_status_jobs_from_slices(
-        &parsed.local_crawl_jobs,
-        &parsed.local_extract_jobs,
-        &parsed.local_embed_jobs,
-        &parsed.local_ingest_jobs,
-        crawl_note.as_deref(),
-    ))
-}
-
 fn render_status_jobs(jobs: &crate::services::system::StatusJobs, crawl_total: i64) -> String {
     let crawl_note = crawl_truncation_note(jobs.crawl.len(), crawl_total.max(0));
     render_status_jobs_from_slices(

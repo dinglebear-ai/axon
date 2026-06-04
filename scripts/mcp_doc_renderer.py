@@ -47,7 +47,6 @@ def generate_markdown(
     _emit_lifecycle_families(emit, lifecycle_actions, structs, enums)
     _emit_ingest_source_types(emit, enums)
     _emit_sessions_ingest_options(emit, structs)
-    _emit_artifacts_subactions(emit, enums, structs)
     _emit_enum_values(emit, enums)
     _emit_pagination(emit)
     _emit_mcp_resources(emit)
@@ -108,8 +107,8 @@ def _emit_parser_rules(emit) -> None:
     emit()
     emit("- `action` is required and must match canonical schema names")
     emit(
-        "- `subaction` is required for lifecycle families "
-        "(`crawl|extract|embed|ingest|artifacts`)"
+        "- `subaction` is optional for lifecycle families "
+        "(`crawl|extract|embed|ingest`); when omitted, handlers default to `start`"
     )
     emit("- No fallback fields (`command`, `op`, `operation`)")
     emit("- No token normalization or case folding")
@@ -269,23 +268,6 @@ def _emit_sessions_ingest_options(emit, structs: dict[str, StructDef]) -> None:
         emit()
 
 
-def _emit_artifacts_subactions(
-    emit, enums: dict[str, EnumDef], structs: dict[str, StructDef]
-) -> None:
-    emit("## Artifacts Subactions")
-    artifacts_enum = enums.get("ArtifactsSubaction")
-    artifacts_struct = structs.get("ArtifactsRequest")
-    if artifacts_enum:
-        emit(f"Subactions: `{'|'.join(artifacts_enum.snake_variants())}`")
-        emit()
-    if artifacts_struct:
-        emit("`artifacts` fields:")
-        emit("- `path` (required)")
-        emit("- `pattern` (required for `grep`)")
-        emit("- `limit` and `offset` for paginated inspection")
-    emit()
-
-
 def _emit_enum_values(emit, enums: dict[str, EnumDef]) -> None:
     emit("## Enum Values")
     emit()
@@ -415,8 +397,6 @@ def _start_requirement_summary(action: str, sdef: StructDef) -> str:
             return "start requires `input` (string)"
         case "ingest":
             return "start requires `source_type` + `target`"
-        case "artifacts":
-            return "requires `path`; `pattern` for grep"
         case _:
             req = sdef.required_fields()
             if req:

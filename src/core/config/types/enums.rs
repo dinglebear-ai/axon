@@ -44,21 +44,6 @@ pub enum CommandKind {
     Sync,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClientMode {
-    Local,
-    Server,
-}
-
-impl fmt::Display for ClientMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Local => "local",
-            Self::Server => "server",
-        })
-    }
-}
-
 impl CommandKind {
     pub fn as_str(self) -> &'static str {
         match self {

@@ -155,7 +155,7 @@ fn help_does_not_print_current_env_values() {
         &["crawl", "--help"],
         &[
             ("AXON_COLLECTION", "secret_collection_for_help_test"),
-            ("AXON_SERVER_URL", "http://secret-help-host:9999"),
+            ("AXON_MCP_HTTP_TOKEN", "secret-help-token-9999"),
             ("AXON_CHROME_REMOTE_URL", "http://secret-chrome:6000"),
         ],
     );
@@ -164,8 +164,8 @@ fn help_does_not_print_current_env_values() {
         "help output leaked AXON_COLLECTION value:\n{stdout}"
     );
     assert!(
-        !stdout.contains("secret-help-host"),
-        "help output leaked AXON_SERVER_URL value:\n{stdout}"
+        !stdout.contains("secret-help-token"),
+        "help output leaked AXON_MCP_HTTP_TOKEN value:\n{stdout}"
     );
     assert!(
         !stdout.contains("secret-chrome"),

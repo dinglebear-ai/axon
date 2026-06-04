@@ -166,14 +166,6 @@ hand-carved DTOs.
 
 | MCP action | Service or handler path | HTTP endpoint/status | Notes |
 |---|---|---|---|
-| `artifacts.head` | `src/mcp/server/artifacts*` | Missing | Artifact inspection exists for MCP result files but is not exposed through direct REST. |
-| `artifacts.grep` | `src/mcp/server/artifacts*` | Missing | Needs HTTP-safe artifact path validation and auth scope reuse. |
-| `artifacts.wc` | `src/mcp/server/artifacts*` | Missing | Same artifact API gap. |
-| `artifacts.read` | `src/mcp/server/artifacts*` | Missing | Should preserve pagination/filtered-read protections. |
-| `artifacts.list` | `src/mcp/server/artifacts*` | Missing | Candidate for read-only HTTP parity. |
-| `artifacts.search` | `src/mcp/server/artifacts*` | Missing | Candidate for read-only HTTP parity. |
-| `artifacts.delete` | `src/mcp/server/artifacts*` | Missing | Needs write/admin scope. |
-| `artifacts.clean` | `src/mcp/server/artifacts*` | Missing | Needs explicit dry-run/default safety in HTTP docs. |
 | `elicit_demo` | `src/mcp/server/handlers_elicit.rs` | Deferred | MCP UX/demo action; not a CLI or HTTP product requirement. |
 | `help` | `src/mcp/server.rs` help handler | Partial | `/v1/capabilities` and OpenAPI expose route metadata but do not mirror MCP help text. |
 

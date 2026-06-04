@@ -8,19 +8,14 @@ pub(super) enum ActionScope {
     Read,
     Write,
     InfoOnly,
-    ArtifactsBySubaction,
 }
 
 impl ActionScope {
-    pub(super) fn as_scope(self, subaction: &str) -> Option<&'static str> {
+    pub(super) fn as_scope(self, _subaction: &str) -> Option<&'static str> {
         match self {
             Self::Read => Some("axon:read"),
             Self::Write => Some("axon:write"),
             Self::InfoOnly => None,
-            Self::ArtifactsBySubaction => match subaction {
-                "delete" | "clean" => Some("axon:write"),
-                _ => Some("axon:read"),
-            },
         }
     }
 
@@ -29,7 +24,6 @@ impl ActionScope {
             Self::Read => "read",
             Self::Write => "write",
             Self::InfoOnly => "info",
-            Self::ArtifactsBySubaction => "read/write",
         }
     }
 }
@@ -143,12 +137,6 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         name: "diff",
         scope: ActionScope::Read,
         description: "Compare two URLs for content, metadata, and link changes",
-        cost: "moderate",
-    },
-    McpActionSpec {
-        name: "artifacts",
-        scope: ActionScope::ArtifactsBySubaction,
-        description: "Read, search, inspect, or clean MCP artifact files",
         cost: "moderate",
     },
     McpActionSpec {

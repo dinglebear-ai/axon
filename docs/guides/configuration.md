@@ -15,9 +15,9 @@ Axon uses two user-editable files under `~/.axon/`:
 4. Built-in defaults
 
 Service endpoint URLs are intentionally not accepted from `config.toml`.
-Use `QDRANT_URL`, `TEI_URL`, `AXON_SERVER_URL`, and `AXON_CHROME_REMOTE_URL`
-from the env layer. `QDRANT_URL` and `TEI_URL` also have temporary CLI
-overrides for one-off diagnostics.
+Use `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` from the env layer.
+`QDRANT_URL` and `TEI_URL` also have temporary CLI overrides for one-off
+diagnostics.
 
 ## Canonical `~/.axon/` layout
 
@@ -78,34 +78,18 @@ chmod 600 ~/.axon/.env
 
 If `AXON_ENV_FILE` is set, Axon treats that file as the effective env file.
 
-## CLI server mode
+## Local execution and HTTP API access
 
-`AXON_SERVER_URL` is the generic client/server switch for the CLI. When it is
-set, supported stateful commands call a running `axon serve` HTTP endpoint
-instead of executing locally:
+The `axon` CLI and MCP server always run actions in-process — locally against
+Qdrant and TEI. There is no client-to-server forwarding (the `AXON_SERVER_URL`
+env var, the `--local` / `AXON_LOCAL_MODE` flag, and `AXON_SERVER_INSECURE` were
+removed in 5.0.0).
 
-```bash
-AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
-AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
-```
-
-Server mode currently covers `status`, `scrape`, `crawl`, `extract`, `embed`,
-`ingest`, `sessions`, and `screenshot`. The server owns SQLite job state,
-output files, screenshots, and artifacts under its `AXON_DATA_DIR` (default
-`~/.axon`). CLI responses use server-owned artifact handles and root-relative
-identifiers; absolute paths are display/debug information only.
-
-Use `--local` or `AXON_LOCAL_MODE=1` to force local execution for one command
-or shell:
-
-```bash
-axon scrape https://example.com --local
-AXON_LOCAL_MODE=1 axon crawl https://example.com
-```
-
-If `AXON_MCP_HTTP_TOKEN` is set, the CLI refuses to send it over plaintext
-HTTP to non-loopback hosts. Use loopback, HTTPS, or set
-`AXON_SERVER_INSECURE=1` only for an explicitly trusted network.
+To expose Axon over HTTP for external API clients, run `axon serve`. It serves
+the first-party `/v1` REST routes and MCP-over-HTTP on `/mcp`, owning SQLite job
+state, output files, screenshots, and artifacts under its `AXON_DATA_DIR`
+(default `~/.axon`), behind the `AXON_MCP_HTTP_TOKEN` bearer policy. Point your
+own HTTP/MCP clients at it; the bundled CLI does not consume those routes.
 
 ## ~/.axon/config.toml
 
@@ -154,9 +138,6 @@ URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — n
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_SERVER_URL` | -- | Generic CLI server-mode endpoint. When set, supported stateful CLI commands call `axon serve` through direct `/v1` REST routes. |
-| `AXON_LOCAL_MODE` | `false` | Force local CLI execution even when `AXON_SERVER_URL` is configured. Equivalent to `--local`. |
-| `AXON_SERVER_INSECURE` | -- | Set to `1` to allow bearer-token auth over plaintext HTTP to non-loopback hosts. Not recommended; prefer HTTPS. |
 | `AXON_MCP_HTTP_PUBLISH` | `8001` | Docker Compose host publish address for the `axon` MCP HTTP service. The default `8001` maps to `0.0.0.0:8001` inside Compose — the container is reachable on the host's port 8001 from all interfaces. Set to `127.0.0.1:8001` to restrict to loopback only. |
 | `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address for `axon serve` / MCP HTTP. Non-loopback requires bearer or OAuth auth. |
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port for `axon serve` / MCP HTTP. |

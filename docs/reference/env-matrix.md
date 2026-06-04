@@ -38,7 +38,6 @@ Generated: 2026-05-15 from source-derived inventory.
 | `QDRANT_URL` | keep-env | both | — | no | runtime.rs |
 | `TEI_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CHROME_REMOTE_URL` | keep-env | both | — | no | runtime.rs |
-| `AXON_SERVER_URL` | keep-env | host-only | — | no | runtime.rs |
 | `AXON_MCP_PUBLIC_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CHROME_PROXY` | keep-env | both | — | no | runtime.rs |
 
@@ -324,7 +323,6 @@ The following keys were in the old `.env.example` but are omitted from the new m
 | Key | Class | Reason omitted |
 |-----|-------|---------------|
 | `AXON_DATA_DIR` | trusted-bootstrap | Operator-specific path override; not default setup |
-| `AXON_SERVER_URL` | keep-env | Rarely set; host-only URL override |
 | `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | keep-env | OAuth detail; omitted for brevity |
 | `AXON_MCP_ALLOWED_ORIGINS` | keep-env | CORS detail; omitted for brevity |
 | `GEMINI_API_KEY` | keep-env | Optional alternate Google credential path |

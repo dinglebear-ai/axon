@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - 2026-06-03
+
+### Changed
+
+- **BREAKING: CLI and MCP actions always run in-process.** The CLI/MCP client-forwarding path has been removed entirely. `axon` no longer routes commands to a remote `axon serve` over HTTP — every command runs locally against Qdrant and TEI. The `axon serve` HTTP server (`/v1/*`, MCP-over-HTTP) is unchanged and remains the way to expose Axon for API access; deploy the container only when you need that.
+  - Removed the `AXON_SERVER_URL` environment variable and the `--local` / `AXON_LOCAL_MODE` flag — execution is always local.
+  - Removed the CLI server-mode client (`ServerClient`/`RestClient`), the command-routing layer, and the MCP "thin client" forwarder.
+  - `axon setup` no longer scaffolds `AXON_SERVER_URL` into generated `.env` files.
+  - `doctor` JSON output: the `mode` object no longer includes `client`, `server_url`, `route`, or `fallback`; it now reports only `local_runtime`.
+
+### Removed
+
+- **BREAKING: the `artifacts` MCP action is removed** (`head|grep|wc|read|list|delete|clean|search`). The artifact-first response mode is unchanged — large outputs still persist to `~/.axon/artifacts/<context>` and the `path` field points at them. Because the MCP server runs in-process, read those files directly from disk, or request `response_mode=inline`/`auto_inline` to get payloads in-band.
+
 ## [4.20.3] - 2026-06-03
 
 ### Fixed

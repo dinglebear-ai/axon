@@ -118,7 +118,6 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Sources": "sources",
     "Stats": "stats",
     "Help": "help",
-    "Artifacts": "artifacts",
     "Scrape": "scrape",
     "Research": "research",
     "Ask": "ask",
