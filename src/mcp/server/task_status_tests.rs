@@ -20,7 +20,11 @@ fn job(status: &str) -> ServiceJob {
         source_type: Some("github".to_string()),
         target: Some("secret-target".to_string()),
         urls_json: Some(json!(["https://example.com/private"])),
-        result_json: Some(json!({"raw": "result"})),
+        result_json: Some(json!({
+            "raw": "result",
+            "access_token": "secret-token",
+            "repo": "https://user:secret@example.com/private/repo",
+        })),
         config_json: Some(json!({"token": "secret"})),
         attempt_count: 1,
         active_attempt_id: Some("attempt-1".to_string()),
@@ -52,14 +56,33 @@ fn task_objects_discourage_hot_polling() {
 }
 
 #[test]
-fn task_result_payload_is_minimal_and_sanitized() {
+fn task_result_payload_includes_sanitized_result_json() {
     let payload = task_result_payload(JobKind::Ingest, &job("completed"));
     let value = serde_json::to_value(payload).unwrap();
     assert_eq!(value["kind"], "ingest");
     assert_eq!(value["completed"], true);
-    assert!(value.get("result_json").is_none());
+    assert_eq!(value["result_json"]["raw"], "result");
+    assert_eq!(value["result_json"]["access_token"], "[redacted]");
+    assert_eq!(value["result_json"]["repo"], "[redacted-url]");
     assert!(value.get("config_json").is_none());
     assert!(value.get("error_text").is_none());
     assert!(value.get("target").is_none());
     assert!(value.get("url").is_none());
+}
+
+#[test]
+fn task_result_payload_truncates_oversized_result_json() {
+    let mut job = job("completed");
+    job.result_json = Some(json!({
+        "chunks": (0..80).map(|_| "x".repeat(1024)).collect::<Vec<_>>()
+    }));
+
+    let payload = task_result_payload(JobKind::Crawl, &job);
+    let value = serde_json::to_value(payload).unwrap();
+
+    assert_eq!(value["result_json"]["truncated"], true);
+    assert_eq!(
+        value["result_json"]["reason"],
+        "result_json exceeded task payload size limit"
+    );
 }

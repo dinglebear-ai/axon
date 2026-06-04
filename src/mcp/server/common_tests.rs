@@ -1,5 +1,40 @@
-use super::{validate_mcp_collection, validate_mcp_embed_input_with_roots};
+use super::{validate_mcp_collection, validate_mcp_embed_input};
+use std::sync::{Mutex, OnceLock};
 use tempfile::TempDir;
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[allow(unsafe_code)]
+fn with_embed_env<T>(roots: Option<&str>, max_bytes: Option<&str>, f: impl FnOnce() -> T) -> T {
+    let _guard = env_lock().lock().unwrap();
+    let old_roots = std::env::var("AXON_MCP_EMBED_ALLOWED_ROOTS").ok();
+    let old_max_bytes = std::env::var("AXON_MCP_EMBED_MAX_LOCAL_BYTES").ok();
+    unsafe {
+        match roots {
+            Some(value) => std::env::set_var("AXON_MCP_EMBED_ALLOWED_ROOTS", value),
+            None => std::env::remove_var("AXON_MCP_EMBED_ALLOWED_ROOTS"),
+        }
+        match max_bytes {
+            Some(value) => std::env::set_var("AXON_MCP_EMBED_MAX_LOCAL_BYTES", value),
+            None => std::env::remove_var("AXON_MCP_EMBED_MAX_LOCAL_BYTES"),
+        }
+    }
+    let result = f();
+    unsafe {
+        match old_roots {
+            Some(value) => std::env::set_var("AXON_MCP_EMBED_ALLOWED_ROOTS", value),
+            None => std::env::remove_var("AXON_MCP_EMBED_ALLOWED_ROOTS"),
+        }
+        match old_max_bytes {
+            Some(value) => std::env::set_var("AXON_MCP_EMBED_MAX_LOCAL_BYTES", value),
+            None => std::env::remove_var("AXON_MCP_EMBED_MAX_LOCAL_BYTES"),
+        }
+    }
+    result
+}
 
 #[test]
 fn mcp_collection_validation_accepts_safe_names() {
@@ -23,14 +58,16 @@ fn mcp_collection_validation_rejects_path_and_query_chars() {
 
 #[test]
 fn mcp_embed_accepts_url_and_text_without_local_roots() {
-    assert_eq!(
-        validate_mcp_embed_input_with_roots("https://example.com/docs", &[], 1024).unwrap(),
-        "https://example.com/docs"
-    );
-    assert_eq!(
-        validate_mcp_embed_input_with_roots("plain text to embed", &[], 1024).unwrap(),
-        "plain text to embed"
-    );
+    with_embed_env(None, None, || {
+        assert_eq!(
+            validate_mcp_embed_input("https://example.com/docs").unwrap(),
+            "https://example.com/docs"
+        );
+        assert_eq!(
+            validate_mcp_embed_input("plain text to embed").unwrap(),
+            "plain text to embed"
+        );
+    });
 }
 
 #[test]
@@ -39,7 +76,9 @@ fn mcp_embed_rejects_existing_local_path_without_roots() {
     let file = temp.path().join("doc.md");
     std::fs::write(&file, "hello").unwrap();
 
-    assert!(validate_mcp_embed_input_with_roots(&file.to_string_lossy(), &[], 1024).is_err());
+    with_embed_env(None, None, || {
+        assert!(validate_mcp_embed_input(&file.to_string_lossy()).is_err());
+    });
 }
 
 #[test]
@@ -48,9 +87,10 @@ fn mcp_embed_allows_file_under_explicit_root() {
     let file = temp.path().join("doc.md");
     std::fs::write(&file, "hello").unwrap();
 
-    let resolved =
-        validate_mcp_embed_input_with_roots(&file.to_string_lossy(), &[temp.path().into()], 1024)
-            .unwrap();
+    let roots = temp.path().to_string_lossy();
+    let resolved = with_embed_env(Some(&roots), None, || {
+        validate_mcp_embed_input(&file.to_string_lossy()).unwrap()
+    });
 
     assert_eq!(
         resolved,
@@ -67,11 +107,26 @@ fn mcp_embed_rejects_dotfiles_secret_names_and_oversized_files() {
     std::fs::write(&dotfile, "OPENAI_API_KEY=secret").unwrap();
     std::fs::write(&secret, "secret").unwrap();
     std::fs::write(&large, "0123456789").unwrap();
-    let roots = [temp.path().to_path_buf()];
+    let roots = temp.path().to_string_lossy();
+    with_embed_env(Some(&roots), Some("4"), || {
+        assert!(validate_mcp_embed_input(&dotfile.to_string_lossy()).is_err());
+        assert!(validate_mcp_embed_input(&secret.to_string_lossy()).is_err());
+        assert!(validate_mcp_embed_input(&large.to_string_lossy()).is_err());
+    });
+}
 
-    assert!(validate_mcp_embed_input_with_roots(&dotfile.to_string_lossy(), &roots, 1024).is_err());
-    assert!(validate_mcp_embed_input_with_roots(&secret.to_string_lossy(), &roots, 1024).is_err());
-    assert!(validate_mcp_embed_input_with_roots(&large.to_string_lossy(), &roots, 4).is_err());
+#[test]
+fn mcp_embed_rejects_nested_secret_names() {
+    let temp = TempDir::new().unwrap();
+    let nested = temp.path().join("nested");
+    std::fs::create_dir(&nested).unwrap();
+    let secret = nested.join("secret-token.txt");
+    std::fs::write(&secret, "secret").unwrap();
+
+    let roots = temp.path().to_string_lossy();
+    with_embed_env(Some(&roots), None, || {
+        assert!(validate_mcp_embed_input(&temp.path().to_string_lossy()).is_err());
+    });
 }
 
 #[cfg(unix)]
@@ -86,12 +141,8 @@ fn mcp_embed_rejects_symlink_inputs() {
     std::fs::write(&target, "outside").unwrap();
     symlink(&target, &link).unwrap();
 
-    assert!(
-        validate_mcp_embed_input_with_roots(
-            &link.to_string_lossy(),
-            &[allowed.path().into()],
-            1024,
-        )
-        .is_err()
-    );
+    let roots = allowed.path().to_string_lossy();
+    with_embed_env(Some(&roots), None, || {
+        assert!(validate_mcp_embed_input(&link.to_string_lossy()).is_err());
+    });
 }

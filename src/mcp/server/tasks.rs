@@ -29,6 +29,7 @@ use uuid::Uuid;
 
 const TASK_LIST_LIMIT: usize = 20;
 const TASK_LIST_MAX_OFFSET: usize = 200;
+const DEFAULT_TASK_RESULT_WAIT_TIMEOUT_SECS: u64 = 300;
 
 pub(super) async fn enqueue_task(
     server: &AxonMcpServer,
@@ -130,7 +131,17 @@ pub(super) async fn get_task_result(
 ) -> Result<GetTaskPayloadResult, ErrorData> {
     authorize_task_lifecycle(server, &context, "tasks/result")?;
     let (kind, job_id) = parse_task_id(&request.task_id)?;
-    let job = wait_for_terminal_job(server, kind, job_id).await?;
+    let job = tokio::time::timeout(
+        task_result_wait_timeout(),
+        wait_for_terminal_job(server, kind, job_id),
+    )
+    .await
+    .map_err(|_| {
+        invalid_params(format!(
+            "task result timed out before terminal state: {}",
+            task_id_for(kind, job_id)
+        ))
+    })??;
     Ok(task_result_payload(kind, &job))
 }
 
@@ -355,6 +366,15 @@ async fn wait_for_terminal_job(
 fn parse_uuid(raw: &str) -> Result<Uuid, ErrorData> {
     Uuid::parse_str(raw)
         .map_err(|e| ErrorData::internal_error(format!("invalid queued job id: {e}"), None))
+}
+
+fn task_result_wait_timeout() -> std::time::Duration {
+    let secs = std::env::var("AXON_TASK_RESULT_WAIT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_TASK_RESULT_WAIT_TIMEOUT_SECS);
+    std::time::Duration::from_secs(secs)
 }
 
 fn parse_cursor_offset(cursor: Option<String>) -> Result<usize, ErrorData> {
