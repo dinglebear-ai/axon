@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] - 2026-06-04
+
+### Fixed
+
+- **Classified host-side cargo rustc wrapper environment knobs in the env matrix.** Added `AXON_RUSTC_WRAPPER_DELEGATE`, `AXON_RUSTC_WRAPPER_LOCAL_BIN`, `AXON_RUSTC_WRAPPER_NO_SCCACHE`, and `AXON_RUSTC_WRAPPER_PLUGIN_BIN` as script/test-only, non-runtime variables so the env/config boundary check stays current without treating wrapper controls as production configuration.
+
 ## [5.0.0] - 2026-06-03
 
 ### Changed

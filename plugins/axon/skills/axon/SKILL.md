@@ -10,7 +10,7 @@ allowed-tools: mcp__plugin_axon_axon__axon
 axon is a self-hosted RAG engine. Two surfaces, same backend
 (Spider.rs/Chrome -> Qdrant, SQLite jobs, Tavily for web search):
 
-- **MCP (preferred)** — single tool `mcp__axon__axon`, routed by `action` (and `subaction` for lifecycle families). Default `response_mode=path` writes artifacts to `.cache/axon-mcp/` and returns a compact `shape` summary.
+- **MCP (preferred)** — single tool `mcp__plugin_axon_axon__axon`, routed by `action` (and `subaction` for lifecycle families). Default `response_mode=path` writes artifacts to `.cache/axon-mcp/` and returns a compact `shape` summary.
 - **CLI (fallback)** — `axon <command> [flags]`. Use for shell scripting, cron, or when the MCP server is down.
 
 Both surfaces accept the same operations and parameters. This skill leads with MCP request shapes; CLI equivalents are listed alongside.
@@ -44,7 +44,7 @@ Only pass parameters the user explicitly asked for. Defaults exist for a reason 
 
 ## When to fall back to the CLI
 
-- The MCP server is offline (`mcp__axon__axon { "action": "doctor" }` fails or the tool is missing).
+- The MCP server is offline (`mcp__plugin_axon_axon__axon { "action": "doctor" }` fails or the tool is missing).
 - You're authoring a shell script, systemd unit, or cron job that runs outside Claude Code.
 - You need axon's built-in `--cron-every-seconds`/`--cron-max-runs` loop.
 - The user explicitly asks for a CLI command.

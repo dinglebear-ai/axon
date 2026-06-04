@@ -139,13 +139,61 @@ fn mcp_apps_ui_metadata_is_on_dedicated_dashboard_tool_only() {
         meta.get("ui")
             .and_then(|ui| ui.get("resourceUri"))
             .and_then(serde_json::Value::as_str),
-        Some(super::STATUS_DASHBOARD_URI)
+        Some(super::handler_meta::STATUS_DASHBOARD_URI)
+    );
+}
+
+#[test]
+fn routed_axon_tool_advertises_optional_task_support() {
+    let tools = super::AxonMcpServer::tool_router().list_all();
+
+    let axon = tools
+        .iter()
+        .find(|tool| tool.name == "axon")
+        .expect("axon tool must be registered");
+    assert_eq!(
+        axon.execution
+            .as_ref()
+            .and_then(|execution| execution.task_support),
+        Some(rmcp::model::TaskSupport::Optional),
+        "routed axon tool must support task-augmented calls without requiring them"
+    );
+    assert_eq!(
+        axon.task_support(),
+        rmcp::model::TaskSupport::Optional,
+        "rmcp must allow normal non-task calls for optional task tools"
+    );
+
+    let serialized = serde_json::to_value(axon).expect("serialize axon tool metadata");
+    assert_eq!(
+        serialized["execution"]["taskSupport"],
+        serde_json::json!("optional")
+    );
+}
+
+#[test]
+fn status_dashboard_tool_does_not_advertise_task_support() {
+    let tools = super::AxonMcpServer::tool_router().list_all();
+
+    let dashboard = tools
+        .iter()
+        .find(|tool| tool.name == "axon_status_dashboard")
+        .expect("dashboard tool must be registered");
+    assert!(
+        dashboard.execution.is_none(),
+        "dashboard tool renders an MCP App widget and must not advertise task support"
+    );
+
+    let serialized = serde_json::to_value(dashboard).expect("serialize dashboard tool metadata");
+    assert!(
+        serialized.get("execution").is_none(),
+        "dashboard tool metadata must not include execution.taskSupport"
     );
 }
 
 #[test]
 fn mcp_apps_resource_meta_declares_locked_down_policy() {
-    let meta = super::status_dashboard_resource_meta();
+    let meta = super::handler_meta::status_dashboard_resource_meta();
     let ui = meta
         .get("ui")
         .expect("resource metadata must include a ui object");
@@ -159,12 +207,24 @@ fn mcp_apps_resource_meta_declares_locked_down_policy() {
 
 #[test]
 fn mcp_apps_capabilities_advertise_html_app_mime_type() {
-    let capabilities =
-        serde_json::to_value(super::mcp_apps_server_capabilities()).expect("serialize caps");
+    let capabilities = serde_json::to_value(super::handler_meta::mcp_apps_server_capabilities())
+        .expect("serialize caps");
     assert_eq!(
         capabilities["extensions"]["io.modelcontextprotocol/ui"]["mimeTypes"],
-        serde_json::json!([super::MCP_APP_MIME_TYPE])
+        serde_json::json!([super::handler_meta::MCP_APP_MIME_TYPE])
     );
+}
+
+#[test]
+fn mcp_capabilities_advertise_task_augmented_tool_calls() {
+    let capabilities = serde_json::to_value(super::handler_meta::mcp_apps_server_capabilities())
+        .expect("serialize caps");
+    assert_eq!(
+        capabilities["tasks"]["requests"]["tools"]["call"],
+        serde_json::json!({})
+    );
+    assert_eq!(capabilities["tasks"]["list"], serde_json::json!({}));
+    assert_eq!(capabilities["tasks"]["cancel"], serde_json::json!({}));
 }
 
 #[test]

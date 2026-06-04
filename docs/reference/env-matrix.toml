@@ -227,6 +227,54 @@ compatibility = "advanced"
 reason = "Development Compose bind-mount source for the locally built Axon binary directory."
 
 [[env]]
+key = "AXON_RUSTC_WRAPPER_DELEGATE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side cargo rustc wrapper override for the compiler delegate command; not Axon runtime config."
+
+[[env]]
+key = "AXON_RUSTC_WRAPPER_LOCAL_BIN"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side cargo rustc wrapper test/install destination override for the local Axon binary."
+
+[[env]]
+key = "AXON_RUSTC_WRAPPER_NO_SCCACHE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side cargo rustc wrapper switch used by wrapper tests to bypass sccache."
+
+[[env]]
+key = "AXON_RUSTC_WRAPPER_PLUGIN_BIN"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side cargo rustc wrapper test/install destination override for the plugin Axon binary."
+
+[[env]]
 key = "GEMINI_HOME"
 classification = "compose-env"
 runtime_placement = "compose-interpolation"

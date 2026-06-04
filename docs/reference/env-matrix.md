@@ -119,6 +119,18 @@ Generated: 2026-05-15 from source-derived inventory.
 | `GEMINI_AUTH_FILES` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `QDRANT_COLLECTION` | trusted-bootstrap | host-only | — | no | advanced.rs |
 
+### Host Build/Test Controls
+
+These are read only by repository scripts during local build or test workflows.
+They are not Axon runtime configuration and must not be added to production env templates.
+
+| Key | Class | Placement | Notes | Source |
+|-----|-------|-----------|-------|--------|
+| `AXON_RUSTC_WRAPPER_DELEGATE` | external/test-only | not-runtime | Optional cargo rustc wrapper delegate command override | scripts |
+| `AXON_RUSTC_WRAPPER_LOCAL_BIN` | external/test-only | not-runtime | Test/install destination override for the local Axon binary | scripts |
+| `AXON_RUSTC_WRAPPER_NO_SCCACHE` | external/test-only | not-runtime | Test switch to bypass sccache in the cargo rustc wrapper | scripts |
+| `AXON_RUSTC_WRAPPER_PLUGIN_BIN` | external/test-only | not-runtime | Test/install destination override for the plugin Axon binary | scripts |
+
 ### Docker Compose Interpolation (compose-env)
 
 These are read by Docker Compose from `~/.axon/.env` as variable substitution.

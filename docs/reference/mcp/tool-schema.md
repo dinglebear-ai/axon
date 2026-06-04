@@ -15,6 +15,31 @@ Code references:
 - `src/mcp/schema.rs`
 - `src/mcp/server.rs`
 
+## Task-Augmented Calls
+
+- Server capabilities advertise RMCP task support for `tools/call`.
+- The routed `axon` tool advertises `execution.taskSupport: "optional"`; clients may use normal calls or task-augmented calls.
+- `axon_status_dashboard` does not advertise task support. It is an MCP Apps widget tool, not a durable job task.
+- Normal calls still return Axon's canonical JSON success envelope with `job_id` or `job_ids` fields for async starts.
+- Task-augmented calls use RMCP task lifecycle methods backed by the same durable SQLite job rows.
+- Supported task starts: `crawl.start`, `extract.start`, `embed.start`, and `ingest.start`.
+- Unsupported task action/subaction pairs return `invalid_params`; immediate actions such as `help`, `status`, and `query` remain normal calls.
+- Task IDs are stable aliases over Axon job IDs: `axon:<kind>:<job_uuid>`.
+- Task-mode `crawl.start` accepts exactly one URL because one RMCP task maps to one Axon crawl job. Use normal non-task `crawl.start` for multi-URL crawl submissions.
+- `tasks/get` and `tasks/cancel` return Task fields at top level; `tasks/result` waits until the job is terminal, then returns a compact sanitized payload instead of a raw `ServiceJob` row.
+- Task objects include `pollInterval` of at least 5000 ms. Clients should not hot-poll SQLite-backed task status.
+- If `_meta.progressToken` is supplied on a task call, Axon sends allowlisted `notifications/progress` updates from persisted job progress and stops on terminal status or send failure.
+- MCP task metadata belongs in protocol request metadata (`_meta.progressToken` / task-augmented request fields), not inside the Axon tool argument map.
+- Authorization is server-scoped: valid Axon OAuth/static credentials grant Axon server access. Job and task IDs are server-bound references, not per-user ACL objects.
+
+See also:
+
+- [MCP overview](overview.md#task-augmented-calls) for normal versus task-augmented workflow guidance.
+- [Configuration guide](../../guides/configuration.md) for server auth and async job runtime settings.
+- [Architecture overview](../../architecture/stack/arch.md) for MCP, service, and job-runtime boundaries.
+- [Repository guide](../../contributing/repo/repo.md) for source layout and testing policy.
+- [This tool-schema reference](tool-schema.md#task-augmented-calls) for `tasks/get`, `tasks/cancel`, `tasks/result`, `_meta.progressToken`, and `axon:<kind>:<job_uuid>` wire details.
+
 ## Canonical Success Envelope
 ```json
 {

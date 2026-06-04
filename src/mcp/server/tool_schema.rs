@@ -1,4 +1,4 @@
-use super::{MCP_TOOL_SCHEMA_URI, server_authz};
+use super::{common::MCP_TOOL_SCHEMA_URI, server_authz};
 use crate::mcp::schema::{
     AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction,
     VerticalScrapeSubaction,
