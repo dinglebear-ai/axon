@@ -2,6 +2,8 @@
 pub(super) mod artifacts;
 #[path = "server/common.rs"]
 pub mod common;
+#[path = "server/handler_meta.rs"]
+mod handler_meta;
 #[path = "server/handlers_crawl_extract.rs"]
 mod handlers_crawl_extract;
 #[path = "server/handlers_elicit.rs"]
@@ -23,6 +25,14 @@ mod server_authz;
 mod services_migration_tests;
 #[path = "server/stdio.rs"]
 mod stdio_runner;
+#[path = "server/task_id.rs"]
+mod task_id;
+#[path = "server/task_progress.rs"]
+mod task_progress;
+#[path = "server/task_status.rs"]
+mod task_status;
+#[path = "server/tasks.rs"]
+mod tasks;
 #[path = "server/tool_schema.rs"]
 mod tool_schema;
 #[cfg(test)]
@@ -30,20 +40,22 @@ mod tool_schema;
 mod tool_schema_tests;
 
 use super::auth::AuthPolicy;
-use super::schema::{AxonRequest, AxonToolResponse, parse_axon_request};
+use super::schema::{AxonRequest, parse_axon_request};
 use crate::core::config::Config;
 use crate::services::context::ServiceContext;
 use crate::services::system;
-use common::{MCP_TOOL_SCHEMA_URI, internal_error, invalid_params};
+use common::{internal_error, invalid_params};
+use handler_meta::STATUS_DASHBOARD_URI;
 pub use http::run_unified_server;
 use rmcp::{
     ErrorData, RoleServer, ServerHandler,
     handler::server::wrapper::Parameters,
     model::{
-        AnnotateAble, CallToolRequestParams, CallToolResult, ExtensionCapabilities,
-        InitializeRequestParams, InitializeResult, ListResourcesResult, Meta,
-        PaginatedRequestParams, RawResource, ReadResourceRequestParams, ReadResourceResult,
-        Resource, ResourceContents, ServerCapabilities, ServerInfo,
+        CallToolRequestParams, CallToolResult, CancelTaskParams, CancelTaskResult,
+        CreateTaskResult, GetTaskInfoParams, GetTaskPayloadResult, GetTaskResult,
+        GetTaskResultParams, InitializeRequestParams, InitializeResult, ListResourcesResult,
+        ListTasksResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult,
+        ServerInfo,
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
@@ -51,20 +63,18 @@ use rmcp::{
 use serde_json::Value;
 pub use server_authz::required_scope_for;
 use server_authz::required_scope_for_tool;
-use std::sync::{Arc, LazyLock};
+use std::{collections::HashMap, sync::Arc};
 pub use stdio_runner::run_stdio_server;
-use tokio::sync::OnceCell;
-
-const STATUS_DASHBOARD_URI: &str = "ui://axon/status-dashboard";
-const MCP_APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
-static STATUS_DASHBOARD_HTML: &str = include_str!("assets/status_dashboard.html");
-
-static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(tool_schema::mcp_tool_schema_markdown);
+use tokio::{
+    sync::{Mutex, OnceCell},
+    task::JoinHandle,
+};
 
 #[derive(Clone)]
 pub struct AxonMcpServer {
     cfg: Arc<Config>,
     service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+    progress_notifiers: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
     /// Authentication policy for this server instance.
     ///
     /// Set to `LoopbackDev` for stdio mode (process isolation is the trust
@@ -81,6 +91,7 @@ impl AxonMcpServer {
         Self {
             cfg: Arc::new(cfg),
             service_context: Arc::new(OnceCell::new()),
+            progress_notifiers: Arc::new(Mutex::new(HashMap::new())),
             auth_policy: AuthPolicy::LoopbackDev,
         }
     }
@@ -92,6 +103,7 @@ impl AxonMcpServer {
         Self {
             cfg: Arc::new(cfg),
             service_context,
+            progress_notifiers: Arc::new(Mutex::new(HashMap::new())),
             auth_policy: AuthPolicy::LoopbackDev,
         }
     }
@@ -131,7 +143,8 @@ impl AxonMcpServer {
     #[tool(
         name = "axon",
         description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff.",
-        input_schema = tool_schema::axon_tool_input_schema()
+        input_schema = tool_schema::axon_tool_input_schema(),
+        execution(task_support = "optional")
     )]
     async fn axon<'a>(
         &'a self,
@@ -193,7 +206,7 @@ impl AxonMcpServer {
                 ));
             }
         };
-        let response = append_stale_binary_warning(response);
+        let response = handler_meta::append_stale_binary_warning(response);
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
     }
@@ -201,7 +214,7 @@ impl AxonMcpServer {
     #[tool(
         name = "axon_status_dashboard",
         description = "Render Axon's interactive MCP Apps status dashboard. Use this when the user wants to inspect live crawl, embed, extract, ingest, worker, and service status visually.",
-        meta = status_dashboard_tool_meta()
+        meta = handler_meta::status_dashboard_tool_meta()
     )]
     async fn axon_status_dashboard(&self) -> Result<CallToolResult, ErrorData> {
         tracing::info!(
@@ -218,62 +231,6 @@ impl AxonMcpServer {
             .map_err(|e| internal_error(format!("serialize status dashboard payload: {e}")))?;
         Ok(CallToolResult::structured(structured))
     }
-}
-
-fn append_stale_binary_warning(response: AxonToolResponse) -> AxonToolResponse {
-    match crate::core::binary_status::stale_binary_warning() {
-        Some(warning) => response.with_warning(warning),
-        None => response,
-    }
-}
-
-fn mcp_tool_schema_markdown() -> &'static str {
-    &MCP_TOOL_SCHEMA_MD
-}
-
-fn status_dashboard_tool_meta() -> Meta {
-    let mut m = Meta::new();
-    // Nested form: _meta.ui.resourceUri (TypeScript SDK / MCP Apps convention).
-    // The MCP host SDK normalizes this into a flat key internally; we only need
-    // to emit the canonical nested form here.
-    m.insert(
-        "ui".to_string(),
-        serde_json::json!({ "resourceUri": STATUS_DASHBOARD_URI }),
-    );
-    m
-}
-
-fn status_dashboard_resource_meta() -> Meta {
-    let mut m = Meta::new();
-    m.insert(
-        "ui".to_string(),
-        serde_json::json!({
-            "csp": {
-                "connectDomains": [],
-                "resourceDomains": [],
-                "frameDomains": [],
-                "baseUriDomains": []
-            },
-            "permissions": {}
-        }),
-    );
-    m
-}
-
-fn mcp_apps_server_capabilities() -> ServerCapabilities {
-    let mut extensions = ExtensionCapabilities::new();
-    // Declare MCP Apps extension support so the host knows to render widgets.
-    let mut ui_ext = serde_json::Map::new();
-    ui_ext.insert(
-        "mimeTypes".to_string(),
-        serde_json::json!(["text/html;profile=mcp-app"]),
-    );
-    extensions.insert("io.modelcontextprotocol/ui".to_string(), ui_ext);
-    ServerCapabilities::builder()
-        .enable_tools()
-        .enable_resources()
-        .enable_extensions_with(extensions)
-        .build()
 }
 
 #[tool_handler(router = Self::tool_router())]
@@ -333,156 +290,71 @@ impl ServerHandler for AxonMcpServer {
         Self::tool_router().call(tcc).await
     }
 
+    async fn enqueue_task(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CreateTaskResult, ErrorData> {
+        tasks::enqueue_task(self, request, context).await
+    }
+
+    async fn list_tasks(
+        &self,
+        request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListTasksResult, ErrorData> {
+        tasks::list_tasks(self, request, context).await
+    }
+
+    async fn get_task_info(
+        &self,
+        request: GetTaskInfoParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<GetTaskResult, ErrorData> {
+        tasks::get_task_info(self, request, context).await
+    }
+
+    async fn get_task_result(
+        &self,
+        request: GetTaskResultParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<GetTaskPayloadResult, ErrorData> {
+        tasks::get_task_result(self, request, context).await
+    }
+
+    async fn cancel_task(
+        &self,
+        request: CancelTaskParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CancelTaskResult, ErrorData> {
+        tasks::cancel_task(self, request, context).await
+    }
+
     async fn initialize(
         &self,
         request: InitializeRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, ErrorData> {
-        tracing::info!(
-            client_name = %request.client_info.name,
-            client_version = %request.client_info.version,
-            protocol_version = %request.protocol_version,
-            has_extensions = %request.capabilities.extensions.is_some(),
-            extensions = ?request.capabilities.extensions,
-            "mcp_app initialize — client capabilities"
-        );
-        let info = self.get_info();
-        Ok(InitializeResult::new(info.capabilities)
-            .with_protocol_version(request.protocol_version)
-            .with_server_info(info.server_info)
-            .with_instructions(info.instructions.unwrap_or_default()))
+        handler_meta::initialize(self, request).await
     }
 
     fn get_info(&self) -> ServerInfo {
-        tracing::info!("mcp_app get_info called — client connected");
-        let mut info = ServerInfo::default();
-        info.instructions = Some(concat!(
-            "Axon is a self-hosted RAG engine for web crawl, scrape, extract, embed, and semantic search.\n",
-            "\n",
-            "Use the single `axon` tool with `action`/`subaction` routing for all operations.\n",
-            "Call `action:help` first to discover all available actions, subactions, and parameter defaults.\n",
-            "\n",
-            "Search for this server's tools when the user wants to:\n",
-            "- Crawl or scrape websites and index their content\n",
-            "- Embed documents or URLs into the vector knowledge base\n",
-            "- Run semantic search or RAG queries over indexed content\n",
-            "- Ingest external sources (GitHub repos, Reddit threads/subreddits, YouTube videos/playlists)\n",
-            "- Ask grounded questions against indexed docs (RAG with LLM synthesis)\n",
-            "- Summarize one or more URLs from freshly scraped page context\n",
-            "- Research topics via web search with automatic indexing\n",
-            "- Extract structured data from pages using LLM-powered extraction\n",
-            "- Check job queue status, cancel jobs, or manage async workers\n",
-            "- Take screenshots, map site URLs, retrieve stored documents\n",
-            "\n",
-            "Key capabilities:\n",
-            "- `crawl` — full-site async crawl with HTTP/Chrome auto-switch\n",
-            "- `scrape` — single-page markdown extraction\n",
-            "- `embed` — index file, directory, or URL into Qdrant\n",
-            "- `ingest` — GitHub/Reddit/YouTube source ingestion\n",
-            "- `query` — dense + BM42 hybrid semantic search\n",
-            "- `endpoints` — static endpoint discovery with optional verification\n",
-            "- `ask` — RAG: retrieve context + LLM answer\n",
-            "- `summarize` — scrape URL context + configured LLM summary\n",
-            "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",
-            "- `suggest` — propose new crawl targets from indexed source coverage\n",
-            "- `research` — SearXNG/Tavily web research with LLM synthesis and auto-indexing\n",
-            "- `extract` — structured data extraction via LLM\n",
-            "- `status` / `doctor` — job queue health and service diagnostics\n",
-            "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",
-            "\n",
-            "Async operations (crawl, embed, ingest, extract) return a job_id. Poll the same action with `subaction:status` and the returned `job_id`."
-        ).into());
-        info.capabilities = mcp_apps_server_capabilities();
-        info
+        handler_meta::get_info(self)
     }
 
     async fn list_resources(
         &self,
-        _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        tracing::info!("mcp_app list_resources called");
-        let schema_resource: Resource = RawResource {
-            uri: MCP_TOOL_SCHEMA_URI.to_string(),
-            name: "mcp-tool-schema".to_string(),
-            title: Some("Axon MCP Tool Schema".to_string()),
-            description: Some(
-                "Source-of-truth schema and routing contract for the unified axon tool".to_string(),
-            ),
-            mime_type: Some("text/markdown".to_string()),
-            size: None,
-            icons: None,
-            meta: None,
-        }
-        .no_annotation();
-
-        let dashboard_resource: Resource = RawResource {
-            uri: STATUS_DASHBOARD_URI.to_string(),
-            name: "status-dashboard".to_string(),
-            title: Some("Axon Status Dashboard".to_string()),
-            description: Some(
-                "Interactive MCP App widget showing live job queue status for all Axon workers"
-                    .to_string(),
-            ),
-            mime_type: Some(MCP_APP_MIME_TYPE.to_string()),
-            size: None,
-            icons: None,
-            meta: Some(status_dashboard_resource_meta()),
-        }
-        .no_annotation();
-
-        Ok(ListResourcesResult {
-            meta: None,
-            resources: vec![schema_resource, dashboard_resource],
-            next_cursor: None,
-        })
+        handler_meta::list_resources(self, request, context).await
     }
 
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
-        tracing::info!(uri = %request.uri, "mcp_app read_resource called");
-        if request.uri == STATUS_DASHBOARD_URI {
-            // Inject current status data so the widget renders immediately, bypassing
-            // the MCP Apps postMessage bridge which may not be available in all hosts.
-            let status_json = match ServiceContext::new(self.cfg.clone()).await {
-                Ok(ctx) => match system::full_status(&ctx).await {
-                    Ok(r) => {
-                        serde_json::to_string(&r.payload).unwrap_or_else(|_| "null".to_string())
-                    }
-                    Err(_) => "null".to_string(),
-                },
-                Err(_) => "null".to_string(),
-            };
-            let html = STATUS_DASHBOARD_HTML.replacen(
-                "window.__AXON_INITIAL_STATUS__ = null;",
-                &format!("window.__AXON_INITIAL_STATUS__ = {};", status_json),
-                1,
-            );
-            return Ok(ReadResourceResult::new(vec![
-                ResourceContents::TextResourceContents {
-                    uri: STATUS_DASHBOARD_URI.to_string(),
-                    mime_type: Some(MCP_APP_MIME_TYPE.to_string()),
-                    text: html,
-                    meta: Some(status_dashboard_resource_meta()),
-                },
-            ]));
-        }
-        if request.uri != MCP_TOOL_SCHEMA_URI {
-            return Err(ErrorData::invalid_params(
-                format!("resource not found: {}", request.uri),
-                None,
-            ));
-        }
-        Ok(ReadResourceResult::new(vec![
-            ResourceContents::TextResourceContents {
-                uri: MCP_TOOL_SCHEMA_URI.to_string(),
-                mime_type: Some("text/markdown".to_string()),
-                text: mcp_tool_schema_markdown().to_string(),
-                meta: None,
-            },
-        ]))
+        handler_meta::read_resource(self, request, context).await
     }
 }

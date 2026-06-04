@@ -1,5 +1,5 @@
 # Axon MCP Server Guide
-Last Modified: 2026-05-19
+Last Modified: 2026-06-04
 
 ## Purpose
 `axon mcp` exposes Axon through one MCP tool named `axon`.
@@ -237,6 +237,32 @@ Success responses are normalized:
   "data": { "...": "..." }
 }
 ```
+
+## Task-Augmented Calls
+
+Axon supports RMCP task-augmented `tools/call` for durable async jobs while preserving the normal Axon response envelope for ordinary calls.
+
+Normal calls:
+- Use the same `axon` tool argument map as before.
+- Return Axon's JSON envelope with `ok`, `action`, `subaction`, and `data`.
+- Async starts return existing `job_id` or `job_ids` values and can be polled with normal `status` subactions.
+- Multi-URL `crawl.start` remains a normal-call workflow.
+
+Task-augmented calls:
+- Use protocol-level RMCP task metadata, not extra fields inside the Axon argument map.
+- Are supported for `crawl.start`, `extract.start`, `embed.start`, and `ingest.start`.
+- Return `CreateTaskResult` with a Task whose ID is `axon:<kind>:<job_uuid>`.
+- Use `tasks/get` for non-blocking status, `tasks/result` to wait for terminal completion, and `tasks/cancel` against the same SQLite job rows.
+- Return compact sanitized terminal task results, not raw `ServiceJob`, raw `result_json`, raw `config_json`, targets, paths, or worker errors.
+- Include `pollInterval >= 5000` ms; clients should not hot-poll.
+
+`execution.taskSupport` is `optional` on the routed `axon` tool because the same tool handles both immediate actions and long-running job starts. `axon_status_dashboard` does not advertise task support because it is an MCP Apps widget tool.
+
+Task-mode `crawl.start` accepts exactly one URL. If a client sends two or more URLs in a task-augmented crawl call, Axon returns `invalid_params`; use one task call per URL or use normal non-task `crawl.start` for multi-URL submissions.
+
+When `_meta.progressToken` is present on a task call, Axon sends allowlisted `notifications/progress` updates from persisted job progress. These notifications use numeric progress, real totals only when known, and coarse messages such as `queued`, `crawling`, `embedding`, `ingesting`, `finalizing`, `completed`, `failed`, or `cancelled`.
+
+Authorization is server-scoped. Valid Axon OAuth/static credentials grant access to the Axon server; job and task IDs are server-bound references, not per-user ACL objects. Task lifecycle methods repeat Axon's MCP auth checks before parsing task IDs or reading job state.
 
 ## mcporter Smoke Tests
 ```bash

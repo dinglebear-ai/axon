@@ -34,6 +34,7 @@ def generate_markdown(
 
     _emit_header(emit, today)
     _emit_contract(emit)
+    _emit_task_augmented_calls(emit)
     _emit_success_envelope(emit)
     _emit_parser_rules(emit)
 
@@ -85,6 +86,70 @@ def _emit_contract(emit) -> None:
     emit("Code references:")
     emit("- `src/mcp/schema.rs`")
     emit("- `src/mcp/server.rs`")
+    emit()
+
+
+def _emit_task_augmented_calls(emit) -> None:
+    emit("## Task-Augmented Calls")
+    emit()
+    emit("- Server capabilities advertise RMCP task support for `tools/call`.")
+    emit(
+        "- The routed `axon` tool advertises `execution.taskSupport: \"optional\"`; clients may use normal calls or task-augmented calls."
+    )
+    emit(
+        "- `axon_status_dashboard` does not advertise task support. It is an MCP Apps widget tool, not a durable job task."
+    )
+    emit(
+        "- Normal calls still return Axon's canonical JSON success envelope with `job_id` or `job_ids` fields for async starts."
+    )
+    emit(
+        "- Task-augmented calls use RMCP task lifecycle methods backed by the same durable SQLite job rows."
+    )
+    emit(
+        "- Supported task starts: `crawl.start`, `extract.start`, `embed.start`, and `ingest.start`."
+    )
+    emit(
+        "- Unsupported task action/subaction pairs return `invalid_params`; immediate actions such as `help`, `status`, and `query` remain normal calls."
+    )
+    emit(
+        "- Task IDs are stable aliases over Axon job IDs: `axon:<kind>:<job_uuid>`."
+    )
+    emit(
+        "- Task-mode `crawl.start` accepts exactly one URL because one RMCP task maps to one Axon crawl job. Use normal non-task `crawl.start` for multi-URL crawl submissions."
+    )
+    emit(
+        "- `tasks/get` and `tasks/cancel` return Task fields at top level; `tasks/result` waits until the job is terminal, then returns a compact sanitized payload instead of a raw `ServiceJob` row."
+    )
+    emit(
+        "- Task objects include `pollInterval` of at least 5000 ms. Clients should not hot-poll SQLite-backed task status."
+    )
+    emit(
+        "- If `_meta.progressToken` is supplied on a task call, Axon sends allowlisted `notifications/progress` updates from persisted job progress and stops on terminal status or send failure."
+    )
+    emit(
+        "- MCP task metadata belongs in protocol request metadata (`_meta.progressToken` / task-augmented request fields), not inside the Axon tool argument map."
+    )
+    emit(
+        "- Authorization is server-scoped: valid Axon OAuth/static credentials grant Axon server access. Job and task IDs are server-bound references, not per-user ACL objects."
+    )
+    emit()
+    emit("See also:")
+    emit()
+    emit(
+        "- [MCP overview](overview.md#task-augmented-calls) for normal versus task-augmented workflow guidance."
+    )
+    emit(
+        "- [Configuration guide](../../guides/configuration.md) for server auth and async job runtime settings."
+    )
+    emit(
+        "- [Architecture overview](../../architecture/stack/arch.md) for MCP, service, and job-runtime boundaries."
+    )
+    emit(
+        "- [Repository guide](../../contributing/repo/repo.md) for source layout and testing policy."
+    )
+    emit(
+        "- [This tool-schema reference](tool-schema.md#task-augmented-calls) for `tasks/get`, `tasks/cancel`, `tasks/result`, `_meta.progressToken`, and `axon:<kind>:<job_uuid>` wire details."
+    )
     emit()
 
 
