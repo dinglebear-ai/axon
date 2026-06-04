@@ -1,7 +1,7 @@
 mod searxng;
 mod synthesis;
 
-pub use synthesis::research;
+pub use synthesis::{research, research_with_context};
 
 use crate::core::config::Config;
 use crate::services::events::{LogLevel, ServiceEvent, emit};

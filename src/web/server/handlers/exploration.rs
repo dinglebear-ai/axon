@@ -314,14 +314,15 @@ pub(crate) async fn search(
     tag = "exploration"
 )]
 pub(crate) async fn research(
-    State((_state, cfg)): State<WebState>,
+    State((state, cfg)): State<WebState>,
     Json(req): Json<ResearchRequest>,
 ) -> Result<Json<services::types::ResearchResult>, HttpError> {
     let query = required_text(&req.query, "query")?.to_string();
     let opts = search_options(req.limit, req.offset, req.time_range.as_deref())?;
+    let service_context = Arc::clone(&state.service_context);
     tokio::time::timeout(
         Duration::from_secs(35),
-        services::search::research(&cfg, &query, opts, None),
+        services::search::research_with_context(&cfg, &service_context, &query, opts, None),
     )
     .await
     .map_err(|_| HttpError::new(StatusCode::GATEWAY_TIMEOUT, "timeout", "research timed out"))?
@@ -340,7 +341,7 @@ pub(crate) async fn research(
     tag = "exploration"
 )]
 pub(crate) async fn research_stream(
-    State((_state, cfg)): State<WebState>,
+    State((state, cfg)): State<WebState>,
     Json(req): Json<ResearchRequest>,
 ) -> Response {
     let query = match required_text(&req.query, "query") {
@@ -353,6 +354,7 @@ pub(crate) async fn research_stream(
     };
     let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
     let disconnected = Arc::new(AtomicBool::new(false));
+    let service_context = Arc::clone(&state.service_context);
 
     tokio::spawn(async move {
         let _ = tx.send(Ok(sse_json(
@@ -382,10 +384,16 @@ pub(crate) async fn research_stream(
                 }
             }
         });
-        let result = services::search::research(&cfg, &query, opts, Some(event_tx))
-            .await
-            .map(|result| result.payload)
-            .map_err(|err| err.to_string());
+        let result = services::search::research_with_context(
+            &cfg,
+            &service_context,
+            &query,
+            opts,
+            Some(event_tx),
+        )
+        .await
+        .map(|result| result.payload)
+        .map_err(|err| err.to_string());
         let _ = delta_task.await;
         if disconnected.load(Ordering::Relaxed) {
             return;

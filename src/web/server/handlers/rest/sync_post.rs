@@ -189,7 +189,19 @@ pub(crate) async fn v1_research(
         offset: req.offset.unwrap_or(0),
         time_range,
     };
-    match search_svc::research(state.cfg.as_ref(), &req.query, opts, None).await {
+    let service_context = match state.service_context().await {
+        Ok(context) => context,
+        Err(err) => return map_service_error(err.as_ref()),
+    };
+    match search_svc::research_with_context(
+        state.cfg.as_ref(),
+        &service_context,
+        &req.query,
+        opts,
+        None,
+    )
+    .await
+    {
         Ok(result) => Json(result.payload).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }

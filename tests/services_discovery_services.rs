@@ -197,6 +197,9 @@ fn sample_research_payload() -> axon::services::types::ResearchPayload {
         offset: 0,
         search_results: vec![],
         extractions: vec![],
+        auto_crawl_status: "not_queued".to_string(),
+        crawl_jobs: vec![],
+        crawl_jobs_rejected: vec![],
         summary: Some("A comprehensive summary.".to_string()),
         summary_source: SummarySource::Llm,
         usage: ResearchUsage {

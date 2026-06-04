@@ -472,6 +472,7 @@ fn relevant_global_options(command_name: &str) -> Vec<(String, String)> {
                 "--search-time-range <range>",
                 "Restrict search to day, week, month, or year",
             ),
+            ("--skip-embed", "Queue crawls without indexing into Qdrant"),
             ("--json", "Output machine-readable JSON"),
         ],
         "embed" => EMBED_OPTIONS,

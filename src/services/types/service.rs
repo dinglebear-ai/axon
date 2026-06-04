@@ -930,11 +930,59 @@ pub struct ResearchHit {
     pub snippet: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceType {
+    OfficialDocs,
+    ReferenceDocs,
+    Repository,
+    Blog,
+    Forum,
+    News,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceReputation {
+    Authoritative,
+    High,
+    Medium,
+    Low,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceInstructionTrust {
+    EvidenceOnly,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ResearchExtraction {
     pub url: String,
     pub title: String,
     pub extracted: String,
+    pub source_type: SourceType,
+    pub source_reputation: SourceReputation,
+    pub instruction_trust: SourceInstructionTrust,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relevance_score: Option<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchCrawlJob {
+    pub url: String,
+    pub job_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchCrawlRejection {
+    pub url: Option<String>,
+    pub position: Option<i64>,
+    pub title: Option<String>,
+    pub kind: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -956,6 +1004,9 @@ pub struct ResearchPayload {
     pub offset: usize,
     pub search_results: Vec<ResearchHit>,
     pub extractions: Vec<ResearchExtraction>,
+    pub auto_crawl_status: String,
+    pub crawl_jobs: Vec<ResearchCrawlJob>,
+    pub crawl_jobs_rejected: Vec<ResearchCrawlRejection>,
     pub summary: Option<String>,
     pub summary_source: SummarySource,
     pub usage: ResearchUsage,

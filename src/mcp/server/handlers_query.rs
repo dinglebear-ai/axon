@@ -396,13 +396,6 @@ impl AxonMcpServer {
                 "research requires AXON_SEARXNG_URL or TAVILY_API_KEY",
             ));
         }
-        let backend = crate::services::llm_backend::LlmBackendConfig::from_config(&self.cfg);
-        if let Err(err) = crate::services::llm_backend::headless::gemini::validate_config(&backend)
-        {
-            return Err(internal_error(format!(
-                "Gemini headless is required for research: {err}"
-            )));
-        }
         let query = req
             .query
             .ok_or_else(|| invalid_params("query is required for research"))?;
@@ -414,9 +407,19 @@ impl AxonMcpServer {
             self.cfg.search_limit,
         );
 
-        let result = search_svc::research(self.cfg.as_ref(), &query, opts, None)
+        let service_context = self
+            .base_service_context()
             .await
-            .map_err(|e| logged_internal_error(&format!("research '{query}'"), e.as_ref()))?;
+            .map_err(|e| logged_internal_error("research.context", e.as_ref()))?;
+        let result = search_svc::research_with_context(
+            self.cfg.as_ref(),
+            &service_context,
+            &query,
+            opts,
+            None,
+        )
+        .await
+        .map_err(|e| logged_internal_error(&format!("research '{query}'"), e.as_ref()))?;
 
         let payload_json = serde_json::to_value(&result.payload)
             .map_err(|e| internal_error(format!("research payload serialization failed: {e}")))?;

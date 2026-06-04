@@ -4,7 +4,7 @@ use crate::jobs::backend::JobKind;
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_service;
 use crate::services::search::search_batch;
-use crate::services::types::SearchOptions;
+use crate::services::types::{ResearchHit, SearchOptions};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -21,13 +21,13 @@ pub struct SearchAndCrawlResult {
     pub auto_crawl_status: &'static str,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct SearchCrawlJob {
     pub url: String,
     pub job_id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct SearchCrawlRejection {
     pub url: Option<String>,
     pub position: Option<i64>,
@@ -36,7 +36,7 @@ pub struct SearchCrawlRejection {
     pub reason: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchCrawlRejectionKind {
     DuplicateUrl,
@@ -72,9 +72,9 @@ pub async fn search_and_crawl(
 // ── internals ────────────────────────────────────────────────────────────────
 
 #[derive(Default)]
-struct CrawlOutput {
-    jobs: Vec<SearchCrawlJob>,
-    rejected: Vec<SearchCrawlRejection>,
+pub(crate) struct CrawlOutput {
+    pub(crate) jobs: Vec<SearchCrawlJob>,
+    pub(crate) rejected: Vec<SearchCrawlRejection>,
 }
 
 fn crawl_config(cfg: &Config) -> Config {
@@ -134,6 +134,25 @@ async fn enqueue_search_crawls(
     }
 
     output
+}
+
+pub(crate) async fn enqueue_research_crawls(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    hits: &[ResearchHit],
+) -> CrawlOutput {
+    let results: Vec<Value> = hits
+        .iter()
+        .map(|hit| {
+            serde_json::json!({
+                "url": hit.url,
+                "title": hit.title,
+                "position": hit.position,
+                "snippet": hit.snippet,
+            })
+        })
+        .collect();
+    enqueue_search_crawls(cfg, service_context, &results).await
 }
 
 async fn enqueue_one(
@@ -287,6 +306,29 @@ fn crawl_status(results: &[Value], output: &CrawlOutput) -> &'static str {
         } else {
             "partial_wait_failed"
         }
+    } else if output.rejected.is_empty() {
+        "queued"
+    } else {
+        "partial"
+    }
+}
+
+pub(crate) fn crawl_status_for_output<T>(results: &[T], output: &CrawlOutput) -> &'static str {
+    if results.is_empty() {
+        return "no_results";
+    }
+    if output.jobs.is_empty() {
+        return "failed";
+    }
+    let wait_failures = output
+        .rejected
+        .iter()
+        .filter(|r| matches!(r.kind, SearchCrawlRejectionKind::WaitFailed))
+        .count();
+    if wait_failures == output.jobs.len() {
+        "wait_failed"
+    } else if wait_failures > 0 {
+        "partial_wait_failed"
     } else if output.rejected.is_empty() {
         "queued"
     } else {

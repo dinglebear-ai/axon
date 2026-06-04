@@ -62,7 +62,7 @@ restart the stack, use the `/axon-deploy` plugin slash command, or `axon setup` 
 | `--google-client-id <id>` | `AXON_MCP_GOOGLE_CLIENT_ID` | Required for OAuth mode. |
 | `--google-client-secret <secret>` | `AXON_MCP_GOOGLE_CLIENT_SECRET` | Required for OAuth mode. |
 | `--auth-admin-email <email>` | `AXON_MCP_AUTH_ADMIN_EMAIL` | Required for OAuth mode. |
-| `--tavily-api-key <key>` | `TAVILY_API_KEY` | Enables search/research. |
+| `--tavily-api-key <key>` | `TAVILY_API_KEY` | Enables Tavily fallback search/research when SearXNG is not configured. |
 | `--github-token <token>` | `GITHUB_TOKEN` | Raises GitHub ingest rate limits. |
 | `--reddit-client-id <id>` | `REDDIT_CLIENT_ID` | Required for Reddit ingest. |
 | `--reddit-client-secret <secret>` | `REDDIT_CLIENT_SECRET` | Required for Reddit ingest. |

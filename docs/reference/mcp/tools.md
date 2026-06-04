@@ -192,7 +192,7 @@ Web search via Tavily, auto-queues crawl jobs for results.
 
 ### research
 
-Web research via Tavily AI search with LLM synthesis.
+Web research via SearXNG/Tavily search with LLM synthesis and auto-indexing.
 
 ```json
 { "action": "research", "query": "vector database comparison 2025" }

@@ -3,6 +3,7 @@ use crate::cli::commands::resolve_input_text;
 use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_phase};
+use crate::services::context::ServiceContext;
 use crate::services::events::ServiceEvent;
 use crate::services::search as search_service;
 use crate::services::types::{
@@ -38,7 +39,10 @@ const RESEARCH_PREVIEW_CHARS: usize = 200;
 /// `--research-depth` (when set) overrides `--limit` as the number of
 /// sources to incorporate into synthesis. The flag has no effect when
 /// unset; callers default to `cfg.search_limit`.
-pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_research(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg)
         .ok_or_else(|| anyhow::anyhow!("research requires a query (positional or --query)"))?;
 
@@ -47,7 +51,16 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
         print_phase("\u{25d0}", "Researching", &query);
         let model = crate::services::llm_backend::configured_model_from_config(cfg)
             .unwrap_or_else(|| "(backend default)".to_string());
-        println!("  {} {}", muted("provider=tavily model="), model);
+        let provider = if cfg.searxng_url.is_empty() {
+            "tavily"
+        } else {
+            "searxng"
+        };
+        println!(
+            "  {}{provider} {}{model}",
+            muted("provider="),
+            muted("model=")
+        );
         println!();
     }
 
@@ -102,7 +115,9 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
         offset: 0,
         time_range: parse_service_time_range(cfg.search_time_range.as_deref()),
     };
-    let result = search_service::research(cfg, &query, opts, Some(event_tx)).await;
+    let result =
+        search_service::research_with_context(cfg, service_context, &query, opts, Some(event_tx))
+            .await;
 
     // Drain the consumer with a bounded timeout. The mpsc sender held by
     // the service call is dropped when the call returns, so the consumer

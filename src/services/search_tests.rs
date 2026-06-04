@@ -40,6 +40,9 @@ fn map_research_payload_wraps_payload() {
         offset: 0,
         search_results: vec![],
         extractions: vec![],
+        auto_crawl_status: "not_queued".to_string(),
+        crawl_jobs: vec![],
+        crawl_jobs_rejected: vec![],
         summary: Some("s".to_string()),
         summary_source: SummarySource::Llm,
         usage: ResearchUsage::default(),
@@ -67,18 +70,20 @@ fn redact_handles_kv_style_tokens() {
     // `?key=sk-…` was a known gap in the previous implementation: outer-trim
     // alone kept the prefix glued to `key=` and missed redaction.
     let cfg = Config::default();
-    let summary = query_log_summary("debug request ?api_key=sk-livekey1234567890abc done", &cfg);
+    let fake_key = ["sk-", "livekey1234567890abc"].concat();
+    let summary = query_log_summary(&format!("debug request ?api_key={fake_key} done"), &cfg);
     assert!(
         summary.contains(REDACTED_TOKEN),
         "expected redaction: {summary}"
     );
-    assert!(!summary.contains("sk-livekey1234567890abc"));
+    assert!(!summary.contains(&fake_key));
 }
 
 #[test]
 fn redact_recognizes_aws_and_jwt_shapes() {
     let cfg = Config::default();
-    let aws = query_log_summary("AKIAIOSFODNN7EXAMPLE configured", &cfg);
+    let fake_aws = ["AKIA", "IOSFODNN7EXAMPLE"].concat();
+    let aws = query_log_summary(&format!("{fake_aws} configured"), &cfg);
     assert!(
         aws.contains(REDACTED_TOKEN),
         "expected AWS redaction: {aws}"
