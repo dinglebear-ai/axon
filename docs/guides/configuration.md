@@ -341,10 +341,11 @@ password under `~/.axon/panel-password`. MCP and protected `/v1` routes use
 | `AXON_MCP_ALLOWED_ORIGINS` | -- | Comma-separated allowed origins for MCP HTTP CORS |
 | `AXON_MCP_ARTIFACT_DIR` | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts |
 | `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline triggers (0 = disable) |
+| `AXON_TASK_RESULT_WAIT_TIMEOUT_SECS` | `300` | Max seconds an MCP `tasks/result` request waits for a task to reach a terminal state |
 | `AXON_MCP_EMBED_ALLOWED_ROOTS` | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) |
-| `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | -- | Max bytes per local file embedding request via MCP |
-| `AXON_MCP_EMBED_MAX_LOCAL_DEPTH` | `8` | Max directory traversal depth for local directory embedding requests |
-| `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES` | `5000` | Max filesystem entries visited for local directory embedding requests |
+| `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | `10485760` | Max bytes per local file embedding request via MCP |
+| `AXON_MCP_EMBED_MAX_LOCAL_DEPTH` | `16` | Max directory traversal depth for local directory embedding requests |
+| `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES` | `10000` | Max filesystem entries visited for local directory embedding requests |
 
 ### Ask cache
 

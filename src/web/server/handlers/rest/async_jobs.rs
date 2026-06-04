@@ -192,9 +192,10 @@ pub(crate) async fn v1_embed_submit(
             );
         }
     };
-    if let Err(reason) = validation {
-        return rest_error(StatusCode::BAD_REQUEST, "bad_request", reason);
-    }
+    let validated_input = match validation {
+        Ok(input) => input,
+        Err(reason) => return rest_error(StatusCode::BAD_REQUEST, "bad_request", reason),
+    };
     let ctx = match ctx_only(&state).await {
         Ok(ctx) => ctx,
         Err(r) => return r,
@@ -205,7 +206,7 @@ pub(crate) async fn v1_embed_submit(
     }
     match embed_svc::embed_start_with_context(
         &cfg,
-        &req.input,
+        &validated_input,
         &ctx,
         None,
         req.source_type.as_deref(),

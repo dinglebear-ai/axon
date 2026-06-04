@@ -1163,6 +1163,18 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_TASK_RESULT_WAIT_TIMEOUT_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret MCP task result wait tuning knob; kept in env until a typed config.toml field is wired."
+
+[[env]]
 key = "AXON_LIVE_TEST_OUTDIR"
 classification = "external/test-only"
 runtime_placement = "not-runtime"
