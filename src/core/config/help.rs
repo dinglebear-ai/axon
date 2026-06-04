@@ -233,7 +233,6 @@ fn print_top_level_help() {
     row("--wait <bool>", "true waits; false enqueues and returns");
     row("--collection <name>", "vector collection (default cortex)");
     row("--skip-embed", "fetch/save without indexing into Qdrant");
-    row("--local", "force in-process execution");
     row(
         "--cache <bool>",
         "reuse prior crawl artifacts when possible",

@@ -1,7 +1,6 @@
 //! SQLite-runtime doctor report: SQLite + HTTP services only (no PG/Redis/AMQP probes).
 
 use crate::cli::commands::probe::with_path;
-use crate::cli::route::{CommandRoute, plan_command_route};
 use crate::core::config::Config;
 use crate::core::endpoints::{EndpointKind, resolve_host_endpoint};
 use crate::core::health::browser_diagnostics_pattern;
@@ -68,20 +67,10 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
 
     let effective_qdrant = resolve_host_endpoint(EndpointKind::Qdrant, Some(&cfg.qdrant_url), &[]);
     let effective_tei = resolve_host_endpoint(EndpointKind::Embedding, Some(&cfg.tei_url), &[]);
-    let route = plan_command_route(cfg, &cfg.positional)
-        .map(|plan| match plan.route {
-            CommandRoute::PreferServer => "server",
-            CommandRoute::LocalOnly => "local",
-        })
-        .unwrap_or("local");
 
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
         "mode": {
-            "client": cfg.client_mode.to_string(),
-            "server_url": cfg.server_url.as_ref().map(reqwest::Url::to_string),
-            "route": route,
-            "fallback": false,
             "local_runtime": "sqlite_in_process",
         },
         "capabilities": [
@@ -99,7 +88,7 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
             }
         ],
         "recommendations": [
-            "Use AXON_SERVER_URL for REST server mode; add --local for explicit local execution."
+            "CLI and MCP run all actions in-process; run `axon serve` only to expose the HTTP API."
         ],
         "effective_endpoints": {
             "qdrant": effective_qdrant,

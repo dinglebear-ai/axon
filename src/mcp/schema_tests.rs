@@ -814,19 +814,3 @@ fn serde_scrape_format_variants() {
         );
     }
 }
-
-#[test]
-fn serde_artifacts_subaction_variants() {
-    for sub in ["head", "grep", "wc", "read"] {
-        let raw = obj(json!({
-            "action": "artifacts",
-            "subaction": sub,
-            "path": ".cache/axon-mcp/test.json"
-        }));
-        let result = parse_axon_request(raw);
-        assert!(
-            result.is_ok(),
-            "artifacts subaction '{sub}' should parse successfully"
-        );
-    }
-}

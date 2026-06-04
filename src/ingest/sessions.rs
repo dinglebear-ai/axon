@@ -19,6 +19,7 @@ mod codex;
 mod gemini;
 mod prepared;
 
+#[cfg(test)]
 pub(crate) use prepared::MAX_PREPARED_SESSION_DOCS;
 pub use prepared::{IngestSessionsPreparedRequest, PreparedSessionDoc};
 
@@ -191,9 +192,9 @@ pub async fn prepare_sessions_request(
 }
 
 /// Scan local session exports and split them into validated batches, each within
-/// the per-request limits of `/v1/ingest/sessions/prepared`. Used by server-mode
-/// `axon sessions` so large histories upload as several jobs instead of failing
-/// the doc-count cap. Returns an empty vec when no session docs match.
+/// the per-request limits of `/v1/ingest/sessions/prepared`, so large histories
+/// can be uploaded as several jobs instead of failing the doc-count cap. Returns
+/// an empty vec when no session docs match.
 pub async fn prepare_sessions_request_batches(
     cfg: &Config,
 ) -> Result<Vec<IngestSessionsPreparedRequest>, Box<dyn Error>> {

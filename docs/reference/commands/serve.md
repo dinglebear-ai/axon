@@ -20,16 +20,16 @@ listener in the normal command path.
 Mounted surfaces:
 
 - `POST /mcp` - MCP streamable HTTP transport.
-- `GET /v1/capabilities` - first-party CLI client/server capability metadata.
-- Direct `/v1` REST routes - first-party CLI/server and web API surface.
-- `POST /v1/ask` - ask endpoint used by `axon ask` when `AXON_SERVER_URL` is set.
+- `GET /v1/capabilities` - first-party HTTP API capability metadata.
+- Direct `/v1` REST routes - HTTP API surface (e.g. `POST /v1/ask`) for external clients and the web panel.
 - `/api/panel/*` - local setup/config panel APIs.
 - Static web panel assets.
 - OAuth metadata and auth routes when `AXON_MCP_AUTH_MODE=oauth`.
 
-`serve` does not supervise Next.js, a shell WebSocket server, or separate worker
-processes. In-process workers are initialized lazily by the service context when
-server-side commands need them.
+`serve` is the only way to expose Axon over HTTP — the `axon` CLI and MCP server
+otherwise run every action in-process. `serve` does not supervise Next.js, a shell
+WebSocket server, or separate worker processes. In-process workers are initialized
+lazily by the service context when API requests need them.
 
 ## Environment
 
@@ -43,7 +43,6 @@ server-side commands need them.
 | `AXON_MCP_GOOGLE_CLIENT_ID` | unset | Required for OAuth mode. |
 | `AXON_MCP_GOOGLE_CLIENT_SECRET` | unset | Required for OAuth mode. |
 | `AXON_MCP_AUTH_ADMIN_EMAIL` | unset | Required for OAuth mode. |
-| `AXON_SERVER_URL` | unset | CLI client/server endpoint. Set on client shells, not required by the server. |
 
 ## Examples
 
@@ -59,9 +58,10 @@ AXON_MCP_HTTP_HOST=0.0.0.0 \
 AXON_MCP_HTTP_TOKEN="$(openssl rand -hex 32)" \
 axon serve
 
-# Host CLI talking to the running server
-AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
-AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
+# Call the HTTP API from an external client
+curl -s -H "Authorization: Bearer $AXON_MCP_HTTP_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"query":"what changed?"}' http://127.0.0.1:8001/v1/ask
 ```
 
 ## Notes

@@ -14,7 +14,6 @@ fn env_file_preserves_existing_secrets_and_adds_missing_runtime_keys() {
     let raw = std::fs::read_to_string(&env_path).unwrap();
     assert!(raw.contains("AXON_MCP_HTTP_TOKEN=keep-me"));
     assert!(raw.contains("TAVILY_API_KEY=also-keep"));
-    assert!(raw.contains("AXON_SERVER_URL=http://127.0.0.1:8001"));
     assert!(raw.contains("TEI_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B"));
 }
 

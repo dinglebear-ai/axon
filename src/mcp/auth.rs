@@ -69,10 +69,6 @@ pub fn scope_for_action(action: &str, subaction: Option<&str>) -> Option<&'stati
             _ => AxonScope::Write,
         },
         "scrape" | "summarize" => AxonScope::Write,
-        "artifacts" => match subaction.unwrap_or("list") {
-            "delete" | "clean" => AxonScope::Write,
-            _ => AxonScope::Read,
-        },
         "query" | "retrieve" | "sources" | "domains" | "stats" | "status" | "doctor" | "search"
         | "map" | "evaluate" | "suggest" | "research" | "ask" | "screenshot" => AxonScope::Read,
         "migrate" | "dedupe" => AxonScope::Admin,

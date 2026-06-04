@@ -22,18 +22,15 @@ fn query_with_diagnostics_emits_structured_diagnostics_on_error() {
 
     // Point AXON_ENV_FILE at a nonexistent path so the binary does not load
     // ~/.axon/.env or a repo-root .env, which would inject live QDRANT_URL /
-    // AXON_SERVER_URL and cause the binary to route to a real service.
+    // TEI_URL and cause the binary to route to a real service.
     let no_env_file = sqlite.path().with_extension("nonexistent.env");
 
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
         .env("AXON_SQLITE_PATH", sqlite.path())
         .env("AXON_ENV_FILE", &no_env_file)
-        // Force local execution even if AXON_SERVER_URL leaks from the outer env.
-        .env("AXON_LOCAL_MODE", "true")
         // Clear any inherited service-URL env vars so CLI flags are authoritative.
         .env_remove("QDRANT_URL")
         .env_remove("TEI_URL")
-        .env_remove("AXON_SERVER_URL")
         .arg("--tei-url")
         .arg(tei.base_url())
         .arg("--qdrant-url")

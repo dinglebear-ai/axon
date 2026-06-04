@@ -27,13 +27,12 @@ mcp/
 │   ├── handlers_embed_ingest.rs    # embed + ingest action handlers
 │   ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, summarize, research
 │   ├── handlers_elicit.rs          # elicitation prompts
-│   ├── handlers_system.rs          # doctor, domains, sources, stats, status, artifacts, help
+│   ├── handlers_system.rs          # doctor, domains, sources, stats, status, help
 │   ├── handlers_vertical_scrape.rs # vertical_scrape action — DISCOVERY ONLY (list/capabilities)
 │   ├── handlers_system/
 │   │   └── screenshot.rs           # screenshot handler split off from handlers_system
-│   ├── artifacts.rs                # Artifact response wrapper
+│   ├── artifacts.rs                # Artifact-first response-shaping helpers (path/inline persistence)
 │   ├── artifacts/
-│   │   ├── lifecycle.rs            # Artifact lifecycle (creation, eviction)
 │   │   ├── path.rs                 # artifact path helpers — default `$AXON_DATA_DIR/artifacts/<context>` (`~/.axon/artifacts/<context>`)
 │   │   ├── respond.rs              # Inline-vs-path response shaping
 │   │   └── shape.rs                # Artifact response shape
@@ -100,7 +99,6 @@ Domains (`action`):
 - `domains`
 - `sources`
 - `stats`
-- `artifacts`
 - `vertical_scrape`
 
 This pattern is mandatory. Do not add separate MCP tools for each operation.
@@ -164,10 +162,6 @@ This split means clients that want to discover what URL patterns Axon supports q
 ### `doctor` / `domains` / `sources` / `stats`
 - Integration: lightweight probes + qdrant endpoints
 
-### `artifacts`
-- `head`, `grep`, `wc`, `read`
-- Integration: artifact files in `$AXON_MCP_ARTIFACT_DIR` or `$AXON_DATA_DIR/artifacts/<context>` (default: `~/.axon/artifacts/<context>`)
-
 ### `help`
 - `run` (implicit direct action)
 - Returns all actions/subactions/resources
@@ -200,6 +194,7 @@ Default response behavior is artifact-first:
 - `response_mode` defaults to `path`
 - Large outputs persist under `$AXON_MCP_ARTIFACT_DIR` (default: `~/.axon/artifacts/<context>`)
 - Inline responses are capped and include artifact pointers
+- The MCP server runs in-process, so the returned `path` is a real local filesystem path — read it directly. There is no `artifacts` MCP action (removed in 5.0.0); use `response_mode=inline` (or `auto_inline`) when you want the payload returned in the response.
 
 ## Configuration Model
 

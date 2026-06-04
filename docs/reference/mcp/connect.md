@@ -174,21 +174,14 @@ If connection fails:
 The unified HTTP server exposes `/healthz` for process health. Auth-pass on
 `/mcp` verifies the MCP/auth path specifically.
 
-## Host CLI client/server mode
+## HTTP API access
 
-The same `axon serve` HTTP process also exposes first-party CLI action routes.
-Set `AXON_SERVER_URL` in the host shell to make supported stateful CLI commands
-call the server:
-
-```bash
-AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
-AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
-```
-
-This is separate from MCP JSON-RPC. The CLI uses `/v1/capabilities` and
-direct `/v1` REST routes; MCP clients continue to use `/mcp`. Both surfaces share the
-same bearer token policy (`AXON_MCP_HTTP_TOKEN`). Use `--local` when you need
-to bypass server mode for a single command.
+The `axon` CLI and MCP server always run in-process (local execution against
+Qdrant and TEI) — they do not forward to a remote `axon serve`. To expose Axon
+over HTTP for external API clients, run `axon serve`, which serves the first-party
+`/v1` REST routes and MCP-over-HTTP on `/mcp` behind the same bearer token policy
+(`AXON_MCP_HTTP_TOKEN`). Point your own HTTP/MCP clients at it; the bundled CLI
+does not consume those routes.
 
 ## See also
 

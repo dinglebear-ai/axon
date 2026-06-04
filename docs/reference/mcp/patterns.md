@@ -25,7 +25,7 @@ pub struct McpInput {
 
 Rules:
 - `action` is required and must match canonical enum names
-- `subaction` is required for lifecycle families (crawl, extract, embed, ingest, artifacts)
+- `subaction` is optional for lifecycle families (crawl, extract, embed, ingest); when omitted, handlers default to `start`
 - No fallback fields, no token normalization, no case folding
 - Invalid input returns MCP `invalid_params` error
 
@@ -189,4 +189,4 @@ Operations requiring LLM synthesis (`ask`, `evaluate`, `suggest`, `research`, `e
 
 - [TOOLS.md](tools.md) -- action/subaction reference
 - [DEV.md](dev.md) -- development workflow
-- [../stack/ARCH.md](../../architecture/stack/arch.md) -- architecture overview
+- [../../architecture/stack/arch.md](../../architecture/stack/arch.md) -- architecture overview

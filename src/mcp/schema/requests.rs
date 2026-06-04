@@ -187,43 +187,6 @@ pub struct StatusRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct ArtifactsRequest {
-    pub subaction: ArtifactsSubaction,
-    pub path: Option<String>,
-    pub pattern: Option<String>,
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-    /// Lines of context before/after each grep match (like rg -C N). Default: 0.
-    pub context_lines: Option<usize>,
-    /// artifacts.read: return full content (paginated). Requires explicit opt-in.
-    pub full: Option<bool>,
-    /// artifacts.clean: delete files older than this many hours. Required for clean.
-    pub max_age_hours: Option<u64>,
-    /// artifacts.clean: preview-only mode. Defaults to true — no files deleted unless false.
-    pub dry_run: Option<bool>,
-    /// Response mode for list/search subactions (path | inline | both). Defaults to path.
-    pub response_mode: Option<ResponseMode>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ArtifactsSubaction {
-    Head,
-    Grep,
-    Wc,
-    Read,
-    /// List all artifacts in the artifact directory with metadata.
-    List,
-    /// Delete a single artifact by path (must be within artifact root).
-    Delete,
-    /// Bulk-delete artifacts older than max_age_hours. Dry-run by default.
-    Clean,
-    /// Regex search across all artifact files.
-    Search,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct QueryRequest {
     pub query: Option<String>,
     pub limit: Option<usize>,

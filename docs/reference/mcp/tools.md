@@ -307,16 +307,7 @@ Start parameters:
 
 Source types: `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube`, `sessions`.
 
-### artifacts
-
-MCP artifact file management:
-```json
-{ "action": "artifacts", "subaction": "list" }
-```
-
-Subactions: `head`, `grep`, `wc`, `read`, `list`, `delete`, `clean`, `search`.
-
-Use `artifacts` for raw file/debug/admin access. Prefer `scrape`, `retrieve`, `query`, and `ask` for normal document consumption.
+> Path-mode responses persist large payloads under `~/.axon/artifacts/<context>` and return the file `path`. The server runs in-process, so read that path directly from disk; there is no `artifacts` MCP action. Use `response_mode=inline`/`auto_inline` to get payloads in-band.
 
 ## Info actions
 

@@ -14,7 +14,6 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Canonical,
         false,
     ),
-    spec("AXON_SERVER_URL", KeepEnv, HostOnly, None, Canonical, false),
     spec(
         "AXON_MCP_HTTP_TOKEN",
         KeepEnv,

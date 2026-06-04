@@ -20,7 +20,6 @@ pub mod llm_backend;
 pub mod map;
 pub mod migrate;
 pub mod query;
-pub mod route_meta;
 pub mod runtime;
 pub mod scrape;
 pub mod screenshot;
@@ -39,9 +38,6 @@ mod artifacts_tests;
 #[cfg(test)]
 #[path = "services/client_contract_tests.rs"]
 mod client_contract_tests;
-#[cfg(test)]
-#[path = "services/route_meta_tests.rs"]
-mod route_meta_tests;
 #[cfg(test)]
 #[path = "services/sync_tests.rs"]
 mod sync_tests;

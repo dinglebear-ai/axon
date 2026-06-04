@@ -82,52 +82,6 @@ async fn build_artifact_path_uses_action_subdirectory() {
     }
 }
 
-#[allow(unsafe_code)]
-#[tokio::test]
-#[allow(clippy::await_holding_lock)]
-async fn validate_artifact_path_rejects_relative_traversal() {
-    let _guard = ENV_CWD_LOCK.lock().expect("lock poisoned");
-    let tmp = tempdir().expect("tempdir");
-    unsafe {
-        env::set_var(MCP_ARTIFACT_DIR_ENV, tmp.path());
-    }
-
-    let err = validate_artifact_path("../outside.json")
-        .await
-        .expect_err("traversal must fail");
-    assert!(err.message.contains("traversal"));
-
-    unsafe {
-        env::remove_var(MCP_ARTIFACT_DIR_ENV);
-    }
-}
-
-#[cfg(unix)]
-#[allow(unsafe_code)]
-#[tokio::test]
-#[allow(clippy::await_holding_lock)]
-async fn validate_artifact_path_rejects_symlink_escape() {
-    let _guard = ENV_CWD_LOCK.lock().expect("lock poisoned");
-    let tmp = tempdir().expect("tempdir");
-    unsafe {
-        env::set_var(MCP_ARTIFACT_DIR_ENV, tmp.path());
-    }
-
-    let root = ensure_artifact_root().await.expect("artifact root");
-    let outside = tmp.path().join("outside.txt");
-    fs::write(&outside, "outside").expect("outside file");
-    std::os::unix::fs::symlink(&outside, root.join("escape.txt")).expect("symlink");
-
-    let err = validate_artifact_path("escape.txt")
-        .await
-        .expect_err("symlink escape must fail");
-    assert!(err.message.contains("inside"));
-
-    unsafe {
-        env::remove_var(MCP_ARTIFACT_DIR_ENV);
-    }
-}
-
 #[cfg(unix)]
 #[allow(unsafe_code)]
 #[tokio::test]

@@ -235,10 +235,6 @@ pub(super) fn parse_limit(limit: Option<i64>, default: i64) -> i64 {
     limit.unwrap_or(default).clamp(1, 500)
 }
 
-pub(super) fn parse_limit_usize(limit: Option<usize>, default: usize, max: usize) -> usize {
-    limit.unwrap_or(default).clamp(1, max)
-}
-
 pub(super) fn parse_offset(offset: Option<usize>) -> usize {
     offset.unwrap_or(0)
 }

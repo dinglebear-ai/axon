@@ -39,7 +39,7 @@ while IFS= read -r row; do
   query="$(jq -r '.query' <<<"$row")"
   expected="$(jq -r '.expected' <<<"$row")"
 
-  if ! payload="$("$AXON_BIN" --local ask --explain --diagnostics --json "$query" 2> >(sed "s/^/[axon:$id] /" >&2))"; then
+  if ! payload="$("$AXON_BIN" ask --explain --diagnostics --json "$query" 2> >(sed "s/^/[axon:$id] /" >&2))"; then
     jq -n -c --arg id "$id" --arg domain "$domain" --arg query "$query" --arg expected "$expected" \
       '{id:$id,domain:$domain,query:$query,expected:$expected,status:"axon_failed",top_pass:false,selected_pass:false,pass:false}' >> "$OUT"
     continue

@@ -17,7 +17,7 @@ Usage: bench-ask.sh [options]
 
 Options:
   --runs N              Sample count per prompt; min 30 (default: 30)
-  --mode {cold|warm}    cold uses --local; warm requires AXON_SERVER_URL (default: cold)
+  --mode {cold|warm}    accepted for compatibility; ask always runs in-process now
   --prompts <file>      Prompt file (id|text per line; default: scripts/bench-prompts.txt)
   --out <path>          Output JSON path (default: docs/perf/results-<timestamp>-<sha>.json)
   -h, --help            Show this help
@@ -75,20 +75,10 @@ fi
 
 run_one_ask() {
     local prompt_text="$1"
-    local extra_args=()
 
-    if [[ "$MODE" == "warm" ]]; then
-        [[ -n "${AXON_SERVER_URL:-}" ]] || {
-            echo "Error: warm mode requires AXON_SERVER_URL." >&2
-            return 2
-        }
-        extra_args+=(--server-url "$AXON_SERVER_URL")
-    else
-        extra_args+=(--local)
-    fi
-
+    # CLI ask always runs in-process now; there is no client/server split.
     local out
-    if ! out=$("$AXON_BIN" ask "$prompt_text" --json --diagnostics "${extra_args[@]}" 2>/dev/null); then
+    if ! out=$("$AXON_BIN" ask "$prompt_text" --json --diagnostics 2>/dev/null); then
         echo "{}"
         return 0
     fi

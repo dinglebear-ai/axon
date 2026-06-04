@@ -29,7 +29,6 @@ pub enum AxonRequest {
     Sources(SourcesRequest),
     Stats(StatsRequest),
     Help(HelpRequest),
-    Artifacts(ArtifactsRequest),
     Scrape(ScrapeRequest),
     Research(ResearchRequest),
     Ask(AskRequest),

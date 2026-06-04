@@ -1,6 +1,6 @@
 # Axon
 
-Version: 4.20.3
+Version: 5.0.0
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -15,7 +15,7 @@ Supported production runtime:
 - Gemini CLI is the default LLM synthesis path; OpenAI-compatible endpoints
   such as llama.cpp are supported when configured with `AXON_LLM_BACKEND=openai-compat`.
 - Local NVIDIA RTX 4070 target with NVIDIA Container Toolkit.
-- Host CLI defaults to client/server mode against `http://127.0.0.1:8001`.
+- CLI and MCP run all actions in-process; deploy the `axon serve` container only when you need HTTP API access.
 - One shared config home: `~/.axon/.env`, `~/.axon/config.toml`, `~/.axon/jobs.db`, `~/.axon/output`, `~/.axon/logs`, `~/.axon/artifacts`, `~/.axon/screenshots`, `~/.axon/qdrant`, and `~/.axon/tei`.
 
 Not supported in the production path:
@@ -168,7 +168,7 @@ CLI flags > environment variables > ~/.axon/config.toml > built-in defaults
 
 Keep in `.env`:
 
-- URLs: `AXON_SERVER_URL`, `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`.
+- URLs: `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`.
 - Secrets: `AXON_MCP_HTTP_TOKEN`, `TAVILY_API_KEY`, `GITHUB_TOKEN`, Reddit credentials, OAuth credentials, `HF_TOKEN`.
 - Docker/runtime bootstrap: `AXON_HOME`, `AXON_DATA_DIR`, `AXON_IMAGE`, `AXON_MCP_HTTP_PUBLISH`, `TEI_HTTP_PORT`, GPU device values.
 - LLM runtime pointers when needed: `AXON_HEADLESS_GEMINI_CMD`,
@@ -196,7 +196,7 @@ axon crawl https://example.com --wait true
 axon ask "What did we crawl?"
 ```
 
-Host commands default to server mode once `AXON_SERVER_URL=http://127.0.0.1:8001` is present. Use `--local` for explicit in-process debugging.
+CLI and MCP commands always run in-process against Qdrant and TEI. `axon serve` exposes the same operations over HTTP (`/v1/*`, MCP-over-HTTP) for clients that want API access to a deployed instance.
 
 ## CLI Map
 

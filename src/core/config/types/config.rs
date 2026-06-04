@@ -1,6 +1,6 @@
 use super::enums::{
-    ClientMode, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
-    RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
 use crate::services::llm_backend::LlmBackendKind;
 use std::path::PathBuf;
@@ -670,21 +670,6 @@ pub struct Config {
 
     /// Suppress spinners and progress output while keeping JSON/data output intact. Flag: `--quiet`.
     pub quiet: bool,
-
-    /// CLI execution mode. `Server` means the command should use the configured
-    /// `axon serve` endpoint when the command has a server client path.
-    pub client_mode: ClientMode,
-
-    /// Explicit local override. When true, CLI commands bypass server-client
-    /// dispatch even if `AXON_SERVER_URL` is configured.
-    pub local_mode: bool,
-
-    /// When set, CLI commands with server-client support target this running
-    /// `axon serve` endpoint. Env: `AXON_SERVER_URL`.
-    ///
-    /// Stored as a parsed `reqwest::Url` (re-export of `url::Url`) so malformed values are
-    /// rejected at config-build time rather than at request time.
-    pub server_url: Option<reqwest::Url>,
 
     /// Override log level before tracing init. Env: `AXON_LOG_LEVEL`.
     pub log_level: Option<String>,

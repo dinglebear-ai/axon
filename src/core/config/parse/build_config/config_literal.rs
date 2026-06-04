@@ -6,7 +6,7 @@
 //! same as the previous flat literal.
 
 use super::super::super::cli::GlobalArgs;
-use super::super::super::types::{ClientMode, CommandKind, Config};
+use super::super::super::types::{CommandKind, Config};
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
     env_bool, env_port, parse_csv_env, parse_origin_allowlist, parse_path_budgets,
@@ -349,33 +349,7 @@ fn populate_misc(
     cfg.custom_headers = custom_headers;
     cfg.quiet = g.quiet;
     cfg.log_level = env::var("AXON_LOG_LEVEL").ok();
-    cfg.local_mode = g.local;
-    cfg.server_url = if cfg.local_mode {
-        None
-    } else {
-        resolve_server_url()?
-    };
-    cfg.client_mode = if cfg.server_url.is_some() {
-        ClientMode::Server
-    } else {
-        ClientMode::Local
-    };
     Ok(())
-}
-
-fn resolve_server_url() -> Result<Option<reqwest::Url>, String> {
-    let candidate = env::var("AXON_SERVER_URL")
-        .ok()
-        .map(|value| ("AXON_SERVER_URL", value.trim().to_string()))
-        .filter(|(_, value)| !value.is_empty());
-
-    candidate
-        .map(|(source, raw)| {
-            reqwest::Url::parse(&raw)
-                .map(Some)
-                .map_err(|e| format!("invalid AXON_SERVER_URL '{raw}' ({source}): {e}"))
-        })
-        .unwrap_or(Ok(None))
 }
 
 fn parse_i64_env(var_name: &str) -> Option<i64> {

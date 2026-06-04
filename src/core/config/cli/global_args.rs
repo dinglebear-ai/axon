@@ -222,15 +222,4 @@ pub(in crate::core::config) struct GlobalArgs {
     /// Suppress spinners and progress output (useful in scripts). JSON data is unaffected.
     #[arg(global = true, long, action = ArgAction::SetTrue, default_value_t = false)]
     pub(in crate::core::config) quiet: bool,
-
-    /// Force in-process local execution even when a server URL is configured.
-    #[arg(
-        global = true,
-        long,
-        env = "AXON_LOCAL_MODE",
-        hide_env_values = true,
-        action = ArgAction::SetTrue,
-        default_value_t = false
-    )]
-    pub(in crate::core::config) local: bool,
 }

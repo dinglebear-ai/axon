@@ -52,7 +52,6 @@ fn axon_tool_input_schema_documents_subaction_families() {
         ("extract", "status"),
         ("embed", "cancel"),
         ("ingest", "recover"),
-        ("artifacts", "grep"),
         ("vertical_scrape", "capabilities"),
     ] {
         let values = subactions

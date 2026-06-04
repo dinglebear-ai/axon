@@ -104,10 +104,6 @@ pub(super) fn build_browser_runtime(
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DoctorModeReport {
-    pub client: String,
-    pub server_url: Option<String>,
-    pub route: String,
-    pub fallback: bool,
     pub local_runtime: String,
 }
 
@@ -131,10 +127,6 @@ impl DoctorReport {
     pub fn sample_for_tests() -> Self {
         Self {
             mode: DoctorModeReport {
-                client: "local".to_string(),
-                server_url: None,
-                route: "local".to_string(),
-                fallback: false,
                 local_runtime: "sqlite_in_process".to_string(),
             },
             capabilities: vec![DoctorCapability {
@@ -143,7 +135,7 @@ impl DoctorReport {
                 impact: vec!["crawl and retrieve are available".to_string()],
                 remedies: vec![],
             }],
-            recommendations: vec!["start axon serve for remote client mode".to_string()],
+            recommendations: vec!["start qdrant and tei with `just services-up`".to_string()],
             services: serde_json::json!({
                 "qdrant": {
                     "ok": true,

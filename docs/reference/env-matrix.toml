@@ -35,18 +35,6 @@ compatibility = "canonical"
 reason = "Chrome/CDP endpoint URL. URLs stay in env/CLI, not TOML."
 
 [[env]]
-key = "AXON_SERVER_URL"
-classification = "keep-env"
-runtime_placement = "host-only"
-surfaces = ["src", "env-template", "docs"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "canonical"
-reason = "Client/server endpoint URL. URLs stay in env/CLI, not TOML."
-
-[[env]]
 key = "AXON_MCP_HTTP_TOKEN"
 classification = "keep-env"
 runtime_placement = "container-required"
@@ -1149,6 +1137,30 @@ container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_SERVER_URL"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "removed"
+reason = "Removed in 5.0.0 (CLI/MCP client-server forwarding deleted); no longer read at runtime. Retained here only for migration tracking because legacy compose/getting-started docs still mention it."
+
+[[env]]
+key = "AXON_SUPPRESS_STALE_BINARY_WARNING"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "When set, suppresses the stale-binary startup warning emitted by src/core/binary_status.rs. Read directly via env; non-secret runtime toggle."
 
 [[env]]
 key = "AXON_LOG_DIR"

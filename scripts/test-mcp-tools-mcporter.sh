@@ -20,14 +20,6 @@ CONFIG_PATH=""
 MCPORTER=()
 
 EXPECTED_ROUTES="$(cat <<'EOF'
-artifacts:clean
-artifacts:delete
-artifacts:grep
-artifacts:head
-artifacts:list
-artifacts:read
-artifacts:search
-artifacts:wc
 ask
 brand
 crawl:cancel
@@ -82,7 +74,6 @@ EOF
 
 DIRECT_ACTIONS_JSON='["ask","brand","diff","doctor","domains","elicit_demo","endpoints","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
-artifacts
 ask
 brand
 crawl
@@ -336,19 +327,11 @@ run_suite() {
   fi
   run_json_case "${prefix}_elicit_demo" '.ok == true and .action == "elicit_demo" and (.data.action | type == "string")' call_tool action:elicit_demo
 
-  echo "== $mode artifacts ==" | tee -a "$SUMMARY"
+  echo "== $mode path-mode response ==" | tee -a "$SUMMARY"
+  # Artifact-first response mode still persists large payloads to disk and returns
+  # a path; the in-process server makes that path directly readable. (The standalone
+  # `artifacts` MCP action was removed in 5.0.0.)
   run_json_case "${prefix}_help_path" '.ok == true and .action == "help" and .subaction == "help" and .data.response_mode == "path" and (.data.artifact.path | type == "string")' call_tool action:help response_mode:path
-  local help_path_file="$OUTDIR/${prefix}_help_path.log"
-  local artifact_path
-  artifact_path="$(extract_json_field "$help_path_file" '.data.artifact.path')"
-  run_json_case "${prefix}_artifacts_head" '.ok == true and .action == "artifacts" and .subaction == "head" and (.data.path | type == "string") and (.data.head | type == "string")' call_tool action:artifacts subaction:head path:"$artifact_path" limit:10
-  run_json_case "${prefix}_artifacts_wc" '.ok == true and .action == "artifacts" and .subaction == "wc" and (.data.path | type == "string") and (.data.bytes | type == "number") and (.data.lines | type == "number")' call_tool action:artifacts subaction:wc path:"$artifact_path"
-  run_json_case "${prefix}_artifacts_read" '.ok == true and .action == "artifacts" and .subaction == "read" and (.data.path | type == "string") and (.data.content | type == "string")' call_tool action:artifacts subaction:read path:"$artifact_path" full:true limit:20 offset:0
-  run_json_case "${prefix}_artifacts_grep" '.ok == true and .action == "artifacts" and .subaction == "grep" and (.data.path | type == "string") and .data.pattern == "action" and (.data.matches | type == "array")' call_tool action:artifacts subaction:grep path:"$artifact_path" pattern:'action' limit:10
-  run_json_case "${prefix}_artifacts_list" '.ok == true and .action == "artifacts" and .subaction == "list" and (((.data.response_mode == "path") and (.data.artifact.path | type == "string")) or ((.data.response_mode == "auto-inline") and (.data.data.files | type == "array")))' call_tool action:artifacts subaction:list
-  run_json_case "${prefix}_artifacts_search" '.ok == true and .action == "artifacts" and .subaction == "search" and (((.data.data.matches | type) == "array" and .data.data.pattern == "action") or ((.data.artifact.path | type) == "string" and .data.response_mode == "path"))' call_tool action:artifacts subaction:search pattern:'action' limit:10
-  run_json_case "${prefix}_artifacts_clean" '.ok == true and .action == "artifacts" and .subaction == "clean" and .data.max_age_hours == 24 and (.data.files | type == "array")' call_tool action:artifacts subaction:clean max_age_hours:24
-  run_json_case "${prefix}_artifacts_delete" '.ok == true and .action == "artifacts" and .subaction == "delete" and (.data.deleted | type == "string") and (.data.bytes_freed | type == "number")' call_tool action:artifacts subaction:delete path:"$artifact_path"
 
   echo "== $mode lifecycle start/status/cancel/list ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_crawl_start" '.ok == true and .action == "crawl" and .subaction == "start" and (.data.job_ids | type == "array") and ((.data.job_ids | length) > 0)' call_tool_json "{\"action\":\"crawl\",\"subaction\":\"start\",\"urls\":[\"$REAL_PAGE_URL\"],\"max_pages\":1}"

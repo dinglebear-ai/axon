@@ -233,7 +233,7 @@ pub async fn scrape_batch(
 
 /// Scrape a batch and embed it when `cfg.embed` is true.
 ///
-/// This is the shared service entry point for REST/server-mode scrape calls.
+/// This is the shared service entry point for the `/v1` REST scrape endpoint.
 /// It embeds the in-memory scrape result instead of round-tripping through the
 /// output directory, so vertical metadata is preserved in Qdrant payloads.
 #[must_use = "scrape_batch_with_optional_embed returns a Result that should be handled"]

@@ -66,6 +66,7 @@ pub(crate) fn build_client_no_redirect(
     build_client_with_options(timeout_secs, user_agent, true, false, false)
 }
 
+#[cfg(not(test))]
 pub(crate) fn build_client_without_ssrf_resolver(
     timeout_secs: u64,
     user_agent: Option<&str>,
