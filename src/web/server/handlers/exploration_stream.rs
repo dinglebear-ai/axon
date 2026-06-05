@@ -61,12 +61,18 @@ pub(crate) async fn summarize_stream(
     let disconnected = Arc::new(AtomicBool::new(false));
 
     tokio::spawn(async move {
-        let _ = tx.send(Ok(sse_json(
-            "meta",
-            &LlmStreamEvent::<services::types::SummarizeResult>::Meta {
-                phase: "summarizing",
-            },
-        )));
+        if tx
+            .send(Ok(sse_json(
+                "meta",
+                &LlmStreamEvent::<services::types::SummarizeResult>::Meta {
+                    phase: "summarizing",
+                },
+            )))
+            .is_err()
+        {
+            disconnected.store(true, Ordering::Relaxed);
+            return;
+        }
         let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(256);
         let delta_tx = tx.clone();
         let delta_disconnected = Arc::clone(&disconnected);

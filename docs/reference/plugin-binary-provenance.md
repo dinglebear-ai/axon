@@ -14,7 +14,9 @@ Current reviewed artifact:
 - Size: `245M`
 - Build ID: `e09c52429f2417f0af5d83d2ef5330d1b78583cc`
 - Debug info: present
-- Stripped: no
+- Stripped: no - inherited artifact. Future binary replacements should be
+  release-built and stripped before review unless debug symbols are explicitly
+  required.
 
 Verification command:
 
@@ -23,4 +25,3 @@ sha256sum plugins/axon/bin/axon
 file plugins/axon/bin/axon
 ls -lh plugins/axon/bin/axon
 ```
-
