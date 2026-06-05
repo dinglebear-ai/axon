@@ -12,7 +12,7 @@ data class ExtractRequest(
     @SerialName("max_pages") val maxPages: Int? = null,
     @SerialName("render_mode") val renderMode: String? = null,
     val embed: Boolean? = null,
-    val headers: List<List<String>> = emptyList(),
+    val headers: List<String> = emptyList(),
 )
 
 /** POST /v1/embed request body. */
@@ -46,6 +46,12 @@ data class JobListResponse(
     val jobs: List<ServiceJob> = emptyList(),
     val limit: Int = 0,
     val offset: Int = 0,
+)
+
+/** GET /v1/{crawl,embed,extract,ingest}/{id} response envelope. */
+@Serializable
+data class JobDetailResponse(
+    val job: ServiceJob,
 )
 
 /** GET /v1/status response — aggregated job counts. */

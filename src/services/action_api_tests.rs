@@ -2,8 +2,9 @@ use super::*;
 use crate::core::config::Config;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
 use crate::mcp::schema::{
-    AskRequest, CrawlRequest, CrawlSubaction, DedupeRequest, ElicitDemoRequest, EvaluateRequest,
-    MigrateRequest, QueryRequest, ResearchRequest, StatusRequest, SuggestRequest,
+    AskRequest, BrandRequest, CrawlRequest, CrawlSubaction, DedupeRequest, DiffRequest,
+    ElicitDemoRequest, EndpointsRequest, EvaluateRequest, MigrateRequest, QueryRequest,
+    ResearchRequest, ScreenshotRequest, StatusRequest, SuggestRequest,
 };
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::types::ServiceJob;
@@ -225,10 +226,65 @@ fn req_query() -> AxonRequest {
     })
 }
 
+fn req_endpoints() -> AxonRequest {
+    AxonRequest::Endpoints(EndpointsRequest {
+        url: Some("https://example.com".into()),
+        include_bundles: None,
+        first_party_only: None,
+        unique_only: None,
+        max_scripts: None,
+        max_scan_bytes: None,
+        verify: None,
+        capture_network: None,
+        probe_rpc: None,
+        probe_rpc_subdomains: None,
+        response_mode: None,
+    })
+}
+
+fn req_screenshot() -> AxonRequest {
+    AxonRequest::Screenshot(ScreenshotRequest {
+        url: Some("https://example.com".into()),
+        full_page: None,
+        viewport: None,
+        output: None,
+        response_mode: None,
+    })
+}
+
+fn req_brand() -> AxonRequest {
+    AxonRequest::Brand(BrandRequest {
+        url: "https://example.com".into(),
+        render_mode: None,
+        response_mode: None,
+    })
+}
+
+fn req_diff() -> AxonRequest {
+    AxonRequest::Diff(DiffRequest {
+        url_a: "https://example.com/a".into(),
+        url_b: "https://example.com/b".into(),
+        render_mode: None,
+        response_mode: None,
+    })
+}
+
 #[test]
 fn required_scope_ask_evaluate_suggest_research_are_write() {
     // F10: these trigger Gemini completions — must require axon:write.
     for req in [req_ask(), req_evaluate(), req_suggest(), req_research()] {
+        assert_eq!(
+            required_scope(&req),
+            Some("axon:write"),
+            "expected axon:write for {:?}",
+            std::mem::discriminant(&req)
+        );
+    }
+}
+
+#[test]
+fn required_scope_active_network_actions_are_write() {
+    for req in [req_endpoints(), req_screenshot(), req_brand(), req_diff()] {
         assert_eq!(
             required_scope(&req),
             Some("axon:write"),

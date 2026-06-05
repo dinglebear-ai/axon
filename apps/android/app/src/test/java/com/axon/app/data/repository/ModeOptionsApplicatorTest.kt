@@ -203,14 +203,12 @@ class ModeOptionsApplicatorTest {
         assertEquals("week", out.timeRange)
     }
 
-    @Test fun `Ingest override sets include_source and collection`() = runBlocking {
+    @Test fun `Ingest override sets include_source only`() = runBlocking {
         ctx.modeOptionsDataStore.edit {
             it[IngestFormKeys.INCLUDE_SOURCE] = false
-            it[IngestFormKeys.COLLECTION] = "alt"
         }
         val out = repo.apply(IngestRequest(sourceType = "github", target = "o/r"))
         assertEquals(false, out.includeSource)
-        assertEquals("alt", out.collection)
     }
 
     @Test fun `apply is a no-op when no overrides are set`() = runBlocking {

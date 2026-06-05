@@ -1,4 +1,5 @@
 const SUMMARY_LIMIT = 10;
+const MAX_TEXT_DIFF_CHARS = 12_000;
 
 export type OutputKind = "markdown" | "code";
 
@@ -184,10 +185,16 @@ function diffReport(value: Record<string, unknown>): string {
     metaLines.length ? "### Metadata" : "",
     ...metaLines,
     textDiff ? "### Text diff" : "",
-    textDiff ?? "",
+    textDiff ? truncateTextDiff(textDiff) : "",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function truncateTextDiff(text: string): string {
+  if (text.length <= MAX_TEXT_DIFF_CHARS) return text;
+  const omitted = text.length - MAX_TEXT_DIFF_CHARS;
+  return `${text.slice(0, MAX_TEXT_DIFF_CHARS)}\n\n[truncated ${omitted} chars from text_diff]`;
 }
 
 function screenshotReport(value: Record<string, unknown>): string {

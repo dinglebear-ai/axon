@@ -129,15 +129,15 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     },
     McpActionSpec {
         name: "brand",
-        scope: ActionScope::Read,
+        scope: ActionScope::Write,
         description: "Extract brand identity metadata from a URL",
-        cost: "moderate",
+        cost: "write",
     },
     McpActionSpec {
         name: "diff",
-        scope: ActionScope::Read,
+        scope: ActionScope::Write,
         description: "Compare two URLs for content, metadata, and link changes",
-        cost: "moderate",
+        cost: "write",
     },
     McpActionSpec {
         name: "crawl",

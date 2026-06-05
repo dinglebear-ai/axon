@@ -39,8 +39,8 @@ Status meanings:
 | `dedupe` | `services::system::dedupe` | no dedicated action | `POST /v1/dedupe` = Implemented | Mutating vector maintenance command; migrate remains CLI-only. |
 | `doctor` | `services::system::doctor` | `doctor` | `GET /v1/doctor` = Implemented | Returns diagnostics to authenticated callers; boolean probes use healthz/readyz. |
 | `domains` | `services::system::{domains,detailed_domains}` | `domains` | `GET /v1/domains` = Implemented | HTTP exposes the domain facets service path. |
-| `brand` | `services::brand::brand` | `brand` | `POST /v1/brand` = Implemented | Extracts brand identity metadata from a URL. |
-| `diff` | `services::diff::compute_diff` | `diff` | `POST /v1/diff` = Implemented | Compares two URLs and returns content, metadata, and link changes. |
+| `brand` | `services::brand::brand` | `brand` | `POST /v1/brand` = Implemented | Brand-identity extraction is available through CLI, MCP, and direct REST. |
+| `diff` | `services::diff::diff` | `diff` | `POST /v1/diff` = Implemented | Two-URL compare is available through CLI, MCP, and direct REST. |
 | `endpoints` | `services::endpoints::discover` | `endpoints` | `POST /v1/endpoints` = Implemented | API-endpoint discovery. `--probe-rpc`/`--probe-rpc-subdomains` remain CLI-only (no MCP/REST toggle); see `docs/reference/endpoints.md`. |
 | `embed` | `services::embed::{embed_start_with_context,embed_status,embed_list,embed_cancel,embed_cleanup,embed_clear,embed_recover}` | `embed.start`, `embed.status`, `embed.cancel`, `embed.list`, `embed.cleanup`, `embed.clear`, `embed.recover` | `POST /v1/embed`, `GET /v1/embed`, `GET /v1/embed/{id}`, `POST /v1/embed/{id}/cancel`, `POST /v1/embed/cleanup`, `DELETE /v1/embed`, `POST /v1/embed/recover` = Implemented | REST validates local file inputs with the shared server-side embed guard. CLI-only `embed worker` is local process control. |
 | `evaluate` | `services::query::evaluate` | `evaluate` | `POST /v1/evaluate` = Implemented | Uses typed result and shared HttpError envelope. |
@@ -53,7 +53,7 @@ Status meanings:
 | `retrieve` | `services::query::retrieve` | `retrieve` | `POST /v1/retrieve` = Implemented | Supports collection, max_points, cursor, and token_budget. |
 | `scrape` | `services::scrape::{scrape_batch,scrape_batch_with_optional_embed}` | `scrape` | `POST /v1/scrape` = Implemented | Supports render mode, format, selectors, headers, collection, and optional embedding. |
 | `summarize` | `services::summarize::summarize` | `summarize` | `POST /v1/summarize` = Implemented | Supports render mode, selectors, and headers for the underlying scrape step. |
-| `screenshot` | `services::screenshot::screenshot_capture` | `screenshot` | `POST /v1/screenshot` = Implemented | Captures a screenshot through the shared Chrome-backed screenshot service. |
+| `screenshot` | `services::screenshot::screenshot_capture` | `screenshot` | `POST /v1/screenshot` = Implemented | Captures screenshots through Chrome with the shared service path. |
 | `search` | `services::search_crawl::search_and_crawl` for CLI/MCP handler path; `services::search::search` for side-effect-free helpers | `search` | `POST /v1/search` = Implemented | HTTP intentionally follows CLI/MCP auto-crawl behavior. |
 | `sessions` | `services::ingest::ingest_sessions*` via `services::ingest::ingest_start_with_context`; `services::ingest::ingest_sessions_prepared_start_with_context` for remote prepared payloads | `ingest.start` with `source_type: "sessions"` | `POST /v1/ingest`, `POST /v1/ingest/sessions/prepared` = Implemented | CLI command maps to ingest with `source_type: "sessions"` and typed session source options. Remote callers use the prepared sessions endpoint because server-local session scanning is disabled. |
 | `sources` | `services::system::sources` | `sources` | `GET /v1/sources` = Implemented | HTTP exposes the same service path. |

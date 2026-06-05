@@ -49,20 +49,22 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
     val watches by vm.watches.collectAsStateWithLifecycle()
     val error by vm.errorMessage.collectAsStateWithLifecycle()
     var selectedLevel by remember { mutableStateOf<JobsDrawerLevel?>(null) }
-    val crawlCount = jobs.count { it.kind == AxonClient.JobKind.Crawl }
-    val embedCount = jobs.count { it.kind == AxonClient.JobKind.Embed }
-    val ingestCount = jobs.count { it.kind == AxonClient.JobKind.Ingest }
-    val extractCount = jobs.count { it.kind == AxonClient.JobKind.Extract }
-    val enabledWatchCount = watches.count { it.enabled }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (selectedLevel != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        // Header row with refresh button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                selectedLevel?.label ?: "Jobs",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color(0xFFA7BCC9),
+                modifier = Modifier.weight(1f),
+            )
+            if (selectedLevel != null) {
                 IconButton(onClick = { selectedLevel = null }, modifier = Modifier.size(32.dp)) {
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
@@ -71,96 +73,87 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
                         modifier = Modifier.size(16.dp),
                     )
                 }
-                Text(
-                    selectedLevel?.label ?: "Jobs",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color(0xFFA7BCC9),
-                    modifier = Modifier.weight(1f),
+            }
+            IconButton(onClick = { vm.refresh() }, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Rounded.Refresh,
+                    contentDescription = "Refresh",
+                    tint = Color(0xFF4A6374),
+                    modifier = Modifier.size(16.dp),
                 )
-                IconButton(onClick = { vm.refresh() }, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        Icons.Rounded.Refresh,
-                        contentDescription = "Refresh",
-                        tint = Color(0xFF4A6374),
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
             }
         }
 
         when {
-            selectedLevel == null -> Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                DrawerSubItem(
-                    icon = Icons.Rounded.Work,
-                    label = "Crawls",
-                    detail = "$crawlCount active",
-                    onClick = { selectedLevel = JobsDrawerLevel.Crawl },
-                )
-                DrawerSubItem(
-                    icon = Icons.Rounded.Storage,
-                    label = "Embeddings",
-                    detail = "$embedCount active",
-                    onClick = { selectedLevel = JobsDrawerLevel.Embed },
-                )
-                DrawerSubItem(
-                    icon = Icons.Rounded.CloudDownload,
-                    label = "Ingestions",
-                    detail = "$ingestCount active",
-                    onClick = { selectedLevel = JobsDrawerLevel.Ingest },
-                )
-                DrawerSubItem(
-                    icon = Icons.Rounded.DataObject,
-                    label = "Extractions",
-                    detail = "$extractCount active",
-                    onClick = { selectedLevel = JobsDrawerLevel.Extract },
-                )
-                DrawerSubItem(
-                    icon = Icons.Rounded.Schedule,
-                    label = "Watches",
-                    detail = "$enabledWatchCount enabled",
-                    onClick = { selectedLevel = JobsDrawerLevel.Watches },
-                )
-            }
             error != null -> Text(
                 error!!,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             )
-            selectedLevel == JobsDrawerLevel.Watches -> LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
+            selectedLevel == null -> Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
+                DrawerSubItem(
+                    icon = Icons.Rounded.Work,
+                    label = "Crawls",
+                    detail = "${jobs.count { it.kind == AxonClient.JobKind.Crawl }} active",
+                    onClick = { selectedLevel = JobsDrawerLevel.Crawl },
+                )
+                DrawerSubItem(
+                    icon = Icons.Rounded.Storage,
+                    label = "Embeddings",
+                    detail = "${jobs.count { it.kind == AxonClient.JobKind.Embed }} active",
+                    onClick = { selectedLevel = JobsDrawerLevel.Embed },
+                )
+                DrawerSubItem(
+                    icon = Icons.Rounded.CloudDownload,
+                    label = "Ingestions",
+                    detail = "${jobs.count { it.kind == AxonClient.JobKind.Ingest }} active",
+                    onClick = { selectedLevel = JobsDrawerLevel.Ingest },
+                )
+                DrawerSubItem(
+                    icon = Icons.Rounded.DataObject,
+                    label = "Extractions",
+                    detail = "${jobs.count { it.kind == AxonClient.JobKind.Extract }} active",
+                    onClick = { selectedLevel = JobsDrawerLevel.Extract },
+                )
+                DrawerSubItem(
+                    icon = Icons.Rounded.Schedule,
+                    label = "Watches",
+                    detail = "${watches.count { it.enabled }} enabled",
+                    onClick = { selectedLevel = JobsDrawerLevel.Watches },
+                )
+            }
+            selectedLevel == JobsDrawerLevel.Watches -> {
                 if (watches.isEmpty()) {
-                    item {
-                        EmptyContent(
-                            title = "No watches",
-                            description = "Live watch definitions will appear here",
-                            icon = Icons.Rounded.Schedule,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                        )
-                    }
+                    EmptyContent(
+                        title = "No watches",
+                        description = "Scheduled watches will appear here",
+                        icon = Icons.Rounded.Schedule,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                    )
                 } else {
-                    items(watches, key = { it.id }) { watch ->
-                        DrawerSubItem(
-                            icon = Icons.Rounded.Schedule,
-                            label = watch.name,
-                            detail = if (watch.enabled) "Every ${watch.everySeconds}s" else "Paused",
-                        )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        items(watches, key = { it.id }) { watch ->
+                            DrawerSubItem(
+                                icon = Icons.Rounded.Schedule,
+                                label = watch.name,
+                                detail = if (watch.enabled) "Every ${watch.everySeconds}s" else "Paused",
+                            )
+                        }
                     }
                 }
             }
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
+            else -> {
                 val kind = when (selectedLevel) {
                     JobsDrawerLevel.Crawl -> AxonClient.JobKind.Crawl
                     JobsDrawerLevel.Embed -> AxonClient.JobKind.Embed
@@ -168,21 +161,24 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
                     JobsDrawerLevel.Extract -> AxonClient.JobKind.Extract
                     else -> null
                 }
-                val filtered = jobs.filter { it.kind == kind }
-                if (filtered.isEmpty()) {
-                    item {
-                        EmptyContent(
-                            title = "No active ${selectedLevel?.label?.lowercase()}",
-                            description = "Live jobs for this queue will appear here",
-                            icon = Icons.Rounded.Work,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                        )
-                    }
+                val filteredJobs = jobs.filter { it.kind == kind }
+                if (filteredJobs.isEmpty()) {
+                    EmptyContent(
+                        title = "No active jobs",
+                        description = "Active ${selectedLevel?.label?.lowercase()} will appear here",
+                        icon = Icons.Rounded.Work,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                    )
                 } else {
-                    items(filtered, key = { it.id }) { job ->
-                        JobsOverviewItem(job = job)
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        items(filteredJobs, key = { it.id }) { job ->
+                            JobsOverviewItem(job = job)
+                        }
                     }
                 }
             }

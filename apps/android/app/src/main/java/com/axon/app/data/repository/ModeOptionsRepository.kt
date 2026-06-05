@@ -172,7 +172,6 @@ class ModeOptionsRepository(
         val prefs = context.modeOptionsDataStore.data.first()
         return req.copy(
             includeSource = req.includeSource ?: prefs[IngestFormKeys.INCLUDE_SOURCE],
-            collection    = req.collection    ?: prefs[IngestFormKeys.COLLECTION],
         )
     }
 }
