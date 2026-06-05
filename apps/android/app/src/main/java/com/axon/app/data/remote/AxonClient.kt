@@ -26,6 +26,7 @@ import com.axon.app.data.remote.models.DomainsResponse
 import com.axon.app.data.remote.models.EmbedRequest
 import com.axon.app.data.remote.models.ExtractRequest
 import com.axon.app.data.remote.models.IngestRequest
+import com.axon.app.data.remote.models.JobDetailResponse
 import com.axon.app.data.remote.models.JobListResponse
 import com.axon.app.data.remote.models.PanelConfigResponse
 import com.axon.app.data.remote.models.PanelEnvResponse
@@ -320,12 +321,14 @@ class AxonClient(
 
     /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
     suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
-        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}").get())
-        execute(httpLong, builder)
+        getWith<JobDetailResponse>(
+            httpLong,
+            "/v1/${kind.path}/${encodePathSegment(id)}",
+        ).map { it.job }
     }
 
     /** GET /v1/{kind} — list jobs of one kind. Server wraps in {"jobs":[...],"limit":N,"offset":N}. */
-    suspend fun listJobs(kind: JobKind, limit: Int = 100, offset: Int = 0): Result<List<ServiceJob>> = withContext(Dispatchers.IO) {
+    suspend fun listJobs(kind: JobKind, limit: Int = 25, offset: Int = 0): Result<List<ServiceJob>> = withContext(Dispatchers.IO) {
         get<JobListResponse>("/v1/${kind.path}?limit=$limit&offset=$offset").map { it.jobs }
     }
 
@@ -346,7 +349,7 @@ class AxonClient(
     suspend fun domains(limit: Int = 100, offset: Int = 0): Result<DomainsResponse> =
         withContext(Dispatchers.IO) { get("/v1/domains?limit=$limit&offset=$offset") }
 
-    suspend fun listWatches(limit: Int = 50): Result<List<WatchDef>> = withContext(Dispatchers.IO) {
+    suspend fun listWatches(limit: Int = 25): Result<List<WatchDef>> = withContext(Dispatchers.IO) {
         get<WatchListResponse>("/v1/watch?limit=$limit").map { it.watches }
     }
 
@@ -427,6 +430,11 @@ class AxonClient(
             authRequest(Request.Builder().url("${baseUrl()}$path").get())
         }
         return execute(http, builder)
+    }
+
+    private inline fun <reified R> getWith(client: OkHttpClient, path: String): Result<R> {
+        val builder = authRequest(Request.Builder().url("${baseUrl()}$path").get())
+        return execute(client, builder)
     }
 
     private inline fun <reified R> execute(client: OkHttpClient, builder: Request.Builder): Result<R> {

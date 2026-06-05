@@ -289,7 +289,7 @@ export const ACTIONS: PaletteAction[] = [
     argMode: "single",
     aliases: ["watch-run", "run-watch", "watch-now"],
     description: "Run an existing watch definition immediately by UUID.",
-    example: "watch-run 00000000-0000-0000-0000-000000000000",
+    example: "watch-run 00000000-0000-4000-8000-000000000000",
     tone: "info",
   },
   {
@@ -328,7 +328,7 @@ function jobLifecycleActions(family: "crawl" | "embed" | "extract" | "ingest"): 
       argMode: "single",
       aliases: [`${family}-status`, `${family}-get`],
       description: `Fetch one ${family} job by UUID.`,
-      example: `${family}-status 00000000-0000-0000-0000-000000000000`,
+      example: `${family}-status 00000000-0000-4000-8000-000000000000`,
       tone: "info",
     },
     {
@@ -338,7 +338,7 @@ function jobLifecycleActions(family: "crawl" | "embed" | "extract" | "ingest"): 
       argMode: "single",
       aliases: [`${family}-cancel`, `cancel-${family}`],
       description: `Cancel one pending or running ${family} job by UUID.`,
-      example: `${family}-cancel 00000000-0000-0000-0000-000000000000`,
+      example: `${family}-cancel 00000000-0000-4000-8000-000000000000`,
       tone: "warn",
     },
     {

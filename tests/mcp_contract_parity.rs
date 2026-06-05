@@ -503,7 +503,15 @@ fn endpoints_action_scope_is_write_not_read() {
 /// as a hosted network/LLM executor.
 #[test]
 fn active_llm_and_browser_actions_require_write_scope() {
-    for action in ["ask", "evaluate", "suggest", "research", "screenshot"] {
+    for action in [
+        "ask",
+        "evaluate",
+        "suggest",
+        "research",
+        "screenshot",
+        "brand",
+        "diff",
+    ] {
         assert_eq!(
             required_scope_for(action, ""),
             Some("axon:write"),

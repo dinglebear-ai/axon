@@ -299,9 +299,9 @@ class AxonRepository(
         }
     }
 
-    suspend fun ingestStart(sourceType: String, target: String, collection: String? = null): Result<String> = withToken {
+    suspend fun ingestStart(sourceType: String, target: String): Result<String> = withToken {
         val req = applicator.apply(
-            com.axon.app.data.remote.models.IngestRequest(sourceType = sourceType, target = target, collection = collection)
+            com.axon.app.data.remote.models.IngestRequest(sourceType = sourceType, target = target)
         )
         client.ingestStart(req).map { it.jobId }
     }

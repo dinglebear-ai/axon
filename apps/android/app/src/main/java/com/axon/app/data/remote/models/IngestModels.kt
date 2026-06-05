@@ -9,7 +9,6 @@ data class IngestRequest(
     @SerialName("source_type") val sourceType: String,   // "github"|"gitlab"|"gitea"|"git"|"reddit"|"youtube"
     val target: String? = null,
     @SerialName("include_source") val includeSource: Boolean? = null,
-    val collection: String? = null,
 )
 
 /** AcceptedJob — 202 response from POST /v1/ingest. */

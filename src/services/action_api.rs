@@ -82,7 +82,6 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         | AxonRequest::Retrieve(_)
         | AxonRequest::Search(_)
         | AxonRequest::Map(_)
-        | AxonRequest::Endpoints(_)
         | AxonRequest::Doctor(_)
         | AxonRequest::Domains(_)
         | AxonRequest::Sources(_)
@@ -113,9 +112,12 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             SetupMode::Check => Some("axon:read"),
             SetupMode::FirstRun | SetupMode::Repair | SetupMode::MigrateEnv => Some("axon:write"),
         },
-        AxonRequest::Scrape(_) | AxonRequest::Screenshot(_) => Some("axon:write"),
+        AxonRequest::Scrape(_)
+        | AxonRequest::Screenshot(_)
+        | AxonRequest::Endpoints(_)
+        | AxonRequest::Diff(_)
+        | AxonRequest::Brand(_) => Some("axon:write"),
         AxonRequest::VerticalScrape(_) => Some("axon:write"),
-        AxonRequest::Diff(_) | AxonRequest::Brand(_) => Some("axon:read"),
         // NOTE: no wildcard arm — the match must be exhaustive.
         // Adding a new AxonRequest variant without a required_scope arm is a compile error,
         // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
