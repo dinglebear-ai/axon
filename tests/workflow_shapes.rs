@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 #[test]
-fn release_checkout_sparse_paths_are_in_sparse_checkout_block() {
+fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_checkout() {
     let workflow = include_str!("../.github/workflows/release.yml");
     let blocks = checkout_sparse_blocks(workflow);
     assert!(
         !blocks.is_empty(),
-        "release workflow should have at least one sparse checkout block to validate"
+        "release workflow should define at least one sparse checkout block so this guard validates the active checkout shape"
     );
 
     for (index, block) in blocks.iter().enumerate() {
