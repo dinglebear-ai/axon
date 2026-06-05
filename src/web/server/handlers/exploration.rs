@@ -63,6 +63,25 @@ pub(crate) struct EndpointsRequest {
     probe_rpc_subdomains: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct BrandRequest {
+    url: String,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct DiffRequest {
+    url_a: String,
+    url_b: String,
+    render_mode: Option<crate::core::config::RenderMode>,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct ScreenshotRequest {
+    url: String,
+    viewport: Option<String>,
+    full_page: Option<bool>,
+}
+
 #[utoipa::path(
     post,
     path = "/v1/scrape",
@@ -268,6 +287,96 @@ pub(crate) async fn endpoints(
         .await
         .map(Json)
         .map_err(HttpError::from_box_send_sync)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/brand",
+    request_body = BrandRequest,
+    responses(
+        (status = 200, description = "Extracted brand identity from a URL", body = services::types::BrandResult),
+        (status = 400, description = "Invalid brand request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream page fetch unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
+pub(crate) async fn brand(
+    State((_state, cfg)): State<WebState>,
+    Json(req): Json<BrandRequest>,
+) -> Result<Json<services::types::BrandResult>, HttpError> {
+    let url = required_text(&req.url, "url")?;
+    validate_url(url)
+        .map_err(|err| HttpError::new(StatusCode::BAD_REQUEST, "bad_request", err.to_string()))?;
+    services::brand::brand(&cfg, url, None)
+        .await
+        .map(Json)
+        .map_err(HttpError::from_box)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/diff",
+    request_body = DiffRequest,
+    responses(
+        (status = 200, description = "Markdown, metadata, and link diff between two URLs", body = services::types::DiffResult),
+        (status = 400, description = "Invalid diff request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream scrape unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
+pub(crate) async fn diff(
+    State((_state, cfg)): State<WebState>,
+    Json(req): Json<DiffRequest>,
+) -> Result<Json<services::types::DiffResult>, HttpError> {
+    let url_a = required_text(&req.url_a, "url_a")?;
+    let url_b = required_text(&req.url_b, "url_b")?;
+    validate_url(url_a)
+        .map_err(|err| HttpError::new(StatusCode::BAD_REQUEST, "bad_request", err.to_string()))?;
+    validate_url(url_b)
+        .map_err(|err| HttpError::new(StatusCode::BAD_REQUEST, "bad_request", err.to_string()))?;
+    let cfg = cfg.apply_overrides(&ConfigOverrides {
+        render_mode: req.render_mode,
+        ..ConfigOverrides::default()
+    });
+    services::diff::diff(&cfg, url_a, url_b, None)
+        .await
+        .map(Json)
+        .map_err(HttpError::from_box)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/screenshot",
+    request_body = ScreenshotRequest,
+    responses(
+        (status = 200, description = "Captured screenshot artifact metadata", body = services::types::ScreenshotResult),
+        (status = 400, description = "Invalid screenshot request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Chrome screenshot service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
+pub(crate) async fn screenshot(
+    State((_state, cfg)): State<WebState>,
+    Json(req): Json<ScreenshotRequest>,
+) -> Result<Json<services::types::ScreenshotResult>, HttpError> {
+    let url = required_text(&req.url, "url")?;
+    validate_url(url)
+        .map_err(|err| HttpError::new(StatusCode::BAD_REQUEST, "bad_request", err.to_string()))?;
+    let (viewport_width, viewport_height) = parse_viewport(
+        req.viewport.as_deref(),
+        cfg.viewport_width,
+        cfg.viewport_height,
+    )?;
+    let cfg = cfg.apply_overrides(&ConfigOverrides {
+        viewport_width: Some(viewport_width),
+        viewport_height: Some(viewport_height),
+        screenshot_full_page: req.full_page,
+        ..ConfigOverrides::default()
+    });
+    services::screenshot::screenshot_capture(&cfg, url)
+        .await
+        .map(Json)
+        .map_err(HttpError::from_box)
 }
 
 #[utoipa::path(
@@ -515,4 +624,31 @@ fn parse_time_range(value: &str) -> Result<ServiceTimeRange, HttpError> {
             "time_range must be one of: day, week, month, year",
         )),
     }
+}
+
+fn parse_viewport(
+    viewport: Option<&str>,
+    fallback_w: u32,
+    fallback_h: u32,
+) -> Result<(u32, u32), HttpError> {
+    let Some(value) = viewport.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok((fallback_w, fallback_h));
+    };
+    let Some((w, h)) = value.split_once('x') else {
+        return Err(HttpError::bad_request(
+            "viewport must use WxH format, for example 1280x720",
+        ));
+    };
+    let w = w
+        .parse::<u32>()
+        .map_err(|_| HttpError::bad_request("viewport width must be a positive integer"))?;
+    let h = h
+        .parse::<u32>()
+        .map_err(|_| HttpError::bad_request("viewport height must be a positive integer"))?;
+    if w == 0 || h == 0 || w > 7680 || h > 4320 {
+        return Err(HttpError::bad_request(
+            "viewport must be between 1x1 and 7680x4320",
+        ));
+    }
+    Ok((w, h))
 }

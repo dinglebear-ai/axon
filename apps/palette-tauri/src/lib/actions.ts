@@ -3,6 +3,7 @@ export type ArgMode = "none" | "optionalSingle" | "single" | "split";
 export interface PaletteAction {
   label: string;
   subcommand: string;
+  kind?: "operation" | "job" | "admin" | "discovery";
   argMode: ArgMode;
   aliases: string[];
   description: string;
@@ -14,6 +15,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Scrape URL",
     subcommand: "scrape",
+    kind: "operation",
     argMode: "split",
     aliases: ["scrape", "fetch", "page", "url"],
     description: "Fetch one page, convert it to markdown, and optionally embed it.",
@@ -23,6 +25,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Crawl URL",
     subcommand: "crawl",
+    kind: "operation",
     argMode: "split",
     aliases: ["crawl", "site", "docs"],
     description: "Queue a site crawl from a start URL with the current crawl settings.",
@@ -32,6 +35,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Map URL",
     subcommand: "map",
+    kind: "operation",
     argMode: "split",
     aliases: ["map", "links", "discover"],
     description: "Discover URLs without scraping or embedding page content.",
@@ -41,6 +45,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Summarize URL",
     subcommand: "summarize",
+    kind: "operation",
     argMode: "split",
     aliases: ["summarize", "summary", "brief"],
     description: "Scrape one or more URLs and synthesize a concise summary.",
@@ -50,6 +55,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Ask question",
     subcommand: "ask",
+    kind: "operation",
     argMode: "single",
     aliases: ["ask", "answer", "rag"],
     description: "Run RAG over the configured collection and synthesize an answer.",
@@ -59,6 +65,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Query knowledge base",
     subcommand: "query",
+    kind: "operation",
     argMode: "single",
     aliases: ["query", "vector", "semantic"],
     description: "Search indexed chunks semantically and return ranked source snippets.",
@@ -68,6 +75,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Retrieve document",
     subcommand: "retrieve",
+    kind: "operation",
     argMode: "split",
     aliases: ["retrieve", "chunks", "document"],
     description: "Fetch stored document content for an indexed URL.",
@@ -77,6 +85,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Suggest URLs",
     subcommand: "suggest",
+    kind: "operation",
     argMode: "optionalSingle",
     aliases: ["suggest", "recommend", "discover-more"],
     description: "Suggest additional documentation URLs worth crawling.",
@@ -86,6 +95,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Evaluate answer",
     subcommand: "evaluate",
+    kind: "operation",
     argMode: "single",
     aliases: ["evaluate", "eval", "judge"],
     description: "Compare RAG and baseline answers with an independent LLM judge.",
@@ -95,6 +105,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Search the web",
     subcommand: "search",
+    kind: "operation",
     argMode: "single",
     aliases: ["search", "web"],
     description: "Search the web and enqueue crawls for useful results.",
@@ -104,6 +115,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Research the web",
     subcommand: "research",
+    kind: "operation",
     argMode: "single",
     aliases: ["research", "deepsearch"],
     description: "Run web research with LLM synthesis.",
@@ -113,6 +125,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Embed input",
     subcommand: "embed",
+    kind: "operation",
     argMode: "single",
     aliases: ["embed", "index", "vectorize"],
     description: "Embed a URL, file, directory, or text input into the collection.",
@@ -122,6 +135,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Extract data",
     subcommand: "extract",
+    kind: "operation",
     argMode: "split",
     aliases: ["extract", "structured", "parse"],
     description: "Queue structured extraction for one or more URLs.",
@@ -131,6 +145,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Ingest target",
     subcommand: "ingest",
+    kind: "operation",
     argMode: "split",
     aliases: ["ingest", "import", "repo", "youtube", "reddit"],
     description: "Ingest GitHub, Reddit, or YouTube targets into the collection.",
@@ -140,6 +155,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Job status",
     subcommand: "status",
+    kind: "discovery",
     argMode: "none",
     aliases: ["status", "jobs", "queue"],
     description: "Show the async job queue and recent worker state.",
@@ -149,6 +165,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "List sources",
     subcommand: "sources",
+    kind: "discovery",
     argMode: "none",
     aliases: ["sources", "urls", "indexed"],
     description: "List indexed source URLs in the configured collection.",
@@ -158,6 +175,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "List domains",
     subcommand: "domains",
+    kind: "discovery",
     argMode: "none",
     aliases: ["domains", "sites", "facets"],
     description: "Show indexed domains and vector counts.",
@@ -167,6 +185,7 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Collection stats",
     subcommand: "stats",
+    kind: "discovery",
     argMode: "none",
     aliases: ["stats", "collection", "qdrant"],
     description: "Show vector collection statistics.",
@@ -176,13 +195,174 @@ export const ACTIONS: PaletteAction[] = [
   {
     label: "Doctor",
     subcommand: "doctor",
+    kind: "discovery",
     argMode: "none",
     aliases: ["doctor", "health", "check"],
     description: "Check Qdrant, TEI, and LLM connectivity.",
     example: "doctor",
     tone: "info",
   },
+  {
+    label: "Discover endpoints",
+    subcommand: "endpoints",
+    kind: "operation",
+    argMode: "split",
+    aliases: ["endpoints", "api", "routes", "discover-endpoints"],
+    description: "Scan a page for API endpoints, scripts, and optional probes.",
+    example: "endpoints https://example.com/app",
+    tone: "violet",
+  },
+  {
+    label: "Extract brand",
+    subcommand: "brand",
+    kind: "operation",
+    argMode: "split",
+    aliases: ["brand", "identity", "colors", "logo", "favicon"],
+    description: "Extract brand name, colors, fonts, and logo assets from a URL.",
+    example: "brand https://aurora.tootie.tv",
+    tone: "rose",
+  },
+  {
+    label: "Diff URLs",
+    subcommand: "diff",
+    kind: "operation",
+    argMode: "split",
+    aliases: ["diff", "compare", "changes"],
+    description: "Compare two URLs for markdown, metadata, and link changes.",
+    example: "diff https://example.com/a https://example.com/b",
+    tone: "info",
+  },
+  {
+    label: "Screenshot URL",
+    subcommand: "screenshot",
+    kind: "operation",
+    argMode: "split",
+    aliases: ["screenshot", "capture", "shot", "png"],
+    description: "Capture a full-page screenshot through Axon's Chrome service.",
+    example: "screenshot https://example.com",
+    tone: "violet",
+  },
+  {
+    label: "Dedupe collection",
+    subcommand: "dedupe",
+    kind: "admin",
+    argMode: "optionalSingle",
+    aliases: ["dedupe", "deduplicate", "clean-vectors"],
+    description: "Remove near-duplicate chunks from the selected collection.",
+    example: "dedupe",
+    tone: "warn",
+  },
+  {
+    label: "List watches",
+    subcommand: "watch-list",
+    kind: "admin",
+    argMode: "none",
+    aliases: ["watch", "watches", "watch-list"],
+    description: "List scheduled URL change-detection watches.",
+    example: "watch-list",
+    tone: "neutral",
+  },
+  {
+    label: "Create URL watch",
+    subcommand: "watch-create",
+    kind: "admin",
+    argMode: "split",
+    aliases: ["watch-create", "watch-url", "monitor-url"],
+    description: "Create a URL change detector. Optional second argument is seconds.",
+    example: "watch-create https://example.com/docs 3600",
+    tone: "violet",
+  },
+  {
+    label: "Run watch now",
+    subcommand: "watch-run",
+    kind: "admin",
+    argMode: "single",
+    aliases: ["watch-run", "run-watch", "watch-now"],
+    description: "Run an existing watch definition immediately by UUID.",
+    example: "watch-run 00000000-0000-0000-0000-000000000000",
+    tone: "info",
+  },
+  {
+    label: "Ingest prepared sessions",
+    subcommand: "ingest-sessions-prepared",
+    kind: "operation",
+    argMode: "single",
+    aliases: ["sessions-prepared", "ingest-sessions-prepared", "prepared-sessions"],
+    description: "Submit a prepared AI-session ingest request as JSON.",
+    example: "ingest-sessions-prepared {\"sessions\":[]}",
+    tone: "violet",
+  },
+  ...jobLifecycleActions("crawl"),
+  ...jobLifecycleActions("embed"),
+  ...jobLifecycleActions("extract"),
+  ...jobLifecycleActions("ingest"),
 ];
+
+function jobLifecycleActions(family: "crawl" | "embed" | "extract" | "ingest"): PaletteAction[] {
+  const label = family[0].toUpperCase() + family.slice(1);
+  return [
+    {
+      label: `List ${family} jobs`,
+      subcommand: `${family}-list`,
+      kind: "job",
+      argMode: "none",
+      aliases: [`${family}-list`, `${family}-jobs`, `${family}s`],
+      description: `List recent ${family} jobs.`,
+      example: `${family}-list`,
+      tone: "neutral",
+    },
+    {
+      label: `${label} job status`,
+      subcommand: `${family}-status`,
+      kind: "job",
+      argMode: "single",
+      aliases: [`${family}-status`, `${family}-get`],
+      description: `Fetch one ${family} job by UUID.`,
+      example: `${family}-status 00000000-0000-0000-0000-000000000000`,
+      tone: "info",
+    },
+    {
+      label: `Cancel ${family} job`,
+      subcommand: `${family}-cancel`,
+      kind: "job",
+      argMode: "single",
+      aliases: [`${family}-cancel`, `cancel-${family}`],
+      description: `Cancel one pending or running ${family} job by UUID.`,
+      example: `${family}-cancel 00000000-0000-0000-0000-000000000000`,
+      tone: "warn",
+    },
+    {
+      label: `Cleanup ${family} jobs`,
+      subcommand: `${family}-cleanup`,
+      kind: "job",
+      argMode: "none",
+      aliases: [`${family}-cleanup`, `cleanup-${family}`],
+      description: `Clean completed ${family} job records.`,
+      example: `${family}-cleanup`,
+      tone: "warn",
+    },
+    {
+      label: `Clear ${family} jobs`,
+      subcommand: `${family}-clear`,
+      kind: "job",
+      argMode: "none",
+      aliases: [`${family}-clear`, `clear-${family}`],
+      description: `Delete ${family} job records for a clean queue view.`,
+      example: `${family}-clear`,
+      tone: "warn",
+    },
+    {
+      label: `Recover ${family} jobs`,
+      subcommand: `${family}-recover`,
+      kind: "job",
+      argMode: "none",
+      aliases: [`${family}-recover`, `recover-${family}`],
+      description: `Recover stale ${family} jobs after an interrupted worker run.`,
+      example: `${family}-recover`,
+      tone: "success",
+    },
+  ];
+}
 
 export function actionMatches(action: PaletteAction, input: string): boolean {
   const query = input.trim().toLowerCase();
@@ -202,7 +382,18 @@ export function actionInvokedBy(action: PaletteAction, token: string): boolean {
 }
 
 export function acceptsDirectUrl(action: PaletteAction): boolean {
-  return ["scrape", "crawl", "map", "summarize", "retrieve", "embed", "extract", "ingest"].includes(
-    action.subcommand,
-  );
+  return [
+    "scrape",
+    "crawl",
+    "map",
+    "summarize",
+    "retrieve",
+    "embed",
+    "extract",
+    "ingest",
+    "endpoints",
+    "brand",
+    "screenshot",
+    "watch-create",
+  ].includes(action.subcommand);
 }

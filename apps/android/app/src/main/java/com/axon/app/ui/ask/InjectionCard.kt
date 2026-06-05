@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -27,8 +28,16 @@ fun InjectionCard(
     chunkCount: Int? = null,
     modifier: Modifier = Modifier,
 ) {
-    val icon = if (op == FabOp.Crawl) Icons.Rounded.TravelExplore else Icons.Rounded.Download
-    val verbPast = if (op == FabOp.Crawl) "crawled" else "ingested"
+    val icon = when (op) {
+        FabOp.Crawl -> Icons.Rounded.TravelExplore
+        FabOp.Extract -> Icons.Rounded.FilterAlt
+        else -> Icons.Rounded.Download
+    }
+    val verbPast = when (op) {
+        FabOp.Crawl -> "crawled"
+        FabOp.Extract -> "started extracting"
+        else -> "ingested"
+    }
     val indexedWhat = when {
         pageCount != null && chunkCount != null ->
             "and indexed $pageCount docs (${"%,d".format(chunkCount)} chunks)"

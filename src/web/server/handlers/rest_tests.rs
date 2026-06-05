@@ -787,7 +787,7 @@ async fn watch_list_route_is_reachable() {
     );
 }
 
-/// POST /v1/watch/create with empty name returns 400.
+/// POST /v1/watch with empty name returns 400.
 #[tokio::test]
 #[serial]
 async fn watch_create_rejects_empty_name() {
@@ -796,7 +796,7 @@ async fn watch_create_rejects_empty_name() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/watch/create"))
+        .post(format!("{base}/v1/watch"))
         .json(&serde_json::json!({
             "name": "",
             "task_type": "watch",
@@ -816,7 +816,7 @@ async fn watch_create_rejects_empty_name() {
     assert_eq!(body["kind"], "bad_request");
 }
 
-/// POST /v1/watch/create with every_seconds=0 returns 400.
+/// POST /v1/watch with every_seconds=0 returns 400.
 #[tokio::test]
 #[serial]
 async fn watch_create_rejects_zero_interval() {
@@ -825,7 +825,7 @@ async fn watch_create_rejects_zero_interval() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/watch/create"))
+        .post(format!("{base}/v1/watch"))
         .json(&serde_json::json!({
             "name": "test-watch",
             "task_type": "watch",
@@ -843,7 +843,7 @@ async fn watch_create_rejects_zero_interval() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
-/// POST /v1/watch/create with unsupported task_type returns 400.
+/// POST /v1/watch with unsupported task_type returns 400.
 #[tokio::test]
 #[serial]
 async fn watch_create_rejects_unsupported_task_type() {
@@ -852,7 +852,7 @@ async fn watch_create_rejects_unsupported_task_type() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/watch/create"))
+        .post(format!("{base}/v1/watch"))
         .json(&serde_json::json!({
             "name": "test",
             "task_type": "frobinate",
@@ -884,7 +884,7 @@ async fn watch_create_requires_non_empty_url_array() {
     ];
     for payload in cases {
         let response = client
-            .post(format!("{base}/v1/watch/create"))
+            .post(format!("{base}/v1/watch"))
             .json(&serde_json::json!({
                 "name": "test",
                 "task_type": "watch",
@@ -937,26 +937,34 @@ async fn watch_get_unknown_uuid_route_is_mounted() {
     );
 }
 
-/// /v1/watch/create (POST literal) does not collide with /v1/watch/{id} (GET capture).
-/// Axum prioritizes static segments over captures.
+/// POST /v1/watch and GET /v1/watch/{id} coexist on the retained test router.
 #[tokio::test]
 #[serial]
-async fn watch_create_and_get_id_do_not_conflict() {
+async fn watch_create_uses_production_path_not_legacy_create_path() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
 
-    // GET /v1/watch/create should NOT match as a watch-ID lookup (create is not a UUID)
-    let get_create = client
-        .get(format!("{base}/v1/watch/create"))
+    let legacy_create = client
+        .post(format!("{base}/v1/watch/create"))
+        .json(&serde_json::json!({
+            "name": "",
+            "task_type": "watch",
+            "task_payload": {},
+            "every_seconds": 60,
+            "enabled": true,
+            "next_run_at": "2026-01-01T00:00:00Z"
+        }))
         .send()
         .await
-        .expect("GET /v1/watch/create");
+        .expect("POST /v1/watch/create");
 
     stop(shutdown, handle).await;
-    // Should be 405 (method not allowed on the POST-only /create route) —
-    // not 400 "invalid watch id" from the /{id} capture.
-    assert_eq!(get_create.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert_ne!(
+        legacy_create.status(),
+        StatusCode::BAD_REQUEST,
+        "legacy /v1/watch/create must not reach the watch-create handler after route consolidation"
+    );
 }
 
 // ── deny_unknown_fields across all Family 2+3 body structs (xqp1) ────────

@@ -358,8 +358,10 @@ jobs:
         run: npm ci --prefix apps/web
       - name: REST route contract inventory
         run: cargo test --locked --test http_api_parity_inventory
-      - name: Server-mode REST planner contract
-        run: cargo test --locked server_mode_post_bodies_match_canonical_rest_contract_fields --lib
+      - name: REST route contract inventory filter guard
+        run: python3 scripts/cargo_test_filter_guard.py -- cargo test --locked --test http_api_parity_inventory rest_route_contracts_match_openapi_request_schemas -- --nocapture
+      - name: Workflow shape contracts
+        run: cargo test --locked --test workflow_shapes
       - name: OpenAPI and generated client sync
         run: npm --prefix apps/web run openapi:check
 
@@ -524,8 +526,15 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f "scripts/enforce_monoliths.py" ]; then
-            python3 scripts/enforce_monoliths.py --whole-repo --include-allowlisted
+            python3 scripts/enforce_monoliths.py --whole-repo --include-allowlisted | tee monolith-report.txt
           fi
+      - name: Upload whole-repo monolith report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: monolith-report
+          path: monolith-report.txt
+          if-no-files-found: ignore
 
   fmt:
     name: fmt

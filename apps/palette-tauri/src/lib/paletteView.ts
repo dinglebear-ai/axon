@@ -53,6 +53,47 @@ export function actionHint(action: PaletteAction, search: string): string {
   return "Select";
 }
 
+export function actionKindLabel(action: PaletteAction): string {
+  switch (action.kind) {
+    case "admin":
+      return "Admin";
+    case "discovery":
+      return "Discovery";
+    case "job":
+      return "Job";
+    case "operation":
+    default:
+      return "Operation";
+  }
+}
+
+export function actionArgumentLabel(action: PaletteAction): string {
+  switch (action.argMode) {
+    case "none":
+      return "No input";
+    case "optionalSingle":
+      return "Optional input";
+    case "single":
+      return "Text input";
+    case "split":
+      return "Structured input";
+  }
+}
+
+export function actionKindTone(action: PaletteAction): "info" | "success" | "warn" | "neutral" | "rose" | "violet" {
+  switch (action.kind) {
+    case "admin":
+      return "warn";
+    case "discovery":
+      return "neutral";
+    case "job":
+      return "violet";
+    case "operation":
+    default:
+      return "info";
+  }
+}
+
 export function argumentPlaceholder(action: PaletteAction): string {
   const example = action.example.replace(new RegExp(`^${action.subcommand}\\s*`, "i"), "").trim();
   return example || action.description;

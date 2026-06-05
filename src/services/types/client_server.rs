@@ -179,6 +179,9 @@ pub fn supported_routes() -> Vec<String> {
         "POST /v1/summarize",
         "POST /v1/map",
         "POST /v1/endpoints",
+        "POST /v1/brand",
+        "POST /v1/diff",
+        "POST /v1/screenshot",
         "POST /v1/search",
         "POST /v1/research",
         "POST /v1/crawl",
@@ -203,6 +206,7 @@ pub fn supported_routes() -> Vec<String> {
         "DELETE /v1/extract",
         "POST /v1/extract/recover",
         "POST /v1/ingest",
+        "POST /v1/ingest/sessions/prepared",
         "GET /v1/ingest",
         "GET /v1/ingest/{id}",
         "POST /v1/ingest/{id}/cancel",
@@ -220,7 +224,7 @@ pub fn supported_routes() -> Vec<String> {
     .collect()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 pub struct ArtifactHandle {
     pub kind: String,
     pub relative_path: String,

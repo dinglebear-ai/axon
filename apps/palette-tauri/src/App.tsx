@@ -30,6 +30,10 @@ import {
 import { formatPayload, outputKindFor } from "@/lib/format";
 import {
   argumentFor,
+  actionArgumentLabel,
+  actionHint,
+  actionKindLabel,
+  actionKindTone,
   argumentPlaceholder,
   focusInput,
   hostLabel,
@@ -232,7 +236,7 @@ export default function App() {
       ? { width: 900, height: 560 }
       : showContent
         ? { width: 760, height: Math.min(142 + filtered.length * 48, window.screen.availHeight - 80) }
-        : { width: 640, height: 78 };
+        : { width: 760, height: 92 };
     void invoke("resize_palette", size);
   }, [showResultsLayout, showContent, filtered.length]);
 
@@ -360,12 +364,24 @@ export default function App() {
   }
 
   const outputKind = "outputKind" in run ? run.outputKind : active ? outputKindFor(active.subcommand) : "code";
+  const commandStatus = active
+    ? validation || (modeAction ? active.description : `${actionHint(active, parsed.search)} ${active.label}`)
+    : "No matching action";
+  const endpointLabel = config ? hostLabel(config.serverUrl) : configError ? "Config error" : "Loading";
+  const endpointTone = configError ? "error" : "syncing";
 
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}`}>
 
       <section className="command-bar">
-        <Search size={16} aria-hidden="true" />
+        <StatusIndicator
+          className="compact-brand"
+          tone={endpointTone}
+          label={<span className="compact-brand-label">Axon</span>}
+          pulse={false}
+          title={config?.serverUrl ?? endpointLabel}
+          aria-hidden={!compact}
+        />
         {modeAction && (
           <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} aria-label={`Clear ${modeAction.subcommand} mode`}>
             {modeAction.subcommand}
@@ -378,8 +394,20 @@ export default function App() {
           onKeyDown={onInputKeyDown}
           placeholder={modeAction ? argumentPlaceholder(modeAction) : active?.example ?? "Search commands"}
           className="command-input"
+          startAdornment={<Search size={15} aria-hidden="true" />}
           aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
         />
+        <div className="command-context" aria-live="polite">
+          {active && (
+            <>
+              <Badge tone={actionKindTone(active)} shape="tag" size="sm">
+                {actionKindLabel(active)}
+              </Badge>
+              <span>{commandStatus}</span>
+            </>
+          )}
+          {!active && <span>{commandStatus}</span>}
+        </div>
         <button
           className="command-submit"
           type="button"
@@ -390,6 +418,11 @@ export default function App() {
         >
           {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" tone="cyan" /> : <Send size={15} />}
         </button>
+        <div className="compact-status">
+          <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
+            <Settings size={14} />
+          </button>
+        </div>
       </section>
 
       {settingsOpen && draftConfig && (
@@ -429,11 +462,15 @@ export default function App() {
                   }}
                 >
                   <span className="action-main">
-                    <span className="action-label">{action.label}</span>
+                    <span className="action-title-line">
+                      <span className="action-label">{action.label}</span>
+                      <span className="action-kind">{actionKindLabel(action)}</span>
+                    </span>
                     <span className="action-description">{action.description}</span>
                   </span>
                   <span className="action-meta">
-                    <kbd>Enter</kbd>
+                    <span className="action-input-mode">{actionArgumentLabel(action)}</span>
+                    <kbd>{actionHint(action, parsed.search)}</kbd>
                     <Badge tone={action.tone} shape="tag">
                       {action.subcommand}
                     </Badge>

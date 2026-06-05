@@ -497,3 +497,17 @@ fn endpoints_action_scope_is_write_not_read() {
         "endpoints must NOT be axon:read — that would allow read tokens to use Axon as an outbound scanner"
     );
 }
+
+/// LLM synthesis and browser/network side-effect actions require axon:write
+/// in REST, action API, and MCP metadata so read-only tokens cannot use Axon
+/// as a hosted network/LLM executor.
+#[test]
+fn active_llm_and_browser_actions_require_write_scope() {
+    for action in ["ask", "evaluate", "suggest", "research", "screenshot"] {
+        assert_eq!(
+            required_scope_for(action, ""),
+            Some("axon:write"),
+            "{action} must require axon:write"
+        );
+    }
+}

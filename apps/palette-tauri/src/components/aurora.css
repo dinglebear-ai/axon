@@ -1,12 +1,12 @@
 :root,
 .dark {
   /* Surfaces — navy lift tiers */
-  --aurora-page-bg:       #070f18;
+  --aurora-page-bg:       #07131c;
   --aurora-bg:            var(--aurora-page-bg);
-  --aurora-nav-bg:        #060e17;
-  --aurora-panel-medium:  #0f1d2b;
+  --aurora-nav-bg:        #07111a;
+  --aurora-panel-medium:  #102330;
   --aurora-panel-strong:  #13293a;
-  --aurora-control-surface: #071018;
+  --aurora-control-surface: #0c1a24;
   --aurora-hover-bg:      #17364b;
   --aurora-surface-raised: linear-gradient(180deg, rgba(18, 40, 56, 0.96), rgba(12, 27, 38, 0.98));
 
@@ -131,8 +131,10 @@
   --aurora-weight-label: 650;
   --aurora-weight-heading: 760;
 
-  /* Page shell — crystalline flat surface */
-  --aurora-shell-bg: #0b1622;
+  /* Page shell — compact desktop variant of the Aurora wash */
+  --aurora-shell-bg: radial-gradient(circle at 12% 0%, rgba(41, 182, 246, 0.09), transparent 28%),
+                     radial-gradient(circle at 88% 0%, rgba(28, 127, 172, 0.10), transparent 24%),
+                     var(--aurora-page-bg);
 
   /* shadcn token bridge — dark */
   --background:           var(--aurora-page-bg);

@@ -2,7 +2,10 @@ use crate::core::config::{Config, RenderMode};
 use crate::core::content::{
     build_selector_config, extract_meta_description, find_between, to_markdown,
 };
-use crate::core::http::{axon_ua, normalize_url, ssrf_blacklist_compact_strings, validate_url};
+use crate::core::http::{
+    axon_ua, build_ssrf_guarded_client_builder, normalize_url, ssrf_blacklist_compact_strings,
+    validate_url,
+};
 use crate::core::logging::log_warn;
 use spider::website::Website;
 use spider_transformations::transformation::content::SelectorConfiguration;
@@ -159,10 +162,8 @@ pub(crate) fn pick_best_page_for_url(
 /// where `accept_invalid_certs`, proxy, or custom headers require a
 /// purpose-built client.
 fn build_scrape_fallback_client(cfg: &Config) -> Result<reqwest::Client, Box<dyn Error>> {
-    let mut builder = reqwest::Client::builder();
-    if let Some(timeout_ms) = cfg.request_timeout_ms {
-        builder = builder.timeout(Duration::from_millis(timeout_ms));
-    }
+    let mut builder =
+        build_ssrf_guarded_client_builder(cfg.request_timeout_ms.map(Duration::from_millis));
     if cfg.accept_invalid_certs {
         warn_invalid_certs_once();
         builder = builder.danger_accept_invalid_certs(true);
@@ -195,22 +196,11 @@ fn build_scrape_fallback_client(cfg: &Config) -> Result<reqwest::Client, Box<dyn
     Ok(builder.build()?)
 }
 
-/// Cache the scrape fallback client per-process. The config-driven settings
-/// (proxy, UA, certs, headers) are set from env vars and do not change
-/// between invocations, so a single client is safe to reuse.
-static SCRAPE_FALLBACK_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-
 pub(crate) async fn direct_fetch_requested_page(
     cfg: &Config,
     requested_url: &str,
 ) -> Result<ScrapedPage, Box<dyn Error>> {
-    let client = if let Some(c) = SCRAPE_FALLBACK_CLIENT.get() {
-        c
-    } else {
-        let built = build_scrape_fallback_client(cfg)?;
-        let _ = SCRAPE_FALLBACK_CLIENT.set(built);
-        SCRAPE_FALLBACK_CLIENT.get().expect("just initialized")
-    };
+    let client = build_scrape_fallback_client(cfg)?;
     let attempts = cfg.fetch_retries.saturating_add(1).max(1);
     let mut last_err: Option<String> = None;
     for attempt in 1..=attempts {

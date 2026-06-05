@@ -1,11 +1,20 @@
 # Axon Android — UI Redesign Spec
-_Last updated: 2026-05-28 · Status: **DESIGN LOCKED — ready for implementation plan**_
+_Last updated: 2026-06-04 · Status: **IMPLEMENTED WITH DOCUMENTED FOLLOW-UPS**_
 
 ---
 
 ## Overview
 
 Full visual redesign of the Axon Android app (`apps/android/`) aligned with the Aurora design system. The app already uses `AuroraTheme` and `AuroraPromptInput`; this redesign replaces all remaining raw Material3 primitives with Aurora components and restructures navigation around **Ask as the primary surface**.
+
+## Current Implementation Notes
+
+- Android writes remain under `apps/android/**`; this spec is the redesign source for Android-specific drift notes.
+- The app compile/target SDK is 35 to stay inside AGP 8.7.x's tested API ceiling. A local Aurora composite may still compile SDK 36, so `android.suppressUnsupportedCompileSdk=36` remains documented in `apps/android/gradle.properties` until Aurora is aligned or AGP is upgraded.
+- Aurora composite resolution is configurable with `-PaxonAuroraAndroidPath=/path/to/aurora-design-system/android` or `AXON_AURORA_ANDROID_PATH`; if unset, Gradle probes the sibling checkout and worktree layouts, then falls back to Maven resolution.
+- `androidx.security:security-crypto` remains on `1.1.0-alpha06` because stable `1.0.0` lacks `androidx.security.crypto.MasterKey`, which the encrypted token/header stores use. `EncryptedTokenStoreTest` and `ModeOptionsApplicatorTest` cover the secure persistence paths.
+- `:app:lintDebug` excludes only the local Aurora composite task `:android:aurora:lintAnalyzeDebug` to avoid a known `androidx.lifecycle.lint.NonNullableMutableLiveDataDetector` / Kotlin analysis API crash. App lint still remains in the task graph.
+- Cleartext HTTP is scoped to this homelab's Tailscale domains: `manatee-triceratops.ts.net` and `manatee-triceratops.tailvpn.net`, not all `*.ts.net` hosts.
 
 ---
 
@@ -50,6 +59,7 @@ Full visual redesign of the Axon Android app (`apps/android/`) aligned with the 
 - Level 1 (overview): 5 sub-items (Crawls / Embeddings / Ingestions / Extractions / Watches), each showing aggregate status badge + live detail line + progress bar if active
 - Level 2 (drill-down): tapping a sub-item replaces drawer content with a list of individual jobs for that type; back arrow returns to overview
 - Each individual job row: status dot · monospace URL/target · progress bar · counts + elapsed time
+- Current app behavior: Crawls / Embeddings / Ingestions / Extractions drill into active jobs from `/v1/{kind}`; Watches drills into watch definitions from `/v1/watch` and shows enabled/schedule status. Watch create/update/pause/delete are not exposed in the Android drawer yet.
 
 ---
 
@@ -102,11 +112,11 @@ Input card (`panelStrong` bg, `accentPrimary` border + glow, 20dp radius):
 
 | Operations | Input | What lands in conversation |
 |-----------|-------|--------------------------|
-| Scrape, Research, Extract, Query, Search, Map, Retrieve, Summarize | URL or query text | Full result as Axon bubble |
-| Crawl | URL | Compact injection card (see below) |
+| Scrape, Research, Query, Search, Map, Retrieve, Summarize | URL or query text | Full result as Axon bubble |
+| Crawl, Extract | URL | Compact injection card (see below) |
 | Ingest | URL / target | Compact injection card (see below) |
 
-**Compact injection card text (Crawl / Ingest):**
+**Compact injection card text (Crawl / Extract / Ingest):**
 ```
 axon mobile just crawled https://code.claude.com and indexed 120 docs (12,049 chunks)
 into your knowledge base — use `axon query` + `axon retrieve` + `axon ask` via MCP
@@ -223,6 +233,7 @@ Reason text examples: "Queried 3× this week, 0 hits" · "New version, indexed c
 **Trigger phrases** (injected by the app into the Ask conversation):
 - `"axon mobile just crawled"`
 - `"axon mobile just ingested"`
+- `"axon mobile just started extracting"`
 
 **On trigger:** Skill instructs Gemini to use Axon MCP tools rather than hallucinating:
 1. `axon query "<topic>"` — semantic search over indexed content

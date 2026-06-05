@@ -13,7 +13,7 @@ body {
   margin: 0;
   height: 100vh;
   min-width: 560px;
-  min-height: 76px;
+  min-height: 92px;
   overflow: hidden;
   background: var(--aurora-shell-bg);
   color: var(--aurora-text-primary);
@@ -47,8 +47,9 @@ textarea {
 }
 
 .palette-shell-compact {
-  min-height: 78px;
-  background: var(--aurora-panel-medium);
+  min-height: 92px;
+  padding: 10px;
+  background: var(--aurora-shell-bg);
 }
 
 .palette-titlebar {
@@ -79,7 +80,7 @@ textarea {
   height: 9px;
   border-radius: 999px;
   background: var(--aurora-accent-primary);
-  box-shadow: 0 0 8px rgba(41, 182, 246, 0.55);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--aurora-accent-primary) 55%, transparent);
 }
 
 .titlebar-button,
@@ -105,21 +106,21 @@ textarea {
 }
 
 .command-submit {
-  color: #fff;
-  background: linear-gradient(135deg, #29b6f6, #1565c0);
+  color: var(--aurora-accent-foreground);
+  background: var(--aurora-accent-gradient);
   border-color: color-mix(in srgb, var(--aurora-accent-primary) 40%, transparent);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--aurora-accent-primary) 35%, transparent);
 }
 
 .command-submit:hover:not(:disabled) {
-  background: linear-gradient(135deg, #42c8ff, #1976d2);
+  background: linear-gradient(180deg, var(--aurora-accent-strong) 0%, var(--aurora-accent-primary) 100%);
   box-shadow: 0 3px 14px color-mix(in srgb, var(--aurora-accent-primary) 45%, transparent);
 }
 
 .command-submit:disabled {
   color: var(--aurora-disabled-text);
-  background: #0d1e2d;
-  border-color: rgba(255, 255, 255, 0.07);
+  background: var(--aurora-disabled-surface);
+  border-color: var(--aurora-border-default);
   box-shadow: none;
   cursor: default;
 }
@@ -133,7 +134,7 @@ textarea {
 .command-bar {
   display: grid;
   flex: 0 0 auto;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 260px) auto;
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
@@ -141,14 +142,66 @@ textarea {
   border-bottom: 1px solid var(--aurora-border-default);
 }
 
-.command-bar:not(:has(.command-mode-pill)) {
-  grid-template-columns: minmax(0, 1fr) auto;
+.command-bar:has(.command-mode-pill) {
+  grid-template-columns: auto minmax(0, 1fr) minmax(170px, 260px) auto;
 }
 
 .palette-shell-compact .command-bar {
-  height: 78px;
-  padding: 14px 16px;
-  border-bottom: 0;
+  height: 72px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  column-gap: 7px;
+  padding: 10px 10px 10px 12px;
+  background: color-mix(in srgb, var(--aurora-panel-strong) 92%, transparent);
+  border: 1px solid var(--aurora-border-strong);
+  border-radius: 16px;
+  box-shadow:
+    var(--aurora-highlight-strong),
+    0 18px 42px color-mix(in srgb, var(--aurora-page-bg) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-primary) 10%, transparent);
+}
+
+.palette-shell-compact .command-bar:has(.command-mode-pill) {
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+}
+
+.palette-shell-compact .command-context {
+  display: none;
+}
+
+.compact-brand,
+.compact-status {
+  display: none;
+}
+
+.palette-shell-compact .compact-brand,
+.palette-shell-compact .compact-status {
+  display: inline-flex;
+  align-items: center;
+}
+
+.compact-brand {
+  gap: 8px;
+  min-width: 76px;
+  color: var(--aurora-text-primary);
+  font-family: var(--aurora-font-display);
+  font-size: 13px;
+  font-weight: var(--aurora-weight-heading);
+  letter-spacing: 0;
+  cursor: help;
+}
+
+.compact-brand-label {
+  color: var(--aurora-text-primary);
+  font-family: var(--aurora-font-display);
+  font-size: 13px;
+  font-weight: var(--aurora-weight-heading);
+  letter-spacing: 0;
+}
+
+.compact-status {
+  min-width: 0;
+  gap: 0;
+  justify-content: flex-end;
 }
 
 .command-field {
@@ -248,6 +301,81 @@ textarea {
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
+}
+
+.palette-shell-compact .command-input {
+  height: 48px;
+  padding-left: 42px;
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 42%, var(--aurora-border-default));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--aurora-control-surface) 92%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 5%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-primary) 12%, transparent);
+  font-size: var(--aurora-type-body-sm);
+}
+
+.palette-shell-compact .command-submit {
+  width: 46px;
+  height: 46px;
+  color: var(--aurora-accent-foreground);
+  background: linear-gradient(180deg, var(--aurora-accent-lift) 0%, var(--aurora-accent-button) 100%);
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 56%, transparent);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 24%, transparent),
+    0 8px 22px color-mix(in srgb, var(--aurora-accent-primary) 30%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-primary) 12%, transparent);
+}
+
+.palette-shell-compact .command-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, var(--aurora-accent-strong) 0%, var(--aurora-accent-primary) 100%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 28%, transparent),
+    0 10px 26px color-mix(in srgb, var(--aurora-accent-primary) 38%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-primary) 16%, transparent);
+}
+
+.palette-shell-compact .command-submit:disabled {
+  color: var(--aurora-neutral-foreground);
+  background: color-mix(in srgb, var(--aurora-neutral) 16%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--aurora-neutral) 28%, var(--aurora-border-default));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 7%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--aurora-neutral) 10%, transparent);
+}
+
+.palette-shell-compact .command-submit svg {
+  width: 18px;
+  height: 18px;
+}
+
+.palette-shell-compact .command-input:focus,
+.palette-shell-compact .command-input:focus-visible {
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 62%, var(--aurora-border-strong));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 6%, transparent),
+    var(--aurora-active-glow);
+}
+
+.command-context {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  overflow: hidden;
+  color: var(--aurora-text-muted);
+  font-size: var(--aurora-type-caption);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.command-context > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .command-mode-pill {
@@ -401,7 +529,7 @@ textarea {
 .action-row-selected {
   background: var(--aurora-selected-bg);
   border-color: color-mix(in srgb, var(--aurora-accent-primary) 22%, transparent);
-  box-shadow: inset 3px 0 0 var(--aurora-accent-primary), 0 1px 5px rgba(0, 0, 0, 0.28);
+  box-shadow: inset 3px 0 0 var(--aurora-accent-primary), var(--aurora-active-glow);
 }
 
 .action-main {
@@ -411,9 +539,32 @@ textarea {
   gap: 3px;
 }
 
+.action-title-line {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
 .action-label {
+  min-width: 0;
+  overflow: hidden;
   font-size: var(--aurora-type-body-sm);
   font-weight: var(--aurora-weight-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-kind,
+.action-input-mode {
+  color: var(--aurora-text-muted);
+  font-size: var(--aurora-type-micro);
+  font-weight: var(--aurora-weight-label);
+  white-space: nowrap;
+}
+
+.action-kind {
+  color: var(--aurora-accent-violet);
 }
 
 .action-description {
@@ -429,6 +580,11 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+
+.action-meta {
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 .action-meta kbd {
@@ -481,8 +637,8 @@ textarea {
   overflow: auto;
   padding: 10px 12px;
   color: var(--aurora-text-primary);
-  background: #040b12;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--aurora-control-surface);
+  border: 1px solid var(--aurora-border-default);
   border-radius: 8px;
 }
 
@@ -573,6 +729,6 @@ textarea {
   justify-content: space-between;
   height: 34px;
   padding: 0 18px;
-  background: #060e17;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--aurora-nav-bg);
+  border-top: 1px solid var(--aurora-border-default);
 }

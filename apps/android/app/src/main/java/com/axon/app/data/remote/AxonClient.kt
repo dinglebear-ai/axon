@@ -18,6 +18,7 @@ import com.axon.app.data.remote.models.AcceptedJob
 import com.axon.app.data.remote.models.CancelResponse
 import com.axon.app.data.remote.models.DoctorResponse
 import com.axon.app.data.remote.models.DomainsResponse
+import com.axon.app.data.remote.models.ExtractRequest
 import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.JobListResponse
 import com.axon.app.data.remote.models.SearchWebRequest
@@ -28,6 +29,8 @@ import com.axon.app.data.remote.models.SuggestRequest
 import com.axon.app.data.remote.models.SuggestResponse
 import com.axon.app.data.remote.models.SummarizeRequest
 import com.axon.app.data.remote.models.SummarizeResponse
+import com.axon.app.data.remote.models.WatchDef
+import com.axon.app.data.remote.models.WatchListResponse
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
@@ -274,6 +277,11 @@ class AxonClient(
         post("/v1/ingest", req)
     }
 
+    /** POST /v1/extract — submits an async structured extraction job. */
+    suspend fun extractStart(req: ExtractRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
+        post("/v1/extract", req)
+    }
+
     /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
     suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
         val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}").get())
@@ -301,6 +309,10 @@ class AxonClient(
 
     suspend fun domains(limit: Int = 100, offset: Int = 0): Result<DomainsResponse> =
         withContext(Dispatchers.IO) { get("/v1/domains?limit=$limit&offset=$offset") }
+
+    suspend fun listWatches(limit: Int = 50): Result<List<WatchDef>> = withContext(Dispatchers.IO) {
+        get<WatchListResponse>("/v1/watch?limit=$limit").map { it.watches }
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

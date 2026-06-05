@@ -1,5 +1,6 @@
 package com.axon.app.data.remote
 
+import com.axon.app.data.remote.models.ExtractRequest
 import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.SearchWebRequest
 import com.axon.app.data.remote.models.SummarizeRequest
@@ -50,11 +51,34 @@ class AxonClientPhase2Test {
         assertTrue(body.contains("\"source_type\":\"github\""))
     }
 
+    @Test fun `extractStart posts urls to v1 extract and decodes AcceptedJob`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"job_id":"ex1","status":"pending"}""").addHeader("Content-Type","application/json"))
+        val r = client.extractStart(ExtractRequest(urls = listOf("https://example.com"), prompt = "extract title"))
+        assertTrue(r.isSuccess)
+        assertEquals("ex1", r.getOrThrow().jobId)
+        val req = server.takeRequest()
+        assertEquals("POST", req.method)
+        assertEquals("/v1/extract", req.path)
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"urls\":[\"https://example.com\"]"))
+        assertTrue(body.contains("\"prompt\":\"extract title\""))
+    }
+
     @Test fun `ingestList GETs v1 ingest list and decodes ServiceJob array`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""[{"id":"j","status":"completed","source_type":"github","target":"https://github.com/o/r"}]""").addHeader("Content-Type","application/json"))
+        server.enqueue(MockResponse().setBody("""{"jobs":[{"id":"j","status":"completed","source_type":"github","target":"https://github.com/o/r"}],"limit":100,"offset":0}""").addHeader("Content-Type","application/json"))
         val r = client.listJobs(AxonClient.JobKind.Ingest)
         assertTrue(r.isSuccess)
         assertEquals("j", r.getOrThrow()[0].id)
+    }
+
+    @Test fun `listWatches GETs v1 watch and decodes watch envelope`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"watches":[{"id":"w1","name":"Docs","task_type":"watch","enabled":true,"every_seconds":300,"next_run_at":"2026-06-04T12:00:00Z"}]}""").addHeader("Content-Type","application/json"))
+        val r = client.listWatches()
+        assertTrue(r.isSuccess)
+        assertEquals("Docs", r.getOrThrow()[0].name)
+        val req = server.takeRequest()
+        assertEquals("GET", req.method)
+        assertTrue("expected path starting with /v1/watch, got ${req.path}", req.path!!.startsWith("/v1/watch"))
     }
 
     @Test fun `cancelJob POSTs v1 kind id cancel`() = runBlocking {

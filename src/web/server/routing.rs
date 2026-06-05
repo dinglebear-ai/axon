@@ -50,6 +50,9 @@ pub(super) fn router(
         // fetches pages, bundles, probes endpoints, and may execute Chrome
         // capture — it must not be accessible with read-only tokens.
         .route("/v1/endpoints", post(handlers::exploration::endpoints))
+        .route("/v1/brand", post(handlers::exploration::brand))
+        .route("/v1/diff", post(handlers::exploration::diff))
+        .route("/v1/screenshot", post(handlers::exploration::screenshot))
         .merge(ask_router)
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
