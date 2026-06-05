@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.axon.app"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.axon.app"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 2
         versionName = "1.1"
     }
@@ -98,4 +98,10 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.ext.junit)
+
+    androidTestImplementation(bom)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.espresso.core)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

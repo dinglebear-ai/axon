@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <!--
-        Cleartext HTTP is intentionally permitted for Tailscale MagicDNS hostnames (*.ts.net)
-        and legacy Tailscale VPN addresses (*.tailvpn.net). These are private homelab network
-        addresses reachable only through the Tailscale VPN tunnel, which itself provides
-        encryption at the network layer. Cleartext is NOT permitted for any public internet host.
+        Cleartext HTTP is intentionally permitted only for this homelab's Tailscale
+        MagicDNS domain and legacy Tailscale VPN domain. These private addresses
+        are reachable only through the Tailscale VPN tunnel, which itself provides
+        encryption at the network layer. Cleartext is NOT permitted for arbitrary
+        public internet hosts or other tailnets.
     -->
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">ts.net</domain>
-        <domain includeSubdomains="true">tailvpn.net</domain>
+        <domain includeSubdomains="true">manatee-triceratops.ts.net</domain>
+        <domain includeSubdomains="true">manatee-triceratops.tailvpn.net</domain>
     </domain-config>
 </network-security-config>

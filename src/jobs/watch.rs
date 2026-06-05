@@ -96,8 +96,8 @@ pub const MIN_WATCH_INTERVAL_SECS: i64 = 30;
 pub const MAX_WATCH_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60;
 
 /// Validate `every_seconds` at create time. Centralized (like
-/// [`validate_task_type`]) so every create path — REST `/v1/watch/create`,
-/// admin `/v1/watch`, and the CLI — enforces identical bounds and the
+/// [`validate_task_type`]) so every create path — REST/admin `/v1/watch`,
+/// and the CLI — enforces identical bounds and the
 /// scheduler can never lease a sub-minimum watch. The message is safe to
 /// surface to callers.
 pub fn validate_every_seconds(every_seconds: i64) -> Result<(), String> {

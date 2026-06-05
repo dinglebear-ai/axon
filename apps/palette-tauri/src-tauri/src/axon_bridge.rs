@@ -22,6 +22,7 @@ pub(crate) struct AxonHttpRequest {
 enum HttpMethod {
     Get,
     Post,
+    Delete,
 }
 
 #[derive(Debug, Serialize)]
@@ -53,6 +54,7 @@ pub(crate) async fn axon_http_request(
     let mut builder = match method {
         HttpMethod::Get => client.get(&url),
         HttpMethod::Post => client.post(&url),
+        HttpMethod::Delete => client.delete(&url),
     }
     .header(
         reqwest::header::ACCEPT,
@@ -103,8 +105,8 @@ fn validate_axon_route(request: &AxonHttpRequest) -> Result<&str, String> {
     {
         return Err("request path must be a canonical /v1 route path".to_string());
     }
-    if request.method == HttpMethod::Get && request.body.is_some() {
-        return Err("GET requests cannot include a body".to_string());
+    if matches!(request.method, HttpMethod::Get | HttpMethod::Delete) && request.body.is_some() {
+        return Err("GET and DELETE requests cannot include a body".to_string());
     }
     is_allowed_route(request.method, path)
         .then_some(path)
@@ -116,7 +118,12 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
         (method, path),
         (
             HttpMethod::Get,
-            "/v1/doctor" | "/v1/status" | "/v1/sources" | "/v1/domains" | "/v1/stats"
+            "/v1/doctor"
+                | "/v1/status"
+                | "/v1/sources"
+                | "/v1/domains"
+                | "/v1/stats"
+                | "/v1/watch"
         ) | (
             HttpMethod::Post,
             "/v1/scrape"
@@ -133,8 +140,57 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
                 | "/v1/embed"
                 | "/v1/extract"
                 | "/v1/ingest"
+                | "/v1/endpoints"
+                | "/v1/brand"
+                | "/v1/diff"
+                | "/v1/screenshot"
+                | "/v1/dedupe"
+                | "/v1/watch"
+                | "/v1/ingest/sessions/prepared"
+        ) | (
+            HttpMethod::Post,
+            "/v1/crawl/cleanup"
+                | "/v1/crawl/recover"
+                | "/v1/embed/cleanup"
+                | "/v1/embed/recover"
+                | "/v1/extract/cleanup"
+                | "/v1/extract/recover"
+                | "/v1/ingest/cleanup"
+                | "/v1/ingest/recover"
+        ) | (
+            HttpMethod::Get | HttpMethod::Delete,
+            "/v1/crawl" | "/v1/embed" | "/v1/extract" | "/v1/ingest"
         )
-    )
+    ) || matches_dynamic_job_route(method, path)
+        || matches_dynamic_watch_route(method, path)
+}
+
+fn matches_dynamic_job_route(method: HttpMethod, path: &str) -> bool {
+    let parts: Vec<_> = path.trim_start_matches('/').split('/').collect();
+    match parts.as_slice() {
+        ["v1", family, id]
+            if matches!(*family, "crawl" | "embed" | "extract" | "ingest")
+                && method == HttpMethod::Get =>
+        {
+            is_uuid(id)
+        }
+        ["v1", family, id, "cancel"]
+            if matches!(*family, "crawl" | "embed" | "extract" | "ingest")
+                && method == HttpMethod::Post =>
+        {
+            is_uuid(id)
+        }
+        _ => false,
+    }
+}
+
+fn matches_dynamic_watch_route(method: HttpMethod, path: &str) -> bool {
+    let parts: Vec<_> = path.trim_start_matches('/').split('/').collect();
+    matches!(parts.as_slice(), ["v1", "watch", id, "run"] if method == HttpMethod::Post && is_uuid(id))
+}
+
+fn is_uuid(value: &str) -> bool {
+    uuid::Uuid::parse_str(value).is_ok()
 }
 
 fn validate_saved_server_url(server_url: &str) -> Result<String, String> {
@@ -178,6 +234,42 @@ mod tests {
             validate_axon_route(&request(HttpMethod::Post, "/v1/ask")).unwrap(),
             "/v1/ask"
         );
+        assert_eq!(
+            validate_axon_route(&request(HttpMethod::Post, "/v1/endpoints")).unwrap(),
+            "/v1/endpoints"
+        );
+        assert_eq!(
+            validate_axon_route(&request(HttpMethod::Post, "/v1/brand")).unwrap(),
+            "/v1/brand"
+        );
+        assert_eq!(
+            validate_axon_route(&request(HttpMethod::Post, "/v1/diff")).unwrap(),
+            "/v1/diff"
+        );
+        assert_eq!(
+            validate_axon_route(&request(HttpMethod::Post, "/v1/screenshot")).unwrap(),
+            "/v1/screenshot"
+        );
+        assert_eq!(
+            validate_axon_route(&request(HttpMethod::Delete, "/v1/crawl")).unwrap(),
+            "/v1/crawl"
+        );
+        assert_eq!(
+            validate_axon_route(&request(
+                HttpMethod::Get,
+                "/v1/crawl/00000000-0000-4000-8000-000000000000"
+            ))
+            .unwrap(),
+            "/v1/crawl/00000000-0000-4000-8000-000000000000"
+        );
+        assert_eq!(
+            validate_axon_route(&request(
+                HttpMethod::Post,
+                "/v1/watch/00000000-0000-4000-8000-000000000000/run"
+            ))
+            .unwrap(),
+            "/v1/watch/00000000-0000-4000-8000-000000000000/run"
+        );
     }
 
     #[test]
@@ -204,11 +296,21 @@ mod tests {
         assert!(validate_axon_route(&request(HttpMethod::Post, "/v1/doctor")).is_err());
         assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/ask")).is_err());
         assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/admin")).is_err());
+        assert!(
+            validate_axon_route(&request(
+                HttpMethod::Get,
+                "/v1/crawl/not-a-uuid"
+            ))
+            .is_err()
+        );
     }
 
     #[test]
     fn rejects_get_request_bodies() {
         let mut req = request(HttpMethod::Get, "/v1/doctor");
+        req.body = Some(serde_json::json!({ "unexpected": true }));
+        assert!(validate_axon_route(&req).is_err());
+        let mut req = request(HttpMethod::Delete, "/v1/crawl");
         req.body = Some(serde_json::json!({ "unexpected": true }));
         assert!(validate_axon_route(&req).is_err());
     }

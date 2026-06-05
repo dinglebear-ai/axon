@@ -66,14 +66,12 @@ case "$target" in
     palette="$repo/apps/palette-tauri"
     log "Installing palette frontend dependencies"
     [[ "$dry_run" -eq 0 ]] && pnpm --dir "$palette" install --frozen-lockfile
-    log "Building palette frontend assets"
-    [[ "$dry_run" -eq 0 ]] && pnpm --dir "$palette" vite:build
     log "Building Axon Palette Windows executable"
     if [[ "$dry_run" -eq 0 ]]; then
-      touch "$palette/src-tauri/src/lib.rs"
-      cargo build --release \
-        --manifest-path "$palette/src-tauri/Cargo.toml" \
-        --target x86_64-pc-windows-gnu
+      pnpm --dir "$palette" exec tauri build \
+        --target x86_64-pc-windows-gnu \
+        --no-bundle \
+        --ci
     fi
     exe="$palette/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe"
     dest="Axon Palette.exe"

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -76,7 +77,10 @@ fun AskScreen(
                     contentPadding = PaddingValues(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(chatItems, key = { it.hashCode() }) { item ->
+                    itemsIndexed(
+                        items = chatItems,
+                        key = { index, item -> stableChatItemKey(index, item) },
+                    ) { _, item ->
                         when (item) {
                             is ChatItem.UserMsg   -> UserBubble(item.text)
                             is ChatItem.AxonMsg   -> AxonBubble(item.text, item.isStreaming)

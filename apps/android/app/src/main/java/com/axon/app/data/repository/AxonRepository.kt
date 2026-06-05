@@ -14,6 +14,7 @@ import com.axon.app.data.remote.RetrieveRequest
 import com.axon.app.data.remote.ScrapeRequest
 import com.axon.app.data.remote.SourcesRequest
 import com.axon.app.data.remote.ResearchHit
+import com.axon.app.data.remote.models.ExtractRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -66,6 +67,7 @@ import kotlinx.serialization.json.int
 )
 
 @Stable data class JobUi(
+    val kind: AxonClient.JobKind? = null,
     val id: String,
     val status: String,
     val url: String?,
@@ -78,6 +80,14 @@ import kotlinx.serialization.json.int
 
 @Stable data class SuggestHitUi(val url: String, val reason: String?)
 @Stable data class DomainFacetUi(val domain: String, val vectors: Long)
+@Stable data class WatchUi(
+    val id: String,
+    val name: String,
+    val taskType: String,
+    val enabled: Boolean,
+    val everySeconds: Long,
+    val nextRunAt: String?,
+)
 
 /** Default `token_budget` cap for `/v1/retrieve` calls. */
 private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000
@@ -265,12 +275,31 @@ class AxonRepository(
         client.ingestStart(req).map { it.jobId }
     }
 
+    suspend fun extractStart(url: String, prompt: String? = null): Result<String> = withToken {
+        client.extractStart(ExtractRequest(urls = listOf(url), prompt = prompt?.takeIf { it.isNotBlank() })).map { it.jobId }
+    }
+
     suspend fun getJob(kind: AxonClient.JobKind, id: String): Result<JobUi> = withToken {
-        client.getJob(kind, id).map(::toJobUi)
+        client.getJob(kind, id).map { toJobUi(kind, it) }
     }
 
     suspend fun listJobs(kind: AxonClient.JobKind): Result<List<JobUi>> = withToken {
-        client.listJobs(kind).map { list -> list.map(::toJobUi) }
+        client.listJobs(kind).map { list -> list.map { toJobUi(kind, it) } }
+    }
+
+    suspend fun listWatches(): Result<List<WatchUi>> = withToken {
+        client.listWatches().map { watches ->
+            watches.map {
+                WatchUi(
+                    id = it.id,
+                    name = it.name,
+                    taskType = it.taskType,
+                    enabled = it.enabled,
+                    everySeconds = it.everySeconds,
+                    nextRunAt = it.nextRunAt,
+                )
+            }
+        }
     }
 
     suspend fun cancelJob(kind: AxonClient.JobKind, id: String): Result<Boolean> = withToken {
@@ -301,8 +330,8 @@ class AxonRepository(
         }
     }
 
-    private fun toJobUi(j: com.axon.app.data.remote.models.ServiceJob) = JobUi(
-        id = j.id, status = j.status, url = j.url, sourceType = j.sourceType,
+    private fun toJobUi(kind: AxonClient.JobKind, j: com.axon.app.data.remote.models.ServiceJob) = JobUi(
+        kind = kind, id = j.id, status = j.status, url = j.url, sourceType = j.sourceType,
         target = j.target, errorText = j.errorText, resultJson = j.resultJson,
         finishedAt = j.finishedAt,
     )

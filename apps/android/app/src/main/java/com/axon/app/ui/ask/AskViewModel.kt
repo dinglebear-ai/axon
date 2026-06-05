@@ -1,6 +1,7 @@
 package com.axon.app.ui.ask
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
@@ -22,6 +23,7 @@ data class AskTurn(val question: String, val answer: String)
 
 /** Maximum prior turns inlined into the next ask. Matches CLI's MAX_FOLLOW_UP_TURNS=6. */
 internal const val MAX_FOLLOW_UP_TURNS = 6
+private const val STREAM_UI_FLUSH_MS = 50L
 
 /**
  * Build the effective query for the server by prepending the last
@@ -60,6 +62,12 @@ sealed interface ChatItem {
         val pageCount: Int? = null,
         val chunkCount: Int? = null,
     ) : ChatItem
+}
+
+internal fun stableChatItemKey(index: Int, item: ChatItem): String = when (item) {
+    is ChatItem.UserMsg -> "user-$index-${item.text.take(32)}"
+    is ChatItem.AxonMsg -> "axon-$index"
+    is ChatItem.Injection -> "injection-$index-${item.op.name}-${item.target}"
 }
 
 class AskViewModel(app: Application) : AndroidViewModel(app) {
@@ -128,6 +136,16 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             // Declared inside the launch block — concurrent ask() calls each get their own
             // StringBuilder so they cannot interleave.
             val accumulated = StringBuilder()
+            var lastFlushMs = 0L
+
+            fun flushStreaming(force: Boolean = false) {
+                val now = SystemClock.elapsedRealtime()
+                if (!force && now - lastFlushMs < STREAM_UI_FLUSH_MS) return
+                val text = accumulated.toString()
+                _uiState.value = AskUiState.Streaming(query = query, partialAnswer = text)
+                replaceLastAxonMsg(text, isStreaming = true)
+                lastFlushMs = now
+            }
 
             runCatching {
                 container.axonRepository.askStream(effective, collection = collection).collect { event ->
@@ -135,13 +153,10 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                         is AskStreamEvent.Meta -> { /* stay Loading during retrieval phase */ }
                         is AskStreamEvent.Delta -> {
                             accumulated.append(event.text)
-                            _uiState.value = AskUiState.Streaming(
-                                query = query,
-                                partialAnswer = accumulated.toString(),
-                            )
-                            replaceLastAxonMsg(accumulated.toString(), isStreaming = true)
+                            flushStreaming()
                         }
                         is AskStreamEvent.Done -> {
+                            if (accumulated.isNotBlank()) flushStreaming(force = true)
                             val result = AskResultUi(query = query, answer = event.answer, timingMs = null)
                             val saved = container.axonRepository.recordAskHistory(
                                 AskHistoryEntry(query = result.query, answer = result.answer)
@@ -154,6 +169,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                             appendTurn(q = query, a = event.answer)
                         }
                         is AskStreamEvent.Error -> {
+                            if (accumulated.isNotBlank()) flushStreaming(force = true)
                             _uiState.value = AskUiState.Error(event.message)
                             replaceLastAxonMsg("Error: ${event.message}", isStreaming = false)
                         }
@@ -199,13 +215,19 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val repo = container.axonRepository
             when (op) {
-                com.axon.app.ui.fab.FabOp.Scrape,
-                com.axon.app.ui.fab.FabOp.Extract -> {
+                com.axon.app.ui.fab.FabOp.Scrape -> {
                     appendItem(ChatItem.UserMsg("[${op.label}] $input"))
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.scrape(url = input).fold(
                         onSuccess = { r -> replaceLastAxonMsg(r.markdown.take(2000)) },
                         onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
+                    )
+                }
+                com.axon.app.ui.fab.FabOp.Extract -> {
+                    appendItem(ChatItem.UserMsg("[Extract] $input"))
+                    repo.extractStart(url = input).fold(
+                        onSuccess = { _ -> appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Extract, input)) },
+                        onFailure = { e -> appendItem(ChatItem.AxonMsg("Extract failed: ${e.message}")) },
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Research -> {

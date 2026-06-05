@@ -66,6 +66,12 @@ pub(crate) fn build_client_no_redirect(
     build_client_with_options(timeout_secs, user_agent, true, false, false)
 }
 
+pub(crate) fn build_ssrf_guarded_client_builder(
+    timeout: Option<Duration>,
+) -> reqwest::ClientBuilder {
+    base_client_builder(timeout, true)
+}
+
 #[cfg(not(test))]
 pub(crate) fn build_client_without_ssrf_resolver(
     timeout_secs: u64,
@@ -81,18 +87,7 @@ fn build_client_with_options(
     follow_redirects: bool,
     disable_proxy: bool,
 ) -> Result<reqwest::Client, HttpError> {
-    #[cfg(test)]
-    let _ = ssrf_dns_guard;
-
-    // Explicit connection pool sizing. reqwest defaults `pool_max_idle_per_host`
-    // to `usize::MAX`, which under sustained dual-Qdrant + TEI load on a single
-    // host can drift toward ephemeral-port pressure (Linux default range ~28K).
-    // Cap idle reuse and the idle TTL so the pool actively recycles connections
-    // instead of growing unbounded. (bd axon_rust-wo1)
-    let mut builder = reqwest::Client::builder()
-        .timeout(Duration::from_secs(timeout_secs))
-        .pool_max_idle_per_host(50)
-        .pool_idle_timeout(Some(Duration::from_secs(60)));
+    let mut builder = base_client_builder(Some(Duration::from_secs(timeout_secs)), ssrf_dns_guard);
     builder = if follow_redirects {
         builder.redirect(reqwest::redirect::Policy::custom(|attempt| {
             let url_string = attempt.url().as_str().to_owned();
@@ -107,6 +102,30 @@ fn build_client_with_options(
     } else {
         builder.redirect(reqwest::redirect::Policy::none())
     };
+    if let Some(ua) = user_agent {
+        builder = builder.user_agent(ua);
+    }
+    if disable_proxy {
+        builder = builder.no_proxy();
+    }
+    Ok(builder.build()?)
+}
+
+fn base_client_builder(timeout: Option<Duration>, ssrf_dns_guard: bool) -> reqwest::ClientBuilder {
+    #[cfg(test)]
+    let _ = ssrf_dns_guard;
+
+    // Explicit connection pool sizing. reqwest defaults `pool_max_idle_per_host`
+    // to `usize::MAX`, which under sustained dual-Qdrant + TEI load on a single
+    // host can drift toward ephemeral-port pressure (Linux default range ~28K).
+    // Cap idle reuse and the idle TTL so the pool actively recycles connections
+    // instead of growing unbounded. (bd axon_rust-wo1)
+    let mut builder = reqwest::Client::builder()
+        .pool_max_idle_per_host(50)
+        .pool_idle_timeout(Some(Duration::from_secs(60)));
+    if let Some(timeout) = timeout {
+        builder = builder.timeout(timeout);
+    }
     // Wire the SSRF-blocking DNS resolver in production builds to close the
     // DNS rebinding TOCTOU window at connect time. Test builds skip only the
     // custom resolver so httpmock servers on 127.0.0.1 remain reachable;
@@ -117,13 +136,7 @@ fn build_client_with_options(
             builder = builder.dns_resolver(super::ssrf::SsrfBlockingResolver);
         }
     }
-    if let Some(ua) = user_agent {
-        builder = builder.user_agent(ua);
-    }
-    if disable_proxy {
-        builder = builder.no_proxy();
-    }
-    Ok(builder.build()?)
+    builder
 }
 
 pub async fn fetch_html(client: &reqwest::Client, url: &str) -> Result<String, anyhow::Error> {

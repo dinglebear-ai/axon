@@ -1115,7 +1115,7 @@ pub struct IngestJobResult {
     pub payload: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ScreenshotResult {
     pub url: String,
     pub path: String,
@@ -1157,27 +1157,27 @@ impl<T> JobListResult<T> {
 
 // ── diff ─────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DiffStatus {
     Same,
     Changed,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct MetadataChange {
     pub field: String,
     pub old: Option<String>,
     pub new: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct LinkEntry {
     pub href: String,
     pub text: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct DiffResult {
     pub url_a: String,
     pub url_b: String,
@@ -1193,7 +1193,9 @@ pub struct DiffResult {
 
 // ── brand ────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ColorUsage {
     Primary,
@@ -1204,21 +1206,21 @@ pub enum ColorUsage {
     Unknown,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct BrandColor {
     pub hex: String,
     pub usage: ColorUsage,
     pub count: usize,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct LogoVariant {
     pub url: String,
     /// "favicon" | "apple-touch-icon" | "logo" | "og-image" | "svg"
     pub kind: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct BrandResult {
     pub url: String,
     pub name: Option<String>,

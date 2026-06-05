@@ -17,9 +17,11 @@ export interface PaletteResult {
   ok: boolean;
   status: number;
   path: string;
-  method: "GET" | "POST";
+  method: HttpMethod;
   payload: unknown;
 }
+
+export type HttpMethod = "GET" | "POST" | "DELETE";
 
 export interface Client {
   baseUrl: string;
@@ -29,7 +31,7 @@ export interface Client {
 export interface PaletteHttpRequest {
   baseUrl: string;
   token: string | null;
-  method: "GET" | "POST";
+  method: HttpMethod;
   path: string;
   body: Record<string, unknown> | null;
 }
@@ -85,11 +87,14 @@ function bodyFor(
   action: PaletteAction,
   arg: string,
   config: PaletteConfig,
-): { method: "GET" | "POST"; path: GetPath | PostPath; body: Record<string, unknown> | null } {
+): { method: HttpMethod; path: string; body: Record<string, unknown> | null } {
   const words = wordsFor(action, arg);
   const collection = config.collection.trim();
   const collectionBody = collection ? { collection } : {};
   const limit = config.resultLimit || 10;
+
+  const lifecycle = jobLifecycleRequest(action.subcommand, words);
+  if (lifecycle) return lifecycle;
 
   switch (action.subcommand) {
     case "doctor":
@@ -147,8 +152,59 @@ function bodyFor(
       return { method: "POST", path: "/v1/extract", body: { urls: required(words, "urls"), ...collectionBody } };
     case "ingest":
       return { method: "POST", path: "/v1/ingest", body: ingestBody(first(words, "target")) };
+    case "endpoints":
+      return { method: "POST", path: "/v1/endpoints", body: { url: first(words, "url") } };
+    case "brand":
+      return { method: "POST", path: "/v1/brand", body: { url: first(words, "url") } };
+    case "diff":
+      return { method: "POST", path: "/v1/diff", body: diffBody(words) };
+    case "screenshot":
+      return {
+        method: "POST",
+        path: "/v1/screenshot",
+        body: { url: first(words, "url"), full_page: true },
+      };
+    case "dedupe":
+      return { method: "POST", path: "/v1/dedupe", body: collectionBody };
+    case "watch-list":
+      return { method: "GET", path: "/v1/watch", body: null };
+    case "watch-create":
+      return { method: "POST", path: "/v1/watch", body: watchCreateBody(words) };
+    case "watch-run":
+      return { method: "POST", path: `/v1/watch/${uuid(first(words, "watch id"))}/run`, body: null };
+    case "ingest-sessions-prepared":
+      return {
+        method: "POST",
+        path: "/v1/ingest/sessions/prepared",
+        body: jsonBody(arg, "prepared sessions request"),
+      };
     default:
       throw new Error(`REST route is not wired for ${action.subcommand}`);
+  }
+}
+
+function jobLifecycleRequest(
+  subcommand: string,
+  words: string[],
+): { method: HttpMethod; path: string; body: Record<string, unknown> | null } | null {
+  const match = /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/.exec(subcommand);
+  if (!match) return null;
+  const [, family, operation] = match;
+  switch (operation) {
+    case "list":
+      return { method: "GET", path: `/v1/${family}`, body: null };
+    case "status":
+      return { method: "GET", path: `/v1/${family}/${uuid(first(words, "job id"))}`, body: null };
+    case "cancel":
+      return { method: "POST", path: `/v1/${family}/${uuid(first(words, "job id"))}/cancel`, body: null };
+    case "cleanup":
+      return { method: "POST", path: `/v1/${family}/cleanup`, body: null };
+    case "clear":
+      return { method: "DELETE", path: `/v1/${family}`, body: null };
+    case "recover":
+      return { method: "POST", path: `/v1/${family}/recover`, body: null };
+    default:
+      return null;
   }
 }
 
@@ -183,25 +239,55 @@ function ingestBody(target: string): Record<string, unknown> {
   if (lower.includes("reddit.com/") || lower.startsWith("/r/") || lower.startsWith("r/")) {
     return { source_type: "reddit", target };
   }
-  return { source_type: "github", repo: target, include_source: true };
+  return { source_type: "github", target, include_source: true };
 }
 
-type GetPath = "/v1/doctor" | "/v1/status" | "/v1/sources" | "/v1/domains" | "/v1/stats";
-type PostPath =
-  | "/v1/scrape"
-  | "/v1/crawl"
-  | "/v1/map"
-  | "/v1/summarize"
-  | "/v1/ask"
-  | "/v1/query"
-  | "/v1/retrieve"
-  | "/v1/suggest"
-  | "/v1/evaluate"
-  | "/v1/search"
-  | "/v1/research"
-  | "/v1/embed"
-  | "/v1/extract"
-  | "/v1/ingest";
+function watchCreateBody(words: string[]): Record<string, unknown> {
+  const url = first(words, "url");
+  const seconds = words[1] ? Number(words[1]) : 3600;
+  if (!Number.isFinite(seconds) || seconds < 1) {
+    throw new Error("watch interval must be a positive number of seconds");
+  }
+  return {
+    name: hostName(url),
+    task_type: "watch",
+    task_payload: { urls: [url], ignore_patterns: [] },
+    every_seconds: Math.floor(seconds),
+    enabled: true,
+  };
+}
+
+function diffBody(words: string[]): Record<string, unknown> {
+  const clean = required(words, "url_a and url_b");
+  if (clean.length < 2) throw new Error("diff requires two URLs");
+  return { url_a: clean[0], url_b: clean[1] };
+}
+
+function jsonBody(value: string, label: string): Record<string, unknown> {
+  const parsed = JSON.parse(value.trim());
+  if (!isRecord(parsed)) throw new Error(`${label} must be a JSON object`);
+  return parsed;
+}
+
+function uuid(value: string): string {
+  const clean = value.trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clean)) {
+    throw new Error("id must be a UUID");
+  }
+  return clean;
+}
+
+function hostName(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function tokenFromHeaders(headers: Record<string, string>): string | null {
   const authorization = headers.Authorization;
@@ -211,7 +297,7 @@ function tokenFromHeaders(headers: Record<string, string>): string | null {
   return headers["x-api-key"] ?? null;
 }
 
-function failedResult(method: PaletteResult["method"], path: string, error: unknown): PaletteResult {
+function failedResult(method: HttpMethod, path: string, error: unknown): PaletteResult {
   return {
     ok: false,
     status: 0,

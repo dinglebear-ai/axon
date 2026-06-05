@@ -37,7 +37,7 @@ enum PaletteTheme {
     Light,
 }
 
-const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8001";
+const DEFAULT_SERVER_URL: &str = "https://axon.tootie.tv";
 const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const SETTINGS_FILE: &str = "settings.json";
 
@@ -446,6 +446,18 @@ pub fn run() {
             }
             let settings = merged_settings_or_default(app.handle());
             register_configured_shortcut(app.handle(), &settings).map_err(anyhow::Error::msg)?;
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let window_handle = handle.clone();
+                if let Err(err) = handle.run_on_main_thread(move || {
+                    if let Err(err) = show_main_window(&window_handle) {
+                        log_palette_warning("failed to show main window on launch", err);
+                    }
+                }) {
+                    log_palette_warning("failed to schedule launch window show", err);
+                }
+            });
             Ok(())
         })
         .on_window_event(|window, event| match event {

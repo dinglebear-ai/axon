@@ -53,10 +53,26 @@ class AxonRepositoryPhase2Test {
         assertEquals("abc", repo.ingestStart("github", "https://github.com/o/r").getOrThrow())
     }
 
+    @Test fun `extractStart returns jobId`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"job_id":"ex","status":"pending"}""").addHeader("Content-Type","application/json"))
+        assertEquals("ex", repo.extractStart("https://example.com", "extract title").getOrThrow())
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"urls\":[\"https://example.com\"]"))
+        assertTrue(body.contains("\"prompt\":\"extract title\""))
+    }
+
     @Test fun `listJobs returns full server array unchanged (no client-side slicing)`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""[{"id":"a","status":"x"},{"id":"b","status":"y"}]""").addHeader("Content-Type","application/json"))
+        server.enqueue(MockResponse().setBody("""{"jobs":[{"id":"a","status":"x"},{"id":"b","status":"y"}],"limit":100,"offset":0}""").addHeader("Content-Type","application/json"))
         val jobs = repo.listJobs(AxonClient.JobKind.Crawl).getOrThrow()
         assertEquals(2, jobs.size)
+    }
+
+    @Test fun `listWatches maps watch definitions`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"watches":[{"id":"w","name":"Docs","task_type":"watch","enabled":true,"every_seconds":300}]}""").addHeader("Content-Type","application/json"))
+        val watches = repo.listWatches().getOrThrow()
+        assertEquals(1, watches.size)
+        assertEquals("Docs", watches[0].name)
+        assertEquals(true, watches[0].enabled)
     }
 
     @Test fun `summarize blocked by missing token`() = runBlocking {

@@ -36,12 +36,12 @@ jobs:
             docs
             .github
             docs/reference/api-parity.md
-          sparse-checkout-cone-mode: false
             tests
             scripts
             config
             vendor
             .cargo
+          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -79,12 +79,12 @@ jobs:
             docs
             .github
             docs/reference/api-parity.md
-          sparse-checkout-cone-mode: false
             tests
             scripts
             config
             vendor
             .cargo
+          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -125,12 +125,12 @@ jobs:
             docs
             .github
             docs/reference/api-parity.md
-          sparse-checkout-cone-mode: false
             tests
             scripts
             config
             vendor
             .cargo
+          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -178,12 +178,12 @@ jobs:
             docs
             .github
             docs/reference/api-parity.md
-          sparse-checkout-cone-mode: false
             tests
             scripts
             config
             vendor
             .cargo
+          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0

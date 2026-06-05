@@ -1,5 +1,6 @@
 use super::*;
 use crate::core::config::ScrapeFormat;
+use httpmock::prelude::*;
 
 // select_output — pure function, no network required
 
@@ -225,6 +226,50 @@ fn test_select_output_markdown_empty_body() {
     )
     .expect("select_output must not panic on empty body");
     assert!(result.trim().is_empty());
+}
+
+#[tokio::test]
+async fn direct_fetch_fallback_keeps_custom_headers_per_config() {
+    let _loopback = crate::core::http::LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    let first = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/first")
+                .header("x-axon-test", "first");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body("<html><body>first</body></html>");
+        })
+        .await;
+    let second = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/second")
+                .header("x-axon-test", "second");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body("<html><body>second</body></html>");
+        })
+        .await;
+    let first_cfg = Config {
+        custom_headers: vec!["x-axon-test: first".to_string()],
+        ..Config::default()
+    };
+    let second_cfg = Config {
+        custom_headers: vec!["x-axon-test: second".to_string()],
+        ..Config::default()
+    };
+
+    direct_fetch_requested_page(&first_cfg, &format!("{}/first", server.base_url()))
+        .await
+        .expect("first fetch should use first header");
+    direct_fetch_requested_page(&second_cfg, &format!("{}/second", server.base_url()))
+        .await
+        .expect("second fetch should use second header, not a process-global cached client");
+
+    first.assert_async().await;
+    second.assert_async().await;
 }
 
 #[test]

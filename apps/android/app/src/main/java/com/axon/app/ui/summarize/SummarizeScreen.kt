@@ -10,7 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Notes
+import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,7 +50,7 @@ fun SummarizeScreen(vm: SummarizeViewModel = viewModel()) {
             Resource.Idle -> EmptyContent(
                 title = "Summarize a URL",
                 description = "Paste a URL and I'll synthesise a summary via the configured LLM.",
-                icon = Icons.Outlined.Notes,
+                icon = Icons.AutoMirrored.Outlined.Notes,
                 modifier = Modifier.fillMaxWidth(),
             )
             Resource.Loading -> LoadingContent(

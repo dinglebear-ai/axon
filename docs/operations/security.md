@@ -72,7 +72,7 @@ Implementation note: hosts are parsed with `host_str().parse::<IpAddr>()`, **not
 - `src/mcp/server/common.rs`
 - `src/core/content/engine.rs`
 
-The reqwest redirect policy also re-validates every redirect target (`src/core/http/client.rs:44-53`). A 30x to a blocked URL becomes `PermissionDenied` instead of a follow.
+The reqwest redirect policy also re-validates every redirect target (`src/core/http/client.rs:44-53`). A 30x to a blocked URL becomes `PermissionDenied` instead of a follow. The scrape direct-fetch fallback uses the same SSRF-guarded client builder, then layers its per-request timeout, TLS, proxy, user-agent, and header options on top without process-global reuse.
 
 ### 2.3 DNS rebinding (TOCTOU) — mitigated
 
@@ -90,10 +90,10 @@ Test builds (`#[cfg(test)]`) skip the custom resolver so `httpmock` servers on `
 
 Source: `src/core/http/client.rs`.
 
-- Production builds use a single shared `LazyLock<reqwest::Client>` (`HTTP_CLIENT`), constructed once with a 30-second timeout and the SSRF-blocking DNS resolver. **Never construct `reqwest::Client::new()` per call** — that bypasses the resolver and exhausts sockets under load.
+- Production builds use a single shared `LazyLock<reqwest::Client>` (`HTTP_CLIENT`), constructed once with a 30-second timeout and the SSRF-blocking DNS resolver. Request paths that need custom client settings must use the shared builder helper that installs the same resolver before layering additional options. **Never construct `reqwest::Client::new()` per call** — that bypasses the resolver and exhausts sockets under load.
 - The redirect policy re-validates every hop with `validate_url()` (`client.rs:44`).
 - `fetch_html()` validates the final URL before issuing the request (`client.rs:70`).
-- Test builds get a fresh leaked `reqwest::Client` per call to avoid cross-runtime "dispatch task is gone" failures and to keep `httpmock` working.
+- Test builds get a fresh leaked `reqwest::Client` per call to avoid cross-runtime "dispatch task is gone" failures and to keep `httpmock` working. The scrape direct-fetch fallback also builds a fresh client per call so headers, proxy, and TLS settings from one config cannot leak into another scrape.
 
 The shared User-Agent resolves in priority order: `AXON_USER_AGENT` → `AXON_CHROME_USER_AGENT` → built-in Firefox browser UA (`DEFAULT_UA` in `src/core/http/ua.rs`). All HTTP paths — the `http_client()` singleton, Spider crawl/scrape/screenshot paths, and vertical extractors — use this resolved value consistently. Reddit ingestion uses its own OAuth-format UA regardless of these settings.
 
