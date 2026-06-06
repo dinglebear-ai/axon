@@ -124,6 +124,17 @@ fn deltas_accumulate_and_invoke_callback() {
 }
 
 #[test]
+fn delta_callback_error_propagates() {
+    // A failing streaming sink (e.g. a closed channel) must surface as an error
+    // from handle_line, not be swallowed.
+    let mut state = new_state();
+    let line = r#"{"method":"item/agentMessage/delta","params":{"threadId":"t","turnId":"u","itemId":"i","delta":"hi"}}"#;
+    let mut failing = |_: &str| Err::<(), BoxError>("sink closed".into());
+    let err = state.handle_line(line, &mut failing).unwrap_err();
+    assert!(err.to_string().contains("sink closed"), "got: {err}");
+}
+
+#[test]
 fn ignores_reasoning_and_user_message_items() {
     let mut state = new_state();
     for line in [

@@ -56,3 +56,26 @@ fn stderr_suffix_includes_nonblank_tail() {
     assert!(suffix.contains("stderr:"));
     assert!(suffix.contains("something broke"));
 }
+
+#[cfg(unix)]
+#[test]
+fn validate_codex_cmd_rejects_symlink() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("real-codex");
+    std::fs::write(&target, "#!/bin/sh\n").unwrap();
+    let link = dir.path().join("codex-link");
+    symlink(&target, &link).unwrap();
+    let err = validate_codex_cmd(&backend_with_cmd(link.to_str().unwrap())).unwrap_err();
+    assert!(err.to_string().contains("symlink"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn validate_codex_cmd_rejects_non_executable() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("not-exec");
+    std::fs::write(&file, "x").unwrap(); // default perms have no exec bit
+    let err = validate_codex_cmd(&backend_with_cmd(file.to_str().unwrap())).unwrap_err();
+    assert!(err.to_string().contains("not executable"), "got: {err}");
+}

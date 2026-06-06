@@ -454,3 +454,7 @@ fn warn_legacy_service_url(toml_key: &str, env_key: &str) {
         "[services].{toml_key} is deprecated and will be ignored in a future release; move it to {env_key} in .env"
     ));
 }
+
+#[cfg(test)]
+#[path = "config_literal_tests.rs"]
+mod tests;

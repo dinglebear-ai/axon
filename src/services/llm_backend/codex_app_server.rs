@@ -87,7 +87,12 @@ where
     let stderr_tail = collect_stderr(stderr_task).await;
 
     match result {
-        Ok(()) => state.into_response(),
+        // A completed turn can still fail `into_response` (no answer text). Carry
+        // the already-collected stderr context into that error too, not just the
+        // handshake-error path — it often explains an empty response.
+        Ok(()) => state
+            .into_response()
+            .map_err(|err| format!("{err}{}", stderr_suffix(&stderr_tail)).into()),
         Err(err) => Err(format!("{err}; cleanup: {cleanup}{}", stderr_suffix(&stderr_tail)).into()),
     }
 }
@@ -185,11 +190,8 @@ async fn write_line(stdin: &mut ChildStdin, line: &str) -> Result<(), BoxError> 
     Ok(())
 }
 
-async fn collect_stderr(task: JoinHandle<Result<Vec<u8>, std::io::Error>>) -> Vec<u8> {
-    match task.await {
-        Ok(Ok(bytes)) => bytes,
-        _ => Vec::new(),
-    }
+async fn collect_stderr(task: JoinHandle<Vec<u8>>) -> Vec<u8> {
+    task.await.unwrap_or_default()
 }
 
 fn stderr_suffix(stderr: &[u8]) -> String {

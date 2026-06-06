@@ -113,20 +113,19 @@ pub async fn kill_and_wait(child: &mut tokio::process::Child) -> String {
 }
 
 /// Drain a child's stderr into a bounded tail buffer (capped at
-/// [`STDERR_TAIL_LIMIT`] via [`append_bounded_tail`]).
-pub async fn read_bounded_stderr(
-    stderr: tokio::process::ChildStderr,
-) -> Result<Vec<u8>, std::io::Error> {
+/// [`STDERR_TAIL_LIMIT`] via [`append_bounded_tail`]). Best-effort: a read error
+/// returns whatever was accumulated so far rather than discarding the partial
+/// tail, so diagnostics survive an stderr-pipe error.
+pub async fn read_bounded_stderr(stderr: tokio::process::ChildStderr) -> Vec<u8> {
     use tokio::io::{AsyncReadExt, BufReader};
     let mut tail = Vec::new();
     let mut reader = BufReader::new(stderr);
     let mut chunk = [0u8; 1024];
     loop {
-        let read = reader.read(&mut chunk).await?;
-        if read == 0 {
-            return Ok(tail);
+        match reader.read(&mut chunk).await {
+            Ok(0) | Err(_) => return tail,
+            Ok(read) => append_bounded_tail(&mut tail, &chunk[..read]),
         }
-        append_bounded_tail(&mut tail, &chunk[..read]);
     }
 }
 

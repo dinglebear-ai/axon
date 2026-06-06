@@ -425,15 +425,9 @@ fn snapshot_endpoints(
 }
 
 fn llm_backend_snapshot(kind: crate::services::llm_backend::LlmBackendKind) -> String {
-    match kind {
-        crate::services::llm_backend::LlmBackendKind::GeminiHeadless => {
-            "gemini-headless".to_string()
-        }
-        crate::services::llm_backend::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
-        crate::services::llm_backend::LlmBackendKind::CodexAppServer => {
-            "codex-app-server".to_string()
-        }
-    }
+    // Canonical token from the enum's single source of truth, so the snapshot
+    // round-trips through `LlmBackendKind::parse` on the worker side.
+    kind.as_str().to_string()
 }
 
 pub(crate) fn config_snapshot_json(cfg: &Config) -> Result<String, serde_json::Error> {

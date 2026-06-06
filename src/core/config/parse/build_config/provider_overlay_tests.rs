@@ -135,3 +135,100 @@ fn no_active_provider_yields_empty_overlay() {
     let overlay = resolve_provider_overlay(&toml, None).unwrap();
     assert_eq!(overlay, ProviderOverlay::default());
 }
+
+#[test]
+fn backend_from_overlay_uses_overlay_backend_before_env() {
+    // overlay.backend is Some → returned before the AXON_LLM_BACKEND fallback is
+    // even consulted, so an active profile's backend always wins over env.
+    let overlay = ProviderOverlay {
+        backend: Some("codex-app-server".to_string()),
+        ..ProviderOverlay::default()
+    };
+    assert_eq!(
+        backend_from_overlay(&overlay).unwrap(),
+        LlmBackendKind::CodexAppServer
+    );
+}
+
+#[test]
+fn backend_from_overlay_accepts_backend_aliases() {
+    let overlay = ProviderOverlay {
+        backend: Some("codex".to_string()),
+        ..ProviderOverlay::default()
+    };
+    assert_eq!(
+        backend_from_overlay(&overlay).unwrap(),
+        LlmBackendKind::CodexAppServer
+    );
+}
+
+#[test]
+fn effective_backend_kind_resolves_active_profile() {
+    if std::env::var_os("AXON_PROVIDER").is_some() {
+        return;
+    }
+    let toml = load_toml_config_from_str(
+        r#"
+[llm]
+active-provider = "cdx"
+
+[providers.cdx]
+backend = "codex-app-server"
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        effective_backend_kind(&toml, None).unwrap(),
+        LlmBackendKind::CodexAppServer
+    );
+}
+
+#[test]
+fn effective_backend_kind_errors_on_broken_active_profile() {
+    if std::env::var_os("AXON_PROVIDER").is_some() {
+        return;
+    }
+    let toml = load_toml_config_from_str(
+        r#"
+[llm]
+active-provider = "ghost"
+"#,
+    )
+    .unwrap();
+    let err = effective_backend_kind(&toml, None).unwrap_err();
+    assert!(
+        err.contains("not defined under [providers.ghost]"),
+        "got: {err}"
+    );
+}
+
+#[test]
+#[serial_test::serial]
+fn axon_provider_env_beats_toml_active_provider() {
+    // The middle precedence tier: AXON_PROVIDER env > [llm] active-provider.
+    let toml = load_toml_config_from_str(
+        r#"
+[llm]
+active-provider = "gem"
+
+[providers.gem]
+backend = "gemini-headless"
+
+[providers.cdx]
+backend = "codex-app-server"
+"#,
+    )
+    .unwrap();
+    let prev = std::env::var("AXON_PROVIDER").ok();
+    #[allow(unsafe_code)]
+    unsafe {
+        std::env::set_var("AXON_PROVIDER", "cdx");
+    }
+    let overlay = resolve_provider_overlay(&toml, None).unwrap();
+    #[allow(unsafe_code)]
+    match prev {
+        Some(v) => unsafe { std::env::set_var("AXON_PROVIDER", v) },
+        None => unsafe { std::env::remove_var("AXON_PROVIDER") },
+    }
+    assert_eq!(overlay.backend.as_deref(), Some("codex-app-server"));
+}
