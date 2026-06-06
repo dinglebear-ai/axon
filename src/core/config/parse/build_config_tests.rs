@@ -83,22 +83,34 @@ fn extract_defaults_to_single_page_but_explicit_zero_stays_uncapped() {
     assert_eq!(default_crawl.max_pages, 0);
 }
 
-/// Save/restore an env var around a test body so panics don't leak state.
+/// Save/restore env vars around a test body so panics don't leak state.
 #[allow(unsafe_code)]
-pub(super) fn with_env_saved<F: FnOnce()>(keys: &[&str], body: F) {
-    let saved: Vec<(String, Option<String>)> = keys
-        .iter()
-        .map(|k| ((*k).to_string(), env::var(k).ok()))
-        .collect();
-    body();
-    for (k, v) in saved {
-        unsafe {
-            match v {
-                Some(val) => env::set_var(&k, val),
-                None => env::remove_var(&k),
+pub(in crate::core::config::parse) fn with_env_saved<F: FnOnce()>(keys: &[&str], body: F) {
+    struct EnvRestore {
+        saved: Vec<(String, Option<String>)>,
+    }
+
+    impl Drop for EnvRestore {
+        #[allow(unsafe_code)]
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                unsafe {
+                    match value {
+                        Some(saved) => env::set_var(&key, saved),
+                        None => env::remove_var(&key),
+                    }
+                }
             }
         }
     }
+
+    let _restore = EnvRestore {
+        saved: keys
+            .iter()
+            .map(|k| ((*k).to_string(), env::var(k).ok()))
+            .collect(),
+    };
+    body();
 }
 
 #[allow(unsafe_code)]
