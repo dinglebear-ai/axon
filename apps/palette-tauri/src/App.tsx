@@ -538,6 +538,7 @@ export default function App() {
     setHistoryOpen(false);
     setBrowseOpen(false);
     setQuery("");
+    setModeAction(null); // clean command bar (no mode pill / default placeholder) in the tray
     setRun((current) => (current.kind === "job" ? { ...current, minimized: true } : current));
   }
 

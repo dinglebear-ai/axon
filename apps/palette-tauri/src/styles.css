@@ -143,8 +143,17 @@ textarea {
 }
 
 .palette-shell-compact:has(.idle-tray) {
-  min-height: 88px;
-  height: 88px;
+  min-height: 92px;
+  height: 92px;
+}
+
+/* When the crawl tray is attached, the command bar becomes the TOP of one
+   cohesive panel: square its bottom, drop its own border + drop-shadow there,
+   and let the tray carry the panel's outer shadow. */
+.palette-shell-compact:has(.idle-tray) .command-bar {
+  border-radius: 14px 14px 0 0;
+  border-bottom: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
 .tauri-runtime .palette-shell-compact {
@@ -417,22 +426,33 @@ textarea {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 32px;
-  padding: 0 14px;
+  height: 36px;
+  padding: 0 12px 0 14px;
   color: var(--aurora-text-muted);
   background: color-mix(in srgb, var(--aurora-panel-strong) 88%, transparent);
   border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 52%, transparent);
-  border-top: 0;
+  /* Faint full-width seam shared with the command bar above — not a hard edge. */
+  border-top: 1px solid color-mix(in srgb, var(--aurora-border-strong) 24%, transparent);
   border-radius: 0 0 14px 14px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  /* Carry the whole panel's outer shadow (command bar no longer casts its own). */
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.36);
   cursor: pointer;
   font-family: var(--aurora-font-mono);
   font-size: 11px;
 }
 
+.idle-tray:hover {
+  background: color-mix(in srgb, var(--aurora-panel-strong) 94%, transparent);
+}
+
 .idle-tray svg {
   color: var(--axon-orange-strong);
   flex: 0 0 auto;
+}
+
+/* The trailing chevron is a quiet affordance, not an accent. */
+.idle-tray > svg:last-child {
+  color: var(--aurora-text-muted);
 }
 
 .idle-tray-dot {
