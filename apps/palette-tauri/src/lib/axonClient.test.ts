@@ -1,10 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTIONS, type PaletteAction } from "./actions";
 import { createAxonClient, executeAction, type PaletteConfig } from "./axonClient";
+import { invoke } from "./invoke";
 
-vi.mock("@tauri-apps/api/core", () => ({
+// executeAction routes through the shared `./invoke` wrapper (not the raw
+// @tauri-apps/api/core invoke), so the assertions mock that wrapper directly.
+vi.mock("./invoke", () => ({
   invoke: vi.fn(),
 }));
 
