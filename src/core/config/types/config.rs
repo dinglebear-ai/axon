@@ -300,6 +300,18 @@ pub struct Config {
     /// Model name for OpenAI-compatible chat completions. Env: `AXON_OPENAI_MODEL`.
     pub openai_model: String,
 
+    /// `codex` CLI command for the codex app-server LLM backend.
+    /// Env: `AXON_CODEX_CMD`. Used when `AXON_LLM_BACKEND=codex-app-server`.
+    pub codex_cmd: String,
+
+    /// Model override for the codex app-server backend (empty = codex default).
+    /// Env: `AXON_CODEX_MODEL`.
+    pub codex_model: String,
+
+    /// Source `CODEX_HOME` to copy `auth.json` from for codex app-server auth
+    /// isolation. Env: `AXON_CODEX_HOME`. Defaults to `$CODEX_HOME` / `~/.codex`.
+    pub codex_home: Option<PathBuf>,
+
     /// Tavily search API key. Env: `TAVILY_API_KEY`. **Secret.**
     pub tavily_api_key: String,
 

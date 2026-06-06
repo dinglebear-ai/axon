@@ -81,6 +81,10 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_OPENAI_BASE_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_OPENAI_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_OPENAI_API_KEY` | keep-env | both | — | **yes** | runtime.rs |
+| `AXON_CODEX_CMD` | keep-env | both | — | no | runtime.rs |
+| `AXON_CODEX_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_CODEX_HOME` | trusted-bootstrap | both | — | no | advanced.rs |
+| `AXON_PROVIDER` | keep-env | both | — | no | runtime.rs |
 | `OPENAI_MODEL` | external/test-only | not-runtime | — | no | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
 | `OPENAI_BASE_URL` | external/test-only | not-runtime | — | no | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
 | `OPENAI_API_KEY` | external/test-only | not-runtime | — | **yes** | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |

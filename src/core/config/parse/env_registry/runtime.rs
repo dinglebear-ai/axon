@@ -121,6 +121,11 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
     ),
     spec("AXON_OPENAI_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec("AXON_OPENAI_MODEL", KeepEnv, Both, None, Canonical, false),
+    spec("AXON_CODEX_CMD", KeepEnv, Both, None, Canonical, false),
+    spec("AXON_CODEX_MODEL", KeepEnv, Both, None, Canonical, false),
+    // AXON_CODEX_HOME is the auth-home-bootstrap twin of AXON_HEADLESS_GEMINI_HOME;
+    // it lives in advanced.rs (TrustedOperatorBootstrap) alongside that key.
+    spec("AXON_PROVIDER", KeepEnv, Both, None, Canonical, false),
     spec("GEMINI_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec("GOOGLE_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec(

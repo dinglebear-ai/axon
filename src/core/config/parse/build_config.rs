@@ -9,6 +9,7 @@
 mod command_dispatch;
 mod config_literal;
 mod post_init;
+pub(super) mod provider_overlay;
 
 #[cfg(test)]
 #[path = "build_config_tests.rs"]
@@ -68,6 +69,12 @@ pub(super) fn into_config_with_sources(
     // Missing file = silent. Malformed file = hard fail with line number.
     let toml = load_toml_config()?;
 
+    // Resolve the active saved provider profile (if any) into a per-field
+    // overlay applied above env vars for the LLM backend fields. Errors if the
+    // active provider name has no matching profile or an invalid backend.
+    let provider_overlay =
+        provider_overlay::resolve_provider_overlay(&toml, global.provider.as_deref())?;
+
     // Resolve --collection with priority CLI > env > TOML > "axon".
     // `collection_was_explicit` (from clap's value_source) is the single
     // source of truth for "the user passed --collection on the CLI". The old
@@ -118,6 +125,7 @@ pub(super) fn into_config_with_sources(
     let inputs = config_literal::LiteralInputs {
         global: &global,
         toml: &toml,
+        provider: &provider_overlay,
         dispatched: &dispatched,
         collection,
         sqlite_path,

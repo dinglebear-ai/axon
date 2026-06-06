@@ -1,6 +1,6 @@
 # Axon
 
-Version: 5.0.1
+Version: 5.1.2
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -13,7 +13,9 @@ Supported production runtime:
 - Hugging Face TEI only for embeddings.
 - `Qwen/Qwen3-Embedding-0.6B` as the production embedding model.
 - Gemini CLI is the default LLM synthesis path; OpenAI-compatible endpoints
-  such as llama.cpp are supported when configured with `AXON_LLM_BACKEND=openai-compat`.
+  such as llama.cpp (`AXON_LLM_BACKEND=openai-compat`) and the OpenAI Codex CLI
+  (`AXON_LLM_BACKEND=codex-app-server`) are also supported. Save named provider
+  profiles in `config.toml` and switch with `axon config provider use <name>`.
 - Local NVIDIA RTX 4070 target with NVIDIA Container Toolkit.
 - CLI and MCP run all actions in-process; deploy the `axon serve` container only when you need HTTP API access.
 - One shared config home: `~/.axon/.env`, `~/.axon/config.toml`, `~/.axon/jobs.db`, `~/.axon/output`, `~/.axon/logs`, `~/.axon/artifacts`, `~/.axon/screenshots`, `~/.axon/qdrant`, and `~/.axon/tei`.
@@ -22,9 +24,10 @@ Not supported in the production path:
 
 - systemd deployment of the Axon binary.
 - Postgres, Redis, RabbitMQ, AMQP, or external worker services.
-- OpenAI-compatible first-run LLM configuration. Configure
-  `AXON_LLM_BACKEND=openai-compat` manually after setup when using llama.cpp or
-  another OpenAI-compatible `/v1/chat/completions` endpoint.
+- Non-Gemini first-run LLM configuration. Configure
+  `AXON_LLM_BACKEND=openai-compat` (llama.cpp / OpenAI-compatible
+  `/v1/chat/completions`) or `AXON_LLM_BACKEND=codex-app-server` (OpenAI Codex
+  CLI) manually after setup, or save and activate a provider profile.
 - Neo4j or graph retrieval.
 - Multiple competing `.env` or `config.toml` locations.
 
@@ -98,9 +101,10 @@ axon setup targets  # list SSH aliases discovered from ~/.ssh/config (informatio
 For local bearer-token operation, no manual env values are required. `setup init`
 defaults to loopback MCP HTTP, writes `AXON_MCP_AUTH_MODE=bearer`, and generates
 `AXON_MCP_HTTP_TOKEN`. Optional features need credentials: Gemini auth under
-`~/.gemini` for default LLM features or `AXON_LLM_BACKEND=openai-compat` plus
+`~/.gemini` for default LLM features, `AXON_LLM_BACKEND=openai-compat` plus
 `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL` for OpenAI-compatible synthesis,
-`TAVILY_API_KEY` for search/research, `GITHUB_TOKEN` for higher-rate GitHub
+or `AXON_LLM_BACKEND=codex-app-server` plus `AXON_CODEX_CMD`/`AXON_CODEX_HOME`
+for the OpenAI Codex CLI, `TAVILY_API_KEY` for search/research, `GITHUB_TOKEN` for higher-rate GitHub
 ingest, and `REDDIT_CLIENT_ID` plus `REDDIT_CLIENT_SECRET` for Reddit ingest.
 OAuth mode also requires
 `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`,
@@ -173,7 +177,9 @@ Keep in `.env`:
 - Docker/runtime bootstrap: `AXON_HOME`, `AXON_DATA_DIR`, `AXON_IMAGE`, `AXON_MCP_HTTP_PUBLISH`, `TEI_HTTP_PORT`, GPU device values.
 - LLM runtime pointers when needed: `AXON_HEADLESS_GEMINI_CMD`,
   `AXON_HEADLESS_GEMINI_HOME`, `AXON_LLM_BACKEND`, `AXON_OPENAI_BASE_URL`,
-  `AXON_OPENAI_MODEL`, and optional `AXON_OPENAI_API_KEY`.
+  `AXON_OPENAI_MODEL`, optional `AXON_OPENAI_API_KEY`, the Codex backend's
+  `AXON_CODEX_CMD`/`AXON_CODEX_MODEL`/`AXON_CODEX_HOME`, and `AXON_PROVIDER` to
+  select a saved provider profile.
 
 Put in `config.toml`:
 
@@ -347,7 +353,7 @@ Common failures:
 - GPU unavailable: verify `nvidia-smi` and NVIDIA Container Toolkit.
 - Gemini unauthenticated: run Gemini CLI login outside Axon, then rerun setup,
   or configure `AXON_LLM_BACKEND=openai-compat` for an OpenAI-compatible
-  endpoint.
+  endpoint, or `AXON_LLM_BACKEND=codex-app-server` for the OpenAI Codex CLI.
 - TEI slow on first boot: model download/cache warmup is the cold path.
 - Auth failures: make sure Claude/plugin config uses the same token as `AXON_MCP_HTTP_TOKEN` in `~/.axon/.env`.
 

@@ -133,6 +133,14 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_CODEX_HOME",
+        TrustedOperatorBootstrap,
+        Both,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "AXON_BIN",
         TrustedOperatorBootstrap,
         HostOnly,

@@ -195,7 +195,7 @@ This string is the `context` that flows into the LLM prompt.
 
 `streaming.rs → ask_llm_streaming / ask_llm_streaming_tagged`
 
-The final user message sent to the LLM completion backend (Gemini headless by default, or an OpenAI-compatible endpoint when `AXON_LLM_BACKEND=openai-compat`) is:
+The final user message sent to the LLM completion backend (Gemini headless by default, or an OpenAI-compatible endpoint when `AXON_LLM_BACKEND=openai-compat`, or the OpenAI Codex CLI when `AXON_LLM_BACKEND=codex-app-server`) is:
 
 ```
 Question: {query}

@@ -428,6 +428,12 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_OPENAI_BASE_URL",
         "AXON_OPENAI_MODEL",
         "AXON_OPENAI_API_KEY",
+        // LLM (codex app-server)
+        "AXON_CODEX_CMD",
+        "AXON_CODEX_MODEL",
+        "AXON_CODEX_HOME",
+        // LLM (saved provider profiles)
+        "AXON_PROVIDER",
         // Logging
         "AXON_LOG_PATH",
         // Ingest + search creds
