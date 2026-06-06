@@ -21,6 +21,11 @@ import com.axon.app.data.remote.models.DomainsResponse
 import com.axon.app.data.remote.models.ExtractRequest
 import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.JobListResponse
+import com.axon.app.data.remote.models.PanelConfigResponse
+import com.axon.app.data.remote.models.PanelEnvResponse
+import com.axon.app.data.remote.models.SavePanelConfigRequest
+import com.axon.app.data.remote.models.SavePanelConfigResponse
+import com.axon.app.data.remote.models.SavePanelEnvRequest
 import com.axon.app.data.remote.models.SearchWebRequest
 import com.axon.app.data.remote.models.SearchWebResponse
 import com.axon.app.data.remote.models.ServiceJob
@@ -74,6 +79,7 @@ class AxonClient(
 ) {
     // Thread-safe config: both baseUrl and token updated atomically together.
     private val config = AtomicReference(baseUrl.trimEnd('/') to token)
+    private val panelToken = AtomicReference("")
 
     // R7: share a single ConnectionPool + Dispatcher across http/httpLong/httpStream
     // so concurrent fan-out (e.g. polling multiple job kinds) doesn't starve on
@@ -112,6 +118,10 @@ class AxonClient(
 
     fun updateConfig(newBaseUrl: String, newToken: String) {
         config.set(newBaseUrl.trimEnd('/') to newToken)
+    }
+
+    fun updatePanelToken(newPanelToken: String) {
+        panelToken.set(newPanelToken)
     }
 
     fun hasToken(): Boolean = config.get().second.isNotBlank()
@@ -314,6 +324,22 @@ class AxonClient(
         get<WatchListResponse>("/v1/watch?limit=$limit").map { it.watches }
     }
 
+    suspend fun panelConfig(): Result<PanelConfigResponse> = withContext(Dispatchers.IO) {
+        get("/api/panel/config")
+    }
+
+    suspend fun panelEnv(): Result<PanelEnvResponse> = withContext(Dispatchers.IO) {
+        get("/api/panel/env")
+    }
+
+    suspend fun savePanelConfig(rawToml: String): Result<SavePanelConfigResponse> = withContext(Dispatchers.IO) {
+        put("/api/panel/config", SavePanelConfigRequest(rawToml))
+    }
+
+    suspend fun savePanelEnv(rawEnv: String): Result<SavePanelConfigResponse> = withContext(Dispatchers.IO) {
+        put("/api/panel/env", SavePanelEnvRequest(rawEnv))
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun encodePathSegment(s: String): String =
@@ -324,6 +350,13 @@ class AxonClient(
         return builder
             .header("Authorization", "Bearer $token")
             .header("x-api-key", token)
+    }
+
+    private fun panelAuthRequest(builder: Request.Builder): Request.Builder {
+        val token = panelToken.get()
+        return builder
+            .header("Authorization", "Bearer $token")
+            .header("x-axon-panel-token", token)
     }
 
     private fun baseUrl(): String = config.get().first
@@ -337,8 +370,22 @@ class AxonClient(
         return execute(client, builder)
     }
 
+    private inline fun <reified B, reified R> put(path: String, body: B): Result<R> {
+        val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
+        val builder = if (path.startsWith("/api/panel/")) {
+            panelAuthRequest(Request.Builder().url("${baseUrl()}$path").put(bodyBytes))
+        } else {
+            authRequest(Request.Builder().url("${baseUrl()}$path").put(bodyBytes))
+        }
+        return execute(http, builder)
+    }
+
     private inline fun <reified R> get(path: String): Result<R> {
-        val builder = authRequest(Request.Builder().url("${baseUrl()}$path").get())
+        val builder = if (path.startsWith("/api/panel/")) {
+            panelAuthRequest(Request.Builder().url("${baseUrl()}$path").get())
+        } else {
+            authRequest(Request.Builder().url("${baseUrl()}$path").get())
+        }
         return execute(http, builder)
     }
 
