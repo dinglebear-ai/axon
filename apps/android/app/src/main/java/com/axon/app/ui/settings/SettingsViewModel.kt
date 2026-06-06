@@ -20,6 +20,10 @@ data class ConfigFileUiState(
     val configValues: Map<String, String> = AxonSettingsCatalog.configDefaults,
     val envExplicit: Set<String> = emptySet(),
     val configExplicit: Set<String> = emptySet(),
+    val envDirty: Set<String> = emptySet(),
+    val configDirty: Set<String> = emptySet(),
+    val rawEnv: String = "",
+    val rawConfig: String = "",
     val envPath: String = "~/.axon/.env",
     val configPath: String = "~/.axon/config.toml",
     val loading: Boolean = true,
@@ -63,7 +67,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         refreshConfigFiles()
     }
 
-    fun saveAll(serverUrl: String, token: String, panelToken: String, collection: String) {
+    fun saveConnection(serverUrl: String, token: String, panelToken: String, collection: String) {
         val updated = AxonSettings(
             serverUrl  = ServerUrl(serverUrl.trim()),
             token      = ApiToken(token.trim()),
@@ -76,25 +80,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 container.settingsRepository.save(updated)
                 container.axonClient.updateConfig(updated.serverUrl.value, updated.token.value)
                 container.axonClient.updatePanelToken(updated.panelToken.value)
-
-                val filesToSave = if (_configFiles.value.error != null) {
-                    loadConfigFilesFromServer()
-                } else {
-                    _configFiles.value
-                }
-                val rawEnv = renderEnvText(filesToSave.envValues)
-                val rawToml = renderConfigTomlText(filesToSave.configValues)
-                val envSave = container.axonClient.savePanelEnv(rawEnv)
-                val configSave = container.axonClient.savePanelConfig(rawToml)
-                if (!envSave.isSuccess || !configSave.isSuccess) {
-                    throw envSave.exceptionOrNull()
-                        ?: configSave.exceptionOrNull()
-                        ?: IllegalStateException("Failed to save config files")
-                }
             }.fold(
                 onSuccess = {
                     _saveState.value = SaveState.Saved
-                    refreshConfigFiles()
                 },
                 onFailure = { cause ->
                     _saveState.value = SaveState.Failed(
@@ -109,6 +97,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         val current = _configFiles.value
         _configFiles.value = current.copy(
             envValues = current.envValues + (key to value),
+            envDirty = current.envDirty + key,
             envExplicit = if (value == AxonSettingsCatalog.envDefaults[key].orEmpty()) {
                 current.envExplicit - key
             } else {
@@ -121,6 +110,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         val current = _configFiles.value
         _configFiles.value = current.copy(
             configValues = current.configValues + (key to value),
+            configDirty = current.configDirty + key,
             configExplicit = if (value == AxonSettingsCatalog.configDefaults[key].orEmpty()) {
                 current.configExplicit - key
             } else {
@@ -164,42 +154,79 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             configValues = AxonSettingsCatalog.configDefaults + explicitConfig,
             envExplicit = explicitEnv.keys,
             configExplicit = explicitConfig.keys,
+            rawEnv = env.rawEnv,
+            rawConfig = config.rawToml,
             envPath = env.path,
             configPath = config.path,
             loading = false,
         )
     }
 
-    fun saveConfigFiles() {
+    fun saveEnvFile() {
         viewModelScope.launch {
             _saveState.value = SaveState.Saving
             runCatching {
-                val current = if (_configFiles.value.error != null) {
-                    loadConfigFilesFromServer()
-                } else {
-                    _configFiles.value
-                }
-                val rawEnv = renderEnvText(current.envValues)
-                val rawToml = renderConfigTomlText(current.configValues)
+                val current = configFilesReadyForSave()
+                val rawEnv = patchEnvText(current.rawEnv, current.envValues, current.envDirty)
                 val envSave = container.axonClient.savePanelEnv(rawEnv)
-                val configSave = container.axonClient.savePanelConfig(rawToml)
-                if (!envSave.isSuccess || !configSave.isSuccess) {
+                if (!envSave.isSuccess) {
                     throw envSave.exceptionOrNull()
-                        ?: configSave.exceptionOrNull()
-                        ?: IllegalStateException("Failed to save config files")
+                        ?: IllegalStateException("Failed to save .env")
                 }
+                _configFiles.value = current.copy(
+                    rawEnv = rawEnv,
+                    envDirty = emptySet(),
+                    envExplicit = parseEnvText(rawEnv).keys,
+                )
             }.fold(
                 onSuccess = {
                     _saveState.value = SaveState.Saved
-                    refreshConfigFiles()
                 },
                 onFailure = { cause ->
                     _saveState.value = SaveState.Failed(
-                        cause.message ?: "Failed to save config files",
+                        cause.message ?: "Failed to save .env",
                     )
                 },
             )
         }
+    }
+
+    fun saveConfigFile() {
+        viewModelScope.launch {
+            _saveState.value = SaveState.Saving
+            runCatching {
+                val current = configFilesReadyForSave()
+                val rawToml = patchConfigTomlText(current.rawConfig, current.configValues, current.configDirty)
+                val configSave = container.axonClient.savePanelConfig(rawToml)
+                if (!configSave.isSuccess) {
+                    throw configSave.exceptionOrNull()
+                        ?: IllegalStateException("Failed to save config.toml")
+                }
+                _configFiles.value = current.copy(
+                    rawConfig = rawToml,
+                    configDirty = emptySet(),
+                    configExplicit = parseConfigTomlText(rawToml).keys,
+                )
+            }.fold(
+                onSuccess = {
+                    _saveState.value = SaveState.Saved
+                },
+                onFailure = { cause ->
+                    _saveState.value = SaveState.Failed(
+                        cause.message ?: "Failed to save config.toml",
+                    )
+                },
+            )
+        }
+    }
+
+    private fun configFilesReadyForSave(): ConfigFileUiState {
+        val current = _configFiles.value
+        if (current.loading) {
+            throw IllegalStateException("Config files are still loading")
+        }
+        current.error?.let { throw IllegalStateException(it) }
+        return current
     }
 
     fun testConnection(serverUrl: String, token: String) {

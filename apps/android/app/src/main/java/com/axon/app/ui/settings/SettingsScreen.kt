@@ -67,6 +67,16 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     var token by remember(settings.token) { mutableStateOf(settings.token.value) }
     var panelToken by remember(settings.panelToken) { mutableStateOf(settings.panelToken.value) }
     var collection by remember(settings.collection) { mutableStateOf(settings.collection) }
+    val saveLabel = when (tab) {
+        SettingsTab.Connection -> "Save connection"
+        SettingsTab.Env -> "Save .env"
+        SettingsTab.Config -> "Save config"
+    }
+    val canSaveTab = when (tab) {
+        SettingsTab.Connection -> true
+        SettingsTab.Env -> !files.loading && files.error == null && files.envDirty.isNotEmpty()
+        SettingsTab.Config -> !files.loading && files.error == null && files.configDirty.isNotEmpty()
+    }
 
     Column(
         modifier = Modifier
@@ -121,12 +131,16 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             AuroraButton(
                 onClick = {
-                    vm.saveAll(serverUrl, token, panelToken, collection)
+                    when (tab) {
+                        SettingsTab.Connection -> vm.saveConnection(serverUrl, token, panelToken, collection)
+                        SettingsTab.Env -> vm.saveEnvFile()
+                        SettingsTab.Config -> vm.saveConfigFile()
+                    }
                 },
                 modifier = Modifier.weight(1f),
-                enabled = saveState !is SaveState.Saving,
+                enabled = saveState !is SaveState.Saving && canSaveTab,
             ) {
-                Text(if (saveState is SaveState.Saving) "Saving..." else "Save")
+                Text(if (saveState is SaveState.Saving) "Saving..." else saveLabel)
             }
             AuroraButton(
                 onClick = {
