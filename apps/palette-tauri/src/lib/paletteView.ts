@@ -349,6 +349,43 @@ export function sortActionsForDisplay(actions: PaletteAction[]): PaletteAction[]
   });
 }
 
+/**
+ * Lower is a better match. Prefers an exact/prefix hit on the subcommand (what the
+ * user is most likely typing) over an alias prefix, then a label prefix/word-start,
+ * then a substring anywhere — so typing "cr" surfaces `crawl`, not `scrape`.
+ */
+function relevanceScore(action: PaletteAction, query: string): number {
+  const sub = action.subcommand.toLowerCase();
+  const label = action.label.toLowerCase();
+  const aliases = action.aliases.map((alias) => alias.toLowerCase());
+  if (sub === query || aliases.includes(query)) return 0;
+  if (sub.startsWith(query)) return 1;
+  if (aliases.some((alias) => alias.startsWith(query))) return 2;
+  if (label.startsWith(query)) return 3;
+  if (label.split(/\s+/).some((word) => word.startsWith(query))) return 4;
+  if (sub.includes(query)) return 5;
+  return 6;
+}
+
+/**
+ * Rank matched actions by how well they match the query, falling back to the
+ * canonical category/action order for ties (and for an empty query, which keeps the
+ * grouped browse view). Use this for filtered search; `sortActionsForDisplay` is the
+ * query-less browse ordering.
+ */
+export function sortActionsByRelevance(actions: PaletteAction[], query: string): PaletteAction[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return sortActionsForDisplay(actions);
+  return [...actions].sort((a, b) => {
+    const scoreDelta = relevanceScore(a, q) - relevanceScore(b, q);
+    if (scoreDelta) return scoreDelta;
+    const categoryDelta =
+      rank(CATEGORY_ORDER, actionDisplayMeta(a).category) - rank(CATEGORY_ORDER, actionDisplayMeta(b).category);
+    if (categoryDelta) return categoryDelta;
+    return rank(ACTION_ORDER, a.subcommand) - rank(ACTION_ORDER, b.subcommand);
+  });
+}
+
 function rank(order: string[], value: string): number {
   const index = order.indexOf(value);
   return index === -1 ? order.length : index;
