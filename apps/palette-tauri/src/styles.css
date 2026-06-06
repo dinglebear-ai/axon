@@ -9,7 +9,10 @@
   --axon-orange-strong: #ffb474;
   --axon-orange-deep: #c96a1c;
   --axon-control: var(--aurora-control-surface);
-  --axon-surface: color-mix(in srgb, var(--aurora-panel-strong) 88%, transparent);
+  /* Near-opaque: a transparent borderless window has no backdrop blur, so any
+     see-through just bleeds the desktop (and reads as "white" over light apps).
+     Keep a sliver of translucency for depth without the wash. */
+  --axon-surface: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
   --axon-window-border: color-mix(in srgb, var(--aurora-border-strong) 58%, transparent);
   --axon-window-radius: 14px;
 }
@@ -114,6 +117,13 @@ textarea {
   width: 100vw;
   height: 100vh;
   max-height: none;
+  /* The shell IS the window here. Rounding it would leave the rectangular
+     window's corners transparent — which shows the desktop and reads as white
+     corners over light apps. Fill edge-to-edge; the native window shadow
+     (tauri `shadow: true`) provides the float. */
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .palette-shell-results {
@@ -160,6 +170,14 @@ textarea {
   width: 100vw;
   height: 56px;
   min-height: 56px;
+}
+
+/* Compact bar fills the window edge-to-edge too — same reason as the shell:
+   a rounded bar would leave transparent (white-on-light) window corners. */
+.tauri-runtime .palette-shell-compact .command-bar {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .palette-shell-browse {
@@ -274,38 +292,6 @@ textarea {
   box-shadow: 0 0 6px var(--aurora-accent-primary);
 }
 
-.axon-tip {
-  position: absolute;
-  top: calc(100% + 9px);
-  left: 0;
-  z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  color: var(--aurora-text-primary);
-  background: var(--aurora-panel-medium);
-  border: 1px solid var(--aurora-border-strong);
-  border-radius: 8px;
-  box-shadow: var(--aurora-shadow-medium);
-  font-family: var(--aurora-font-mono);
-  font-size: 11px;
-  white-space: nowrap;
-  opacity: 0;
-  transform: translateY(-3px);
-  pointer-events: none;
-  transition: opacity 140ms ease-out, transform 140ms ease-out;
-}
-
-.axon-tip span {
-  color: var(--aurora-success);
-}
-
-.axon-brand:hover .axon-tip {
-  opacity: 1;
-  transform: none;
-}
-
 .axon-divider {
   width: 1px;
   height: 26px;
@@ -413,7 +399,7 @@ textarea {
   height: 56px;
   min-height: 56px;
   padding: 0 8px 0 14px;
-  background: color-mix(in srgb, var(--aurora-panel-strong) 88%, transparent);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
   border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 52%, transparent);
   border-radius: 14px;
   box-shadow:
@@ -1053,48 +1039,85 @@ textarea {
 .command-mode-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 27px;
-  padding: 0 7px 0 10px;
+  gap: 7px;
+  height: 28px;
+  padding: 0 5px 0 12px;
   color: var(--aurora-accent-strong);
-  background: color-mix(in srgb, var(--aurora-accent-primary) 14%, var(--aurora-control-surface));
-  border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 28%, transparent);
-  border-radius: 6px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--aurora-accent-primary) 24%, var(--aurora-control-surface)),
+    color-mix(in srgb, var(--aurora-accent-primary) 15%, var(--aurora-control-surface))
+  );
+  border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 44%, transparent);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 9%, transparent),
+    0 1px 8px color-mix(in srgb, var(--aurora-accent-primary) 22%, transparent);
   font-family: var(--aurora-font-mono);
   font-size: var(--aurora-type-caption);
-  font-weight: var(--aurora-weight-label);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .command-mode-pill:hover {
-  background: color-mix(in srgb, var(--aurora-accent-primary) 7%, transparent);
-  border-color: color-mix(in srgb, var(--aurora-accent-primary) 42%, transparent);
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 60%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent),
+    0 1px 12px color-mix(in srgb, var(--aurora-accent-primary) 32%, transparent);
 }
 
 .command-mode-pill-warn {
   color: var(--axon-orange-strong);
-  background: color-mix(in srgb, var(--axon-orange) 15%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--axon-orange) 36%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--axon-orange) 26%, var(--aurora-control-surface)),
+    color-mix(in srgb, var(--axon-orange) 16%, var(--aurora-control-surface))
+  );
+  border-color: color-mix(in srgb, var(--axon-orange) 48%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 9%, transparent),
+    0 1px 8px color-mix(in srgb, var(--axon-orange) 24%, transparent);
 }
 
 .command-mode-pill-warn:hover {
-  background: color-mix(in srgb, var(--axon-orange) 10%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--axon-orange) 46%, transparent);
+  border-color: color-mix(in srgb, var(--axon-orange) 62%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent),
+    0 1px 12px color-mix(in srgb, var(--axon-orange) 34%, transparent);
 }
 
 .mode-pill-dismiss {
-  width: 15px;
-  height: 15px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--aurora-accent-primary) 10%, transparent);
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--aurora-accent-primary) 22%, transparent);
+  color: color-mix(in srgb, var(--aurora-accent-strong) 88%, transparent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   line-height: 1;
   font-style: normal;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.command-mode-pill:hover .mode-pill-dismiss {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 40%, transparent);
+  color: var(--aurora-text-primary);
+}
+
+.command-mode-pill-warn .mode-pill-dismiss {
+  background: color-mix(in srgb, var(--axon-orange) 24%, transparent);
+  color: color-mix(in srgb, var(--axon-orange-strong) 90%, transparent);
+}
+
+.command-mode-pill-warn:hover .mode-pill-dismiss {
+  background: color-mix(in srgb, var(--axon-orange) 42%, transparent);
+  color: var(--aurora-text-primary);
 }
 
 .palette-grid {
