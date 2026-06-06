@@ -15,6 +15,12 @@ use crate::services::llm_backend::LlmBackendKind;
 /// Per-field overlay sourced from the active provider profile. `None` fields
 /// fall through to the env layer, so a profile may specify only what it needs
 /// (e.g. an openai profile can omit `api-key` to inherit `AXON_OPENAI_API_KEY`).
+///
+/// Invariant: at most one backend's fields are `Some` — `overlay_from_profile`
+/// (the only non-`Default` constructor) populates only the slots matching the
+/// profile's `backend`. The flat shape *permits* mixed-backend values, but none
+/// are ever produced; `config_literal` consuming each slot field-by-field is why
+/// the flat form is preferred over a per-backend enum.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(super) struct ProviderOverlay {
     pub backend: Option<String>,

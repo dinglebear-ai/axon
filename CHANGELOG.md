@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.2] - 2026-06-06
+
+### Fixed
+
+- **`provider add` now validates a `backend=` field override** — `axon config provider add foo gemini backend=garbage` previously overwrote the validated positional backend with an unparseable value; it is now rejected, matching `provider set`.
+- **`provider set` refuses to create an orphan profile** — setting a field on a non-existent profile no longer silently writes a backend-less `[providers.<name>]` section (which would fail every later `use`/`ask`); it errors and points to `provider add`.
+
+### Changed
+
+- **`LlmBackendKind::as_str()` is the single source of truth for the backend string.** The CLI label and the per-job config snapshot now derive their token from it (with a `parse(as_str()) == kind` round-trip test), so the backend can no longer be serialized one way and parsed another across the async-job worker boundary.
+- **`provider list` and `cfg.llm_backend` share one resolver** (`backend_from_overlay`), eliminating the last duplicated precedence logic.
+- **Codex stderr diagnostics are more robust** — a no-answer-text turn now carries the collected stderr context into its error, and a stderr read error preserves the partial tail instead of discarding it.
+
+### Tests
+
+- Added coverage for the profile-overrides-env precedence (`overlay_or_env`, `backend_from_overlay`, `effective_backend_kind`), provider CRUD round-trips (add/use/set/remove-clears-active), the `FIELDS`↔`TomlProvider` field-set drift guard, the `as_str` round-trip, codex `CODEX_HOME` isolation (`copy_auth`/`prepare_codex_home`), security validators (symlink/non-executable), the `AXON_PROVIDER` env precedence tier, and `on_delta` error propagation.
+
 ## [5.1.1] - 2026-06-06
 
 ### Fixed

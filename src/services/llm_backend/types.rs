@@ -21,8 +21,27 @@ impl LlmBackendKind {
             )),
         }
     }
+
+    /// The canonical wire/display token. `parse(k.as_str()) == k` round-trips
+    /// (verified in tests). The single source of truth for the string form —
+    /// used by the CLI label and the per-job config snapshot, so a backend can
+    /// never be serialized one way and parsed another.
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::GeminiHeadless => "gemini-headless",
+            Self::OpenAiCompat => "openai-compat",
+            Self::CodexAppServer => "codex-app-server",
+        }
+    }
 }
 
+/// Resolved per-backend LLM settings. Flat by construction: only the fields for
+/// the active `kind` are read (dispatch in `llm_backend.rs` selects on `kind`),
+/// so the other backends' fields are inert. Built solely via `from_config`,
+/// which fills every slot from the corresponding `Config` field — so although
+/// the flat shape *permits* mixed-backend values, no constructor produces an
+/// illegal combination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LlmBackendConfig {
     pub kind: LlmBackendKind,

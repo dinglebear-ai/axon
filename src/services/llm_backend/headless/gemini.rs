@@ -181,7 +181,7 @@ where
     };
     let stderr = match tokio::time::timeout(timeout, stderr_task).await {
         Ok(joined) => {
-            joined.map_err(|err| format!("failed to join Gemini stderr reader: {err}"))??
+            joined.map_err(|err| format!("failed to join Gemini stderr reader: {err}"))?
         }
         Err(_) => {
             return Err(format!(

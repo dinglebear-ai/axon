@@ -36,14 +36,6 @@ fn toml_path() -> Result<PathBuf, Box<dyn Error>> {
     svc::resolve_toml_path().ok_or_else(|| "HOME unset; cannot resolve ~/.axon/config.toml".into())
 }
 
-fn backend_label(kind: LlmBackendKind) -> &'static str {
-    match kind {
-        LlmBackendKind::GeminiHeadless => "gemini-headless",
-        LlmBackendKind::OpenAiCompat => "openai-compat",
-        LlmBackendKind::CodexAppServer => "codex-app-server",
-    }
-}
-
 fn arg(cfg: &Config, idx: usize, usage: &str) -> Result<String, Box<dyn Error>> {
     cfg.positional
         .get(idx)
@@ -88,7 +80,7 @@ fn provider_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let eff = crate::core::config::parse::effective_llm(None)?;
     let active = eff.active_provider;
     let effective_backend = match &eff.backend {
-        Ok(kind) => backend_label(*kind).to_string(),
+        Ok(kind) => kind.as_str().to_string(),
         Err(err) => format!("<unresolved: {err}>"),
     };
     let field = |name: &str, f: &str| flat.get(&format!("providers.{name}.{f}")).cloned();
@@ -246,6 +238,12 @@ fn provider_add(cfg: &Config) -> Result<(), Box<dyn Error>> {
             .split_once('=')
             .ok_or_else(|| format!("expected field=value, got {pair:?}"))?;
         validate_field(field)?;
+        if field == "backend" {
+            // A `backend=` override must be a real backend too — otherwise it
+            // silently overwrites the validated positional backend with garbage.
+            LlmBackendKind::parse(value.trim())
+                .map_err(|err| format!("invalid backend {value:?}: {err}"))?;
+        }
         svc::set_toml_entry(&mut doc, &format!("providers.{name}.{field}"), value)?;
     }
     svc::write_toml_document(&path, &doc)?;
@@ -264,6 +262,15 @@ fn provider_set(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
     let path = toml_path()?;
     let mut doc = svc::read_toml_document(&path)?;
+    // `set` edits an existing profile; refuse to create an orphan section. A
+    // profile with no backend would fail every later `use`/`ask`, so a typo'd
+    // name should error here, not silently report success.
+    if svc::get_toml_entry(&doc, &format!("providers.{name}.backend")).is_none() {
+        return Err(format!(
+            "provider '{name}' not found; create it first with `axon config provider add {name} <backend>`"
+        )
+        .into());
+    }
     svc::set_toml_entry(&mut doc, &format!("providers.{name}.{field}"), &value)?;
     svc::write_toml_document(&path, &doc)?;
     report_set(cfg, &name, "updated", &path)
