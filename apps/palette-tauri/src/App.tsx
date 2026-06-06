@@ -263,7 +263,10 @@ export default function App() {
       }
     } else if (event.key === "Tab") {
       event.preventDefault();
-      if (active) enterActionMode(active);
+      if (!active) return;
+      // No-input actions run immediately rather than entering an empty arg mode.
+      if (active.argMode === "none") void submit(active);
+      else enterActionMode(active);
     }
   }
 

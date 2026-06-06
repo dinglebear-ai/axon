@@ -47,6 +47,9 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
                     setSelected(index);
                     if (parsed.invoked) {
                       onSubmit(action);
+                    } else if (action.argMode === "none") {
+                      // No-input actions run immediately — no empty argument prompt.
+                      onSubmit(action);
                     } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
                       onSubmit(action);
                     } else {
