@@ -1,4 +1,3 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Activity,
@@ -28,10 +27,14 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ChevronRight } from "lucide-react";
+
+import { CrawlJobView } from "@/components/palette/CrawlJobView";
 import { OutputPanel } from "@/components/palette/OutputPanel";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
 import { StatusIndicator } from "@/components/ui/aurora/status-indicator";
+import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
 import {
   type PaletteConfig,
   buildActionRequest,
@@ -56,6 +59,7 @@ import {
   sortActionsForDisplay,
   validationMessage,
 } from "@/lib/paletteView";
+import { invoke, isTauriRuntime } from "@/lib/invoke";
 import type { RunState } from "@/lib/runState";
 import { newRequestId, usePaletteStream } from "@/lib/paletteStream";
 
@@ -72,61 +76,12 @@ interface HistoryItem {
 }
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
-const isTauriRuntime = "__TAURI_INTERNALS__" in window;
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
 const appWindow = isTauriRuntime
   ? getCurrentWindow()
   : {
       listen: async () => () => undefined,
     };
-
-async function invoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (isTauriRuntime) return tauriInvoke<T>(command, args);
-  switch (command) {
-    case "load_palette_config":
-    case "load_palette_default_config":
-      return {
-        serverUrl: "http://127.0.0.1:8001",
-        token: null,
-        shortcut: "Ctrl+Shift+Space",
-        collection: "axon",
-        resultLimit: 10,
-        theme: "dark",
-        hideOnBlur: false,
-        openResultsInline: true,
-        envValues: {},
-        configValues: {},
-      } as T;
-    case "save_palette_settings":
-      return (args?.settings ?? args) as T;
-    case "hide_palette":
-    case "show_palette":
-    case "resize_palette":
-      return undefined as T;
-    case "axon_http_request": {
-      // Browser-dev fallback: real HTTP to same-origin `/v1/*` paths, forwarded
-      // to a live `axon serve` by the vite proxy (which injects the bearer token).
-      const req = (args?.request ?? {}) as { method?: string; path?: string; body?: unknown };
-      const method = (req.method ?? "GET").toUpperCase();
-      const init: RequestInit = { method, headers: { accept: "application/json" } };
-      if (req.body != null && method !== "GET" && method !== "DELETE") {
-        init.headers = { ...(init.headers as Record<string, string>), "content-type": "application/json" };
-        init.body = JSON.stringify(req.body);
-      }
-      const resp = await fetch(req.path ?? "/", init);
-      const text = await resp.text();
-      let payload: unknown = null;
-      try {
-        payload = text ? JSON.parse(text) : null;
-      } catch {
-        payload = text;
-      }
-      return { ok: resp.ok, status: resp.status, path: req.path ?? "", method, payload } as T;
-    }
-    default:
-      throw new Error(`${command} is only available in the Tauri runtime`);
-  }
-}
 
 export default function App() {
   const [query, setQuery] = useState("");
@@ -143,6 +98,8 @@ export default function App() {
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [canceling, setCanceling] = useState(false);
 
   usePaletteStream(setRun);
 
@@ -237,6 +194,57 @@ export default function App() {
     return () => media.removeEventListener("change", applyTheme);
   }, [config]);
 
+  // Live job polling: while a crawl job is non-terminal, poll its real status
+  // (and the handed-off embed job) ~once/sec and refresh the snapshot. Keyed on
+  // jobId + terminal so it stops cleanly when the job (incl. embed phase) ends.
+  const jobId = run.kind === "job" ? run.jobId : "";
+  const jobPhase = run.kind === "job" ? run.snapshot.phase : "idle";
+  const jobTerminal = jobPhase === "done" || jobPhase === "failed" || jobPhase === "canceled";
+  useEffect(() => {
+    if (run.kind !== "job" || !jobId || jobTerminal) return;
+    let active = true;
+    const getJson = (path: string) =>
+      invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
+        request: { method: "GET", path, body: null },
+      });
+    const tick = async () => {
+      try {
+        const crawlRes = await getJson(`/v1/crawl/${jobId}`);
+        if (!active) return;
+        const crawlPayload = crawlRes.payload;
+        const embedId = extractEmbedJobId(crawlPayload);
+        let embedPayload: unknown;
+        if (embedId) {
+          try {
+            embedPayload = (await getJson(`/v1/embed/${embedId}`)).payload;
+          } catch {
+            /* embed row not visible yet — keep crawl in the embedding phase */
+          }
+        }
+        if (!active) return;
+        setNowMs(Date.now());
+        setRun((current) => {
+          if (current.kind !== "job" || current.jobId !== jobId) return current;
+          const elapsedSec = Math.max(0, (Date.now() - current.startedAtMs) / 1000);
+          const snapshot = summarizeCrawl(
+            crawlPayload,
+            { jobId, url: current.url, elapsedSec, maxPages: current.maxPages, maxDepth: current.maxDepth },
+            embedPayload,
+          );
+          return { ...current, snapshot, subtitle: `job ${jobId}` };
+        });
+      } catch {
+        /* transient poll failure — keep trying on the next tick */
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 1000);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, [run.kind, jobId, jobTerminal]);
+
   const parsed = useMemo(() => parseCommand(query), [query]);
   const hasQuery = query.trim().length > 0;
   const filtered = useMemo(() => {
@@ -250,7 +258,8 @@ export default function App() {
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
-  const showOutput = run.kind !== "idle";
+  const jobMinimized = run.kind === "job" && run.minimized;
+  const showOutput = run.kind !== "idle" && !jobMinimized;
   const showContent = settingsOpen || historyOpen || showOutput || hasQuery || browseOpen;
   const compact = !showContent;
   const showResultsLayout = showOutput || settingsOpen || historyOpen;
@@ -261,17 +270,19 @@ export default function App() {
   }, [parsed.search, modeAction]);
 
   useEffect(() => {
-    const size = settingsOpen
+    const size = jobMinimized
+      ? { width: 680, height: 96 }
+      : settingsOpen
       ? { width: 800, height: 560 }
       : historyOpen
       ? { width: 760, height: 520 }
       : showResultsLayout
-      ? { width: 900, height: 560 }
+      ? { width: 900, height: 568 }
       : showContent
         ? { width: 760, height: Math.min(142 + filtered.length * 48, window.screen.availHeight - 80) }
         : { width: 680, height: 56 };
     void invoke("resize_palette", size);
-  }, [settingsOpen, historyOpen, showResultsLayout, showContent, filtered.length, shownTick]);
+  }, [jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filtered.length, shownTick]);
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
 
@@ -287,6 +298,71 @@ export default function App() {
     setQuery(argument);
     setBrowseOpen(false);
     const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
+    if (action.subcommand === "crawl") {
+      const seedUrl = crawlSeedUrl(argument);
+      const startedAtMs = Date.now();
+      const pendingSnapshot = summarizeCrawl({ job: { status: "pending" } }, { jobId: "", url: seedUrl });
+      setRun({
+        kind: "job",
+        family: "crawl",
+        title: `Crawling ${hostFromUrl(seedUrl)}`,
+        subtitle: "submitting…",
+        jobId: "",
+        statusUrl: "",
+        url: seedUrl,
+        startedAtMs,
+        maxPages: 0,
+        maxDepth: 0,
+        snapshot: pendingSnapshot,
+        minimized: false,
+      });
+      try {
+        const result = await executeAction(client, action, argument, config);
+        const payload = (result.payload ?? {}) as Record<string, unknown>;
+        const jobId =
+          typeof payload.job_id === "string"
+            ? payload.job_id
+            : typeof payload.id === "string"
+              ? payload.id
+              : null;
+        if (!result.ok || !jobId) {
+          const text = formatPayload(action.subcommand, result.payload);
+          pushHistory(action, seedUrl, result.status, text, "code");
+          setRun({
+            kind: "error",
+            title: "Crawl failed",
+            subtitle: `${result.method} ${result.path} | HTTP ${result.status}`,
+            text,
+            outputKind: "code",
+            result,
+          });
+          return;
+        }
+        pushHistory(action, seedUrl, result.status, undefined, "code");
+        setRun((current) =>
+          current.kind === "job" && current.url === seedUrl
+            ? {
+                ...current,
+                jobId,
+                statusUrl: `/v1/crawl/${jobId}`,
+                subtitle: `job ${jobId}`,
+                snapshot: { ...current.snapshot, jobId },
+              }
+            : current,
+        );
+      } catch (err) {
+        const text = err instanceof Error ? err.message : String(err);
+        setRun({
+          kind: "error",
+          title: "Crawl failed",
+          subtitle: commandLine,
+          text,
+          outputKind: "code",
+          result: { ok: false, status: 0, path: "/v1/crawl", method: "POST", payload: null },
+        });
+      }
+      return;
+    }
     if (action.subcommand === "ask" || action.subcommand === "chat") {
       const requestId = newRequestId();
       const request = buildActionRequest(client, action, argument, config);
@@ -457,6 +533,62 @@ export default function App() {
     focusInput(true);
   }
 
+  function minimizeJob() {
+    setSettingsOpen(false);
+    setHistoryOpen(false);
+    setBrowseOpen(false);
+    setQuery("");
+    setRun((current) => (current.kind === "job" ? { ...current, minimized: true } : current));
+  }
+
+  function expandJob() {
+    setBrowseOpen(false);
+    setRun((current) => (current.kind === "job" ? { ...current, minimized: false } : current));
+  }
+
+  function closeJob() {
+    setRun({ kind: "idle" });
+    setModeAction(null);
+    setQuery("");
+    setBrowseOpen(false);
+  }
+
+  async function cancelJob() {
+    if (run.kind !== "job" || !run.jobId) return;
+    const id = run.jobId;
+    setCanceling(true);
+    try {
+      await invoke("axon_http_request", {
+        request: { method: "POST", path: `/v1/crawl/${id}/cancel`, body: null },
+      });
+    } catch {
+      /* the poll will surface the canceled row state */
+    } finally {
+      setCanceling(false);
+    }
+  }
+
+  async function viewPartialJob() {
+    if (run.kind !== "job" || !run.jobId) return;
+    const id = run.jobId;
+    const host = run.snapshot.host;
+    try {
+      const res = await invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
+        request: { method: "GET", path: `/v1/crawl/${id}`, body: null },
+      });
+      setRun({
+        kind: "success",
+        title: `Crawl ${host}`,
+        subtitle: `job ${id}`,
+        text: formatPayload("crawl", res.payload),
+        outputKind: "code",
+        result: { ok: res.ok, status: res.status, path: `/v1/crawl/${id}`, method: "GET", payload: res.payload },
+      });
+    } catch {
+      /* keep the live view if the fetch fails */
+    }
+  }
+
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}`}>
 
@@ -528,6 +660,19 @@ export default function App() {
           <Settings size={15} />
         </button>
       </section>
+
+      {jobMinimized && run.kind === "job" && (
+        <button className="idle-tray" type="button" onClick={expandJob} title="Expand crawl job">
+          <span className="idle-tray-dot" />
+          <Workflow size={14} strokeWidth={1.9} />
+          <span>Crawling {run.snapshot.host}</span>
+          <span className="idle-tray-bar">
+            <span style={{ width: `${Math.max(2, Math.round(run.snapshot.percent))}%` }} />
+          </span>
+          <strong>{Math.round(run.snapshot.percent)}%</strong>
+          <ChevronRight size={15} />
+        </button>
+      )}
 
       {settingsOpen && draftConfig && (
         <SettingsPanel
@@ -646,7 +791,19 @@ export default function App() {
           />
         )}
 
-        {showResultsLayout && !historyOpen && (
+        {showResultsLayout && !historyOpen && run.kind === "job" && (
+          <CrawlJobView
+            snapshot={run.snapshot}
+            nowMs={nowMs}
+            canceling={canceling}
+            onCancel={() => void cancelJob()}
+            onViewPartial={() => void viewPartialJob()}
+            onMinimize={minimizeJob}
+            onClose={closeJob}
+          />
+        )}
+
+        {showResultsLayout && !historyOpen && run.kind !== "job" && (
           <OutputPanel
             active={active}
             copied={copied}
@@ -885,4 +1042,22 @@ function normalizeSubmitArgument(action: PaletteAction, argument: string): strin
     return `https://${trimmed}`;
   }
   return trimmed;
+}
+
+function crawlSeedUrl(argument: string): string {
+  const first = argument.trim().split(/\s+/)[0] ?? "";
+  if (!first) return "";
+  return /^https?:\/\//i.test(first) ? first : `https://${first}`;
+}
+
+function extractEmbedJobId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const root = payload as Record<string, unknown>;
+  const job = (typeof root.job === "object" && root.job ? root.job : root) as Record<string, unknown>;
+  const result = job.result_json;
+  if (result && typeof result === "object") {
+    const id = (result as Record<string, unknown>).embed_job_id;
+    if (typeof id === "string" && id) return id;
+  }
+  return null;
 }

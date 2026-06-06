@@ -1,6 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 
+import { isTauriRuntime } from "@/lib/invoke";
 import type { RunState } from "@/lib/runState";
 
 type PaletteStreamEvent =
@@ -11,7 +12,11 @@ type PaletteStreamEvent =
 
 type SetRunState = React.Dispatch<React.SetStateAction<RunState>>;
 
-const appWindow = getCurrentWindow();
+const appWindow = isTauriRuntime
+  ? getCurrentWindow()
+  : {
+      listen: async () => () => undefined,
+    };
 
 export function usePaletteStream(setRun: SetRunState) {
   useEffect(() => {

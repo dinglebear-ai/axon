@@ -434,6 +434,8 @@ fn build_crawl_result_json(
         "pages_crawled": summary.pages_seen,
         "md_created": summary.markdown_files,
         "pages_discovered": summary.pages_discovered,
+        "queued": summary.queued(),
+        "depth_max": summary.depth_max,
         "thin_md": summary.thin_pages,
         "error_pages": summary.error_pages,
         "waf_blocked_pages": summary.waf_blocked_pages,
