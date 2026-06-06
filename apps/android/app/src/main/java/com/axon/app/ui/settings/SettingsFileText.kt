@@ -10,17 +10,31 @@ internal fun parseEnvText(raw: String): Map<String, String> =
             key to value
         }
 
-internal fun renderEnvText(values: Map<String, String>): String = buildString {
-    AxonSettingsCatalog.envGroups.forEach { group ->
-        appendLine("# -- ${group.label} --")
-        group.fields.forEach { field ->
-            append(field.key)
-            append("=")
-            appendLine(values[field.key].orEmpty())
+internal fun patchEnvText(raw: String, values: Map<String, String>, dirtyKeys: Set<String>): String {
+    if (dirtyKeys.isEmpty()) return raw
+
+    val seen = mutableSetOf<String>()
+    val patched = raw.lineSequence().map { line ->
+        val trimmed = line.trimStart()
+        if (trimmed.isEmpty() || trimmed.startsWith("#") || "=" !in line) {
+            line
+        } else {
+            val key = line.substringBefore("=").trim()
+            if (key in dirtyKeys) {
+                seen += key
+                "$key=${formatEnvValue(values[key].orEmpty())}"
+            } else {
+                line
+            }
         }
-        appendLine()
+    }.toMutableList()
+
+    dirtyKeys.sorted().filterNot { it in seen }.forEach { key ->
+        patched += "$key=${formatEnvValue(values[key].orEmpty())}"
     }
-}.trimEnd() + "\n"
+
+    return patched.joinToString("\n").trimEnd() + "\n"
+}
 
 internal fun parseConfigTomlText(raw: String): Map<String, String> {
     val out = mutableMapOf<String, String>()
@@ -40,19 +54,53 @@ internal fun parseConfigTomlText(raw: String): Map<String, String> {
     return out
 }
 
-internal fun renderConfigTomlText(values: Map<String, String>): String = buildString {
-    AxonSettingsCatalog.configGroups.forEach { group ->
-        val section = group.section?.removePrefix("[")?.removeSuffix("]") ?: group.id
-        appendLine("[${section}]")
-        group.fields.forEach { field ->
-            val key = "${group.id}.${field.key}"
-            append(field.key)
-            append(" = ")
-            appendLine(formatTomlValue(field, values[key].orEmpty()))
+internal fun patchConfigTomlText(raw: String, values: Map<String, String>, dirtyKeys: Set<String>): String {
+    if (dirtyKeys.isEmpty()) return raw
+
+    val fieldsByConfigKey = AxonSettingsCatalog.configGroups
+        .flatMap { group -> group.fields.map { field -> "${group.id}.${field.key}" to field } }
+        .toMap()
+    val seen = mutableSetOf<String>()
+    var section = ""
+    val patched = raw.lineSequence().map { line ->
+        val trimmed = line.trim()
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            section = trimmed.removePrefix("[").removeSuffix("]").trim()
+            line
+        } else if (section.isNotBlank() && "=" in trimmed && !trimmed.startsWith("#")) {
+            val key = trimmed.substringBefore("=").trim()
+            val configKey = "$section.$key"
+            val field = fieldsByConfigKey[configKey]
+            if (configKey in dirtyKeys && field != null) {
+                seen += configKey
+                "$key = ${formatTomlValue(field, values[configKey].orEmpty())}"
+            } else {
+                line
+            }
+        } else {
+            line
         }
-        appendLine()
+    }.toMutableList()
+
+    val missingBySection = dirtyKeys
+        .filterNot { it in seen }
+        .mapNotNull { configKey ->
+            val field = fieldsByConfigKey[configKey] ?: return@mapNotNull null
+            val sectionName = configKey.substringBeforeLast(".")
+            sectionName to (field to values[configKey].orEmpty())
+        }
+        .groupBy({ it.first }, { it.second })
+
+    missingBySection.toSortedMap().forEach { (sectionName, fields) ->
+        if (patched.isNotEmpty() && patched.last().isNotBlank()) patched += ""
+        patched += "[$sectionName]"
+        fields.sortedBy { it.first.key }.forEach { (field, value) ->
+            patched += "${field.key} = ${formatTomlValue(field, value)}"
+        }
     }
-}.trimEnd() + "\n"
+
+    return patched.joinToString("\n").trimEnd() + "\n"
+}
 
 private fun String.unquoteConfigValue(): String {
     val trimmed = trim()
@@ -77,6 +125,20 @@ private fun formatTomlValue(field: SettingField, value: String): String =
         }
         SettingKind.Text, SettingKind.Secret, SettingKind.Enum -> "\"${value.escapeToml()}\""
     }
+
+private fun formatEnvValue(value: String): String {
+    require(!value.contains('\n') && !value.contains('\r')) {
+        ".env values cannot contain newlines"
+    }
+    if (value.isEmpty()) return ""
+    val needsQuotes = value.any { it.isWhitespace() || it in "\"'#`\$\\!" }
+    if (!needsQuotes) return value
+    return "\"" + value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\$", "\\$")
+        .replace("`", "\\`") + "\""
+}
 
 private fun String.escapeToml(): String =
     replace("\\", "\\\\").replace("\"", "\\\"")
