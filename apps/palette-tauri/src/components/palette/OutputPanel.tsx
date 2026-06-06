@@ -26,9 +26,12 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
 import { Streamdown } from "streamdown";
 
+import { AskConversation } from "@/components/palette/AskConversation";
+import { EvaluateView } from "@/components/palette/EvaluateView";
+import { StatsView } from "@/components/palette/StatsView";
+import { StatusView } from "@/components/palette/StatusView";
 import { Spinner } from "@/components/ui/aurora/spinner";
 import type { PaletteAction } from "@/lib/actions";
 import type { RunState } from "@/lib/runState";
@@ -126,11 +129,16 @@ export function OutputPanel({
           <AskConversation prompt={run.prompt ?? ""} answer={run.text} pending onFollowUp={onFollowUp} />
         ) : (run.kind === "running" || run.kind === "streaming") ? (
           <PendingBody run={run} />
-        ) : null}
-        {"text" in run && run.kind !== "streaming" && conversationMode ? (
+        ) : run.kind === "success" && active?.subcommand === "evaluate" ? (
+          <EvaluateView payload={run.result.payload} />
+        ) : run.kind === "success" && active?.subcommand === "stats" ? (
+          <StatsView payload={run.result.payload} />
+        ) : run.kind === "success" && active?.subcommand === "status" ? (
+          <StatusView payload={run.result.payload} />
+        ) : "text" in run && conversationMode ? (
           <AskConversation prompt={run.prompt ?? ""} answer={run.text} onFollowUp={onFollowUp} />
-        ) : "text" in run && run.kind !== "streaming" &&
-          (outputKind === "markdown" ? (
+        ) : "text" in run ? (
+          outputKind === "markdown" ? (
             <div className="output-body output-markdown">
               <Streamdown>{run.text}</Streamdown>
             </div>
@@ -138,7 +146,8 @@ export function OutputPanel({
             <pre className="output-body output-code">
               <code>{run.text}</code>
             </pre>
-          ))}
+          )
+        ) : null}
       </div>
     </section>
   );
@@ -173,58 +182,6 @@ function PendingBody({
       <div className="output-pending-spinner">
         <Spinner size="sm" />
       </div>
-    </div>
-  );
-}
-
-function AskConversation({
-  prompt,
-  answer,
-  pending,
-  onFollowUp,
-}: {
-  prompt: string;
-  answer: string;
-  pending?: boolean;
-  onFollowUp: (text: string) => void;
-}) {
-  const [draft, setDraft] = useState("");
-  const canSend = draft.trim().length > 0 && !pending;
-  return (
-    <div className="ask-body">
-      <div className="ask-thread aurora-scrollbar">
-        {prompt ? (
-          <div className="ask-message ask-message-user">
-            <span>You</span>
-            <p>{prompt}</p>
-          </div>
-        ) : null}
-        <div className="ask-message ask-message-assistant">
-          <span>Axon</span>
-          <div className="ask-answer">
-            {answer ? <Streamdown>{answer}</Streamdown> : <span className="ask-waiting">Waiting for response...</span>}
-          </div>
-        </div>
-      </div>
-      <form
-        className="ask-compose"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const value = draft.trim();
-          if (!value || pending) return;
-          setDraft("");
-          onFollowUp(value);
-        }}
-      >
-        <input
-          value={draft}
-          disabled={pending}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={pending ? "Waiting for response..." : "Ask a follow-up..."}
-          aria-label="Ask a follow-up"
-        />
-        <button type="submit" disabled={!canSend}>Send</button>
-      </form>
     </div>
   );
 }
