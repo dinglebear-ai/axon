@@ -1,55 +1,31 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  Activity,
   ArrowLeft,
-  BarChart3,
-  BookOpen,
-  Bot,
-  Boxes,
-  Braces,
-  Camera,
-  Database,
-  FileDown,
-  Globe,
-  GitCompare,
-  HelpCircle,
-  Layers,
-  Map as MapIcon,
-  PackageOpen,
-  SearchCheck,
+  ChevronRight,
   Search,
   Send,
   Settings,
-  Sparkles,
-  Stethoscope,
   Workflow,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { ChevronRight } from "lucide-react";
-
+import { ActionList } from "@/components/palette/ActionList";
+import { AxonMark } from "@/components/palette/AxonMark";
 import { CrawlJobView } from "@/components/palette/CrawlJobView";
+import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
 import { OutputPanel } from "@/components/palette/OutputPanel";
+import { PaletteFooter } from "@/components/palette/PaletteFooter";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
-import { ScrollArea } from "@/components/ui/aurora/scroll-area";
-import { StatusIndicator } from "@/components/ui/aurora/status-indicator";
-import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
-import {
-  type PaletteConfig,
-  buildActionRequest,
-  createAxonClient,
-  executeAction,
-} from "@/lib/axonClient";
 import {
   ACTIONS,
   type PaletteAction,
-  acceptsDirectUrl,
   actionMatches,
 } from "@/lib/actions";
-import { formatPayload, outputKindFor } from "@/lib/format";
+import { currentOutputTarget } from "@/lib/appHelpers";
+import { type PaletteConfig, createAxonClient } from "@/lib/axonClient";
+import { outputKindFor } from "@/lib/format";
+import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import {
-  actionDisplayMeta,
   argumentFor,
   argumentPlaceholder,
   focusInput,
@@ -59,29 +35,12 @@ import {
   sortActionsForDisplay,
   validationMessage,
 } from "@/lib/paletteView";
-import { invoke, isTauriRuntime } from "@/lib/invoke";
 import type { RunState } from "@/lib/runState";
-import { newRequestId, usePaletteStream } from "@/lib/paletteStream";
-
-interface HistoryItem {
-  action: PaletteAction;
-  target: string;
-  status: number;
-  when: string;
-  pinned?: boolean;
-  running?: boolean;
-  duration?: string;
-  text?: string;
-  outputKind?: "markdown" | "code";
-}
+import { useActionRunner } from "@/lib/useActionRunner";
+import { useCrawlJob } from "@/lib/useCrawlJob";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
-const appWindow = isTauriRuntime
-  ? getCurrentWindow()
-  : {
-      listen: async () => () => undefined,
-    };
 
 export default function App() {
   const [query, setQuery] = useState("");
@@ -98,10 +57,6 @@ export default function App() {
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [canceling, setCanceling] = useState(false);
-
-  usePaletteStream(setRun);
 
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
@@ -194,57 +149,6 @@ export default function App() {
     return () => media.removeEventListener("change", applyTheme);
   }, [config]);
 
-  // Live job polling: while a crawl job is non-terminal, poll its real status
-  // (and the handed-off embed job) ~once/sec and refresh the snapshot. Keyed on
-  // jobId + terminal so it stops cleanly when the job (incl. embed phase) ends.
-  const jobId = run.kind === "job" ? run.jobId : "";
-  const jobPhase = run.kind === "job" ? run.snapshot.phase : "idle";
-  const jobTerminal = jobPhase === "done" || jobPhase === "failed" || jobPhase === "canceled";
-  useEffect(() => {
-    if (run.kind !== "job" || !jobId || jobTerminal) return;
-    let active = true;
-    const getJson = (path: string) =>
-      invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
-        request: { method: "GET", path, body: null },
-      });
-    const tick = async () => {
-      try {
-        const crawlRes = await getJson(`/v1/crawl/${jobId}`);
-        if (!active) return;
-        const crawlPayload = crawlRes.payload;
-        const embedId = extractEmbedJobId(crawlPayload);
-        let embedPayload: unknown;
-        if (embedId) {
-          try {
-            embedPayload = (await getJson(`/v1/embed/${embedId}`)).payload;
-          } catch {
-            /* embed row not visible yet — keep crawl in the embedding phase */
-          }
-        }
-        if (!active) return;
-        setNowMs(Date.now());
-        setRun((current) => {
-          if (current.kind !== "job" || current.jobId !== jobId) return current;
-          const elapsedSec = Math.max(0, (Date.now() - current.startedAtMs) / 1000);
-          const snapshot = summarizeCrawl(
-            crawlPayload,
-            { jobId, url: current.url, elapsedSec, maxPages: current.maxPages, maxDepth: current.maxDepth },
-            embedPayload,
-          );
-          return { ...current, snapshot, subtitle: `job ${jobId}` };
-        });
-      } catch {
-        /* transient poll failure — keep trying on the next tick */
-      }
-    };
-    void tick();
-    const id = window.setInterval(() => void tick(), 1000);
-    return () => {
-      active = false;
-      window.clearInterval(id);
-    };
-  }, [run.kind, jobId, jobTerminal]);
-
   const parsed = useMemo(() => parseCommand(query), [query]);
   const hasQuery = query.trim().length > 0;
   const filtered = useMemo(() => {
@@ -286,191 +190,29 @@ export default function App() {
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
 
-  async function submit(action: PaletteAction = active, argumentOverride?: string) {
-    if (!client || !config || !action || run.kind === "running" || run.kind === "streaming") return;
-    const argument = normalizeSubmitArgument(
-      action,
-      argumentOverride ?? argumentFor(action, modeAction, parsed, query),
-    );
-    const validation = validationMessage(action, argument);
-    if (validation) return;
-    setModeAction(action);
-    setQuery(argument);
-    setBrowseOpen(false);
-    const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
-    if (action.subcommand === "crawl") {
-      const seedUrl = crawlSeedUrl(argument);
-      const startedAtMs = Date.now();
-      const pendingSnapshot = summarizeCrawl({ job: { status: "pending" } }, { jobId: "", url: seedUrl });
-      setRun({
-        kind: "job",
-        family: "crawl",
-        title: `Crawling ${hostFromUrl(seedUrl)}`,
-        subtitle: "submitting…",
-        jobId: "",
-        statusUrl: "",
-        url: seedUrl,
-        startedAtMs,
-        maxPages: 0,
-        maxDepth: 0,
-        snapshot: pendingSnapshot,
-        minimized: false,
-      });
-      try {
-        const result = await executeAction(client, action, argument, config);
-        const payload = (result.payload ?? {}) as Record<string, unknown>;
-        const jobId =
-          typeof payload.job_id === "string"
-            ? payload.job_id
-            : typeof payload.id === "string"
-              ? payload.id
-              : null;
-        if (!result.ok || !jobId) {
-          const text = formatPayload(action.subcommand, result.payload);
-          pushHistory(action, seedUrl, result.status, text, "code");
-          setRun({
-            kind: "error",
-            title: "Crawl failed",
-            subtitle: `${result.method} ${result.path} | HTTP ${result.status}`,
-            text,
-            outputKind: "code",
-            result,
-          });
-          return;
-        }
-        pushHistory(action, seedUrl, result.status, undefined, "code");
-        setRun((current) =>
-          current.kind === "job" && current.url === seedUrl
-            ? {
-                ...current,
-                jobId,
-                statusUrl: `/v1/crawl/${jobId}`,
-                subtitle: `job ${jobId}`,
-                snapshot: { ...current.snapshot, jobId },
-              }
-            : current,
-        );
-      } catch (err) {
-        const text = err instanceof Error ? err.message : String(err);
-        setRun({
-          kind: "error",
-          title: "Crawl failed",
-          subtitle: commandLine,
-          text,
-          outputKind: "code",
-          result: { ok: false, status: 0, path: "/v1/crawl", method: "POST", payload: null },
-        });
-      }
-      return;
-    }
-    if (action.subcommand === "ask" || action.subcommand === "chat") {
-      const requestId = newRequestId();
-      const request = buildActionRequest(client, action, argument, config);
-      const streamPath = action.subcommand === "chat" ? "/v1/chat/stream" : "/v1/ask/stream";
-      if (isTauriRuntime) {
-        setRun({
-          kind: "streaming",
-          title: `Streaming ${action.label}`,
-          subtitle: `${request.method} ${streamPath}`,
-          text: "",
-          outputKind: outputKindFor(action.subcommand),
-          requestId,
-          path: streamPath,
-          actionLabel: action.label,
-          prompt: argument,
-        });
-        try {
-          await invoke("axon_http_stream_request", {
-            request: {
-              ...request,
-              requestId,
-              path: streamPath,
-              body: request.body,
-            },
-          });
-          return;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          setRun((current) =>
-            current.kind === "streaming" && current.requestId === requestId
-              ? {
-                  kind: "error",
-                  title: `${action.label} stream failed`,
-                  subtitle: `${request.method} ${streamPath}`,
-                  text: message,
-                  outputKind: outputKindFor(action.subcommand),
-                  prompt: current.prompt,
-                  result: {
-                    ok: false,
-                    status: 0,
-                    path: streamPath,
-                    method: "POST",
-                    payload: { error: message },
-                  },
-                }
-              : current,
-          );
-          return;
-        }
-      } else {
-        setRun({
-          kind: "running",
-          title: action.label,
-          subtitle: `${request.method} ${request.path}`,
-          prompt: argument,
-        });
-      }
-    } else {
-      setRun({
-        kind: "running",
-        title: `Running ${action.label}`,
-        subtitle: commandLine,
-      });
-    }
-    try {
-      const result = await executeAction(client, action, argument, config);
-      const text = formatPayload(action.subcommand, result.payload);
-      pushHistory(action, argument || action.subcommand, result.status, text, outputKindFor(action.subcommand));
-      const isConversation = action.subcommand === "ask" || action.subcommand === "chat";
-      setRun({
-        kind: result.ok ? "success" : "error",
-        title: isConversation ? action.label : `${action.label} ${result.ok ? "completed" : "failed"}`,
-        subtitle: action.subcommand === "ask"
-          ? `RAG over ${config.collection || "axon"} | ${result.path}`
-          : action.subcommand === "chat"
-          ? result.path
-          : `${result.method} ${result.path} | HTTP ${result.status}`,
-        text,
-        outputKind: outputKindFor(action.subcommand),
-        prompt: isConversation ? argument : undefined,
-        result,
-      });
-    } catch (err) {
-      const text = err instanceof Error ? err.message : String(err);
-      pushHistory(action, argument || action.subcommand, 0, text, outputKindFor(action.subcommand));
-      const isConversation = action.subcommand === "ask" || action.subcommand === "chat";
-      setRun({
-        kind: "error",
-        title: isConversation ? action.label : `${action.label} failed`,
-        subtitle: action.subcommand === "ask"
-          ? `RAG over ${config.collection || "axon"} | /v1/ask`
-          : action.subcommand === "chat"
-          ? "/v1/chat"
-          : commandLine,
-        text,
-        outputKind: outputKindFor(action.subcommand),
-        prompt: isConversation ? argument : undefined,
-        result: { ok: false, status: 0, path: "", method: "POST", payload: null },
-      });
-    }
-  }
+  const { submit } = useActionRunner({
+    client,
+    config,
+    run,
+    setRun,
+    setHistory,
+    setModeAction,
+    setQuery,
+    setBrowseOpen,
+    modeAction,
+    parsed,
+    query,
+  });
 
-  function pushHistory(action: PaletteAction, target: string, status: number, text?: string, outputKind?: "markdown" | "code") {
-    setHistory((items) => [
-      { action, target, status, text, outputKind, when: "just now", duration: status === 0 ? "fail" : undefined },
-      ...items,
-    ].slice(0, 18));
-  }
+  const { nowMs, canceling, cancelJob, viewPartialJob, minimizeJob, expandJob, closeJob } = useCrawlJob({
+    run,
+    setRun,
+    setSettingsOpen,
+    setHistoryOpen,
+    setBrowseOpen,
+    setQuery,
+    setModeAction,
+  });
 
   function enterActionMode(action: PaletteAction) {
     setModeAction(action);
@@ -531,63 +273,6 @@ export default function App() {
     setQuery("");
     setBrowseOpen(true);
     focusInput(true);
-  }
-
-  function minimizeJob() {
-    setSettingsOpen(false);
-    setHistoryOpen(false);
-    setBrowseOpen(false);
-    setQuery("");
-    setModeAction(null); // clean command bar (no mode pill / default placeholder) in the tray
-    setRun((current) => (current.kind === "job" ? { ...current, minimized: true } : current));
-  }
-
-  function expandJob() {
-    setBrowseOpen(false);
-    setRun((current) => (current.kind === "job" ? { ...current, minimized: false } : current));
-  }
-
-  function closeJob() {
-    setRun({ kind: "idle" });
-    setModeAction(null);
-    setQuery("");
-    setBrowseOpen(false);
-  }
-
-  async function cancelJob() {
-    if (run.kind !== "job" || !run.jobId) return;
-    const id = run.jobId;
-    setCanceling(true);
-    try {
-      await invoke("axon_http_request", {
-        request: { method: "POST", path: `/v1/crawl/${id}/cancel`, body: null },
-      });
-    } catch {
-      /* the poll will surface the canceled row state */
-    } finally {
-      setCanceling(false);
-    }
-  }
-
-  async function viewPartialJob() {
-    if (run.kind !== "job" || !run.jobId) return;
-    const id = run.jobId;
-    const host = run.snapshot.host;
-    try {
-      const res = await invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
-        request: { method: "GET", path: `/v1/crawl/${id}`, body: null },
-      });
-      setRun({
-        kind: "success",
-        title: `Crawl ${host}`,
-        subtitle: `job ${id}`,
-        text: formatPayload("crawl", res.payload),
-        outputKind: "code",
-        result: { ok: res.ok, status: res.status, path: `/v1/crawl/${id}`, method: "GET", payload: res.payload },
-      });
-    } catch {
-      /* keep the live view if the fetch fails */
-    }
   }
 
   return (
@@ -693,67 +378,14 @@ export default function App() {
       {showContent && !settingsOpen && (
       <main className={showResultsLayout ? (showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
         {showActionPanel && (
-        <section className="action-panel">
-          <div className="panel-heading">
-            <span>Actions</span>
-            <span className="panel-shortcuts">
-              <span><kbd>tab</kbd> switch</span>
-              <span><kbd>↵</kbd> run</span>
-            </span>
-          </div>
-          <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
-            <div className="action-list">
-              {filtered.map((action, index) => {
-                const meta = actionDisplayMeta(action);
-                const previous = index > 0 ? actionDisplayMeta(filtered[index - 1]) : null;
-                const selectedRow = index === selected;
-                return (
-                  <div className="action-group-item" key={action.subcommand}>
-                    {(!previous || previous.category !== meta.category) && (
-                      <div className="action-section-heading">
-                        <span>{meta.category}</span>
-                        <span>{meta.input} → {meta.output}</span>
-                      </div>
-                    )}
-                    <button
-                      className={selectedRow ? "action-row action-row-selected" : "action-row"}
-                      onClick={() => {
-                        setSelected(index);
-                        if (parsed.invoked) {
-                          void submit(action);
-                        } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
-                          void submit(action);
-                        } else {
-                          enterActionMode(action);
-                        }
-                      }}
-                    >
-                      <ActionIcon action={action} selected={selectedRow} />
-                      <span className="action-main">
-                        <span className="action-title-line">
-                          <span className="action-label">{meta.label}</span>
-                          <span className="action-method">{meta.method}</span>
-                          <span className="action-endpoint">{meta.endpoint}</span>
-                          {action.subcommand === "crawl" || action.subcommand === "ingest" || action.subcommand === "embed" || action.subcommand === "extract" ? (
-                            <span className="action-async">ASYNC</span>
-                          ) : null}
-                        </span>
-                        <span className="action-description">{action.description}</span>
-                      </span>
-                      <span className="action-meta">
-                        {selectedRow ? (
-                          <span className="action-run-pill">Run <kbd>↵</kbd></span>
-                        ) : (
-                          <kbd>{action.subcommand}</kbd>
-                        )}
-                      </span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </ScrollArea>
-        </section>
+          <ActionList
+            filtered={filtered}
+            selected={selected}
+            setSelected={setSelected}
+            parsed={parsed}
+            onSubmit={(action) => void submit(action)}
+            onEnterMode={enterActionMode}
+          />
         )}
 
         {historyOpen && (
@@ -848,35 +480,18 @@ export default function App() {
       )}
 
       {showContent && !settingsOpen && (
-        <footer className="palette-footer">
-          <span className="palette-footer-hints">
-            <button className="palette-recent" type="button" onClick={() => {
-              setRun({ kind: "idle" });
-              setModeAction(null);
-              setHistoryOpen((open) => !open);
-              setBrowseOpen(false);
-            }}>↺ recent</button>
-            <span className="palette-hint-group"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-            <span className="palette-hint-group"><kbd>tab</kbd> select</span>
-            <span className="palette-hint-group"><kbd>↵</kbd> run</span>
-            <span className="palette-hint-group"><kbd>esc</kbd> close</span>
-          </span>
-          <span className="palette-status" aria-label="Palette controls">
-            {config ? (
-              <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
-            ) : configError ? (
-              <StatusIndicator tone="error" label="Config error" />
-            ) : (
-              <StatusIndicator tone="syncing" label="Loading" />
-            )}
-            <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
-              <Settings size={14} />
-            </button>
-            <button className="titlebar-button" type="button" onClick={() => void invoke("hide_palette")} aria-label="Hide palette">
-              <X size={14} />
-            </button>
-          </span>
-        </footer>
+        <PaletteFooter
+          config={config}
+          configError={configError}
+          onRecent={() => {
+            setRun({ kind: "idle" });
+            setModeAction(null);
+            setHistoryOpen((open) => !open);
+            setBrowseOpen(false);
+          }}
+          onSettings={() => setSettingsOpen((open) => !open)}
+          onHide={() => void invoke("hide_palette")}
+        />
       )}
     </div>
   );
@@ -886,179 +501,4 @@ export default function App() {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   }
-}
-
-function currentOutputTarget(run: RunState, active: PaletteAction | null | undefined, query: string): string {
-  if (run.kind === "idle") return query.trim() || active?.subcommand || "";
-  if ("result" in run) {
-    const payload = run.result.payload;
-    if (payload && typeof payload === "object") {
-      const record = payload as Record<string, unknown>;
-      const url = record.url ?? record.requested_url ?? record.target;
-      if (typeof url === "string" && url) return url;
-    }
-  }
-  if ("text" in run) return firstUrlFromText(run.text) ?? run.subtitle;
-  return run.subtitle;
-}
-
-function firstUrlFromText(value: string): string | null {
-  return value.match(/https?:\/\/[^\s"')\]}]+/i)?.[0] ?? null;
-}
-
-function AxonMark({ size = 24 }: { size?: number }) {
-  return (
-    <svg className="axon-mark" width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true">
-      <g stroke="var(--aurora-border-strong)" strokeWidth="2" strokeLinecap="round">
-        <path d="M22 9 Q28 14 31 17" />
-        <path d="M32 7 L32 16" />
-        <path d="M42 9 Q36 14 33 17" />
-      </g>
-      <line x1="32" y1="22" x2="32" y2="42" stroke="var(--aurora-border-strong)" strokeWidth="2" strokeDasharray="2.5 3.5" />
-      <circle className="axon-node axon-node-1" cx="32" cy="20" r="5.2" fill="var(--aurora-border-strong)" stroke="var(--aurora-accent-strong)" strokeWidth="1.8" />
-      <circle className="axon-node axon-node-2" cx="32" cy="30" r="5.2" fill="var(--aurora-accent-deep)" stroke="var(--aurora-accent-strong)" strokeWidth="1.8" />
-      <circle className="axon-node axon-node-3" cx="32" cy="40" r="5.2" fill="var(--aurora-accent-primary)" stroke="var(--aurora-accent-strong)" strokeWidth="1.8" />
-      <circle className="axon-node axon-node-4" cx="32" cy="50" r="5.2" fill="var(--aurora-accent-strong)" />
-      <circle cx="32" cy="50" r="8" fill="none" stroke="var(--aurora-accent-strong)" strokeWidth="1.2" opacity="0.4" />
-      <g stroke="var(--aurora-accent-strong)" strokeWidth="2" strokeLinecap="round">
-        <path d="M28 53 Q23 58 19 62" />
-        <path d="M32 54 L32 62" />
-        <path d="M36 53 Q41 58 45 62" />
-      </g>
-    </svg>
-  );
-}
-
-function ActionIcon({ action, selected }: { action: PaletteAction; selected: boolean }) {
-  const Icon = actionIcon(action.subcommand);
-  return (
-    <span className={`action-icon action-icon-${action.tone}${selected ? " action-icon-selected" : ""}`} aria-hidden="true">
-      <Icon size={16} strokeWidth={1.65} />
-    </span>
-  );
-}
-
-function HistoryPanel({
-  items,
-  onClear,
-  onOpen,
-}: {
-  items: HistoryItem[];
-  onClear: () => void;
-  onOpen: (item: HistoryItem) => void;
-}) {
-  return (
-    <section className="history-panel">
-      <header className="history-head">
-        <span>Recent runs</span>
-        {items.length > 0 ? <button type="button" onClick={onClear}>clear</button> : null}
-      </header>
-      {items.length === 0 ? (
-        <div className="history-empty">
-          <span><Activity size={20} /></span>
-          <strong>No runs yet</strong>
-          <p>Run an operation and results land here. Start by typing a command above.</p>
-        </div>
-      ) : (
-        <div className="history-list aurora-scrollbar">
-          {items.map((item, index) => {
-            const ok = item.status >= 200 && item.status < 300;
-            return (
-              <button className="history-row" type="button" key={`${item.action.subcommand}-${item.target}-${index}`} onClick={() => onOpen(item)}>
-                <ActionIcon action={item.action} selected={false} />
-                <span className="history-main">
-                  <span>{item.target}</span>
-                  <span>{item.action.label} · {item.when}</span>
-                </span>
-                {item.pinned ? <Sparkles className="history-pin" size={13} /> : null}
-                {item.running ? (
-                  <span className="history-live"><span />live</span>
-                ) : (
-                  <span className="history-duration">{item.duration ?? "—"}</span>
-                )}
-                <span className={ok ? "history-status history-status-ok" : "history-status history-status-error"}>{item.status || "ERR"}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function actionIcon(subcommand: string) {
-  switch (subcommand) {
-    case "scrape":
-      return FileDown;
-    case "crawl":
-      return Workflow;
-    case "map":
-      return MapIcon;
-    case "summarize":
-      return BookOpen;
-    case "ask":
-    case "chat":
-      return Bot;
-    case "query":
-      return SearchCheck;
-    case "retrieve":
-      return Database;
-    case "suggest":
-      return Sparkles;
-    case "evaluate":
-      return BarChart3;
-    case "search":
-    case "research":
-      return Globe;
-    case "embed":
-      return Layers;
-    case "extract":
-      return Braces;
-    case "ingest":
-      return PackageOpen;
-    case "status":
-      return Activity;
-    case "sources":
-      return Boxes;
-    case "domains":
-      return Database;
-    case "stats":
-      return BarChart3;
-    case "doctor":
-      return Stethoscope;
-    case "brand":
-      return Sparkles;
-    case "diff":
-      return GitCompare;
-    case "screenshot":
-      return Camera;
-    default:
-      return HelpCircle;
-  }
-}
-
-function normalizeSubmitArgument(action: PaletteAction, argument: string): string {
-  const trimmed = argument.trim();
-  if (acceptsDirectUrl(action) && trimmed && !/^https?:\/\//i.test(trimmed)) {
-    return `https://${trimmed}`;
-  }
-  return trimmed;
-}
-
-function crawlSeedUrl(argument: string): string {
-  const first = argument.trim().split(/\s+/)[0] ?? "";
-  if (!first) return "";
-  return /^https?:\/\//i.test(first) ? first : `https://${first}`;
-}
-
-function extractEmbedJobId(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const root = payload as Record<string, unknown>;
-  const job = (typeof root.job === "object" && root.job ? root.job : root) as Record<string, unknown>;
-  const result = job.result_json;
-  if (result && typeof result === "object") {
-    const id = (result as Record<string, unknown>).embed_job_id;
-    if (typeof id === "string" && id) return id;
-  }
-  return null;
 }

@@ -6,9 +6,20 @@
 // forwards to a live `axon serve`. This keeps a single code path so things like
 // `executeAction` work identically in dev and production.
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export const isTauriRuntime =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+// Shared Tauri window handle with a browser fallback. In the Tauri runtime it is
+// the real window (event listeners wired); under `vite dev` it is a no-op stub so
+// `appWindow.listen(...)` is always callable. Consumed by App's window-event
+// effect and the ask-stream effect in useActionRunner.
+export const appWindow = isTauriRuntime
+  ? getCurrentWindow()
+  : {
+      listen: async () => () => undefined,
+    };
 
 export async function invoke<T = unknown>(
   command: string,
