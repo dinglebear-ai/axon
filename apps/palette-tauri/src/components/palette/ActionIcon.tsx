@@ -31,7 +31,7 @@ export function ActionIcon({ action, selected }: { action: PaletteAction; select
   );
 }
 
-function actionIcon(subcommand: string) {
+export function actionIcon(subcommand: string) {
   switch (subcommand) {
     case "scrape":
       return FileDown;

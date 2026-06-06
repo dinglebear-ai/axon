@@ -5,10 +5,10 @@ import {
   Send,
   Settings,
   Workflow,
-  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { actionIcon } from "@/components/palette/ActionIcon";
 import { ActionList } from "@/components/palette/ActionList";
 import { AxonMark } from "@/components/palette/AxonMark";
 import { CrawlJobView } from "@/components/palette/CrawlJobView";
@@ -305,6 +305,9 @@ export default function App() {
   const endpointTone = configError ? "error" : "syncing";
   const showBackButton = settingsOpen || historyOpen || showOutput;
   const currentTarget = currentOutputTarget(run, active, query);
+  // In an action mode, the input's leading icon becomes that action's icon
+  // (replacing the search glyph) instead of showing a separate badge.
+  const ModeIcon = modeAction ? actionIcon(modeAction.subcommand) : null;
 
   function goBackToBrowse() {
     setSettingsOpen(false);
@@ -337,14 +340,24 @@ export default function App() {
           <span className={`axon-status-dot axon-status-${endpointTone}`} />
         </button>
         <span className="axon-divider" aria-hidden="true" />
-        {modeAction && (
-          <button className={`command-mode-pill command-mode-pill-${modeAction.tone}`} type="button" onClick={() => setModeAction(null)} aria-label={`Clear ${modeAction.subcommand} mode`}>
-            {modeAction.subcommand}
-            <span className="mode-pill-dismiss" aria-hidden="true"><X size={10} /></span>
-          </button>
-        )}
         <div className="command-input-wrap" onClick={() => focusInput()}>
-          <Search size={16} strokeWidth={1.65} aria-hidden="true" />
+          {modeAction && ModeIcon ? (
+            <button
+              className={`command-mode-icon command-mode-icon-${modeAction.tone}`}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setModeAction(null);
+                focusInput(true);
+              }}
+              aria-label={`Clear ${modeAction.subcommand} mode`}
+              title={`${modeAction.label} mode — click to clear`}
+            >
+              <ModeIcon size={16} strokeWidth={1.9} aria-hidden="true" />
+            </button>
+          ) : (
+            <Search size={16} strokeWidth={1.65} aria-hidden="true" />
+          )}
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
