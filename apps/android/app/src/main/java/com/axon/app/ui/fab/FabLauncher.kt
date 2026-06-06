@@ -2,7 +2,6 @@ package com.axon.app.ui.fab
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -13,12 +12,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.axon.app.ui.theme.AxonTheme
 import kotlin.math.roundToInt
 
 private sealed interface FabState {
@@ -30,13 +29,20 @@ private sealed interface FabState {
 @Composable
 fun FabLauncher(
     onOpSubmit: (FabOp, String) -> Unit,
+    onOverlayVisibleChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var state by remember { mutableStateOf<FabState>(FabState.Idle) }
     var fabCenter by remember { mutableStateOf(IntOffset.Zero) }
+    val colors = AxonTheme.colors
+    val dimens = AxonTheme.dimens
 
     BackHandler(enabled = state !is FabState.Idle) {
         state = FabState.Idle
+    }
+
+    LaunchedEffect(state) {
+        onOverlayVisibleChange(state !is FabState.Idle)
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -68,7 +74,7 @@ fun FabLauncher(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(bottom = 80.dp, end = 16.dp)
-                    .size(42.dp)
+                    .size(dimens.fabSize)
                     .onGloballyPositioned { coords ->
                         val pos = coords.positionInWindow()
                         fabCenter = IntOffset(
@@ -76,14 +82,13 @@ fun FabLauncher(
                             y = (pos.y + coords.size.height / 2).roundToInt(),
                         )
                     }
-                    .background(Color(0xFF13293A), RoundedCornerShape(13.dp))
-                    .border(1.dp, Color(0xFF24536C), RoundedCornerShape(13.dp))
+                    .background(colors.accentPrimary, RoundedCornerShape(17.dp))
                     .clickable(remember { MutableInteractionSource() }, indication = null) {
                         state = FabState.Ring
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Add, contentDescription = "Launch operation", tint = Color(0xFF29B6F6), modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.Add, contentDescription = "Launch operation", tint = androidx.compose.ui.graphics.Color(0xFF06131C), modifier = Modifier.size(23.dp))
             }
         }
     }

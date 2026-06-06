@@ -33,7 +33,7 @@ class AxonApp : Application() {
             // shows a permanent spinner with no recovery path.
             val s = runCatching { container.settingsRepository.settings.first() }.getOrNull()
             if (s != null) {
-                container.applySettings(s.serverUrl.value, s.token.value)
+                container.applySettings(s.serverUrl.value, s.token.value, s.panelToken.value)
             } else {
                 container.applySettings(DEFAULT_SERVER_URL, "")
             }

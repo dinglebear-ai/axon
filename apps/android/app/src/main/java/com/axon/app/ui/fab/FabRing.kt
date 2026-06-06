@@ -22,12 +22,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.axon.app.ui.theme.AxonTheme
+import com.axon.app.ui.theme.AxonTone
+import com.axon.app.ui.theme.tint
+import com.axon.app.ui.theme.toneOf
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-
-private val BorderStrong = Color(0xFF24536C)
-private val PanelStrong  = Color(0xFF13293A)
 
 @Composable
 fun FabRing(
@@ -37,7 +38,7 @@ fun FabRing(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val radiusDp: Dp = 96.dp
+    val radiusDp: Dp = AxonTheme.dimens.opRingRadius
     val density = LocalDensity.current
 
     val openProgress by animateFloatAsState(
@@ -60,8 +61,8 @@ fun FabRing(
         }
 
         val radiusPx = with(density) { radiusDp.toPx() }
-        val halfTilePx = with(density) { 23.dp.roundToPx() }
-        val halfDismissPx = with(density) { 21.dp.roundToPx() }
+        val halfTilePx = with(density) { 28.dp.roundToPx() }
+        val halfDismissPx = with(density) { 26.dp.roundToPx() }
 
         FabOp.entries.forEachIndexed { i, op ->
             val angleRad = Math.toRadians(-90.0 + i * 36.0)
@@ -85,34 +86,59 @@ fun FabRing(
         Box(
             modifier = Modifier
                 .offset { IntOffset(fabCenterOffset.x - halfDismissPx, fabCenterOffset.y - halfDismissPx) }
-                .size(42.dp)
-                .background(Color(0xFF29B6F6), RoundedCornerShape(13.dp))
+                .size(52.dp)
+                .background(AxonTheme.colors.panelMedium, RoundedCornerShape(17.dp))
+                .border(1.dp, AxonTheme.colors.borderStrong, RoundedCornerShape(17.dp))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color(0xFF051520), modifier = Modifier.size(20.dp))
+            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = AxonTheme.colors.textPrimary, modifier = Modifier.size(20.dp))
         }
     }
 }
 
 @Composable
 private fun OpTile(op: FabOp, modifier: Modifier, alpha: Float, onClick: () -> Unit) {
-    val bg     = if (op.isAsync) asyncOpBg   else PanelStrong
-    val tint   = if (op.isAsync) asyncOpTint else syncOpTint
-    val border = if (op.isAsync) asyncOpTint.copy(alpha = 0.35f) else BorderStrong
+    val colors = AxonTheme.colors
+    val tone = colors.toneOf(if (op.isAsync) AxonTone.Orange else AxonTone.Cyan)
+    val bg = colors.panelStrong
+    val iconBg = colors.tint(tone.base, 14, colors.pageBg)
+    val iconBorder = colors.tint(tone.base, 28, colors.panelStrong)
+    val border = if (op.isAsync) colors.tint(tone.base, 35, colors.panelStrong) else colors.borderStrong
 
     Box(
         modifier = modifier
-            .size(46.dp)
+            .size(56.dp)
             .graphicsLayer { this.alpha = alpha }
-            .background(bg, RoundedCornerShape(13.dp))
-            .border(1.dp, border, RoundedCornerShape(13.dp))
+            .background(bg, RoundedCornerShape(16.dp))
+            .border(1.dp, border, RoundedCornerShape(16.dp))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Icon(imageVector = op.icon, contentDescription = op.label, tint = tint, modifier = Modifier.size(17.dp))
-            Text(op.label, fontSize = 7.sp, fontWeight = FontWeight.SemiBold, color = tint, letterSpacing = 0.3.sp)
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .background(iconBg, RoundedCornerShape(9.dp))
+                    .border(1.dp, iconBorder, RoundedCornerShape(9.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = op.icon,
+                    contentDescription = op.label,
+                    tint = tone.fg,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+            Text(
+                op.label.uppercase(),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.textMuted,
+                letterSpacing = 0.4.sp,
+                fontFamily = AxonTheme.fonts.body,
+                maxLines = 1,
+            )
         }
     }
 }

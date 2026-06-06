@@ -27,10 +27,6 @@ import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.collect
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import tv.tootie.aurora.components.AuroraCard
-import tv.tootie.aurora.components.AuroraCardVariant
 import tv.tootie.aurora.components.AuroraSeparator
 import tv.tootie.aurora.components.AuroraTabs
 
@@ -48,12 +44,9 @@ private val tabKinds = listOf(
     AxonClient.JobKind.Ingest,
 )
 
-private val prettyJson = Json { prettyPrint = true }
-
 @Composable
 fun JobsScreen(vm: JobsViewModel = viewModel()) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
-    val statusJson by vm.statusPayload.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()
     val jobsState by vm.visibleJobs.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
@@ -77,29 +70,6 @@ fun JobsScreen(vm: JobsViewModel = viewModel()) {
         Text("Jobs", style = MaterialTheme.typography.headlineMedium)
         AuroraSeparator()
 
-        statusJson?.let { payload ->
-            AuroraCard(modifier = Modifier.fillMaxWidth(), variant = AuroraCardVariant.Filled) {
-                Text(
-                    text = prettyJson.encodeToString(JsonElement.serializer(), payload),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(12.dp),
-                )
-            }
-        }
-
-        if (recent.isNotEmpty()) {
-            Text("Recent submissions", style = MaterialTheme.typography.labelLarge)
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                recent.take(5).forEach { r ->
-                    Text(
-                        text = "${r.kind}: ${r.target} (${r.jobId.take(8)})",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
         AuroraTabs(tabs = TABS, selectedIndex = selected, onTabSelected = { selected = it })
 
         when (val s = jobsState) {
@@ -113,6 +83,19 @@ fun JobsScreen(vm: JobsViewModel = viewModel()) {
                     items(s.value, key = { it.id }) { job ->
                         JobRow(job = job, onCancel = { vm.cancel(job.id) })
                     }
+                }
+            }
+        }
+
+        if (recent.isNotEmpty()) {
+            Text("Recent submissions", style = MaterialTheme.typography.labelLarge)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                recent.take(3).forEach { r ->
+                    Text(
+                        text = "${r.kind}: ${r.target} (${r.jobId.take(8)})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }

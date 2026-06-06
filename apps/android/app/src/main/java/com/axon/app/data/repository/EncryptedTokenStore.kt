@@ -13,7 +13,10 @@ import androidx.security.crypto.MasterKey
  * Decrypted token is cached in a @Volatile so repeated authed calls don't
  * round-trip the keystore HAL.
  */
-class EncryptedTokenStore(private val context: Context) {
+class EncryptedTokenStore(
+    private val context: Context,
+    private val keyName: String = KEY_TOKEN,
+) {
     @Volatile private var cached: String? = null
     private val lock = Any()
 
@@ -46,7 +49,7 @@ class EncryptedTokenStore(private val context: Context) {
         }
         cached?.let { return it }
         val p = prefs ?: return null
-        return runCatching { p.getString(KEY_TOKEN, null) }
+        return runCatching { p.getString(keyName, null) }
             .getOrElse { t ->
                 Log.w(TAG, "EncryptedSharedPreferences read failed; clearing file and forcing re-auth", t)
                 context.deleteSharedPreferences(FILE)
@@ -69,7 +72,7 @@ class EncryptedTokenStore(private val context: Context) {
             return false
         }
         @Suppress("ApplySharedPref")
-        val ok = p.edit().putString(KEY_TOKEN, token).commit()
+        val ok = p.edit().putString(keyName, token).commit()
         if (!ok) {
             Log.w(TAG, "write() commit() returned false; token NOT persisted")
             return false
@@ -84,7 +87,7 @@ class EncryptedTokenStore(private val context: Context) {
      * consider the on-disk token still present and retry on next launch).
      */
     fun clear(): Boolean = synchronized(lock) {
-        val ok = prefs?.edit()?.remove(KEY_TOKEN)?.commit() ?: false
+        val ok = prefs?.edit()?.remove(keyName)?.commit() ?: false
         if (!ok) {
             Log.w(TAG, "clear() commit() returned false; token may still be on disk")
         }

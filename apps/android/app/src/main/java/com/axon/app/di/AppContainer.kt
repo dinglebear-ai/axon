@@ -56,8 +56,9 @@ class AppContainer(context: Context) {
     val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
 
     /** Called once at app start after the first DataStore settings emission is read. */
-    fun applySettings(serverUrl: String, token: String) {
+    fun applySettings(serverUrl: String, token: String, panelToken: String = "") {
         axonClient.updateConfig(serverUrl.trimEnd('/'), token)
+        axonClient.updatePanelToken(panelToken)
         _isReady.value = true
     }
 }
