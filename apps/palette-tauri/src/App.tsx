@@ -174,6 +174,23 @@ export default function App() {
   }, [parsed.search, modeAction]);
 
   useEffect(() => {
+    // The browse card hugs its content: the action list is capped (max-height
+    // 338px, see `.action-scroll`) and scrolls, so a per-item formula overshoots
+    // the real height and leaves a transparent gap below the footer in the
+    // borderless window. Measure the rendered content instead. `resize_palette`
+    // sizes the window in logical px, so CSS-px measurements map 1:1 across DPIs.
+    const browseHeight = () => {
+      const viewport = document.querySelector(".action-scroll-viewport");
+      if (!(viewport instanceof HTMLElement)) {
+        return 142 + filtered.length * 48;
+      }
+      // `viewport.scrollHeight` is the full (unsquashed) list height regardless of the
+      // current window, so it's stable even when measured from the compact window we're
+      // resizing away from. `LIST_CAP` mirrors `.action-scroll` max-height; the 142 base
+      // covers the command bar, panel heading, footer, and paddings.
+      const LIST_CAP = 338;
+      return 142 + Math.min(viewport.scrollHeight, LIST_CAP);
+    };
     const size = jobMinimized
       ? { width: 680, height: 96 }
       : settingsOpen
@@ -183,7 +200,7 @@ export default function App() {
       : showResultsLayout
       ? { width: 900, height: 568 }
       : showContent
-        ? { width: 760, height: Math.min(142 + filtered.length * 48, window.screen.availHeight - 80) }
+        ? { width: 760, height: Math.min(browseHeight(), window.screen.availHeight - 80) }
         : { width: 680, height: 56 };
     void invoke("resize_palette", size);
   }, [jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filtered.length, shownTick]);
