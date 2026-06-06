@@ -2,6 +2,7 @@ package com.axon.app.data.remote.models
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /** POST /v1/search request — Tavily web search; mirrors `RestSearchRequest`. */
 @Serializable
@@ -36,6 +37,6 @@ data class AutoCrawlStatus(
 data class SearchWebResponse(
     val query: String = "",
     val results: List<SearchWebHit> = emptyList(),
-    @SerialName("auto_crawl_status") val autoCrawlStatus: AutoCrawlStatus? = null,
+    @SerialName("auto_crawl_status") val autoCrawlStatus: JsonElement? = null,
     @SerialName("crawl_jobs") val crawlJobs: List<CrawlJobRef> = emptyList(),
 )

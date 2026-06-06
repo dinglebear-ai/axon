@@ -158,8 +158,7 @@ async fn capture_screenshot_via_cdp(
     .map_err(|_| format!("timeout connecting to Chrome at {browser_ws_url}"))?
     .map_err(|err| format!("failed to connect to Chrome at {browser_ws_url}: {err}"))?;
     let (mut tx, mut rx) = stream.split();
-    let timeout = std::time::Duration::from_secs(cfg.request_timeout_ms.unwrap_or(30_000) / 1000)
-        .clamp(std::time::Duration::from_secs(5), std::time::Duration::from_secs(120));
+    let timeout = cdp_command_timeout(cfg);
 
     let target = send_cdp_cmd(
         &mut tx,
@@ -216,32 +215,12 @@ async fn capture_screenshot_via_cdp(
         )
         .await?;
 
-        let mut headers = serde_json::Map::new();
-        headers.insert(
-            "User-Agent".to_string(),
-            serde_json::Value::String(
-                cfg.chrome_user_agent
-                    .as_deref()
-                    .unwrap_or_else(|| axon_ua())
-                    .to_string(),
-            ),
-        );
-        for (key, value) in parse_custom_headers(&cfg.custom_headers) {
-            if let Ok(value) = value.to_str() {
-                if let Some(key) = key {
-                    headers.insert(
-                        key.as_str().to_string(),
-                        serde_json::Value::String(value.to_string()),
-                    );
-                }
-            }
-        }
         send_cdp_cmd(
             &mut tx,
             &mut rx,
             Some(&session_id),
             "Network.setExtraHTTPHeaders",
-            serde_json::json!({ "headers": headers }),
+            serde_json::json!({ "headers": cdp_extra_headers(cfg) }),
             timeout,
         )
         .await
@@ -270,13 +249,7 @@ async fn capture_screenshot_via_cdp(
             timeout,
         )
         .await?;
-        let data = result
-            .get("data")
-            .and_then(|value| value.as_str())
-            .ok_or("Chrome screenshot response missing data")?;
-        BASE64_STANDARD
-            .decode(data)
-            .map_err(|err| format!("Chrome screenshot data was not valid base64: {err}").into())
+        decode_cdp_screenshot_data(&result)
     }
     .await;
 
@@ -292,6 +265,47 @@ async fn capture_screenshot_via_cdp(
     let _ = tx.send(Message::Close(None)).await;
 
     result
+}
+
+fn cdp_command_timeout(cfg: &Config) -> std::time::Duration {
+    std::time::Duration::from_secs(cfg.request_timeout_ms.unwrap_or(30_000) / 1000).clamp(
+        std::time::Duration::from_secs(5),
+        std::time::Duration::from_secs(120),
+    )
+}
+
+fn cdp_extra_headers(cfg: &Config) -> serde_json::Map<String, serde_json::Value> {
+    let mut headers = serde_json::Map::new();
+    headers.insert(
+        "User-Agent".to_string(),
+        serde_json::Value::String(
+            cfg.chrome_user_agent
+                .as_deref()
+                .unwrap_or_else(|| axon_ua())
+                .to_string(),
+        ),
+    );
+    for (key, value) in parse_custom_headers(&cfg.custom_headers) {
+        if let Ok(value) = value.to_str()
+            && let Some(key) = key
+        {
+            headers.insert(
+                key.as_str().to_string(),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
+    }
+    headers
+}
+
+fn decode_cdp_screenshot_data(result: &serde_json::Value) -> Result<Vec<u8>, Box<dyn Error>> {
+    let data = result
+        .get("data")
+        .and_then(|value| value.as_str())
+        .ok_or("Chrome screenshot response missing data")?;
+    BASE64_STANDARD
+        .decode(data)
+        .map_err(|err| format!("Chrome screenshot data was not valid base64: {err}").into())
 }
 
 async fn send_cdp_cmd<Tx, Rx>(

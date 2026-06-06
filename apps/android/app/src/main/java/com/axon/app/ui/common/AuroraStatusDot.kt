@@ -12,19 +12,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.axon.app.ui.theme.AxonTheme
 
 enum class DotState { Running, Done, Failed, Idle, Warn }
 
-private fun dotColor(state: DotState) = when (state) {
-    DotState.Running -> Color(0xFF29B6F6)
-    DotState.Done    -> Color(0xFF7DD3C7)
-    DotState.Failed  -> Color(0xFFC78490)
-    DotState.Idle    -> Color(0xFFA7BCC9)
-    DotState.Warn    -> Color(0xFFC6A36B)
+private fun dotColor(state: DotState, colors: com.axon.app.ui.theme.AxonPalette) = when (state) {
+    DotState.Running -> colors.accentPrimary
+    DotState.Done    -> colors.success
+    DotState.Failed  -> colors.error
+    DotState.Idle    -> colors.textMuted
+    DotState.Warn    -> colors.warn
 }
 
 @Composable
 fun AuroraStatusDot(state: DotState, size: Dp = 7.dp, modifier: Modifier = Modifier) {
+    val color = dotColor(state, AxonTheme.colors)
     val alpha = if (state == DotState.Running) {
         val infiniteTransition = rememberInfiniteTransition(label = "dot")
         val pulseAlpha by infiniteTransition.animateFloat(
@@ -40,5 +42,5 @@ fun AuroraStatusDot(state: DotState, size: Dp = 7.dp, modifier: Modifier = Modif
     } else {
         1f
     }
-    Box(modifier = modifier.size(size).clip(CircleShape).background(dotColor(state).copy(alpha = alpha)))
+    Box(modifier = modifier.size(size).clip(CircleShape).background(color.copy(alpha = alpha)))
 }
