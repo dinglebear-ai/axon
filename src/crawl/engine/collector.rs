@@ -121,8 +121,10 @@ pub(super) async fn collect_crawl_pages(
         .await
         .map_err(|e| format!("manifest create failed: {e}"))?;
     let mut manifest = tokio::io::BufWriter::new(manifest_file);
-    let mut summary = CrawlSummary::default();
-    summary.depth_max = col.max_depth;
+    let mut summary = CrawlSummary {
+        depth_max: col.max_depth,
+        ..Default::default()
+    };
     let crawl_started = std::time::Instant::now();
     let mut urls = HashSet::new();
     let mut seen_canonical = HashSet::new();

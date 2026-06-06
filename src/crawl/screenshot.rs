@@ -13,6 +13,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static SCREENSHOT_CDP_ID: AtomicU64 = AtomicU64::new(2_000_000);
 
+type WsMessage = tokio_tungstenite::tungstenite::Message;
+type WsError = tokio_tungstenite::tungstenite::Error;
+
 /// Capture a screenshot using Spider's Chrome screenshot support with explicit
 /// viewport and full_page parameters.
 ///
@@ -175,82 +178,11 @@ async fn capture_screenshot_via_cdp(
         .ok_or("Chrome did not return targetId")?
         .to_string();
 
-    let result = async {
-        let attached = send_cdp_cmd(
-            &mut tx,
-            &mut rx,
-            None,
-            "Target.attachToTarget",
-            serde_json::json!({ "targetId": target_id, "flatten": true }),
-            timeout,
-        )
-        .await?;
-        let session_id = attached
-            .get("sessionId")
-            .and_then(|value| value.as_str())
-            .ok_or("Chrome did not return sessionId")?
-            .to_string();
-
-        send_cdp_cmd(
-            &mut tx,
-            &mut rx,
-            Some(&session_id),
-            "Page.enable",
-            serde_json::json!({}),
-            timeout,
-        )
-        .await?;
-        send_cdp_cmd(
-            &mut tx,
-            &mut rx,
-            Some(&session_id),
-            "Emulation.setDeviceMetricsOverride",
-            serde_json::json!({
-                "width": width,
-                "height": height,
-                "deviceScaleFactor": 1,
-                "mobile": false
-            }),
-            timeout,
-        )
-        .await?;
-
-        send_cdp_cmd(
-            &mut tx,
-            &mut rx,
-            Some(&session_id),
-            "Network.setExtraHTTPHeaders",
-            serde_json::json!({ "headers": cdp_extra_headers(cfg) }),
-            timeout,
-        )
-        .await
-        .ok();
-        send_cdp_cmd(
-            &mut tx,
-            &mut rx,
-            Some(&session_id),
-            "Page.navigate",
-            serde_json::json!({ "url": url }),
-            timeout,
-        )
-        .await?;
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-
-        let result = send_cdp_cmd(
-            &mut tx,
-            &mut rx,
-            Some(&session_id),
-            "Page.captureScreenshot",
-            serde_json::json!({
-                "format": "png",
-                "fromSurface": true,
-                "captureBeyondViewport": full_page
-            }),
-            timeout,
-        )
-        .await?;
-        decode_cdp_screenshot_data(&result)
-    }
+    // Run the session, then always tear down the target — even on error — so a
+    // failed capture doesn't leak Chrome tabs.
+    let result = run_cdp_screenshot(
+        &mut tx, &mut rx, cfg, url, &target_id, width, height, full_page, timeout,
+    )
     .await;
 
     let _ = send_cdp_cmd(
@@ -308,6 +240,102 @@ fn decode_cdp_screenshot_data(result: &serde_json::Value) -> Result<Vec<u8>, Box
         .map_err(|err| format!("Chrome screenshot data was not valid base64: {err}").into())
 }
 
+/// Drive an already-created CDP target through the screenshot session: attach,
+/// configure viewport/headers, navigate, and capture+decode the PNG. Split out of
+/// `capture_screenshot_via_cdp` so each function stays within the monolith policy
+/// size cap; the caller owns target creation and teardown.
+#[allow(clippy::too_many_arguments)]
+async fn run_cdp_screenshot<Tx, Rx>(
+    tx: &mut Tx,
+    rx: &mut Rx,
+    cfg: &Config,
+    url: &str,
+    target_id: &str,
+    width: u32,
+    height: u32,
+    full_page: bool,
+    timeout: std::time::Duration,
+) -> Result<Vec<u8>, Box<dyn Error>>
+where
+    Tx: SinkExt<WsMessage, Error = WsError> + Unpin,
+    Rx: StreamExt<Item = Result<WsMessage, WsError>> + Unpin,
+{
+    let attached = send_cdp_cmd(
+        tx,
+        rx,
+        None,
+        "Target.attachToTarget",
+        serde_json::json!({ "targetId": target_id, "flatten": true }),
+        timeout,
+    )
+    .await?;
+    let session_id = attached
+        .get("sessionId")
+        .and_then(|value| value.as_str())
+        .ok_or("Chrome did not return sessionId")?
+        .to_string();
+
+    send_cdp_cmd(
+        tx,
+        rx,
+        Some(&session_id),
+        "Page.enable",
+        serde_json::json!({}),
+        timeout,
+    )
+    .await?;
+    send_cdp_cmd(
+        tx,
+        rx,
+        Some(&session_id),
+        "Emulation.setDeviceMetricsOverride",
+        serde_json::json!({
+            "width": width,
+            "height": height,
+            "deviceScaleFactor": 1,
+            "mobile": false
+        }),
+        timeout,
+    )
+    .await?;
+
+    send_cdp_cmd(
+        tx,
+        rx,
+        Some(&session_id),
+        "Network.setExtraHTTPHeaders",
+        serde_json::json!({ "headers": cdp_extra_headers(cfg) }),
+        timeout,
+    )
+    .await
+    .ok();
+    send_cdp_cmd(
+        tx,
+        rx,
+        Some(&session_id),
+        "Page.navigate",
+        serde_json::json!({ "url": url }),
+        timeout,
+    )
+    .await?;
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+
+    let result = send_cdp_cmd(
+        tx,
+        rx,
+        Some(&session_id),
+        "Page.captureScreenshot",
+        serde_json::json!({
+            "format": "png",
+            "fromSurface": true,
+            "captureBeyondViewport": full_page
+        }),
+        timeout,
+    )
+    .await?;
+    decode_cdp_screenshot_data(&result)
+}
+
 async fn send_cdp_cmd<Tx, Rx>(
     tx: &mut Tx,
     rx: &mut Rx,
@@ -317,16 +345,8 @@ async fn send_cdp_cmd<Tx, Rx>(
     timeout: std::time::Duration,
 ) -> Result<serde_json::Value, Box<dyn Error>>
 where
-    Tx: SinkExt<
-            tokio_tungstenite::tungstenite::Message,
-            Error = tokio_tungstenite::tungstenite::Error,
-        > + Unpin,
-    Rx: StreamExt<
-            Item = Result<
-                tokio_tungstenite::tungstenite::Message,
-                tokio_tungstenite::tungstenite::Error,
-            >,
-        > + Unpin,
+    Tx: SinkExt<WsMessage, Error = WsError> + Unpin,
+    Rx: StreamExt<Item = Result<WsMessage, WsError>> + Unpin,
 {
     use tokio_tungstenite::tungstenite::Message;
 
