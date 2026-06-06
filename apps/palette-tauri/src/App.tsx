@@ -6,7 +6,7 @@ import {
   Settings,
   Workflow,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { ActionList } from "@/components/palette/ActionList";
@@ -39,6 +39,7 @@ import {
 import type { RunState } from "@/lib/runState";
 import { useActionRunner } from "@/lib/useActionRunner";
 import { useCrawlJob } from "@/lib/useCrawlJob";
+import { useWindowChrome } from "@/lib/useWindowChrome";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
@@ -182,49 +183,15 @@ export default function App() {
     setSelected(0);
   }, [parsed.search, modeAction]);
 
-  const lastSizeRef = useRef<{ width: number; height: number } | null>(null);
-  useEffect(() => {
-    // The browse card hugs its content: the action list is capped (max-height
-    // 338px, see `.action-scroll`) and scrolls, so a per-item formula overshoots
-    // the real height and leaves a transparent gap below the footer in the
-    // borderless window. Measure the rendered content instead. `resize_palette`
-    // sizes the window in logical px, so CSS-px measurements map 1:1 across DPIs.
-    const browseHeight = () => {
-      // BROWSE_CHROME is the non-list vertical chrome: command bar, panel
-      // heading, footer, and paddings. Measured exactly so the window hugs its
-      // content — an over-estimate leaves dead space below the footer (it floats
-      // off the bottom edge); an under-estimate clips it.
-      const BROWSE_CHROME = 130;
-      const viewport = document.querySelector(".action-scroll-viewport");
-      if (!(viewport instanceof HTMLElement)) {
-        return BROWSE_CHROME + filtered.length * 48;
-      }
-      // `viewport.scrollHeight` is the full (unsquashed) list height regardless of the
-      // current window, so it's stable even when measured from the compact window we're
-      // resizing away from. `LIST_CAP` mirrors `.action-scroll` max-height.
-      const LIST_CAP = 338;
-      return BROWSE_CHROME + Math.min(viewport.scrollHeight, LIST_CAP);
-    };
-    const size = jobMinimized
-      ? { width: 680, height: 96 }
-      : settingsOpen
-      ? { width: 800, height: 560 }
-      : historyOpen
-      ? { width: 760, height: 520 }
-      : showResultsLayout
-      ? { width: 900, height: 568 }
-      : showContent
-        ? { width: 760, height: Math.min(browseHeight(), window.screen.availHeight - 80) }
-        : { width: 680, height: 56 };
-    // Skip redundant resizes: while typing, the browse height is constant, so this
-    // effect re-runs on every keystroke (filtered.length) with the same size — and
-    // each resize_palette also re-centers the window, which would jitter it.
-    if (lastSizeRef.current?.width === size.width && lastSizeRef.current?.height === size.height) {
-      return;
-    }
-    lastSizeRef.current = size;
-    void invoke("resize_palette", size);
-  }, [jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filtered.length, shownTick]);
+  useWindowChrome({
+    jobMinimized,
+    settingsOpen,
+    historyOpen,
+    showResultsLayout,
+    showContent,
+    filteredLength: filtered.length,
+    shownTick,
+  });
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
 
@@ -322,7 +289,15 @@ export default function App() {
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}`}>
 
-      <section className="command-bar">
+      <section
+        className="command-bar"
+        onDoubleClick={(event) => {
+          // Titlebar-style: double-clicking empty bar area toggles maximize, but
+          // not when the user double-clicks the input or a control.
+          if ((event.target as HTMLElement).closest("input, button, a")) return;
+          void invoke("toggle_maximize");
+        }}
+      >
         {showBackButton && (
           <button className="command-back" type="button" onClick={goBackToBrowse} aria-label="Back" title="Back">
             <ArrowLeft size={17} />
