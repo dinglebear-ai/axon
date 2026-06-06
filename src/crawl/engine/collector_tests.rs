@@ -23,6 +23,8 @@ fn test_collector_config(scope: Option<MapScope>) -> CollectorConfig {
         },
         antibot_max_scan_bytes: 150_000,
         structured_max_bytes: 65_536,
+        max_depth: 5,
+        retry_backoff_ms: 250,
     }
 }
 
