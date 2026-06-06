@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.axon.app.ui.theme.AxonTheme
 
 enum class ProgressVariant { Cyan, Success, Error, Warn }
 enum class ProgressSize { Sm, Default }
@@ -33,6 +34,7 @@ fun AuroraProgressBar(
     size: ProgressSize = ProgressSize.Default,
     modifier: Modifier = Modifier,
 ) {
+    val axonColors = AxonTheme.colors
     val trackHeight: Dp = if (size == ProgressSize.Sm) 4.dp else 6.dp
     val shape = RoundedCornerShape(50)
     val colors = variantColors(variant)
@@ -82,8 +84,8 @@ fun AuroraProgressBar(
         modifier = modifier
             .height(trackHeight)
             .clip(shape)
-            .background(Color(0xFF0C1A24))
-            .border(1.dp, Color(0xFF1D3D4E), shape),
+            .background(axonColors.control)
+            .border(1.dp, axonColors.borderDefault, shape),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = this.size.width

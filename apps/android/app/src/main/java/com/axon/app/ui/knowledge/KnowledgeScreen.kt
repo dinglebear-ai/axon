@@ -24,6 +24,13 @@ import tv.tootie.aurora.components.AuroraTabs
 
 private val TABS = persistentListOf("Suggest", "Sources", "Domains", "Stats")
 
+enum class KnowledgeTab(val title: String) {
+    Suggest("Suggest"),
+    Sources("Sources"),
+    Domains("Domains"),
+    Stats("Stats"),
+}
+
 /**
  * Knowledge page — four-tab read-only view over /v1/suggest, /v1/sources,
  * /v1/domains, /v1/stats. Tab selection is `rememberSaveable` so config-change
@@ -31,21 +38,27 @@ private val TABS = persistentListOf("Suggest", "Sources", "Domains", "Stats")
  * [KnowledgeViewModel] with R11 30s memoization, so tab-switching is cheap.
  */
 @Composable
-fun KnowledgeScreen(vm: KnowledgeViewModel = viewModel()) {
-    var selected by rememberSaveable { mutableIntStateOf(0) }
+fun KnowledgeScreen(
+    initialTab: KnowledgeTab = KnowledgeTab.Suggest,
+    showChrome: Boolean = true,
+    vm: KnowledgeViewModel = viewModel(),
+) {
+    var selected by rememberSaveable(initialTab) { mutableIntStateOf(initialTab.ordinal) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Knowledge", style = MaterialTheme.typography.headlineMedium)
-        AuroraSeparator()
+        if (showChrome) {
+            Text("Knowledge", style = MaterialTheme.typography.headlineMedium)
+            AuroraSeparator()
 
-        AuroraTabs(
-            tabs = TABS,
-            selectedIndex = selected,
-            onTabSelected = { selected = it },
-        )
+            AuroraTabs(
+                tabs = TABS,
+                selectedIndex = selected,
+                onTabSelected = { selected = it },
+            )
+        }
 
         when (selected) {
             0 -> SuggestSection(vm)

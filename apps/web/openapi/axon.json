@@ -131,6 +131,56 @@
         }
       }
     },
+    "/v1/brand": {
+      "post": {
+        "tags": [
+          "exploration"
+        ],
+        "operationId": "brand",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Extracted brand identity from a URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid brand request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream page fetch unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/crawl": {
       "get": {
         "tags": [
@@ -392,6 +442,56 @@
           },
           "502": {
             "description": "Upstream vector service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diff": {
+      "post": {
+        "tags": [
+          "exploration"
+        ],
+        "operationId": "diff",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Markdown, metadata, and link diff between two URLs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiffResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid diff request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream scrape unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -1519,6 +1619,56 @@
         }
       }
     },
+    "/v1/screenshot": {
+      "post": {
+        "tags": [
+          "exploration"
+        ],
+        "operationId": "screenshot",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScreenshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Captured screenshot artifact metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenshotResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid screenshot request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Chrome screenshot service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/search": {
       "post": {
         "tags": [
@@ -1945,6 +2095,149 @@
           }
         }
       },
+      "ArtifactHandle": {
+        "type": "object",
+        "required": [
+          "kind",
+          "relative_path",
+          "display_path",
+          "bytes"
+        ],
+        "properties": {
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "display_path": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "line_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "relative_path": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "BrandColor": {
+        "type": "object",
+        "required": [
+          "hex",
+          "usage",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hex": {
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ColorUsage"
+          }
+        }
+      },
+      "BrandRequest": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "BrandResult": {
+        "type": "object",
+        "required": [
+          "url",
+          "colors",
+          "fonts",
+          "logos"
+        ],
+        "properties": {
+          "colors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrandColor"
+            }
+          },
+          "favicon_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fonts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "logo_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogoVariant"
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "og_image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "ColorUsage": {
+        "type": "string",
+        "enum": [
+          "primary",
+          "secondary",
+          "background",
+          "text",
+          "accent",
+          "unknown"
+        ]
+      },
       "DedupeRequest": {
         "type": "object",
         "properties": {
@@ -1956,6 +2249,90 @@
           }
         },
         "additionalProperties": false
+      },
+      "DiffRequest": {
+        "type": "object",
+        "required": [
+          "url_a",
+          "url_b"
+        ],
+        "properties": {
+          "render_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RenderMode"
+              }
+            ]
+          },
+          "url_a": {
+            "type": "string"
+          },
+          "url_b": {
+            "type": "string"
+          }
+        }
+      },
+      "DiffResult": {
+        "type": "object",
+        "required": [
+          "url_a",
+          "url_b",
+          "status",
+          "metadata_changes",
+          "links_added",
+          "links_removed",
+          "word_count_delta"
+        ],
+        "properties": {
+          "links_added": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkEntry"
+            }
+          },
+          "links_removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkEntry"
+            }
+          },
+          "metadata_changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetadataChange"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/DiffStatus"
+          },
+          "text_diff": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Unified diff of the markdown content, if any changes."
+          },
+          "url_a": {
+            "type": "string"
+          },
+          "url_b": {
+            "type": "string"
+          },
+          "word_count_delta": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DiffStatus": {
+        "type": "string",
+        "enum": [
+          "same",
+          "changed"
+        ]
       },
       "DiscoveredEndpoint": {
         "type": "object",
@@ -2257,6 +2634,37 @@
         },
         "additionalProperties": false
       },
+      "LinkEntry": {
+        "type": "object",
+        "required": [
+          "href",
+          "text"
+        ],
+        "properties": {
+          "href": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "LogoVariant": {
+        "type": "object",
+        "required": [
+          "url",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "\"favicon\" | \"apple-touch-icon\" | \"logo\" | \"og-image\" | \"svg\""
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
       "McpCandidateAttempt": {
         "type": "object",
         "description": "One synthesized MCP candidate and its probe outcome.\n\n`rpc_probe` is `Some` iff `outcome == Confirmed`; every other outcome\n(`Unconfirmed`, `Blocked`) carries `None`.",
@@ -2307,6 +2715,29 @@
           "unconfirmed",
           "blocked"
         ]
+      },
+      "MetadataChange": {
+        "type": "object",
+        "required": [
+          "field"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "new": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "old": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "PreparedSessionDoc": {
         "type": "object",
@@ -3178,6 +3609,60 @@
           "json",
           "llm"
         ]
+      },
+      "ScreenshotRequest": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "full_page": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "viewport": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ScreenshotResult": {
+        "type": "object",
+        "required": [
+          "url",
+          "path",
+          "size_bytes"
+        ],
+        "properties": {
+          "artifact_handle": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ArtifactHandle"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "url": {
+            "type": "string"
+          }
+        }
       },
       "WatchCreateRequest": {
         "type": "object",

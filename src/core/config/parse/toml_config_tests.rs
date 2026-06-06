@@ -1,11 +1,7 @@
 use super::*;
+use crate::core::config::parse::build_config::tests::{ENV_LOCK, with_env_saved};
 use std::io::Write;
-use std::sync::Mutex;
 use tempfile::NamedTempFile;
-
-// Serializes env-mutating tests to avoid data races on AXON_CONFIG_PATH/HOME.
-// Uses the same pattern as helpers.rs and build_config.rs ENV_LOCK.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn missing_file_returns_default() {
@@ -151,19 +147,16 @@ fn empty_file_returns_default() {
 #[test]
 fn axon_config_path_env_var_overrides_home() {
     let _guard = ENV_LOCK.lock().unwrap();
-    let saved = std::env::var("AXON_CONFIG_PATH").ok();
-    unsafe { std::env::set_var("AXON_CONFIG_PATH", "/tmp/custom_axon_config.toml") };
-    let path = resolve_config_path();
-    // Unconditionally restore so a panic can't contaminate other tests.
-    match saved {
-        Some(v) => unsafe { std::env::set_var("AXON_CONFIG_PATH", v) },
-        None => unsafe { std::env::remove_var("AXON_CONFIG_PATH") },
-    }
-    assert_eq!(
-        path.unwrap()
-            .map(|resolved| (resolved.path, resolved.explicit)),
-        Some((PathBuf::from("/tmp/custom_axon_config.toml"), true))
-    );
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        std::env::set_var("AXON_CONFIG_PATH", "/tmp/custom_axon_config.toml");
+        let path = resolve_config_path();
+
+        assert_eq!(
+            path.unwrap()
+                .map(|resolved| (resolved.path, resolved.explicit)),
+            Some((PathBuf::from("/tmp/custom_axon_config.toml"), true))
+        );
+    });
 }
 
 #[allow(unsafe_code)]
@@ -171,21 +164,19 @@ fn axon_config_path_env_var_overrides_home() {
 #[test]
 fn axon_config_path_non_toml_extension_returns_err() {
     let _guard = ENV_LOCK.lock().unwrap();
-    let saved = std::env::var("AXON_CONFIG_PATH").ok();
-    unsafe { std::env::set_var("AXON_CONFIG_PATH", "/etc/passwd") };
-    let result = resolve_config_path();
-    match saved {
-        Some(v) => unsafe { std::env::set_var("AXON_CONFIG_PATH", v) },
-        None => unsafe { std::env::remove_var("AXON_CONFIG_PATH") },
-    }
-    assert!(
-        result.is_err(),
-        "non-.toml AXON_CONFIG_PATH should return Err"
-    );
-    assert!(
-        result.err().unwrap().contains("AXON_CONFIG_PATH"),
-        "error should mention AXON_CONFIG_PATH"
-    );
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        std::env::set_var("AXON_CONFIG_PATH", "/etc/passwd");
+        let result = resolve_config_path();
+
+        assert!(
+            result.is_err(),
+            "non-.toml AXON_CONFIG_PATH should return Err"
+        );
+        assert!(
+            result.err().unwrap().contains("AXON_CONFIG_PATH"),
+            "error should mention AXON_CONFIG_PATH"
+        );
+    });
 }
 
 #[allow(unsafe_code)]
@@ -193,21 +184,19 @@ fn axon_config_path_non_toml_extension_returns_err() {
 #[test]
 fn explicit_missing_config_path_returns_err() {
     let _guard = ENV_LOCK.lock().unwrap();
-    let saved = std::env::var("AXON_CONFIG_PATH").ok();
-    unsafe { std::env::set_var("AXON_CONFIG_PATH", "/tmp/axon-missing-config.toml") };
-    let result = load_toml_config();
-    match saved {
-        Some(v) => unsafe { std::env::set_var("AXON_CONFIG_PATH", v) },
-        None => unsafe { std::env::remove_var("AXON_CONFIG_PATH") },
-    }
-    assert!(
-        result.is_err(),
-        "explicit missing AXON_CONFIG_PATH should hard-fail"
-    );
-    assert!(
-        result.err().unwrap().contains("cannot read config file"),
-        "error should explain the config path read failure"
-    );
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        std::env::set_var("AXON_CONFIG_PATH", "/tmp/axon-missing-config.toml");
+        let result = load_toml_config();
+
+        assert!(
+            result.is_err(),
+            "explicit missing AXON_CONFIG_PATH should hard-fail"
+        );
+        assert!(
+            result.err().unwrap().contains("cannot read config file"),
+            "error should explain the config path read failure"
+        );
+    });
 }
 
 // ── New schema field tests ────────────────────────────────────────────────────

@@ -19,8 +19,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 
 @Stable data class AskResultUi(val query: String, val answer: String, val timingMs: Long?)
 @Stable data class QueryHitUi(val rank: Long, val score: Double, val url: String, val source: String, val snippet: String)
@@ -258,11 +260,14 @@ class AxonRepository(
     suspend fun searchWeb(query: String): Result<SearchWebResultUi> = withToken {
         val req = applicator.apply(com.axon.app.data.remote.models.SearchWebRequest(query = query))
         client.searchWeb(req).map { r ->
+            val statusObject = runCatching { r.autoCrawlStatus?.jsonObject }.getOrNull()
+            val statusText = runCatching { r.autoCrawlStatus?.jsonPrimitive?.content }.getOrNull()
             SearchWebResultUi(
                 query = r.query,
                 results = r.results.map { SearchWebHitUi(it.title, it.url, it.snippet, it.score) },
-                crawlJobsEnqueued = r.autoCrawlStatus?.enqueued ?: 0,
-                crawlJobsSkipped = r.autoCrawlStatus?.skipped ?: 0,
+                crawlJobsEnqueued = statusObject?.get("enqueued")?.jsonPrimitive?.intOrNull
+                    ?: if (statusText == "queued") r.crawlJobs.size else 0,
+                crawlJobsSkipped = statusObject?.get("skipped")?.jsonPrimitive?.intOrNull ?: 0,
                 crawlJobs = r.crawlJobs.map { CrawlJobRefUi(it.jobId, it.url) },
             )
         }

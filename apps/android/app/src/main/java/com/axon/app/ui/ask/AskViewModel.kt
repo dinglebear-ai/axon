@@ -8,6 +8,7 @@ import com.axon.app.AxonApp
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.remote.AskStreamEvent
 import com.axon.app.data.repository.AskResultUi
+import com.axon.app.data.repository.RecentJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,8 @@ data class AskTurn(val question: String, val answer: String)
 /** Maximum prior turns inlined into the next ask. Matches CLI's MAX_FOLLOW_UP_TURNS=6. */
 internal const val MAX_FOLLOW_UP_TURNS = 6
 private const val STREAM_UI_FLUSH_MS = 50L
+private const val CHAT_PREVIEW_CHARS = 2_000
+private const val HIT_SNIPPET_CHARS = 220
 
 /**
  * Build the effective query for the server by prepending the last
@@ -37,6 +40,12 @@ internal fun buildFollowUpQuery(prior: List<AskTurn>, question: String): String 
     val rendered = recent.joinToString("\n\n") { "Q: ${it.question}\nA: ${it.answer}" }
     return "$rendered\n\n$question"
 }
+
+internal fun resolvedDoneAnswer(doneAnswer: String, accumulatedAnswer: String): String =
+    doneAnswer.ifBlank { accumulatedAnswer }
+
+private fun previewText(value: String, limit: Int = CHAT_PREVIEW_CHARS): String =
+    if (value.length <= limit) value else value.take(limit).trimEnd() + "\n\n…truncated in chat"
 
 sealed interface AskUiState {
     data object Idle : AskUiState
@@ -59,6 +68,7 @@ sealed interface ChatItem {
     data class Injection(
         val op: com.axon.app.ui.fab.FabOp,
         val target: String,
+        val jobId: String? = null,
         val pageCount: Int? = null,
         val chunkCount: Int? = null,
     ) : ChatItem
@@ -67,7 +77,7 @@ sealed interface ChatItem {
 internal fun stableChatItemKey(index: Int, item: ChatItem): String = when (item) {
     is ChatItem.UserMsg -> "user-$index-${item.text.take(32)}"
     is ChatItem.AxonMsg -> "axon-$index"
-    is ChatItem.Injection -> "injection-$index-${item.op.name}-${item.target}"
+    is ChatItem.Injection -> "injection-$index-${item.op.name}-${item.jobId ?: item.target}"
 }
 
 class AskViewModel(app: Application) : AndroidViewModel(app) {
@@ -116,6 +126,19 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun recordRecentJob(jobId: String, kind: String, target: String) {
+        runCatching {
+            container.recentJobs.add(
+                RecentJob(
+                    jobId = jobId,
+                    kind = kind,
+                    target = target,
+                    submittedAt = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
     fun ask(query: String) {
         if (query.isBlank()) return
         // Cancel any prior in-flight stream BEFORE launching a new one. Without
@@ -157,7 +180,16 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         is AskStreamEvent.Done -> {
                             if (accumulated.isNotBlank()) flushStreaming(force = true)
-                            val result = AskResultUi(query = query, answer = event.answer, timingMs = null)
+                            val finalAnswer = resolvedDoneAnswer(
+                                doneAnswer = event.answer,
+                                accumulatedAnswer = accumulated.toString(),
+                            )
+                            if (finalAnswer.isBlank()) {
+                                _uiState.value = AskUiState.Error("No response received from server")
+                                replaceLastAxonMsg("Error: No response received from server", isStreaming = false)
+                                return@collect
+                            }
+                            val result = AskResultUi(query = query, answer = finalAnswer, timingMs = null)
                             val saved = container.axonRepository.recordAskHistory(
                                 AskHistoryEntry(query = result.query, answer = result.answer)
                             )
@@ -165,8 +197,8 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                                 result = result,
                                 historyWarning = if (!saved) "Answer shown, but history could not be saved (storage may be full)." else null,
                             )
-                            replaceLastAxonMsg(event.answer, isStreaming = false)
-                            appendTurn(q = query, a = event.answer)
+                            replaceLastAxonMsg(finalAnswer, isStreaming = false)
+                            appendTurn(q = query, a = finalAnswer)
                         }
                         is AskStreamEvent.Error -> {
                             if (accumulated.isNotBlank()) flushStreaming(force = true)
@@ -219,14 +251,17 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     appendItem(ChatItem.UserMsg("[${op.label}] $input"))
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.scrape(url = input).fold(
-                        onSuccess = { r -> replaceLastAxonMsg(r.markdown.take(2000)) },
+                        onSuccess = { r -> replaceLastAxonMsg(previewText(r.markdown)) },
                         onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Extract -> {
                     appendItem(ChatItem.UserMsg("[Extract] $input"))
                     repo.extractStart(url = input).fold(
-                        onSuccess = { _ -> appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Extract, input)) },
+                        onSuccess = { jobId ->
+                            recordRecentJob(jobId, kind = "extract", target = input)
+                            appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Extract, input, jobId = jobId))
+                        },
                         onFailure = { e -> appendItem(ChatItem.AxonMsg("Extract failed: ${e.message}")) },
                     )
                 }
@@ -234,7 +269,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     appendItem(ChatItem.UserMsg("[Research] $input"))
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.research(query = input).fold(
-                        onSuccess = { r -> replaceLastAxonMsg(r.summary ?: "(no summary returned)") },
+                        onSuccess = { r -> replaceLastAxonMsg(previewText(r.summary ?: "(no summary returned)")) },
                         onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
                     )
                 }
@@ -244,7 +279,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     repo.query(query = input).fold(
                         onSuccess = { hits ->
                             val text = hits.take(5).joinToString("\n\n") { h ->
-                                "• ${h.url}\n  ${h.snippet}"
+                                "• ${h.url}\n  ${previewText(h.snippet, HIT_SNIPPET_CHARS)}"
                             }.ifBlank { "No results found." }
                             replaceLastAxonMsg(text)
                         },
@@ -256,10 +291,17 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.searchWeb(query = input).fold(
                         onSuccess = { r ->
-                            val text = r.results.take(5).joinToString("\n\n") { h ->
-                                "• ${h.title}\n  ${h.url}\n  ${h.snippet.orEmpty()}"
+                            val resultsText = r.results.take(5).joinToString("\n\n") { h ->
+                                "• ${h.title}\n  ${h.url}\n  ${previewText(h.snippet.orEmpty(), HIT_SNIPPET_CHARS)}"
                             }.ifBlank { "No results found." }
-                            replaceLastAxonMsg(text)
+                            val jobsText = r.crawlJobs.takeIf { it.isNotEmpty() }?.joinToString(
+                                prefix = "\n\nQueued crawl jobs:\n",
+                                separator = "\n",
+                            ) { job -> "• ${job.jobId} — ${job.url}" }.orEmpty()
+                            r.crawlJobs.forEach { job ->
+                                recordRecentJob(job.jobId, kind = "crawl", target = job.url)
+                            }
+                            replaceLastAxonMsg(resultsText + jobsText)
                         },
                         onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
                     )
@@ -279,7 +321,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     appendItem(ChatItem.UserMsg("[Retrieve] $input"))
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.retrieve(url = input).fold(
-                        onSuccess = { r -> replaceLastAxonMsg(r.content.take(2000)) },
+                        onSuccess = { r -> replaceLastAxonMsg(previewText(r.content)) },
                         onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
                     )
                 }
@@ -287,14 +329,17 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     appendItem(ChatItem.UserMsg("[Summarize] $input"))
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.summarize(urls = listOf(input)).fold(
-                        onSuccess = { r -> replaceLastAxonMsg(r.summary) },
+                        onSuccess = { r -> replaceLastAxonMsg(previewText(r.summary)) },
                         onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Crawl -> {
                     appendItem(ChatItem.UserMsg("[Crawl] $input"))
                     repo.crawlSubmit(url = input).fold(
-                        onSuccess = { _ -> appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Crawl, input)) },
+                        onSuccess = { jobId ->
+                            recordRecentJob(jobId, kind = "crawl", target = input)
+                            appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Crawl, input, jobId = jobId))
+                        },
                         onFailure = { e -> appendItem(ChatItem.AxonMsg("Crawl failed: ${e.message}")) },
                     )
                 }
@@ -308,7 +353,10 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                         else -> "git"
                     }
                     repo.ingestStart(sourceType = sourceType, target = input).fold(
-                        onSuccess = { _ -> appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Ingest, input)) },
+                        onSuccess = { jobId ->
+                            recordRecentJob(jobId, kind = "ingest", target = input)
+                            appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Ingest, input, jobId = jobId))
+                        },
                         onFailure = { e -> appendItem(ChatItem.AxonMsg("Ingest failed: ${e.message}")) },
                     )
                 }
