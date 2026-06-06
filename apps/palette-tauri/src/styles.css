@@ -455,6 +455,20 @@ textarea {
   color: var(--aurora-text-muted);
 }
 
+/* Breathing pulse on the orange "live crawl" dots while a crawl is active.
+   Reduced-motion users get it flattened by the aurora-page-shell override. */
+@keyframes crawl-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 4px var(--axon-orange);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 11px 1.5px color-mix(in srgb, var(--axon-orange) 62%, transparent);
+    opacity: 0.55;
+  }
+}
+
 .idle-tray-dot {
   width: 6px;
   height: 6px;
@@ -462,6 +476,7 @@ textarea {
   background: var(--axon-orange);
   box-shadow: 0 0 6px var(--axon-orange);
   flex: 0 0 auto;
+  animation: crawl-pulse 1.6s ease-in-out infinite;
 }
 
 .idle-tray > span:nth-of-type(2) {
@@ -1358,6 +1373,7 @@ textarea {
   border-radius: 999px;
   background: var(--axon-orange);
   box-shadow: 0 0 6px var(--axon-orange);
+  animation: crawl-pulse 1.6s ease-in-out infinite;
 }
 
 .running-progress {
