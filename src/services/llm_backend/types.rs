@@ -7,6 +7,7 @@ use crate::core::config::Config;
 pub enum LlmBackendKind {
     GeminiHeadless,
     OpenAiCompat,
+    CodexAppServer,
 }
 
 impl LlmBackendKind {
@@ -14,8 +15,9 @@ impl LlmBackendKind {
         match value.trim() {
             "" | "gemini-headless" | "gemini" | "headless" => Ok(Self::GeminiHeadless),
             "openai-compat" | "openai_compat" => Ok(Self::OpenAiCompat),
+            "codex-app-server" | "codex_app_server" | "codex" => Ok(Self::CodexAppServer),
             other => Err(format!(
-                "AXON_LLM_BACKEND must be 'gemini-headless' or 'openai-compat' (got '{other}')"
+                "AXON_LLM_BACKEND must be 'gemini-headless', 'openai-compat', or 'codex-app-server' (got '{other}')"
             )),
         }
     }
@@ -30,6 +32,9 @@ pub struct LlmBackendConfig {
     pub openai_base_url: Option<String>,
     pub openai_api_key: Option<String>,
     pub openai_model: Option<String>,
+    pub codex_cmd: String,
+    pub codex_model: Option<String>,
+    pub codex_home: Option<PathBuf>,
     pub completion_concurrency: usize,
     pub completion_timeout_secs: u64,
     pub configured: bool,
@@ -45,6 +50,9 @@ impl Default for LlmBackendConfig {
             openai_base_url: None,
             openai_api_key: None,
             openai_model: None,
+            codex_cmd: "codex".to_string(),
+            codex_model: None,
+            codex_home: None,
             completion_concurrency: 4,
             completion_timeout_secs: 300,
             configured: false,
@@ -64,12 +72,22 @@ impl LlmBackendConfig {
             openai_base_url: non_empty(cfg.openai_base_url.clone()),
             openai_api_key: non_empty(cfg.openai_api_key.clone()),
             openai_model: non_empty(cfg.openai_model.clone()),
+            codex_cmd: non_empty(cfg.codex_cmd.clone()).unwrap_or_else(|| "codex".to_string()),
+            codex_model: non_empty(cfg.codex_model.clone()),
+            codex_home: cfg.codex_home.clone(),
             completion_concurrency: cfg
                 .llm_completion_concurrency
                 .clamp(1, tokio::sync::Semaphore::MAX_PERMITS),
             completion_timeout_secs: cfg.llm_completion_timeout_secs.max(1),
             configured: true,
         }
+    }
+
+    /// Per-completion timeout as a `Duration`, clamped to at least one second.
+    /// Shared by every subprocess/HTTP backend.
+    #[must_use]
+    pub fn completion_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.completion_timeout_secs.max(1))
     }
 }
 
@@ -78,6 +96,7 @@ pub fn configured_model_from_config(cfg: &Config) -> Option<String> {
     match cfg.llm_backend {
         LlmBackendKind::GeminiHeadless => non_empty(cfg.headless_gemini_model.clone()),
         LlmBackendKind::OpenAiCompat => non_empty(cfg.openai_model.clone()),
+        LlmBackendKind::CodexAppServer => non_empty(cfg.codex_model.clone()),
     }
 }
 

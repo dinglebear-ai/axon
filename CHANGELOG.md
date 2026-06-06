@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2026-06-06
+
+### Added
+
+- **`codex-app-server` LLM backend.** `AXON_LLM_BACKEND=codex-app-server` routes LLM synthesis through the OpenAI Codex CLI's `codex app-server` over stdio, joining `gemini-headless` (default) and `openai-compat`. Because every LLM-using action funnels through one dispatch point keyed on the backend, this covers **all** of them at once: `ask`, `research`, `summarize`, `suggest`, `evaluate`, `extract` LLM fallback, `debug`, and the `watch` change-report summarizer.
+  - Each completion spawns `codex app-server` in an isolated `CODEX_HOME` (mirroring the Gemini headless backend): `auth.json` is copied in and a minimal `config.toml` disables MCP servers, the built-in apps tool server, hooks, and OTLP — so a one-shot synthesis call does not load the user's MCP fleet or balloon the prompt. Streaming deltas, final-message fallback, token usage, turn-failure errors, and bidirectional server-request decline are all handled.
+  - New env vars: `AXON_CODEX_CMD` (codex binary, default `codex`), `AXON_CODEX_MODEL` (model override; blank = codex default), `AXON_CODEX_HOME` (source home to copy `auth.json` from; defaults to `$CODEX_HOME` / `~/.codex`). Auth also works via `OPENAI_API_KEY` in the environment.
+- **Saved LLM provider/model profiles.** Define named backend+model profiles in `config.toml` under `[providers.<name>]` and switch between them — e.g. go from codex to gemini to an openai-compat endpoint — without juggling env vars. Managed with `axon config provider list | show <name> | use <name> | add <name> <backend> [field=value …] | set <name> <field> <value> | remove <name>`.
+  - Selection precedence: `--provider <name>` flag > `AXON_PROVIDER` env > `[llm] active-provider`. An **active profile overrides `AXON_LLM_BACKEND` and the other per-backend `AXON_*` env vars** (an intentional exception to the global `env > toml` rule, so that activating a profile actually switches the backend). With no active profile, resolution is byte-identical to before (fully backward compatible).
+  - Profile fields: `backend` (required), `model`, `base-url`, `api-key`, `cmd`, `home`. `base-url`/`api-key` apply to `openai-compat`; `model`/`cmd`/`home` route to the chosen backend. Per-field fallback means an unset field inherits from the env layer (e.g. an openai profile can omit `api-key` to use `AXON_OPENAI_API_KEY`). The openai `api-key` is stored inline in `config.toml` (keep it chmod 600) and redacted in `axon config` output.
+  - New env var `AXON_PROVIDER` and global flag `--provider <name>`.
+
 ## [5.0.1] - 2026-06-04
 
 ### Fixed

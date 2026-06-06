@@ -430,6 +430,9 @@ fn llm_backend_snapshot(kind: crate::services::llm_backend::LlmBackendKind) -> S
             "gemini-headless".to_string()
         }
         crate::services::llm_backend::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
+        crate::services::llm_backend::LlmBackendKind::CodexAppServer => {
+            "codex-app-server".to_string()
+        }
     }
 }
 

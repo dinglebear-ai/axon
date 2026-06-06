@@ -73,7 +73,7 @@ MCP docs:
 | `completions <shell>` | Emit shell completion scripts | No |
 | `watch <sub>` | URL change-detection scheduler. A `watch` (task_type `watch`, the only supported type) diffs each URL against a stored snapshot every tick (conditional probe + `compute_diff` + `ignore_patterns` + threshold), summarizes meaningful changes via the LLM, records `url-change` artifacts, and enqueues clustered depth-bounded crawls (skipping in-flight clusters). SQLite-backed implementations: `create`, `list`, `run-now`, `history`. Schema-defined but not yet implemented: `get`, `update`, `pause`, `resume`, `delete`, `artifacts`. | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
-| `config <sub>` | Read/write entries in `~/.axon/.env` and `~/.axon/config.toml`. Subcommands: `list`, `get`, `set`, `unset`, `path`. Auto-routes by key shape (UPPER_SNAKE → .env, dotted lowercase → config.toml) with `--env`/`--toml` overrides. Secrets are redacted by default; pass `--reveal` to show them. | No |
+| `config <sub>` | Read/write entries in `~/.axon/.env` and `~/.axon/config.toml`. Subcommands: `list`, `get`, `set`, `unset`, `path`, `provider`. Auto-routes by key shape (UPPER_SNAKE → .env, dotted lowercase → config.toml) with `--env`/`--toml` overrides. Secrets are redacted by default; pass `--reveal` to show them. `config provider list\|show\|use\|add\|set\|remove` manages saved LLM provider/model profiles (see "Saved provider profiles"). | No |
 
 ### Job Subcommands (for crawl / extract / embed / ingest / sessions)
 
@@ -295,10 +295,16 @@ TEI_URL=http://axon-tei:80
 
 # LLM completion backend selection
 # AXON_LLM_BACKEND selects the synthesis path for ask/summarize/evaluate/suggest/
-# extract fallback/debug/research. Two backends:
+# extract fallback/debug/research/watch. Three backends:
 #   gemini-headless (default; also accepts "gemini"/"headless"/empty) — Gemini CLI
 #   openai-compat — any OpenAI-compatible /v1/chat/completions endpoint
+#   codex-app-server (also accepts "codex") — OpenAI Codex CLI `codex app-server` over stdio
 AXON_LLM_BACKEND=gemini-headless
+# Saved provider profiles override the backend env vars when active. Select the
+# active profile (defined under [providers.<name>] in config.toml) by name.
+# Precedence: --provider flag > AXON_PROVIDER > [llm] active-provider. See the
+# "Saved provider profiles" gotcha and `axon config provider`.
+AXON_PROVIDER=
 AXON_LLM_COMPLETION_CONCURRENCY=4
 AXON_LLM_COMPLETION_TIMEOUT_SECS=300
 
@@ -313,6 +319,13 @@ AXON_HEADLESS_GEMINI_MODEL=
 AXON_OPENAI_BASE_URL=
 AXON_OPENAI_MODEL=
 AXON_OPENAI_API_KEY=
+
+# Codex app-server backend (used when AXON_LLM_BACKEND=codex-app-server)
+# Each completion spawns `codex app-server` over stdio in an isolated CODEX_HOME
+# (auth.json copied in; MCP servers, apps tool server, hooks, OTLP disabled).
+AXON_CODEX_CMD=codex          # codex binary; defaults to PATH lookup of `codex`
+AXON_CODEX_MODEL=             # model override; blank = codex CLI default
+AXON_CODEX_HOME=             # source home to copy auth.json from; default $CODEX_HOME / ~/.codex
 
 # CDP endpoint for headless_browser (axon-chrome management API)
 AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
@@ -404,11 +417,15 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
 ### LLM completion backend (`AXON_LLM_BACKEND`)
-All LLM operations — `ask`, `summarize`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the backend selected by `AXON_LLM_BACKEND`, dispatched in `src/services/llm_backend.rs` on `LlmBackendKind`:
+All LLM operations — `ask`, `summarize`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, `research` synthesis, and the `watch` change-report summarizer — run through the backend selected by `AXON_LLM_BACKEND`, dispatched in `src/services/llm_backend.rs` on `LlmBackendKind`. Backend selection is **global**: there is no per-action backend override — picking a backend swaps it for every LLM call site at once.
 - **`gemini-headless`** (default; also accepts `gemini`/`headless`/empty) — Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`, model override `AXON_HEADLESS_GEMINI_MODEL`). Implemented in `src/services/llm_backend/` Gemini dispatch.
 - **`openai-compat`** — any OpenAI-compatible endpoint (`src/services/llm_backend/openai_compat.rs`). Requires `AXON_OPENAI_BASE_URL` (the API root — the code appends `/chat/completions` and errors if you include it; include `/v1` when the endpoint serves `/v1/chat/completions`) and `AXON_OPENAI_MODEL`; `AXON_OPENAI_API_KEY` is optional (sent as a bearer token when set). llama.cpp and proxy endpoints both work.
+- **`codex-app-server`** (also accepts `codex`) — OpenAI Codex CLI `codex app-server` driven over stdio (`src/services/llm_backend/codex_app_server.rs` + `codex_app_server/{protocol,home}.rs`). Each completion spawns `codex app-server` in an isolated `CODEX_HOME` (`auth.json` copied in; MCP servers, the built-in `apps` tool server, hooks, and OTLP disabled via a minimal `config.toml`) so a synthesis call does not load the user's MCP fleet — mirroring the Gemini HOME-isolation pattern. Runs the JSON-RPC handshake (`initialize` → `initialized` → `thread/start` → `turn/start`), streams `item/agentMessage/delta`, finishes on `turn/completed`, and surfaces `turn`/`error` failures. Env: `AXON_CODEX_CMD` (default `codex`), `AXON_CODEX_MODEL` (blank = codex default model), `AXON_CODEX_HOME` (source home for `auth.json`; default `$CODEX_HOME` / `~/.codex`). Auth via the copied `auth.json` or `OPENAI_API_KEY`. **Note:** `codex app-server` is an agentic server — even isolated, each call carries ~20k tokens of agent scaffolding (built-in tools + base instructions), so it is heavier per call than a plain chat completion.
 
 Deterministic and vertical extractors in `src/extract/` and `src/core/content/deterministic.rs` run pure Rust without LLM calls; the LLM is invoked only when deterministic extraction yields nothing (the fallback path). The legacy un-prefixed `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0 and replaced by the `AXON_LLM_BACKEND` + `AXON_OPENAI_*` scheme above.
+
+### Saved provider profiles (`axon config provider`)
+Named backend+model profiles live in `config.toml` under `[providers.<name>]` and are switched with `axon config provider use <name>` (CRUD: `list`/`show`/`use`/`add`/`set`/`remove`). The active profile is resolved into a per-field overlay in `src/core/config/parse/build_config/provider_overlay.rs` and applied in `config_literal.rs` as **`overlay.or(env).or(default)`** — so an **active profile overrides `AXON_LLM_BACKEND` and the other per-backend `AXON_*` env vars** (the one intentional exception to the global `env > toml` precedence, so that activating a profile actually switches the backend). With no active profile the overlay is all-`None` and resolution is byte-identical to env-only. Active selection: `--provider <name>` flag > `AXON_PROVIDER` env > `[llm] active-provider`. Per-field fallback means an unset profile field inherits from env (e.g. an openai profile may omit `api-key` to use `AXON_OPENAI_API_KEY`). The openai `api-key` is stored inline in `config.toml` (keep it chmod 600) and redacted by `is_secret_toml_key` in `axon config` output. **Gotcha:** `CommandKind::Config` early-returns in `into_config()` before overlay resolution, so `cfg.llm_backend` is the default for the `config` command itself — `provider list` recomputes the effective backend from the document directly.
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).

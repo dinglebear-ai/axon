@@ -77,7 +77,7 @@ Optional features need their own credentials:
 
 | Feature | Required outside Axon |
 |---------|-----------------------|
-| LLM features (`ask`, `evaluate`, `suggest`, LLM fallback extract, research synthesis) | Gemini CLI authenticated under `~/.gemini`. |
+| LLM features (`ask`, `evaluate`, `suggest`, LLM fallback extract, research synthesis) | Gemini CLI authenticated under `~/.gemini` (default), or an alternative backend via `AXON_LLM_BACKEND=openai-compat`/`codex-app-server`. |
 | Web search / research | `TAVILY_API_KEY`. |
 | GitHub ingest with higher rate limits | `GITHUB_TOKEN`. |
 | Reddit ingest | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`. |

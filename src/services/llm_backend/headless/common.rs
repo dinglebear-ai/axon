@@ -87,6 +87,49 @@ pub fn append_bounded_tail(buffer: &mut Vec<u8>, chunk: &[u8]) {
     }
 }
 
+/// Join an optional system prompt with the user prompt. A blank/whitespace
+/// system prompt yields the user prompt alone. Shared by the subprocess LLM
+/// backends (Gemini headless, codex app-server).
+pub fn joined_prompt(system_prompt: Option<&str>, user_prompt: &str) -> String {
+    match system_prompt.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(system) => format!("{system}\n\n{user_prompt}"),
+        None => user_prompt.to_string(),
+    }
+}
+
+/// Kill a child process and reap it, returning a human-readable diagnostic of
+/// the kill/wait outcome (used in cleanup error messages).
+pub async fn kill_and_wait(child: &mut tokio::process::Child) -> String {
+    let kill_result = child.kill().await;
+    let wait_result = child.wait().await;
+    match (kill_result, wait_result) {
+        (Ok(()), Ok(status)) => format!("killed and reaped with {status}"),
+        (Ok(()), Err(wait_err)) => format!("killed but wait failed: {wait_err}"),
+        (Err(kill_err), Ok(status)) => format!("kill failed: {kill_err}; wait returned {status}"),
+        (Err(kill_err), Err(wait_err)) => {
+            format!("kill failed: {kill_err}; wait failed: {wait_err}")
+        }
+    }
+}
+
+/// Drain a child's stderr into a bounded tail buffer (capped at
+/// [`STDERR_TAIL_LIMIT`] via [`append_bounded_tail`]).
+pub async fn read_bounded_stderr(
+    stderr: tokio::process::ChildStderr,
+) -> Result<Vec<u8>, std::io::Error> {
+    use tokio::io::{AsyncReadExt, BufReader};
+    let mut tail = Vec::new();
+    let mut reader = BufReader::new(stderr);
+    let mut chunk = [0u8; 1024];
+    loop {
+        let read = reader.read(&mut chunk).await?;
+        if read == 0 {
+            return Ok(tail);
+        }
+        append_bounded_tail(&mut tail, &chunk[..read]);
+    }
+}
+
 fn redact_secrets(text: &str) -> String {
     text.split_whitespace()
         .map(|token| {

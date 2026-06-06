@@ -1,8 +1,8 @@
 # Ask Synthesis Backend
 
-`axon ask` uses the Gemini CLI headless path. The path is intended only for synthesis: no tools, no permissions, no warm session, and no workspace mutation.
+`axon ask` uses the Gemini CLI headless path by default. The synthesis backend is selected globally by `AXON_LLM_BACKEND` (`gemini-headless`, `openai-compat`, or `codex-app-server`) or an active saved provider profile — this guide documents the default Gemini path. The path is intended only for synthesis: no tools, no permissions, no warm session, and no workspace mutation.
 
-Gemini is selected by `AXON_HEADLESS_GEMINI_CMD` (default: `gemini`). Set `AXON_HEADLESS_GEMINI_MODEL` to override the Gemini model. Set `AXON_HEADLESS_GEMINI_HOME` to copy auth from a prepared Gemini home instead of the process HOME.
+Gemini is selected by `AXON_HEADLESS_GEMINI_CMD` (default: `gemini`). Set `AXON_HEADLESS_GEMINI_MODEL` to override the Gemini model. Set `AXON_HEADLESS_GEMINI_HOME` to copy auth from a prepared Gemini home instead of the process HOME. For the other backends, see [`configuration.md`](configuration.md) and [`commands/config.md`](../reference/commands/config.md).
 
 Safety rules:
 

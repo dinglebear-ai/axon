@@ -290,6 +290,22 @@ pub fn redact(value: &str) -> String {
     }
 }
 
+/// Returns true if a dotted TOML key path points at a secret (its last segment
+/// looks like an API key / token / secret / password). Used to redact values
+/// such as `providers.<name>.api-key` in `axon config` output.
+pub fn is_secret_toml_key(dotted: &str) -> bool {
+    let last = dotted.rsplit('.').next().unwrap_or(dotted);
+    let norm = last.replace('-', "_").to_ascii_lowercase();
+    matches!(
+        norm.as_str(),
+        "api_key" | "key" | "secret" | "token" | "password"
+    ) || norm.ends_with("_api_key")
+        || norm.ends_with("_key")
+        || norm.ends_with("_secret")
+        || norm.ends_with("_token")
+        || norm.ends_with("_password")
+}
+
 // Env keys must be UPPER_SNAKE to match the auto-routing convention in
 // `detect_target`: the router infers `.env` from uppercase keys and `.toml`
 // from dotted lowercase paths. Accepting lowercase here would let callers
