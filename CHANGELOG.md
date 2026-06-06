@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.1] - 2026-06-06
+
+### Fixed
+
+- **Codex backend context budget.** `ask_model_tier` now keys the model-context budget off the active backend enum, so the `codex-app-server` backend gets its intended Medium (≈400k-char) budget instead of falling through to Small (40k) when no model string is set. The tier now reads the *active* backend's model field (`codex_model` / `headless_gemini_model` / `openai_model`) via `configured_model_from_config` rather than always reading `openai_model`.
+- **`provider list` effective-backend display.** `axon config provider list` resolves the effective backend through the *same* provider-overlay path the real config uses (single source of truth via `backend_from_overlay`), so a broken active profile now surfaces inline as `<unresolved: …>` instead of a misleading green default, and the displayed precedence cannot drift from what an actual `ask` resolves.
+
 ## [5.1.0] - 2026-06-06
 
 ### Added
