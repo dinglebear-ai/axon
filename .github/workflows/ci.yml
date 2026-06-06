@@ -688,13 +688,13 @@ jobs:
       - name: create web assets placeholder
         run: mkdir -p apps/web/out
       - name: cargo test
-        run: cargo test --workspace --locked --features test-helpers -- --skip worker_e2e
+        run: cargo test --workspace --locked --features test-helpers -- --skip worker_e2e --quiet
 
       - name: cargo test ignored cli infra tests
-        run: cargo test --locked cli_ --features test-helpers -- --ignored
+        run: cargo test --locked cli_ --features test-helpers -- --ignored --quiet
 
       - name: cargo test github integration (clone + cleanup regression)
-        run: cargo test --locked --features test-helpers -- github_integration_ --ignored
+        run: cargo test --locked --features test-helpers -- github_integration_ --ignored --quiet
 
       - name: ask quality regression fixtures
         run: ./scripts/test-ask-quality-regressions.sh
