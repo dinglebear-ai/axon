@@ -168,10 +168,15 @@ export default function App() {
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
   const jobMinimized = run.kind === "job" && run.minimized;
   const showOutput = run.kind !== "idle" && !jobMinimized;
-  const showContent = settingsOpen || historyOpen || showOutput || hasQuery || browseOpen;
+  // Once an action mode is picked, the input collects that action's argument —
+  // the palette should NOT keep listing other actions. Stay compact (just the
+  // command bar + mode pill) until the run produces output.
+  const enteringArgument = Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen;
+  const showContent =
+    settingsOpen || historyOpen || showOutput || (!enteringArgument && (hasQuery || browseOpen));
   const compact = !showContent;
   const showResultsLayout = showOutput || settingsOpen || historyOpen;
-  const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen;
+  const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
 
   useEffect(() => {
     setSelected(0);
@@ -185,16 +190,20 @@ export default function App() {
     // borderless window. Measure the rendered content instead. `resize_palette`
     // sizes the window in logical px, so CSS-px measurements map 1:1 across DPIs.
     const browseHeight = () => {
+      // BROWSE_CHROME is the non-list vertical chrome: command bar, panel
+      // heading, footer, and paddings. Measured exactly so the window hugs its
+      // content — an over-estimate leaves dead space below the footer (it floats
+      // off the bottom edge); an under-estimate clips it.
+      const BROWSE_CHROME = 130;
       const viewport = document.querySelector(".action-scroll-viewport");
       if (!(viewport instanceof HTMLElement)) {
-        return 142 + filtered.length * 48;
+        return BROWSE_CHROME + filtered.length * 48;
       }
       // `viewport.scrollHeight` is the full (unsquashed) list height regardless of the
       // current window, so it's stable even when measured from the compact window we're
-      // resizing away from. `LIST_CAP` mirrors `.action-scroll` max-height; the 142 base
-      // covers the command bar, panel heading, footer, and paddings.
+      // resizing away from. `LIST_CAP` mirrors `.action-scroll` max-height.
       const LIST_CAP = 338;
-      return 142 + Math.min(viewport.scrollHeight, LIST_CAP);
+      return BROWSE_CHROME + Math.min(viewport.scrollHeight, LIST_CAP);
     };
     const size = jobMinimized
       ? { width: 680, height: 96 }
@@ -248,7 +257,7 @@ export default function App() {
     setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
     setSelected(0);
     setRun({ kind: "idle" });
-    setBrowseOpen(true);
+    setBrowseOpen(false);
     focusInput(true);
   }
 
@@ -270,6 +279,9 @@ export default function App() {
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
+      // Arrow-down is the keyboard affordance to browse all actions without
+      // typing (focus alone no longer expands the palette).
+      if (!modeAction) setBrowseOpen(true);
       setSelected((idx) => Math.min(idx + 1, Math.max(filtered.length - 1, 0)));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
@@ -319,14 +331,10 @@ export default function App() {
           setRun({ kind: "idle" });
           setHistoryOpen(false);
           setBrowseOpen(false);
-        }} title={config?.serverUrl ?? endpointLabel} aria-label="Reset Axon palette">
+        }} title={`${config?.serverUrl ?? endpointLabel}${config?.collection ? ` · ${config.collection}` : ""}`} aria-label="Reset Axon palette">
           <AxonMark size={24} />
           <span className="axon-word">Axon</span>
           <span className={`axon-status-dot axon-status-${endpointTone}`} />
-          <span className="axon-tip">
-            {endpointLabel}
-            {config?.collection ? <span>{config.collection}</span> : null}
-          </span>
         </button>
         <span className="axon-divider" aria-hidden="true" />
         {modeAction && (
@@ -335,15 +343,11 @@ export default function App() {
             <span className="mode-pill-dismiss" aria-hidden="true"><X size={10} /></span>
           </button>
         )}
-        <div className="command-input-wrap" onClick={() => {
-          setBrowseOpen(true);
-          focusInput();
-        }}>
+        <div className="command-input-wrap" onClick={() => focusInput()}>
           <Search size={16} strokeWidth={1.65} aria-hidden="true" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onFocus={() => setBrowseOpen(true)}
             onKeyDown={onInputKeyDown}
             placeholder={modeAction ? argumentPlaceholder(modeAction) : hasQuery ? active?.example ?? "Search commands" : "Search or run an operation — scrape, crawl, map, ask…"}
             className="command-input"

@@ -122,13 +122,6 @@ export function OutputPanel({
             {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" /> : null}
           </span>
         </header>
-        {"result" in run && !conversationMode && (
-          <div className="output-meta-strip">
-            <span>{run.result.method || "POST"} {run.result.path || active?.subcommand}</span>
-            <span>HTTP {run.result.status}</span>
-            {active ? <span>{active.subcommand}</span> : null}
-          </div>
-        )}
         {run.kind === "streaming" && conversationMode ? (
           <AskConversation prompt={run.prompt ?? ""} answer={run.text} pending onFollowUp={onFollowUp} />
         ) : (run.kind === "running" || run.kind === "streaming") ? (
