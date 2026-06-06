@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.2] - 2026-06-06
+
+### Added
+
+- The orange "live crawl" status dots (the TAILING indicator and the collapsed
+  tray dot) now breathe with a subtle pulse while a crawl is active, so an
+  in-flight crawl reads as alive at a glance. Flattened under
+  `prefers-reduced-motion`.
+
 ## [5.1.1] - 2026-06-06
 
 ### Fixed
