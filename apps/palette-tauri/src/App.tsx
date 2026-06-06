@@ -7,7 +7,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ActionList } from "@/components/palette/ActionList";
 import { AxonMark } from "@/components/palette/AxonMark";
@@ -32,6 +32,7 @@ import {
   hostLabel,
   looksLikeUrl,
   parseCommand,
+  sortActionsByRelevance,
   sortActionsForDisplay,
   validationMessage,
 } from "@/lib/paletteView";
@@ -156,7 +157,10 @@ export default function App() {
     if (looksLikeUrl(parsed.search)) {
       return sortActionsForDisplay(ACTIONS).slice(0, 12);
     }
-    return sortActionsForDisplay(ACTIONS.filter((action) => actionMatches(action, parsed.search))).slice(0, 12);
+    return sortActionsByRelevance(
+      ACTIONS.filter((action) => actionMatches(action, parsed.search)),
+      parsed.search,
+    ).slice(0, 12);
   }, [parsed.invoked, parsed.search]);
   const suggestedAction = filtered[Math.min(selected, Math.max(filtered.length - 1, 0))];
   const active = modeAction ?? suggestedAction;
@@ -173,6 +177,7 @@ export default function App() {
     setSelected(0);
   }, [parsed.search, modeAction]);
 
+  const lastSizeRef = useRef<{ width: number; height: number } | null>(null);
   useEffect(() => {
     // The browse card hugs its content: the action list is capped (max-height
     // 338px, see `.action-scroll`) and scrolls, so a per-item formula overshoots
@@ -202,6 +207,13 @@ export default function App() {
       : showContent
         ? { width: 760, height: Math.min(browseHeight(), window.screen.availHeight - 80) }
         : { width: 680, height: 56 };
+    // Skip redundant resizes: while typing, the browse height is constant, so this
+    // effect re-runs on every keystroke (filtered.length) with the same size — and
+    // each resize_palette also re-centers the window, which would jitter it.
+    if (lastSizeRef.current?.width === size.width && lastSizeRef.current?.height === size.height) {
+      return;
+    }
+    lastSizeRef.current = size;
     void invoke("resize_palette", size);
   }, [jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filtered.length, shownTick]);
 

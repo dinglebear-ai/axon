@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS } from "./actions";
+import { ACTIONS, actionMatches } from "./actions";
 import {
   actionDisplayMeta,
+  sortActionsByRelevance,
   sortActionsForDisplay,
   actionHint,
   argumentFor,
@@ -10,6 +11,13 @@ import {
   parseCommand,
   validationMessage,
 } from "./paletteView";
+
+function rankedSubcommands(query: string): string[] {
+  return sortActionsByRelevance(
+    ACTIONS.filter((candidate) => actionMatches(candidate, query)),
+    query,
+  ).map((item) => item.subcommand);
+}
 
 function action(subcommand: string) {
   const found = ACTIONS.find((candidate) => candidate.subcommand === subcommand);
@@ -70,6 +78,23 @@ describe("palette view parsing helpers", () => {
     ]).map((item) => item.subcommand);
 
     expect(sorted.slice(0, 5)).toEqual(["scrape", "map", "retrieve", "screenshot", "diff"]);
+  });
+
+  it("ranks subcommand prefix matches above substring matches when filtering", () => {
+    const ranked = rankedSubcommands("cr");
+    // "crawl" starts with the query; "scrape" only contains it — crawl must win.
+    expect(ranked[0]).toBe("crawl");
+    expect(ranked.indexOf("crawl")).toBeLessThan(ranked.indexOf("scrape"));
+  });
+
+  it("surfaces the prefix-matching subcommand first ('doc' -> doctor)", () => {
+    expect(rankedSubcommands("doc")[0]).toBe("doctor");
+  });
+
+  it("falls back to the browse order for an empty query", () => {
+    expect(rankedSubcommands("").slice(0, 3)).toEqual(
+      sortActionsForDisplay(ACTIONS).map((item) => item.subcommand).slice(0, 3),
+    );
   });
 
   it("keeps first browse-row descriptions aligned with the handoff mock", () => {
