@@ -68,4 +68,41 @@ pub(in crate::core::config) enum ConfigSubcommand {
     },
     /// Print resolved paths to .env and config.toml
     Path,
+    /// Manage saved LLM provider/model profiles ([providers.<name>] in config.toml)
+    Provider {
+        #[command(subcommand)]
+        action: Option<ProviderSubcommand>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(in crate::core::config) enum ProviderSubcommand {
+    /// List saved profiles and the effective active backend
+    List,
+    /// Show one profile's fields (api-key redacted unless --reveal)
+    Show {
+        name: String,
+        /// Reveal secret values instead of showing `***`
+        #[arg(long, action = ArgAction::SetTrue)]
+        reveal: bool,
+    },
+    /// Activate a saved profile (sets [llm] active-provider)
+    Use { name: String },
+    /// Create/replace a profile: add <name> <backend> [field=value ...]
+    Add {
+        name: String,
+        /// gemini-headless | openai-compat | codex-app-server
+        backend: String,
+        /// Extra fields as field=value (model, base-url, api-key, cmd, home)
+        #[arg(value_name = "FIELD=VALUE")]
+        fields: Vec<String>,
+    },
+    /// Set one field on a profile: set <name> <field> <value>
+    Set {
+        name: String,
+        field: String,
+        value: String,
+    },
+    /// Delete a profile (clears it as active if it was)
+    Remove { name: String },
 }

@@ -183,7 +183,7 @@ Named-mode collections (new) support hybrid search. Legacy unnamed-mode collecti
 
 ## LLM completion backend pattern
 
-Operations requiring LLM synthesis (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) call the typed `services::llm_backend` facade. Gemini headless is the default backend and launches with an isolated temporary HOME, an allowlisted environment, timeout enforcement, and a concurrency semaphore. `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible chat-completions endpoint such as llama.cpp via `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL`.
+Operations requiring LLM synthesis (`ask`, `research`, `summarize`, `evaluate`, `suggest`, `extract` fallback, `debug`, and the `watch` change-report summarizer) call the typed `services::llm_backend` facade. Backend selection is global — one setting drives every call site. Gemini headless is the default backend and launches with an isolated temporary HOME, an allowlisted environment, timeout enforcement, and a concurrency semaphore. `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible chat-completions endpoint such as llama.cpp via `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL`; `AXON_LLM_BACKEND=codex-app-server` drives the OpenAI Codex CLI `codex app-server` over stdio in an isolated `CODEX_HOME` via `AXON_CODEX_CMD`/`AXON_CODEX_MODEL`/`AXON_CODEX_HOME`. Saved provider profiles (`axon config provider use <name>`) override the backend env vars.
 
 ## See also
 

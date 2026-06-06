@@ -1,5 +1,6 @@
 use std::error::Error as StdError;
 
+pub mod codex_app_server;
 pub mod concurrency;
 pub mod headless;
 pub mod openai_compat;
@@ -20,6 +21,7 @@ pub async fn complete_text(
     match req.backend.kind {
         LlmBackendKind::GeminiHeadless => headless::gemini::complete_text(req).await,
         LlmBackendKind::OpenAiCompat => openai_compat::complete_text(req).await,
+        LlmBackendKind::CodexAppServer => codex_app_server::complete_text(req).await,
     }
 }
 
@@ -36,6 +38,7 @@ where
     match req.backend.kind {
         LlmBackendKind::GeminiHeadless => headless::gemini::complete_streaming(req, on_delta).await,
         LlmBackendKind::OpenAiCompat => openai_compat::complete_streaming(req, on_delta).await,
+        LlmBackendKind::CodexAppServer => codex_app_server::complete_streaming(req, on_delta).await,
     }
 }
 

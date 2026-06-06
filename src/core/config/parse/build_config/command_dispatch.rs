@@ -6,8 +6,8 @@
 
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
-    IngestArgs, MonitorSubcommand, ServeArgs, ServeSubcommand, SessionsArgs, SetupArgs,
-    SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
+    IngestArgs, MonitorSubcommand, ProviderSubcommand, ServeArgs, ServeSubcommand, SessionsArgs,
+    SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -436,7 +436,45 @@ fn apply_config(out: &mut DispatchOutput, args: ConfigArgs) {
             }
         }
         Some(ConfigSubcommand::Path) => out.positional = vec!["path".to_string()],
+        Some(ConfigSubcommand::Provider { action }) => apply_config_provider(out, action),
     }
+}
+
+fn apply_config_provider(out: &mut DispatchOutput, action: Option<ProviderSubcommand>) {
+    out.positional = match action {
+        None | Some(ProviderSubcommand::List) => vec!["provider".to_string(), "list".to_string()],
+        Some(ProviderSubcommand::Show { name, reveal }) => {
+            let mut p = vec!["provider".to_string(), "show".to_string(), name];
+            if reveal {
+                p.push("--reveal".to_string());
+            }
+            p
+        }
+        Some(ProviderSubcommand::Use { name }) => {
+            vec!["provider".to_string(), "use".to_string(), name]
+        }
+        Some(ProviderSubcommand::Add {
+            name,
+            backend,
+            fields,
+        }) => {
+            let mut p = vec!["provider".to_string(), "add".to_string(), name, backend];
+            p.extend(fields);
+            p
+        }
+        Some(ProviderSubcommand::Set { name, field, value }) => {
+            vec![
+                "provider".to_string(),
+                "set".to_string(),
+                name,
+                field,
+                value,
+            ]
+        }
+        Some(ProviderSubcommand::Remove { name }) => {
+            vec!["provider".to_string(), "remove".to_string(), name]
+        }
+    };
 }
 
 fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
