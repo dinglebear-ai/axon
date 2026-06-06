@@ -40,6 +40,26 @@ fn unknown_model_assumes_small_window() {
 }
 
 #[test]
+fn codex_backend_gets_four_hundred_thousand_chars_on_default_model() {
+    // The codex backend's model lives in `codex_model`, not `openai_model`, and
+    // is empty on the codex default — the tier must key off the backend enum.
+    let mut cfg = Config::default_minimal();
+    cfg.llm_backend = LlmBackendKind::CodexAppServer;
+    cfg.openai_model = String::new();
+    cfg.codex_model = String::new();
+    assert_eq!(ask_model_tier(&cfg), AskModelTier::Medium);
+    assert_eq!(model_context_char_budget(&cfg), 400_000);
+}
+
+#[test]
+fn codex_backend_reads_codex_model_field() {
+    let mut cfg = Config::default_minimal();
+    cfg.llm_backend = LlmBackendKind::CodexAppServer;
+    cfg.codex_model = "gpt-5.5".to_string();
+    assert_eq!(ask_model_tier(&cfg), AskModelTier::Medium);
+}
+
+#[test]
 fn chunk_limit_scales_with_tier() {
     assert_eq!(
         model_chunk_limit(&cfg_with(LlmBackendKind::GeminiHeadless, "")),

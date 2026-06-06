@@ -184,9 +184,9 @@ fn populate_services_and_ask_basics(
     // The overlay is all-`None` when no provider is active, so this is identical
     // to the pure-env behavior in that case (see provider_overlay.rs).
     let p = inputs.provider;
-    cfg.llm_backend = crate::services::llm_backend::LlmBackendKind::parse(
-        &overlay_or_env(&p.backend, "AXON_LLM_BACKEND").unwrap_or_default(),
-    )?;
+    // Backend resolution is shared with `provider list` via `backend_from_overlay`
+    // so the two cannot drift (active-profile backend > AXON_LLM_BACKEND > default).
+    cfg.llm_backend = super::provider_overlay::backend_from_overlay(p)?;
     cfg.headless_gemini_model =
         overlay_or_env(&p.gemini_model, "AXON_HEADLESS_GEMINI_MODEL").unwrap_or_default();
     cfg.headless_gemini_cmd = overlay_or_env(&p.gemini_cmd, "AXON_HEADLESS_GEMINI_CMD")

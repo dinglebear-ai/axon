@@ -75,25 +75,22 @@ fn provider_names(flat: &BTreeMap<String, String>) -> Vec<String> {
     set.into_iter().collect()
 }
 
-fn effective_active_name(doc: &toml_edit::DocumentMut) -> Option<String> {
-    std::env::var("AXON_PROVIDER")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .or_else(|| {
-            svc::get_toml_entry(doc, "llm.active-provider").filter(|v| !v.trim().is_empty())
-        })
-}
-
 fn provider_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let doc = svc::read_toml_document(&toml_path()?)?;
     let flat = svc::flatten_toml(&doc);
     let names = provider_names(&flat);
-    let active = effective_active_name(&doc);
-    // The `config` command early-returns before the real provider overlay runs,
-    // so `cfg.llm_backend` is not resolved here — recompute the effective backend
-    // directly from the document + env to show what will actually run.
-    let effective_backend = effective_backend_label(&doc);
+    // Resolve the effective selection through the SAME provider-overlay path the
+    // real config uses (single source of truth — see core::config::parse), so
+    // this listing can't drift and a broken active profile surfaces as an error
+    // instead of a misleading default. `--provider` is a per-run override the
+    // `config` command does not carry, so the listing reflects the persisted
+    // selection (`AXON_PROVIDER` env > `[llm] active-provider`).
+    let eff = crate::core::config::parse::effective_llm(None)?;
+    let active = eff.active_provider;
+    let effective_backend = match &eff.backend {
+        Ok(kind) => backend_label(*kind).to_string(),
+        Err(err) => format!("<unresolved: {err}>"),
+    };
     let field = |name: &str, f: &str| flat.get(&format!("providers.{name}.{f}")).cloned();
 
     if cfg.json_output {
@@ -155,25 +152,6 @@ fn provider_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
         accent(&effective_backend)
     );
     Ok(())
-}
-
-/// The backend that will actually run, mirroring `provider_overlay` resolution:
-/// active profile's backend > `AXON_LLM_BACKEND` > default. Canonicalizes aliases
-/// (e.g. `codex` → `codex-app-server`). Used only for `provider list` display
-/// because the `config` command does not resolve the full overlay.
-fn effective_backend_label(doc: &toml_edit::DocumentMut) -> String {
-    let raw = effective_active_name(doc)
-        .and_then(|name| svc::get_toml_entry(doc, &format!("providers.{name}.backend")))
-        .or_else(|| std::env::var("AXON_LLM_BACKEND").ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    match raw {
-        Some(s) => LlmBackendKind::parse(&s)
-            .map(backend_label)
-            .map(str::to_string)
-            .unwrap_or(s),
-        None => backend_label(LlmBackendKind::GeminiHeadless).to_string(),
-    }
 }
 
 fn provider_show(cfg: &Config) -> Result<(), Box<dyn Error>> {

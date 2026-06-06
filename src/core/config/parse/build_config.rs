@@ -9,7 +9,7 @@
 mod command_dispatch;
 mod config_literal;
 mod post_init;
-mod provider_overlay;
+pub(super) mod provider_overlay;
 
 #[cfg(test)]
 #[path = "build_config_tests.rs"]
