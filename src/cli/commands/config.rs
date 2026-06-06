@@ -5,12 +5,15 @@ use serde_json::json;
 use std::error::Error;
 use std::path::PathBuf;
 
+mod provider;
+
 const USAGE_LINES: &[&str] = &[
     "axon config list [--env] [--toml] [--reveal]",
     "axon config get <key> [--env|--toml] [--reveal]",
     "axon config set <key> <value> [--env|--toml]",
     "axon config unset <key> [--env|--toml]",
     "axon config path",
+    "axon config provider list|show|use|add|set|remove [...]",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +29,7 @@ pub async fn run_config(cfg: &Config) -> Result<(), Box<dyn Error>> {
         Some("set") => run_set(cfg),
         Some("unset") => run_unset(cfg),
         Some("path") => run_path(cfg),
+        Some("provider") => provider::run_provider(cfg),
         _ => print_usage(cfg),
     }
 }
@@ -101,7 +105,7 @@ fn run_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
             .collect();
         let toml_view: serde_json::Map<_, _> = toml_entries
             .iter()
-            .map(|(k, v)| (k.clone(), json!(v)))
+            .map(|(k, v)| (k.clone(), json!(display_toml_value(k, v, flags.reveal))))
             .collect();
         println!(
             "{}",
@@ -137,7 +141,11 @@ fn run_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
             println!("  {}", muted("(no entries)"));
         } else {
             for (key, value) in &toml_entries {
-                println!("  {} = {value}", accent(key));
+                println!(
+                    "  {} = {}",
+                    accent(key),
+                    display_toml_value(key, value, flags.reveal)
+                );
             }
         }
     }
@@ -171,7 +179,7 @@ fn run_get(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     let display = raw_value.as_deref().map(|v| match target {
         Target::Env => display_env_value(key, v, reveal),
-        Target::Toml => v.to_string(),
+        Target::Toml => display_toml_value(key, v, reveal),
     });
 
     if cfg.json_output {
@@ -346,6 +354,14 @@ fn parse_list_flags(positional: &[String]) -> ListFlags {
 
 fn display_env_value(key: &str, value: &str, reveal: bool) -> String {
     if !reveal && svc::is_secret_env_key(key) {
+        svc::redact(value)
+    } else {
+        value.to_string()
+    }
+}
+
+fn display_toml_value(key: &str, value: &str, reveal: bool) -> String {
+    if !reveal && svc::is_secret_toml_key(key) {
         svc::redact(value)
     } else {
         value.to_string()

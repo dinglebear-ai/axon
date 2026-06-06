@@ -101,6 +101,9 @@ impl Default for Config {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
+            codex_cmd: "codex".to_string(),
+            codex_model: String::new(),
+            codex_home: None,
             tavily_api_key: String::new(),
             searxng_url: String::new(),
             research_full_content: true,
@@ -361,6 +364,9 @@ impl fmt::Debug for Config {
             .field("openai_base_url", &self.openai_base_url)
             .field("openai_api_key", &"[REDACTED]")
             .field("openai_model", &self.openai_model)
+            .field("codex_cmd", &self.codex_cmd)
+            .field("codex_model", &self.codex_model)
+            .field("codex_home", &self.codex_home)
             .field(
                 "llm_completion_concurrency",
                 &self.llm_completion_concurrency,

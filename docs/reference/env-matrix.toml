@@ -2639,6 +2639,54 @@ compatibility = "canonical"
 reason = "Optional API key for the OpenAI-compatible backend. Runtime secret, env-only."
 
 [[env]]
+key = "AXON_CODEX_CMD"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Runtime executable/bootstrap for the Codex CLI, used when AXON_LLM_BACKEND=codex-app-server."
+
+[[env]]
+key = "AXON_CODEX_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Runtime Codex model selection for the codex-app-server backend. Blank = codex CLI default."
+
+[[env]]
+key = "AXON_CODEX_HOME"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Source CODEX_HOME the codex backend copies auth.json from into an isolated home."
+
+[[env]]
+key = "AXON_PROVIDER"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Selects the active saved LLM provider profile; overrides [llm] active-provider, overridden by --provider."
+
+[[env]]
 key = "AXON_WATCH_TICK_SECS"
 classification = "keep-env"
 runtime_placement = "both"

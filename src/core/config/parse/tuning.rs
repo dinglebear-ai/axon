@@ -263,14 +263,20 @@ enum AskModelTier {
 }
 
 fn ask_model_tier(cfg: &Config) -> AskModelTier {
-    use crate::services::llm_backend::LlmBackendKind;
-    let model = cfg.openai_model.to_ascii_lowercase();
+    use crate::services::llm_backend::{LlmBackendKind, configured_model_from_config};
+    // Read the *active* backend's model, not a fixed field: the codex backend's
+    // model lives in `codex_model`, gemini's in `headless_gemini_model`, etc.
+    let model = configured_model_from_config(cfg)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     let is_google = matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
         || model.contains("gemini")
         || model.contains("gemma");
     if is_google || model.contains("claude") {
         AskModelTier::Large
-    } else if model.contains("codex") {
+    } else if matches!(cfg.llm_backend, LlmBackendKind::CodexAppServer) || model.contains("codex") {
+        // Codex backend defaults to Medium even when no model is set — the
+        // model string alone is empty on the codex default, so key off the enum.
         AskModelTier::Medium
     } else {
         AskModelTier::Small

@@ -114,7 +114,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
 | `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | ladder env vars only |
 
-URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL` for llama.cpp/OpenAI-compatible endpoints. `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL` for llama.cpp/OpenAI-compatible endpoints, or `AXON_LLM_BACKEND=codex-app-server` to drive the OpenAI Codex CLI `codex app-server`. To switch backends without editing env vars, save named provider profiles in `config.toml` and activate one with `axon config provider use <name>` (an active profile overrides `AXON_LLM_BACKEND` and the per-backend `AXON_*` vars — see [`commands/config.md`](../reference/commands/config.md)). `config.toml` carries RAG tuning knobs and saved provider profiles. See `config.example.toml` for the full annotated example with defaults.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 
@@ -187,10 +187,14 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Use `openai-compat` for llama.cpp/OpenAI-compatible `/v1/chat/completions` servers. |
+| `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend: `gemini-headless`, `openai-compat` (llama.cpp/OpenAI-compatible `/v1/chat/completions`), or `codex-app-server` (OpenAI Codex CLI). Global — applies to every LLM action. An active provider profile overrides this. |
 | `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. Do not include `/chat/completions`; Axon appends it. |
 | `AXON_OPENAI_MODEL` | -- | Model name sent to the OpenAI-compatible endpoint. Required when `AXON_LLM_BACKEND=openai-compat`. |
 | `AXON_OPENAI_API_KEY` | -- | Optional bearer token for OpenAI-compatible endpoints. Leave unset for local llama.cpp servers that do not require auth. |
+| `AXON_CODEX_CMD` | `codex` | Codex CLI command used for the `codex-app-server` backend. Path-like values are validated before launch. |
+| `AXON_CODEX_MODEL` | -- | Codex model override. Blank uses the Codex CLI default model. |
+| `AXON_CODEX_HOME` | `$CODEX_HOME`/`~/.codex` | Source home the codex backend copies `auth.json` from into an isolated `CODEX_HOME` (MCP servers, apps tool, hooks, and OTLP disabled per call). |
+| `AXON_PROVIDER` | -- | Active saved provider profile name. Overrides `[llm] active-provider`; overridden by `--provider`. See [`commands/config.md`](../reference/commands/config.md). |
 | `AXON_HEADLESS_GEMINI_MODEL` | -- | Gemini model override for synthesis. Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |

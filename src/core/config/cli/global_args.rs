@@ -30,6 +30,11 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::core::config) output: Option<PathBuf>,
 
+    /// Activate a saved LLM provider profile for this run (overrides
+    /// AXON_PROVIDER and [llm] active-provider). See `axon config provider`.
+    #[arg(global = true, long)]
+    pub(in crate::core::config) provider: Option<String>,
+
     /// Page fetch mode: http, chrome, or auto-switch
     #[arg(global = true, long, value_enum, default_value_t = RenderMode::AutoSwitch)]
     pub(in crate::core::config) render_mode: RenderMode,
