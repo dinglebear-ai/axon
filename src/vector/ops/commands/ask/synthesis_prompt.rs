@@ -4,23 +4,35 @@
 pub(crate) const SKILL_MD: &str =
     include_str!("../../../../../plugins/axon/skills/axon-rag-synthesize/SKILL.md");
 
-/// System prompt passed to Gemini headless.
-///
-/// Keep the skill invocation for clients that support native skill activation,
-/// but inline the full contract as well. Headless model runs are not guaranteed
-/// to activate the skill, and uncited answers are rejected by the ask
-/// normalizer, so the citation contract must be present in the prompt itself.
-pub(crate) const ASK_RAG_SYSTEM_PROMPT: &str = concat!(
-    "Use the axon-rag-synthesize skill to synthesize an answer from the provided context.\n\n",
-    "You must also follow these instructions directly if the skill is unavailable:\n\n",
-    include_str!("../../../../../plugins/axon/skills/axon-rag-synthesize/SKILL.md")
-);
+const GEMINI_SKILL_INVOCATION: &str =
+    "Use the axon-rag-synthesize skill to synthesize an answer from the provided context.\n\n";
+const DIRECT_FALLBACK_INTRO: &str =
+    "You must also follow these instructions directly if the skill is unavailable:\n\n";
 
-pub(crate) fn synthesis_prompt() -> &'static str {
-    ASK_RAG_SYSTEM_PROMPT
+pub(crate) fn synthesis_prompt_for_gemini() -> String {
+    format!(
+        "{GEMINI_SKILL_INVOCATION}{DIRECT_FALLBACK_INTRO}{}",
+        strip_yaml_frontmatter(SKILL_MD)
+    )
 }
 
-#[cfg(test)]
+pub(crate) fn synthesis_prompt_for_openai_compat() -> String {
+    strip_yaml_frontmatter(SKILL_MD)
+}
+
+pub(crate) fn synthesis_prompt_for_backend(
+    backend: crate::services::llm_backend::LlmBackendKind,
+) -> String {
+    match backend {
+        crate::services::llm_backend::LlmBackendKind::GeminiHeadless => {
+            synthesis_prompt_for_gemini()
+        }
+        crate::services::llm_backend::LlmBackendKind::OpenAiCompat => {
+            synthesis_prompt_for_openai_compat()
+        }
+    }
+}
+
 fn strip_yaml_frontmatter(content: &str) -> String {
     if !content.starts_with("---") {
         return content.to_string();

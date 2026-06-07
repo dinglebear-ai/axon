@@ -265,6 +265,8 @@ enum AskModelTier {
     Large,
     /// ~400k-token window — Codex.
     Medium,
+    /// Local Gemma on the 12 GB llama.cpp path.
+    LocalGemma,
     /// Unknown model — assume a < 50k-token window.
     Small,
 }
@@ -272,11 +274,12 @@ enum AskModelTier {
 fn ask_model_tier(cfg: &Config) -> AskModelTier {
     use crate::services::llm_backend::LlmBackendKind;
     let model = cfg.openai_model.to_ascii_lowercase();
-    let is_google = matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
-        || model.contains("gemini")
-        || model.contains("gemma");
+    let is_google =
+        matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless) || model.contains("gemini");
     if is_google || model.contains("claude") {
         AskModelTier::Large
+    } else if model.contains("gemma") {
+        AskModelTier::LocalGemma
     } else if model.contains("codex") {
         AskModelTier::Medium
     } else {
@@ -290,6 +293,7 @@ fn model_context_char_budget(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
         AskModelTier::Large => 1_000_000,
         AskModelTier::Medium => 400_000,
+        AskModelTier::LocalGemma => 300_000,
         AskModelTier::Small => 40_000,
     }
 }
@@ -299,6 +303,7 @@ fn model_chunk_limit(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
         AskModelTier::Large => 50,
         AskModelTier::Medium => 28,
+        AskModelTier::LocalGemma => 20,
         AskModelTier::Small => 10,
     }
 }
@@ -309,6 +314,7 @@ fn model_candidate_limit(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
         AskModelTier::Large => 250,
         AskModelTier::Medium => 150,
+        AskModelTier::LocalGemma => 120,
         AskModelTier::Small => 60,
     }
 }
@@ -318,6 +324,7 @@ fn model_hybrid_candidates(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
         AskModelTier::Large => 200,
         AskModelTier::Medium => 120,
+        AskModelTier::LocalGemma => 100,
         AskModelTier::Small => 60,
     }
 }

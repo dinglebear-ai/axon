@@ -183,7 +183,9 @@ fn ask_completion_request(
     stream: bool,
 ) -> CompletionRequest {
     let req = CompletionRequest::new(format!("Question: {query}\n\nContext:\n{context}"))
-        .system_prompt(super::ask::synthesis_prompt::synthesis_prompt())
+        .system_prompt(super::ask::synthesis_prompt::synthesis_prompt_for_backend(
+            cfg.llm_backend,
+        ))
         .stream(stream)
         .backend_from_config(cfg);
     apply_optional_model(req, cfg)
