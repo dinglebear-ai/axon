@@ -123,14 +123,12 @@ impl DeterministicParser for JsonLdParser {
                         current_json.push_str(&String::from_utf8_lossy(&s));
                     }
                 }
-                Token::EndTag(tag) => {
-                    if in_target_script && &tag.name[..] == b"script" {
-                        in_target_script = false;
-                        if let Ok(value) =
-                            serde_json::from_str::<serde_json::Value>(current_json.trim())
-                        {
-                            flatten_results(&value, &mut out);
-                        }
+                Token::EndTag(tag) if in_target_script && &tag.name[..] == b"script" => {
+                    in_target_script = false;
+                    if let Ok(value) =
+                        serde_json::from_str::<serde_json::Value>(current_json.trim())
+                    {
+                        flatten_results(&value, &mut out);
                     }
                 }
                 _ => {}
@@ -239,16 +237,14 @@ impl DeterministicParser for HtmlTableParser {
                         row_count += 1;
                     }
                 }
-                Token::EndTag(tag) => {
-                    if &tag.name[..] == b"table" && table_depth > 0 {
-                        table_depth -= 1;
-                        if table_depth == 0 && row_count > 0 {
-                            out.push(serde_json::json!({
-                                "_parser": self.name(),
-                                "_source_url": page_url,
-                                "rows": row_count,
-                            }));
-                        }
+                Token::EndTag(tag) if &tag.name[..] == b"table" && table_depth > 0 => {
+                    table_depth -= 1;
+                    if table_depth == 0 && row_count > 0 {
+                        out.push(serde_json::json!({
+                            "_parser": self.name(),
+                            "_source_url": page_url,
+                            "rows": row_count,
+                        }));
                     }
                 }
                 _ => {}
