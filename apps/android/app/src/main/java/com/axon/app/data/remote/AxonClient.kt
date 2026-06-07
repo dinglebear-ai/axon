@@ -386,16 +386,36 @@ class AxonClient(
 
     private fun authRequest(builder: Request.Builder): Request.Builder {
         val (_, token) = config.get()
-        return builder
-            .header("Authorization", "Bearer $token")
-            .header("x-api-key", token)
+        return builder.withApiAuth(token)
     }
 
-    private fun panelAuthRequest(builder: Request.Builder): Request.Builder {
-        val token = panelToken.get().ifBlank { config.get().second }
-        return builder
-            .header("Authorization", "Bearer $token")
-            .header("x-axon-panel-token", token)
+    private fun panelAuthRequest(builder: Request.Builder, token: String): Request.Builder =
+        builder.withPanelAuth(token)
+
+    private inline fun <reified B, reified R> put(path: String, body: B): Result<R> {
+        val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
+        val builder = if (path.startsWith("/api/panel/")) {
+            val token = requirePanelToken(panelToken.get()).getOrElse { return Result.failure(it) }
+            panelAuthRequest(Request.Builder().url("${baseUrl()}$path").put(bodyBytes), token)
+        } else {
+            authRequest(Request.Builder().url("${baseUrl()}$path").put(bodyBytes))
+        }
+        return execute(http, builder)
+    }
+
+    private inline fun <reified R> get(path: String): Result<R> {
+        val builder = if (path.startsWith("/api/panel/")) {
+            val token = requirePanelToken(panelToken.get()).getOrElse { return Result.failure(it) }
+            panelAuthRequest(Request.Builder().url("${baseUrl()}$path").get(), token)
+        } else {
+            authRequest(Request.Builder().url("${baseUrl()}$path").get())
+        }
+        return execute(http, builder)
+    }
+
+    private inline fun <reified R> getWith(client: OkHttpClient, path: String): Result<R> {
+        val builder = authRequest(Request.Builder().url("${baseUrl()}$path").get())
+        return execute(client, builder)
     }
 
     private fun baseUrl(): String = config.get().first
@@ -405,35 +425,15 @@ class AxonClient(
 
     private inline fun <reified B, reified R> postWith(client: OkHttpClient, path: String, body: B): Result<R> {
         val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
-        val builder = if (path.startsWith("/api/panel/login")) {
-            Request.Builder().url("${baseUrl()}$path").post(bodyBytes)
-        } else {
-            authRequest(Request.Builder().url("${baseUrl()}$path").post(bodyBytes))
+        val request = Request.Builder().url("${baseUrl()}$path").post(bodyBytes)
+        val builder = when {
+            path == "/api/panel/login" -> request
+            path.startsWith("/api/panel/") -> {
+                val token = requirePanelToken(panelToken.get()).getOrElse { return Result.failure(it) }
+                panelAuthRequest(request, token)
+            }
+            else -> authRequest(request)
         }
-        return execute(client, builder)
-    }
-
-    private inline fun <reified B, reified R> put(path: String, body: B): Result<R> {
-        val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
-        val builder = if (path.startsWith("/api/panel/")) {
-            panelAuthRequest(Request.Builder().url("${baseUrl()}$path").put(bodyBytes))
-        } else {
-            authRequest(Request.Builder().url("${baseUrl()}$path").put(bodyBytes))
-        }
-        return execute(http, builder)
-    }
-
-    private inline fun <reified R> get(path: String): Result<R> {
-        val builder = if (path.startsWith("/api/panel/")) {
-            panelAuthRequest(Request.Builder().url("${baseUrl()}$path").get())
-        } else {
-            authRequest(Request.Builder().url("${baseUrl()}$path").get())
-        }
-        return execute(http, builder)
-    }
-
-    private inline fun <reified R> getWith(client: OkHttpClient, path: String): Result<R> {
-        val builder = authRequest(Request.Builder().url("${baseUrl()}$path").get())
         return execute(client, builder)
     }
 
@@ -484,4 +484,3 @@ class AxonClient(
         }
     }.getOrNull()
 }
-

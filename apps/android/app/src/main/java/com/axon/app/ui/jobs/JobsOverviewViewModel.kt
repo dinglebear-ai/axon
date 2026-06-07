@@ -9,7 +9,6 @@ import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.data.repository.WatchUi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +21,7 @@ private const val OVERVIEW_TAG = "JobsOverviewVM"
 private const val OVERVIEW_POLL_MS = 30_000L
 private val ACTIVE_STATUSES = setOf("pending", "running", "processing")
 
-/** Lightweight job-overview ViewModel for the drawer. Polls all four kinds every 30s. */
+/** Lightweight job-overview ViewModel for the drawer. Polling is active only while visible. */
 class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
     private val repo = container.axonRepository
@@ -43,16 +42,14 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     private val refreshCoordinator = JobsOverviewRefreshCoordinator(viewModelScope)
+    private val poller = JobsOverviewPoller(
+        scope = viewModelScope,
+        pollIntervalMs = OVERVIEW_POLL_MS,
+        refresh = { refreshNow() },
+    )
 
-    init { startPolling() }
-
-    private fun startPolling() {
-        viewModelScope.launch {
-            while (true) {
-                refreshNow()
-                delay(OVERVIEW_POLL_MS)
-            }
-        }
+    fun setVisible(visible: Boolean) {
+        poller.setVisible(visible)
     }
 
     fun refresh() {

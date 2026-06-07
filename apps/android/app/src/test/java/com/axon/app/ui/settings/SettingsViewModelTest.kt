@@ -13,6 +13,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -70,7 +71,7 @@ class SettingsViewModelTest {
 
     @Test fun `testConnection with http URL shows cleartext warning`() = runTest(dispatcher) {
         val vm = TestSettingsViewModel(pingResult = Result.success(Unit))
-        vm.testConnection("http://axon.example.com", "tok")
+        vm.testConnection("http://dookie.manatee-triceratops.ts.net:8001", "tok")
         val ok = vm.connection.value as TestConnectionState.Ok
         assertNotNull("cleartext http must produce a warning", ok.warning)
     }
@@ -85,6 +86,72 @@ class SettingsViewModelTest {
             assertTrue(failed.error.contains("connection refused"))
             cancelAndIgnoreRemainingEvents()
         }
+    }
+}
+
+class SettingsSecurityHelpersTest {
+    @Test fun `validateServerUrl rejects cleartext outside tailnet allowlist`() {
+        val result = runCatching { validateAxonServerUrl("http://axon.example.com") }
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("HTTPS"))
+    }
+
+    @Test fun `validateServerUrl accepts cleartext for configured tailscale domains`() {
+        validateAxonServerUrl("http://dookie.manatee-triceratops.ts.net:8001")
+        validateAxonServerUrl("http://dookie.manatee-triceratops.tailvpn.net:8001")
+    }
+
+    @Test fun `redacts explicit env secrets from values loaded into UI`() {
+        val explicit = mapOf(
+            "GITHUB_TOKEN" to "ghp_should_not_be_in_state",
+            "QDRANT_URL" to "http://qdrant:6333",
+        )
+
+        val redacted = redactConfigValuesForUi(explicit, AxonSettingsCatalog.envSecretKeys)
+
+        assertEquals(REDACTED_SECRET_VALUE, redacted["GITHUB_TOKEN"])
+        assertEquals("http://qdrant:6333", redacted["QDRANT_URL"])
+        assertFalse(redacted.values.any { it.contains("should_not_be_in_state") })
+    }
+
+    @Test fun `redacts raw env text before exposing it to UI state`() {
+        val raw = """
+            GITHUB_TOKEN=ghp_should_not_be_in_raw_state
+            QDRANT_URL=http://qdrant:6333
+        """.trimIndent()
+
+        val redacted = redactEnvText(raw, AxonSettingsCatalog.envSecretKeys)
+
+        assertTrue(redacted.contains("GITHUB_TOKEN=$REDACTED_SECRET_VALUE"))
+        assertTrue(redacted.contains("QDRANT_URL=http://qdrant:6333"))
+        assertFalse(redacted.contains("should_not_be_in_raw_state"))
+    }
+
+    @Test fun `redacted secret placeholders are not dirty save candidates`() {
+        val values = mapOf(
+            "GITHUB_TOKEN" to REDACTED_SECRET_VALUE,
+            "QDRANT_URL" to "http://qdrant:6333",
+        )
+
+        val dirty = dirtyKeysForSecretSafeSave(
+            values = values,
+            dirtyKeys = setOf("GITHUB_TOKEN", "QDRANT_URL"),
+            secretKeys = AxonSettingsCatalog.envSecretKeys,
+        )
+
+        assertEquals(setOf("QDRANT_URL"), dirty)
+    }
+
+    @Test fun `changed secret values remain dirty save candidates`() {
+        val values = mapOf("GITHUB_TOKEN" to "ghp_replacement")
+
+        val dirty = dirtyKeysForSecretSafeSave(
+            values = values,
+            dirtyKeys = setOf("GITHUB_TOKEN"),
+            secretKeys = AxonSettingsCatalog.envSecretKeys,
+        )
+
+        assertEquals(setOf("GITHUB_TOKEN"), dirty)
     }
 }
 
@@ -108,14 +175,19 @@ private class TestSettingsViewModel(
 
     fun testConnection(serverUrl: String, @Suppress("UNUSED_PARAMETER") token: String) {
         _connection.value = TestConnectionState.Testing
-        pingResult.fold(
+        runCatching { validateAxonServerUrl(serverUrl.trim()) }.fold(
             onSuccess = {
-                val warning = if (serverUrl.trim().startsWith("http://")) {
-                    "Warning: cleartext HTTP is in use. Consider switching to HTTPS for non-Tailscale servers."
-                } else null
-                _connection.value = TestConnectionState.Ok(warning = warning)
+                pingResult.fold(
+                    onSuccess = {
+                        val warning = if (serverUrl.trim().startsWith("http://")) {
+                            "Warning: cleartext HTTP is in use. Tailscale domains are allowed by Android network security."
+                        } else null
+                        _connection.value = TestConnectionState.Ok(warning = warning)
+                    },
+                    onFailure = { _connection.value = TestConnectionState.Failed(it.message ?: "Server unreachable") },
+                )
             },
-            onFailure = { _connection.value = TestConnectionState.Failed(it.message ?: "Server unreachable") },
+            onFailure = { _connection.value = TestConnectionState.Failed(it.message ?: "Invalid server URL") },
         )
     }
 }

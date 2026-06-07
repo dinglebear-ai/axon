@@ -16,6 +16,42 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import java.net.URI
 
+internal const val REDACTED_SECRET_VALUE = "••••••••"
+
+private val CLEARTEXT_TAILNET_SUFFIXES = setOf(
+    "manatee-triceratops.ts.net",
+    "manatee-triceratops.tailvpn.net",
+)
+
+internal fun validateAxonServerUrl(value: String) {
+    val uri = runCatching { URI(value) }.getOrNull()
+    val scheme = uri?.scheme?.lowercase()
+    val host = uri?.host?.lowercase()
+    if (value.isBlank() || host.isNullOrBlank() || (scheme != "http" && scheme != "https")) {
+        throw IllegalArgumentException("Server URL must start with http:// or https://")
+    }
+    if (scheme == "http" && CLEARTEXT_TAILNET_SUFFIXES.none { host == it || host.endsWith(".$it") }) {
+        throw IllegalArgumentException("Use HTTPS for non-Tailscale servers. Cleartext HTTP is allowed only for configured tailnet domains.")
+    }
+}
+
+internal fun redactConfigValuesForUi(
+    values: Map<String, String>,
+    secretKeys: Set<String>,
+): Map<String, String> =
+    values.mapValues { (key, value) ->
+        if (key in secretKeys && value.isNotBlank()) REDACTED_SECRET_VALUE else value
+    }
+
+internal fun dirtyKeysForSecretSafeSave(
+    values: Map<String, String>,
+    dirtyKeys: Set<String>,
+    secretKeys: Set<String>,
+): Set<String> =
+    dirtyKeys.filterNot { key ->
+        key in secretKeys && values[key] == REDACTED_SECRET_VALUE
+    }.toSet()
+
 data class ConfigFileUiState(
     val envValues: Map<String, String> = AxonSettingsCatalog.envDefaults,
     val configValues: Map<String, String> = AxonSettingsCatalog.configDefaults,
@@ -48,6 +84,8 @@ sealed interface SaveState {
 
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
+    private var serverRawEnv: String = ""
+    private var serverRawConfig: String = ""
 
     private val _settings = MutableStateFlow(AxonSettings())
     val settings: StateFlow<AxonSettings> = _settings.asStateFlow()
@@ -75,7 +113,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 val trimmedServerUrl = serverUrl.trim()
                 val trimmedToken = token.trim()
                 val trimmedPanelPassword = panelToken.trim()
-                validateServerUrl(trimmedServerUrl)
+                validateAxonServerUrl(trimmedServerUrl)
                 val resolvedPanelToken = if (trimmedPanelPassword.isBlank()) {
                     ""
                 } else {
@@ -162,13 +200,21 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
         val explicitEnv = parseEnvText(env.rawEnv)
         val explicitConfig = parseConfigTomlText(config.rawToml)
+        serverRawEnv = env.rawEnv
+        serverRawConfig = config.rawToml
         return ConfigFileUiState(
-            envValues = AxonSettingsCatalog.envDefaults + explicitEnv,
-            configValues = AxonSettingsCatalog.configDefaults + explicitConfig,
+            envValues = AxonSettingsCatalog.envDefaults + redactConfigValuesForUi(
+                explicitEnv,
+                AxonSettingsCatalog.envSecretKeys,
+            ),
+            configValues = AxonSettingsCatalog.configDefaults + redactConfigValuesForUi(
+                explicitConfig,
+                AxonSettingsCatalog.configSecretKeys,
+            ),
             envExplicit = explicitEnv.keys,
             configExplicit = explicitConfig.keys,
-            rawEnv = env.rawEnv,
-            rawConfig = config.rawToml,
+            rawEnv = redactEnvText(env.rawEnv, AxonSettingsCatalog.envSecretKeys),
+            rawConfig = redactConfigTomlText(config.rawToml, AxonSettingsCatalog.configSecretKeys),
             envPath = env.path,
             configPath = config.path,
             loading = false,
@@ -180,17 +226,23 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             _saveState.value = SaveState.Saving
             runCatching {
                 val current = configFilesReadyForSave()
-                val rawEnv = patchEnvText(current.rawEnv, current.envValues, current.envDirty)
+                val dirtyKeys = dirtyKeysForSecretSafeSave(
+                    current.envValues,
+                    current.envDirty,
+                    AxonSettingsCatalog.envSecretKeys,
+                )
+                val rawEnv = patchEnvText(serverRawEnv.ifBlank { current.rawEnv }, current.envValues, dirtyKeys)
                 val envSave = container.axonClient.savePanelEnv(rawEnv)
                 if (!envSave.isSuccess) {
                     throw envSave.exceptionOrNull()
                         ?: IllegalStateException("Failed to save .env")
                 }
                 _configFiles.value = current.copy(
-                    rawEnv = rawEnv,
+                    rawEnv = redactEnvText(rawEnv, AxonSettingsCatalog.envSecretKeys),
                     envDirty = emptySet(),
                     envExplicit = parseEnvText(rawEnv).keys,
                 )
+                serverRawEnv = rawEnv
             }.fold(
                 onSuccess = {
                     _saveState.value = SaveState.Saved
@@ -209,17 +261,23 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             _saveState.value = SaveState.Saving
             runCatching {
                 val current = configFilesReadyForSave()
-                val rawToml = patchConfigTomlText(current.rawConfig, current.configValues, current.configDirty)
+                val dirtyKeys = dirtyKeysForSecretSafeSave(
+                    current.configValues,
+                    current.configDirty,
+                    AxonSettingsCatalog.configSecretKeys,
+                )
+                val rawToml = patchConfigTomlText(serverRawConfig.ifBlank { current.rawConfig }, current.configValues, dirtyKeys)
                 val configSave = container.axonClient.savePanelConfig(rawToml)
                 if (!configSave.isSuccess) {
                     throw configSave.exceptionOrNull()
                         ?: IllegalStateException("Failed to save config.toml")
                 }
                 _configFiles.value = current.copy(
-                    rawConfig = rawToml,
+                    rawConfig = redactConfigTomlText(rawToml, AxonSettingsCatalog.configSecretKeys),
                     configDirty = emptySet(),
                     configExplicit = parseConfigTomlText(rawToml).keys,
                 )
+                serverRawConfig = rawToml
             }.fold(
                 onSuccess = {
                     _saveState.value = SaveState.Saved
@@ -247,7 +305,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             _connection.value = TestConnectionState.Testing
             // Use a temporary throwaway client — do NOT mutate the shared client before saving
             val trimmedUrl = serverUrl.trim()
-            runCatching { validateServerUrl(trimmedUrl) }.onFailure { cause ->
+            runCatching { validateAxonServerUrl(trimmedUrl) }.onFailure { cause ->
                 _connection.value = TestConnectionState.Failed(cause.message ?: "Invalid server URL")
                 return@launch
             }
@@ -256,7 +314,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             _connection.value = result.fold(
                 onSuccess = {
                     val warning = if (trimmedUrl.startsWith("http://")) {
-                        "Warning: cleartext HTTP is in use. Consider switching to HTTPS for non-Tailscale servers."
+                        "Warning: cleartext HTTP is allowed here only because this host matches the Tailscale allowlist."
                     } else {
                         null
                     }
@@ -271,11 +329,4 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun validateServerUrl(value: String) {
-        val uri = runCatching { URI(value) }.getOrNull()
-        val scheme = uri?.scheme?.lowercase()
-        if (value.isBlank() || uri?.host.isNullOrBlank() || (scheme != "http" && scheme != "https")) {
-            throw IllegalArgumentException("Server URL must start with http:// or https://")
-        }
-    }
 }

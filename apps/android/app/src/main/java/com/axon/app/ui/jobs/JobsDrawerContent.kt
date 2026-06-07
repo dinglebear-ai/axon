@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,6 +46,10 @@ private enum class JobsDrawerLevel(val label: String) {
 
 @Composable
 fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
+    DisposableEffect(vm) {
+        vm.setVisible(true)
+        onDispose { vm.setVisible(false) }
+    }
     val jobs by vm.activeJobs.collectAsStateWithLifecycle()
     val watches by vm.watches.collectAsStateWithLifecycle()
     val error by vm.errorMessage.collectAsStateWithLifecycle()

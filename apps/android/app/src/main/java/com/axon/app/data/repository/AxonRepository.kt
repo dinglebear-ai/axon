@@ -315,11 +315,11 @@ class AxonRepository(
     }
 
     suspend fun getJob(kind: AxonClient.JobKind, id: String): Result<JobUi> = withToken {
-        client.getJob(kind, id).map { toJobUi(kind, it) }
+        client.getJob(kind, id).map { it.toJobUi(kind) }
     }
 
     suspend fun listJobs(kind: AxonClient.JobKind): Result<List<JobUi>> = withToken {
-        client.listJobs(kind).map { list -> list.map { toJobUi(kind, it) } }
+        client.listJobs(kind).map { list -> list.map { it.toJobUi(kind) } }
     }
 
     suspend fun listWatches(): Result<List<WatchUi>> = withToken {
@@ -366,9 +366,4 @@ class AxonRepository(
         }
     }
 
-    private fun toJobUi(kind: AxonClient.JobKind, j: com.axon.app.data.remote.models.ServiceJob) = JobUi(
-        kind = kind, id = j.id, status = j.status, url = j.url, sourceType = j.sourceType,
-        target = j.target, errorText = j.errorText, resultJson = j.resultJson,
-        finishedAt = j.finishedAt,
-    )
 }

@@ -1,6 +1,8 @@
 package com.axon.app.ui.ask
 
+import com.axon.app.ui.ingest.IngestSource
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,5 +35,33 @@ class FollowUpQueryBuilderTest {
         assertTrue("expected q3 onward, got: $out", out.startsWith("Q: q3\nA: a3"))
         assertTrue(!out.contains("Q: q1"))
         assertTrue(!out.contains("Q: q2"))
+    }
+}
+
+class FabIngestSourceInferenceTest {
+    @Test fun `infers github from canonical host`() {
+        val inferred = inferFabIngestSource("https://github.com/owner/repo")
+        assertEquals(IngestSource.Github, inferred.getOrThrow())
+    }
+
+    @Test fun `infers github from valid subdomain`() {
+        val inferred = inferFabIngestSource("https://api.github.com/repos/owner/repo")
+        assertEquals(IngestSource.Github, inferred.getOrThrow())
+    }
+
+    @Test fun `rejects github lookalike host`() {
+        val inferred = inferFabIngestSource("https://github.com.attacker.com/owner/repo")
+        assertTrue(inferred.isFailure)
+        assertNotNull(inferred.exceptionOrNull()?.message)
+    }
+
+    @Test fun `infers github shorthand without requiring URL syntax`() {
+        val inferred = inferFabIngestSource("github/owner/repo")
+        assertEquals(IngestSource.Github, inferred.getOrThrow())
+    }
+
+    @Test fun `infers reddit shorthand`() {
+        val inferred = inferFabIngestSource("r/rust")
+        assertEquals(IngestSource.Reddit, inferred.getOrThrow())
     }
 }
