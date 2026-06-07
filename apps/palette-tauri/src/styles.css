@@ -2,6 +2,11 @@
 @import "./components/aurora.css";
 
 @source "./**/*.{ts,tsx}";
+/* Streamdown renders markdown/code with Tailwind utility classes (block,
+   whitespace-pre, line-number counters, arbitrary color vars). Those classes
+   live in its compiled JS, so Tailwind must scan it or the utilities are never
+   generated — which makes code-block lines collapse onto one line. */
+@source "../node_modules/streamdown/dist/*.js";
 
 :root,
 .dark {
