@@ -6,7 +6,6 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     routing::post,
 };
-use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -21,15 +20,7 @@ pub(crate) struct WatchListQuery {
     limit: Option<i64>,
 }
 
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct WatchCreateRequest {
-    name: String,
-    task_type: String,
-    task_payload: serde_json::Value,
-    every_seconds: i64,
-    enabled: Option<bool>,
-    next_run_at: Option<DateTime<Utc>>,
-}
+pub(crate) type WatchCreateRequest = services::watch::WatchDefCreateRequest;
 
 const MAX_TASK_PAYLOAD_BYTES: usize = 64 * 1024;
 
@@ -188,18 +179,6 @@ pub(crate) async fn create_watch(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<WatchCreateRequest>,
 ) -> Result<Json<services::watch::WatchDef>, HttpError> {
-    if req.name.trim().is_empty() {
-        return Err(HttpError::bad_request("name is required"));
-    }
-    // Shared validator (whitespace + supported set) keeps this create path in
-    // lockstep with the REST + CLI create paths and the scheduler's dispatch.
-    if let Err(msg) = crate::jobs::watch::validate_task_type(&req.task_type) {
-        return Err(HttpError::bad_request(&msg));
-    }
-    let task_type = req.task_type.as_str();
-    if let Err(msg) = crate::jobs::watch::validate_every_seconds(req.every_seconds) {
-        return Err(HttpError::bad_request(&msg));
-    }
     if req
         .task_payload
         .as_str()
@@ -209,28 +188,9 @@ pub(crate) async fn create_watch(
     {
         return Err(HttpError::bad_request("task_payload exceeds 64 KiB limit"));
     }
-    // Validate the watch task_payload at create time so the watch doesn't
-    // silently fail every run: urls non-empty + ignore_patterns compile.
-    crate::jobs::watch::validate_task_payload(&req.task_payload)
+    let input = req
+        .into_create()
         .map_err(|msg| HttpError::bad_request(&msg))?;
-    // Additionally SSRF-guard every watched URL at create time.
-    if let Some(urls) = req.task_payload.get("urls").and_then(|v| v.as_array()) {
-        for url_val in urls {
-            let url = url_val.as_str().ok_or_else(|| {
-                HttpError::bad_request("task_payload.urls entries must be strings")
-            })?;
-            crate::core::http::validate_url(url)
-                .map_err(|e| HttpError::bad_request(format!("invalid url: {e}").as_str()))?;
-        }
-    }
-    let input = services::watch::WatchDefCreate {
-        name: req.name.trim().to_string(),
-        task_type: task_type.to_string(),
-        task_payload: req.task_payload,
-        every_seconds: req.every_seconds,
-        enabled: req.enabled.unwrap_or(true),
-        next_run_at: req.next_run_at.unwrap_or_else(Utc::now),
-    };
     services::watch::create_watch_def(&cfg, &input)
         .await
         .map(Json)

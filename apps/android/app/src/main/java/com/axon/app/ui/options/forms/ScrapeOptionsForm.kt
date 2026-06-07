@@ -16,7 +16,7 @@ private const val DEFAULT_FORMAT = "markdown"
 private const val DEFAULT_EMBED = true
 
 private val RENDER_MODES = listOf("http", "chrome", "auto-switch")
-private val FORMATS = listOf("markdown", "html", "rawHtml", "json")
+private val FORMATS = listOf("markdown", "html", "rawHtml")
 
 @Composable
 fun ScrapeOptionsForm() {

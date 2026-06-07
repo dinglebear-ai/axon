@@ -63,6 +63,16 @@ export const ACTIONS: PaletteAction[] = [
     tone: "rose",
   },
   {
+    label: "Chat with LLM",
+    subcommand: "chat",
+    kind: "operation",
+    argMode: "single",
+    aliases: ["chat", "llm", "talk"],
+    description: "Chat directly with the configured LLM without RAG retrieval.",
+    example: "chat explain this error simply",
+    tone: "violet",
+  },
+  {
     label: "Query knowledge base",
     subcommand: "query",
     kind: "operation",

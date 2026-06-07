@@ -1,5 +1,6 @@
 package com.axon.app.ui.nav
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -10,27 +11,35 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Construction
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Construction
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.FlightTakeoff
+import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.MonitorHeart
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.DrawerValue
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,6 +51,7 @@ import com.axon.app.ui.ask.AskScreen
 import com.axon.app.ui.common.AuroraStatusDot
 import com.axon.app.ui.common.DotState
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.jobs.JobsScreen
 import com.axon.app.ui.knowledge.KnowledgeScreen
 import com.axon.app.ui.knowledge.KnowledgeTab
@@ -49,11 +59,11 @@ import com.axon.app.ui.management.ManagementDrawerContent
 import com.axon.app.ui.management.ManagementViewModel
 import com.axon.app.ui.sessions.SessionsDrawerContent
 import com.axon.app.ui.settings.SettingsScreen
+import com.axon.app.ui.status.TopChromeStatus
 import com.axon.app.ui.setup.SetupDrawerContent
 import com.axon.app.ui.setup.SetupViewModel
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
-import kotlinx.coroutines.launch
 
 sealed interface ShellOverlay {
     val title: String
@@ -73,14 +83,14 @@ sealed interface ShellOverlay {
 
 enum class ShellCommand(val title: String, val endpoint: String, val summary: String) {
     Dedupe("Dedupe", "dedupe", "merge duplicate vectors"),
-    Monitor("Monitor", "status", "live job + GPU monitor"),
-    Sync("Sync", "watch", "sitemap backfill"),
-    Stack("Stack", "stats", "compose services"),
-    Preflight("Preflight", "smoke + doctor", "check prerequisites"),
-    Setup("Setup", "setup", "init + compose up"),
-    Smoke("Smoke", "healthz", "crawl/ask proof"),
+    Monitor("Monitor", "monitor", "live job + resource monitor"),
+    Sync("Sync", "sync", "sitemap backfill + re-embed"),
+    Stack("Stack", "stack", "compose service status"),
+    Preflight("Preflight", "preflight", "prerequisites + readiness"),
+    Setup("Setup", "setup", "init + compose up + preflight"),
+    Smoke("Smoke", "smoke", "TEI prewarm + crawl/ask proof"),
     Doctor("Doctor", "doctor", "service health"),
-    Debug("Debug", "debug", "env + paths"),
+    Debug("Debug", "debug", "env + paths + versions"),
 }
 
 private data class SidebarItem(
@@ -93,8 +103,7 @@ private data class SidebarItem(
 fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
     var activePage by remember { mutableStateOf<DrawerSection?>(null) }
     var activeOverlay by remember { mutableStateOf<ShellOverlay?>(null) }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
+    var sidebarOpen by remember { mutableStateOf(false) }
     val colors = AxonTheme.colors
 
     val sidebarItems = remember {
@@ -125,66 +134,73 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
             "setup" -> DrawerSection.Setup
             else -> null
         }
-        scope.launch { drawerState.close() }
+        sidebarOpen = false
+    }
+    fun openOverlay(overlay: ShellOverlay) {
+        activeOverlay = overlay
+        sidebarOpen = false
     }
 
-    BackHandler(enabled = activeOverlay != null || drawerState.isOpen || activePage != null) {
+    BackHandler(enabled = activeOverlay != null || sidebarOpen || activePage != null) {
         if (activeOverlay != null) {
             activeOverlay = null
-        } else if (drawerState.isOpen) {
-            scope.launch { drawerState.close() }
+        } else if (sidebarOpen) {
+            sidebarOpen = false
         } else {
             activePage = null
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            AxonSidebarSheet(
-                items = sidebarItems,
-                selected = selectedValue(),
-                onSelect = ::selectSidebarValue,
-            )
-        },
-        modifier = modifier.fillMaxSize(),
-        scrimColor = colors.pageBg.copy(alpha = 0.72f),
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(colors.pageBg)
     ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(colors.pageBg)
-            ) {
-                Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-                    AxonTopBar(
-                        title = activeOverlay?.title ?: activePage?.title() ?: "Ask",
-                        sidebarOpen = drawerState.isOpen,
-                        onToggleSidebar = {
-                            scope.launch {
-                                if (drawerState.isOpen) drawerState.close() else drawerState.open()
-                            }
-                        },
-                    )
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault))
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(0.dp))) {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            AxonTopBar(
+                title = activeOverlay?.title ?: activePage?.title() ?: "Ask",
+                sidebarOpen = sidebarOpen,
+                onToggleSidebar = { sidebarOpen = !sidebarOpen },
+            )
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault.copy(alpha = 0.32f)))
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(0.dp))) {
+                    val overlay = activeOverlay
+                    if (overlay == null) {
                         ShellPageContent(
                             page = activePage,
                             navController = navController,
-                            onOpenOverlay = { activeOverlay = it },
+                            onOpenOverlay = ::openOverlay,
                         )
-                        activeOverlay?.let { overlay ->
-                            ShellOverlayContent(
-                                overlay = overlay,
-                                onBack = { activeOverlay = null },
-                                onHome = {
-                                    activeOverlay = null
-                                    activePage = null
-                                },
-                            )
-                        }
+                    } else {
+                        ShellOverlayContent(
+                            overlay = overlay,
+                            navController = navController,
+                            onBack = { activeOverlay = null },
+                            onHome = {
+                                activeOverlay = null
+                                activePage = null
+                            },
+                        )
                     }
                 }
+                if (sidebarOpen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF040A0E).copy(alpha = 0.50f))
+                            .clickable(remember { MutableInteractionSource() }, indication = null) {
+                                sidebarOpen = false
+                            },
+                    )
+                    AxonSidebarSheet(
+                        items = sidebarItems,
+                        selected = selectedValue(),
+                        onSelect = ::selectSidebarValue,
+                    )
+                }
             }
+        }
     }
 }
 
@@ -197,11 +213,10 @@ private fun AxonSidebarSheet(
     val colors = AxonTheme.colors
     Column(
         modifier = Modifier
-            .width(244.dp)
+            .width(196.dp)
             .fillMaxHeight()
             .background(colors.panelStrong)
             .border(width = 1.dp, color = colors.borderDefault)
-            .statusBarsPadding()
             .padding(horizontal = 10.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -286,10 +301,13 @@ private fun ShellPageContent(
     onOpenOverlay: (ShellOverlay) -> Unit,
 ) {
     when (page) {
-        null -> AskScreen(onOpenDocument = { url -> navController.navigate(DocumentRoute(url)) })
+        null -> AskScreen(onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) })
         DrawerSection.Sessions -> PageSurface { SessionsDrawerContent() }
         DrawerSection.Jobs -> JobsScreen()
-        DrawerSection.Knowledge -> KnowledgeScreen()
+        DrawerSection.Knowledge -> KnowledgeScreen(
+            onOpenTab = { tab -> onOpenOverlay(ShellOverlay.Knowledge(tab)) },
+            onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
+        )
         DrawerSection.Management -> PageSurface {
             ManagementDrawerContent(
                 onOpenDedupe = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Dedupe)) },
@@ -317,7 +335,7 @@ private fun PageSurface(content: @Composable () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(AxonTheme.colors.pageBg)
-            .padding(8.dp),
+            .padding(10.dp),
     ) {
         content()
     }
@@ -334,6 +352,7 @@ private fun DrawerSection.title(): String = when (this) {
 @Composable
 private fun ShellOverlayContent(
     overlay: ShellOverlay,
+    navController: NavController,
     onBack: () -> Unit,
     onHome: () -> Unit,
 ) {
@@ -346,26 +365,26 @@ private fun ShellOverlayContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(40.dp)
                 .background(colors.panelMedium)
                 .border(1.dp, colors.borderDefault)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
                 Icons.AutoMirrored.Rounded.ArrowBack,
                 contentDescription = "Back",
-                tint = colors.textMuted,
+                tint = colors.textMuted.copy(alpha = 0.86f),
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(25.dp)
                     .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onBack)
                     .padding(5.dp),
             )
             Text(
                 overlay.title,
                 color = colors.textPrimary,
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = AxonTheme.fonts.display,
                 maxLines = 1,
@@ -377,14 +396,18 @@ private fun ShellOverlayContent(
                 contentDescription = "Close",
                 tint = colors.textMuted,
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(25.dp)
                     .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onHome)
                     .padding(5.dp),
             )
         }
         Box(modifier = Modifier.fillMaxSize()) {
             when (overlay) {
-                is ShellOverlay.Knowledge -> KnowledgeScreen(initialTab = overlay.tab, showChrome = false)
+                is ShellOverlay.Knowledge -> KnowledgeScreen(
+                    initialTab = overlay.tab,
+                    showChrome = false,
+                    onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
+                )
                 ShellOverlay.Settings -> SettingsScreen()
                 is ShellOverlay.Command -> ShellCommandReport(command = overlay.command)
             }
@@ -392,136 +415,6 @@ private fun ShellOverlayContent(
     }
 }
 
-@Composable
-private fun ShellCommandReport(
-    command: ShellCommand,
-    setupVm: SetupViewModel = viewModel(),
-    managementVm: ManagementViewModel = viewModel(),
-) {
-    val colors = AxonTheme.colors
-    val smoke by setupVm.smokeState.collectAsStateWithLifecycle()
-    val doctor by setupVm.doctorState.collectAsStateWithLifecycle()
-    val stack by managementVm.statsState.collectAsStateWithLifecycle()
-
-    LaunchedEffect(command) {
-        when (command) {
-            ShellCommand.Preflight -> {
-                setupVm.runSmoke()
-                setupVm.runDoctor()
-            }
-            ShellCommand.Smoke -> setupVm.runSmoke()
-            ShellCommand.Doctor -> setupVm.runDoctor()
-            ShellCommand.Stack, ShellCommand.Monitor -> managementVm.loadStats()
-            else -> Unit
-        }
-    }
-
-    val status = when (command) {
-        ShellCommand.Preflight -> combineStatus(smoke, doctor)
-        ShellCommand.Smoke -> resourceStatus(smoke)
-        ShellCommand.Doctor -> resourceStatus(doctor)
-        ShellCommand.Stack, ShellCommand.Monitor -> resourceStatus(stack)
-        ShellCommand.Dedupe, ShellCommand.Sync, ShellCommand.Setup, ShellCommand.Debug -> "READY"
-    }
-    val output = when (command) {
-        ShellCommand.Preflight -> listOf(
-            "healthz: ${resourceLine(smoke)}",
-            "doctor: ${resourceLine(doctor)}",
-        ).joinToString("\n")
-        ShellCommand.Smoke -> resourceLine(smoke)
-        ShellCommand.Doctor -> resourceLine(doctor)
-        ShellCommand.Stack, ShellCommand.Monitor -> resourceLine(stack)
-        ShellCommand.Dedupe -> "dedupe service command is not exposed by the Android API yet"
-        ShellCommand.Sync -> "watch/sitemap sync command is not exposed by the Android API yet"
-        ShellCommand.Setup -> "configure .env and config.toml from Management > Config"
-        ShellCommand.Debug -> "debug report uses doctor plus config paths; open Doctor and Config for live values"
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(
-            "COMMAND REPORT",
-            color = colors.textMuted,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.ExtraBold,
-            fontFamily = AxonTheme.fonts.mono,
-            letterSpacing = 0.4.sp,
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(colors.panelStrong)
-                .border(1.dp, colors.borderStrong, RoundedCornerShape(16.dp))
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.tint(colors.accentPrimary, 12, colors.panelStrong))
-                        .border(1.dp, colors.tint(colors.accentPrimary, 30, colors.panelStrong), RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.Settings, contentDescription = null, tint = colors.accentStrong, modifier = Modifier.size(19.dp))
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(command.title, color = colors.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display)
-                    Text(command.summary, color = colors.textMuted, fontSize = 11.5.sp, fontFamily = AxonTheme.fonts.body)
-                }
-                Text(
-                    status,
-                    color = if (status == "ERROR") colors.error else colors.success,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = AxonTheme.fonts.mono,
-                    modifier = Modifier
-                        .border(1.dp, colors.tint(if (status == "ERROR") colors.error else colors.success, 34, colors.panelStrong), RoundedCornerShape(5.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(colors.control)
-                    .border(1.dp, colors.borderDefault, RoundedCornerShape(13.dp))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Text("$ ${command.endpoint}", color = colors.accentStrong, fontSize = 11.sp, fontFamily = AxonTheme.fonts.mono)
-                Text(output, color = colors.textPrimary, fontSize = 11.sp, fontFamily = AxonTheme.fonts.mono)
-            }
-        }
-    }
-}
-
-private fun combineStatus(a: Resource<String>, b: Resource<String>): String = when {
-    a is Resource.Error || b is Resource.Error -> "ERROR"
-    a is Resource.Loading || b is Resource.Loading -> "RUNNING"
-    a is Resource.Ready && b is Resource.Ready -> "PASSED"
-    else -> "READY"
-}
-
-private fun resourceStatus(resource: Resource<String>): String = when (resource) {
-    Resource.Idle -> "READY"
-    Resource.Loading -> "RUNNING"
-    is Resource.Ready -> "PASSED"
-    is Resource.Error -> "ERROR"
-}
-
-private fun resourceLine(resource: Resource<String>): String = when (resource) {
-    Resource.Idle -> "ready"
-    Resource.Loading -> "running..."
-    is Resource.Ready -> resource.value
-    is Resource.Error -> resource.message
-}
 
 @Composable
 private fun AxonTopBar(
@@ -530,37 +423,45 @@ private fun AxonTopBar(
     onToggleSidebar: () -> Unit,
 ) {
     val colors = AxonTheme.colors
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(42.dp)
             .background(colors.navBg)
-            .padding(start = 14.dp, end = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 13.dp, end = 11.dp),
     ) {
-        Icon(
-            Icons.Rounded.Menu,
-            contentDescription = if (sidebarOpen) "Collapse sidebar" else "Open sidebar",
-            tint = colors.textMuted,
+        Row(
+            modifier = Modifier.align(Alignment.CenterStart),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Rounded.Menu,
+                contentDescription = if (sidebarOpen) "Collapse sidebar" else "Open sidebar",
+                tint = colors.textMuted,
+                modifier = Modifier
+                    .size(25.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onToggleSidebar)
+                    .padding(5.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("Axon", color = colors.textPrimary.copy(alpha = 0.88f), fontSize = 13.2.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display)
+            Spacer(Modifier.width(8.dp))
+            AuroraStatusDot(DotState.Done, size = 5.dp)
+        }
+        Text(
+            title,
+            color = colors.textPrimary.copy(alpha = 0.90f),
+            fontSize = 13.2.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = AxonTheme.fonts.display,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onToggleSidebar)
-                .padding(6.dp),
+                .align(Alignment.Center)
+                .widthIn(max = 180.dp),
         )
-        Spacer(Modifier.width(8.dp))
-        AxonMarkGlyph(modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(8.dp))
-        Text("Axon", color = colors.textPrimary, fontSize = 15.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display)
-        Spacer(Modifier.width(8.dp))
-        AuroraStatusDot(DotState.Done, size = 6.dp)
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            Text(title, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            AuroraStatusDot(DotState.Done, size = 7.dp)
-            Text("LIVE", color = colors.textMuted, fontSize = 11.sp, fontFamily = AxonTheme.fonts.mono)
-        }
+        TopChromeStatus(modifier = Modifier.align(Alignment.CenterEnd))
     }
 }
 

@@ -91,6 +91,10 @@ private fun makeResult(url: String) = RetrieveResultUi(
     content = "chunk text",
     truncated = false,
     warnings = emptyList(),
+    tokenEstimate = 2,
+    nextCursor = null,
+    remainingTokensEstimate = null,
+    refreshStatus = null,
 )
 
 private class TestDocumentViewModel(private val stubResult: Result<RetrieveResultUi>) {

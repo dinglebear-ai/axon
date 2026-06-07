@@ -121,6 +121,38 @@ fn into_config_reads_openai_compat_env_settings() {
 
 #[allow(unsafe_code)]
 #[test]
+fn into_config_reads_split_synthesis_and_chat_models() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(
+        &[
+            "AXON_LLM_BACKEND",
+            "AXON_SYNTHESIS_OPENAI_MODEL",
+            "AXON_OPENAI_MODEL",
+            "AXON_CHAT_OPENAI_MODEL",
+            "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
+            "AXON_HEADLESS_GEMINI_MODEL",
+            "AXON_CHAT_HEADLESS_GEMINI_MODEL",
+        ],
+        || unsafe {
+            env::set_var("AXON_LLM_BACKEND", "openai-compat");
+            env::set_var("AXON_OPENAI_MODEL", "legacy-synthesis");
+            env::set_var("AXON_SYNTHESIS_OPENAI_MODEL", "explicit-synthesis");
+            env::set_var("AXON_CHAT_OPENAI_MODEL", "direct-chat");
+            env::set_var("AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL", "gemini-synthesis");
+            env::set_var("AXON_CHAT_HEADLESS_GEMINI_MODEL", "gemini-chat");
+
+            let cfg = into_config_via_args(&["status"]).expect("status config");
+
+            assert_eq!(cfg.openai_model, "explicit-synthesis");
+            assert_eq!(cfg.openai_chat_model, "direct-chat");
+            assert_eq!(cfg.headless_gemini_model, "gemini-synthesis");
+            assert_eq!(cfg.headless_gemini_chat_model, "gemini-chat");
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn into_config_rejects_unknown_llm_backend() {
     let _guard = ENV_LOCK.lock().unwrap();
     with_env_saved(&["AXON_LLM_BACKEND"], || unsafe {

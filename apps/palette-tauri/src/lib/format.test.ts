@@ -34,4 +34,8 @@ describe("formatPayload", () => {
       "Use AXON_LLM_BACKEND=openai-compat.",
     );
   });
+
+  it("returns chat answers without compacting the whole response", () => {
+    expect(formatPayload("chat", { answer: "No retrieval used." })).toBe("No retrieval used.");
+  });
 });

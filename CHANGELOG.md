@@ -5,41 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.1.2] - 2026-06-06
-
-### Fixed
-
-- **`provider add` now validates a `backend=` field override** — `axon config provider add foo gemini backend=garbage` previously overwrote the validated positional backend with an unparseable value; it is now rejected, matching `provider set`.
-- **`provider set` refuses to create an orphan profile** — setting a field on a non-existent profile no longer silently writes a backend-less `[providers.<name>]` section (which would fail every later `use`/`ask`); it errors and points to `provider add`.
-
-### Changed
-
-- **`LlmBackendKind::as_str()` is the single source of truth for the backend string.** The CLI label and the per-job config snapshot now derive their token from it (with a `parse(as_str()) == kind` round-trip test), so the backend can no longer be serialized one way and parsed another across the async-job worker boundary.
-- **`provider list` and `cfg.llm_backend` share one resolver** (`backend_from_overlay`), eliminating the last duplicated precedence logic.
-- **Codex stderr diagnostics are more robust** — a no-answer-text turn now carries the collected stderr context into its error, and a stderr read error preserves the partial tail instead of discarding it.
-
-### Tests
-
-- Added coverage for the profile-overrides-env precedence (`overlay_or_env`, `backend_from_overlay`, `effective_backend_kind`), provider CRUD round-trips (add/use/set/remove-clears-active), the `FIELDS`↔`TomlProvider` field-set drift guard, the `as_str` round-trip, codex `CODEX_HOME` isolation (`copy_auth`/`prepare_codex_home`), security validators (symlink/non-executable), the `AXON_PROVIDER` env precedence tier, and `on_delta` error propagation.
-
-## [5.1.1] - 2026-06-06
-
-### Fixed
-
-- **Codex backend context budget.** `ask_model_tier` now keys the model-context budget off the active backend enum, so the `codex-app-server` backend gets its intended Medium (≈400k-char) budget instead of falling through to Small (40k) when no model string is set. The tier now reads the *active* backend's model field (`codex_model` / `headless_gemini_model` / `openai_model`) via `configured_model_from_config` rather than always reading `openai_model`.
-- **`provider list` effective-backend display.** `axon config provider list` resolves the effective backend through the *same* provider-overlay path the real config uses (single source of truth via `backend_from_overlay`), so a broken active profile now surfaces inline as `<unresolved: …>` instead of a misleading green default, and the displayed precedence cannot drift from what an actual `ask` resolves.
-
 ## [5.1.0] - 2026-06-06
 
 ### Added
 
-- **`codex-app-server` LLM backend.** `AXON_LLM_BACKEND=codex-app-server` routes LLM synthesis through the OpenAI Codex CLI's `codex app-server` over stdio, joining `gemini-headless` (default) and `openai-compat`. Because every LLM-using action funnels through one dispatch point keyed on the backend, this covers **all** of them at once: `ask`, `research`, `summarize`, `suggest`, `evaluate`, `extract` LLM fallback, `debug`, and the `watch` change-report summarizer.
-  - Each completion spawns `codex app-server` in an isolated `CODEX_HOME` (mirroring the Gemini headless backend): `auth.json` is copied in and a minimal `config.toml` disables MCP servers, the built-in apps tool server, hooks, and OTLP — so a one-shot synthesis call does not load the user's MCP fleet or balloon the prompt. Streaming deltas, final-message fallback, token usage, turn-failure errors, and bidirectional server-request decline are all handled.
-  - New env vars: `AXON_CODEX_CMD` (codex binary, default `codex`), `AXON_CODEX_MODEL` (model override; blank = codex default), `AXON_CODEX_HOME` (source home to copy `auth.json` from; defaults to `$CODEX_HOME` / `~/.codex`). Auth also works via `OPENAI_API_KEY` in the environment.
-- **Saved LLM provider/model profiles.** Define named backend+model profiles in `config.toml` under `[providers.<name>]` and switch between them — e.g. go from codex to gemini to an openai-compat endpoint — without juggling env vars. Managed with `axon config provider list | show <name> | use <name> | add <name> <backend> [field=value …] | set <name> <field> <value> | remove <name>`.
-  - Selection precedence: `--provider <name>` flag > `AXON_PROVIDER` env > `[llm] active-provider`. An **active profile overrides `AXON_LLM_BACKEND` and the other per-backend `AXON_*` env vars** (an intentional exception to the global `env > toml` rule, so that activating a profile actually switches the backend). With no active profile, resolution is byte-identical to before (fully backward compatible).
-  - Profile fields: `backend` (required), `model`, `base-url`, `api-key`, `cmd`, `home`. `base-url`/`api-key` apply to `openai-compat`; `model`/`cmd`/`home` route to the chosen backend. Per-field fallback means an unset field inherits from the env layer (e.g. an openai profile can omit `api-key` to use `AXON_OPENAI_API_KEY`). The openai `api-key` is stored inline in `config.toml` (keep it chmod 600) and redacted in `axon config` output.
-  - New env var `AXON_PROVIDER` and global flag `--provider <name>`.
+- **Android direct Chat mode and shared desktop palette support.** Added direct LLM chat endpoints (`POST /v1/chat`, `POST /v1/chat/stream`) that bypass RAG retrieval and synthesis prompts, wired Android Ask/Chat mode switching, and exposed the same direct chat command in the Rust desktop palette and Tauri palette.
+- **Split synthesis and chat model configuration.** Added `AXON_SYNTHESIS_OPENAI_MODEL`, `AXON_CHAT_OPENAI_MODEL`, `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL`, and `AXON_CHAT_HEADLESS_GEMINI_MODEL`, plus `[llm]` `config.toml` model fields. Legacy `AXON_OPENAI_MODEL` and `AXON_HEADLESS_GEMINI_MODEL` remain synthesis aliases.
+
+### Changed
+
+- **Android mock-alignment and operation surfaces continue moving to live production data.** The Android app now parses action and job output into human-readable UI surfaces, exposes expanded settings for `.env` and `config.toml`, and moves rail/sidebar data into dedicated app screens.
 
 ## [5.0.1] - 2026-06-04
 

@@ -10,18 +10,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
 import com.axon.app.ui.theme.tint
@@ -55,17 +53,16 @@ fun FabRing(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF040A0E).copy(alpha = openProgress * 0.82f))
+                    .background(Color(0xFF040A0E).copy(alpha = openProgress * 0.94f))
                     .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             )
         }
 
         val radiusPx = with(density) { radiusDp.toPx() }
-        val halfTilePx = with(density) { 28.dp.roundToPx() }
-        val halfDismissPx = with(density) { 26.dp.roundToPx() }
-
-        FabOp.entries.forEachIndexed { i, op ->
-            val angleRad = Math.toRadians(-90.0 + i * 36.0)
+        val halfTilePx = with(density) { 22.dp.roundToPx() }
+        val halfDismissPx = with(density) { 21.dp.roundToPx() }
+        FabRingOps.forEachIndexed { i, op ->
+            val angleRad = Math.toRadians(-90.0 + i * (360.0 / FabRingOps.size))
             val dx = (radiusPx * cos(angleRad) * openProgress).roundToInt()
             val dy = (radiusPx * sin(angleRad) * openProgress).roundToInt()
 
@@ -82,17 +79,27 @@ fun FabRing(
             )
         }
 
-        // Center dismiss button
         Box(
             modifier = Modifier
-                .offset { IntOffset(fabCenterOffset.x - halfDismissPx, fabCenterOffset.y - halfDismissPx) }
-                .size(52.dp)
-                .background(AxonTheme.colors.panelMedium, RoundedCornerShape(17.dp))
-                .border(1.dp, AxonTheme.colors.borderStrong, RoundedCornerShape(17.dp))
+                .offset {
+                    IntOffset(
+                        x = fabCenterOffset.x - halfDismissPx,
+                        y = fabCenterOffset.y - halfDismissPx,
+                    )
+                }
+                .size(42.dp)
+                .graphicsLayer { this.alpha = openProgress }
+                .background(AxonTheme.colors.panelMedium.copy(alpha = 0.32f), RoundedCornerShape(12.dp))
+                .border(1.dp, AxonTheme.colors.borderStrong.copy(alpha = 0.48f), RoundedCornerShape(12.dp))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = AxonTheme.colors.textPrimary, modifier = Modifier.size(20.dp))
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = "Close operations",
+                tint = AxonTheme.colors.textPrimary.copy(alpha = 0.78f),
+                modifier = Modifier.size(16.dp),
+            )
         }
     }
 }
@@ -102,42 +109,32 @@ private fun OpTile(op: FabOp, modifier: Modifier, alpha: Float, onClick: () -> U
     val colors = AxonTheme.colors
     val tone = colors.toneOf(if (op.isAsync) AxonTone.Orange else AxonTone.Cyan)
     val bg = colors.panelStrong
-    val iconBg = colors.tint(tone.base, 14, colors.pageBg)
-    val iconBorder = colors.tint(tone.base, 28, colors.panelStrong)
-    val border = if (op.isAsync) colors.tint(tone.base, 35, colors.panelStrong) else colors.borderStrong
+    val iconBg = colors.tint(tone.base, 13, colors.pageBg)
+    val iconBorder = colors.tint(tone.base, 30, colors.panelStrong)
+    val border = if (op.isAsync) colors.tint(tone.base, 36, colors.panelStrong) else colors.borderStrong
 
     Box(
         modifier = modifier
-            .size(56.dp)
+            .size(44.dp)
             .graphicsLayer { this.alpha = alpha }
-            .background(bg, RoundedCornerShape(16.dp))
-            .border(1.dp, border, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(bg.copy(alpha = 0.09f), RoundedCornerShape(10.dp))
+            .border(1.dp, border.copy(alpha = 0.32f), RoundedCornerShape(10.dp))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .background(iconBg, RoundedCornerShape(9.dp))
-                    .border(1.dp, iconBorder, RoundedCornerShape(9.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = op.icon,
-                    contentDescription = op.label,
-                    tint = tone.fg,
-                    modifier = Modifier.size(15.dp),
-                )
-            }
-            Text(
-                op.label.uppercase(),
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textMuted,
-                letterSpacing = 0.4.sp,
-                fontFamily = AxonTheme.fonts.body,
-                maxLines = 1,
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(iconBg.copy(alpha = 0.62f), RoundedCornerShape(8.dp))
+                .border(1.dp, iconBorder.copy(alpha = 0.60f), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = op.icon,
+                contentDescription = op.label,
+                tint = tone.fg.copy(alpha = 0.82f),
+                modifier = Modifier.size(16.dp),
             )
         }
     }

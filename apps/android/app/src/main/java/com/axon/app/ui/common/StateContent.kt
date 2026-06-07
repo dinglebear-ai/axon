@@ -43,10 +43,11 @@ fun ErrorContent(
     modifier: Modifier = Modifier,
     onRetry: (() -> Unit)? = null,
 ) {
+    val readableMessage = humanizeJsonFragmentText(message)
     Column(modifier = Modifier.fillMaxWidth().then(modifier)) {
         AuroraCallout(
             title = "Error",
-            message = message,
+            message = readableMessage,
             variant = AuroraCalloutVariant.Error,
             modifier = Modifier.fillMaxWidth(),
             icon = {

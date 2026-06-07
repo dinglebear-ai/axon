@@ -82,19 +82,13 @@ Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and 
 - `QDRANT_URL` — Qdrant vector store URL
 - `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.prod.yaml`)
 - Gemini CLI auth plus `AXON_HEADLESS_GEMINI_CMD` for the default LLM synthesis
-  path, `AXON_LLM_BACKEND=openai-compat` plus `AXON_OPENAI_BASE_URL` and
-  `AXON_OPENAI_MODEL` for llama.cpp/OpenAI-compatible endpoints, or
-  `AXON_LLM_BACKEND=codex-app-server` plus `AXON_CODEX_CMD` (and Codex auth via
-  `AXON_CODEX_HOME`) for the OpenAI Codex CLI
+  path, or `AXON_LLM_BACKEND=openai-compat` plus `AXON_OPENAI_BASE_URL` and
+  `AXON_OPENAI_MODEL` for llama.cpp/OpenAI-compatible endpoints
 
 The legacy `OPENAI_*` env vars were removed in 3.0.0. Gemini headless remains
-the default backend (`AXON_HEADLESS_GEMINI_*`); OpenAI-compatible
+the default backend (`AXON_HEADLESS_GEMINI_*`), and OpenAI-compatible
 `/v1/chat/completions` servers are configured through the `AXON_OPENAI_*`
-variables when `AXON_LLM_BACKEND=openai-compat`; and the OpenAI Codex CLI is
-driven through the `AXON_CODEX_*` variables when
-`AXON_LLM_BACKEND=codex-app-server`. The backend is global (one setting for every
-LLM action); save named profiles in `config.toml` and switch with
-`axon config provider use <name>` to flip backends without editing env vars.
+variables when `AXON_LLM_BACKEND=openai-compat`.
 
 ### Web Panel and HTTP Auth
 
@@ -106,14 +100,10 @@ LLM action); save named profiles in `config.toml` and switch with
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend: `gemini-headless`, `openai-compat`, or `codex-app-server`. Global across all LLM actions; overridden by an active provider profile. |
+| `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Use `openai-compat` for llama.cpp/OpenAI-compatible `/v1/chat/completions` servers. |
 | `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. |
 | `AXON_OPENAI_MODEL` | -- | Model name sent when `AXON_LLM_BACKEND=openai-compat`. |
 | `AXON_OPENAI_API_KEY` | -- | Optional bearer token for endpoints that require auth. |
-| `AXON_CODEX_CMD` | `codex` | Codex CLI command for the `codex-app-server` backend. Path-like values are validated before launch. |
-| `AXON_CODEX_MODEL` | -- | Codex model override. Blank uses the Codex CLI default. |
-| `AXON_CODEX_HOME` | `$CODEX_HOME`/`~/.codex` | Source home the codex backend copies `auth.json` from into an isolated `CODEX_HOME`. |
-| `AXON_PROVIDER` | -- | Active saved provider profile name (overrides `[llm] active-provider`). |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command used for synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | process `HOME` | Source HOME for copying Gemini auth into an isolated temporary HOME. |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Max concurrent LLM completions. |

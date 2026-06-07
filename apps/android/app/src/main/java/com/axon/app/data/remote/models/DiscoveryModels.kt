@@ -23,6 +23,7 @@ data class SuggestHit(
 @Serializable
 data class SuggestResponse(
     val urls: List<SuggestHit> = emptyList(),
+    val suggestions: List<SuggestHit> = emptyList(),
 )
 
 /** GET /v1/domains. */

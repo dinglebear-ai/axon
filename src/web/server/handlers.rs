@@ -8,6 +8,10 @@ pub mod ask_stream;
 pub mod async_jobs;
 #[path = "handlers/auth.rs"]
 pub mod auth;
+#[path = "handlers/chat.rs"]
+pub mod chat;
+#[path = "handlers/chat_stream.rs"]
+pub mod chat_stream;
 #[path = "handlers/config.rs"]
 pub mod config;
 #[path = "handlers/discovery.rs"]
@@ -26,6 +30,8 @@ pub mod setup;
 pub use ask::v1_ask;
 pub use ask_stream::v1_ask_stream;
 pub use auth::{login, panel_state};
+pub use chat::v1_chat;
+pub use chat_stream::v1_chat_stream;
 pub use config::{
     get_config, get_env_config, ops, panel_command, panel_doctor, panel_status, save_config,
     save_env_config,

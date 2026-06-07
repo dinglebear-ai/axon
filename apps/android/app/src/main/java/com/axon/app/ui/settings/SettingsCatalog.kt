@@ -61,7 +61,7 @@ object AxonSettingsCatalog {
             note = "Optional API keys. Each unlocks a source or higher rate limits.",
             fields = listOf(
                 SettingField("TAVILY_API_KEY", SettingKind.Secret, "", "Tavily key for search / research."),
-                SettingField("AXON_SEARXNG_URL", SettingKind.Text, "", "Self-hosted SearXNG JSON endpoint. Overrides Tavily for research."),
+                SettingField("AXON_SEARXNG_URL", SettingKind.Text, "", "Self-hosted SearXNG search endpoint. Overrides Tavily for research."),
                 SettingField("GITHUB_TOKEN", SettingKind.Secret, "", "Higher-rate GitHub ingest."),
                 SettingField("GITLAB_TOKEN", SettingKind.Secret, "", "GitLab repo ingest."),
                 SettingField("GITEA_TOKEN", SettingKind.Secret, "", "Gitea repo ingest."),
@@ -78,13 +78,17 @@ object AxonSettingsCatalog {
             fields = listOf(
                 SettingField("AXON_LLM_BACKEND", SettingKind.Enum, "", "Synthesis backend. Empty = Gemini headless.", options = listOf("", "gemini", "openai-compat")),
                 SettingField("AXON_OPENAI_BASE_URL", SettingKind.Text, "", "OpenAI-compatible API root. No /chat/completions."),
-                SettingField("AXON_OPENAI_MODEL", SettingKind.Text, "", "Model name for the OpenAI-compatible endpoint."),
+                SettingField("AXON_SYNTHESIS_OPENAI_MODEL", SettingKind.Text, "", "OpenAI-compatible model for RAG synthesis."),
+                SettingField("AXON_OPENAI_MODEL", SettingKind.Text, "", "Legacy alias for the synthesis OpenAI-compatible model."),
+                SettingField("AXON_CHAT_OPENAI_MODEL", SettingKind.Text, "", "OpenAI-compatible model for direct Chat mode. Empty uses synthesis model."),
                 SettingField("AXON_OPENAI_API_KEY", SettingKind.Secret, "", "Optional key for the OpenAI-compatible endpoint."),
                 SettingField("GEMINI_API_KEY", SettingKind.Secret, "", "Gemini API key. Leave blank to use OAuth under HOME/.gemini."),
                 SettingField("GEMINI_HOME", SettingKind.Text, "", "Host dir holding Gemini CLI OAuth credentials."),
                 SettingField("AXON_HEADLESS_GEMINI_HOME", SettingKind.Text, "", "Dir Axon copies OAuth files FROM per invocation."),
                 SettingField("AXON_HEADLESS_GEMINI_CMD", SettingKind.Text, "", "Path to the gemini binary."),
-                SettingField("AXON_HEADLESS_GEMINI_MODEL", SettingKind.Text, "", "Gemini model override."),
+                SettingField("AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL", SettingKind.Text, "", "Gemini model for RAG synthesis."),
+                SettingField("AXON_HEADLESS_GEMINI_MODEL", SettingKind.Text, "", "Legacy alias for the synthesis Gemini model."),
+                SettingField("AXON_CHAT_HEADLESS_GEMINI_MODEL", SettingKind.Text, "", "Gemini model for direct Chat mode. Empty uses synthesis model."),
             ),
         ),
         SettingGroup(
@@ -124,6 +128,12 @@ object AxonSettingsCatalog {
     )
 
     val configGroups = listOf(
+        SettingGroup("llm", "[llm]", "LLM Models", "Non-secret model names for synthesis and direct chat.", "brain", listOf(
+            SettingField("synthesis-openai-model", SettingKind.Text, "", "OpenAI-compatible model for RAG synthesis.", "AXON_SYNTHESIS_OPENAI_MODEL"),
+            SettingField("chat-openai-model", SettingKind.Text, "", "OpenAI-compatible model for direct Chat mode.", "AXON_CHAT_OPENAI_MODEL"),
+            SettingField("synthesis-gemini-model", SettingKind.Text, "", "Gemini model for RAG synthesis.", "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL"),
+            SettingField("chat-gemini-model", SettingKind.Text, "", "Gemini model for direct Chat mode.", "AXON_CHAT_HEADLESS_GEMINI_MODEL"),
+        )),
         SettingGroup("search", "[search]", "Search & Hybrid", "RRF hybrid retrieval and HNSW recall tuning.", "search", listOf(
             SettingField("hybrid-enabled", SettingKind.Bool, "true", "Enable RRF hybrid search.", "AXON_HYBRID_SEARCH"),
             SettingField("hybrid-candidates", SettingKind.Int, "100", "Candidates per prefetch arm before RRF fusion.", "AXON_HYBRID_CANDIDATES"),
@@ -212,6 +222,11 @@ object AxonSettingsCatalog {
         SettingGroup("verticals", "[verticals]", "Vertical Extractors", "Per-site extractor controls.", "braces", listOf(
             SettingField("enabled", SettingKind.Bool, "true", "Enable vertical extractors.", "AXON_ENABLE_VERTICALS"),
             SettingField("auto-dispatch-skip", SettingKind.List, "", "Verticals to skip in auto-dispatch.", "AXON_AUTO_DISPATCH_SKIP"),
+        )),
+        SettingGroup("verticals.cache-ttl-secs", "[verticals.cache-ttl-secs]", "Vertical Cache TTL", "Per-vertical cache TTL in seconds.", "clock", listOf(
+            SettingField("github", SettingKind.Int, "86400", "GitHub vertical cache TTL.", "AXON_VERTICAL_CACHE_TTL_GITHUB"),
+            SettingField("reddit", SettingKind.Int, "3600", "Reddit vertical cache TTL.", "AXON_VERTICAL_CACHE_TTL_REDDIT"),
+            SettingField("hn", SettingKind.Int, "21600", "Hacker News vertical cache TTL.", "AXON_VERTICAL_CACHE_TTL_HN"),
         )),
         SettingGroup("antibot", "[antibot]", "Anti-bot", "Akamai / Cloudflare challenge handling.", "shield", listOf(
             SettingField("cookie-warmup", SettingKind.Bool, "true", "Cookie warmup retry on antibot challenge.", "AXON_CHALLENGE_WARMUP"),

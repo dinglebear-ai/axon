@@ -25,6 +25,23 @@
 # Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL
 # in ~/.axon/.env. QDRANT_URL and TEI_URL also have temporary CLI overrides.
 
+[llm]
+# Non-secret model names can be set here. Env vars still win.
+# Existing AXON_OPENAI_MODEL and AXON_HEADLESS_GEMINI_MODEL are treated as
+# synthesis-model aliases for backwards compatibility.
+#
+# Env: AXON_SYNTHESIS_OPENAI_MODEL or AXON_OPENAI_MODEL
+# synthesis-openai-model = ""
+#
+# Env: AXON_CHAT_OPENAI_MODEL
+# chat-openai-model = ""
+#
+# Env: AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL or AXON_HEADLESS_GEMINI_MODEL
+# synthesis-gemini-model = ""
+#
+# Env: AXON_CHAT_HEADLESS_GEMINI_MODEL
+# chat-gemini-model = ""
+
 [search]
 # Enable RRF hybrid search (requires a named-mode Qdrant collection).
 # Disable if your collection is legacy unnamed-mode.
@@ -54,40 +71,9 @@
 # Env: AXON_COLLECTION (or --collection flag)
 # collection = "axon"
 
-# ── Saved LLM provider/model profiles ───────────────────────────────────────
-# Define named backend+model profiles and switch between them with
-#   axon config provider add <name> <backend> [field=value ...]
-#   axon config provider use <name>          # sets [llm] active-provider
-#   axon config provider list|show|set|remove
-# An ACTIVE profile overrides AXON_LLM_BACKEND and the other per-backend AXON_*
-# env vars (intentional exception to the usual env > toml rule, so switching
-# actually takes effect). Select for one run with `--provider <name>`.
-# Precedence: --provider > AXON_PROVIDER > [llm] active-provider.
-# Fields: backend (required), model, base-url, api-key, cmd, home. base-url/
-# api-key apply to openai-compat; model/cmd/home route to the chosen backend.
-# Note: api-key is stored inline here — keep config.toml chmod 600.
-#
-# [llm]
-# active-provider = "codex"
-#
-# [providers.codex]
-# backend = "codex-app-server"
-# model = "gpt-5.5"
-#
-# [providers.gemini-flash]
-# backend = "gemini-headless"
-# model = "gemini-3.1-flash-lite-preview"
-#
-# [providers.llama-local]
-# backend = "openai-compat"
-# base-url = "http://127.0.0.1:8080/v1"
-# model = "gemma-4"
-# api-key = "sk-..."          # optional; omit to inherit AXON_OPENAI_API_KEY
-
 [ask]
-# LLM synthesis defaults to Gemini headless. Configure the backend via a saved
-# provider profile (see above) or via AXON_LLM_BACKEND + backend-specific env
-# vars. An active provider profile overrides those env vars.
+# LLM synthesis defaults to Gemini headless. Configure AXON_LLM_BACKEND and
+# backend-specific runtime variables in the env layer rather than config.toml.
 
 # Max context characters passed to the LLM (clamped 20_000–1_000_000).
 # Env: AXON_ASK_MAX_CONTEXT_CHARS

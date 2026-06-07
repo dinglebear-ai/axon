@@ -39,10 +39,6 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("AXON_OPENAI_MODEL is required for ask"))?;
             Ok(())
         }
-        llm_backend::LlmBackendKind::CodexAppServer => {
-            llm_backend::codex_app_server::validate_config(&backend)
-                .map_err(|e| anyhow::anyhow!("{e}"))
-        }
     }
 }
 

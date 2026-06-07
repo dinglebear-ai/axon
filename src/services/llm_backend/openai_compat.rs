@@ -6,6 +6,7 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 use std::error::Error as StdError;
+use std::time::Duration;
 
 #[cfg(test)]
 #[path = "openai_compat_tests.rs"]
@@ -78,7 +79,9 @@ async fn send_chat_completion(
         "stream": stream,
     });
     let client = reqwest::Client::builder()
-        .timeout(req.backend.completion_timeout())
+        .timeout(Duration::from_secs(
+            req.backend.completion_timeout_secs.max(1),
+        ))
         .build()?;
     let mut request = client.post(url).json(&body);
     if let Some(key) = req

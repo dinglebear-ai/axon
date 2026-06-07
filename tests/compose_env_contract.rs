@@ -424,16 +424,14 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_HEADLESS_GEMINI_CMD",
         "AXON_HEADLESS_GEMINI_HOME",
         "AXON_HEADLESS_GEMINI_MODEL",
+        "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
+        "AXON_CHAT_HEADLESS_GEMINI_MODEL",
         "AXON_LLM_BACKEND",
         "AXON_OPENAI_BASE_URL",
         "AXON_OPENAI_MODEL",
+        "AXON_SYNTHESIS_OPENAI_MODEL",
+        "AXON_CHAT_OPENAI_MODEL",
         "AXON_OPENAI_API_KEY",
-        // LLM (codex app-server)
-        "AXON_CODEX_CMD",
-        "AXON_CODEX_MODEL",
-        "AXON_CODEX_HOME",
-        // LLM (saved provider profiles)
-        "AXON_PROVIDER",
         // Logging
         "AXON_LOG_PATH",
         // Ingest + search creds

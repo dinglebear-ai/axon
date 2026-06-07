@@ -15,6 +15,8 @@ pub(super) struct TomlConfig {
     #[serde(default)]
     pub services: TomlServicesSection,
     #[serde(default)]
+    pub llm: TomlLlmSection,
+    #[serde(default)]
     pub search: TomlSearchSection,
     #[serde(default)]
     pub ask: TomlAskSection,
@@ -32,33 +34,19 @@ pub(super) struct TomlConfig {
     pub antibot: TomlAntibotSection,
     #[serde(default)]
     pub payload: TomlPayloadSection,
-    #[serde(default)]
-    pub llm: TomlLlmSection,
-    #[serde(default)]
-    pub providers: std::collections::BTreeMap<String, TomlProvider>,
 }
 
-/// `[llm]` section — global LLM selection that is not backend-specific.
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlLlmSection {
-    /// Name of the active `[providers.<name>]` profile, if any.
-    pub active_provider: Option<String>,
-}
-
-/// A single `[providers.<name>]` profile — a saved backend + model + settings
-/// bundle that can be activated via `[llm] active-provider`, `AXON_PROVIDER`, or
-/// `--provider`. `model`/`cmd`/`home` route to the chosen backend's slot;
-/// `base-url`/`api-key` apply to the openai-compat backend.
-#[derive(Deserialize, Default, Clone)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(super) struct TomlProvider {
-    pub backend: Option<String>,
-    pub model: Option<String>,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>,
-    pub cmd: Option<String>,
-    pub home: Option<String>,
+    /// Synthesis model for Gemini headless. Env wins.
+    pub synthesis_gemini_model: Option<String>,
+    /// Direct chat model for Gemini headless. Env wins.
+    pub chat_gemini_model: Option<String>,
+    /// Synthesis model for OpenAI-compatible completions. Env wins.
+    pub synthesis_openai_model: Option<String>,
+    /// Direct chat model for OpenAI-compatible completions. Env wins.
+    pub chat_openai_model: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

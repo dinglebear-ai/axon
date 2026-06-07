@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,28 +58,47 @@ fun DrawerSubItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(11.dp))
-            .background(if (onClick != null) Color.Transparent else colors.tint(colors.accentPrimary, 5, colors.panelStrong))
-            .border(1.dp, Color.Transparent, RoundedCornerShape(11.dp))
+            .height(64.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(
+                if (onClick != null) Color.Transparent
+                else colors.tint(colors.accentPrimary, 5, colors.pageBg),
+            )
+            .border(
+                1.dp,
+                if (onClick != null) colors.borderDefault.copy(alpha = 0.05f)
+                else Color.Transparent,
+                RoundedCornerShape(9.dp),
+            )
             .then(clickModifier)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .padding(horizontal = 13.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = if (onClick != null) colors.textMuted else colors.accentStrong,
-            modifier = Modifier.size(16.dp),
+            tint = if (onClick != null) colors.textMuted.copy(alpha = 0.78f) else colors.accentStrong.copy(alpha = 0.92f),
+            modifier = Modifier.size(17.dp),
         )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary, fontFamily = AxonTheme.fonts.body)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                label,
+                fontSize = 13.2.sp,
+                lineHeight = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textPrimary,
+                fontFamily = AxonTheme.fonts.body,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 detail,
-                fontSize = 9.5.sp,
-                color = detailColor,
-                fontFamily = AxonTheme.fonts.body,
-                maxLines = 2,
+                fontSize = 10.9.sp,
+                lineHeight = 14.sp,
+                color = detailColor.copy(alpha = 0.80f),
+                fontFamily = AxonTheme.fonts.mono,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -87,8 +107,8 @@ fun DrawerSubItem(
             onClick != null -> Icon(
                 Icons.Rounded.ChevronRight,
                 contentDescription = null,
-                tint = colors.textMuted,
-                modifier = Modifier.size(14.dp),
+                tint = colors.textMuted.copy(alpha = 0.70f),
+                modifier = Modifier.size(16.dp),
             )
         }
     }

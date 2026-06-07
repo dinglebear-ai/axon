@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.net.URI
 
 data class ConfigFileUiState(
     val envValues: Map<String, String> = AxonSettingsCatalog.envDefaults,
@@ -68,21 +69,33 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun saveConnection(serverUrl: String, token: String, panelToken: String, collection: String) {
-        val updated = AxonSettings(
-            serverUrl  = ServerUrl(serverUrl.trim()),
-            token      = ApiToken(token.trim()),
-            panelToken = ApiToken(panelToken.trim()),
-            collection = collection.trim(),
-        )
         viewModelScope.launch {
             _saveState.value = SaveState.Saving
             runCatching {
+                val trimmedServerUrl = serverUrl.trim()
+                val trimmedToken = token.trim()
+                val trimmedPanelPassword = panelToken.trim()
+                validateServerUrl(trimmedServerUrl)
+                val resolvedPanelToken = if (trimmedPanelPassword.isBlank()) {
+                    ""
+                } else {
+                    AxonClient(trimmedServerUrl, trimmedToken)
+                        .panelLogin(trimmedPanelPassword)
+                        .getOrThrow()
+                }
+                val updated = AxonSettings(
+                    serverUrl = ServerUrl(trimmedServerUrl),
+                    token = ApiToken(trimmedToken),
+                    panelToken = ApiToken(resolvedPanelToken),
+                    collection = collection.trim(),
+                )
                 container.settingsRepository.save(updated)
                 container.axonClient.updateConfig(updated.serverUrl.value, updated.token.value)
                 container.axonClient.updatePanelToken(updated.panelToken.value)
             }.fold(
                 onSuccess = {
                     _saveState.value = SaveState.Saved
+                    refreshConfigFiles()
                 },
                 onFailure = { cause ->
                     _saveState.value = SaveState.Failed(
@@ -234,6 +247,10 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             _connection.value = TestConnectionState.Testing
             // Use a temporary throwaway client — do NOT mutate the shared client before saving
             val trimmedUrl = serverUrl.trim()
+            runCatching { validateServerUrl(trimmedUrl) }.onFailure { cause ->
+                _connection.value = TestConnectionState.Failed(cause.message ?: "Invalid server URL")
+                return@launch
+            }
             val tempClient = AxonClient(trimmedUrl, token.trim())
             val result = tempClient.healthz()
             _connection.value = result.fold(
@@ -251,6 +268,14 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                     TestConnectionState.Failed(cause.message ?: "Server unreachable")
                 },
             )
+        }
+    }
+
+    private fun validateServerUrl(value: String) {
+        val uri = runCatching { URI(value) }.getOrNull()
+        val scheme = uri?.scheme?.lowercase()
+        if (value.isBlank() || uri?.host.isNullOrBlank() || (scheme != "http" && scheme != "https")) {
+            throw IllegalArgumentException("Server URL must start with http:// or https://")
         }
     }
 }

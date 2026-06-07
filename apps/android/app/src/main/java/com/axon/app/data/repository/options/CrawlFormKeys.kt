@@ -13,10 +13,9 @@ internal object CrawlFormKeys {
     val SKIP_EMBED         = booleanPreferencesKey("mode_options.crawl.skip_embed")
     val COLLECTION         = stringPreferencesKey("mode_options.crawl.collection")
     val WAIT               = booleanPreferencesKey("mode_options.crawl.wait")
-    val JSON               = booleanPreferencesKey("mode_options.crawl.json")
 
     val ALL: List<Preferences.Key<*>> = listOf(
         MAX_PAGES, MAX_DEPTH, RENDER_MODE, INCLUDE_SUBDOMAINS,
-        SKIP_EMBED, COLLECTION, WAIT, JSON,
+        SKIP_EMBED, COLLECTION, WAIT,
     )
 }

@@ -2,6 +2,7 @@ package com.axon.app.ui.fab
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -35,7 +36,6 @@ fun FabLauncher(
     var state by remember { mutableStateOf<FabState>(FabState.Idle) }
     var fabCenter by remember { mutableStateOf(IntOffset.Zero) }
     val colors = AxonTheme.colors
-    val dimens = AxonTheme.dimens
 
     BackHandler(enabled = state !is FabState.Idle) {
         state = FabState.Idle
@@ -47,13 +47,19 @@ fun FabLauncher(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        val screenCenter = remember(maxWidth, maxHeight) {
-            with(density) { IntOffset((maxWidth / 2).roundToPx(), (maxHeight / 2).roundToPx()) }
+        val imeVisible = WindowInsets.ime.getBottom(density) > 0
+        val ringCenter = remember(maxWidth, maxHeight) {
+            with(density) {
+                IntOffset(
+                    x = (maxWidth / 2).roundToPx(),
+                    y = (maxHeight * 0.44f).roundToPx(),
+                )
+            }
         }
 
         FabRing(
             visible = state is FabState.Ring,
-            fabCenterOffset = if (state is FabState.Ring) screenCenter else fabCenter,
+            fabCenterOffset = if (state is FabState.Ring) ringCenter else fabCenter,
             onOpSelected = { op -> state = FabState.Input(op) },
             onDismiss = { state = FabState.Idle },
         )
@@ -69,12 +75,12 @@ fun FabLauncher(
             )
         }
 
-        if (state is FabState.Idle) {
+        if (state is FabState.Idle && !imeVisible) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = 80.dp, end = 16.dp)
-                    .size(dimens.fabSize)
+                    .padding(bottom = 88.dp, end = 16.dp)
+                    .size(46.dp)
                     .onGloballyPositioned { coords ->
                         val pos = coords.positionInWindow()
                         fabCenter = IntOffset(
@@ -82,13 +88,19 @@ fun FabLauncher(
                             y = (pos.y + coords.size.height / 2).roundToInt(),
                         )
                     }
-                    .background(colors.accentPrimary, RoundedCornerShape(17.dp))
+                    .background(colors.panelStrong.copy(alpha = 0.76f), RoundedCornerShape(15.dp))
+                    .border(1.dp, colors.borderStrong.copy(alpha = 0.74f), RoundedCornerShape(15.dp))
                     .clickable(remember { MutableInteractionSource() }, indication = null) {
                         state = FabState.Ring
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Add, contentDescription = "Launch operation", tint = androidx.compose.ui.graphics.Color(0xFF06131C), modifier = Modifier.size(23.dp))
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = "Launch operation",
+                    tint = colors.accentStrong.copy(alpha = 0.88f),
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }

@@ -33,6 +33,7 @@ Status meanings:
 | CLI command | Service entry point(s) | MCP action/subaction | HTTP endpoint/status | Notes |
 |---|---|---|---|---|
 | `ask` | `services::query::ask` | `ask` | `POST /v1/ask`, `POST /v1/ask/stream` = Implemented | `/v1/ask/stream` is advertised in `supported_routes()` and serves SSE; non-streaming `/v1/ask` remains for existing clients. |
+| `chat` | `services::llm_backend` direct completion path | no dedicated action | `POST /v1/chat`, `POST /v1/chat/stream` = Implemented | Direct LLM chat without RAG retrieval/synthesis prompt. Used by clients that need plain model chat. |
 | `crawl` | `services::crawl::{crawl_start_with_context,crawl_status,crawl_list,crawl_cancel,crawl_cleanup,crawl_clear,crawl_recover}` | `crawl.start`, `crawl.status`, `crawl.cancel`, `crawl.list`, `crawl.cleanup`, `crawl.clear`, `crawl.recover` | `POST /v1/crawl`, `GET /v1/crawl`, `GET /v1/crawl/{id}`, `POST /v1/crawl/{id}/cancel`, `POST /v1/crawl/cleanup`, `DELETE /v1/crawl`, `POST /v1/crawl/recover` = Implemented | CLI-only `crawl worker`, `crawl errors`, `crawl audit`, and `crawl diff` are local process/reporting operations. |
 | `debug` | `services::debug::debug_report` | no dedicated action | Missing | Needs API shape decision for diagnostics payload and LLM troubleshooting artifacts. |
 | `dedupe` | `services::system::dedupe` | no dedicated action | `POST /v1/dedupe` = Implemented | Mutating vector maintenance command; migrate remains CLI-only. |
@@ -87,6 +88,8 @@ GET /v1/status
 GET /v1/doctor
 POST /v1/ask
 POST /v1/ask/stream
+POST /v1/chat
+POST /v1/chat/stream
 POST /v1/query
 POST /v1/retrieve
 POST /v1/evaluate

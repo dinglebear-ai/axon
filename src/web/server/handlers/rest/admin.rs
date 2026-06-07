@@ -9,7 +9,7 @@
 use super::error::{map_service_error, rest_error};
 use super::state::RestState;
 use crate::services::system as system_svc;
-use crate::services::watch::WatchDefCreate;
+use crate::services::watch::WatchDefCreateRequest;
 use crate::services::{migrate as migrate_svc, watch as watch_svc};
 use axum::{
     Json,
@@ -212,23 +212,8 @@ const MAX_TASK_PAYLOAD_BYTES: usize = 64 * 1024;
 
 pub(crate) async fn v1_watch_create(
     State(state): State<RestState>,
-    Json(input): Json<WatchDefCreate>,
+    Json(input): Json<WatchDefCreateRequest>,
 ) -> Response {
-    if input.name.trim().is_empty() {
-        return rest_error(
-            StatusCode::BAD_REQUEST,
-            "bad_request",
-            "name is required".into(),
-        );
-    }
-    // Shared validator (whitespace + supported set) keeps the HTTP create path
-    // in lockstep with the CLI create path and the scheduler's dispatch.
-    if let Err(msg) = crate::jobs::watch::validate_task_type(&input.task_type) {
-        return rest_error(StatusCode::BAD_REQUEST, "bad_request", msg);
-    }
-    if let Err(msg) = crate::jobs::watch::validate_every_seconds(input.every_seconds) {
-        return rest_error(StatusCode::BAD_REQUEST, "bad_request", msg);
-    }
     // Guard against storage abuse via oversized payloads.
     if serde_json::to_string(&input.task_payload)
         .map(|s| s.len())
@@ -241,34 +226,10 @@ pub(crate) async fn v1_watch_create(
             format!("task_payload exceeds {MAX_TASK_PAYLOAD_BYTES} byte limit"),
         );
     }
-    // Validate the watch task_payload at create time: urls must be a non-empty
-    // string array and ignore_patterns must compile. Reject immediately rather
-    // than failing silently on every scheduled run.
-    if let Err(msg) = crate::jobs::watch::validate_task_payload(&input.task_payload) {
-        return rest_error(StatusCode::BAD_REQUEST, "bad_request", msg);
-    }
-    // Additionally SSRF-guard every watched URL at create time.
-    if let Some(urls) = input.task_payload.get("urls").and_then(|v| v.as_array()) {
-        for url_val in urls {
-            let url = match url_val.as_str() {
-                Some(u) => u,
-                None => {
-                    return rest_error(
-                        StatusCode::BAD_REQUEST,
-                        "bad_request",
-                        "task_payload.urls entries must be strings".into(),
-                    );
-                }
-            };
-            if let Err(e) = crate::core::http::validate_url(url) {
-                return rest_error(
-                    StatusCode::BAD_REQUEST,
-                    "bad_request",
-                    format!("invalid url in task_payload.urls: {e}"),
-                );
-            }
-        }
-    }
+    let input = match input.into_create() {
+        Ok(input) => input,
+        Err(msg) => return rest_error(StatusCode::BAD_REQUEST, "bad_request", msg),
+    };
     let pool = match state.watch_pool().await {
         Ok(pool) => pool,
         Err(err) => return map_service_error(err.as_ref() as &(dyn std::error::Error + 'static)),

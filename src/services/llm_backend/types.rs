@@ -4,10 +4,15 @@ use std::path::PathBuf;
 use crate::core::config::Config;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmModelPurpose {
+    Synthesis,
+    Chat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LlmBackendKind {
     GeminiHeadless,
     OpenAiCompat,
-    CodexAppServer,
 }
 
 impl LlmBackendKind {
@@ -15,33 +20,13 @@ impl LlmBackendKind {
         match value.trim() {
             "" | "gemini-headless" | "gemini" | "headless" => Ok(Self::GeminiHeadless),
             "openai-compat" | "openai_compat" => Ok(Self::OpenAiCompat),
-            "codex-app-server" | "codex_app_server" | "codex" => Ok(Self::CodexAppServer),
             other => Err(format!(
-                "AXON_LLM_BACKEND must be 'gemini-headless', 'openai-compat', or 'codex-app-server' (got '{other}')"
+                "AXON_LLM_BACKEND must be 'gemini-headless' or 'openai-compat' (got '{other}')"
             )),
-        }
-    }
-
-    /// The canonical wire/display token. `parse(k.as_str()) == k` round-trips
-    /// (verified in tests). The single source of truth for the string form —
-    /// used by the CLI label and the per-job config snapshot, so a backend can
-    /// never be serialized one way and parsed another.
-    #[must_use]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::GeminiHeadless => "gemini-headless",
-            Self::OpenAiCompat => "openai-compat",
-            Self::CodexAppServer => "codex-app-server",
         }
     }
 }
 
-/// Resolved per-backend LLM settings. Flat by construction: only the fields for
-/// the active `kind` are read (dispatch in `llm_backend.rs` selects on `kind`),
-/// so the other backends' fields are inert. Built solely via `from_config`,
-/// which fills every slot from the corresponding `Config` field — so although
-/// the flat shape *permits* mixed-backend values, no constructor produces an
-/// illegal combination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LlmBackendConfig {
     pub kind: LlmBackendKind,
@@ -51,9 +36,6 @@ pub struct LlmBackendConfig {
     pub openai_base_url: Option<String>,
     pub openai_api_key: Option<String>,
     pub openai_model: Option<String>,
-    pub codex_cmd: String,
-    pub codex_model: Option<String>,
-    pub codex_home: Option<PathBuf>,
     pub completion_concurrency: usize,
     pub completion_timeout_secs: u64,
     pub configured: bool,
@@ -69,9 +51,6 @@ impl Default for LlmBackendConfig {
             openai_base_url: None,
             openai_api_key: None,
             openai_model: None,
-            codex_cmd: "codex".to_string(),
-            codex_model: None,
-            codex_home: None,
             completion_concurrency: 4,
             completion_timeout_secs: 300,
             configured: false,
@@ -91,9 +70,6 @@ impl LlmBackendConfig {
             openai_base_url: non_empty(cfg.openai_base_url.clone()),
             openai_api_key: non_empty(cfg.openai_api_key.clone()),
             openai_model: non_empty(cfg.openai_model.clone()),
-            codex_cmd: non_empty(cfg.codex_cmd.clone()).unwrap_or_else(|| "codex".to_string()),
-            codex_model: non_empty(cfg.codex_model.clone()),
-            codex_home: cfg.codex_home.clone(),
             completion_concurrency: cfg
                 .llm_completion_concurrency
                 .clamp(1, tokio::sync::Semaphore::MAX_PERMITS),
@@ -101,21 +77,31 @@ impl LlmBackendConfig {
             configured: true,
         }
     }
-
-    /// Per-completion timeout as a `Duration`, clamped to at least one second.
-    /// Shared by every subprocess/HTTP backend.
-    #[must_use]
-    pub fn completion_timeout(&self) -> std::time::Duration {
-        std::time::Duration::from_secs(self.completion_timeout_secs.max(1))
-    }
 }
 
 #[must_use]
 pub fn configured_model_from_config(cfg: &Config) -> Option<String> {
+    configured_model_for_config(cfg, LlmModelPurpose::Synthesis)
+}
+
+#[must_use]
+pub fn configured_chat_model_from_config(cfg: &Config) -> Option<String> {
+    configured_model_for_config(cfg, LlmModelPurpose::Chat)
+}
+
+#[must_use]
+pub fn configured_model_for_config(cfg: &Config, purpose: LlmModelPurpose) -> Option<String> {
     match cfg.llm_backend {
-        LlmBackendKind::GeminiHeadless => non_empty(cfg.headless_gemini_model.clone()),
-        LlmBackendKind::OpenAiCompat => non_empty(cfg.openai_model.clone()),
-        LlmBackendKind::CodexAppServer => non_empty(cfg.codex_model.clone()),
+        LlmBackendKind::GeminiHeadless => match purpose {
+            LlmModelPurpose::Synthesis => non_empty(cfg.headless_gemini_model.clone()),
+            LlmModelPurpose::Chat => non_empty(cfg.headless_gemini_chat_model.clone())
+                .or_else(|| non_empty(cfg.headless_gemini_model.clone())),
+        },
+        LlmBackendKind::OpenAiCompat => match purpose {
+            LlmModelPurpose::Synthesis => non_empty(cfg.openai_model.clone()),
+            LlmModelPurpose::Chat => non_empty(cfg.openai_chat_model.clone())
+                .or_else(|| non_empty(cfg.openai_model.clone())),
+        },
     }
 }
 
@@ -163,6 +149,15 @@ impl CompletionRequest {
         self.backend = LlmBackendConfig::from_config(cfg);
         if self.model.is_none() {
             self.model = configured_model_from_config(cfg);
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn backend_from_config_for(mut self, cfg: &Config, purpose: LlmModelPurpose) -> Self {
+        self.backend = LlmBackendConfig::from_config(cfg);
+        if self.model.is_none() {
+            self.model = configured_model_for_config(cfg, purpose);
         }
         self
     }

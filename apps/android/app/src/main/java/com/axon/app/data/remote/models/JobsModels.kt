@@ -15,6 +15,14 @@ data class ExtractRequest(
     val headers: List<List<String>> = emptyList(),
 )
 
+/** POST /v1/embed request body. */
+@Serializable
+data class EmbedRequest(
+    val input: String,
+    val collection: String? = null,
+    @SerialName("source_type") val sourceType: String? = null,
+)
+
 /** ServiceJob — common shape across /v1/{crawl,embed,extract,ingest}/list and /{id}. */
 @Serializable
 data class ServiceJob(

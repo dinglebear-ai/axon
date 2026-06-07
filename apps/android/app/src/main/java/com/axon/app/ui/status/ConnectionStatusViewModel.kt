@@ -1,6 +1,7 @@
 package com.axon.app.ui.status
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
@@ -10,6 +11,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -79,12 +82,26 @@ internal class ConnectionStatusEngine(
  */
 class ConnectionStatusViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
+    private val _latencyMs = MutableStateFlow<Long?>(null)
 
     private val engine = ConnectionStatusEngine(
-        ping = { container.axonRepository.ping() },
+        ping = {
+            val started = SystemClock.elapsedRealtime()
+            try {
+                val ok = container.axonRepository.ping()
+                _latencyMs.value = if (ok) SystemClock.elapsedRealtime() - started else null
+                ok
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _latencyMs.value = null
+                throw e
+            }
+        },
     )
 
     val state: StateFlow<ConnectionState> = engine.state(viewModelScope)
+    val latencyMs: StateFlow<Long?> = _latencyMs.asStateFlow()
 
     fun refresh() {
         viewModelScope.launch { engine.refresh() }

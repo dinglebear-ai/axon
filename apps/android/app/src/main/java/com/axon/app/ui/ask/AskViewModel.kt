@@ -7,78 +7,21 @@ import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.remote.AskStreamEvent
+import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.AskResultUi
 import com.axon.app.data.repository.RecentJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** A single completed Q/A turn kept in-VM for follow-up context injection. */
-data class AskTurn(val question: String, val answer: String)
-
-/** Maximum prior turns inlined into the next ask. Matches CLI's MAX_FOLLOW_UP_TURNS=6. */
-internal const val MAX_FOLLOW_UP_TURNS = 6
-private const val STREAM_UI_FLUSH_MS = 50L
-private const val CHAT_PREVIEW_CHARS = 2_000
-private const val HIT_SNIPPET_CHARS = 220
-
-/**
- * Build the effective query for the server by prepending the last
- * [MAX_FOLLOW_UP_TURNS] turns as "Q: …\nA: …" pairs.
- *
- * Mirrors the CLI's render in `src/cli/commands/ask/followup.rs::follow_up_query`.
- */
-internal fun buildFollowUpQuery(prior: List<AskTurn>, question: String): String {
-    if (prior.isEmpty()) return question
-    val recent = prior.takeLast(MAX_FOLLOW_UP_TURNS)
-    val rendered = recent.joinToString("\n\n") { "Q: ${it.question}\nA: ${it.answer}" }
-    return "$rendered\n\n$question"
-}
-
-internal fun resolvedDoneAnswer(doneAnswer: String, accumulatedAnswer: String): String =
-    doneAnswer.ifBlank { accumulatedAnswer }
-
-private fun previewText(value: String, limit: Int = CHAT_PREVIEW_CHARS): String =
-    if (value.length <= limit) value else value.take(limit).trimEnd() + "\n\n…truncated in chat"
-
-sealed interface AskUiState {
-    data object Idle : AskUiState
-    /** Waiting for the first SSE event (retrieval phase). */
-    data object Loading : AskUiState
-    /** Streaming: LLM is generating — [partialAnswer] grows with each delta token. */
-    data class Streaming(val query: String, val partialAnswer: String) : AskUiState
-    /**
-     * [historyWarning] is non-null when the ask succeeded but saving to history
-     * failed (e.g. disk full). The answer is still shown; the user is informed
-     * that history was not recorded so they can act on it.
-     */
-    data class Success(val result: AskResultUi, val historyWarning: String? = null) : AskUiState
-    data class Error(val message: String) : AskUiState
-}
-
-sealed interface ChatItem {
-    data class UserMsg(val text: String) : ChatItem
-    data class AxonMsg(val text: String, val isStreaming: Boolean = false) : ChatItem
-    data class Injection(
-        val op: com.axon.app.ui.fab.FabOp,
-        val target: String,
-        val jobId: String? = null,
-        val pageCount: Int? = null,
-        val chunkCount: Int? = null,
-    ) : ChatItem
-}
-
-internal fun stableChatItemKey(index: Int, item: ChatItem): String = when (item) {
-    is ChatItem.UserMsg -> "user-$index-${item.text.take(32)}"
-    is ChatItem.AxonMsg -> "axon-$index"
-    is ChatItem.Injection -> "injection-$index-${item.op.name}-${item.jobId ?: item.target}"
-}
 
 class AskViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
@@ -86,8 +29,15 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow<AskUiState>(AskUiState.Idle)
     val uiState: StateFlow<AskUiState> = _uiState.asStateFlow()
 
+    private val _mode = MutableStateFlow(ConversationMode.Ask)
+    val mode: StateFlow<ConversationMode> = _mode.asStateFlow()
+
+    private val _historyReady = MutableStateFlow(false)
+    val historyReady: StateFlow<Boolean> = _historyReady.asStateFlow()
+
     val history = container.axonRepository.recentHistory()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .onEach { _historyReady.value = true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _turns = MutableStateFlow<List<AskTurn>>(emptyList())
     val turns: StateFlow<List<AskTurn>> = _turns.asStateFlow()
@@ -107,12 +57,24 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
     fun clearFollowUp() { _turns.value = emptyList() }
 
+    fun setMode(mode: ConversationMode) {
+        if (_mode.value == mode) return
+        askJob?.cancel()
+        _mode.value = mode
+        _uiState.value = AskUiState.Idle
+        _turns.value = emptyList()
+    }
+
     private fun appendTurn(q: String, a: String) {
         _turns.value = (_turns.value + AskTurn(q, a.take(500))).takeLast(MAX_FOLLOW_UP_TURNS)
     }
 
     private fun appendItem(item: ChatItem) {
         _chatItems.value = _chatItems.value + item
+    }
+
+    private fun appendOperationRequest(op: com.axon.app.ui.fab.FabOp, input: String) {
+        appendItem(ChatItem.UserMsg("${op.label} · $input"))
     }
 
     private fun replaceLastAxonMsg(text: String, isStreaming: Boolean = false) {
@@ -123,6 +85,94 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             _chatItems.value = items
         } else {
             _chatItems.value = items + ChatItem.AxonMsg(text, isStreaming)
+        }
+    }
+
+    private fun appendOrUpdateActivity(phase: String, query: String) {
+        val activity = activityForPhase(phase, query) ?: return
+        val items = _chatItems.value.toMutableList()
+        val idx = items.indexOfLast { it is ChatItem.Activity && it.name == activity.name && !it.done }
+        if (idx >= 0) {
+            items[idx] = activity
+            _chatItems.value = items
+        } else {
+            val placeholderIdx = items.indexOfLast { it is ChatItem.AxonMsg && it.isStreaming && it.text.isBlank() }
+            if (placeholderIdx >= 0) {
+                items.add(placeholderIdx, activity)
+                _chatItems.value = items
+            } else {
+                _chatItems.value = items + activity
+            }
+        }
+    }
+
+    private fun completeActivities() {
+        val items = _chatItems.value.map { item ->
+            if (item is ChatItem.Activity && !item.done) {
+                item.copy(result = "done", done = true)
+            } else {
+                item
+            }
+        }
+        _chatItems.value = items
+    }
+
+    private fun replaceLastAxonItem(item: ChatItem) {
+        val items = _chatItems.value.toMutableList()
+        val lastIdx = items.indexOfLast { it is ChatItem.AxonMsg }
+        if (lastIdx >= 0) {
+            items[lastIdx] = item
+            _chatItems.value = items
+        } else {
+            _chatItems.value = items + item
+        }
+    }
+
+    private fun updateInjection(jobId: String, transform: (ChatItem.Injection) -> ChatItem.Injection) {
+        val items = _chatItems.value.toMutableList()
+        val idx = items.indexOfLast { it is ChatItem.Injection && it.jobId == jobId }
+        if (idx >= 0) {
+            items[idx] = transform(items[idx] as ChatItem.Injection)
+            _chatItems.value = items
+        }
+    }
+
+    private fun pollCrawlOnce(jobId: String) {
+        viewModelScope.launch {
+            delay(1_800)
+            container.axonRepository.crawlStatus(jobId).onSuccess { status ->
+                val readableStatus = status.status.replaceFirstChar { it.titlecase() }
+                val pages = status.pagesCrawled
+                updateInjection(jobId) { item ->
+                    item.copy(
+                        status = readableStatus,
+                        pageCount = pages,
+                        detail = when {
+                            status.serverError != null -> "Crawl reported an error: ${status.serverError}"
+                            pages != null -> "Crawl has indexed $pages ${if (pages == 1) "page" else "pages"} from this target."
+                            else -> "Crawl is ${status.status.lowercase()}. Jobs will continue updating as workers process the target."
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun pollJobOnce(kind: AxonClient.JobKind, jobId: String) {
+        viewModelScope.launch {
+            delay(1_800)
+            container.axonRepository.getJob(kind, jobId).onSuccess { job ->
+                val readableStatus = job.status.replaceFirstChar { it.titlecase() }
+                updateInjection(jobId) { item ->
+                    item.copy(
+                        status = readableStatus,
+                        detail = when {
+                            job.errorText != null -> "${kind.label()} reported an error: ${job.errorText}"
+                            else -> "${kind.label()} is ${job.status.lowercase()}. Jobs will show completion, errors, and indexed output as workers process the target."
+                        },
+                    )
+                }
+            }
         }
     }
 
@@ -141,6 +191,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
 
     fun ask(query: String) {
         if (query.isBlank()) return
+        val mode = _mode.value
         // Cancel any prior in-flight stream BEFORE launching a new one. Without
         // this guard, viewModelScope.launch creates parallel coroutines and a
         // stuck readLine() from a previous ask leaks an IO thread.
@@ -149,7 +200,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             appendItem(ChatItem.UserMsg(query))
             appendItem(ChatItem.AxonMsg("", isStreaming = true))
             _uiState.value = AskUiState.Loading
-            val collection = container.settingsRepository.settings.first().collection
+            val collection = if (mode == ConversationMode.Ask) {
+                container.settingsRepository.settings.first().collection
+            } else {
+                null
+            }
 
             // Prepend prior turns into the wire query, but keep the raw `query` for UI/history
             // so we don't nest prior context inside future turns.
@@ -171,9 +226,16 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             runCatching {
-                container.axonRepository.askStream(effective, collection = collection).collect { event ->
+                val stream = if (mode == ConversationMode.Ask) {
+                    container.axonRepository.askStream(effective, collection = collection)
+                } else {
+                    container.axonRepository.chatStream(effective)
+                }
+                stream.collect { event ->
                     when (event) {
-                        is AskStreamEvent.Meta -> { /* stay Loading during retrieval phase */ }
+                        is AskStreamEvent.Meta -> {
+                            if (mode == ConversationMode.Ask) appendOrUpdateActivity(event.phase, query)
+                        }
                         is AskStreamEvent.Delta -> {
                             accumulated.append(event.text)
                             flushStreaming()
@@ -197,6 +259,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                                 result = result,
                                 historyWarning = if (!saved) "Answer shown, but history could not be saved (storage may be full)." else null,
                             )
+                            completeActivities()
                             replaceLastAxonMsg(finalAnswer, isStreaming = false)
                             appendTurn(q = query, a = finalAnswer)
                         }
@@ -233,6 +296,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                         if (!saved) append(" History could not be saved (storage may be full).")
                     }
                     _uiState.value = AskUiState.Success(result = result, historyWarning = warning)
+                    completeActivities()
                     replaceLastAxonMsg(finalAnswer, isStreaming = false)
                     appendTurn(q = query, a = finalAnswer)
                 } else {
@@ -248,25 +312,64 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             val repo = container.axonRepository
             when (op) {
                 com.axon.app.ui.fab.FabOp.Scrape -> {
-                    appendItem(ChatItem.UserMsg("[${op.label}] $input"))
+                    appendOperationRequest(op, input)
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.scrape(url = input).fold(
-                        onSuccess = { r -> replaceLastAxonMsg(previewText(r.markdown)) },
+                        onSuccess = { r ->
+                            replaceLastAxonItem(
+                                ChatItem.ActionResult(
+                                    op = op,
+                                    target = r.url.ifBlank { input },
+                                    status = "200 OK",
+                                    endpoint = "POST /v1/scrape",
+                                    summary = scrapeSummary(r.markdown),
+                                    body = previewText(humanMarkdownPreview(r.markdown), limit = 900),
+                                ),
+                            )
+                        },
                         onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Extract -> {
-                    appendItem(ChatItem.UserMsg("[Extract] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Extract, input)
                     repo.extractStart(url = input).fold(
                         onSuccess = { jobId ->
                             recordRecentJob(jobId, kind = "extract", target = input)
-                            appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Extract, input, jobId = jobId))
+                            appendItem(
+                                ChatItem.Injection(
+                                    op = com.axon.app.ui.fab.FabOp.Extract,
+                                    target = input,
+                                    jobId = jobId,
+                                    endpoint = "POST /v1/extract",
+                                    detail = "Extraction is queued. Jobs will show schema output and any server errors.",
+                                ),
+                            )
+                            pollJobOnce(AxonClient.JobKind.Extract, jobId)
                         },
                         onFailure = { e -> appendItem(ChatItem.AxonMsg("Extract failed: ${e.message}")) },
                     )
                 }
+                com.axon.app.ui.fab.FabOp.Embed -> {
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Embed, input)
+                    repo.embedStart(input = input).fold(
+                        onSuccess = { jobId ->
+                            recordRecentJob(jobId, kind = "embed", target = input)
+                            appendItem(
+                                ChatItem.Injection(
+                                    op = com.axon.app.ui.fab.FabOp.Embed,
+                                    target = input,
+                                    jobId = jobId,
+                                    endpoint = "POST /v1/embed",
+                                    detail = "Embed is queued. Chunks, document count, and errors are tracked in Jobs.",
+                                ),
+                            )
+                            pollJobOnce(AxonClient.JobKind.Embed, jobId)
+                        },
+                        onFailure = { e -> appendItem(ChatItem.AxonMsg("Embed failed: ${e.message}")) },
+                    )
+                }
                 com.axon.app.ui.fab.FabOp.Research -> {
-                    appendItem(ChatItem.UserMsg("[Research] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Research, input)
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.research(query = input).fold(
                         onSuccess = { r -> replaceLastAxonMsg(previewText(r.summary ?: "(no summary returned)")) },
@@ -274,7 +377,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Query -> {
-                    appendItem(ChatItem.UserMsg("[Query] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Query, input)
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.query(query = input).fold(
                         onSuccess = { hits ->
@@ -287,7 +390,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Search -> {
-                    appendItem(ChatItem.UserMsg("[Search] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Search, input)
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.searchWeb(query = input).fold(
                         onSuccess = { r ->
@@ -307,7 +410,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Map -> {
-                    appendItem(ChatItem.UserMsg("[Map] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Map, input)
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.map(url = input).fold(
                         onSuccess = { r ->
@@ -318,7 +421,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Retrieve -> {
-                    appendItem(ChatItem.UserMsg("[Retrieve] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Retrieve, input)
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.retrieve(url = input).fold(
                         onSuccess = { r -> replaceLastAxonMsg(previewText(r.content)) },
@@ -326,7 +429,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Summarize -> {
-                    appendItem(ChatItem.UserMsg("[Summarize] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Summarize, input)
                     appendItem(ChatItem.AxonMsg("", isStreaming = true))
                     repo.summarize(urls = listOf(input)).fold(
                         onSuccess = { r -> replaceLastAxonMsg(previewText(r.summary)) },
@@ -334,17 +437,37 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Crawl -> {
-                    appendItem(ChatItem.UserMsg("[Crawl] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Crawl, input)
                     repo.crawlSubmit(url = input).fold(
                         onSuccess = { jobId ->
                             recordRecentJob(jobId, kind = "crawl", target = input)
-                            appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Crawl, input, jobId = jobId))
+                            appendItem(
+                                ChatItem.Injection(
+                                    op = com.axon.app.ui.fab.FabOp.Crawl,
+                                    target = input,
+                                    jobId = jobId,
+                                    endpoint = "POST /v1/crawl",
+                                    detail = "Crawl is queued. Pages, errors, and completion state are pulled from the job endpoint.",
+                                ),
+                            )
+                            pollCrawlOnce(jobId)
                         },
-                        onFailure = { e -> appendItem(ChatItem.AxonMsg("Crawl failed: ${e.message}")) },
+                        onFailure = { e ->
+                            appendItem(
+                                ChatItem.Injection(
+                                    op = com.axon.app.ui.fab.FabOp.Crawl,
+                                    target = input,
+                                    jobId = null,
+                                    status = "FAILED",
+                                    endpoint = "POST /v1/crawl",
+                                    detail = "Crawl failed: ${e.message ?: "unknown server error"}",
+                                ),
+                            )
+                        },
                     )
                 }
                 com.axon.app.ui.fab.FabOp.Ingest -> {
-                    appendItem(ChatItem.UserMsg("[Ingest] $input"))
+                    appendOperationRequest(com.axon.app.ui.fab.FabOp.Ingest, input)
                     // Infer source type from input
                     val sourceType = when {
                         input.contains("github.com") || input.startsWith("github/") -> "github"
@@ -355,7 +478,16 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     repo.ingestStart(sourceType = sourceType, target = input).fold(
                         onSuccess = { jobId ->
                             recordRecentJob(jobId, kind = "ingest", target = input)
-                            appendItem(ChatItem.Injection(com.axon.app.ui.fab.FabOp.Ingest, input, jobId = jobId))
+                            appendItem(
+                                ChatItem.Injection(
+                                    op = com.axon.app.ui.fab.FabOp.Ingest,
+                                    target = input,
+                                    jobId = jobId,
+                                    endpoint = "POST /v1/ingest",
+                                    detail = "Ingest is queued. Source discovery and embedding progress are tracked in Jobs.",
+                                ),
+                            )
+                            pollJobOnce(AxonClient.JobKind.Ingest, jobId)
                         },
                         onFailure = { e -> appendItem(ChatItem.AxonMsg("Ingest failed: ${e.message}")) },
                     )
@@ -364,3 +496,4 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+

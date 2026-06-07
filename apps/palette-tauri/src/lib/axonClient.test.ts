@@ -77,6 +77,14 @@ describe("executeAction", () => {
     });
   });
 
+  it("builds chat requests without RAG collection", async () => {
+    await executeTestAction("chat", "plain llm chat");
+
+    expect(lastRequestBody()).toEqual({
+      message: "plain llm chat",
+    });
+  });
+
   it("builds lifecycle routes for async job operations", async () => {
     await executeTestAction("crawl-status", "00000000-0000-4000-8000-000000000000");
 

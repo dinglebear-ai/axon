@@ -6,6 +6,7 @@ import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.remote.AskRequest
 import com.axon.app.data.remote.AskStreamEvent
+import com.axon.app.data.remote.ChatRequest
 import com.axon.app.data.remote.CrawlRequest
 import com.axon.app.data.remote.MapRequest
 import com.axon.app.data.remote.QueryRequest
@@ -14,6 +15,7 @@ import com.axon.app.data.remote.RetrieveRequest
 import com.axon.app.data.remote.ScrapeRequest
 import com.axon.app.data.remote.SourcesRequest
 import com.axon.app.data.remote.ResearchHit
+import com.axon.app.data.remote.models.EmbedRequest
 import com.axon.app.data.remote.models.ExtractRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
@@ -35,6 +37,10 @@ import kotlinx.serialization.json.intOrNull
     val content: String,
     val truncated: Boolean,
     val warnings: List<String>,
+    val tokenEstimate: Int?,
+    val nextCursor: String?,
+    val remainingTokensEstimate: Int?,
+    val refreshStatus: String?,
 )
 @Stable data class MapResultUi(val url: String, val total: Long, val urls: List<String>)
 @Stable data class ResearchResultUi(val query: String, val summary: String?, val hits: List<ResearchHit>)
@@ -91,8 +97,9 @@ import kotlinx.serialization.json.intOrNull
     val nextRunAt: String?,
 )
 
-/** Default `token_budget` cap for `/v1/retrieve` calls. */
+/** Mobile-safe first-page cap for `/v1/retrieve` calls. */
 private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000
+private const val DEFAULT_RETRIEVE_MAX_POINTS = 48
 
 class AxonRepository(
     private val client: AxonClient,
@@ -126,6 +133,14 @@ class AxonRepository(
         emitAll(client.askStream(req))
     }
 
+    fun chatStream(message: String): Flow<AskStreamEvent> = flow {
+        if (!client.hasToken()) {
+            emit(AskStreamEvent.Error("No API token configured. Go to Settings to add your token."))
+            return@flow
+        }
+        emitAll(client.chatStream(ChatRequest(message = message)))
+    }
+
     suspend fun query(query: String, limit: Int = 10, collection: String? = null): Result<List<QueryHitUi>> = withToken {
         val req = applicator.apply(QueryRequest(query = query, limit = limit, collection = collection))
         client.query(req).map { r ->
@@ -145,10 +160,17 @@ class AxonRepository(
         url: String,
         collection: String? = null,
         tokenBudget: Int = DEFAULT_RETRIEVE_TOKEN_BUDGET,
+        maxPoints: Int = DEFAULT_RETRIEVE_MAX_POINTS,
     ): Result<RetrieveResultUi> = withToken {
         require(tokenBudget > 0) { "tokenBudget must be positive, got $tokenBudget" }
+        require(maxPoints > 0) { "maxPoints must be positive, got $maxPoints" }
         client.retrieve(
-            RetrieveRequest(url = url, collection = collection, tokenBudget = tokenBudget),
+            RetrieveRequest(
+                url = url,
+                collection = collection,
+                maxPoints = maxPoints,
+                tokenBudget = tokenBudget,
+            ),
         ).map { r ->
             RetrieveResultUi(
                 requestedUrl = r.requestedUrl ?: url,
@@ -157,6 +179,10 @@ class AxonRepository(
                 content = r.content,
                 truncated = r.truncated,
                 warnings = r.warnings,
+                tokenEstimate = r.tokenEstimate,
+                nextCursor = r.nextCursor,
+                remainingTokensEstimate = r.remainingTokensEstimate,
+                refreshStatus = r.refreshStatus,
             )
         }
     }
@@ -284,6 +310,10 @@ class AxonRepository(
         client.extractStart(ExtractRequest(urls = listOf(url), prompt = prompt?.takeIf { it.isNotBlank() })).map { it.jobId }
     }
 
+    suspend fun embedStart(input: String, collection: String? = null): Result<String> = withToken {
+        client.embedStart(EmbedRequest(input = input, collection = collection)).map { it.jobId }
+    }
+
     suspend fun getJob(kind: AxonClient.JobKind, id: String): Result<JobUi> = withToken {
         client.getJob(kind, id).map { toJobUi(kind, it) }
     }
@@ -325,7 +355,8 @@ class AxonRepository(
 
     suspend fun suggest(focus: String?, collection: String? = null): Result<List<SuggestHitUi>> = withToken {
         client.suggest(focus = focus, collection = collection).map { r ->
-            r.urls.map { SuggestHitUi(it.url, it.reason) }
+            val hits = r.suggestions.ifEmpty { r.urls }
+            hits.map { SuggestHitUi(it.url, it.reason) }
         }
     }
 

@@ -5,24 +5,32 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import com.axon.app.data.remote.models.AcceptedJob
 import com.axon.app.data.remote.models.CancelResponse
 import com.axon.app.data.remote.models.DoctorResponse
 import com.axon.app.data.remote.models.DomainsResponse
+import com.axon.app.data.remote.models.EmbedRequest
 import com.axon.app.data.remote.models.ExtractRequest
 import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.JobListResponse
 import com.axon.app.data.remote.models.PanelConfigResponse
 import com.axon.app.data.remote.models.PanelEnvResponse
+import com.axon.app.data.remote.models.PanelLoginRequest
+import com.axon.app.data.remote.models.PanelLoginResponse
 import com.axon.app.data.remote.models.SavePanelConfigRequest
 import com.axon.app.data.remote.models.SavePanelConfigResponse
 import com.axon.app.data.remote.models.SavePanelEnvRequest
@@ -141,7 +149,7 @@ class AxonClient(
                 .build()
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    error("HTTP ${resp.code}: ${resp.body?.string()?.take(200) ?: resp.message}")
+                    error(httpErrorMessage(resp.code, resp.body?.string(), resp.message))
                 }
             }
         }.onFailure { if (it is CancellationException) throw it }
@@ -149,6 +157,10 @@ class AxonClient(
 
     suspend fun ask(request: AskRequest): Result<AskResponse> = withContext(Dispatchers.IO) {
         post("/v1/ask", request)
+    }
+
+    suspend fun chat(request: ChatRequest): Result<ChatResponse> = withContext(Dispatchers.IO) {
+        post("/v1/chat", request)
     }
 
     /**
@@ -160,11 +172,19 @@ class AxonClient(
      * regular request timeouts on [http].
      */
     fun askStream(request: AskRequest): Flow<AskStreamEvent> = flow {
+        emitAll(streamCompletion("/v1/ask/stream", request))
+    }.flowOn(Dispatchers.IO)
+
+    fun chatStream(request: ChatRequest): Flow<AskStreamEvent> = flow {
+        emitAll(streamCompletion("/v1/chat/stream", request))
+    }.flowOn(Dispatchers.IO)
+
+    private inline fun <reified T> streamCompletion(path: String, request: T): Flow<AskStreamEvent> = flow {
         val bodyBytes = json.encodeToString(request).toRequestBody(JSON_MEDIA_TYPE)
         // Capture atomically once — avoids a TOCTOU race if updateConfig() is called mid-stream.
         val (baseUrl, token) = config.get()
         val req = Request.Builder()
-            .url("$baseUrl/v1/ask/stream")
+            .url("$baseUrl$path")
             .post(bodyBytes)
             .header("Authorization", "Bearer $token")
             .header("x-api-key", token)
@@ -191,9 +211,10 @@ class AxonClient(
         }
         try {
             if (!resp.isSuccessful) {
-                val errBody = resp.body?.string()?.take(200) ?: resp.message
-                Log.w(TAG, "askStream: HTTP ${resp.code} $errBody")
-                emit(AskStreamEvent.Error("HTTP ${resp.code}: $errBody"))
+                val rawBody = resp.body?.string()
+                val humanError = httpErrorMessage(resp.code, rawBody, resp.message)
+                Log.w(TAG, "askStream: $humanError")
+                emit(AskStreamEvent.Error(humanError))
                 return@flow
             }
             val reader = resp.body?.byteStream()?.bufferedReader()
@@ -225,7 +246,7 @@ class AxonClient(
             runCatching { resp.close() }
             cancelHandle.dispose()
         }
-    }.flowOn(Dispatchers.IO)
+    }
 
     suspend fun query(request: QueryRequest): Result<QueryResponse> = withContext(Dispatchers.IO) {
         post("/v1/query", request)
@@ -292,6 +313,11 @@ class AxonClient(
         post("/v1/extract", req)
     }
 
+    /** POST /v1/embed — submits an async embedding job. */
+    suspend fun embedStart(req: EmbedRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
+        post("/v1/embed", req)
+    }
+
     /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
     suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
         val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}").get())
@@ -332,6 +358,16 @@ class AxonClient(
         get("/api/panel/env")
     }
 
+    suspend fun panelLogin(password: String): Result<String> = withContext(Dispatchers.IO) {
+        post<PanelLoginRequest, PanelLoginResponse>(
+            "/api/panel/login",
+            PanelLoginRequest(password),
+        ).mapCatching { response ->
+            response.token?.takeIf { response.ok && it.isNotBlank() }
+                ?: error("Panel password rejected")
+        }
+    }
+
     suspend fun savePanelConfig(rawToml: String): Result<SavePanelConfigResponse> = withContext(Dispatchers.IO) {
         put("/api/panel/config", SavePanelConfigRequest(rawToml))
     }
@@ -353,7 +389,7 @@ class AxonClient(
     }
 
     private fun panelAuthRequest(builder: Request.Builder): Request.Builder {
-        val token = panelToken.get()
+        val token = panelToken.get().ifBlank { config.get().second }
         return builder
             .header("Authorization", "Bearer $token")
             .header("x-axon-panel-token", token)
@@ -366,7 +402,11 @@ class AxonClient(
 
     private inline fun <reified B, reified R> postWith(client: OkHttpClient, path: String, body: B): Result<R> {
         val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
-        val builder = authRequest(Request.Builder().url("${baseUrl()}$path").post(bodyBytes))
+        val builder = if (path.startsWith("/api/panel/login")) {
+            Request.Builder().url("${baseUrl()}$path").post(bodyBytes)
+        } else {
+            authRequest(Request.Builder().url("${baseUrl()}$path").post(bodyBytes))
+        }
         return execute(client, builder)
     }
 
@@ -394,7 +434,7 @@ class AxonClient(
         return runCatching {
             client.newCall(built).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    error("HTTP ${resp.code}: ${resp.body?.string()?.take(200) ?: resp.message}")
+                    error(httpErrorMessage(resp.code, resp.body?.string(), resp.message))
                 }
                 // Read body exactly once — use() closes the response, so the stream is single-pass.
                 json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
@@ -414,7 +454,8 @@ class AxonClient(
      * Wire format — each event is a JSON object with a `"type"` discriminator:
      * - `{"type":"meta","phase":"retrieval"}` — a processing-phase indicator
      * - `{"type":"delta","text":"..."}` — an incremental LLM token
-     * - `{"type":"done","answer":"..."}` — synthesis complete; full answer attached
+     * - `{"type":"done","result":{"answer":"..."}}` — synthesis complete; full answer attached
+     * - `{"type":"done","answer":"..."}` — older flat completion shape
      * - `{"type":"error","message":"..."}` — server-side failure during streaming
      *
      * Returns null when the type is unknown or the payload is malformed, so the
@@ -425,9 +466,14 @@ class AxonClient(
         when (obj["type"]?.jsonPrimitive?.content) {
             "meta"  -> AskStreamEvent.Meta(phase = obj["phase"]?.jsonPrimitive?.content ?: "")
             "delta" -> AskStreamEvent.Delta(text = obj["text"]?.jsonPrimitive?.content ?: "")
-            "done"  -> AskStreamEvent.Done(answer = obj["answer"]?.jsonPrimitive?.content ?: "")
+            "done"  -> AskStreamEvent.Done(
+                answer = obj["answer"]?.jsonPrimitive?.contentOrNull
+                    ?: obj["result"]?.jsonObject?.get("answer")?.jsonPrimitive?.contentOrNull
+                    ?: ""
+            )
             "error" -> AskStreamEvent.Error(message = obj["message"]?.jsonPrimitive?.content ?: "Unknown error")
             else    -> null
         }
     }.getOrNull()
 }
+

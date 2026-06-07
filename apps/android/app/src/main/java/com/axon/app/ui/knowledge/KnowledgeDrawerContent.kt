@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.common.DrawerSubItem
-import com.axon.app.ui.common.Resource
 
 @Composable
 fun KnowledgeDrawerContent(
@@ -26,23 +25,27 @@ fun KnowledgeDrawerContent(
     onOpenStats: () -> Unit,
     vm: KnowledgeViewModel = viewModel(),
 ) {
+    val suggest by vm.suggest.collectAsStateWithLifecycle()
+    val sources by vm.sources.collectAsStateWithLifecycle()
     val domains by vm.domains.collectAsStateWithLifecycle()
+    val stats by vm.stats.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) { vm.loadDomains() }
+    LaunchedEffect(Unit) {
+        vm.loadSuggest(focus = null)
+        vm.loadSources()
+        vm.loadDomains()
+        vm.loadStats()
+    }
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
     ) {
-        DrawerSubItem(Icons.Rounded.AutoAwesome, "Suggest", "4 gaps surfaced", onClick = onOpenSuggest)
-        DrawerSubItem(Icons.Rounded.Folder, "Sources", "1,284 docs", onClick = onOpenSources)
-        DrawerSubItem(Icons.Rounded.Public, "Domains", domainDetail(domains), onClick = onOpenDomains)
-        DrawerSubItem(Icons.Rounded.BarChart, "Stats", "28,941 vectors", onClick = onOpenStats)
+        DrawerSubItem(Icons.Rounded.AutoAwesome, "Suggest", suggestDetail(suggest), onClick = onOpenSuggest)
+        DrawerSubItem(Icons.Rounded.Folder, "Sources", sourcesDetail(sources), onClick = onOpenSources)
+        DrawerSubItem(Icons.Rounded.Public, "Domains", domainsDetail(domains), onClick = onOpenDomains)
+        DrawerSubItem(Icons.Rounded.BarChart, "Stats", statsDetail(stats), onClick = onOpenStats)
     }
 }
-
-private fun domainDetail(domains: Resource<List<*>>): String =
-    when (domains) {
-        is Resource.Ready -> "${domains.value.size.coerceAtLeast(37)} domains"
-        else -> "37 domains"
-    }

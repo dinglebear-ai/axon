@@ -4,6 +4,17 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class PanelLoginRequest(
+    val password: String,
+)
+
+@Serializable
+data class PanelLoginResponse(
+    val ok: Boolean,
+    val token: String? = null,
+)
+
+@Serializable
 data class PanelConfigResponse(
     val path: String,
     @SerialName("raw_toml") val rawToml: String,

@@ -75,16 +75,19 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_LLM_BACKEND` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_CMD` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_CHAT_HEADLESS_GEMINI_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | keep-env | both | — | no | runtime.rs |
 | `AXON_LLM_COMPLETION_TIMEOUT_SECS` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_HOME` | trusted-bootstrap | both | — | no | advanced.rs |
 | `AXON_OPENAI_BASE_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_OPENAI_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_SYNTHESIS_OPENAI_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_CHAT_OPENAI_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_OPENAI_API_KEY` | keep-env | both | — | **yes** | runtime.rs |
-| `AXON_CODEX_CMD` | keep-env | both | — | no | runtime.rs |
-| `AXON_CODEX_MODEL` | keep-env | both | — | no | runtime.rs |
-| `AXON_CODEX_HOME` | trusted-bootstrap | both | — | no | advanced.rs |
-| `AXON_PROVIDER` | keep-env | both | — | no | runtime.rs |
+| `AXON_PROVIDER` | keep-env | both | — | no | provider_overlay.rs |
+| `AXON_CODEX_CMD` | trusted-bootstrap | host-only | — | no | codex_app_server.rs |
+| `AXON_CODEX_HOME` | trusted-bootstrap | host-only | — | no | codex_app_server/home.rs |
 | `OPENAI_MODEL` | external/test-only | not-runtime | — | no | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
 | `OPENAI_BASE_URL` | external/test-only | not-runtime | — | no | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
 | `OPENAI_API_KEY` | external/test-only | not-runtime | — | **yes** | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |

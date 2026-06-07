@@ -51,11 +51,9 @@ All global flags apply. Key flags:
 | `--output <path>` | — | Summary JSON output path (sync mode). |
 | `--json` | `false` | JSON output for enqueue/status and sync summary. |
 
-LLM fallback extraction runs through the backend selected by `AXON_LLM_BACKEND`
-(`gemini-headless` by default, or `openai-compat` / `codex-app-server`), or an
-active saved provider profile. For the default Gemini path, configure the model
-with `AXON_HEADLESS_GEMINI_MODEL` and the binary with `AXON_HEADLESS_GEMINI_CMD`
-— see [`docs/guides/configuration.md`](../../guides/configuration.md). The legacy
+LLM fallback extraction runs through the Gemini headless backend. Configure the
+model with `AXON_HEADLESS_GEMINI_MODEL` and the binary with
+`AXON_HEADLESS_GEMINI_CMD` — see [`docs/guides/configuration.md`](../../guides/configuration.md). The legacy
 `--openai-*` flags and `OPENAI_*` env vars were removed in 3.0.0.
 
 ## Examples

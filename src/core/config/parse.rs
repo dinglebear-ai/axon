@@ -21,30 +21,6 @@ pub(crate) fn validate_toml_config_text(raw_toml: &str) -> Result<(), String> {
         .map_err(|e| format!("config TOML parse error: {e}"))
 }
 
-/// The effective LLM selection resolved from the persisted config + env, for
-/// display/admin callers such as `axon config provider list`. This reuses the
-/// same provider-overlay resolution the real config path uses, so the listing
-/// cannot drift from what an actual `ask` would run. `backend` carries the
-/// resolution error (e.g. a broken active profile) so callers can surface it
-/// inline instead of printing a misleading default.
-pub(crate) struct EffectiveLlm {
-    pub active_provider: Option<String>,
-    pub backend: Result<crate::services::llm_backend::LlmBackendKind, String>,
-}
-
-/// Resolve [`EffectiveLlm`] from the persisted config.toml + env. `provider_flag`
-/// is the `--provider` override; pass `None` to reflect only the persisted
-/// selection (`AXON_PROVIDER` env > `[llm] active-provider`). Errors only when
-/// the config file itself is malformed; a broken *active profile* is reported via
-/// `EffectiveLlm::backend` (an `Err`), not this outer `Result`.
-pub(crate) fn effective_llm(provider_flag: Option<&str>) -> Result<EffectiveLlm, String> {
-    let toml = toml_config::load_toml_config()?;
-    Ok(EffectiveLlm {
-        active_provider: build_config::provider_overlay::active_provider_name(&toml, provider_flag),
-        backend: build_config::provider_overlay::effective_backend_kind(&toml, provider_flag),
-    })
-}
-
 pub fn build_cli_command() -> Command {
     Cli::command()
 }

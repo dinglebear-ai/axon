@@ -49,7 +49,7 @@ pub(crate) async fn axon_http_stream_request(
     window: tauri::Window,
     request: PaletteStreamRequest,
 ) -> Result<(), String> {
-    if request.path != "/v1/ask/stream" {
+    if !matches!(request.path.as_str(), "/v1/ask/stream" | "/v1/chat/stream") {
         return Err("stream request path is not an allowed Axon API route".to_string());
     }
     let settings = merged_settings(&app)?;

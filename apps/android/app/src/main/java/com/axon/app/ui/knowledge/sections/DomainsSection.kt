@@ -7,8 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Dns
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,8 +19,8 @@ import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.knowledge.KnowledgeResultRow
 import com.axon.app.ui.knowledge.KnowledgeViewModel
-import tv.tootie.aurora.components.AuroraItem
 
 @Composable
 fun DomainsSection(vm: KnowledgeViewModel) {
@@ -47,19 +46,14 @@ fun DomainsSection(vm: KnowledgeViewModel) {
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     items(facets, key = { it.domain }) { facet ->
-                        AuroraItem(
+                        KnowledgeResultRow(
+                            icon = Icons.Rounded.Public,
                             title = facet.domain,
-                            description = "${facet.vectors} vectors",
-                            trailingContent = {
-                                Text(
-                                    "${facet.vectors}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            },
+                            detail = "Indexed domain",
+                            metric = "${facet.vectors} vectors",
                         )
                     }
                 }

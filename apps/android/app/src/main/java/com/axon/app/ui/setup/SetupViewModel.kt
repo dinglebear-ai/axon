@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.common.humanSummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,8 +52,7 @@ class SetupViewModel(app: Application) : AndroidViewModel(app) {
                     onSuccess = { result ->
                         result.fold(
                             onSuccess = { resp ->
-                                val preview = resp.payload.toString().take(300).trimEnd(',')
-                                _doctorState.value = Resource.Ready(preview)
+                                _doctorState.value = Resource.Ready(resp.payload.humanSummary())
                             },
                             onFailure = { e ->
                                 val hint = e.message?.take(120) ?: e.javaClass.simpleName

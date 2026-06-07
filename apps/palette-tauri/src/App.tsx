@@ -42,12 +42,7 @@ import {
   validationMessage,
 } from "@/lib/paletteView";
 import type { RunState } from "@/lib/runState";
-
-type PaletteStreamEvent =
-  | { type: "started"; requestId: string; path: string }
-  | { type: "delta"; requestId: string; text: string }
-  | { type: "done"; requestId: string; answer?: string | null }
-  | { type: "error"; requestId: string; message: string };
+import { newRequestId, usePaletteStream } from "@/lib/paletteStream";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 const appWindow = getCurrentWindow();
@@ -62,6 +57,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
+
+  usePaletteStream(setRun);
 
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
@@ -105,63 +102,6 @@ export default function App() {
     const onBlur = () => void invoke("hide_palette");
     window.addEventListener("blur", onBlur);
     return () => window.removeEventListener("blur", onBlur);
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    const unlisten = appWindow.listen<PaletteStreamEvent>("palette://stream", (event) => {
-      if (disposed) return;
-      const payload = event.payload;
-      if (payload.type === "delta") {
-        setRun((current) =>
-          current.kind === "streaming" && current.requestId === payload.requestId
-            ? { ...current, text: current.text + payload.text }
-            : current,
-        );
-      } else if (payload.type === "done") {
-        setRun((current) =>
-          current.kind === "streaming" && current.requestId === payload.requestId
-            ? {
-                kind: "success",
-                title: "Ask question completed",
-                subtitle: current.subtitle,
-                text: payload.answer ?? current.text,
-                outputKind: current.outputKind,
-                result: {
-                  ok: true,
-                  status: 200,
-                  path: "/v1/ask/stream",
-                  method: "POST",
-                  payload: { answer: payload.answer ?? current.text },
-                },
-              }
-            : current,
-        );
-      } else if (payload.type === "error") {
-        setRun((current) =>
-          current.kind === "streaming" && current.requestId === payload.requestId
-            ? {
-                kind: "error",
-                title: "Ask question failed",
-                subtitle: "/v1/ask/stream",
-                text: payload.message,
-                outputKind: current.outputKind,
-                result: {
-                  ok: false,
-                  status: 0,
-                  path: "/v1/ask/stream",
-                  method: "POST",
-                  payload: { error: payload.message },
-                },
-              }
-            : current,
-        );
-      }
-    });
-    return () => {
-      disposed = true;
-      void unlisten.then((fn) => fn());
-    };
   }, []);
 
   useEffect(() => {
@@ -248,23 +188,26 @@ export default function App() {
     const validation = validationMessage(action, argument);
     if (validation) return;
     const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
-    if (action.subcommand === "ask") {
+    if (action.subcommand === "ask" || action.subcommand === "chat") {
       const requestId = newRequestId();
       const request = buildActionRequest(client, action, argument, config);
+      const streamPath = action.subcommand === "chat" ? "/v1/chat/stream" : "/v1/ask/stream";
       setRun({
         kind: "streaming",
-        title: "Streaming Ask question",
-        subtitle: `${request.method} /v1/ask/stream`,
+        title: `Streaming ${action.label}`,
+        subtitle: `${request.method} ${streamPath}`,
         text: "",
         outputKind: outputKindFor(action.subcommand),
         requestId,
+        path: streamPath,
+        actionLabel: action.label,
       });
       try {
         await invoke("axon_http_stream_request", {
           request: {
             ...request,
             requestId,
-            path: "/v1/ask/stream",
+            path: streamPath,
             body: request.body,
           },
         });
@@ -276,13 +219,13 @@ export default function App() {
             ? {
                 kind: "error",
                 title: `${action.label} stream failed`,
-                subtitle: `${request.method} /v1/ask/stream`,
+                subtitle: `${request.method} ${streamPath}`,
                 text: message,
                 outputKind: outputKindFor(action.subcommand),
                 result: {
                   ok: false,
                   status: 0,
-                  path: "/v1/ask/stream",
+                  path: streamPath,
                   method: "POST",
                   payload: { error: message },
                 },
@@ -527,6 +470,3 @@ export default function App() {
   }
 }
 
-function newRequestId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}

@@ -118,12 +118,7 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
         (method, path),
         (
             HttpMethod::Get,
-            "/v1/doctor"
-                | "/v1/status"
-                | "/v1/sources"
-                | "/v1/domains"
-                | "/v1/stats"
-                | "/v1/watch"
+            "/v1/doctor" | "/v1/status" | "/v1/sources" | "/v1/domains" | "/v1/stats" | "/v1/watch"
         ) | (
             HttpMethod::Post,
             "/v1/scrape"
@@ -131,6 +126,7 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
                 | "/v1/map"
                 | "/v1/summarize"
                 | "/v1/ask"
+                | "/v1/chat"
                 | "/v1/query"
                 | "/v1/retrieve"
                 | "/v1/suggest"
@@ -235,6 +231,10 @@ mod tests {
             "/v1/ask"
         );
         assert_eq!(
+            validate_axon_route(&request(HttpMethod::Post, "/v1/chat")).unwrap(),
+            "/v1/chat"
+        );
+        assert_eq!(
             validate_axon_route(&request(HttpMethod::Post, "/v1/endpoints")).unwrap(),
             "/v1/endpoints"
         );
@@ -296,13 +296,7 @@ mod tests {
         assert!(validate_axon_route(&request(HttpMethod::Post, "/v1/doctor")).is_err());
         assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/ask")).is_err());
         assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/admin")).is_err());
-        assert!(
-            validate_axon_route(&request(
-                HttpMethod::Get,
-                "/v1/crawl/not-a-uuid"
-            ))
-            .is_err()
-        );
+        assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/crawl/not-a-uuid")).is_err());
     }
 
     #[test]
