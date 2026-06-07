@@ -1,19 +1,36 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
+  Activity,
+  ArrowLeft,
+  BarChart3,
+  BookOpen,
+  Bot,
+  Boxes,
+  Braces,
+  Camera,
+  Database,
+  FileDown,
+  Globe,
+  GitCompare,
+  HelpCircle,
+  Layers,
+  Map as MapIcon,
+  PackageOpen,
+  SearchCheck,
   Search,
   Send,
   Settings,
+  Sparkles,
+  Stethoscope,
+  Workflow,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/aurora/badge";
 import { OutputPanel } from "@/components/palette/OutputPanel";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
-import { Input } from "@/components/ui/aurora/input";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
-import { Spinner } from "@/components/ui/aurora/spinner";
 import { StatusIndicator } from "@/components/ui/aurora/status-indicator";
 import {
   type PaletteConfig,
@@ -29,23 +46,87 @@ import {
 } from "@/lib/actions";
 import { formatPayload, outputKindFor } from "@/lib/format";
 import {
+  actionDisplayMeta,
   argumentFor,
-  actionArgumentLabel,
-  actionHint,
-  actionKindLabel,
-  actionKindTone,
   argumentPlaceholder,
   focusInput,
   hostLabel,
   looksLikeUrl,
   parseCommand,
+  sortActionsForDisplay,
   validationMessage,
 } from "@/lib/paletteView";
 import type { RunState } from "@/lib/runState";
 import { newRequestId, usePaletteStream } from "@/lib/paletteStream";
 
+interface HistoryItem {
+  action: PaletteAction;
+  target: string;
+  status: number;
+  when: string;
+  pinned?: boolean;
+  running?: boolean;
+  duration?: string;
+  text?: string;
+  outputKind?: "markdown" | "code";
+}
+
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
-const appWindow = getCurrentWindow();
+const isTauriRuntime = "__TAURI_INTERNALS__" in window;
+document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
+const appWindow = isTauriRuntime
+  ? getCurrentWindow()
+  : {
+      listen: async () => () => undefined,
+    };
+
+async function invoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (isTauriRuntime) return tauriInvoke<T>(command, args);
+  switch (command) {
+    case "load_palette_config":
+    case "load_palette_default_config":
+      return {
+        serverUrl: "http://127.0.0.1:8001",
+        token: null,
+        shortcut: "Ctrl+Shift+Space",
+        collection: "axon",
+        resultLimit: 10,
+        theme: "dark",
+        hideOnBlur: false,
+        openResultsInline: true,
+        envValues: {},
+        configValues: {},
+      } as T;
+    case "save_palette_settings":
+      return (args?.settings ?? args) as T;
+    case "hide_palette":
+    case "show_palette":
+    case "resize_palette":
+      return undefined as T;
+    case "axon_http_request": {
+      // Browser-dev fallback: real HTTP to same-origin `/v1/*` paths, forwarded
+      // to a live `axon serve` by the vite proxy (which injects the bearer token).
+      const req = (args?.request ?? {}) as { method?: string; path?: string; body?: unknown };
+      const method = (req.method ?? "GET").toUpperCase();
+      const init: RequestInit = { method, headers: { accept: "application/json" } };
+      if (req.body != null && method !== "GET" && method !== "DELETE") {
+        init.headers = { ...(init.headers as Record<string, string>), "content-type": "application/json" };
+        init.body = JSON.stringify(req.body);
+      }
+      const resp = await fetch(req.path ?? "/", init);
+      const text = await resp.text();
+      let payload: unknown = null;
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        payload = text;
+      }
+      return { ok: resp.ok, status: resp.status, path: req.path ?? "", method, payload } as T;
+    }
+    default:
+      throw new Error(`${command} is only available in the Tauri runtime`);
+  }
+}
 
 export default function App() {
   const [query, setQuery] = useState("");
@@ -55,8 +136,13 @@ export default function App() {
   const [draftConfig, setDraftConfig] = useState<PaletteConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [pinnedTargets, setPinnedTargets] = useState<Set<string>>(() => new Set());
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
+  const [shownTick, setShownTick] = useState(0);
 
   usePaletteStream(setRun);
 
@@ -81,14 +167,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    focusInput();
     const unlisteners = [
       appWindow.listen("palette://shown", () => {
-        setQuery("");
-        setModeAction(null);
-        setSelected(0);
-        setRun({ kind: "idle" });
-        setSettingsOpen(false);
+        setShownTick((tick) => tick + 1);
         focusInput(true);
       }),
       appWindow.listen("palette://open-settings", () => setSettingsOpen(true)),
@@ -111,6 +192,11 @@ export default function App() {
         event.preventDefault();
         if (settingsOpen) {
           setSettingsOpen(false);
+        } else if (historyOpen) {
+          setHistoryOpen(false);
+          setBrowseOpen(true);
+        } else if (browseOpen && !query && !modeAction && run.kind === "idle") {
+          setBrowseOpen(false);
         } else if (modeAction && !query) {
           setModeAction(null);
         } else if (query) {
@@ -135,7 +221,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [modeAction, query, run, settingsOpen]);
+  }, [browseOpen, historyOpen, modeAction, query, run, settingsOpen]);
 
   useEffect(() => {
     if (!config) return;
@@ -155,84 +241,108 @@ export default function App() {
   const hasQuery = query.trim().length > 0;
   const filtered = useMemo(() => {
     if (parsed.invoked) return [parsed.invoked];
-    return ACTIONS.filter((action) => actionMatches(action, parsed.search)).slice(0, 12);
+    if (looksLikeUrl(parsed.search)) {
+      return sortActionsForDisplay(ACTIONS).slice(0, 12);
+    }
+    return sortActionsForDisplay(ACTIONS.filter((action) => actionMatches(action, parsed.search))).slice(0, 12);
   }, [parsed.invoked, parsed.search]);
   const suggestedAction = filtered[Math.min(selected, Math.max(filtered.length - 1, 0))];
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
   const showOutput = run.kind !== "idle";
-  const showContent = settingsOpen || showOutput || (!modeAction && hasQuery);
-  const showActionPanel = !modeAction || settingsOpen;
+  const showContent = settingsOpen || historyOpen || showOutput || hasQuery || browseOpen;
   const compact = !showContent;
-  const showResultsLayout = showOutput || settingsOpen;
+  const showResultsLayout = showOutput || settingsOpen || historyOpen;
+  const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen;
 
   useEffect(() => {
     setSelected(0);
   }, [parsed.search, modeAction]);
 
   useEffect(() => {
-    const size = showResultsLayout
+    const size = settingsOpen
+      ? { width: 800, height: 560 }
+      : historyOpen
+      ? { width: 760, height: 520 }
+      : showResultsLayout
       ? { width: 900, height: 560 }
       : showContent
         ? { width: 760, height: Math.min(142 + filtered.length * 48, window.screen.availHeight - 80) }
-        : { width: 760, height: 92 };
+        : { width: 680, height: 56 };
     void invoke("resize_palette", size);
-  }, [showResultsLayout, showContent, filtered.length]);
+  }, [settingsOpen, historyOpen, showResultsLayout, showContent, filtered.length, shownTick]);
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
 
-  async function submit(action: PaletteAction = active) {
+  async function submit(action: PaletteAction = active, argumentOverride?: string) {
     if (!client || !config || !action || run.kind === "running" || run.kind === "streaming") return;
-    const argument = argumentFor(action, modeAction, parsed, query);
+    const argument = normalizeSubmitArgument(
+      action,
+      argumentOverride ?? argumentFor(action, modeAction, parsed, query),
+    );
     const validation = validationMessage(action, argument);
     if (validation) return;
+    setModeAction(action);
+    setQuery(argument);
+    setBrowseOpen(false);
     const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
     if (action.subcommand === "ask" || action.subcommand === "chat") {
       const requestId = newRequestId();
       const request = buildActionRequest(client, action, argument, config);
       const streamPath = action.subcommand === "chat" ? "/v1/chat/stream" : "/v1/ask/stream";
-      setRun({
-        kind: "streaming",
-        title: `Streaming ${action.label}`,
-        subtitle: `${request.method} ${streamPath}`,
-        text: "",
-        outputKind: outputKindFor(action.subcommand),
-        requestId,
-        path: streamPath,
-        actionLabel: action.label,
-      });
-      try {
-        await invoke("axon_http_stream_request", {
-          request: {
-            ...request,
-            requestId,
-            path: streamPath,
-            body: request.body,
-          },
+      if (isTauriRuntime) {
+        setRun({
+          kind: "streaming",
+          title: `Streaming ${action.label}`,
+          subtitle: `${request.method} ${streamPath}`,
+          text: "",
+          outputKind: outputKindFor(action.subcommand),
+          requestId,
+          path: streamPath,
+          actionLabel: action.label,
+          prompt: argument,
         });
-        return;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setRun((current) =>
-          current.kind === "streaming" && current.requestId === requestId
-            ? {
-                kind: "error",
-                title: `${action.label} stream failed`,
-                subtitle: `${request.method} ${streamPath}`,
-                text: message,
-                outputKind: outputKindFor(action.subcommand),
-                result: {
-                  ok: false,
-                  status: 0,
-                  path: streamPath,
-                  method: "POST",
-                  payload: { error: message },
-                },
-              }
-            : current,
-        );
-        return;
+        try {
+          await invoke("axon_http_stream_request", {
+            request: {
+              ...request,
+              requestId,
+              path: streamPath,
+              body: request.body,
+            },
+          });
+          return;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          setRun((current) =>
+            current.kind === "streaming" && current.requestId === requestId
+              ? {
+                  kind: "error",
+                  title: `${action.label} stream failed`,
+                  subtitle: `${request.method} ${streamPath}`,
+                  text: message,
+                  outputKind: outputKindFor(action.subcommand),
+                  prompt: current.prompt,
+                  result: {
+                    ok: false,
+                    status: 0,
+                    path: streamPath,
+                    method: "POST",
+                    payload: { error: message },
+                  },
+                }
+              : current,
+          );
+          return;
+        }
+      } else {
+        setRun({
+          kind: "running",
+          title: action.label,
+          subtitle: `${request.method} ${request.path}`,
+          prompt: argument,
+        });
       }
     } else {
       setRun({
@@ -243,24 +353,47 @@ export default function App() {
     }
     try {
       const result = await executeAction(client, action, argument, config);
+      const text = formatPayload(action.subcommand, result.payload);
+      pushHistory(action, argument || action.subcommand, result.status, text, outputKindFor(action.subcommand));
+      const isConversation = action.subcommand === "ask" || action.subcommand === "chat";
       setRun({
         kind: result.ok ? "success" : "error",
-        title: `${action.label} ${result.ok ? "completed" : "failed"}`,
-        subtitle: `${result.method} ${result.path} | HTTP ${result.status}`,
-        text: formatPayload(action.subcommand, result.payload),
+        title: isConversation ? action.label : `${action.label} ${result.ok ? "completed" : "failed"}`,
+        subtitle: action.subcommand === "ask"
+          ? `RAG over ${config.collection || "axon"} | ${result.path}`
+          : action.subcommand === "chat"
+          ? result.path
+          : `${result.method} ${result.path} | HTTP ${result.status}`,
+        text,
         outputKind: outputKindFor(action.subcommand),
+        prompt: isConversation ? argument : undefined,
         result,
       });
     } catch (err) {
+      const text = err instanceof Error ? err.message : String(err);
+      pushHistory(action, argument || action.subcommand, 0, text, outputKindFor(action.subcommand));
+      const isConversation = action.subcommand === "ask" || action.subcommand === "chat";
       setRun({
         kind: "error",
-        title: `${action.label} failed`,
-        subtitle: commandLine,
-        text: err instanceof Error ? err.message : String(err),
+        title: isConversation ? action.label : `${action.label} failed`,
+        subtitle: action.subcommand === "ask"
+          ? `RAG over ${config.collection || "axon"} | /v1/ask`
+          : action.subcommand === "chat"
+          ? "/v1/chat"
+          : commandLine,
+        text,
         outputKind: outputKindFor(action.subcommand),
+        prompt: isConversation ? argument : undefined,
         result: { ok: false, status: 0, path: "", method: "POST", payload: null },
       });
     }
+  }
+
+  function pushHistory(action: PaletteAction, target: string, status: number, text?: string, outputKind?: "markdown" | "code") {
+    setHistory((items) => [
+      { action, target, status, text, outputKind, when: "just now", duration: status === 0 ? "fail" : undefined },
+      ...items,
+    ].slice(0, 18));
   }
 
   function enterActionMode(action: PaletteAction) {
@@ -268,6 +401,7 @@ export default function App() {
     setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
     setSelected(0);
     setRun({ kind: "idle" });
+    setBrowseOpen(true);
     focusInput(true);
   }
 
@@ -279,6 +413,7 @@ export default function App() {
       setDraftConfig(nextConfig);
       setConfigError(null);
       setSettingsOpen(false);
+      setBrowseOpen(true);
       focusInput(true);
     } catch (err) {
       setConfigError(String(err));
@@ -295,7 +430,7 @@ export default function App() {
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (!active) return;
-      if (!modeAction && active.argMode !== "none" && !looksLikeUrl(parsed.search)) {
+      if (!modeAction && !parsed.invoked && active.argMode !== "none" && !looksLikeUrl(parsed.search)) {
         enterActionMode(active);
       } else {
         void submit(active);
@@ -307,65 +442,91 @@ export default function App() {
   }
 
   const outputKind = "outputKind" in run ? run.outputKind : active ? outputKindFor(active.subcommand) : "code";
-  const commandStatus = active
-    ? validation || (modeAction ? active.description : `${actionHint(active, parsed.search)} ${active.label}`)
-    : "No matching action";
   const endpointLabel = config ? hostLabel(config.serverUrl) : configError ? "Config error" : "Loading";
   const endpointTone = configError ? "error" : "syncing";
+  const showBackButton = settingsOpen || historyOpen || showOutput;
+  const currentTarget = currentOutputTarget(run, active, query);
+
+  function goBackToBrowse() {
+    setSettingsOpen(false);
+    setHistoryOpen(false);
+    setRun({ kind: "idle" });
+    setModeAction(null);
+    setQuery("");
+    setBrowseOpen(true);
+    focusInput(true);
+  }
 
   return (
-    <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}`}>
+    <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}`}>
 
       <section className="command-bar">
-        <StatusIndicator
-          className="compact-brand"
-          tone={endpointTone}
-          label={<span className="compact-brand-label">Axon</span>}
-          pulse={false}
-          title={config?.serverUrl ?? endpointLabel}
-          aria-hidden={!compact}
-        />
-        {modeAction && (
-          <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} aria-label={`Clear ${modeAction.subcommand} mode`}>
-            {modeAction.subcommand}
-            <span className="mode-pill-dismiss" aria-hidden="true">×</span>
+        {showBackButton && (
+          <button className="command-back" type="button" onClick={goBackToBrowse} aria-label="Back" title="Back">
+            <ArrowLeft size={17} />
           </button>
         )}
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={onInputKeyDown}
-          placeholder={modeAction ? argumentPlaceholder(modeAction) : active?.example ?? "Search commands"}
-          className="command-input"
-          startAdornment={<Search size={15} aria-hidden="true" />}
-          aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
-        />
-        <div className="command-context" aria-live="polite">
-          {active && (
-            <>
-              <Badge tone={actionKindTone(active)} shape="tag" size="sm">
-                {actionKindLabel(active)}
-              </Badge>
-              <span>{commandStatus}</span>
-            </>
-          )}
-          {!active && <span>{commandStatus}</span>}
+        <button className="axon-brand" type="button" onClick={() => {
+          setQuery("");
+          setModeAction(null);
+          setRun({ kind: "idle" });
+          setHistoryOpen(false);
+          setBrowseOpen(false);
+        }} title={config?.serverUrl ?? endpointLabel} aria-label="Reset Axon palette">
+          <AxonMark size={24} />
+          <span className="axon-word">Axon</span>
+          <span className={`axon-status-dot axon-status-${endpointTone}`} />
+          <span className="axon-tip">
+            {endpointLabel}
+            {config?.collection ? <span>{config.collection}</span> : null}
+          </span>
+        </button>
+        <span className="axon-divider" aria-hidden="true" />
+        {modeAction && (
+          <button className={`command-mode-pill command-mode-pill-${modeAction.tone}`} type="button" onClick={() => setModeAction(null)} aria-label={`Clear ${modeAction.subcommand} mode`}>
+            {modeAction.subcommand}
+            <span className="mode-pill-dismiss" aria-hidden="true"><X size={10} /></span>
+          </button>
+        )}
+        <div className="command-input-wrap" onClick={() => {
+          setBrowseOpen(true);
+          focusInput();
+        }}>
+          <Search size={16} strokeWidth={1.65} aria-hidden="true" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onFocus={() => setBrowseOpen(true)}
+            onKeyDown={onInputKeyDown}
+            placeholder={modeAction ? argumentPlaceholder(modeAction) : hasQuery ? active?.example ?? "Search commands" : "Search or run an operation — scrape, crawl, map, ask…"}
+            className="command-input"
+            aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
+          />
         </div>
         <button
-          className="command-submit"
+          className={active && !validation ? `command-submit command-submit-${active.tone}` : "command-submit"}
           type="button"
           onClick={() => active && void submit(active)}
           disabled={!client || !active || run.kind === "running" || run.kind === "streaming" || Boolean(validation)}
           aria-label="Run selected action"
           title={validation || "Run selected action"}
         >
-          {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" tone="cyan" /> : <Send size={15} />}
+          <Send size={15} />
         </button>
-        <div className="compact-status">
-          <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
-            <Settings size={14} />
-          </button>
-        </div>
+        <button
+          className={settingsOpen ? "command-settings command-settings-active" : "command-settings"}
+          type="button"
+          onClick={() => setSettingsOpen((open) => {
+            const next = !open;
+            setHistoryOpen(false);
+            if (!next) setBrowseOpen(true);
+            return next;
+          })}
+          aria-label="Settings"
+          title="Settings"
+        >
+          <Settings size={15} />
+        </button>
       </section>
 
       {settingsOpen && draftConfig && (
@@ -374,58 +535,118 @@ export default function App() {
           draftConfig={draftConfig}
           shortcutOptions={shortcutOptions}
           onChange={setDraftConfig}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsOpen(false);
+            setHistoryOpen(false);
+            setBrowseOpen(true);
+          }}
           onSave={() => void saveSettings()}
         />
       )}
 
-      {showContent && (
+      {showContent && !settingsOpen && (
       <main className={showResultsLayout ? (showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
         {showActionPanel && (
         <section className="action-panel">
           <div className="panel-heading">
             <span>Actions</span>
-            <span>{validation || `${filtered.length} matches`}</span>
+            <span className="panel-shortcuts">
+              <span><kbd>tab</kbd> switch</span>
+              <span><kbd>↵</kbd> run</span>
+            </span>
           </div>
           <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
             <div className="action-list">
-              {filtered.map((action, index) => (
-                <button
-                  key={action.subcommand}
-                  className={index === selected ? "action-row action-row-selected" : "action-row"}
-                  onClick={() => {
-                    setSelected(index);
-                    if (parsed.invoked && run.kind !== "running" && run.kind !== "streaming") {
-                      void submit(action);
-                    } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search) && run.kind !== "running" && run.kind !== "streaming") {
-                      void submit(action);
-                    } else {
-                      enterActionMode(action);
-                    }
-                  }}
-                >
-                  <span className="action-main">
-                    <span className="action-title-line">
-                      <span className="action-label">{action.label}</span>
-                      <span className="action-kind">{actionKindLabel(action)}</span>
-                    </span>
-                    <span className="action-description">{action.description}</span>
-                  </span>
-                  <span className="action-meta">
-                    <span className="action-input-mode">{actionArgumentLabel(action)}</span>
-                    <kbd>{actionHint(action, parsed.search)}</kbd>
-                    <Badge tone={action.tone} shape="tag">
-                      {action.subcommand}
-                    </Badge>
-                  </span>
-                </button>
-              ))}
+              {filtered.map((action, index) => {
+                const meta = actionDisplayMeta(action);
+                const previous = index > 0 ? actionDisplayMeta(filtered[index - 1]) : null;
+                const selectedRow = index === selected;
+                return (
+                  <div className="action-group-item" key={action.subcommand}>
+                    {(!previous || previous.category !== meta.category) && (
+                      <div className="action-section-heading">
+                        <span>{meta.category}</span>
+                        <span>{meta.input} → {meta.output}</span>
+                      </div>
+                    )}
+                    <button
+                      className={selectedRow ? "action-row action-row-selected" : "action-row"}
+                      onClick={() => {
+                        setSelected(index);
+                        if (parsed.invoked) {
+                          void submit(action);
+                        } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
+                          void submit(action);
+                        } else {
+                          enterActionMode(action);
+                        }
+                      }}
+                    >
+                      <ActionIcon action={action} selected={selectedRow} />
+                      <span className="action-main">
+                        <span className="action-title-line">
+                          <span className="action-label">{meta.label}</span>
+                          <span className="action-method">{meta.method}</span>
+                          <span className="action-endpoint">{meta.endpoint}</span>
+                          {action.subcommand === "crawl" || action.subcommand === "ingest" || action.subcommand === "embed" || action.subcommand === "extract" ? (
+                            <span className="action-async">ASYNC</span>
+                          ) : null}
+                        </span>
+                        <span className="action-description">{action.description}</span>
+                      </span>
+                      <span className="action-meta">
+                        {selectedRow ? (
+                          <span className="action-run-pill">Run <kbd>↵</kbd></span>
+                        ) : (
+                          <kbd>{action.subcommand}</kbd>
+                        )}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </ScrollArea>
         </section>
         )}
 
-        {showResultsLayout && (
+        {historyOpen && (
+          <HistoryPanel
+            items={history}
+            onClear={() => setHistory([])}
+            onOpen={(item) => {
+              setHistoryOpen(false);
+              setSettingsOpen(false);
+              setModeAction(item.action);
+              setQuery(item.target);
+              if (item.text) {
+                const ok = item.status >= 200 && item.status < 300;
+                setRun({
+                  kind: ok ? "success" : "error",
+                  title: `${item.action.label} ${ok ? "completed" : "failed"}`,
+                  subtitle: item.target,
+                  text: item.text,
+                  outputKind: item.outputKind ?? outputKindFor(item.action.subcommand),
+                  result: {
+                    ok,
+                    status: item.status,
+                    path: item.action.subcommand,
+                    method: "POST",
+                    payload: null,
+                  },
+                });
+              } else if (item.running) {
+                setRun({
+                  kind: "running",
+                  title: `Running ${item.action.label}`,
+                  subtitle: item.target,
+                });
+              }
+            }}
+          />
+        )}
+
+        {showResultsLayout && !historyOpen && (
           <OutputPanel
             active={active}
             copied={copied}
@@ -433,17 +654,56 @@ export default function App() {
             run={run}
             onCopy={(text) => void copyOutput(text)}
             onRetry={() => active && void submit(active)}
+            onFollowUp={(text) => {
+              const askAction = ACTIONS.find((action) => action.subcommand === "ask");
+              if (!askAction) return;
+              setModeAction(askAction);
+              setQuery(text);
+              void submit(askAction, text);
+            }}
+            onHistory={() => {
+              setRun({ kind: "idle" });
+              setSettingsOpen(false);
+              setHistoryOpen(true);
+              setBrowseOpen(false);
+            }}
+            onCollapse={() => {
+              setRun({ kind: "idle" });
+              setModeAction(null);
+              setQuery("");
+              setHistoryOpen(false);
+              setBrowseOpen(false);
+            }}
+            onTogglePin={() => {
+              if (!currentTarget) return;
+              setPinnedTargets((items) => {
+                const next = new Set(items);
+                next.has(currentTarget) ? next.delete(currentTarget) : next.add(currentTarget);
+                return next;
+              });
+              setHistory((items) => items.map((item) => item.target === currentTarget ? { ...item, pinned: !pinnedTargets.has(currentTarget) } : item));
+            }}
+            pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
           />
         )}
       </main>
       )}
 
-      {showContent && (
+      {showContent && !settingsOpen && (
         <footer className="palette-footer">
           <span className="palette-footer-hints">
-            ↑↓ navigate · ↵ select · Tab mode · Esc close
+            <button className="palette-recent" type="button" onClick={() => {
+              setRun({ kind: "idle" });
+              setModeAction(null);
+              setHistoryOpen((open) => !open);
+              setBrowseOpen(false);
+            }}>↺ recent</button>
+            <span className="palette-hint-group"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+            <span className="palette-hint-group"><kbd>tab</kbd> select</span>
+            <span className="palette-hint-group"><kbd>↵</kbd> run</span>
+            <span className="palette-hint-group"><kbd>esc</kbd> close</span>
           </span>
-          <span className="palette-status">
+          <span className="palette-status" aria-label="Palette controls">
             {config ? (
               <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
             ) : configError ? (
@@ -470,3 +730,159 @@ export default function App() {
   }
 }
 
+function currentOutputTarget(run: RunState, active: PaletteAction | null | undefined, query: string): string {
+  if (run.kind === "idle") return query.trim() || active?.subcommand || "";
+  if ("result" in run) {
+    const payload = run.result.payload;
+    if (payload && typeof payload === "object") {
+      const record = payload as Record<string, unknown>;
+      const url = record.url ?? record.requested_url ?? record.target;
+      if (typeof url === "string" && url) return url;
+    }
+  }
+  if ("text" in run) return firstUrlFromText(run.text) ?? run.subtitle;
+  return run.subtitle;
+}
+
+function firstUrlFromText(value: string): string | null {
+  return value.match(/https?:\/\/[^\s"')\]}]+/i)?.[0] ?? null;
+}
+
+function AxonMark({ size = 24 }: { size?: number }) {
+  return (
+    <svg className="axon-mark" width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <g stroke="var(--aurora-border-strong)" strokeWidth="2" strokeLinecap="round">
+        <path d="M22 9 Q28 14 31 17" />
+        <path d="M32 7 L32 16" />
+        <path d="M42 9 Q36 14 33 17" />
+      </g>
+      <line x1="32" y1="22" x2="32" y2="42" stroke="var(--aurora-border-strong)" strokeWidth="2" strokeDasharray="2.5 3.5" />
+      <circle className="axon-node axon-node-1" cx="32" cy="20" r="5.2" fill="var(--aurora-border-strong)" stroke="var(--aurora-accent-strong)" strokeWidth="1.8" />
+      <circle className="axon-node axon-node-2" cx="32" cy="30" r="5.2" fill="var(--aurora-accent-deep)" stroke="var(--aurora-accent-strong)" strokeWidth="1.8" />
+      <circle className="axon-node axon-node-3" cx="32" cy="40" r="5.2" fill="var(--aurora-accent-primary)" stroke="var(--aurora-accent-strong)" strokeWidth="1.8" />
+      <circle className="axon-node axon-node-4" cx="32" cy="50" r="5.2" fill="var(--aurora-accent-strong)" />
+      <circle cx="32" cy="50" r="8" fill="none" stroke="var(--aurora-accent-strong)" strokeWidth="1.2" opacity="0.4" />
+      <g stroke="var(--aurora-accent-strong)" strokeWidth="2" strokeLinecap="round">
+        <path d="M28 53 Q23 58 19 62" />
+        <path d="M32 54 L32 62" />
+        <path d="M36 53 Q41 58 45 62" />
+      </g>
+    </svg>
+  );
+}
+
+function ActionIcon({ action, selected }: { action: PaletteAction; selected: boolean }) {
+  const Icon = actionIcon(action.subcommand);
+  return (
+    <span className={`action-icon action-icon-${action.tone}${selected ? " action-icon-selected" : ""}`} aria-hidden="true">
+      <Icon size={16} strokeWidth={1.65} />
+    </span>
+  );
+}
+
+function HistoryPanel({
+  items,
+  onClear,
+  onOpen,
+}: {
+  items: HistoryItem[];
+  onClear: () => void;
+  onOpen: (item: HistoryItem) => void;
+}) {
+  return (
+    <section className="history-panel">
+      <header className="history-head">
+        <span>Recent runs</span>
+        {items.length > 0 ? <button type="button" onClick={onClear}>clear</button> : null}
+      </header>
+      {items.length === 0 ? (
+        <div className="history-empty">
+          <span><Activity size={20} /></span>
+          <strong>No runs yet</strong>
+          <p>Run an operation and results land here. Start by typing a command above.</p>
+        </div>
+      ) : (
+        <div className="history-list aurora-scrollbar">
+          {items.map((item, index) => {
+            const ok = item.status >= 200 && item.status < 300;
+            return (
+              <button className="history-row" type="button" key={`${item.action.subcommand}-${item.target}-${index}`} onClick={() => onOpen(item)}>
+                <ActionIcon action={item.action} selected={false} />
+                <span className="history-main">
+                  <span>{item.target}</span>
+                  <span>{item.action.label} · {item.when}</span>
+                </span>
+                {item.pinned ? <Sparkles className="history-pin" size={13} /> : null}
+                {item.running ? (
+                  <span className="history-live"><span />live</span>
+                ) : (
+                  <span className="history-duration">{item.duration ?? "—"}</span>
+                )}
+                <span className={ok ? "history-status history-status-ok" : "history-status history-status-error"}>{item.status || "ERR"}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function actionIcon(subcommand: string) {
+  switch (subcommand) {
+    case "scrape":
+      return FileDown;
+    case "crawl":
+      return Workflow;
+    case "map":
+      return MapIcon;
+    case "summarize":
+      return BookOpen;
+    case "ask":
+    case "chat":
+      return Bot;
+    case "query":
+      return SearchCheck;
+    case "retrieve":
+      return Database;
+    case "suggest":
+      return Sparkles;
+    case "evaluate":
+      return BarChart3;
+    case "search":
+    case "research":
+      return Globe;
+    case "embed":
+      return Layers;
+    case "extract":
+      return Braces;
+    case "ingest":
+      return PackageOpen;
+    case "status":
+      return Activity;
+    case "sources":
+      return Boxes;
+    case "domains":
+      return Database;
+    case "stats":
+      return BarChart3;
+    case "doctor":
+      return Stethoscope;
+    case "brand":
+      return Sparkles;
+    case "diff":
+      return GitCompare;
+    case "screenshot":
+      return Camera;
+    default:
+      return HelpCircle;
+  }
+}
+
+function normalizeSubmitArgument(action: PaletteAction, argument: string): string {
+  const trimmed = argument.trim();
+  if (acceptsDirectUrl(action) && trimmed && !/^https?:\/\//i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::Display,
     fs, io,
     path::{Path, PathBuf},
@@ -11,6 +12,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use toml_edit::{Array, DocumentMut, Item, Table};
 
 mod axon_bridge;
 mod stream;
@@ -27,6 +29,9 @@ struct PaletteSettings {
     result_limit: u16,
     theme: PaletteTheme,
     hide_on_blur: bool,
+    open_results_inline: bool,
+    env_values: HashMap<String, serde_json::Value>,
+    config_values: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -61,9 +66,11 @@ fn save_palette_settings(
     settings: PaletteSettings,
 ) -> Result<PaletteSettings, String> {
     let settings = normalize_settings(settings);
+    write_axon_env_values(&settings.env_values).map_err(|err| err.to_string())?;
+    write_axon_config_values(&settings.config_values).map_err(|err| err.to_string())?;
     write_settings(&app, &settings).map_err(|err| err.to_string())?;
     register_configured_shortcut(&app, &settings).map_err(|err| err.to_string())?;
-    Ok(settings)
+    Ok(settings_with_file_values(settings))
 }
 
 #[tauri::command]
@@ -123,6 +130,9 @@ fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) 
         result_limit: persisted.result_limit.unwrap_or(10),
         theme: persisted.theme.unwrap_or(PaletteTheme::System),
         hide_on_blur: persisted.hide_on_blur.unwrap_or(true),
+        open_results_inline: persisted.open_results_inline.unwrap_or(true),
+        env_values: defaults.env_values,
+        config_values: defaults.config_values,
     })
 }
 
@@ -147,6 +157,12 @@ fn default_settings(env_entries: &[(String, String)]) -> PaletteSettings {
         result_limit: 10,
         theme: PaletteTheme::System,
         hide_on_blur: true,
+        open_results_inline: true,
+        env_values: env_entries
+            .iter()
+            .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
+            .collect(),
+        config_values: read_default_config_values(),
     }
 }
 
@@ -160,6 +176,7 @@ struct PartialPaletteSettings {
     result_limit: Option<u16>,
     theme: Option<PaletteTheme>,
     hide_on_blur: Option<bool>,
+    open_results_inline: Option<bool>,
 }
 
 fn read_settings_result(app: &AppHandle) -> Result<PartialPaletteSettings, String> {
@@ -198,8 +215,20 @@ fn write_settings(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(path, serde_json::to_string_pretty(settings)?)?;
+    let mut palette_only = settings.clone();
+    palette_only.env_values.clear();
+    palette_only.config_values.clear();
+    fs::write(path, serde_json::to_string_pretty(&palette_only)?)?;
     Ok(())
+}
+
+fn settings_with_file_values(mut settings: PaletteSettings) -> PaletteSettings {
+    settings.env_values = read_default_env_entries()
+        .into_iter()
+        .map(|(key, value)| (key, serde_json::Value::String(value)))
+        .collect();
+    settings.config_values = read_default_config_values();
+    settings
 }
 
 fn settings_path(app: &AppHandle) -> Option<PathBuf> {
@@ -273,6 +302,12 @@ fn show_main_window(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
+    window
+        .set_size(Size::Logical(LogicalSize {
+            width: 680.0,
+            height: 56.0,
+        }))
+        .map_err(|err| err.to_string())?;
     window.center().map_err(|err| err.to_string())?;
     window.show().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
@@ -384,6 +419,12 @@ fn default_env_path() -> Option<PathBuf> {
         .or_else(|| dirs::home_dir().map(|home| home.join(".axon/.env")))
 }
 
+fn default_config_path() -> Option<PathBuf> {
+    std::env::var_os("AXON_CONFIG_PATH")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".axon/config.toml")))
+}
+
 fn parse_env_entries(contents: &str) -> Vec<(String, String)> {
     contents
         .lines()
@@ -413,6 +454,206 @@ fn trim_env_value(value: &str) -> String {
         }
     }
     value.to_string()
+}
+
+fn write_axon_env_values(
+    values: &HashMap<String, serde_json::Value>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = default_env_path().ok_or("env path unavailable")?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let mut pending: HashMap<String, String> = values
+        .iter()
+        .map(|(key, value)| (key.clone(), json_value_to_env_string(value)))
+        .collect();
+    let mut lines = Vec::new();
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            lines.push(line.to_string());
+            continue;
+        }
+        let Some((key, _)) = trimmed.split_once('=') else {
+            lines.push(line.to_string());
+            continue;
+        };
+        let key = key.trim();
+        if let Some(value) = pending.remove(key) {
+            lines.push(format!("{key}={}", format_env_value(&value)));
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    let mut remaining: Vec<_> = pending.into_iter().collect();
+    remaining.sort_by(|(left, _), (right, _)| left.cmp(right));
+    if !remaining.is_empty() && !lines.last().is_none_or(|line| line.is_empty()) {
+        lines.push(String::new());
+    }
+    for (key, value) in remaining {
+        lines.push(format!("{key}={}", format_env_value(&value)));
+    }
+    let mut output = lines.join("\n");
+    output.push('\n');
+    fs::write(path, output)?;
+    Ok(())
+}
+
+fn read_default_config_values() -> HashMap<String, serde_json::Value> {
+    let Some(path) = default_config_path() else {
+        return HashMap::new();
+    };
+    let Ok(contents) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let Ok(doc) = contents.parse::<DocumentMut>() else {
+        return HashMap::new();
+    };
+    let mut values = HashMap::new();
+    collect_toml_values("", doc.as_item(), &mut values);
+    values
+}
+
+fn write_axon_config_values(
+    values: &HashMap<String, serde_json::Value>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = default_config_path().ok_or("config path unavailable")?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let contents = fs::read_to_string(&path).unwrap_or_default();
+    let mut doc = contents
+        .parse::<DocumentMut>()
+        .unwrap_or_else(|_| DocumentMut::new());
+    let mut entries: Vec<_> = values.iter().collect();
+    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    for (path, value) in entries {
+        set_toml_value(&mut doc, path, value);
+    }
+    fs::write(path, doc.to_string())?;
+    Ok(())
+}
+
+fn collect_toml_values(prefix: &str, item: &Item, values: &mut HashMap<String, serde_json::Value>) {
+    match item {
+        Item::Table(table) => {
+            for (key, value) in table.iter() {
+                let next = if prefix.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                collect_toml_values(&next, value, values);
+            }
+        }
+        Item::Value(value) => {
+            if !prefix.is_empty() {
+                values.insert(prefix.to_string(), toml_value_to_json(value));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn set_toml_value(doc: &mut DocumentMut, path: &str, value: &serde_json::Value) {
+    let mut parts: Vec<&str> = path.split('.').collect();
+    let Some(key) = parts.pop() else {
+        return;
+    };
+    let mut current = doc.as_table_mut();
+    for part in parts {
+        if !current.contains_key(part) || !current[part].is_table() {
+            current[part] = Item::Table(Table::new());
+        }
+        let Some(table) = current[part].as_table_mut() else {
+            return;
+        };
+        current = table;
+    }
+    current[key] = json_value_to_toml_item(value);
+}
+
+fn toml_value_to_json(value: &toml_edit::Value) -> serde_json::Value {
+    match value {
+        toml_edit::Value::String(value) => serde_json::Value::String(value.value().to_string()),
+        toml_edit::Value::Integer(value) => serde_json::Value::Number((*value.value()).into()),
+        toml_edit::Value::Float(value) => serde_json::Number::from_f64(*value.value())
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        toml_edit::Value::Boolean(value) => serde_json::Value::Bool(*value.value()),
+        toml_edit::Value::Array(array) => serde_json::Value::Array(
+            array
+                .iter()
+                .map(|item| toml_value_to_json(item))
+                .collect::<Vec<_>>(),
+        ),
+        _ => serde_json::Value::String(value.to_string()),
+    }
+}
+
+fn json_value_to_toml_item(value: &serde_json::Value) -> Item {
+    match value {
+        serde_json::Value::Bool(value) => toml_edit::value(*value),
+        serde_json::Value::Number(value) => {
+            if let Some(value) = value.as_i64() {
+                toml_edit::value(value)
+            } else if let Some(value) = value.as_f64() {
+                toml_edit::value(value)
+            } else {
+                toml_edit::value(value.to_string())
+            }
+        }
+        serde_json::Value::Array(values) => {
+            let mut array = Array::default();
+            for value in values {
+                match value {
+                    serde_json::Value::Bool(value) => {
+                        array.push(*value);
+                    }
+                    serde_json::Value::Number(value) => {
+                        if let Some(value) = value.as_i64() {
+                            array.push(value);
+                        } else if let Some(value) = value.as_f64() {
+                            array.push(value);
+                        }
+                    }
+                    _ => {
+                        array.push(json_value_to_env_string(value));
+                    }
+                }
+            }
+            Item::Value(toml_edit::Value::Array(array))
+        }
+        _ => toml_edit::value(json_value_to_env_string(value)),
+    }
+}
+
+fn json_value_to_env_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => value.clone(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .map(json_value_to_env_string)
+            .collect::<Vec<_>>()
+            .join(","),
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::Object(_) => value.to_string(),
+    }
+}
+
+fn format_env_value(value: &str) -> String {
+    if value.is_empty()
+        || value
+            .chars()
+            .any(|ch| ch.is_whitespace() || matches!(ch, '"' | '\'' | '#' | '$' | '\\'))
+    {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        value.to_string()
+    }
 }
 
 #[cfg(test)]
