@@ -107,6 +107,7 @@ VALID_TOML_DESTINATIONS = {
     "tei.max-retries",
     "tei.request-timeout-ms",
     "tei.max-client-batch-size",
+    "scrape.batch-timeout-secs",
     "workers.ingest-lanes",
     "workers.embed-lanes",
     "workers.embed-doc-timeout-secs",

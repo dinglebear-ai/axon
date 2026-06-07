@@ -82,6 +82,13 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         .map(|v| v.clamp(0.0, 1.0))
         .unwrap_or(0.15);
     cfg.tei_max_retries = tei_max_retries(toml);
+    cfg.scrape_batch_timeout_secs = resolve_clamped_u64(
+        "AXON_SCRAPE_BATCH_TIMEOUT_SECS",
+        toml.scrape.batch_timeout_secs,
+        120,
+        1,
+        3600,
+    );
     cfg.tei_request_timeout_ms = tei_request_timeout_ms(toml);
     cfg.tei_max_client_batch_size = tei_max_client_batch_size(toml);
     cfg.ingest_lanes = ingest_lanes(toml);

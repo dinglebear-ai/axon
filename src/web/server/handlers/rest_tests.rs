@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use axum::http::StatusCode;
 use serial_test::serial;
 use std::error::Error;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{OnceCell, oneshot};
 use uuid::Uuid;
 
@@ -171,15 +171,92 @@ impl ServiceJobRuntime for EmptyRuntime {
     }
 }
 
+struct CaptureRuntime {
+    enqueued: Mutex<Vec<JobPayload>>,
+}
+
+#[async_trait]
+impl ServiceJobRuntime for CaptureRuntime {
+    fn mode_name(&self) -> &'static str {
+        "capture"
+    }
+    async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {
+        self.enqueued.lock().expect("lock").push(payload);
+        Ok(Uuid::parse_str("11111111-1111-1111-1111-111111111111").expect("uuid"))
+    }
+    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+        Ok("completed".to_string())
+    }
+    async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+        Ok(None)
+    }
+    async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+        Ok(false)
+    }
+    async fn list_jobs(
+        &self,
+        _kind: JobKind,
+        _limit: i64,
+        _offset: i64,
+    ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
+        Ok(Vec::new())
+    }
+    async fn job_status(
+        &self,
+        _kind: JobKind,
+        _id: Uuid,
+    ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
+        Ok(None)
+    }
+    async fn cancel_job(
+        &self,
+        _kind: JobKind,
+        _id: Uuid,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(false)
+    }
+    async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+    async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+    async fn recover_jobs(
+        &self,
+        _kind: JobKind,
+        _stale_threshold_ms: i64,
+    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+    async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+
+    async fn count_jobs_by_status(
+        &self,
+        _kind: JobKind,
+    ) -> Result<
+        std::collections::HashMap<crate::jobs::status::JobStatus, i64>,
+        Box<dyn Error + Send + Sync>,
+    > {
+        Ok(std::collections::HashMap::new())
+    }
+}
+
 async fn spawn(
     auth_policy: AuthPolicy,
 ) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
     let cfg = Arc::new(crate::core::config::Config::default());
+    spawn_with_runtime(auth_policy, cfg, Arc::new(EmptyRuntime)).await
+}
+
+async fn spawn_with_runtime(
+    auth_policy: AuthPolicy,
+    cfg: Arc<crate::core::config::Config>,
+    runtime: Arc<dyn ServiceJobRuntime>,
+) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
     let cell = Arc::new(OnceCell::new());
-    let ctx = Arc::new(ServiceContext::from_runtime(
-        cfg.clone(),
-        Arc::new(EmptyRuntime),
-    ));
+    let ctx = Arc::new(ServiceContext::from_runtime(cfg.clone(), runtime));
     assert!(cell.set(ctx).is_ok());
     let app = router(cfg, cell, auth_policy);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
@@ -428,6 +505,136 @@ async fn async_submit_routes_reject_private_urls_before_enqueue() {
     }
 
     stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn v1_embed_accepts_allowed_local_file_and_enqueues_canonical_path() {
+    let _env = EnvGuard::set(None);
+    let root = tempfile::tempdir().expect("root");
+    let file = root.path().join("doc.md");
+    std::fs::write(&file, "hello").expect("write");
+    let cfg = crate::core::config::Config {
+        mcp_embed_allowed_roots: vec![root.path().to_path_buf()],
+        ..crate::core::config::Config::default()
+    };
+    let runtime = Arc::new(CaptureRuntime {
+        enqueued: Mutex::new(Vec::new()),
+    });
+    let (base, shutdown, handle) =
+        spawn_with_runtime(AuthPolicy::LoopbackDev, Arc::new(cfg), runtime.clone()).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/embed"))
+        .json(&serde_json::json!({ "input": file.to_string_lossy() }))
+        .send()
+        .await
+        .expect("request");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let payloads = runtime.enqueued.lock().expect("lock");
+    assert_eq!(payloads.len(), 1);
+    let JobPayload::Embed { input, .. } = &payloads[0] else {
+        panic!("expected embed payload");
+    };
+    assert_eq!(
+        input,
+        &std::fs::canonicalize(&file).unwrap().to_string_lossy()
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn v1_embed_rejects_existing_local_file_when_roots_empty_without_enqueue() {
+    let _env = EnvGuard::set(None);
+    let root = tempfile::tempdir().expect("root");
+    let file = root.path().join("doc.md");
+    std::fs::write(&file, "hello").expect("write");
+    let runtime = Arc::new(CaptureRuntime {
+        enqueued: Mutex::new(Vec::new()),
+    });
+    let (base, shutdown, handle) = spawn_with_runtime(
+        AuthPolicy::LoopbackDev,
+        Arc::new(crate::core::config::Config::default()),
+        runtime.clone(),
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/embed"))
+        .json(&serde_json::json!({ "input": file.to_string_lossy() }))
+        .send()
+        .await
+        .expect("request");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(runtime.enqueued.lock().expect("lock").is_empty());
+}
+
+#[tokio::test]
+#[serial]
+async fn v1_embed_rejects_missing_path_like_input_without_enqueue() {
+    let _env = EnvGuard::set(None);
+    let runtime = Arc::new(CaptureRuntime {
+        enqueued: Mutex::new(Vec::new()),
+    });
+    let (base, shutdown, handle) = spawn_with_runtime(
+        AuthPolicy::LoopbackDev,
+        Arc::new(crate::core::config::Config::default()),
+        runtime.clone(),
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/embed"))
+        .json(&serde_json::json!({ "input": "/definitely/missing/axon-doc.md" }))
+        .send()
+        .await
+        .expect("request");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(runtime.enqueued.lock().expect("lock").is_empty());
+}
+
+#[tokio::test]
+#[serial]
+async fn v1_embed_rejects_oversized_allowed_file_without_enqueue() {
+    let _env = EnvGuard::set(None);
+    let root = tempfile::tempdir().expect("root");
+    let file = root.path().join("big.md");
+    std::fs::write(&file, "hello").expect("write");
+    let cfg = crate::core::config::Config {
+        mcp_embed_allowed_roots: vec![root.path().to_path_buf()],
+        mcp_embed_max_local_bytes: 1,
+        ..crate::core::config::Config::default()
+    };
+    let runtime = Arc::new(CaptureRuntime {
+        enqueued: Mutex::new(Vec::new()),
+    });
+    let (base, shutdown, handle) =
+        spawn_with_runtime(AuthPolicy::LoopbackDev, Arc::new(cfg), runtime.clone()).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/embed"))
+        .json(&serde_json::json!({ "input": file.to_string_lossy() }))
+        .send()
+        .await
+        .expect("request");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(runtime.enqueued.lock().expect("lock").is_empty());
 }
 
 /// F3 GET / cancel routes reject non-UUID :id with 400.

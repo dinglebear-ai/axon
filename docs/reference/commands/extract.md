@@ -1,5 +1,5 @@
 # axon extract
-Last Modified: 2026-03-03
+Last Modified: 2026-06-07
 
 Version: 1.0.0
 Last Updated: 20:29:46 | 03/03/2026 EST
@@ -80,6 +80,10 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon extract https://example.com --query "
 When `--wait true`, extract writes:
 - Summary JSON: `<output-dir>/extract-summary.json` (or `--output` path)
 - NDJSON items: `<output-dir>/extract-items.ndjson`
+
+Sync extract summary artifacts are written through the shared service artifact
+writer, which rejects paths outside the output root and uses a temporary file
+plus rename to avoid partial final files.
 
 Summary includes page counts, deterministic vs LLM fallback counts, token usage, parser hit counts, and per-run stats.
 

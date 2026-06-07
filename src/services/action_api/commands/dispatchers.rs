@@ -382,14 +382,13 @@ pub async fn dispatch_scrape(
         .await
         .map_err(internal_error)?;
     if let Some(path) = cfg.output_path.as_ref() {
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|err| internal_error(Box::new(err)))?;
-        }
-        tokio::fs::write(path, &result.output)
-            .await
-            .map_err(|err| internal_error(Box::new(err)))?;
+        crate::services::artifacts::write_managed_output(
+            &cfg.output_dir,
+            path,
+            result.output.as_bytes(),
+        )
+        .await
+        .map_err(|err| internal_error(Box::<dyn std::error::Error>::from(err)))?;
     }
     Ok(serde_json::json!({
         "url": result.url,

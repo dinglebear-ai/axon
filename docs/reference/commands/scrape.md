@@ -1,5 +1,5 @@
 # axon scrape
-Last Modified: 2026-03-03
+Last Modified: 2026-06-07
 
 Version: 1.0.0
 Last Updated: 20:29:46 | 03/03/2026 EST
@@ -39,6 +39,12 @@ All global flags apply. Key flags:
 | `--header "Key: Value"` | — | Repeatable custom HTTP headers for scrape requests. |
 | `--json` | `false` | Emit structured JSON per URL on stdout. |
 
+## Related Config
+
+| Config | Default | Description |
+|--------|---------|-------------|
+| `scrape.batch-timeout-secs` / `AXON_SCRAPE_BATCH_TIMEOUT_SECS` | `120` | End-to-end timeout for one service-level scrape batch. Applies to CLI, REST, and MCP service paths. |
+
 ## Examples
 
 ```bash
@@ -70,4 +76,5 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
 - `--output` with multiple URLs is rejected to prevent overwrite.
 - Scrape errors are reported per URL; other URLs continue.
 - By default, scrape writes markdown under `<output-dir>/scrape-markdown/runs/<uuid>/` (isolated per run) and embeds once at the end. Each scrape invocation writes into its own run directory so only the current session's files are indexed, not historical outputs. Pass `--skip-embed` to fetch/save without indexing.
+- Server-owned scrape artifacts are written through the shared service artifact writer, which rejects paths outside the output root and uses a temporary file plus rename to avoid partial final files.
 - In server mode (`AXON_SERVER_URL`), scrape runs on `axon serve`. The CLI prints the server result and portable artifact handle; it does not write host-local markdown as the source of truth. Use `--local` to force the local behavior above.

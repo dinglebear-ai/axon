@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::core::http::{normalize_url, validate_url};
 use crate::crawl::screenshot::{spider_screenshot_with_options, url_to_screenshot_filename};
+use crate::services::artifacts::write_configured_output;
 use crate::services::types::{ArtifactHandle, ScreenshotResult};
 use std::error::Error;
 
@@ -68,17 +69,16 @@ pub async fn screenshot_capture(
     )
     .await?;
 
-    let path = if let Some(p) = &cfg.output_path {
-        p.clone()
-    } else {
-        let dir = cfg.output_dir.join("screenshots");
-        dir.join(url_to_screenshot_filename(&normalized, 1))
-    };
+    let (path, default_relative_path) = screenshot_output_paths(cfg, &normalized);
 
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    tokio::fs::write(&path, &bytes).await?;
+    write_configured_output(
+        &cfg.output_dir,
+        cfg.output_path.as_deref(),
+        &default_relative_path,
+        &bytes,
+    )
+    .await
+    .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
 
     let artifact_handle = ArtifactHandle::try_from_path(
         "screenshot",
@@ -96,6 +96,19 @@ pub async fn screenshot_capture(
         size_bytes: bytes.len() as u64,
         artifact_handle,
     })
+}
+
+fn screenshot_output_paths(
+    cfg: &Config,
+    normalized: &str,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let default_relative_path =
+        std::path::PathBuf::from("screenshots").join(url_to_screenshot_filename(normalized, 1));
+    let path = cfg
+        .output_path
+        .clone()
+        .unwrap_or_else(|| cfg.output_dir.join(&default_relative_path));
+    (path, default_relative_path)
 }
 
 async fn capture_screenshot_bytes(

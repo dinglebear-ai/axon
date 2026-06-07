@@ -307,6 +307,10 @@
 # Per-request HTTP timeout. Unset to use performance-profile default.
 # request-timeout-ms = 20000
 
+# End-to-end timeout for one service-level scrape batch.
+# Env: AXON_SCRAPE_BATCH_TIMEOUT_SECS
+# batch-timeout-secs = 120
+
 # Fetch retry count. Unset to use performance-profile default.
 # fetch-retries = 2
 

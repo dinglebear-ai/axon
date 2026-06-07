@@ -65,6 +65,12 @@ Start responses use `202 Accepted`, a `Location` header, and:
 }
 ```
 
+`POST /v1/embed` uses the same server-side input validator as MCP embed.
+URL and raw text inputs are accepted. Host-local file and directory inputs must
+resolve under `AXON_MCP_EMBED_ALLOWED_ROOTS` and satisfy the configured
+byte/depth/entry limits; missing path-like inputs are rejected instead of being
+treated as raw text.
+
 Admin routes:
 
 - `POST /v1/dedupe`

@@ -1,4 +1,5 @@
-use super::map_screenshot_result;
+use super::{map_screenshot_result, screenshot_output_paths};
+use crate::core::config::Config;
 
 #[test]
 fn map_screenshot_result_preserves_artifact_handle() {
@@ -22,4 +23,36 @@ fn map_screenshot_result_preserves_artifact_handle() {
     assert_eq!(handle.relative_path, "screenshots/shot.png");
     assert_eq!(handle.kind, "screenshot");
     assert_eq!(handle.url.as_deref(), Some("https://example.com"));
+}
+
+#[test]
+fn screenshot_output_paths_preserve_explicit_output_outside_output_dir() {
+    let output_root = tempfile::tempdir().expect("output root");
+    let explicit_root = tempfile::tempdir().expect("explicit root");
+    let explicit = explicit_root.path().join("shot.png");
+    let cfg = Config {
+        output_dir: output_root.path().to_path_buf(),
+        output_path: Some(explicit.clone()),
+        ..Config::default()
+    };
+
+    let (path, default_relative) = screenshot_output_paths(&cfg, "https://example.com");
+
+    assert_eq!(path, explicit);
+    assert!(default_relative.starts_with("screenshots"));
+}
+
+#[test]
+fn screenshot_output_paths_default_to_managed_output_dir() {
+    let output_root = tempfile::tempdir().expect("output root");
+    let cfg = Config {
+        output_dir: output_root.path().to_path_buf(),
+        output_path: None,
+        ..Config::default()
+    };
+
+    let (path, default_relative) = screenshot_output_paths(&cfg, "https://example.com");
+
+    assert_eq!(path, output_root.path().join(&default_relative));
+    assert!(default_relative.starts_with("screenshots"));
 }

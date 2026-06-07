@@ -58,6 +58,10 @@ impl Default for Config {
             format: ScrapeFormat::Markdown,
             collection: "axon".to_string(),
             embed: true,
+            mcp_embed_allowed_roots: Vec::new(),
+            mcp_embed_max_local_bytes: 10 * 1024 * 1024,
+            mcp_embed_max_local_depth: 16,
+            mcp_embed_max_local_entries: 10_000,
             batch_concurrency: 16,
             wait: false,
             sqlite_path: crate::core::paths::axon_data_base_dir().join("jobs.db"),
@@ -70,6 +74,7 @@ impl Default for Config {
             sitemap_only: false,
             delay_ms: 0,
             request_timeout_ms: None,
+            scrape_batch_timeout_secs: 120,
             fetch_retries: 2,
             retry_backoff_ms: 250,
             sessions_claude: false,
@@ -321,6 +326,13 @@ impl fmt::Debug for Config {
             .field("format", &self.format)
             .field("collection", &self.collection)
             .field("embed", &self.embed)
+            .field("mcp_embed_allowed_roots", &self.mcp_embed_allowed_roots)
+            .field("mcp_embed_max_local_bytes", &self.mcp_embed_max_local_bytes)
+            .field("mcp_embed_max_local_depth", &self.mcp_embed_max_local_depth)
+            .field(
+                "mcp_embed_max_local_entries",
+                &self.mcp_embed_max_local_entries,
+            )
             .field("batch_concurrency", &self.batch_concurrency)
             .field("wait", &self.wait)
             .field("sqlite_path", &self.sqlite_path)
@@ -334,6 +346,7 @@ impl fmt::Debug for Config {
             .field("sitemap_only", &self.sitemap_only)
             .field("delay_ms", &self.delay_ms)
             .field("request_timeout_ms", &self.request_timeout_ms)
+            .field("scrape_batch_timeout_secs", &self.scrape_batch_timeout_secs)
             .field("fetch_retries", &self.fetch_retries)
             .field("retry_backoff_ms", &self.retry_backoff_ms)
             .field("sessions_claude", &self.sessions_claude)

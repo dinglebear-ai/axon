@@ -299,6 +299,11 @@ Start parameters:
 { "action": "embed", "subaction": "start", "input": "path/to/file.md" }
 ```
 
+`embed.start` accepts URLs, raw text, and server-local file/directory paths.
+Local paths must resolve under `AXON_MCP_EMBED_ALLOWED_ROOTS` and satisfy the
+configured byte/depth/entry limits. Missing path-like inputs are rejected rather
+than embedded as literal text.
+
 ### ingest
 
 ```json

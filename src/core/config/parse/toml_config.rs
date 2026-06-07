@@ -72,6 +72,8 @@ pub(super) struct TomlScrapeSection {
     pub delay_ms: Option<u64>,
     /// Per-request HTTP timeout in milliseconds. Default comes from performance profile.
     pub request_timeout_ms: Option<u64>,
+    /// End-to-end timeout for one service-level scrape batch. Default 120.
+    pub batch_timeout_secs: Option<u64>,
     /// Number of retries on failed fetches. Default comes from performance profile.
     pub fetch_retries: Option<usize>,
     /// Backoff between retries in milliseconds. Default comes from performance profile.

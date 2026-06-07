@@ -180,8 +180,11 @@ pub(crate) async fn v1_embed_submit(
         return missing_field("input");
     }
     let input_for_validation = req.input.clone();
-    let validation =
-        tokio::task::spawn_blocking(move || validate_embed_input(&input_for_validation)).await;
+    let cfg_for_validation = state.cfg.as_ref().clone();
+    let validation = tokio::task::spawn_blocking(move || {
+        validate_embed_input(&cfg_for_validation, &input_for_validation)
+    })
+    .await;
     let validation = match validation {
         Ok(result) => result,
         Err(err) => {

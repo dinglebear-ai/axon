@@ -61,10 +61,11 @@ impl AxonMcpServer {
         )?;
         let full_page = req.full_page.unwrap_or(self.cfg.screenshot_full_page);
 
+        let artifact_root = ensure_artifact_root().await?;
         let output_path = if let Some(output) = req.output {
             resolve_artifact_output_path(&output).await?
         } else {
-            let screenshots_dir = ensure_artifact_root().await?.join("screenshots");
+            let screenshots_dir = artifact_root.join("screenshots");
             tokio::fs::create_dir_all(&screenshots_dir)
                 .await
                 .map_err(|e| logged_internal_error("screenshot dir", &e))?;
@@ -74,13 +75,14 @@ impl AxonMcpServer {
             ))
         };
 
-        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
+        let mut cfg = self.cfg.apply_overrides(&ConfigOverrides {
             viewport_width: Some(width),
             viewport_height: Some(height),
             screenshot_full_page: Some(full_page),
             output_path: Some(Some(output_path.clone())),
             ..ConfigOverrides::default()
         });
+        cfg.output_dir = artifact_root;
 
         let shot = crate::services::screenshot::screenshot_capture(&cfg, &url)
             .await

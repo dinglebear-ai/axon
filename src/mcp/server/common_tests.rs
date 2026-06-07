@@ -1,39 +1,13 @@
-use super::{validate_mcp_collection, validate_mcp_embed_input};
-use std::sync::{Mutex, OnceLock};
+use super::{validate_mcp_collection, validate_mcp_embed_input_with_config};
+use crate::core::config::Config;
+use std::path::PathBuf;
 use tempfile::TempDir;
 
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
-#[allow(unsafe_code)]
-fn with_embed_env<T>(roots: Option<&str>, max_bytes: Option<&str>, f: impl FnOnce() -> T) -> T {
-    let _guard = env_lock().lock().unwrap();
-    let old_roots = std::env::var("AXON_MCP_EMBED_ALLOWED_ROOTS").ok();
-    let old_max_bytes = std::env::var("AXON_MCP_EMBED_MAX_LOCAL_BYTES").ok();
-    unsafe {
-        match roots {
-            Some(value) => std::env::set_var("AXON_MCP_EMBED_ALLOWED_ROOTS", value),
-            None => std::env::remove_var("AXON_MCP_EMBED_ALLOWED_ROOTS"),
-        }
-        match max_bytes {
-            Some(value) => std::env::set_var("AXON_MCP_EMBED_MAX_LOCAL_BYTES", value),
-            None => std::env::remove_var("AXON_MCP_EMBED_MAX_LOCAL_BYTES"),
-        }
-    }
-    let result = f();
-    unsafe {
-        match old_roots {
-            Some(value) => std::env::set_var("AXON_MCP_EMBED_ALLOWED_ROOTS", value),
-            None => std::env::remove_var("AXON_MCP_EMBED_ALLOWED_ROOTS"),
-        }
-        match old_max_bytes {
-            Some(value) => std::env::set_var("AXON_MCP_EMBED_MAX_LOCAL_BYTES", value),
-            None => std::env::remove_var("AXON_MCP_EMBED_MAX_LOCAL_BYTES"),
-        }
-    }
-    result
+fn embed_cfg(roots: Vec<PathBuf>, max_bytes: u64) -> Config {
+    let mut cfg = Config::test_default();
+    cfg.mcp_embed_allowed_roots = roots;
+    cfg.mcp_embed_max_local_bytes = max_bytes;
+    cfg
 }
 
 #[test]
@@ -58,16 +32,15 @@ fn mcp_collection_validation_rejects_path_and_query_chars() {
 
 #[test]
 fn mcp_embed_accepts_url_and_text_without_local_roots() {
-    with_embed_env(None, None, || {
-        assert_eq!(
-            validate_mcp_embed_input("https://example.com/docs").unwrap(),
-            "https://example.com/docs"
-        );
-        assert_eq!(
-            validate_mcp_embed_input("plain text to embed").unwrap(),
-            "plain text to embed"
-        );
-    });
+    let cfg = embed_cfg(vec![], 10 * 1024 * 1024);
+    assert_eq!(
+        validate_mcp_embed_input_with_config(&cfg, "https://example.com/docs").unwrap(),
+        "https://example.com/docs"
+    );
+    assert_eq!(
+        validate_mcp_embed_input_with_config(&cfg, "plain text to embed").unwrap(),
+        "plain text to embed"
+    );
 }
 
 #[test]
@@ -76,9 +49,8 @@ fn mcp_embed_rejects_existing_local_path_without_roots() {
     let file = temp.path().join("doc.md");
     std::fs::write(&file, "hello").unwrap();
 
-    with_embed_env(None, None, || {
-        assert!(validate_mcp_embed_input(&file.to_string_lossy()).is_err());
-    });
+    let cfg = embed_cfg(vec![], 10 * 1024 * 1024);
+    assert!(validate_mcp_embed_input_with_config(&cfg, &file.to_string_lossy()).is_err());
 }
 
 #[test]
@@ -87,10 +59,8 @@ fn mcp_embed_allows_file_under_explicit_root() {
     let file = temp.path().join("doc.md");
     std::fs::write(&file, "hello").unwrap();
 
-    let roots = temp.path().to_string_lossy();
-    let resolved = with_embed_env(Some(&roots), None, || {
-        validate_mcp_embed_input(&file.to_string_lossy()).unwrap()
-    });
+    let cfg = embed_cfg(vec![temp.path().to_path_buf()], 10 * 1024 * 1024);
+    let resolved = validate_mcp_embed_input_with_config(&cfg, &file.to_string_lossy()).unwrap();
 
     assert_eq!(
         resolved,
@@ -107,12 +77,10 @@ fn mcp_embed_rejects_dotfiles_secret_names_and_oversized_files() {
     std::fs::write(&dotfile, "OPENAI_API_KEY=secret").unwrap();
     std::fs::write(&secret, "secret").unwrap();
     std::fs::write(&large, "0123456789").unwrap();
-    let roots = temp.path().to_string_lossy();
-    with_embed_env(Some(&roots), Some("4"), || {
-        assert!(validate_mcp_embed_input(&dotfile.to_string_lossy()).is_err());
-        assert!(validate_mcp_embed_input(&secret.to_string_lossy()).is_err());
-        assert!(validate_mcp_embed_input(&large.to_string_lossy()).is_err());
-    });
+    let cfg = embed_cfg(vec![temp.path().to_path_buf()], 4);
+    assert!(validate_mcp_embed_input_with_config(&cfg, &dotfile.to_string_lossy()).is_err());
+    assert!(validate_mcp_embed_input_with_config(&cfg, &secret.to_string_lossy()).is_err());
+    assert!(validate_mcp_embed_input_with_config(&cfg, &large.to_string_lossy()).is_err());
 }
 
 #[test]
@@ -123,10 +91,8 @@ fn mcp_embed_rejects_nested_secret_names() {
     let secret = nested.join("secret-token.txt");
     std::fs::write(&secret, "secret").unwrap();
 
-    let roots = temp.path().to_string_lossy();
-    with_embed_env(Some(&roots), None, || {
-        assert!(validate_mcp_embed_input(&temp.path().to_string_lossy()).is_err());
-    });
+    let cfg = embed_cfg(vec![temp.path().to_path_buf()], 10 * 1024 * 1024);
+    assert!(validate_mcp_embed_input_with_config(&cfg, &temp.path().to_string_lossy()).is_err());
 }
 
 #[cfg(unix)]
@@ -141,8 +107,6 @@ fn mcp_embed_rejects_symlink_inputs() {
     std::fs::write(&target, "outside").unwrap();
     symlink(&target, &link).unwrap();
 
-    let roots = allowed.path().to_string_lossy();
-    with_embed_env(Some(&roots), None, || {
-        assert!(validate_mcp_embed_input(&link.to_string_lossy()).is_err());
-    });
+    let cfg = embed_cfg(vec![allowed.path().to_path_buf()], 10 * 1024 * 1024);
+    assert!(validate_mcp_embed_input_with_config(&cfg, &link.to_string_lossy()).is_err());
 }

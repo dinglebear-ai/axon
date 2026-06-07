@@ -173,6 +173,7 @@ These env vars are being migrated to `config.toml`. Env override is retained tem
 | `TEI_MAX_CLIENT_BATCH_SIZE` | move-toml | not-runtime | `tei.max-client-batch-size` | migration.rs |
 | `TEI_MAX_RETRIES` | move-toml | not-runtime | `tei.max-retries` | migration.rs |
 | `TEI_REQUEST_TIMEOUT_MS` | move-toml | not-runtime | `tei.request-timeout-ms` | migration.rs |
+| `AXON_SCRAPE_BATCH_TIMEOUT_SECS` | move-toml | not-runtime | `scrape.batch-timeout-secs` | migration.rs |
 | `AXON_INGEST_LANES` | move-toml | not-runtime | `workers.ingest-lanes` | migration.rs |
 | `AXON_EMBED_LANES` | move-toml | not-runtime | `workers.embed-lanes` | migration.rs |
 | `AXON_EMBED_DOC_TIMEOUT_SECS` | move-toml | not-runtime | `workers.embed-doc-timeout-secs` | migration.rs |

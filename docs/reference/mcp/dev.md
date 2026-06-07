@@ -37,8 +37,9 @@ src/
 ├── services.rs                      # Service-layer module root
 ├── services/
 │   ├── context.rs                   # ServiceContext { cfg, jobs }
-│   ├── runtime.rs                   # ServiceJobRuntime trait + SqliteServiceRuntime
-│   ├── types/service.rs             # Typed result structs
+│   ├── runtime.rs                   # Job runtime traits + SqliteServiceRuntime
+│   ├── types/service.rs             # Re-exports domain-specific result structs
+│   ├── types/service/               # Typed result structs by domain
 │   └── ...                          # query, ask, summarize, system, crawl, embed, ingest, etc.
 ```
 
@@ -62,7 +63,7 @@ The MCP server calls the services layer, which is the same layer used by CLI han
 
 2. **Implement service function** in `src/services/`:
    - Create a function that returns a typed result struct
-   - Define the result struct in `src/services/types/service.rs`
+   - Define the result struct in the matching `src/services/types/service/<domain>.rs` module and re-export it from `src/services/types/service.rs`
 
 3. **Add CLI handler** in `src/cli/commands/`:
    - Create a new command file

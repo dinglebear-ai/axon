@@ -64,6 +64,10 @@ pub(super) fn validate_urls(urls: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn validate_embed_input(input: &str) -> Result<String, String> {
-    crate::services::embed::validate_server_embed_input(input).map_err(|err| err.to_string())
+pub(super) fn validate_embed_input(
+    cfg: &crate::core::config::Config,
+    input: &str,
+) -> Result<String, String> {
+    crate::services::embed::validate_server_embed_input_with_config(cfg, input)
+        .map_err(|err| err.to_string())
 }
