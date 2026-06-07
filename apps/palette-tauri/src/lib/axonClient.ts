@@ -11,6 +11,9 @@ export interface PaletteConfig {
   resultLimit: number;
   theme: "system" | "dark" | "light";
   hideOnBlur: boolean;
+  openResultsInline?: boolean;
+  envValues?: Record<string, string | number | boolean | string[]>;
+  configValues?: Record<string, string | number | boolean | string[]>;
 }
 
 export interface PaletteResult {
@@ -61,10 +64,44 @@ export async function executeAction(
 ): Promise<PaletteResult> {
   const request = buildActionRequest(client, action, arg, config);
   try {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      return await executeBrowserRequest(request);
+    }
     return await invoke<PaletteResult>("axon_http_request", { request });
   } catch (error) {
     return failedResult(request.method, request.path, error);
   }
+}
+
+async function executeBrowserRequest(request: PaletteHttpRequest): Promise<PaletteResult> {
+  const headers: Record<string, string> = {};
+  if (request.token) {
+    headers.Authorization = `Bearer ${request.token}`;
+    headers["x-api-key"] = request.token;
+  }
+  if (request.body) headers["Content-Type"] = "application/json";
+
+  const response = await fetch(`${request.baseUrl}${request.path}`, {
+    method: request.method,
+    headers,
+    body: request.body ? JSON.stringify(request.body) : undefined,
+  });
+  let payload: unknown = null;
+  const text = await response.text();
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+  }
+  return {
+    ok: response.ok,
+    status: response.status,
+    method: request.method,
+    path: request.path,
+    payload,
+  };
 }
 
 export function buildActionRequest(

@@ -34,6 +34,7 @@ export function usePaletteStream(setRun: SetRunState) {
                 subtitle: current.subtitle,
                 text: payload.answer ?? current.text,
                 outputKind: current.outputKind,
+                prompt: current.prompt,
                 result: {
                   ok: true,
                   status: 200,
@@ -53,6 +54,7 @@ export function usePaletteStream(setRun: SetRunState) {
                 subtitle: current.path,
                 text: payload.message,
                 outputKind: current.outputKind,
+                prompt: current.prompt,
                 result: {
                   ok: false,
                   status: 0,
