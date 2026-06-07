@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction } from "react";
+import { useEffect, type Dispatch, type SetStateAction } from "react";
 
 import { ActionIcon } from "@/components/palette/ActionIcon";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
@@ -18,6 +18,13 @@ interface ActionListProps {
 // the action directly when a command is invoked or the query is a bare URL the
 // action accepts, otherwise it enters argument mode for that action.
 export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, onEnterMode }: ActionListProps) {
+  // Keyboard nav moves the selection; keep the selected row in view by scrolling
+  // the list viewport the minimum amount needed (so arrowing past the fold works).
+  useEffect(() => {
+    const el = document.querySelector(".action-scroll-viewport .action-row-selected");
+    if (el instanceof HTMLElement) el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selected]);
+
   return (
     <section className="action-panel">
       <div className="panel-heading">
