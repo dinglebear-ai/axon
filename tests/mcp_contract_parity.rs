@@ -498,12 +498,20 @@ fn endpoints_action_scope_is_write_not_read() {
     );
 }
 
-/// LLM synthesis and browser/network side-effect actions require axon:write
-/// in REST, action API, and MCP metadata so read-only tokens cannot use Axon
-/// as a hosted network/LLM executor.
+/// Active LLM, browser, and outbound network side-effect actions require
+/// axon:write in REST, action API, and MCP metadata so read-only tokens cannot
+/// use Axon as a hosted network/LLM executor.
 #[test]
-fn active_llm_and_browser_actions_require_write_scope() {
-    for action in ["ask", "evaluate", "suggest", "research", "screenshot"] {
+fn active_llm_browser_and_network_actions_require_write_scope() {
+    for action in [
+        "ask",
+        "evaluate",
+        "suggest",
+        "research",
+        "screenshot",
+        "brand",
+        "diff",
+    ] {
         assert_eq!(
             required_scope_for(action, ""),
             Some("axon:write"),

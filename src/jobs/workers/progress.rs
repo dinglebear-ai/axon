@@ -21,12 +21,16 @@ pub(super) fn spawn_crawl_progress_persister(
                 "output_path": output_dir.join("markdown"),
                 "pages_crawled": summary.pages_seen,
                 "pages_discovered": summary.pages_discovered,
+                "queued": summary.queued(),
+                "depth_max": summary.depth_max,
                 "md_created": summary.markdown_files,
                 "thin_md": summary.thin_pages,
                 "error_pages": summary.error_pages,
                 "waf_blocked_pages": summary.waf_blocked_pages,
                 "reused_pages": summary.reused_pages,
                 "diagnostic_count": summary.diagnostics.len(),
+                "events": summary.recent_events,
+                "rate_limited": summary.rate_limited,
             });
             if let Err(e) = update_result_json_for_attempt(
                 &pool,

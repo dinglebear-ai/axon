@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "5.1.0"
+    "version": "5.1.2"
   },
   "paths": {
     "/v1/ask": {
@@ -141,7 +141,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BrandRequest"
+                "$ref": "#/components/schemas/RestBrandRequest"
               }
             }
           },
@@ -573,7 +573,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DiffRequest"
+                "$ref": "#/components/schemas/RestDiffRequest"
               }
             }
           },
@@ -1739,7 +1739,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ScreenshotRequest"
+                "$ref": "#/components/schemas/RestScreenshotRequest"
               }
             }
           },
@@ -2270,17 +2270,6 @@
           }
         }
       },
-      "BrandRequest": {
-        "type": "object",
-        "required": [
-          "url"
-        ],
-        "properties": {
-          "url": {
-            "type": "string"
-          }
-        }
-      },
       "BrandResult": {
         "type": "object",
         "required": [
@@ -2359,31 +2348,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "DiffRequest": {
-        "type": "object",
-        "required": [
-          "url_a",
-          "url_b"
-        ],
-        "properties": {
-          "render_mode": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RenderMode"
-              }
-            ]
-          },
-          "url_a": {
-            "type": "string"
-          },
-          "url_b": {
-            "type": "string"
-          }
-        }
       },
       "DiffResult": {
         "type": "object",
@@ -3042,6 +3006,18 @@
         },
         "additionalProperties": false
       },
+      "RestBrandRequest": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "RestChatRequest": {
         "type": "object",
         "required": [
@@ -3178,6 +3154,32 @@
             "items": {
               "type": "string"
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "RestDiffRequest": {
+        "type": "object",
+        "required": [
+          "url_a",
+          "url_b"
+        ],
+        "properties": {
+          "render_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RenderMode"
+              }
+            ]
+          },
+          "url_a": {
+            "type": "string"
+          },
+          "url_b": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -3542,6 +3544,30 @@
         },
         "additionalProperties": false
       },
+      "RestScreenshotRequest": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "full_page": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "viewport": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "RestSearchRequest": {
         "type": "object",
         "required": [
@@ -3753,29 +3779,6 @@
           "json",
           "llm"
         ]
-      },
-      "ScreenshotRequest": {
-        "type": "object",
-        "required": [
-          "url"
-        ],
-        "properties": {
-          "full_page": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "url": {
-            "type": "string"
-          },
-          "viewport": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
       },
       "ScreenshotResult": {
         "type": "object",

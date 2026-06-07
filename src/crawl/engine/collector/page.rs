@@ -37,6 +37,10 @@ pub struct CollectorConfig {
     /// Passed from `cfg.structured_data_max_bytes` (default 65 536 bytes).
     /// Blobs exceeding this limit are dropped rather than truncated.
     pub structured_max_bytes: usize,
+    /// Max crawl depth from `cfg.max_depth` — surfaced as the DEPTH stat denominator.
+    pub max_depth: u32,
+    /// Configured retry backoff (`cfg.retry_backoff_ms`) reported on the rate-limit banner.
+    pub retry_backoff_ms: u64,
 }
 
 pub enum PageOutcome {

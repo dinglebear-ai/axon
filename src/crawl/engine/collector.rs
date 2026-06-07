@@ -17,8 +17,16 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use super::thin_refetch::{RefetchResult, THIN_REFETCH_CONCURRENCY, write_refetch_results};
-use super::{CrawlDiagnostic, CrawlSummary};
+use super::{CrawlDiagnostic, CrawlSummary, PageEvent, canonicalize_url_for_dedupe};
 use crate::core::logging::log_warn;
+
+/// Extract the host of a URL for the rate-limit banner; empty string on parse failure.
+fn host_of(url: &str) -> String {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_string))
+        .unwrap_or_default()
+}
 
 /// Apply the outcome of `process_page()`: update summary counters, spawn Chrome
 /// renders for thin pages, write good pages to the manifest. Returns `true` when
@@ -113,9 +121,16 @@ pub(super) async fn collect_crawl_pages(
         .await
         .map_err(|e| format!("manifest create failed: {e}"))?;
     let mut manifest = tokio::io::BufWriter::new(manifest_file);
-    let mut summary = CrawlSummary::default();
+    let mut summary = CrawlSummary {
+        depth_max: col.max_depth,
+        ..Default::default()
+    };
+    let crawl_started = std::time::Instant::now();
     let mut urls = HashSet::new();
     let mut seen_canonical = HashSet::new();
+    // Cumulative set of in-scope canonical links discovered across all pages.
+    // `pages_discovered = discovered.len()`, so `queued = discovered − crawled`.
+    let mut discovered: HashSet<String> = HashSet::new();
     let mut chrome_tasks: JoinSet<RefetchResult> = JoinSet::new();
     let mut chrome_results: Vec<RefetchResult> = Vec::new();
     let chrome_semaphore: Arc<Semaphore> = Arc::new(Semaphore::new(THIN_REFETCH_CONCURRENCY));
@@ -157,6 +172,8 @@ pub(super) async fn collect_crawl_pages(
             &mut chrome_tasks,
             chrome_semaphore.clone(),
             &mut last_progress,
+            crawl_started,
+            &mut discovered,
         )
         .await?;
     }
@@ -189,15 +206,41 @@ async fn process_received_page(
     chrome_tasks: &mut JoinSet<RefetchResult>,
     chrome_semaphore: Arc<Semaphore>,
     last_progress: &mut std::time::Instant,
+    crawl_started: std::time::Instant,
+    discovered: &mut HashSet<String>,
 ) -> Result<(), String> {
     let Some(url) = canonicalize_and_track_page(page.get_url(), col, summary, urls, seen_canonical)
     else {
         return Ok(());
     };
-    if let Some(links) = &page.page_links {
-        summary.pages_discovered = summary
-            .pages_discovered
-            .max(seen_canonical.len() as u32 + links.len() as u32);
+    // Accumulate same-host discovered links into the cumulative backlog. Relative
+    // links (no host) resolve same-site, so they count too.
+    let page_host = host_of(&url);
+    let mut link_count: Option<u32> = None;
+    if let Some(links) = page.page_links.as_ref() {
+        link_count = Some(links.len() as u32);
+        for link in links.iter() {
+            let raw = link.as_ref();
+            let link_host = host_of(raw);
+            if (link_host.is_empty() || link_host == page_host)
+                && let Some(canon) = canonicalize_url_for_dedupe(raw)
+            {
+                discovered.insert(canon);
+            }
+        }
+        summary.pages_discovered = (discovered.len() as u32).max(seen_canonical.len() as u32);
+    }
+    // Record a live per-page event for the palette's tailing log (every page —
+    // success, error, or 429). 429s also register their host on the rate-limit banner.
+    let status = page.status_code.as_u16();
+    summary.push_event(PageEvent {
+        t: crawl_started.elapsed().as_millis() as u64,
+        url: url.clone(),
+        status,
+        links: link_count,
+    });
+    if status == 429 {
+        summary.note_rate_limited(&host_of(&url), col.retry_backoff_ms);
     }
     if !page.status_code.is_success() {
         crate::core::logging::log_info(&format!(
@@ -270,6 +313,8 @@ mod tests {
             },
             antibot_max_scan_bytes: 150_000,
             structured_max_bytes: 65_536,
+            max_depth: 5,
+            retry_backoff_ms: 250,
         }
     }
 

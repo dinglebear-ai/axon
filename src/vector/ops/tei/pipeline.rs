@@ -77,7 +77,7 @@ async fn embed_prepared_doc(
     let url = doc.url.clone();
     let timestamp = Utc::now().to_rfc3339();
     let mut points = Vec::with_capacity(vectors.len());
-    for (idx, (chunk, vecv)) in doc.chunks.into_iter().zip(vectors.into_iter()).enumerate() {
+    for (idx, (chunk, vecv)) in doc.chunks.into_iter().zip(vectors).enumerate() {
         let point_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{}:{}", url, idx).as_bytes());
         let mut payload = serde_json::json!({
             "url": url,

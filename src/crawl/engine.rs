@@ -94,6 +94,30 @@ impl CrawlDiagnostic {
     }
 }
 
+/// Upper bound on the live per-page event ring carried in `CrawlSummary` and
+/// persisted into the crawl job's `result_json` for the palette's log tail.
+pub const MAX_CRAWL_EVENTS: usize = 60;
+
+/// A single per-page fetch event surfaced to the live crawl view. Serialized into
+/// `result_json.events` by the progress persister. `t` is milliseconds since the
+/// collector started; the frontend renders `<t>ms fetch <url> → <status> · <n> links`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PageEvent {
+    pub t: u64,
+    pub url: String,
+    pub status: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub links: Option<u32>,
+}
+
+/// A host that returned 429 during the crawl, with the configured retry backoff.
+/// Drives the "N hosts rate-limited · backing off Ns" banner.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RateLimitHost {
+    pub host: String,
+    pub backoff_ms: u64,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct CrawlSummary {
     pub pages_seen: u32,
@@ -114,6 +138,12 @@ pub struct CrawlSummary {
     pub waf_blocked_urls: HashSet<String>,
     /// Bounded diagnostic samples for operator-facing `axon crawl errors`.
     pub diagnostics: Vec<CrawlDiagnostic>,
+    /// Bounded ring of recent per-page fetch events for the live log tail.
+    pub recent_events: Vec<PageEvent>,
+    /// Hosts seen returning 429, with the configured backoff (for the banner).
+    pub rate_limited: Vec<RateLimitHost>,
+    /// Max crawl depth from config — the denominator of the DEPTH stat.
+    pub depth_max: u32,
 }
 
 impl CrawlSummary {
@@ -121,6 +151,34 @@ impl CrawlSummary {
         if self.diagnostics.len() < MAX_CRAWL_DIAGNOSTICS {
             self.diagnostics.push(diagnostic);
         }
+    }
+
+    /// Append a per-page event, evicting the oldest beyond `MAX_CRAWL_EVENTS`.
+    pub fn push_event(&mut self, event: PageEvent) {
+        if self.recent_events.len() >= MAX_CRAWL_EVENTS {
+            self.recent_events.remove(0);
+        }
+        self.recent_events.push(event);
+    }
+
+    /// Record (or refresh the backoff of) a rate-limited host.
+    pub fn note_rate_limited(&mut self, host: &str, backoff_ms: u64) {
+        if host.is_empty() {
+            return;
+        }
+        if let Some(existing) = self.rate_limited.iter_mut().find(|h| h.host == host) {
+            existing.backoff_ms = backoff_ms;
+        } else {
+            self.rate_limited.push(RateLimitHost {
+                host: host.to_string(),
+                backoff_ms,
+            });
+        }
+    }
+
+    /// Pages discovered but not yet fetched (the live QUEUED backlog).
+    pub fn queued(&self) -> u32 {
+        self.pages_discovered.saturating_sub(self.pages_seen)
     }
 }
 
@@ -237,6 +295,8 @@ pub async fn run_crawl_once(
             ladder_thresholds: LadderThresholds::from_config(cfg),
             antibot_max_scan_bytes: cfg.antibot_max_body_scan_bytes,
             structured_max_bytes: cfg.structured_data_max_bytes,
+            max_depth: cfg.max_depth as u32,
+            retry_backoff_ms: cfg.retry_backoff_ms,
         },
     ));
 
@@ -354,6 +414,8 @@ pub async fn run_sitemap_only(
             ladder_thresholds: LadderThresholds::from_config(cfg),
             antibot_max_scan_bytes: cfg.antibot_max_body_scan_bytes,
             structured_max_bytes: cfg.structured_data_max_bytes,
+            max_depth: cfg.max_depth as u32,
+            retry_backoff_ms: cfg.retry_backoff_ms,
         },
     ));
 

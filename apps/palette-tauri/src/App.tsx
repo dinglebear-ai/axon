@@ -1,51 +1,48 @@
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
+  ArrowLeft,
+  ChevronRight,
   Search,
   Send,
   Settings,
-  X,
+  Workflow,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/aurora/badge";
+import { actionIcon } from "@/components/palette/ActionIcon";
+import { ActionList } from "@/components/palette/ActionList";
+import { AxonMark } from "@/components/palette/AxonMark";
+import { CrawlJobView } from "@/components/palette/CrawlJobView";
+import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
 import { OutputPanel } from "@/components/palette/OutputPanel";
+import { PaletteFooter } from "@/components/palette/PaletteFooter";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
-import { Input } from "@/components/ui/aurora/input";
-import { ScrollArea } from "@/components/ui/aurora/scroll-area";
-import { Spinner } from "@/components/ui/aurora/spinner";
-import { StatusIndicator } from "@/components/ui/aurora/status-indicator";
-import {
-  type PaletteConfig,
-  buildActionRequest,
-  createAxonClient,
-  executeAction,
-} from "@/lib/axonClient";
 import {
   ACTIONS,
   type PaletteAction,
-  acceptsDirectUrl,
   actionMatches,
 } from "@/lib/actions";
-import { formatPayload, outputKindFor } from "@/lib/format";
+import { currentOutputTarget } from "@/lib/appHelpers";
+import { type PaletteConfig, createAxonClient } from "@/lib/axonClient";
+import { outputKindFor } from "@/lib/format";
+import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import {
   argumentFor,
-  actionArgumentLabel,
-  actionHint,
-  actionKindLabel,
-  actionKindTone,
   argumentPlaceholder,
   focusInput,
   hostLabel,
   looksLikeUrl,
   parseCommand,
+  sortActionsByRelevance,
+  sortActionsForDisplay,
   validationMessage,
 } from "@/lib/paletteView";
 import type { RunState } from "@/lib/runState";
-import { newRequestId, usePaletteStream } from "@/lib/paletteStream";
+import { useActionRunner } from "@/lib/useActionRunner";
+import { useCrawlJob } from "@/lib/useCrawlJob";
+import { useWindowChrome } from "@/lib/useWindowChrome";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
-const appWindow = getCurrentWindow();
+document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
 
 export default function App() {
   const [query, setQuery] = useState("");
@@ -55,10 +52,13 @@ export default function App() {
   const [draftConfig, setDraftConfig] = useState<PaletteConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [pinnedTargets, setPinnedTargets] = useState<Set<string>>(() => new Set());
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
-
-  usePaletteStream(setRun);
+  const [shownTick, setShownTick] = useState(0);
 
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
@@ -81,14 +81,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    focusInput();
     const unlisteners = [
       appWindow.listen("palette://shown", () => {
-        setQuery("");
-        setModeAction(null);
-        setSelected(0);
-        setRun({ kind: "idle" });
-        setSettingsOpen(false);
+        setShownTick((tick) => tick + 1);
         focusInput(true);
       }),
       appWindow.listen("palette://open-settings", () => setSettingsOpen(true)),
@@ -111,6 +106,11 @@ export default function App() {
         event.preventDefault();
         if (settingsOpen) {
           setSettingsOpen(false);
+        } else if (historyOpen) {
+          setHistoryOpen(false);
+          setBrowseOpen(true);
+        } else if (browseOpen && !query && !modeAction && run.kind === "idle") {
+          setBrowseOpen(false);
         } else if (modeAction && !query) {
           setModeAction(null);
         } else if (query) {
@@ -135,7 +135,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [modeAction, query, run, settingsOpen]);
+  }, [browseOpen, historyOpen, modeAction, query, run, settingsOpen]);
 
   useEffect(() => {
     if (!config) return;
@@ -155,119 +155,76 @@ export default function App() {
   const hasQuery = query.trim().length > 0;
   const filtered = useMemo(() => {
     if (parsed.invoked) return [parsed.invoked];
-    return ACTIONS.filter((action) => actionMatches(action, parsed.search)).slice(0, 12);
+    if (looksLikeUrl(parsed.search)) {
+      return sortActionsForDisplay(ACTIONS).slice(0, 12);
+    }
+    return sortActionsByRelevance(
+      ACTIONS.filter((action) => actionMatches(action, parsed.search)),
+      parsed.search,
+    ).slice(0, 12);
   }, [parsed.invoked, parsed.search]);
   const suggestedAction = filtered[Math.min(selected, Math.max(filtered.length - 1, 0))];
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
-  const showOutput = run.kind !== "idle";
-  const showContent = settingsOpen || showOutput || (!modeAction && hasQuery);
-  const showActionPanel = !modeAction || settingsOpen;
+  const jobMinimized = run.kind === "job" && run.minimized;
+  const showOutput = run.kind !== "idle" && !jobMinimized;
+  // Once an action mode is picked, the input collects that action's argument —
+  // the palette should NOT keep listing other actions. Stay compact (just the
+  // command bar + mode pill) until the run produces output.
+  const enteringArgument = Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen;
+  const showContent =
+    settingsOpen || historyOpen || showOutput || (!enteringArgument && (hasQuery || browseOpen));
   const compact = !showContent;
-  const showResultsLayout = showOutput || settingsOpen;
+  const showResultsLayout = showOutput || settingsOpen || historyOpen;
+  const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
 
   useEffect(() => {
     setSelected(0);
   }, [parsed.search, modeAction]);
 
-  useEffect(() => {
-    const size = showResultsLayout
-      ? { width: 900, height: 560 }
-      : showContent
-        ? { width: 760, height: Math.min(142 + filtered.length * 48, window.screen.availHeight - 80) }
-        : { width: 760, height: 92 };
-    void invoke("resize_palette", size);
-  }, [showResultsLayout, showContent, filtered.length]);
+  useWindowChrome({
+    jobMinimized,
+    settingsOpen,
+    historyOpen,
+    showResultsLayout,
+    showContent,
+    filteredLength: filtered.length,
+    shownTick,
+  });
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
 
-  async function submit(action: PaletteAction = active) {
-    if (!client || !config || !action || run.kind === "running" || run.kind === "streaming") return;
-    const argument = argumentFor(action, modeAction, parsed, query);
-    const validation = validationMessage(action, argument);
-    if (validation) return;
-    const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
-    if (action.subcommand === "ask" || action.subcommand === "chat") {
-      const requestId = newRequestId();
-      const request = buildActionRequest(client, action, argument, config);
-      const streamPath = action.subcommand === "chat" ? "/v1/chat/stream" : "/v1/ask/stream";
-      setRun({
-        kind: "streaming",
-        title: `Streaming ${action.label}`,
-        subtitle: `${request.method} ${streamPath}`,
-        text: "",
-        outputKind: outputKindFor(action.subcommand),
-        requestId,
-        path: streamPath,
-        actionLabel: action.label,
-      });
-      try {
-        await invoke("axon_http_stream_request", {
-          request: {
-            ...request,
-            requestId,
-            path: streamPath,
-            body: request.body,
-          },
-        });
-        return;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setRun((current) =>
-          current.kind === "streaming" && current.requestId === requestId
-            ? {
-                kind: "error",
-                title: `${action.label} stream failed`,
-                subtitle: `${request.method} ${streamPath}`,
-                text: message,
-                outputKind: outputKindFor(action.subcommand),
-                result: {
-                  ok: false,
-                  status: 0,
-                  path: streamPath,
-                  method: "POST",
-                  payload: { error: message },
-                },
-              }
-            : current,
-        );
-        return;
-      }
-    } else {
-      setRun({
-        kind: "running",
-        title: `Running ${action.label}`,
-        subtitle: commandLine,
-      });
-    }
-    try {
-      const result = await executeAction(client, action, argument, config);
-      setRun({
-        kind: result.ok ? "success" : "error",
-        title: `${action.label} ${result.ok ? "completed" : "failed"}`,
-        subtitle: `${result.method} ${result.path} | HTTP ${result.status}`,
-        text: formatPayload(action.subcommand, result.payload),
-        outputKind: outputKindFor(action.subcommand),
-        result,
-      });
-    } catch (err) {
-      setRun({
-        kind: "error",
-        title: `${action.label} failed`,
-        subtitle: commandLine,
-        text: err instanceof Error ? err.message : String(err),
-        outputKind: outputKindFor(action.subcommand),
-        result: { ok: false, status: 0, path: "", method: "POST", payload: null },
-      });
-    }
-  }
+  const { submit } = useActionRunner({
+    client,
+    config,
+    run,
+    setRun,
+    setHistory,
+    setModeAction,
+    setQuery,
+    setBrowseOpen,
+    modeAction,
+    parsed,
+    query,
+  });
+
+  const { nowMs, canceling, cancelJob, viewPartialJob, minimizeJob, expandJob, closeJob } = useCrawlJob({
+    run,
+    setRun,
+    setSettingsOpen,
+    setHistoryOpen,
+    setBrowseOpen,
+    setQuery,
+    setModeAction,
+  });
 
   function enterActionMode(action: PaletteAction) {
     setModeAction(action);
     setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
     setSelected(0);
     setRun({ kind: "idle" });
+    setBrowseOpen(false);
     focusInput(true);
   }
 
@@ -279,6 +236,7 @@ export default function App() {
       setDraftConfig(nextConfig);
       setConfigError(null);
       setSettingsOpen(false);
+      setBrowseOpen(true);
       focusInput(true);
     } catch (err) {
       setConfigError(String(err));
@@ -288,6 +246,9 @@ export default function App() {
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
+      // Arrow-down is the keyboard affordance to browse all actions without
+      // typing (focus alone no longer expands the palette).
+      if (!modeAction) setBrowseOpen(true);
       setSelected((idx) => Math.min(idx + 1, Math.max(filtered.length - 1, 0)));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
@@ -295,78 +256,133 @@ export default function App() {
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (!active) return;
-      if (!modeAction && active.argMode !== "none" && !looksLikeUrl(parsed.search)) {
+      if (!modeAction && !parsed.invoked && active.argMode !== "none" && !looksLikeUrl(parsed.search)) {
         enterActionMode(active);
       } else {
         void submit(active);
       }
     } else if (event.key === "Tab") {
       event.preventDefault();
-      if (active) enterActionMode(active);
+      if (!active) return;
+      // No-input actions run immediately rather than entering an empty arg mode.
+      if (active.argMode === "none") void submit(active);
+      else enterActionMode(active);
     }
   }
 
   const outputKind = "outputKind" in run ? run.outputKind : active ? outputKindFor(active.subcommand) : "code";
-  const commandStatus = active
-    ? validation || (modeAction ? active.description : `${actionHint(active, parsed.search)} ${active.label}`)
-    : "No matching action";
   const endpointLabel = config ? hostLabel(config.serverUrl) : configError ? "Config error" : "Loading";
   const endpointTone = configError ? "error" : "syncing";
+  const showBackButton = settingsOpen || historyOpen || showOutput;
+  const currentTarget = currentOutputTarget(run, active, query);
+  // In an action mode, the input's leading icon becomes that action's icon
+  // (replacing the search glyph) instead of showing a separate badge.
+  const ModeIcon = modeAction ? actionIcon(modeAction.subcommand) : null;
+
+  function goBackToBrowse() {
+    setSettingsOpen(false);
+    setHistoryOpen(false);
+    setRun({ kind: "idle" });
+    setModeAction(null);
+    setQuery("");
+    setBrowseOpen(true);
+    focusInput(true);
+  }
 
   return (
-    <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}`}>
+    <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}`}>
 
-      <section className="command-bar">
-        <StatusIndicator
-          className="compact-brand"
-          tone={endpointTone}
-          label={<span className="compact-brand-label">Axon</span>}
-          pulse={false}
-          title={config?.serverUrl ?? endpointLabel}
-          aria-hidden={!compact}
-        />
-        {modeAction && (
-          <button className="command-mode-pill" type="button" onClick={() => setModeAction(null)} aria-label={`Clear ${modeAction.subcommand} mode`}>
-            {modeAction.subcommand}
-            <span className="mode-pill-dismiss" aria-hidden="true">×</span>
+      <section
+        className="command-bar"
+        onDoubleClick={(event) => {
+          // Titlebar-style: double-clicking empty bar area toggles maximize, but
+          // not when the user double-clicks the input or a control.
+          if ((event.target as HTMLElement).closest("input, button, a")) return;
+          void invoke("toggle_maximize");
+        }}
+      >
+        {showBackButton && (
+          <button className="command-back" type="button" onClick={goBackToBrowse} aria-label="Back" title="Back">
+            <ArrowLeft size={17} />
           </button>
         )}
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={onInputKeyDown}
-          placeholder={modeAction ? argumentPlaceholder(modeAction) : active?.example ?? "Search commands"}
-          className="command-input"
-          startAdornment={<Search size={15} aria-hidden="true" />}
-          aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
-        />
-        <div className="command-context" aria-live="polite">
-          {active && (
-            <>
-              <Badge tone={actionKindTone(active)} shape="tag" size="sm">
-                {actionKindLabel(active)}
-              </Badge>
-              <span>{commandStatus}</span>
-            </>
+        <button className="axon-brand" type="button" onClick={() => {
+          setQuery("");
+          setModeAction(null);
+          setRun({ kind: "idle" });
+          setHistoryOpen(false);
+          setBrowseOpen(false);
+        }} title={`${config?.serverUrl ?? endpointLabel}${config?.collection ? ` · ${config.collection}` : ""}`} aria-label="Reset Axon palette">
+          <AxonMark size={24} />
+          <span className="axon-word">Axon</span>
+          <span className={`axon-status-dot axon-status-${endpointTone}`} />
+        </button>
+        <span className="axon-divider" aria-hidden="true" />
+        <div className="command-input-wrap" onClick={() => focusInput()}>
+          {modeAction && ModeIcon ? (
+            <button
+              className={`command-mode-icon command-mode-icon-${modeAction.tone}`}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setModeAction(null);
+                focusInput(true);
+              }}
+              aria-label={`Clear ${modeAction.subcommand} mode`}
+              title={`${modeAction.label} mode — click to clear`}
+            >
+              <ModeIcon size={16} strokeWidth={1.9} aria-hidden="true" />
+            </button>
+          ) : (
+            <Search size={16} strokeWidth={1.65} aria-hidden="true" />
           )}
-          {!active && <span>{commandStatus}</span>}
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onInputKeyDown}
+            placeholder={modeAction ? argumentPlaceholder(modeAction) : hasQuery ? active?.example ?? "Search commands" : "Search or run an operation — scrape, crawl, map, ask…"}
+            className="command-input"
+            aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
+          />
         </div>
         <button
-          className="command-submit"
+          className={active && !validation ? `command-submit command-submit-${active.tone}` : "command-submit"}
           type="button"
           onClick={() => active && void submit(active)}
           disabled={!client || !active || run.kind === "running" || run.kind === "streaming" || Boolean(validation)}
           aria-label="Run selected action"
           title={validation || "Run selected action"}
         >
-          {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" tone="cyan" /> : <Send size={15} />}
+          <Send size={15} />
         </button>
-        <div className="compact-status">
-          <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
-            <Settings size={14} />
-          </button>
-        </div>
+        <button
+          className={settingsOpen ? "command-settings command-settings-active" : "command-settings"}
+          type="button"
+          onClick={() => setSettingsOpen((open) => {
+            const next = !open;
+            setHistoryOpen(false);
+            if (!next) setBrowseOpen(true);
+            return next;
+          })}
+          aria-label="Settings"
+          title="Settings"
+        >
+          <Settings size={15} />
+        </button>
       </section>
+
+      {jobMinimized && run.kind === "job" && (
+        <button className="idle-tray" type="button" onClick={expandJob} title="Expand crawl job">
+          <span className="idle-tray-dot" />
+          <Workflow size={14} strokeWidth={1.9} />
+          <span>Crawling {run.snapshot.host}</span>
+          <span className="idle-tray-bar">
+            <span style={{ width: `${Math.max(2, Math.round(run.snapshot.percent))}%` }} />
+          </span>
+          <strong>{Math.round(run.snapshot.percent)}%</strong>
+          <ChevronRight size={15} />
+        </button>
+      )}
 
       {settingsOpen && draftConfig && (
         <SettingsPanel
@@ -374,58 +390,77 @@ export default function App() {
           draftConfig={draftConfig}
           shortcutOptions={shortcutOptions}
           onChange={setDraftConfig}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsOpen(false);
+            setHistoryOpen(false);
+            setBrowseOpen(true);
+          }}
           onSave={() => void saveSettings()}
         />
       )}
 
-      {showContent && (
+      {showContent && !settingsOpen && (
       <main className={showResultsLayout ? (showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
         {showActionPanel && (
-        <section className="action-panel">
-          <div className="panel-heading">
-            <span>Actions</span>
-            <span>{validation || `${filtered.length} matches`}</span>
-          </div>
-          <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
-            <div className="action-list">
-              {filtered.map((action, index) => (
-                <button
-                  key={action.subcommand}
-                  className={index === selected ? "action-row action-row-selected" : "action-row"}
-                  onClick={() => {
-                    setSelected(index);
-                    if (parsed.invoked && run.kind !== "running" && run.kind !== "streaming") {
-                      void submit(action);
-                    } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search) && run.kind !== "running" && run.kind !== "streaming") {
-                      void submit(action);
-                    } else {
-                      enterActionMode(action);
-                    }
-                  }}
-                >
-                  <span className="action-main">
-                    <span className="action-title-line">
-                      <span className="action-label">{action.label}</span>
-                      <span className="action-kind">{actionKindLabel(action)}</span>
-                    </span>
-                    <span className="action-description">{action.description}</span>
-                  </span>
-                  <span className="action-meta">
-                    <span className="action-input-mode">{actionArgumentLabel(action)}</span>
-                    <kbd>{actionHint(action, parsed.search)}</kbd>
-                    <Badge tone={action.tone} shape="tag">
-                      {action.subcommand}
-                    </Badge>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
-        </section>
+          <ActionList
+            filtered={filtered}
+            selected={selected}
+            setSelected={setSelected}
+            parsed={parsed}
+            onSubmit={(action) => void submit(action)}
+            onEnterMode={enterActionMode}
+          />
         )}
 
-        {showResultsLayout && (
+        {historyOpen && (
+          <HistoryPanel
+            items={history}
+            onClear={() => setHistory([])}
+            onOpen={(item) => {
+              setHistoryOpen(false);
+              setSettingsOpen(false);
+              setModeAction(item.action);
+              setQuery(item.target);
+              if (item.text) {
+                const ok = item.status >= 200 && item.status < 300;
+                setRun({
+                  kind: ok ? "success" : "error",
+                  title: `${item.action.label} ${ok ? "completed" : "failed"}`,
+                  subtitle: item.target,
+                  text: item.text,
+                  outputKind: item.outputKind ?? outputKindFor(item.action.subcommand),
+                  result: {
+                    ok,
+                    status: item.status,
+                    path: item.action.subcommand,
+                    method: "POST",
+                    payload: null,
+                  },
+                });
+              } else if (item.running) {
+                setRun({
+                  kind: "running",
+                  title: `Running ${item.action.label}`,
+                  subtitle: item.target,
+                });
+              }
+            }}
+          />
+        )}
+
+        {showResultsLayout && !historyOpen && run.kind === "job" && (
+          <CrawlJobView
+            snapshot={run.snapshot}
+            nowMs={nowMs}
+            canceling={canceling}
+            onCancel={() => void cancelJob()}
+            onViewPartial={() => void viewPartialJob()}
+            onMinimize={minimizeJob}
+            onClose={closeJob}
+          />
+        )}
+
+        {showResultsLayout && !historyOpen && run.kind !== "job" && (
           <OutputPanel
             active={active}
             copied={copied}
@@ -433,32 +468,54 @@ export default function App() {
             run={run}
             onCopy={(text) => void copyOutput(text)}
             onRetry={() => active && void submit(active)}
+            onFollowUp={(text) => {
+              const askAction = ACTIONS.find((action) => action.subcommand === "ask");
+              if (!askAction) return;
+              setModeAction(askAction);
+              setQuery(text);
+              void submit(askAction, text);
+            }}
+            onHistory={() => {
+              setRun({ kind: "idle" });
+              setSettingsOpen(false);
+              setHistoryOpen(true);
+              setBrowseOpen(false);
+            }}
+            onCollapse={() => {
+              setRun({ kind: "idle" });
+              setModeAction(null);
+              setQuery("");
+              setHistoryOpen(false);
+              setBrowseOpen(false);
+            }}
+            onTogglePin={() => {
+              if (!currentTarget) return;
+              setPinnedTargets((items) => {
+                const next = new Set(items);
+                next.has(currentTarget) ? next.delete(currentTarget) : next.add(currentTarget);
+                return next;
+              });
+              setHistory((items) => items.map((item) => item.target === currentTarget ? { ...item, pinned: !pinnedTargets.has(currentTarget) } : item));
+            }}
+            pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
           />
         )}
       </main>
       )}
 
-      {showContent && (
-        <footer className="palette-footer">
-          <span className="palette-footer-hints">
-            ↑↓ navigate · ↵ select · Tab mode · Esc close
-          </span>
-          <span className="palette-status">
-            {config ? (
-              <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
-            ) : configError ? (
-              <StatusIndicator tone="error" label="Config error" />
-            ) : (
-              <StatusIndicator tone="syncing" label="Loading" />
-            )}
-            <button className="titlebar-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Settings">
-              <Settings size={14} />
-            </button>
-            <button className="titlebar-button" type="button" onClick={() => void invoke("hide_palette")} aria-label="Hide palette">
-              <X size={14} />
-            </button>
-          </span>
-        </footer>
+      {showContent && !settingsOpen && (
+        <PaletteFooter
+          config={config}
+          configError={configError}
+          onRecent={() => {
+            setRun({ kind: "idle" });
+            setModeAction(null);
+            setHistoryOpen((open) => !open);
+            setBrowseOpen(false);
+          }}
+          onSettings={() => setSettingsOpen((open) => !open)}
+          onHide={() => void invoke("hide_palette")}
+        />
       )}
     </div>
   );
@@ -469,4 +526,3 @@ export default function App() {
     window.setTimeout(() => setCopied(false), 1200);
   }
 }
-

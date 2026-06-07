@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 
 import type { PaletteAction } from "./actions";
 import { splitShellWords } from "./shellWords";
@@ -11,6 +11,9 @@ export interface PaletteConfig {
   resultLimit: number;
   theme: "system" | "dark" | "light";
   hideOnBlur: boolean;
+  openResultsInline?: boolean;
+  envValues?: Record<string, string | number | boolean | string[]>;
+  configValues?: Record<string, string | number | boolean | string[]>;
 }
 
 export interface PaletteResult {
@@ -61,6 +64,9 @@ export async function executeAction(
 ): Promise<PaletteResult> {
   const request = buildActionRequest(client, action, arg, config);
   try {
+    // Both runtimes route through the shared invoke wrapper: the Tauri bridge in
+    // production, or a same-origin relative fetch (via the vite proxy) in browser
+    // dev — never an absolute cross-origin URL.
     return await invoke<PaletteResult>("axon_http_request", { request });
   } catch (error) {
     return failedResult(request.method, request.path, error);
