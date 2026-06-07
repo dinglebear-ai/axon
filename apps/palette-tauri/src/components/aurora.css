@@ -110,7 +110,7 @@
 
   /* Typography */
   --aurora-font-display: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --aurora-font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --aurora-font-sans:    "Inter", "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --aurora-font-mono:    "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --aurora-type-body: 14px;
   --aurora-type-body-sm: 13px;
