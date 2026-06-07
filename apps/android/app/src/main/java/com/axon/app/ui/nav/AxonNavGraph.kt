@@ -1,18 +1,26 @@
 package com.axon.app.ui.nav
 
+import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -20,7 +28,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
@@ -33,6 +46,8 @@ import com.axon.app.ui.knowledge.SuggestScreen
 import com.axon.app.ui.operations.OperationMode
 import com.axon.app.ui.options.ModeOptionsScreen
 import com.axon.app.ui.settings.SettingsScreen
+import com.axon.app.ui.status.TopChromeStatus
+import com.axon.app.ui.theme.AxonTheme
 import kotlinx.serialization.Serializable
 import tv.tootie.aurora.components.AuroraThinking
 
@@ -41,9 +56,9 @@ import tv.tootie.aurora.components.AuroraThinking
 /**
  * Opens a saved document by URL via /v1/retrieve.
  *
- * [url] must be percent-encoded before navigating if it contains characters that
- * Navigation Compose treats as delimiters (e.g. `?`, `&`, `#`). Use
- * `Uri.encode(url)` at the call site and `Uri.decode(url)` in the destination.
+ * Callers pass a raw URL. The shared opener percent-encodes before navigating
+ * because URLs often contain delimiters (`?`, `&`, `#`) that Navigation Compose
+ * otherwise treats as route syntax.
  */
 @Serializable data class DocumentRoute(val url: String)
 
@@ -74,7 +89,7 @@ fun AxonNavGraph() {
     // Stable callback: same lambda identity across recompositions so deep children
     // don't see a new function reference per render.
     val openDocument = remember(navController) {
-        { url: String -> navController.navigate(DocumentRoute(url)); Unit }
+        { url: String -> navController.navigate(DocumentRoute(Uri.encode(url))); Unit }
     }
     CompositionLocalProvider(
         LocalOpenDocument provides openDocument,
@@ -87,7 +102,7 @@ fun AxonNavGraph() {
             composable<SettingsRoute>   { BackShell("Settings", navController::popBackStack) { SettingsScreen() } }
             composable<DocumentRoute> { entry ->
                 val route: DocumentRoute = entry.toRoute()
-                BackShell("Document", navController::popBackStack) { DocumentScreen(url = route.url) }
+                BackShell("Document", navController::popBackStack) { DocumentScreen(url = Uri.decode(route.url)) }
             }
             composable<ModeOptionsRoute> { entry ->
                 val route: ModeOptionsRoute = entry.toRoute()
@@ -116,29 +131,54 @@ private fun LaunchedPopBack(navController: NavController) {
     androidx.compose.runtime.LaunchedEffect(Unit) { navController.popBackStack() }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BackShell(
     title: String,
     onBack: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(title, style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
+    val colors = AxonTheme.colors
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.pageBg)
+            .statusBarsPadding(),
+    ) {
         Box(
             modifier = Modifier
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
+                .fillMaxWidth()
+                .height(44.dp)
+                .background(colors.navBg)
+                .padding(start = 13.dp, end = 11.dp),
+        ) {
+            Icon(
+                Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "Back",
+                tint = colors.textMuted,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onBack)
+                    .padding(5.dp),
+            )
+            Text(
+                title,
+                color = colors.textPrimary.copy(alpha = 0.94f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = AxonTheme.fonts.display,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .widthIn(max = 220.dp),
+            )
+            TopChromeStatus(modifier = Modifier.align(Alignment.CenterEnd))
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault))
+        Box(
+            modifier = Modifier
                 .imePadding()
                 .fillMaxSize(),
         ) {

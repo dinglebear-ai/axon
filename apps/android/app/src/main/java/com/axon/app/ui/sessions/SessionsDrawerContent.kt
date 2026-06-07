@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BookmarkAdded
-import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.DropdownMenu
@@ -41,9 +42,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.local.Session
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
 
 @Composable
 fun SessionsDrawerContent(
@@ -51,27 +56,41 @@ fun SessionsDrawerContent(
     vm: SessionsViewModel = viewModel(),
 ) {
     val sessions by vm.sessions.collectAsStateWithLifecycle()
+    val recentAsks by vm.recentAsks.collectAsStateWithLifecycle()
 
-    LazyColumn(
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        item {
-            NewSessionRow(onClick = { onSelect("new") })
-        }
-        if (sessions.isEmpty()) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth(0.86f)
+                .widthIn(max = 372.dp)
+                .padding(top = 15.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
             item {
-                EmptySessionsRow()
+                NewSessionRow(onClick = { onSelect("new") })
             }
-        } else {
-            items(sessions, key = { it.id }) { session ->
-                SessionRow(
-                    session = session,
-                    onSelect = { onSelect(session.id) },
-                    onPin   = { vm.pin(session.id) },
-                    onUnpin = { vm.unpin(session.id) },
-                    onDelete = { vm.delete(session) },
-                )
+            when {
+                sessions.isNotEmpty() -> {
+                    items(sessions, key = { it.id }) { session ->
+                        SessionRow(
+                            session = session,
+                            onSelect = { onSelect(session.id) },
+                            onPin   = { vm.pin(session.id) },
+                            onUnpin = { vm.unpin(session.id) },
+                            onDelete = { vm.delete(session) },
+                        )
+                    }
+                }
+                recentAsks.isNotEmpty() -> {
+                    items(recentAsks.take(8), key = { "ask-${it.id}" }) { ask ->
+                        AskHistorySessionRow(ask)
+                    }
+                }
+                else -> {
+                    item {
+                        EmptySessionsRow()
+                    }
+                }
             }
         }
     }
@@ -83,32 +102,110 @@ private fun NewSessionRow(onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(11.dp))
-            .background(colors.tint(colors.accentPrimary, 9, colors.panelStrong))
-            .border(1.dp, colors.tint(colors.accentPrimary, 20, Color.Transparent), RoundedCornerShape(11.dp))
+            .clip(RoundedCornerShape(9.dp))
+            .background(colors.control.copy(alpha = 0.025f))
+            .border(1.dp, colors.tint(colors.accentPrimary, 18, colors.pageBg), RoundedCornerShape(9.dp))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .padding(horizontal = 15.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
-        Icon(Icons.Rounded.Add, contentDescription = null, tint = colors.accentStrong, modifier = Modifier.size(16.dp))
-        Text("New Session", color = colors.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, fontFamily = AxonTheme.fonts.body)
+        Icon(Icons.Rounded.Add, contentDescription = null, tint = colors.accentStrong.copy(alpha = 0.82f), modifier = Modifier.size(17.dp))
+        Text("New Session", color = colors.textPrimary.copy(alpha = 0.9f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = AxonTheme.fonts.body)
     }
 }
 
 @Composable
-private fun EmptySessionsRow() {
+private fun AskHistorySessionRow(entry: AskHistoryEntry) {
     val colors = AxonTheme.colors
+    val title = remember(entry.query) { cleanHistoryText(entry.query) }
+    val answer = remember(entry.answer) { cleanHistoryPreview(entry.answer) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(11.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.control.copy(alpha = 0.045f))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.11f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                title,
+                fontSize = 12.8.sp,
+                lineHeight = 16.8.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textPrimary.copy(alpha = 0.9f),
+                fontFamily = AxonTheme.fonts.body,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                relativeTime(entry.askedAt),
+                fontSize = 10.2.sp,
+                lineHeight = 13.4.sp,
+                color = colors.textMuted.copy(alpha = 0.68f),
+                fontFamily = AxonTheme.fonts.mono,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            answer,
+            fontSize = 11.2.sp,
+            lineHeight = 14.8.sp,
+            color = colors.textMuted.copy(alpha = 0.68f),
+            fontFamily = AxonTheme.fonts.body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            "1 query · ask",
+            fontSize = 10.2.sp,
+            lineHeight = 13.4.sp,
+            color = colors.textMuted.copy(alpha = 0.6f),
+            fontFamily = AxonTheme.fonts.mono,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun cleanHistoryText(value: String): String =
+    runCatching { URLDecoder.decode(value, StandardCharsets.UTF_8.name()) }
+        .getOrDefault(value)
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun cleanHistoryPreview(value: String): String =
+    cleanHistoryText(value)
+        .substringBefore("## Sources")
+        .substringBefore("## Citation Validation")
+        .replace(Regex("\\[S\\d+]"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .take(180)
+        .trimEnd()
+
+@Composable
+private fun EmptySessionsRow() {
+    val colors = AxonTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.control.copy(alpha = 0.34f))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Icon(Icons.Rounded.History, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(16.dp))
-        Text("No sessions yet", color = colors.textPrimary, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, fontFamily = AxonTheme.fonts.body)
-        Text("Ask a question to start a live session.", color = colors.textMuted, fontSize = 10.5.sp, fontFamily = AxonTheme.fonts.body)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("No sessions yet", color = colors.textPrimary, fontSize = 11.4.sp, fontWeight = FontWeight.SemiBold, fontFamily = AxonTheme.fonts.body)
+            Text("Ask a question to start a live session.", color = colors.textMuted, fontSize = 10.4.sp, fontFamily = AxonTheme.fonts.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -120,50 +217,70 @@ private fun SessionRow(
     onUnpin: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val colors = AxonTheme.colors
     var showMenu by remember { mutableStateOf(false) }
 
     Box {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.control.copy(alpha = 0.075f))
+                .border(1.dp, colors.borderDefault.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
                 .combinedClickable(
                     onClick = onSelect,
                     onLongClick = { showMenu = true },
                 )
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(
-                imageVector = if (session.pinnedAt != null) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkBorder,
-                contentDescription = null,
-                tint = if (session.pinnedAt != null) Color(0xFFC6A36B) else Color(0xFF4A6374),
-                modifier = Modifier.size(16.dp),
-            )
-            Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (session.pinnedAt != null) {
+                    Icon(
+                        imageVector = Icons.Rounded.BookmarkAdded,
+                        contentDescription = null,
+                        tint = colors.accentStrong.copy(alpha = 0.78f),
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
                 Text(
                     session.title,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFFE6F4FB),
+                    fontSize = 12.8.sp,
+                    lineHeight = 16.8.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textPrimary.copy(alpha = 0.9f),
                     fontFamily = AxonTheme.fonts.body,
+                    modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    session.firstMessagePreview,
-                    fontSize = 11.sp,
-                    color = Color(0xFF4A6374),
-                    fontFamily = AxonTheme.fonts.body,
+                    relativeTime(session.updatedAt),
+                    fontSize = 10.2.sp,
+                    lineHeight = 13.4.sp,
+                    color = colors.textMuted.copy(alpha = 0.68f),
+                    fontFamily = AxonTheme.fonts.mono,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Text(
-                "${session.turnCount}t",
-                fontSize = 10.sp,
-                color = Color(0xFF4A6374),
+                session.firstMessagePreview,
+                fontSize = 11.2.sp,
+                lineHeight = 14.8.sp,
+                color = colors.textMuted.copy(alpha = 0.72f),
+                fontFamily = AxonTheme.fonts.body,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "${session.turnCount} turns · ${session.injectedOpCount} ops",
+                fontSize = 10.2.sp,
+                lineHeight = 13.4.sp,
+                color = colors.textMuted.copy(alpha = 0.6f),
                 fontFamily = AxonTheme.fonts.mono,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 
@@ -177,7 +294,7 @@ private fun SessionRow(
             } else {
                 DropdownMenuItem(
                     text = { Text("Unpin") },
-                    leadingIcon = { Icon(Icons.Rounded.BookmarkBorder, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.Rounded.BookmarkAdded, contentDescription = null) },
                     onClick = { showMenu = false; onUnpin() },
                 )
             }
@@ -187,5 +304,19 @@ private fun SessionRow(
                 onClick = { showMenu = false; onDelete() },
             )
         }
+    }
+}
+
+private fun relativeTime(ts: Long): String {
+    val ageMs = (System.currentTimeMillis() - ts).coerceAtLeast(0L)
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(ageMs)
+    val hours = TimeUnit.MILLISECONDS.toHours(ageMs)
+    val days = TimeUnit.MILLISECONDS.toDays(ageMs)
+    return when {
+        minutes < 1 -> "now"
+        minutes < 60 -> "${minutes}m ago"
+        hours < 24 -> "${hours}h ago"
+        days == 1L -> "yesterday"
+        else -> "${days}d ago"
     }
 }

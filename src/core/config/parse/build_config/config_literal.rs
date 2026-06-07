@@ -23,7 +23,6 @@ use std::env;
 pub(super) struct LiteralInputs<'a> {
     pub global: &'a GlobalArgs,
     pub toml: &'a TomlConfig,
-    pub provider: &'a super::provider_overlay::ProviderOverlay,
     pub dispatched: &'a DispatchOutput,
     pub collection: String,
     pub sqlite_path: std::path::PathBuf,
@@ -180,33 +179,34 @@ fn populate_services_and_ask_basics(
 ) -> Result<(), String> {
     cfg.tei_url = tei_url;
     cfg.qdrant_url = qdrant_url;
-    // LLM backend fields resolve as `active-profile overlay` > env var > default.
-    // The overlay is all-`None` when no provider is active, so this is identical
-    // to the pure-env behavior in that case (see provider_overlay.rs).
-    let p = inputs.provider;
-    // Backend resolution is shared with `provider list` via `backend_from_overlay`
-    // so the two cannot drift (active-profile backend > AXON_LLM_BACKEND > default).
-    cfg.llm_backend = super::provider_overlay::backend_from_overlay(p)?;
-    cfg.headless_gemini_model =
-        overlay_or_env(&p.gemini_model, "AXON_HEADLESS_GEMINI_MODEL").unwrap_or_default();
-    cfg.headless_gemini_cmd = overlay_or_env(&p.gemini_cmd, "AXON_HEADLESS_GEMINI_CMD")
-        .unwrap_or_else(|| "gemini".to_string());
-    cfg.headless_gemini_home = overlay_or_env(&p.gemini_home, "AXON_HEADLESS_GEMINI_HOME")
+    cfg.llm_backend = crate::services::llm_backend::LlmBackendKind::parse(
+        &non_empty_env("AXON_LLM_BACKEND").unwrap_or_default(),
+    )?;
+    cfg.headless_gemini_model = non_empty_env("AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL")
+        .or_else(|| non_empty_env("AXON_HEADLESS_GEMINI_MODEL"))
+        .or_else(|| non_empty_toml(inputs.toml.llm.synthesis_gemini_model.as_deref()))
+        .unwrap_or_default();
+    cfg.headless_gemini_chat_model = non_empty_env("AXON_CHAT_HEADLESS_GEMINI_MODEL")
+        .or_else(|| non_empty_toml(inputs.toml.llm.chat_gemini_model.as_deref()))
+        .unwrap_or_default();
+    cfg.headless_gemini_cmd =
+        non_empty_env("AXON_HEADLESS_GEMINI_CMD").unwrap_or_else(|| "gemini".to_string());
+    cfg.headless_gemini_home = non_empty_env("AXON_HEADLESS_GEMINI_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| env::var("HOME").ok().map(std::path::PathBuf::from));
     cfg.llm_completion_concurrency =
         parse_positive_usize_env("AXON_LLM_COMPLETION_CONCURRENCY", 4)?;
     cfg.llm_completion_timeout_secs =
         parse_positive_u64_env("AXON_LLM_COMPLETION_TIMEOUT_SECS", 300)?;
-    cfg.openai_base_url =
-        overlay_or_env(&p.openai_base_url, "AXON_OPENAI_BASE_URL").unwrap_or_default();
-    cfg.openai_api_key =
-        overlay_or_env(&p.openai_api_key, "AXON_OPENAI_API_KEY").unwrap_or_default();
-    cfg.openai_model = overlay_or_env(&p.openai_model, "AXON_OPENAI_MODEL").unwrap_or_default();
-    cfg.codex_cmd =
-        overlay_or_env(&p.codex_cmd, "AXON_CODEX_CMD").unwrap_or_else(|| "codex".to_string());
-    cfg.codex_model = overlay_or_env(&p.codex_model, "AXON_CODEX_MODEL").unwrap_or_default();
-    cfg.codex_home = overlay_or_env(&p.codex_home, "AXON_CODEX_HOME").map(std::path::PathBuf::from);
+    cfg.openai_base_url = non_empty_env("AXON_OPENAI_BASE_URL").unwrap_or_default();
+    cfg.openai_api_key = non_empty_env("AXON_OPENAI_API_KEY").unwrap_or_default();
+    cfg.openai_model = non_empty_env("AXON_SYNTHESIS_OPENAI_MODEL")
+        .or_else(|| non_empty_env("AXON_OPENAI_MODEL"))
+        .or_else(|| non_empty_toml(inputs.toml.llm.synthesis_openai_model.as_deref()))
+        .unwrap_or_default();
+    cfg.openai_chat_model = non_empty_env("AXON_CHAT_OPENAI_MODEL")
+        .or_else(|| non_empty_toml(inputs.toml.llm.chat_openai_model.as_deref()))
+        .unwrap_or_default();
     cfg.tavily_api_key = env::var("TAVILY_API_KEY").ok().unwrap_or_default();
     cfg.searxng_url = non_empty_env("AXON_SEARXNG_URL")
         .map(|u| u.trim_end_matches('/').to_string())
@@ -244,18 +244,15 @@ fn populate_services_and_ask_basics(
     Ok(())
 }
 
-/// Resolve an LLM backend field as `active-profile overlay` > env var. The
-/// overlay is the one intentional `toml > env` exception (an active provider
-/// profile overrides the per-backend `AXON_*` vars); a `None` overlay falls
-/// through to the env layer, so resolution is byte-identical when no profile is
-/// active. See `provider_overlay.rs`.
-fn overlay_or_env(overlay: &Option<String>, var_name: &str) -> Option<String> {
-    overlay.clone().or_else(|| non_empty_env(var_name))
-}
-
 fn non_empty_env(var_name: &str) -> Option<String> {
     env::var(var_name)
         .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn non_empty_toml(value: Option<&str>) -> Option<String> {
+    value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
@@ -454,7 +451,3 @@ fn warn_legacy_service_url(toml_key: &str, env_key: &str) {
         "[services].{toml_key} is deprecated and will be ignored in a future release; move it to {env_key} in .env"
     ));
 }
-
-#[cfg(test)]
-#[path = "config_literal_tests.rs"]
-mod tests;

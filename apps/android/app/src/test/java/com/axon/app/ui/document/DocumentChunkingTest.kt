@@ -66,4 +66,79 @@ class DocumentChunkingTest {
         // Reassembling the chunks must yield the original.
         assertEquals(content, chunks.joinToString(""))
     }
+
+    @Test
+    fun `markdown blocks sanitize schema anchors and object braces`() {
+        val content = """
+            # (resource) responses > (model) compacted_response > (schema)
+
+            CompactedResponse object { id, created_at, object, 2 more } id: string ](<#(resource) responses > (model) compacted_response > (schema) > (property) id>) arguments: JSON string of the arguments.
+            . detail: "low" or "high" or "auto" or "original"
+            Inline skill details (</api/reference/resources/responses#(resource) responses > (model) inline_skill > (schema)>)
+            ResponseOutputRefusal object { refusal, type } (<#(resource) responses > (model) r
+        """.trimIndent()
+
+        val text = markdownBlocks(content).joinToString(" ") { it.text }
+
+        assertTrue(text.contains("object fields: id, created_at, object, 2 more"))
+        assertTrue(text.contains("structured argument string"))
+        assertTrue(text.none { it == '{' || it == '}' || it == '[' || it == ']' })
+        assertTrue(!text.contains("](<#"))
+        assertTrue(!text.contains("(resource)"))
+        assertTrue(!text.contains("(schema)"))
+        assertTrue(!text.contains("JSON string"))
+        assertTrue(text.contains("detail:"))
+        assertEquals(
+            "detail: \"low\" or \"high\" or \"auto\" or \"original\"",
+            markdownBlocks(""". detail: "low" or "high" or "auto" or "original"""").single().text,
+        )
+    }
+
+    @Test
+    fun `markdown code blocks drop stray wrapping backticks`() {
+        val content = """
+            ```
+            `[ { x: 100, y: 200 } ]`
+            ```
+        """.trimIndent()
+
+        val block = markdownBlocks(content).single()
+
+        assertEquals(DocumentBlockKind.Code, block.kind)
+        assertEquals("[ { x: 100, y: 200 } ]", block.text)
+    }
+
+    @Test
+    fun `schema object paragraphs split into readable sections`() {
+        val content = """
+            CompactedResponse object { id, created_at } id: string The unique identifier. created_at: number Unix timestamp.
+            ResponseOutputRefusal object { refusal, type } refusal: string The refusal explanation. type: string Always refusal.
+        """.trimIndent()
+
+        val blocks = markdownBlocks(content)
+
+        assertEquals(DocumentBlockKind.Heading, blocks[0].kind)
+        assertEquals("CompactedResponse", blocks[0].text)
+        assertTrue(blocks[1].text.startsWith("object fields: id, created_at"))
+        assertTrue(blocks[1].text.contains("\nid: string"))
+        assertTrue(blocks[1].text.contains("\ncreated_at: number"))
+        assertEquals(DocumentBlockKind.Heading, blocks[2].kind)
+        assertEquals("ResponseOutputRefusal", blocks[2].text)
+        assertTrue(blocks[3].text.contains("\nrefusal: string"))
+        assertTrue(blocks[3].text.contains("\ntype: string"))
+    }
+
+    @Test
+    fun `visible document warnings suppress redundant truncation copy`() {
+        val warnings = listOf(
+            "retrieve result truncated at 500 point(s)",
+            "source had unsupported metadata",
+        )
+
+        assertEquals(
+            listOf("source had unsupported metadata"),
+            visibleDocumentWarnings(truncated = true, warnings = warnings),
+        )
+        assertEquals(warnings, visibleDocumentWarnings(truncated = false, warnings = warnings))
+    }
 }

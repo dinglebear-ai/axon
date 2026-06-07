@@ -198,7 +198,7 @@ jobs:
           rustc -vV
           "RUSTFLAGS=$env:RUSTFLAGS"
           rustc --print cfg | Select-String 'target_feature'
-          cargo config get build.rustflags --merged
+          cargo config get build.rustflags --merged yes
           if ($LASTEXITCODE -ne 0) { "build.rustflags not set" }
           exit 0
         env:
@@ -207,6 +207,7 @@ jobs:
         run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
         env:
           RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
+          CARGO_BUILD_RUSTC_WRAPPER: ""
       - name: Package
         shell: pwsh
         run: |

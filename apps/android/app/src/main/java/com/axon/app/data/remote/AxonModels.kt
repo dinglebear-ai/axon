@@ -21,6 +21,20 @@ data class AskRequest(
     @SerialName("ask_hybrid_candidates") val hybridCandidates: Int? = null,
 )
 
+/** Request body for POST /v1/chat and POST /v1/chat/stream. Direct LLM, no RAG fields. */
+@Serializable
+data class ChatRequest(
+    val message: String,
+)
+
+/** Response body from POST /v1/chat. */
+@Serializable
+data class ChatResponse(
+    val message: String,
+    val answer: String,
+    val model: String? = null,
+)
+
 /** Request body for POST /v1/query. */
 @Serializable
 data class QueryRequest(

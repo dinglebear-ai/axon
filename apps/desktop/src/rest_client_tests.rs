@@ -25,6 +25,15 @@ fn builds_query_rest_request() {
 }
 
 #[test]
+fn builds_chat_rest_request_without_collection() {
+    let request = build_rest_request(action("chat", ArgMode::Single), "plain llm chat").unwrap();
+
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.path, "/v1/chat");
+    assert_eq!(request.body, Some(json!({ "message": "plain llm chat" })));
+}
+
+#[test]
 fn builds_summarize_request_with_multiple_urls() {
     let request = build_rest_request(
         action("summarize", ArgMode::Split),

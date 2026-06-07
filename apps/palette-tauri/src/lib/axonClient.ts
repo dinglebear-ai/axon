@@ -126,6 +126,8 @@ function bodyFor(
           ...collectionBody,
         },
       };
+    case "chat":
+      return { method: "POST", path: "/v1/chat", body: { message: first(words, "message") } };
     case "query":
       return { method: "POST", path: "/v1/query", body: { query: first(words, "query"), limit, ...collectionBody } };
     case "retrieve":

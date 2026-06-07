@@ -155,7 +155,12 @@ fn trim_env_value(value: &str) -> String {
 }
 
 pub(crate) fn build_rest_request(action: CommandAction, arg: &str) -> Result<RestRequest, String> {
-    let words = match action.arg_mode {
+    let words = action_words(action.arg_mode, arg)?;
+    request_for_words(action.subcommand, &words)
+}
+
+fn action_words(mode: ArgMode, arg: &str) -> Result<Vec<String>, String> {
+    Ok(match mode {
         ArgMode::None => Vec::new(),
         ArgMode::OptionalSingle => {
             let arg = arg.trim();
@@ -167,9 +172,11 @@ pub(crate) fn build_rest_request(action: CommandAction, arg: &str) -> Result<Res
         }
         ArgMode::Single => vec![arg.trim().to_string()],
         ArgMode::Split => split_shell_words(arg)?,
-    };
+    })
+}
 
-    match action.subcommand {
+fn request_for_words(subcommand: &str, words: &[String]) -> Result<RestRequest, String> {
+    match subcommand {
         "doctor" => Ok(get("/v1/doctor", "GET /v1/doctor")),
         "status" => Ok(get("/v1/status", "GET /v1/status")),
         "sources" => Ok(get("/v1/sources?limit=100", "GET /v1/sources")),
@@ -205,6 +212,14 @@ pub(crate) fn build_rest_request(action: CommandAction, arg: &str) -> Result<Res
                 "/v1/ask",
                 json!({ "query": query, "explain": false, "diagnostics": false }),
                 "POST /v1/ask",
+            ))
+        }
+        "chat" => {
+            let message = first_arg(&words, "message")?;
+            Ok(post(
+                "/v1/chat",
+                json!({ "message": message }),
+                "POST /v1/chat",
             ))
         }
         "query" => {

@@ -64,6 +64,14 @@ pub(crate) const ACTIONS: &[CommandAction] = &[
         example: "ask why did OpenClaw rank above Claude docs?",
     },
     CommandAction {
+        label: "Chat with LLM",
+        subcommand: "chat",
+        arg_mode: ArgMode::Single,
+        aliases: &["chat", "llm", "talk"],
+        description: "Chat directly with the configured LLM without RAG retrieval.",
+        example: "chat explain this error simply",
+    },
+    CommandAction {
         label: "Query knowledge base",
         subcommand: "query",
         arg_mode: ArgMode::Single,

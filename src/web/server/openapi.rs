@@ -19,6 +19,8 @@ use super::{handlers, openapi_jobs};
         handlers::discovery::doctor,
         handlers::ask::v1_ask,
         handlers::ask_stream::v1_ask_stream,
+        handlers::chat::v1_chat,
+        handlers::chat_stream::v1_chat_stream,
         handlers::rag::query,
         handlers::rag::retrieve,
         handlers::rag::evaluate,
@@ -68,6 +70,8 @@ use super::{handlers, openapi_jobs};
     ),
     components(schemas(
         crate::services::client_contract::RestAskRequest,
+        crate::services::client_contract::RestChatRequest,
+        crate::services::client_contract::RestChatResponse,
         super::error::ErrorBody,
         crate::services::client_contract::RestQueryRequest,
         crate::services::client_contract::RestRetrieveRequest,

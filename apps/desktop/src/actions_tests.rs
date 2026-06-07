@@ -53,6 +53,18 @@ fn action_matches_alias_hit() {
 }
 
 #[test]
+fn chat_action_is_available_for_direct_llm_mode() {
+    let chat = ACTIONS
+        .iter()
+        .find(|a| a.subcommand == "chat")
+        .copied()
+        .expect("chat action present");
+
+    assert!(action_matches(chat, "llm"));
+    assert!(action_matches(chat, "talk"));
+}
+
+#[test]
 fn action_matches_label_hit() {
     let doctor = ACTIONS
         .iter()

@@ -79,6 +79,7 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         true,
     ),
     spec("AXON_LLM_BACKEND", KeepEnv, Both, None, Canonical, false),
+    spec("AXON_PROVIDER", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_HEADLESS_GEMINI_CMD",
         KeepEnv,
@@ -88,7 +89,23 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
         "AXON_HEADLESS_GEMINI_MODEL",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
+        "AXON_CHAT_HEADLESS_GEMINI_MODEL",
         KeepEnv,
         Both,
         None,
@@ -120,12 +137,23 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec("AXON_OPENAI_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec(
+        "AXON_SYNTHESIS_OPENAI_MODEL",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
     spec("AXON_OPENAI_MODEL", KeepEnv, Both, None, Canonical, false),
-    spec("AXON_CODEX_CMD", KeepEnv, Both, None, Canonical, false),
-    spec("AXON_CODEX_MODEL", KeepEnv, Both, None, Canonical, false),
-    // AXON_CODEX_HOME is the auth-home-bootstrap twin of AXON_HEADLESS_GEMINI_HOME;
-    // it lives in advanced.rs (TrustedOperatorBootstrap) alongside that key.
-    spec("AXON_PROVIDER", KeepEnv, Both, None, Canonical, false),
+    spec(
+        "AXON_CHAT_OPENAI_MODEL",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
     spec("GEMINI_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec("GOOGLE_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec(

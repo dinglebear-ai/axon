@@ -5,6 +5,7 @@ export type OutputKind = "markdown" | "code";
 export function outputKindFor(subcommand: string): OutputKind {
   switch (subcommand) {
     case "ask":
+    case "chat":
     case "scrape":
     case "summarize":
     case "research":
@@ -29,6 +30,7 @@ export function formatPayload(subcommand: string, payload: unknown): string {
   const value = payload;
   switch (subcommand) {
     case "ask":
+    case "chat":
       return stringField(value, "answer") ?? compact(value);
     case "scrape":
       return stringField(value, "markdown") ?? stringField(value, "output") ?? compact(value);

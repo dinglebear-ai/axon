@@ -1,5 +1,6 @@
 use super::*;
 use crate::services::context::ServiceContext;
+use chrono::Utc;
 use std::sync::Arc;
 
 async fn test_service_context(cfg: &Config) -> ServiceContext {
@@ -81,6 +82,48 @@ async fn run_watch_lists_with_sqlite_backend() -> Result<(), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::default_minimal();
     cfg.sqlite_path = tmp.path().join("jobs.db");
+    let service_context = test_service_context(&cfg).await;
+    run_watch(&cfg, &service_context).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn run_watch_artifacts_lists_with_sqlite_backend() -> Result<(), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+    cfg.json_output = true;
+
+    let pool = crate::jobs::store::open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
+    let watch = crate::jobs::watch::create_watch_def_with_pool(
+        &pool,
+        &crate::jobs::watch::WatchDefCreate {
+            name: "cli-artifacts".to_string(),
+            task_type: "watch".to_string(),
+            task_payload: serde_json::json!({"urls": ["https://example.com"], "summarize": false}),
+            every_seconds: 60,
+            enabled: true,
+            next_run_at: Utc::now(),
+        },
+    )
+    .await?;
+    let run = crate::jobs::watch::create_watch_run_with_pool(&pool, watch.id, None).await?;
+    sqlx::query(
+        "INSERT INTO axon_watch_run_artifacts (watch_run_id, kind, path, payload, created_at) \
+         VALUES (?, 'url-change', NULL, ?, ?)",
+    )
+    .bind(run.id.to_string())
+    .bind(serde_json::json!({"summary": "Changed."}).to_string())
+    .bind(crate::jobs::store::now_ms())
+    .execute(&pool)
+    .await?;
+
+    cfg.positional = vec![
+        "artifacts".to_string(),
+        run.id.to_string(),
+        "--limit".to_string(),
+        "10".to_string(),
+    ];
     let service_context = test_service_context(&cfg).await;
     run_watch(&cfg, &service_context).await?;
     Ok(())

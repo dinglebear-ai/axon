@@ -11,6 +11,8 @@ export type RunState =
       text: string;
       outputKind: OutputKind;
       requestId: string;
+      path: string;
+      actionLabel: string;
     }
   | {
       kind: "success" | "error";

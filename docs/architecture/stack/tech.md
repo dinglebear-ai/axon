@@ -103,24 +103,13 @@ Features explicitly NOT enabled (see `docs/reference/spider-feature-flags.md`):
 - `balance`: silently throttles with zero logging
 - `glob`: causes budget-aware `is_allowed()` to reject first URL with `with_limit(1)`
 
-## LLM synthesis backends
+## Gemini Headless LLM
 
-LLM synthesis operations (`ask`, `research`, `summarize`, `evaluate`, `suggest`, `extract` fallback, `debug`, and the `watch` change-report summarizer) dispatch through `src/services/llm_backend/` on `AXON_LLM_BACKEND`. Selection is global — one setting drives every call site. Three backends are available:
-
-- **`gemini-headless`** (default) — the Gemini CLI headless path.
-- **`openai-compat`** — any OpenAI-compatible `/v1/chat/completions` endpoint (`AXON_OPENAI_BASE_URL`, `AXON_OPENAI_MODEL`, optional `AXON_OPENAI_API_KEY`).
-- **`codex-app-server`** — the OpenAI Codex CLI `codex app-server` over stdio in an isolated `CODEX_HOME` (`AXON_CODEX_CMD`, `AXON_CODEX_MODEL`, `AXON_CODEX_HOME`).
-
-Named provider profiles (`axon config provider use <name>`) override these env vars.
-
-Gemini headless path settings:
+LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use the Gemini CLI headless path through `src/services/llm_backend/`:
 
 - `AXON_HEADLESS_GEMINI_CMD` selects the Gemini CLI command.
 - `AXON_HEADLESS_GEMINI_HOME` selects the source HOME for Gemini auth copying.
 - `AXON_HEADLESS_GEMINI_MODEL` controls the Gemini model override.
-
-Shared across all backends:
-
 - `AXON_LLM_COMPLETION_CONCURRENCY` caps concurrent completions.
 - `AXON_LLM_COMPLETION_TIMEOUT_SECS` caps each completion request.
 

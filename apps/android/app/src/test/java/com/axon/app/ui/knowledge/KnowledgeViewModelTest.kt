@@ -94,6 +94,16 @@ class KnowledgeViewModelTest {
         vm.loadStats()
         assertEquals(2, vm.statsCalls)
     }
+
+    @Test fun `non forced load does not restart an in flight section`() = runTest(dispatcher) {
+        val vm = TestKnowledgeViewModel(
+            suggestResult = Result.success(listOf(SuggestHitUi("https://a", "good"))),
+        )
+        vm.markSuggestLoading()
+        vm.loadSuggest(null)
+        assertEquals(0, vm.suggestCalls)
+        assertEquals(Resource.Loading, vm.suggest.value)
+    }
 }
 
 /**
@@ -115,6 +125,7 @@ private class TestKnowledgeViewModel(
     private val _stats = MutableStateFlow<Resource<kotlinx.serialization.json.JsonElement>>(Resource.Idle)
     val stats = _stats.asStateFlow()
 
+    var suggestCalls = 0
     var domainsCalls = 0
     var statsCalls = 0
 
@@ -127,9 +138,12 @@ private class TestKnowledgeViewModel(
     fun advanceClock(deltaMs: Long) { clockMs += deltaMs }
     private fun now(): Long = clockMs
     private fun fresh(at: Long?) = at != null && (now() - at) < 30_000L
+    fun markSuggestLoading() { _suggest.value = Resource.Loading }
 
     fun loadSuggest(focus: String?, force: Boolean = false) {
         if (!force && fresh(suggestCachedAt) && _suggest.value is Resource.Ready<*>) return
+        if (!force && _suggest.value is Resource.Loading) return
+        suggestCalls++
         _suggest.value = Resource.Loading
         suggestResult.fold(
             onSuccess = { _suggest.value = Resource.Ready(it); suggestCachedAt = now() },
@@ -139,6 +153,7 @@ private class TestKnowledgeViewModel(
 
     fun loadSources(force: Boolean = false) {
         if (!force && fresh(sourcesCachedAt) && _sources.value is Resource.Ready<*>) return
+        if (!force && _sources.value is Resource.Loading) return
         _sources.value = Resource.Loading
         sourcesResult.fold(
             onSuccess = { _sources.value = Resource.Ready(it); sourcesCachedAt = now() },
@@ -148,6 +163,7 @@ private class TestKnowledgeViewModel(
 
     fun loadDomains(force: Boolean = false) {
         if (!force && fresh(domainsCachedAt) && _domains.value is Resource.Ready<*>) return
+        if (!force && _domains.value is Resource.Loading) return
         domainsCalls++
         _domains.value = Resource.Loading
         domainsResult.fold(
@@ -158,6 +174,7 @@ private class TestKnowledgeViewModel(
 
     fun loadStats(force: Boolean = false) {
         if (!force && fresh(statsCachedAt) && _stats.value is Resource.Ready<*>) return
+        if (!force && _stats.value is Resource.Loading) return
         statsCalls++
         _stats.value = Resource.Loading
         statsResult.fold(

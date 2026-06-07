@@ -21,31 +21,6 @@ fn backend_config_accepts_explicit_gemini_model() {
 }
 
 #[test]
-fn as_str_returns_canonical_tokens() {
-    assert_eq!(LlmBackendKind::GeminiHeadless.as_str(), "gemini-headless");
-    assert_eq!(LlmBackendKind::OpenAiCompat.as_str(), "openai-compat");
-    assert_eq!(LlmBackendKind::CodexAppServer.as_str(), "codex-app-server");
-}
-
-#[test]
-fn as_str_round_trips_through_parse() {
-    // The job snapshot serializes via as_str and workers parse it back — a typo
-    // in either map would silently break backend selection for async jobs.
-    for kind in [
-        LlmBackendKind::GeminiHeadless,
-        LlmBackendKind::OpenAiCompat,
-        LlmBackendKind::CodexAppServer,
-    ] {
-        assert_eq!(
-            LlmBackendKind::parse(kind.as_str()).unwrap(),
-            kind,
-            "{} must round-trip through parse",
-            kind.as_str()
-        );
-    }
-}
-
-#[test]
 fn configured_model_uses_openai_model_for_openai_compat_backend() {
     let cfg = Config {
         llm_backend: LlmBackendKind::OpenAiCompat,
@@ -55,4 +30,31 @@ fn configured_model_uses_openai_model_for_openai_compat_backend() {
     };
     let req = CompletionRequest::new("hello").backend_from_config(&cfg);
     assert_eq!(req.model.as_deref(), Some("gemma-4-e4b"));
+}
+
+#[test]
+fn chat_model_uses_chat_override_for_openai_compat_backend() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::OpenAiCompat,
+        openai_model: "synthesis-model".to_string(),
+        openai_chat_model: "chat-model".to_string(),
+        ..Config::default()
+    };
+
+    let req = CompletionRequest::new("hello").backend_from_config_for(&cfg, LlmModelPurpose::Chat);
+
+    assert_eq!(req.model.as_deref(), Some("chat-model"));
+}
+
+#[test]
+fn chat_model_falls_back_to_synthesis_model_when_unset() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::GeminiHeadless,
+        headless_gemini_model: "gemini-synthesis".to_string(),
+        ..Config::default()
+    };
+
+    let req = CompletionRequest::new("hello").backend_from_config_for(&cfg, LlmModelPurpose::Chat);
+
+    assert_eq!(req.model.as_deref(), Some("gemini-synthesis"));
 }

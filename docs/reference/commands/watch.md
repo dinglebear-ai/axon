@@ -80,7 +80,7 @@ The only supported `task_type` is `watch`.
 | `max_depth` | `2` | Crawl depth bound for the change-triggered crawl. |
 | `ignore_patterns` | `[]` | Regex patterns; matching lines are stripped before diffing (noise suppression, e.g. timestamps). |
 | `change_threshold_words` | `0` | Minimum absolute word-count delta for a text-only change to count as meaningful. Link changes always count. |
-| `summarize` | `true` | Produce an AI summary of each change (requires a configured LLM backend via `AXON_LLM_BACKEND` — Gemini CLI by default). Best-effort — the raw diff is retained if the LLM is unavailable. |
+| `summarize` | `true` | Produce an AI summary of each change (requires the Gemini CLI, `AXON_HEADLESS_GEMINI_CMD`). Best-effort — the raw diff is retained if the LLM is unavailable. |
 
 ### Behavior summary
 

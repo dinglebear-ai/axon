@@ -168,6 +168,14 @@ export type components = {
             "query": string;
             "since"?: string | null;
         };
+        "RestChatRequest": {
+            "message": string;
+        };
+        "RestChatResponse": {
+            "answer": string;
+            "message": string;
+            "model"?: string | null;
+        };
         "RestCrawlRequest": {
             "collection"?: string | null;
             "delay_ms"?: number | null;
@@ -292,7 +300,7 @@ export type components = {
             "size_bytes": number;
             "url": string;
         };
-        "WatchCreateRequest": {
+        "WatchDefCreateRequest": {
             "enabled"?: boolean | null;
             "every_seconds": number;
             "name": string;

@@ -1,6 +1,6 @@
 package com.axon.app.ui.common
 
-/** Target size (chars) for each rendered chunk in document/JSON `LazyColumn`s. */
+/** Target size (chars) for each rendered chunk in long-document `LazyColumn`s. */
 internal const val DOC_CHUNK_TARGET_CHARS = 2_000
 
 /**
@@ -9,8 +9,7 @@ internal const val DOC_CHUNK_TARGET_CHARS = 2_000
  * line (`\n`) boundaries; anything still over the target is sliced by char so
  * a single 10K paragraph never becomes a single `Text` node.
  *
- * Used by DocumentScreen for retrieved documents and by StatsSection /
- * SystemScreen for raw JSON payloads (per R4).
+ * Used by document-style screens for retrieved, scraped, or summarized text.
  */
 internal fun chunkDocument(content: String): List<String> {
     if (content.length <= DOC_CHUNK_TARGET_CHARS) return listOf(content)

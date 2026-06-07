@@ -28,6 +28,12 @@ enum class FabOp(
         icon        = Icons.Rounded.FilterAlt,
         placeholder = "https://",
     ),
+    Embed(
+        label       = "Embed",
+        icon        = Icons.Rounded.DatasetLinked,
+        isAsync     = true,
+        placeholder = "URL, text, or server path…",
+    ),
     Query(
         label       = "Query",
         icon        = Icons.AutoMirrored.Rounded.ManageSearch,
@@ -66,6 +72,19 @@ enum class FabOp(
         placeholder = "URL or github/user/repo…",
     ),
 }
+
+val FabRingOps = listOf(
+    FabOp.Scrape,
+    FabOp.Research,
+    FabOp.Extract,
+    FabOp.Query,
+    FabOp.Search,
+    FabOp.Map,
+    FabOp.Retrieve,
+    FabOp.Summarize,
+    FabOp.Crawl,
+    FabOp.Ingest,
+)
 
 val syncOpTint  = Color(0xFF29B6F6)
 val syncOpBg    = Color(0xFF13293A)

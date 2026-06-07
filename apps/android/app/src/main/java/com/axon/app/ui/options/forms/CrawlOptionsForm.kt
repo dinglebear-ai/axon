@@ -24,7 +24,6 @@ private const val DEFAULT_RENDER_MODE = "auto-switch"
 private const val DEFAULT_INCLUDE_SUBDOMAINS = false
 private const val DEFAULT_SKIP_EMBED = false
 private const val DEFAULT_WAIT = false
-private const val DEFAULT_JSON = false
 
 private val RENDER_MODES = listOf("http", "chrome", "auto-switch")
 
@@ -40,7 +39,6 @@ fun CrawlOptionsForm() {
     var skipEmbed by rememberPersistedState(CrawlFormKeys.SKIP_EMBED, DEFAULT_SKIP_EMBED, repo)
     var collection by rememberPersistedState(CrawlFormKeys.COLLECTION, DEFAULT_COLLECTION, repo)
     var wait by rememberPersistedState(CrawlFormKeys.WAIT, DEFAULT_WAIT, repo)
-    var json by rememberPersistedState(CrawlFormKeys.JSON, DEFAULT_JSON, repo)
 
     // Headers persist in EncryptedHeadersStore — plaintext DataStore would leak
     // bearer tokens / cookies / API keys. Read is synchronous since the encrypted
@@ -54,7 +52,7 @@ fun CrawlOptionsForm() {
 
     ModeOptionsFormScaffold(
         title = "Crawl options",
-        description = "Multi-page crawl. `wait` / `json` / `skip-embed` are UI-only flags carried into job submission.",
+        description = "Multi-page crawl with live progress and parsed job details.",
         resetKeys = CrawlFormKeys.ALL,
         repo = repo,
         onResetExtra = {
@@ -80,7 +78,6 @@ fun CrawlOptionsForm() {
         SwitchRow("Include subdomains", includeSubdomains) { includeSubdomains = it }
         SwitchRow("Skip embed", skipEmbed) { skipEmbed = it }
         SwitchRow("Wait for completion", wait) { wait = it }
-        SwitchRow("JSON output", json) { json = it }
         HeadersField(
             headers = headers,
             onChange = { newList ->

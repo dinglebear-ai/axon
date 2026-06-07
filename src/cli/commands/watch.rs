@@ -2,7 +2,6 @@ use crate::core::config::Config;
 use crate::core::ui::{muted, primary};
 use crate::services::context::ServiceContext;
 use crate::services::watch as watch_svc;
-use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use sqlx::SqlitePool;
 use std::error::Error;
@@ -155,10 +154,28 @@ pub async fn run_watch(
                     .into(),
             );
         }
-        WatchRuntimeSubcommand::Artifacts { .. } => {
-            return Err(
-                "'axon watch artifacts' is not yet implemented — use 'axon watch history <id>' to view run history".into()
-            );
+        WatchRuntimeSubcommand::Artifacts { run_id, limit } => {
+            let run_id = parse_uuid(Some(&run_id), "artifacts")?;
+            let artifacts = match shared_pool.as_deref() {
+                Some(pool) => {
+                    watch_svc::list_watch_run_artifacts_with_pool(pool, run_id, limit).await?
+                }
+                None => watch_svc::list_watch_run_artifacts(cfg, run_id, limit).await?,
+            };
+            if cfg.json_output {
+                println!("{}", serde_json::to_string_pretty(&artifacts)?);
+            } else {
+                println!("{}", primary("Watch Artifacts"));
+                if artifacts.is_empty() {
+                    println!("  {}", muted("No artifacts found."));
+                } else {
+                    for artifact in &artifacts {
+                        let path = artifact.path.as_deref().unwrap_or("-");
+                        println!("  #{} {} {}", artifact.id, artifact.kind, path);
+                    }
+                }
+                println!("  {} total", artifacts.len());
+            }
         }
     }
     Ok(())
@@ -172,13 +189,6 @@ async fn handle_watch_create(
     every_seconds: i64,
     task_payload_raw: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
-    // Reject out-of-bounds intervals and unsupported / whitespace-padded task
-    // types at create time so the CLI never persists a watch that can never run
-    // — parity with the HTTP create paths, which share these same validators.
-    crate::jobs::watch::validate_every_seconds(every_seconds)
-        .map_err(|msg| format!("watch create: {msg}"))?;
-    crate::jobs::watch::validate_task_type(&task_type)
-        .map_err(|msg| format!("watch create: {msg}"))?;
     let task_payload = match task_payload_raw {
         Some(raw) => Some(serde_json::from_str(&raw).map_err(|e| {
             format!("watch create: --task-payload is not valid JSON: {e} (got '{raw}')")
@@ -186,27 +196,16 @@ async fn handle_watch_create(
         None => None,
     };
     let task_payload = task_payload.unwrap_or_else(|| serde_json::json!({}));
-    crate::jobs::watch::validate_task_payload(&task_payload)
-        .map_err(|msg| format!("watch create: {msg}"))?;
-    // SSRF-guard every watched URL at create time, mirroring the HTTP create
-    // paths — a CLI-created internal seed would otherwise reach internal hosts
-    // through the crawl worker (which does not use the reqwest SSRF resolver).
-    if let Some(urls) = task_payload.get("urls").and_then(|v| v.as_array()) {
-        for url_val in urls {
-            if let Some(url) = url_val.as_str() {
-                crate::core::http::validate_url(url)
-                    .map_err(|e| format!("watch create: invalid url '{url}': {e}"))?;
-            }
-        }
-    }
-    let input = watch_svc::WatchDefCreate {
+    let input = watch_svc::WatchDefCreateRequest {
         name,
         task_type,
         task_payload,
         every_seconds,
-        enabled: true,
-        next_run_at: Utc::now() + Duration::seconds(every_seconds),
-    };
+        enabled: None,
+        next_run_at: None,
+    }
+    .into_create()
+    .map_err(|msg| format!("watch create: {msg}"))?;
     let created = match pool {
         Some(pool) => watch_svc::create_watch_def_with_pool(pool, &input).await?,
         None => watch_svc::create_watch_def(cfg, &input).await?,

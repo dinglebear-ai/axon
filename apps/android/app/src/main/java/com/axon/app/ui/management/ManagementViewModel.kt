@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.common.doctorServiceSummary
+import com.axon.app.ui.common.humanSummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,13 +30,7 @@ class ManagementViewModel(app: Application) : AndroidViewModel(app) {
                     onSuccess = { result ->
                         result.fold(
                             onSuccess = { resp ->
-                                // payload is opaque JsonObject — show top-level key count as a summary
-                                val preview = resp.payload.entries
-                                    .take(4)
-                                    .joinToString(" · ") { (k, v) -> "$k: $v" }
-                                _statsState.value = Resource.Ready(
-                                    preview.ifBlank { "(no collection data — Qdrant may be empty)" }
-                                )
+                                _statsState.value = Resource.Ready(resp.payload.humanSummary().ifBlank { "No collection data returned" })
                             },
                             onFailure = { e ->
                                 val hint = e.message?.take(120) ?: e.javaClass.simpleName
@@ -59,8 +55,7 @@ class ManagementViewModel(app: Application) : AndroidViewModel(app) {
                     onSuccess = { result ->
                         result.fold(
                             onSuccess = { resp ->
-                                val preview = resp.payload.toString().take(200)
-                                _doctorState.value = Resource.Ready(preview)
+                                _doctorState.value = Resource.Ready(resp.payload.doctorServiceSummary())
                             },
                             onFailure = { e ->
                                 val hint = e.message?.take(120) ?: e.javaClass.simpleName

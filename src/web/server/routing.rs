@@ -173,6 +173,8 @@ where
     Router::<S>::new()
         .route("/v1/ask", post(handlers::v1_ask))
         .route("/v1/ask/stream", post(handlers::v1_ask_stream))
+        .route("/v1/chat", post(handlers::v1_chat))
+        .route("/v1/chat/stream", post(handlers::v1_chat_stream))
         .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
         .layer(Extension(cfg))
 }

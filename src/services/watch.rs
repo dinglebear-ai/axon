@@ -6,7 +6,9 @@ use uuid::Uuid;
 use crate::core::config::Config;
 use crate::jobs::watch;
 
-pub use crate::jobs::watch::{WatchDef, WatchDefCreate, WatchRun};
+pub use crate::jobs::watch::{
+    WatchDef, WatchDefCreate, WatchDefCreateRequest, WatchRun, WatchRunArtifact,
+};
 
 pub async fn list_watch_defs(cfg: &Config, limit: i64) -> Result<Vec<WatchDef>, Box<dyn Error>> {
     watch::list_watch_defs(cfg, limit).await
@@ -47,6 +49,22 @@ pub async fn list_watch_runs_with_pool(
     limit: i64,
 ) -> Result<Vec<WatchRun>, Box<dyn Error>> {
     watch::list_watch_runs_with_pool(pool, watch_id, limit).await
+}
+
+pub async fn list_watch_run_artifacts(
+    cfg: &Config,
+    run_id: Uuid,
+    limit: i64,
+) -> Result<Vec<WatchRunArtifact>, Box<dyn Error>> {
+    watch::list_watch_run_artifacts(cfg, run_id, limit).await
+}
+
+pub async fn list_watch_run_artifacts_with_pool(
+    pool: &SqlitePool,
+    run_id: Uuid,
+    limit: i64,
+) -> Result<Vec<WatchRunArtifact>, Box<dyn Error>> {
+    watch::list_watch_run_artifacts_with_pool(pool, run_id, limit).await
 }
 
 pub async fn create_watch_run(

@@ -5,9 +5,7 @@ mod setup_args;
 use super::types::{EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
-pub(super) use config_args::{
-    ConfigArgs, ConfigSubcommand, ProviderSubcommand, SyncArgs, SyncSubcommand,
-};
+pub(super) use config_args::{ConfigArgs, ConfigSubcommand, SyncArgs, SyncSubcommand};
 pub(super) use global_args::{DEFAULT_OUTPUT_DIR, GlobalArgs};
 pub(super) use setup_args::{ComposeArgs, ComposeSubcommand, SetupAuthMode, SetupInitArgs};
 

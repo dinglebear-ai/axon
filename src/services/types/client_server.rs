@@ -171,6 +171,8 @@ pub fn supported_routes() -> Vec<String> {
         "GET /v1/doctor",
         "POST /v1/ask",
         "POST /v1/ask/stream",
+        "POST /v1/chat",
+        "POST /v1/chat/stream",
         "POST /v1/query",
         "POST /v1/retrieve",
         "POST /v1/evaluate",

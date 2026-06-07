@@ -93,6 +93,7 @@ impl Default for Config {
             tei_url: String::new(),
             qdrant_url: "http://127.0.0.1:53333".to_string(),
             headless_gemini_model: String::new(),
+            headless_gemini_chat_model: String::new(),
             llm_backend: crate::services::llm_backend::LlmBackendKind::GeminiHeadless,
             headless_gemini_cmd: "gemini".to_string(),
             headless_gemini_home: None,
@@ -101,9 +102,7 @@ impl Default for Config {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
-            codex_cmd: "codex".to_string(),
-            codex_model: String::new(),
-            codex_home: None,
+            openai_chat_model: String::new(),
             tavily_api_key: String::new(),
             searxng_url: String::new(),
             research_full_content: true,
@@ -359,14 +358,16 @@ impl fmt::Debug for Config {
             .field("qdrant_url", &self.qdrant_url)
             .field("llm_backend", &self.llm_backend)
             .field("headless_gemini_model", &self.headless_gemini_model)
+            .field(
+                "headless_gemini_chat_model",
+                &self.headless_gemini_chat_model,
+            )
             .field("headless_gemini_cmd", &self.headless_gemini_cmd)
             .field("headless_gemini_home", &self.headless_gemini_home)
             .field("openai_base_url", &self.openai_base_url)
             .field("openai_api_key", &"[REDACTED]")
             .field("openai_model", &self.openai_model)
-            .field("codex_cmd", &self.codex_cmd)
-            .field("codex_model", &self.codex_model)
-            .field("codex_home", &self.codex_home)
+            .field("openai_chat_model", &self.openai_chat_model)
             .field(
                 "llm_completion_concurrency",
                 &self.llm_completion_concurrency,

@@ -110,6 +110,14 @@ class AxonClientPhase2Test {
         assertEquals("/v1/suggest", req.path)
     }
 
+    @Test fun `suggest decodes production suggestions field`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"suggestions":[{"url":"https://x","reason":"r"}]}""").addHeader("Content-Type","application/json"))
+
+        val response = client.suggest().getOrThrow()
+
+        assertEquals("https://x", response.suggestions.single().url)
+    }
+
     @Test fun `domains GETs v1 domains`() = runBlocking {
         server.enqueue(MockResponse().setBody("""{"domains":[{"domain":"d","vectors":5}]}""").addHeader("Content-Type","application/json"))
         assertTrue(client.domains().isSuccess)

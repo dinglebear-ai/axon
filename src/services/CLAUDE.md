@@ -158,22 +158,12 @@ Pass `None` for `tx` in CLI commands that don't need streaming progress. `emit()
 ## LLM Backend (`llm_backend/`)
 
 `llm_backend` is the typed completion facade used by ask synthesis, evaluate,
-suggest, research summaries, summarize, extract fallback, debug, and the watch
-change-report summarizer. `complete_text` / `complete_streaming` dispatch on
-`LlmBackendKind` (set from `AXON_LLM_BACKEND`) to one of three backends:
-- `gemini-headless` (default) — `headless/gemini.rs`, spawns the Gemini CLI with
-  an isolated temp HOME, allowlisted env, command validation, timeout.
-- `openai-compat` — `openai_compat.rs`, any OpenAI-compatible chat endpoint.
-- `codex-app-server` — `codex_app_server.rs` (+ `codex_app_server/{protocol,home}.rs`),
-  spawns `codex app-server` over stdio in an isolated `CODEX_HOME` and runs the
-  JSON-RPC synthesis handshake. `protocol.rs` is a pure, unit-tested state machine.
-
-All backends share an allowlisted environment, timeout enforcement, and a
-process-wide concurrency semaphore. Backend selection is global — there is no
-per-action override.
+suggest, research summaries, extract fallback, and debug. It launches Gemini
+headless with an isolated temporary HOME, an allowlisted environment, command
+validation, timeout enforcement, and a process-wide concurrency semaphore.
 
 Use `CompletionRequest` and `CompletionResponse` for service-facing synthesis
-calls. Entry points should not spawn the backend process directly.
+calls. Entry points should not spawn Gemini directly.
 
 ## Testing
 

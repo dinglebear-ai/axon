@@ -42,16 +42,8 @@ OpenAI-compatible chat-completions endpoints are also supported:
 - `AXON_OPENAI_MODEL`
 - `AXON_OPENAI_API_KEY` (optional for local endpoints)
 
-The OpenAI Codex CLI `codex app-server` is also supported:
-- `AXON_LLM_BACKEND=codex-app-server`
-- `AXON_CODEX_CMD` (defaults to `codex`)
-- `AXON_CODEX_MODEL` (optional; blank uses the Codex default)
-- `AXON_CODEX_HOME` (source home for `auth.json`; defaults to `$CODEX_HOME`/`~/.codex`)
-
 The legacy `OPENAI_*` env vars were removed in 3.0.0; use the `AXON_*`
-OpenAI-compatible keys above instead. Backend selection is global across every
-LLM action; an active saved provider profile (`axon config provider use <name>`)
-overrides `AXON_LLM_BACKEND`.
+OpenAI-compatible keys above instead.
 
 MCP HTTP env vars:
 - `AXON_MCP_HTTP_HOST` (default `127.0.0.1`)

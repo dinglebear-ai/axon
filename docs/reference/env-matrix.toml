@@ -491,6 +491,30 @@ compatibility = "canonical"
 reason = "Runtime Gemini model selection."
 
 [[env]]
+key = "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Gemini model override for RAG synthesis. Non-secret runtime selector."
+
+[[env]]
+key = "AXON_CHAT_HEADLESS_GEMINI_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Gemini model override for direct chat. Falls back to the synthesis model when unset."
+
+[[env]]
 key = "AXON_LLM_COMPLETION_CONCURRENCY"
 classification = "keep-env"
 runtime_placement = "both"
@@ -2627,6 +2651,30 @@ compatibility = "canonical"
 reason = "Model name for the OpenAI-compatible backend, required when AXON_LLM_BACKEND=openai-compat. Non-secret runtime selector."
 
 [[env]]
+key = "AXON_SYNTHESIS_OPENAI_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "OpenAI-compatible model override for RAG synthesis. Non-secret runtime selector."
+
+[[env]]
+key = "AXON_CHAT_OPENAI_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "OpenAI-compatible model override for direct chat. Falls back to the synthesis model when unset."
+
+[[env]]
 key = "AXON_OPENAI_API_KEY"
 classification = "keep-env"
 runtime_placement = "both"
@@ -2639,52 +2687,40 @@ compatibility = "canonical"
 reason = "Optional API key for the OpenAI-compatible backend. Runtime secret, env-only."
 
 [[env]]
-key = "AXON_CODEX_CMD"
+key = "AXON_PROVIDER"
 classification = "keep-env"
 runtime_placement = "both"
-surfaces = ["src", "env-template", "docs"]
-secret = false
-url_or_path = true
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Runtime executable/bootstrap for the Codex CLI, used when AXON_LLM_BACKEND=codex-app-server."
-
-[[env]]
-key = "AXON_CODEX_MODEL"
-classification = "keep-env"
-runtime_placement = "both"
-surfaces = ["src", "env-template", "docs"]
+surfaces = ["src"]
 secret = false
 url_or_path = false
 container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
-reason = "Runtime Codex model selection for the codex-app-server backend. Blank = codex CLI default."
+reason = "Selects the active saved LLM provider profile before falling back to config.toml."
+
+[[env]]
+key = "AXON_CODEX_CMD"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Operator-supplied codex app-server executable path for the experimental Codex backend."
 
 [[env]]
 key = "AXON_CODEX_HOME"
 classification = "trusted-operator-bootstrap"
-runtime_placement = "both"
-surfaces = ["src", "env-template", "docs"]
+runtime_placement = "host-only"
+surfaces = ["src"]
 secret = false
 url_or_path = true
-container_allowed = true
+container_allowed = false
 toml_destination = ""
 compatibility = "advanced"
-reason = "Source CODEX_HOME the codex backend copies auth.json from into an isolated home."
-
-[[env]]
-key = "AXON_PROVIDER"
-classification = "keep-env"
-runtime_placement = "both"
-surfaces = ["src", "env-template", "docs"]
-secret = false
-url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Selects the active saved LLM provider profile; overrides [llm] active-provider, overridden by --provider."
+reason = "Operator-supplied Codex auth home copied into an isolated app-server home."
 
 [[env]]
 key = "AXON_WATCH_TICK_SECS"

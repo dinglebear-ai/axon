@@ -3,11 +3,11 @@
 //! A single periodic loop that fires recurring watch definitions. Each tick
 //! atomically leases every enabled watch whose `next_run_at` has passed (see
 //! [`lease_due_watches`]) and runs each leased watch via
-//! [`run_watch_now_with_pool`], which records a run, reschedules `next_run_at`
-//! to `now + every_seconds`, and clears the lease. Leasing is what makes the
-//! loop safe to run alongside other processes and across crashes: an in-flight
-//! watch holds a lease until it finishes, and a crash leaves the lease in place
-//! only until it expires, after which the next sweep (or the startup
+//! [`run_leased_watch_now_with_pool`], which records a run, reschedules
+//! `next_run_at` to `now + every_seconds`, and clears the lease. The running
+//! task heartbeats the lease while it works, so long runs do not double-fire.
+//! A crash leaves the lease in place only until it expires, after which the next
+//! sweep (or the startup
 //! `reclaim_stale_watch_leases` call) frees it for re-run.
 //!
 //! Tuning (read once at spawn, mirroring `AXON_JOB_WAIT_TIMEOUT_SECS` in
@@ -18,7 +18,9 @@
 
 use crate::core::config::Config;
 use crate::jobs::store::now_ms;
-use crate::jobs::watch::{lease_due_watches, run_watch_now_with_pool};
+use crate::jobs::watch::{
+    lease_due_watches, parse_watch_lease_secs, run_leased_watch_now_with_pool,
+};
 use sqlx::SqlitePool;
 use std::error::Error;
 use std::sync::Arc;
@@ -26,6 +28,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 const DEFAULT_TICK_SECS: u64 = 15;
+#[cfg(test)]
 const DEFAULT_LEASE_SECS: i64 = 300;
 /// Cap watches leased per tick so one sweep can't spawn an unbounded number of
 /// concurrent runs. The lease keeps any watch left over due for the next tick.
@@ -38,9 +41,7 @@ fn parse_tick_secs(raw: Option<String>) -> u64 {
 }
 
 fn parse_lease_secs(raw: Option<String>) -> i64 {
-    raw.and_then(|raw| raw.parse::<i64>().ok())
-        .filter(|secs| *secs >= 1)
-        .unwrap_or(DEFAULT_LEASE_SECS)
+    parse_watch_lease_secs(raw)
 }
 
 fn tick_interval() -> Duration {
@@ -67,7 +68,7 @@ async fn sweep_due_watches(
         let pool = Arc::clone(pool);
         let cfg = Arc::clone(cfg);
         tokio::spawn(async move {
-            if let Err(err) = run_watch_now_with_pool(&cfg, &pool, &watch).await {
+            if let Err(err) = run_leased_watch_now_with_pool(&cfg, &pool, &watch).await {
                 tracing::warn!(watch_id = %watch.id, name = %watch.name, error = %err, "watch scheduler: run failed");
             }
         });

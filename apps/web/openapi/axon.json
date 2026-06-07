@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "5.1.2"
+    "version": "5.1.0"
   },
   "paths": {
     "/v1/ask": {
@@ -170,6 +170,116 @@
           },
           "502": {
             "description": "Upstream page fetch unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat": {
+      "post": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_chat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Direct LLM chat answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid chat request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Chat request exceeds limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Configured LLM backend unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat/stream": {
+      "post": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_chat_stream",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Direct LLM chat answer streamed as server-sent events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid chat request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Chat request exceeds limits",
             "content": {
               "application/json": {
                 "schema": {
@@ -1985,7 +2095,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/WatchCreateRequest"
+                "$ref": "#/components/schemas/WatchDefCreateRequest"
               }
             }
           },
@@ -2932,6 +3042,40 @@
         },
         "additionalProperties": false
       },
+      "RestChatRequest": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RestChatResponse": {
+        "type": "object",
+        "required": [
+          "message",
+          "answer"
+        ],
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "RestCrawlRequest": {
         "type": "object",
         "required": [
@@ -3664,7 +3808,7 @@
           }
         }
       },
-      "WatchCreateRequest": {
+      "WatchDefCreateRequest": {
         "type": "object",
         "required": [
           "name",
@@ -3697,7 +3841,8 @@
           "task_type": {
             "type": "string"
           }
-        }
+        },
+        "additionalProperties": false
       }
     }
   },

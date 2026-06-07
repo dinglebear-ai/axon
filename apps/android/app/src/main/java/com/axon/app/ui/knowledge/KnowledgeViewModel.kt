@@ -27,7 +27,7 @@ private const val FRESHNESS_MS = 30_000L
  * - **Suggest** (`/v1/suggest`) — `List<SuggestHitUi>`
  * - **Sources** (`/v1/sources`) — `List<SourceEntryUi>`
  * - **Domains** (`/v1/domains`) — `List<DomainFacetUi>`
- * - **Stats**   (`/v1/stats`)   — raw `JsonElement` (rendered chunked, R4)
+ * - **Stats**   (`/v1/stats`)   — `JsonElement` parsed into human-readable rows
  *
  * **R11 — 30s per-section memoization.** Each `loadX()` records `cachedAt`
  * after a successful fetch and short-circuits subsequent calls within 30s.
@@ -84,6 +84,7 @@ class KnowledgeViewModel(
         fetch: suspend () -> Result<T>,
     ) {
         if (!force && fresh(cachedAt.get()) && state.value is Resource.Ready) return
+        if (!force && state.value is Resource.Loading) return
         viewModelScope.launch {
             state.value = Resource.Loading
             fetch().fold(

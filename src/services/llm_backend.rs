@@ -1,6 +1,5 @@
 use std::error::Error as StdError;
 
-pub mod codex_app_server;
 pub mod concurrency;
 pub mod headless;
 pub mod openai_compat;
@@ -8,7 +7,8 @@ pub mod types;
 
 pub use types::{
     CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult,
-    LlmBackendConfig, LlmBackendKind, UsageSnapshot, configured_model_from_config,
+    LlmBackendConfig, LlmBackendKind, LlmModelPurpose, UsageSnapshot,
+    configured_chat_model_from_config, configured_model_for_config, configured_model_from_config,
     extract_completion_result, normalize_stream_flag,
 };
 
@@ -21,7 +21,6 @@ pub async fn complete_text(
     match req.backend.kind {
         LlmBackendKind::GeminiHeadless => headless::gemini::complete_text(req).await,
         LlmBackendKind::OpenAiCompat => openai_compat::complete_text(req).await,
-        LlmBackendKind::CodexAppServer => codex_app_server::complete_text(req).await,
     }
 }
 
@@ -38,7 +37,6 @@ where
     match req.backend.kind {
         LlmBackendKind::GeminiHeadless => headless::gemini::complete_streaming(req, on_delta).await,
         LlmBackendKind::OpenAiCompat => openai_compat::complete_streaming(req, on_delta).await,
-        LlmBackendKind::CodexAppServer => codex_app_server::complete_streaming(req, on_delta).await,
     }
 }
 

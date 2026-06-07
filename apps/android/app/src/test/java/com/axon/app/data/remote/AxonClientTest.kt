@@ -1,6 +1,7 @@
 package com.axon.app.data.remote
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.toList
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -58,6 +59,77 @@ class AxonClientTest {
     }
 
     @Test
+    fun `chat sends message without RAG fields and deserializes response`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"message":"hello","answer":"plain answer","model":"chat-model"}""")
+                .addHeader("Content-Type", "application/json")
+        )
+
+        val result = client.chat(ChatRequest(message = "hello"))
+
+        assertTrue(result.isSuccess)
+        assertEquals("plain answer", result.getOrThrow().answer)
+        assertEquals("chat-model", result.getOrThrow().model)
+        val req = server.takeRequest()
+        assertEquals("Bearer test-token", req.getHeader("Authorization"))
+        assertEquals("/v1/chat", req.path)
+        assertEquals("""{"message":"hello"}""", req.body.readUtf8())
+    }
+
+    @Test
+    fun `askStream reads nested done result answer from server SSE`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """
+                    data: {"type":"meta","phase":"retrieving"}
+                    data: {"type":"delta","text":"streamed "}
+                    data: {"type":"delta","text":"answer"}
+                    data: {"type":"done","result":{"query":"hello","answer":"final answer","timing_ms":null}}
+
+                    """.trimIndent(),
+                )
+                .addHeader("Content-Type", "text/event-stream"),
+        )
+
+        val events = client.askStream(AskRequest(query = "hello")).toList()
+
+        assertEquals(4, events.size)
+        assertEquals(AskStreamEvent.Meta("retrieving"), events[0])
+        assertEquals(AskStreamEvent.Delta("streamed "), events[1])
+        assertEquals(AskStreamEvent.Delta("answer"), events[2])
+        assertEquals(AskStreamEvent.Done("final answer"), events[3])
+        assertEquals("/v1/ask/stream", server.takeRequest().path)
+    }
+
+    @Test
+    fun `chatStream reads direct chat done answer from server SSE`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """
+                    data: {"type":"meta","phase":"chatting"}
+                    data: {"type":"delta","text":"plain "}
+                    data: {"type":"done","answer":"plain answer"}
+
+                    """.trimIndent(),
+                )
+                .addHeader("Content-Type", "text/event-stream"),
+        )
+
+        val events = client.chatStream(ChatRequest(message = "hello")).toList()
+
+        assertEquals(3, events.size)
+        assertEquals(AskStreamEvent.Meta("chatting"), events[0])
+        assertEquals(AskStreamEvent.Delta("plain "), events[1])
+        assertEquals(AskStreamEvent.Done("plain answer"), events[2])
+        val req = server.takeRequest()
+        assertEquals("/v1/chat/stream", req.path)
+        assertEquals("""{"message":"hello"}""", req.body.readUtf8())
+    }
+
+    @Test
     fun `query deserializes results list`() = runBlocking {
         server.enqueue(
             MockResponse()
@@ -68,6 +140,61 @@ class AxonClientTest {
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrThrow().results.size)
         assertEquals("https://a.com", result.getOrThrow().results[0].url)
+    }
+
+    @Test
+    fun `panelLogin posts password and returns panel token`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"ok":true,"token":"panel-token"}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        val result = client.panelLogin("panel-password")
+
+        assertTrue(result.isSuccess)
+        assertEquals("panel-token", result.getOrThrow())
+        val req = server.takeRequest()
+        assertEquals("/api/panel/login", req.path)
+        assertEquals("POST", req.method)
+        assertEquals(null, req.getHeader("Authorization"))
+        assertTrue(req.body.readUtf8().contains("panel-password"))
+    }
+
+    @Test
+    fun `panelEnv sends stored panel token header`() = runBlocking {
+        client.updatePanelToken("panel-token")
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"path":"~/.axon/.env","raw_env":"QDRANT_URL=http://qdrant","restart_required":false}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        val result = client.panelEnv()
+
+        assertTrue(result.isSuccess)
+        assertEquals("QDRANT_URL=http://qdrant", result.getOrThrow().rawEnv)
+        val req = server.takeRequest()
+        assertEquals("/api/panel/env", req.path)
+        assertEquals("Bearer panel-token", req.getHeader("Authorization"))
+        assertEquals("panel-token", req.getHeader("x-axon-panel-token"))
+    }
+
+    @Test
+    fun `panelEnv falls back to api token when panel token is unset`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"path":"~/.axon/.env","raw_env":"QDRANT_URL=http://qdrant","restart_required":false}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        val result = client.panelEnv()
+
+        assertTrue(result.isSuccess)
+        val req = server.takeRequest()
+        assertEquals("/api/panel/env", req.path)
+        assertEquals("Bearer test-token", req.getHeader("Authorization"))
+        assertEquals("test-token", req.getHeader("x-axon-panel-token"))
     }
 
     // ── Non-2xx HTTP status ───────────────────────────────────────────────────
@@ -245,6 +372,23 @@ class AxonClientTest {
         val msg = result.exceptionOrNull()?.message.orEmpty()
         // "HTTP 500: " prefix + at most 200 body chars (no full 10k body)
         assertTrue("got message length ${msg.length}", msg.length <= 220)
+    }
+
+    @Test
+    fun `execute converts JSON error body to human readable text`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(502)
+                .setBody("""{"error":"LLM answer generation failed","request_id":"abc123"}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        val result = client.ask(AskRequest(query = "hello"))
+
+        assertTrue(result.isFailure)
+        val msg = result.exceptionOrNull()?.message.orEmpty()
+        assertEquals("HTTP 502: LLM answer generation failed", msg)
+        assertFalse("message should not render raw JSON", msg.contains("{") || msg.contains("}") || msg.contains("\""))
     }
 
     @Test
