@@ -34,6 +34,12 @@ fn codex_model_gets_four_hundred_thousand_chars() {
 }
 
 #[test]
+fn gemma_model_gets_local_context_budget() {
+    let cfg = cfg_with(LlmBackendKind::OpenAiCompat, "gemma-4-E4B-it-GGUF");
+    assert_eq!(model_context_char_budget(&cfg), 300_000);
+}
+
+#[test]
 fn unknown_model_assumes_small_window() {
     let cfg = cfg_with(LlmBackendKind::OpenAiCompat, "llama-3.1-8b-instruct");
     assert_eq!(model_context_char_budget(&cfg), 40_000);
@@ -48,6 +54,13 @@ fn chunk_limit_scales_with_tier() {
     assert_eq!(
         model_chunk_limit(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5-codex")),
         28
+    );
+    assert_eq!(
+        model_chunk_limit(&cfg_with(
+            LlmBackendKind::OpenAiCompat,
+            "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M"
+        )),
+        20
     );
     assert_eq!(
         model_chunk_limit(&cfg_with(LlmBackendKind::OpenAiCompat, "llama-3.1-8b")),
@@ -66,6 +79,13 @@ fn candidate_pool_scales_with_tier() {
         150
     );
     assert_eq!(
+        model_candidate_limit(&cfg_with(
+            LlmBackendKind::OpenAiCompat,
+            "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M"
+        )),
+        120
+    );
+    assert_eq!(
         model_candidate_limit(&cfg_with(LlmBackendKind::OpenAiCompat, "llama-3.1-8b")),
         60
     );
@@ -80,6 +100,13 @@ fn model_tier_classifies_known_families() {
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5-codex")),
         AskModelTier::Medium
+    );
+    assert_eq!(
+        ask_model_tier(&cfg_with(
+            LlmBackendKind::OpenAiCompat,
+            "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M"
+        )),
+        AskModelTier::LocalGemma
     );
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "mistral-large")),
