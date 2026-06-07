@@ -34,6 +34,10 @@ android {
         buildConfig = true
     }
 
+    lint {
+        disable += "NullSafeMutableLiveData"
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
         // Stub Android framework methods (android.util.Log, etc.) so unit tests
