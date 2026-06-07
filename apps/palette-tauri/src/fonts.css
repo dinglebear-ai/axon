@@ -1,0 +1,36 @@
+/* Self-hosted variable fonts (bundled by Vite into /assets, served from the
+   app's own origin so they satisfy the `font-src 'self'` CSP). These realize the
+   Aurora type stack the tokens already name — without them the palette silently
+   falls back to the OS UI font (Segoe UI on Windows). */
+
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./fonts/manrope-var.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/inter-var.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/noto-sans-var.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("./fonts/jetbrains-mono-var.woff2") format("woff2");
+}
