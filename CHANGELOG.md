@@ -5,16 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.2] - 2026-06-06
+
+### Added
+
+- The orange "live crawl" status dots (the TAILING indicator and the collapsed
+  tray dot) now breathe with a subtle pulse while a crawl is active, so an
+  in-flight crawl reads as alive at a glance. Flattened under
+  `prefers-reduced-motion`.
+
+## [5.1.1] - 2026-06-06
+
+### Fixed
+
+- Collapsed crawl tray now blends into the command bar as one cohesive panel:
+  the command bar squares its bottom and drops its own shadow there while the
+  tray carries the panel's outer shadow over a faint internal divider, the mode
+  pill is cleared on minimize (clean default placeholder), and the tray chevron
+  is muted instead of accented.
+
 ## [5.1.0] - 2026-06-06
 
 ### Added
 
 - **Android direct Chat mode and shared desktop palette support.** Added direct LLM chat endpoints (`POST /v1/chat`, `POST /v1/chat/stream`) that bypass RAG retrieval and synthesis prompts, wired Android Ask/Chat mode switching, and exposed the same direct chat command in the Rust desktop palette and Tauri palette.
 - **Split synthesis and chat model configuration.** Added `AXON_SYNTHESIS_OPENAI_MODEL`, `AXON_CHAT_OPENAI_MODEL`, `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL`, and `AXON_CHAT_HEADLESS_GEMINI_MODEL`, plus `[llm]` `config.toml` model fields. Legacy `AXON_OPENAI_MODEL` and `AXON_HEADLESS_GEMINI_MODEL` remain synthesis aliases.
+- **Live crawl job view in the Tauri palette.** Running a `crawl` from the
+  palette now opens a real-time job surface that polls `GET /v1/crawl/{id}`
+  (and the handed-off embed job) ~once/sec and renders real backend data:
+  FETCHED / QUEUED / DOCS·EMBEDDED / DEPTH stat cards, a progress bar with
+  client-derived percent + ETA, a TAILING/stalled liveness indicator driven by
+  the worker heartbeat, a tailing per-URL log, a rate-limit banner, and
+  View-partial-result / Cancel-job actions. Also a collapsed minimal tray
+  (`Crawling <host>` + progress) when minimized. Honest two-phase model: the
+  third card shows docs-written during the crawl and embedded docs afterwards.
+- **Crawl event stream in `result_json`.** The crawl progress persister now
+  emits a bounded ring of per-page events (`events`: timestamp, URL, HTTP
+  status, outbound link count), plus `queued`, `depth_max`, and `rate_limited`
+  hosts — fed from the collector. `Website::with_return_page_links(true)` is
+  enabled so the collector can compute a real discovered/queued backlog and
+  per-page link counts. No new endpoint: the palette reads the richer
+  `result_json` from the status poll it already performs.
 
 ### Changed
 
 - **Android mock-alignment and operation surfaces continue moving to live production data.** The Android app now parses action and job output into human-readable UI surfaces, exposes expanded settings for `.env` and `config.toml`, and moves rail/sidebar data into dedicated app screens.
+- The palette's HTTP calls route through a single `invoke` wrapper
+  (`src/lib/invoke.ts`): the Tauri IPC bridge in production, or a same-origin
+  relative fetch (vite proxy) in browser-dev — never an absolute cross-origin
+  URL.
 
 ## [5.0.1] - 2026-06-04
 

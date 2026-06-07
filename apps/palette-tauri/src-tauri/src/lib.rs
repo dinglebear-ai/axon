@@ -1,7 +1,7 @@
 use std::{
+    collections::HashMap,
     fmt::Display,
-    fs, io,
-    path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use serde::{Deserialize, Serialize};
@@ -13,8 +13,10 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod axon_bridge;
+mod persistence;
 mod stream;
 
+use persistence::*;
 use stream::axon_http_stream_request;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -27,6 +29,9 @@ struct PaletteSettings {
     result_limit: u16,
     theme: PaletteTheme,
     hide_on_blur: bool,
+    open_results_inline: bool,
+    env_values: HashMap<String, serde_json::Value>,
+    config_values: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -40,6 +45,11 @@ enum PaletteTheme {
 const DEFAULT_SERVER_URL: &str = "https://axon.tootie.tv";
 const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const SETTINGS_FILE: &str = "settings.json";
+
+// Runtime gate for hide-on-blur, toggled by the frontend. The launcher hides on
+// blur (click-away dismiss), but while a result/settings view is open we keep it
+// up so resizing or copying from another window doesn't make it vanish.
+struct BlurDismiss(AtomicBool);
 
 fn log_palette_warning(context: &str, err: impl Display) {
     eprintln!("axon palette: {context}: {err}");
@@ -61,9 +71,11 @@ fn save_palette_settings(
     settings: PaletteSettings,
 ) -> Result<PaletteSettings, String> {
     let settings = normalize_settings(settings);
+    write_axon_env_values(&settings.env_values).map_err(|err| err.to_string())?;
+    write_axon_config_values(&settings.config_values).map_err(|err| err.to_string())?;
     write_settings(&app, &settings).map_err(|err| err.to_string())?;
     register_configured_shortcut(&app, &settings).map_err(|err| err.to_string())?;
-    Ok(settings)
+    Ok(settings_with_file_values(settings))
 }
 
 #[tauri::command]
@@ -84,10 +96,32 @@ fn resize_palette(app: AppHandle, width: f64, height: f64) -> Result<(), String>
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
+    // A maximized window ignores set_size on Windows; drop maximize first so the
+    // auto-sizer (and the next launcher open) always lands at the intended size.
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    }
     window
         .set_size(Size::Logical(LogicalSize { width, height }))
         .map_err(|err| err.to_string())?;
     window.center().map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn toggle_maximize(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    if window.is_maximized().map_err(|err| err.to_string())? {
+        window.unmaximize().map_err(|err| err.to_string())
+    } else {
+        window.maximize().map_err(|err| err.to_string())
+    }
+}
+
+#[tauri::command]
+fn set_blur_dismiss(state: tauri::State<'_, BlurDismiss>, enabled: bool) {
+    state.0.store(enabled, Ordering::Relaxed);
 }
 
 fn merged_settings(app: &AppHandle) -> Result<PaletteSettings, String> {
@@ -123,6 +157,9 @@ fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) 
         result_limit: persisted.result_limit.unwrap_or(10),
         theme: persisted.theme.unwrap_or(PaletteTheme::System),
         hide_on_blur: persisted.hide_on_blur.unwrap_or(true),
+        open_results_inline: persisted.open_results_inline.unwrap_or(true),
+        env_values: defaults.env_values,
+        config_values: defaults.config_values,
     })
 }
 
@@ -147,6 +184,12 @@ fn default_settings(env_entries: &[(String, String)]) -> PaletteSettings {
         result_limit: 10,
         theme: PaletteTheme::System,
         hide_on_blur: true,
+        open_results_inline: true,
+        env_values: env_entries
+            .iter()
+            .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
+            .collect(),
+        config_values: read_default_config_values(),
     }
 }
 
@@ -160,53 +203,7 @@ struct PartialPaletteSettings {
     result_limit: Option<u16>,
     theme: Option<PaletteTheme>,
     hide_on_blur: Option<bool>,
-}
-
-fn read_settings_result(app: &AppHandle) -> Result<PartialPaletteSettings, String> {
-    let Some(path) = settings_path(app) else {
-        return Ok(PartialPaletteSettings::default());
-    };
-    let contents = match fs::read_to_string(&path) {
-        Ok(contents) => contents,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {
-            return Ok(PartialPaletteSettings::default());
-        }
-        Err(err) => {
-            return Err(format!(
-                "failed to read palette settings at {}: {err}",
-                path.display()
-            ));
-        }
-    };
-    parse_settings_json(&contents, &path)
-}
-
-fn parse_settings_json(contents: &str, path: &Path) -> Result<PartialPaletteSettings, String> {
-    serde_json::from_str(contents).map_err(|err| {
-        format!(
-            "failed to parse palette settings at {}: {err}",
-            path.display()
-        )
-    })
-}
-
-fn write_settings(
-    app: &AppHandle,
-    settings: &PaletteSettings,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let path = settings_path(app).ok_or("settings path unavailable")?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, serde_json::to_string_pretty(settings)?)?;
-    Ok(())
-}
-
-fn settings_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path()
-        .app_config_dir()
-        .ok()
-        .map(|dir| dir.join(SETTINGS_FILE))
+    open_results_inline: Option<bool>,
 }
 
 fn normalize_settings(mut settings: PaletteSettings) -> PaletteSettings {
@@ -273,6 +270,15 @@ fn show_main_window(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    }
+    window
+        .set_size(Size::Logical(LogicalSize {
+            width: 680.0,
+            height: 56.0,
+        }))
+        .map_err(|err| err.to_string())?;
     window.center().map_err(|err| err.to_string())?;
     window.show().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
@@ -355,66 +361,6 @@ fn install_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn value_for(key: &str, file_entries: &[(String, String)]) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            file_entries
-                .iter()
-                .find(|(entry_key, _)| entry_key == key)
-                .map(|(_, value)| value.clone())
-        })
-}
-
-fn read_default_env_entries() -> Vec<(String, String)> {
-    let Some(path) = default_env_path() else {
-        return Vec::new();
-    };
-    let Ok(contents) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    parse_env_entries(&contents)
-}
-
-fn default_env_path() -> Option<PathBuf> {
-    std::env::var_os("AXON_ENV_PATH")
-        .or_else(|| std::env::var_os("AXON_ENV_FILE"))
-        .map(PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".axon/.env")))
-}
-
-fn parse_env_entries(contents: &str) -> Vec<(String, String)> {
-    contents
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                return None;
-            }
-            let (key, value) = line.split_once('=')?;
-            let key = key.trim();
-            if key.is_empty() {
-                return None;
-            }
-            Some((key.to_string(), trim_env_value(value)))
-        })
-        .collect()
-}
-
-fn trim_env_value(value: &str) -> String {
-    let value = value.trim();
-    if value.len() >= 2 {
-        let bytes = value.as_bytes();
-        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
-            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
-        {
-            return value[1..value.len() - 1].to_string();
-        }
-    }
-    value.to_string()
-}
-
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
@@ -437,9 +383,12 @@ pub fn run() {
             hide_palette,
             show_palette,
             resize_palette,
+            toggle_maximize,
+            set_blur_dismiss,
             axon_bridge::axon_http_request,
             axon_http_stream_request
         ])
+        .manage(BlurDismiss(AtomicBool::new(true)))
         .setup(|app| {
             if let Err(err) = install_tray(app) {
                 log_palette_warning("failed to install tray icon", err);
@@ -468,7 +417,9 @@ pub fn run() {
                 }
             }
             WindowEvent::Focused(false) => {
-                if merged_settings_or_default(window.app_handle()).hide_on_blur {
+                let app = window.app_handle();
+                let blur_dismiss = app.state::<BlurDismiss>().0.load(Ordering::Relaxed);
+                if blur_dismiss && merged_settings_or_default(app).hide_on_blur {
                     if let Err(err) = window.hide() {
                         log_palette_warning("failed to hide main window on focus loss", err);
                     }

@@ -24,9 +24,6 @@ export type components = {
             "hex": string;
             "usage": components['schemas']['ColorUsage'];
         };
-        "BrandRequest": {
-            "url": string;
-        };
         "BrandResult": {
             "colors": components['schemas']['BrandColor'][];
             "favicon_url"?: string | null;
@@ -40,11 +37,6 @@ export type components = {
         "ColorUsage": "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
         "DedupeRequest": {
             "collection"?: string | null;
-        };
-        "DiffRequest": {
-            "render_mode"?: null | components['schemas']['RenderMode'];
-            "url_a": string;
-            "url_b": string;
         };
         "DiffResult": {
             "links_added": components['schemas']['LinkEntry'][];
@@ -168,6 +160,9 @@ export type components = {
             "query": string;
             "since"?: string | null;
         };
+        "RestBrandRequest": {
+            "url": string;
+        };
         "RestChatRequest": {
             "message": string;
         };
@@ -191,6 +186,11 @@ export type components = {
             "respect_robots"?: boolean | null;
             "sitemap_since_days"?: number | null;
             "urls": string[];
+        };
+        "RestDiffRequest": {
+            "render_mode"?: null | components['schemas']['RenderMode'];
+            "url_a": string;
+            "url_b": string;
         };
         "RestEmbedRequest": {
             "collection"?: string | null;
@@ -254,6 +254,11 @@ export type components = {
             "url"?: string | null;
             "urls"?: string[] | null;
         };
+        "RestScreenshotRequest": {
+            "full_page"?: boolean | null;
+            "url": string;
+            "viewport"?: string | null;
+        };
         "RestSearchRequest": {
             "limit"?: number | null;
             "offset"?: number | null;
@@ -289,11 +294,6 @@ export type components = {
         "RpcProtocol": "jsonrpc2" | "openrpc" | "mcp";
         "RpcTransport": "http" | "sse";
         "ScrapeFormat": "markdown" | "html" | "rawHtml" | "json" | "llm";
-        "ScreenshotRequest": {
-            "full_page"?: boolean | null;
-            "url": string;
-            "viewport"?: string | null;
-        };
         "ScreenshotResult": {
             "artifact_handle"?: null | components['schemas']['ArtifactHandle'];
             "path": string;

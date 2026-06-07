@@ -38,4 +38,14 @@ describe("formatPayload", () => {
   it("returns chat answers without compacting the whole response", () => {
     expect(formatPayload("chat", { answer: "No retrieval used." })).toBe("No retrieval used.");
   });
+
+  it("truncates large diff text payloads", () => {
+    const output = formatPayload("diff", {
+      status: "changed",
+      text_diff: "x".repeat(12_050),
+    });
+
+    expect(output.length).toBeLessThan(12_200);
+    expect(output).toContain("[truncated 50 chars from text_diff]");
+  });
 });

@@ -132,6 +132,24 @@ const REST_ROUTE_CONTRACTS: &[RestRouteContract] = &[
     },
     RestRouteContract {
         method: "POST",
+        path: "/v1/brand",
+        schema_name: "RestBrandRequest",
+        fields: &["url"],
+    },
+    RestRouteContract {
+        method: "POST",
+        path: "/v1/diff",
+        schema_name: "RestDiffRequest",
+        fields: &["render_mode", "url_a", "url_b"],
+    },
+    RestRouteContract {
+        method: "POST",
+        path: "/v1/screenshot",
+        schema_name: "RestScreenshotRequest",
+        fields: &["full_page", "url", "viewport"],
+    },
+    RestRouteContract {
+        method: "POST",
         path: "/v1/ask",
         schema_name: "RestAskRequest",
         fields: &[

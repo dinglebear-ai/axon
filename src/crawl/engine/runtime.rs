@@ -166,6 +166,9 @@ fn apply_limit_and_behavior_settings(cfg: &Config, website: &mut Website, start_
     website.with_depth(cfg.max_depth);
     website.with_subdomains(cfg.include_subdomains);
     website.with_tld(false);
+    // Surface each page's discovered links so the collector can compute a real
+    // QUEUED backlog and per-page link counts for the live crawl view.
+    website.with_return_page_links(true);
     if cfg.max_pages > 0 {
         website.with_limit(cfg.max_pages);
     }

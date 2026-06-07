@@ -237,6 +237,28 @@ pub struct RestSummarizeRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct RestBrandRequest {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RestDiffRequest {
+    pub url_a: String,
+    pub url_b: String,
+    pub render_mode: Option<RenderMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RestScreenshotRequest {
+    pub url: String,
+    pub viewport: Option<String>,
+    pub full_page: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RestIngestRequest {
     pub source_type: RestIngestSourceType,
     #[serde(skip_serializing_if = "Option::is_none")]

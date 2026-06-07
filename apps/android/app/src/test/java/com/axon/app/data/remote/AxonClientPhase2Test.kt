@@ -49,11 +49,18 @@ class AxonClientPhase2Test {
         assertEquals("abc", r.getOrThrow().jobId)
         val body = server.takeRequest().body.readUtf8()
         assertTrue(body.contains("\"source_type\":\"github\""))
+        assertTrue(!body.contains("\"collection\""))
     }
 
     @Test fun `extractStart posts urls to v1 extract and decodes AcceptedJob`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(202).setBody("""{"job_id":"ex1","status":"pending"}""").addHeader("Content-Type","application/json"))
-        val r = client.extractStart(ExtractRequest(urls = listOf("https://example.com"), prompt = "extract title"))
+        val r = client.extractStart(
+            ExtractRequest(
+                urls = listOf("https://example.com"),
+                prompt = "extract title",
+                headers = listOf("Authorization: Bearer test"),
+            )
+        )
         assertTrue(r.isSuccess)
         assertEquals("ex1", r.getOrThrow().jobId)
         val req = server.takeRequest()
@@ -62,6 +69,15 @@ class AxonClientPhase2Test {
         val body = req.body.readUtf8()
         assertTrue(body.contains("\"urls\":[\"https://example.com\"]"))
         assertTrue(body.contains("\"prompt\":\"extract title\""))
+        assertTrue(body.contains("\"headers\":[\"Authorization: Bearer test\"]"))
+    }
+
+    @Test fun `getJob unwraps job detail envelope`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"job":{"id":"j","status":"completed","target":"https://example.com"}}""").addHeader("Content-Type","application/json"))
+        val r = client.getJob(AxonClient.JobKind.Extract, "j")
+        assertTrue(r.isSuccess)
+        assertEquals("j", r.getOrThrow().id)
+        assertEquals("/v1/extract/j", server.takeRequest().path)
     }
 
     @Test fun `ingestList GETs v1 ingest list and decodes ServiceJob array`() = runBlocking {
