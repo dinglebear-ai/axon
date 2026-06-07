@@ -134,8 +134,8 @@ async fn run_progress_notifier(
             }
         };
         let status = job.status_enum();
-        let mapped = map_job_progress(kind, status, job.result_json.as_ref());
-        let fingerprint = progress_fingerprint(status, job.updated_at, &mapped);
+        let mapped = map_job_progress(kind, &status, job.result_json.as_ref());
+        let fingerprint = progress_fingerprint(&status, job.updated_at, &mapped);
         if fingerprint != last_fingerprint {
             last_fingerprint = fingerprint;
             let has_total = mapped.total.is_some();
@@ -172,7 +172,7 @@ async fn run_progress_notifier(
 
 pub(super) fn map_job_progress(
     kind: JobKind,
-    status: JobStatus,
+    status: &JobStatus,
     result_json: Option<&Value>,
 ) -> MappedProgress {
     match status {
@@ -185,11 +185,12 @@ pub(super) fn map_job_progress(
         JobStatus::Failed => terminal("failed"),
         JobStatus::Canceled => terminal("cancelled"),
         JobStatus::Running => map_running_progress(kind, result_json),
+        JobStatus::Unknown(_) => terminal("unknown status"),
     }
 }
 
 pub(super) fn progress_fingerprint(
-    status: JobStatus,
+    status: &JobStatus,
     updated_at: chrono::DateTime<chrono::Utc>,
     mapped: &MappedProgress,
 ) -> String {

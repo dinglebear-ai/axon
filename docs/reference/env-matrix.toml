@@ -575,6 +575,18 @@ compatibility = "warn-env-override"
 reason = "TEI client timeout tuning."
 
 [[env]]
+key = "AXON_SCRAPE_BATCH_TIMEOUT_SECS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "scrape.batch-timeout-secs"
+compatibility = "warn-env-override"
+reason = "End-to-end timeout for one service-level scrape batch."
+
+[[env]]
 key = "AXON_INGEST_LANES"
 classification = "move-toml"
 runtime_placement = "not-runtime"

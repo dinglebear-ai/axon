@@ -47,7 +47,7 @@ pub async fn count_jobs(pool: &SqlitePool, kind: JobKind) -> Result<i64, sqlx::E
 /// Returns one entry per distinct `status` value present in the table. Missing
 /// statuses are absent from the map (callers must treat absent as zero).
 /// Unknown DB values (should never happen given the CHECK constraint) are
-/// folded into `JobStatus::Failed` to match `JobStatus::from_str`.
+/// retained as `JobStatus::Unknown` so they do not masquerade as failures.
 pub async fn count_jobs_by_status(
     pool: &SqlitePool,
     kind: JobKind,

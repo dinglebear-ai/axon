@@ -56,8 +56,11 @@ pub(super) fn validate_mcp_collection(collection: &str) -> Result<String, ErrorD
     Ok(collection.to_string())
 }
 
-pub(super) fn validate_mcp_embed_input(input: &str) -> Result<String, ErrorData> {
-    crate::services::embed::validate_server_embed_input(input)
+pub(super) fn validate_mcp_embed_input_with_config(
+    cfg: &Config,
+    input: &str,
+) -> Result<String, ErrorData> {
+    crate::services::embed::validate_server_embed_input_with_config(cfg, input)
         .map_err(|err| invalid_params(err.to_string()))
 }
 

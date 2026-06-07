@@ -29,6 +29,14 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_SCRAPE_BATCH_TIMEOUT_SECS",
+        MoveToml,
+        NotRuntime,
+        Some("scrape.batch-timeout-secs"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
         "AXON_INGEST_LANES",
         MoveToml,
         NotRuntime,

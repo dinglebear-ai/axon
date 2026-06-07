@@ -169,6 +169,22 @@ pub struct Config {
     /// Automatically embed scraped content into Qdrant after fetching. Disabled by `--skip-embed`.
     pub embed: bool,
 
+    /// Local filesystem roots allowed for server-side embed requests.
+    /// Env: `AXON_MCP_EMBED_ALLOWED_ROOTS` (comma-separated).
+    pub mcp_embed_allowed_roots: Vec<PathBuf>,
+
+    /// Max bytes for one local file embedded through server surfaces.
+    /// Env: `AXON_MCP_EMBED_MAX_LOCAL_BYTES`.
+    pub mcp_embed_max_local_bytes: u64,
+
+    /// Max recursive directory depth for local embed validation.
+    /// Env: `AXON_MCP_EMBED_MAX_LOCAL_DEPTH`.
+    pub mcp_embed_max_local_depth: usize,
+
+    /// Max filesystem entries visited for local embed validation.
+    /// Env: `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES`.
+    pub mcp_embed_max_local_entries: usize,
+
     /// Number of concurrent connections for batch operations (clamped 1–512). Flag: `--batch-concurrency`.
     pub batch_concurrency: usize,
 
@@ -204,6 +220,10 @@ pub struct Config {
 
     /// Per-request timeout in milliseconds; `None` uses the profile default. TOML: `scrape.request-timeout-ms`.
     pub request_timeout_ms: Option<u64>,
+
+    /// End-to-end timeout for one service-level scrape batch.
+    /// Env: `AXON_SCRAPE_BATCH_TIMEOUT_SECS`. TOML: `scrape.batch-timeout-secs`.
+    pub scrape_batch_timeout_secs: u64,
 
     /// Number of retries on transient fetch failures. TOML: `scrape.fetch-retries`.
     pub fetch_retries: usize,

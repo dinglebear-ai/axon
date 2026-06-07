@@ -18,13 +18,6 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 const EMBED_ALLOWED_ROOTS_ENV: &str = "AXON_MCP_EMBED_ALLOWED_ROOTS";
-const EMBED_MAX_LOCAL_BYTES_ENV: &str = "AXON_MCP_EMBED_MAX_LOCAL_BYTES";
-const EMBED_MAX_LOCAL_DEPTH_ENV: &str = "AXON_MCP_EMBED_MAX_LOCAL_DEPTH";
-const EMBED_MAX_LOCAL_ENTRIES_ENV: &str = "AXON_MCP_EMBED_MAX_LOCAL_ENTRIES";
-const DEFAULT_EMBED_MAX_LOCAL_BYTES: u64 = 10 * 1024 * 1024;
-const DEFAULT_EMBED_MAX_LOCAL_DEPTH: usize = 16;
-const DEFAULT_EMBED_MAX_LOCAL_ENTRIES: usize = 10_000;
-
 type EmbedValidationError = Box<dyn Error + Send + Sync>;
 
 #[derive(Debug, Clone, Copy)]
@@ -177,11 +170,18 @@ pub async fn embed_now_with_source(
 /// live under `AXON_MCP_EMBED_ALLOWED_ROOTS`; paths with dotfiles, secret-like
 /// names, oversized files, or symlinks anywhere below a submitted directory are
 /// rejected before an embed job can enqueue.
-pub fn validate_server_embed_input(input: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+pub fn validate_server_embed_input_with_config(
+    cfg: &Config,
+    input: &str,
+) -> Result<String, Box<dyn Error + Send + Sync>> {
     validate_server_embed_input_with_roots(
         input,
-        &embed_allowed_roots_from_env(),
-        embed_validation_limits_from_env(),
+        &cfg.mcp_embed_allowed_roots,
+        EmbedValidationLimits {
+            max_file_bytes: cfg.mcp_embed_max_local_bytes,
+            max_depth: cfg.mcp_embed_max_local_depth,
+            max_entries: cfg.mcp_embed_max_local_entries,
+        },
     )
 }
 
@@ -200,6 +200,11 @@ fn validate_server_embed_input_with_roots(
     }
     let path = Path::new(input);
     if !path.exists() {
+        if looks_path_like_input(input) {
+            return Err(embed_validation_error(format!(
+                "local embed path does not exist: {input}"
+            )));
+        }
         return Ok(input.to_string());
     }
     if allowed_roots.is_empty() {
@@ -220,49 +225,24 @@ fn validate_server_embed_input_with_roots(
     Ok(canonical.to_string_lossy().to_string())
 }
 
-fn embed_allowed_roots_from_env() -> Vec<PathBuf> {
-    std::env::var(EMBED_ALLOWED_ROOTS_ENV)
-        .ok()
-        .map(|raw| {
-            raw.split(',')
-                .filter_map(|part| {
-                    let trimmed = part.trim();
-                    (!trimmed.is_empty()).then(|| PathBuf::from(trimmed))
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn embed_validation_limits_from_env() -> EmbedValidationLimits {
-    EmbedValidationLimits {
-        max_file_bytes: positive_env_u64(EMBED_MAX_LOCAL_BYTES_ENV, DEFAULT_EMBED_MAX_LOCAL_BYTES),
-        max_depth: positive_env_usize(EMBED_MAX_LOCAL_DEPTH_ENV, DEFAULT_EMBED_MAX_LOCAL_DEPTH),
-        max_entries: positive_env_usize(
-            EMBED_MAX_LOCAL_ENTRIES_ENV,
-            DEFAULT_EMBED_MAX_LOCAL_ENTRIES,
-        ),
-    }
-}
-
-fn positive_env_u64(name: &str, default: u64) -> u64 {
-    std::env::var(name)
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(default)
-}
-
-fn positive_env_usize(name: &str, default: usize) -> usize {
-    std::env::var(name)
-        .ok()
-        .and_then(|raw| raw.parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(default)
-}
-
 fn embed_validation_error(message: impl Into<String>) -> EmbedValidationError {
     Box::<dyn Error + Send + Sync>::from(message.into())
+}
+
+fn looks_path_like_input(input: &str) -> bool {
+    let input = input.trim();
+    let bytes = input.as_bytes();
+    let windows_drive = input.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\');
+
+    input.starts_with('/')
+        || input.starts_with("./")
+        || input.starts_with("../")
+        || input.starts_with("~/")
+        || input.starts_with("\\\\")
+        || windows_drive
 }
 
 fn validate_local_embed_entry(

@@ -12,13 +12,13 @@ pub(super) const TASK_POLL_INTERVAL_MS: u64 = 5_000;
 pub(super) fn task_from_job(kind: JobKind, job: &ServiceJob) -> Task {
     let mut task = Task::new(
         task_id_for(kind, job.id),
-        task_status(job.status_enum()),
+        task_status(&job.status_enum()),
         job.created_at.to_rfc3339(),
         job.updated_at.to_rfc3339(),
     )
     .with_poll_interval(TASK_POLL_INTERVAL_MS);
 
-    if let Some(message) = status_message(job.status_enum()) {
+    if let Some(message) = status_message(&job.status_enum()) {
         task = task.with_status_message(message);
     }
     task
@@ -103,22 +103,24 @@ fn sanitize_string(value: &str) -> String {
     value.to_string()
 }
 
-fn task_status(status: JobStatus) -> TaskStatus {
+fn task_status(status: &JobStatus) -> TaskStatus {
     match status {
         JobStatus::Pending | JobStatus::Running => TaskStatus::Working,
         JobStatus::Completed => TaskStatus::Completed,
         JobStatus::Failed => TaskStatus::Failed,
         JobStatus::Canceled => TaskStatus::Cancelled,
+        JobStatus::Unknown(_) => TaskStatus::Failed,
     }
 }
 
-fn status_message(status: JobStatus) -> Option<&'static str> {
+fn status_message(status: &JobStatus) -> Option<&'static str> {
     match status {
         JobStatus::Pending => Some("queued"),
         JobStatus::Running => Some("running"),
         JobStatus::Completed => Some("completed"),
         JobStatus::Failed => Some("failed"),
         JobStatus::Canceled => Some("cancelled"),
+        JobStatus::Unknown(_) => Some("unknown job status"),
     }
 }
 

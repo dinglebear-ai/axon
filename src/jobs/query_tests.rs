@@ -235,13 +235,10 @@ async fn count_jobs_by_status_works_for_every_job_kind() {
     }
 }
 
-/// The helper folds unknown status strings into `JobStatus::Failed` via
-/// `JobStatus::from_str`. The CHECK constraint should prevent this in
-/// practice, but the fold is the documented behavior — exercise it so a
-/// refactor to `out.insert(...)` (instead of `+= count`) doesn't
-/// silently lose counts when a future schema variant slips through.
+/// The helper retains unknown status strings as `JobStatus::Unknown` instead
+/// of folding them into legitimate failed jobs.
 #[tokio::test]
-async fn count_jobs_by_status_folds_unknown_status_into_failed() {
+async fn count_jobs_by_status_keeps_unknown_status_separate_from_failed() {
     let pool = open_sqlite_pool(":memory:").await.unwrap();
 
     // Drop and recreate the table without the CHECK constraint so we
@@ -264,9 +261,6 @@ async fn count_jobs_by_status_folds_unknown_status_into_failed() {
     .await
     .unwrap();
 
-    // One legitimately-failed row + one row with an unknown status.
-    // Both should fold into JobStatus::Failed and sum to 2 — that
-    // verifies BOTH the from_str fold and the `+= count` accumulator.
     for raw_status in ["failed", "totally-bogus"] {
         sqlx::query(
             "INSERT INTO axon_crawl_jobs (id, url, status, created_at, updated_at) \
@@ -280,5 +274,11 @@ async fn count_jobs_by_status_folds_unknown_status_into_failed() {
     }
 
     let histogram = count_jobs_by_status(&pool, JobKind::Crawl).await.unwrap();
-    assert_eq!(histogram.get(&JobStatus::Failed).copied(), Some(2));
+    assert_eq!(histogram.get(&JobStatus::Failed).copied(), Some(1));
+    assert_eq!(
+        histogram
+            .get(&JobStatus::Unknown("totally-bogus".to_string()))
+            .copied(),
+        Some(1)
+    );
 }

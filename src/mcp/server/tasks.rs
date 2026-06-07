@@ -1,7 +1,7 @@
 use super::AxonMcpServer;
 use super::common::{
-    apply_crawl_overrides, invalid_params, logged_internal_error, validate_mcp_embed_input,
-    validate_mcp_urls,
+    apply_crawl_overrides, invalid_params, logged_internal_error,
+    validate_mcp_embed_input_with_config, validate_mcp_urls,
 };
 use super::server_authz;
 use super::task_id::{parse_task_id, task_id_for};
@@ -294,11 +294,11 @@ async fn enqueue_supported_start(
             let input = req
                 .input
                 .ok_or_else(|| invalid_params("input is required for embed.start"))?;
-            let input = validate_mcp_embed_input(&input)?;
             let cfg = server.cfg.apply_overrides(&ConfigOverrides {
                 wait: Some(false),
                 ..ConfigOverrides::default()
             });
+            let input = validate_mcp_embed_input_with_config(&cfg, &input)?;
             let service_context = server
                 .base_service_context()
                 .await

@@ -52,7 +52,7 @@ Web routes    ─┘
 
 Each service function:
 - Takes typed input parameters
-- Returns a typed result struct (defined in `src/services/types/service.rs`)
+- Returns a typed result struct from a domain module under `src/services/types/service/`, re-exported through `src/services/types/service.rs`
 - Has no stdout side-effects
 - Can be called from any entry point
 

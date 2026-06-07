@@ -93,7 +93,7 @@ Enforcement: `cargo xtask check-no-mod-rs`.
 
 - CLI commands, MCP handlers, and HTTP routes all call through `src/services/`
 - Each service function returns a typed result struct (no raw JSON, no stdout side-effects)
-- Service result types live in `src/services/types/service.rs`
+- Service result types live in domain modules under `src/services/types/service/` and are re-exported through `src/services/types/service.rs`
 
 ## TypeScript code standards (web panel)
 

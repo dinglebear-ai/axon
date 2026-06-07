@@ -1,5 +1,5 @@
 # axon screenshot
-Last Modified: 2026-03-03
+Last Modified: 2026-06-07
 
 Version: 1.0.0
 Last Updated: 21:05:00 | 03/03/2026 EST
@@ -67,6 +67,7 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon screenshot https://example.com --json
 ## Behavior Notes
 
 - Screenshots are PNG byte captures from Chrome.
+- Screenshot files are written through the shared service artifact writer, which rejects paths outside the output root and uses a temporary file plus rename to avoid partial final files.
 - In server mode (`AXON_SERVER_URL`), screenshot capture runs on `axon serve` and returns a server-owned artifact handle/root-relative path. The host CLI does not write the PNG locally unless you force `--local`.
 - With multiple URLs and `--output` set, each URL writes to the same path in sequence (last write wins). Prefer default generated paths for multi-URL runs.
 - Non-2xx pages or Chrome navigation/capture errors fail the current URL.

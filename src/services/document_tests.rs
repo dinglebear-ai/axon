@@ -38,6 +38,21 @@ fn paginate_document_returns_opaque_continuation_cursor() {
 }
 
 #[test]
+fn paginate_document_tolerates_non_char_boundary_cursor() {
+    let content = "éclair";
+    let page = PagedDocument::from_full_content(
+        content,
+        Some("1"),
+        Some(1),
+        DocumentBackend::StoredSource,
+    );
+
+    assert_eq!(page.content, "clai");
+    assert!(page.truncated);
+    assert_eq!(page.next_cursor.as_deref(), Some("6"));
+}
+
+#[test]
 fn decode_document_cursor_backend_returns_expected_backend() {
     let content = "hello world";
     let page =

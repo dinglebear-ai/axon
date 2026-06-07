@@ -1,5 +1,5 @@
 # src/services — Typed Service Layer
-Last Modified: 2026-05-09
+Last Modified: 2026-06-07
 
 The contract boundary between all entry points (CLI commands, MCP handlers, web routes) and the underlying business logic crates (`vector`, `jobs`, `crawl`, `ingest`). Every external caller goes through a service function — no entry point calls `src/vector/ops/*` directly.
 
@@ -8,13 +8,13 @@ The contract boundary between all entry points (CLI commands, MCP handlers, web 
 ```
 services/
 ├── context.rs              # ServiceContext — canonical handler entry point (cfg + jobs only)
-├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime{,_with_workers}() + SqliteServiceRuntime
+├── runtime.rs              # Narrow job capability traits + ServiceJobRuntime umbrella + SqliteServiceRuntime
 ├── llm_backend.rs          # Gemini headless LLM completion gateway module root
 ├── llm_backend/           # Gemini dispatch, env allowlist, concurrency, and typed completion API
 ├── crawl.rs                # crawl start/status/cancel/list/cleanup/recover
 ├── crawl_sync.rs           # Synchronous crawl orchestration (24h cache, sitemap-only, HTTP→Chrome fallback)
 ├── debug.rs                # doctor + LLM-assisted debug
-├── embed.rs                # embed start/status/cancel/list
+├── embed.rs                # embed start/status/cancel/list + shared server-side input guard
 ├── error.rs                # service error types
 ├── events.rs               # ServiceEvent enum + emit() — async channel helper
 ├── extract.rs              # extract start/status/cancel/list
@@ -28,6 +28,7 @@ services/
 ├── query.rs                # query, retrieve, ask, evaluate, suggest
 ├── scrape.rs               # scrape
 ├── screenshot.rs           # screenshot
+├── artifacts.rs            # artifact handles + root-confined atomic writes for service-owned outputs
 ├── search.rs               # search, research
 ├── setup.rs                # Setup-flow service entry
 ├── setup/
@@ -39,7 +40,8 @@ services/
 ├── types.rs                # types/ module root
 ├── types/
 │   ├── contracts.rs        # External-facing service contract types
-│   └── service.rs          # All typed result structs (QueryResult, AskResult, ...)
+│   ├── service.rs          # Re-export glue for domain-specific service result modules
+│   └── service/            # Result contracts by domain (query, content, system, lifecycle, ...)
 └── watch.rs                # CRUD shim — actual scheduler runtime lives in src/jobs/watch.rs
 ```
 
@@ -60,11 +62,20 @@ Fields:
 
 **Never construct `ServiceContext` in tests** — use `ServiceContext::from_runtime(cfg, jobs)` with a mock `ServiceJobRuntime` instead.
 
-## `ServiceJobRuntime` Trait (`runtime.rs`)
+## Job Runtime Traits (`runtime.rs`)
 
-**This is the canonical job abstraction.** All callers (CLI, MCP) interact with jobs exclusively through `ServiceJobRuntime` via `ServiceContext.jobs` — never through `JobBackend` directly.
+**This is the canonical job abstraction.** All callers (CLI, MCP, REST) interact with jobs through `ServiceContext.jobs` — never through `JobBackend` directly.
 
-`ServiceJobRuntime` is a strict superset of [`JobBackend`](../jobs/backend.rs): it adds `has_active_jobs`, `recover_jobs`, `run_worker`, pagination (`limit`/`offset` on `list_jobs`), and returns the richer `ServiceJob` type everywhere instead of `JobStatusRow`/`JobSummary`. `SqliteServiceRuntime` delegates only `enqueue`, `wait_for_job`, and `job_errors` through `JobBackend`; all other operations call `job_query::*` directly to avoid lossy type mapping. See the module-level doc comment in `runtime.rs` for the full rationale.
+`ServiceJobRuntime` remains the object-safe umbrella trait stored in `ServiceContext`, but `runtime.rs` also exposes narrower capability traits for implementations and tests:
+
+- `ServiceRuntimeIdentity`
+- `ServiceSqliteRuntimeAccess`
+- `ServiceJobSubmission`
+- `ServiceJobQuery`
+- `ServiceJobMaintenance`
+- `ServiceWorkerControl`
+
+`ServiceJobRuntime` is a strict superset of [`JobBackend`](../jobs/backend.rs): it adds active-job checks, recover/maintenance operations, worker control, pagination (`limit`/`offset` on `list_jobs`), and returns the richer `ServiceJob` type everywhere instead of `JobStatusRow`/`JobSummary`. `SqliteServiceRuntime` delegates enqueue/wait/error primitives through `SqliteJobBackend`; query and maintenance paths call `job_query::*` or backend helpers directly to avoid lossy type mapping. See the module-level doc comment in `runtime.rs` for the full rationale.
 
 The job operations interface consumed by `ServiceContext.jobs`:
 
@@ -73,10 +84,12 @@ The job operations interface consumed by `ServiceContext.jobs`:
 - `cancel_job(kind, id)` → `bool`
 - `list_jobs(kind, limit, offset)` → `Vec<ServiceJob>`
 - `cleanup_jobs(kind)`, `clear_jobs(kind)`, `recover_jobs(kind, stale_ms)` → `u64`
-- `run_worker(kind)` → `WorkerMode` (`Started` / `InProcess` / `Unsupported`)
+- `start_worker(kind)` / `drain_jobs(kind)` → `WorkerMode` (`Started` / `InProcess` / `Unsupported`)
 - `wait_for_job(id, kind)` → `String` (final status)
 
 Two public entry points construct the runtime: `resolve_runtime(cfg)` (no workers) and `resolve_runtime_with_workers(cfg, spawn)` (driven by `ServiceContext::new_with_workers`). Both return `Arc<dyn ServiceJobRuntime>` backed by `SqliteServiceRuntime`, which wraps `SqliteJobBackend`.
+
+`drain_jobs()` is bounded by `cfg.job_wait_timeout_secs` and reports progress through `tracing`, not `stderr`. Keep service/runtime code free of direct `println!`/`eprintln!` output so CLI, MCP, and REST transports can format independently.
 
 ### SqliteJobBackend construction modes
 
@@ -114,7 +127,8 @@ pub async fn query(cfg: &Config, text: &str, opts: Pagination) -> Result<QueryRe
 println!("{}", serde_json::to_string(&results)?);
 ```
 
-Key result types in `types/service.rs`:
+Key result types live in domain-specific modules under `types/service/` and are
+re-exported through `types/service.rs` for compatibility:
 
 | Result Type | Service function(s) |
 |-------------|---------------------|
@@ -135,9 +149,14 @@ Key result types in `types/service.rs`:
 | `SearchResult` | `search::search` |
 | `ResearchResult` | `search::research` |
 
+When adding a new typed result, put it in the matching domain module under
+`src/services/types/service/` (for example `query.rs`, `content.rs`,
+`system.rs`, or `lifecycle.rs`) and re-export it from `types/service.rs`.
+Create a new small domain module when no existing module owns the contract.
+
 ## ServiceEvent — Async Progress Channel
 
-Service functions that do multi-step work (e.g. `ask`) accept an optional `tx: Option<mpsc::Sender<ServiceEvent>>`. Callers subscribe to get progress logs without polling.
+Service functions that do multi-step work (e.g. `ask`, `scrape`) accept an optional `tx: Option<mpsc::Sender<ServiceEvent>>`. Callers subscribe to get progress logs without polling.
 
 ```rust
 let (tx, mut rx) = mpsc::channel::<ServiceEvent>(32);
@@ -160,7 +179,9 @@ Pass `None` for `tx` in CLI commands that don't need streaming progress. `emit()
 `llm_backend` is the typed completion facade used by ask synthesis, evaluate,
 suggest, research summaries, extract fallback, and debug. It launches Gemini
 headless with an isolated temporary HOME, an allowlisted environment, command
-validation, timeout enforcement, and a process-wide concurrency semaphore.
+validation, timeout enforcement, and backend/limit-keyed concurrency semaphores.
+The OpenAI-compatible backend reuses reqwest clients by timeout bucket and
+returns bounded, redacted upstream error bodies.
 
 Use `CompletionRequest` and `CompletionResponse` for service-facing synthesis
 calls. Entry points should not spawn Gemini directly.
@@ -182,7 +203,7 @@ Pure mapping tests (`map_*` functions) and channel tests run without live servic
 ## Adding a New Service Function
 
 1. Add the function to the appropriate `src/services/<name>.rs` — signature takes `&ServiceContext`
-2. Add a typed result struct to `src/services/types/service.rs`
+2. Add a typed result struct to the appropriate `src/services/types/service/<domain>.rs` module and re-export it from `src/services/types/service.rs`
 3. Call from the CLI handler in `src/cli/commands/<name>.rs` — receives `&ServiceContext`
 4. Call from the MCP handler in `src/mcp/server/handlers_*.rs` — receives `&ServiceContext`
 5. If the feature is unavailable in the current runtime, return an appropriate error

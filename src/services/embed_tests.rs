@@ -209,3 +209,52 @@ fn validate_server_embed_input_bounds_directory_entries() {
 
     assert!(err.to_string().contains("exceeded max entries"), "{err}");
 }
+
+#[test]
+fn validate_server_embed_input_uses_configured_roots_and_limits() {
+    let temp = tempfile::TempDir::new().expect("tempdir");
+    let root = temp.path().join("allowed");
+    let file = root.join("large.md");
+    std::fs::create_dir_all(&root).expect("root dir");
+    std::fs::write(&file, "0123456789").expect("file");
+    let mut cfg = Config::test_default();
+    cfg.mcp_embed_allowed_roots = vec![root];
+    cfg.mcp_embed_max_local_bytes = 4;
+
+    let err = validate_server_embed_input_with_config(&cfg, &file.to_string_lossy())
+        .expect_err("configured max bytes should reject local file");
+
+    assert!(err.to_string().contains("exceeds 4 byte limit"), "{err}");
+}
+
+#[test]
+fn validate_server_embed_input_rejects_missing_path_like_input() {
+    let err = validate_server_embed_input_with_roots(
+        "./missing/docs.md",
+        &[],
+        EmbedValidationLimits {
+            max_file_bytes: 1024,
+            max_depth: 16,
+            max_entries: 10_000,
+        },
+    )
+    .expect_err("missing path-like input should not be treated as free text");
+
+    assert!(err.to_string().contains("does not exist"), "{err}");
+}
+
+#[test]
+fn validate_server_embed_input_allows_free_text_with_slashes() {
+    let validated = validate_server_embed_input_with_roots(
+        "a/b testing plan",
+        &[],
+        EmbedValidationLimits {
+            max_file_bytes: 1024,
+            max_depth: 16,
+            max_entries: 10_000,
+        },
+    )
+    .expect("slash-containing prose should remain valid free text");
+
+    assert_eq!(validated, "a/b testing plan");
+}

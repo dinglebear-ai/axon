@@ -1,7 +1,7 @@
 use super::AxonMcpServer;
 use super::common::{
     InlineHint, invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
-    respond_with_mode, validate_mcp_embed_input,
+    respond_with_mode, validate_mcp_embed_input_with_config,
 };
 use crate::mcp::schema::{
     AxonToolResponse, EmbedRequest, EmbedSubaction, IngestRequest, IngestSubaction, ResponseMode,
@@ -22,7 +22,7 @@ impl AxonMcpServer {
         input: Option<String>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let input = input.ok_or_else(|| invalid_params("input is required for embed.start"))?;
-        let input = validate_mcp_embed_input(&input)?;
+        let input = validate_mcp_embed_input_with_config(self.cfg.as_ref(), &input)?;
         let service_context = self
             .base_service_context()
             .await

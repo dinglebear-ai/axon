@@ -112,7 +112,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs`, `concurrency-limit`, `crawl-concurrency-limit`, `backfill-concurrency-limit`, `watchdog-stale-timeout-secs`, `watchdog-confirm-secs`, `watchdog-sweep-secs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS`, `AXON_JOB_STALE_TIMEOUT_SECS`, `AXON_JOB_STALE_CONFIRM_SECS`, `AXON_WATCHDOG_SWEEP_SECS` |
 | `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
-| `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | ladder env vars only |
+| `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `batch-timeout-secs`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | `AXON_SCRAPE_BATCH_TIMEOUT_SECS` plus ladder env vars |
 
 URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL` for llama.cpp/OpenAI-compatible endpoints. `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
@@ -196,6 +196,11 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent LLM completion requests. |
 | `AXON_LLM_COMPLETION_TIMEOUT_SECS` | `300` | Runtime-only timeout for each LLM completion request. |
+
+LLM completion concurrency is enforced per backend/limit bucket so a first
+request cannot pin a different backend or later limit until process restart.
+OpenAI-compatible upstream error bodies are size-bounded and redacted before
+they are returned to callers or logs.
 
 ### Collections and worker lanes
 
@@ -346,6 +351,12 @@ password under `~/.axon/panel-password`. MCP and protected `/v1` routes use
 | `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | `10485760` | Max bytes per local file embedding request via MCP |
 | `AXON_MCP_EMBED_MAX_LOCAL_DEPTH` | `16` | Max directory traversal depth for local directory embedding requests |
 | `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES` | `10000` | Max filesystem entries visited for local directory embedding requests |
+
+The MCP and REST embed routes use the same server-side validator. URL and raw
+text inputs are accepted, but host-local file and directory inputs must resolve
+under `AXON_MCP_EMBED_ALLOWED_ROOTS` and satisfy the byte/depth/entry limits.
+Missing path-like inputs such as `/data/missing.md` or `./missing.md` are
+rejected instead of being silently treated as raw text.
 
 ### Ask cache
 

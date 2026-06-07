@@ -134,12 +134,15 @@ pub(crate) async fn start_crawl(
 }
 
 /// Guard embed input against path traversal, secret-like paths, and symlinks.
-async fn validate_embed_path(input: &str) -> Result<String, HttpError> {
+async fn validate_embed_path(cfg: &Config, input: &str) -> Result<String, HttpError> {
+    let cfg = cfg.clone();
     let input = input.trim().to_string();
-    tokio::task::spawn_blocking(move || services::embed::validate_server_embed_input(&input))
-        .await
-        .map_err(|e| HttpError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", e.to_string()))?
-        .map_err(|err| HttpError::bad_request(err.to_string()))
+    tokio::task::spawn_blocking(move || {
+        services::embed::validate_server_embed_input_with_config(&cfg, &input)
+    })
+    .await
+    .map_err(|e| HttpError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", e.to_string()))?
+    .map_err(|err| HttpError::bad_request(err.to_string()))
 }
 
 #[utoipa::path(
@@ -158,7 +161,7 @@ pub(crate) async fn start_embed(
     Json(req): Json<EmbedStartRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
     let input = super::rag::required_text(&req.input, "input")?;
-    let input = validate_embed_path(input).await?;
+    let input = validate_embed_path(state.service_context.cfg.as_ref(), input).await?;
     let cfg = cfg.apply_overrides(&ConfigOverrides {
         collection: req.collection,
         ..ConfigOverrides::default()

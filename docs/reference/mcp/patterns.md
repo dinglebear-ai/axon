@@ -59,7 +59,7 @@ CLI handler -> services::query() -> (same path)
 Web route   -> services::query() -> (same path)
 ```
 
-Each service function returns a typed result struct defined in `src/services/types/service.rs`. No raw JSON printing or stdout side-effects in the service layer.
+Each service function returns a typed result struct from a domain module under `src/services/types/service/`, re-exported by `src/services/types/service.rs`. No raw JSON printing or stdout side-effects in the service layer.
 
 ## Artifact response pattern
 

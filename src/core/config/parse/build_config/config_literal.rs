@@ -47,7 +47,7 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     let mut cfg = Config::default();
     populate_identity_and_crawl(&mut cfg, &inputs);
     populate_chrome_and_filtering(&mut cfg, &inputs);
-    populate_perf_and_credentials(&mut cfg, &inputs);
+    populate_perf_and_credentials(&mut cfg, &inputs)?;
     populate_services_and_ask_basics(&mut cfg, &inputs, tei_url, qdrant_url)?;
     populate_ask_tuning(&mut cfg, inputs.toml);
     populate_misc(&mut cfg, &inputs, custom_headers, mcp_http_port)?;
@@ -132,10 +132,29 @@ fn populate_chrome_and_filtering(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.chrome_bootstrap_retries = inputs.toml.chrome.bootstrap_retries.unwrap_or(2).min(10);
 }
 
-fn populate_perf_and_credentials(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
+fn populate_perf_and_credentials(
+    cfg: &mut Config,
+    inputs: &LiteralInputs<'_>,
+) -> Result<(), String> {
     let g = inputs.global;
     cfg.collection = inputs.collection.clone();
     cfg.embed = !g.skip_embed;
+    cfg.mcp_embed_allowed_roots = env::var("AXON_MCP_EMBED_ALLOWED_ROOTS")
+        .ok()
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|part| {
+                    let trimmed = part.trim();
+                    (!trimmed.is_empty()).then(|| std::path::PathBuf::from(trimmed))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    cfg.mcp_embed_max_local_bytes =
+        parse_positive_u64_env("AXON_MCP_EMBED_MAX_LOCAL_BYTES", 10 * 1024 * 1024)?;
+    cfg.mcp_embed_max_local_depth = parse_positive_usize_env("AXON_MCP_EMBED_MAX_LOCAL_DEPTH", 16)?;
+    cfg.mcp_embed_max_local_entries =
+        parse_positive_usize_env("AXON_MCP_EMBED_MAX_LOCAL_ENTRIES", 10_000)?;
     cfg.batch_concurrency = g.batch_concurrency.clamp(1, 512);
     cfg.wait = g.wait;
     cfg.sqlite_path = inputs.sqlite_path.clone();
@@ -148,6 +167,13 @@ fn populate_perf_and_credentials(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.sitemap_only = g.sitemap_only;
     cfg.delay_ms = inputs.toml.scrape.delay_ms.unwrap_or(0);
     cfg.request_timeout_ms = inputs.toml.scrape.request_timeout_ms;
+    cfg.scrape_batch_timeout_secs = env::var("AXON_SCRAPE_BATCH_TIMEOUT_SECS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .or(inputs.toml.scrape.batch_timeout_secs)
+        .filter(|value| *value > 0)
+        .map(|value| value.clamp(1, 3600))
+        .unwrap_or(120);
     cfg.fetch_retries = inputs.toml.scrape.fetch_retries.unwrap_or(0);
     cfg.retry_backoff_ms = inputs.toml.scrape.retry_backoff_ms.unwrap_or(0);
     let d = inputs.dispatched;
@@ -169,6 +195,7 @@ fn populate_perf_and_credentials(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.reddit_min_score = d.reddit_min_score;
     cfg.reddit_depth = d.reddit_depth;
     cfg.reddit_scrape_links = d.reddit_scrape_links;
+    Ok(())
 }
 
 fn populate_services_and_ask_basics(
