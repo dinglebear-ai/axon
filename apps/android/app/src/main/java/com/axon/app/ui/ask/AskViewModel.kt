@@ -10,6 +10,8 @@ import com.axon.app.data.remote.AskStreamEvent
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.AskResultUi
 import com.axon.app.data.repository.RecentJob
+import com.axon.app.data.util.UrlValidator
+import com.axon.app.ui.ingest.IngestSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,6 +24,45 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+private const val FAB_STATUS_INITIAL_DELAY_MS = 1_800L
+private const val FAB_STATUS_POLL_INTERVAL_MS = 2_500L
+private const val FAB_STATUS_MAX_ATTEMPTS = 6
+private val FAB_TERMINAL_STATUSES = setOf("completed", "complete", "failed", "error", "cancelled", "canceled")
+
+internal fun inferFabIngestSource(input: String): Result<IngestSource> {
+    val target = input.trim()
+    if (target.isBlank()) {
+        return Result.failure(IllegalArgumentException("Target is required"))
+    }
+
+    if (target.startsWith("github/", ignoreCase = true)) return Result.success(IngestSource.Github)
+    if (target.startsWith("gitlab/", ignoreCase = true)) return Result.success(IngestSource.Gitlab)
+    if (target.startsWith("r/", ignoreCase = true)) return Result.success(IngestSource.Reddit)
+
+    val host = UrlValidator.hostOrNull(target)
+    val source = when {
+        host == null -> IngestSource.Git
+        IngestSource.Github.matchesHost(host) -> IngestSource.Github
+        IngestSource.Gitlab.matchesHost(host) -> IngestSource.Gitlab
+        IngestSource.Reddit.matchesHost(host) -> IngestSource.Reddit
+        IngestSource.Youtube.matchesHost(host) -> IngestSource.Youtube
+        else -> {
+            val lookalikeToken = knownIngestHostToken(host) ?: return Result.success(IngestSource.Git)
+            return Result.failure(
+                IllegalArgumentException("Unsupported lookalike host: $lookalikeToken must be the registrable host or a real subdomain"),
+            )
+        }
+    }
+
+    source.validate(target)?.let { reason ->
+        return Result.failure(IllegalArgumentException(reason))
+    }
+    return Result.success(source)
+}
+
+private fun knownIngestHostToken(host: String): String? =
+    listOf("github.com", "gitlab.com", "reddit.com", "youtube.com", "youtu.be")
+        .firstOrNull { host.contains(it) }
 
 class AskViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
@@ -139,39 +180,55 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun pollCrawlOnce(jobId: String) {
         viewModelScope.launch {
-            delay(1_800)
-            container.axonRepository.crawlStatus(jobId).onSuccess { status ->
-                val readableStatus = status.status.replaceFirstChar { it.titlecase() }
-                val pages = status.pagesCrawled
-                updateInjection(jobId) { item ->
-                    item.copy(
-                        status = readableStatus,
-                        pageCount = pages,
-                        detail = when {
-                            status.serverError != null -> "Crawl reported an error: ${status.serverError}"
-                            pages != null -> "Crawl has indexed $pages ${if (pages == 1) "page" else "pages"} from this target."
-                            else -> "Crawl is ${status.status.lowercase()}. Jobs will continue updating as workers process the target."
-                        },
-                    )
-                }
+            delay(FAB_STATUS_INITIAL_DELAY_MS)
+            repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
+                val terminal = container.axonRepository.crawlStatus(jobId).fold(
+                    onSuccess = { status ->
+                        val readableStatus = status.status.replaceFirstChar { it.titlecase() }
+                        val pages = status.pagesCrawled
+                        updateInjection(jobId) { item ->
+                            item.copy(
+                                status = readableStatus,
+                                pageCount = pages,
+                                detail = when {
+                                    status.serverError != null -> "Crawl reported an error: ${status.serverError}"
+                                    pages != null -> "Crawl has indexed $pages ${if (pages == 1) "page" else "pages"} from this target."
+                                    else -> "Crawl is ${status.status.lowercase()}. Jobs will continue updating as workers process the target."
+                                },
+                            )
+                        }
+                        status.status.lowercase() in FAB_TERMINAL_STATUSES
+                    },
+                    onFailure = { false },
+                )
+                if (terminal || attempt == FAB_STATUS_MAX_ATTEMPTS - 1) return@launch
+                delay(FAB_STATUS_POLL_INTERVAL_MS)
             }
         }
     }
 
     private fun pollJobOnce(kind: AxonClient.JobKind, jobId: String) {
         viewModelScope.launch {
-            delay(1_800)
-            container.axonRepository.getJob(kind, jobId).onSuccess { job ->
-                val readableStatus = job.status.replaceFirstChar { it.titlecase() }
-                updateInjection(jobId) { item ->
-                    item.copy(
-                        status = readableStatus,
-                        detail = when {
-                            job.errorText != null -> "${kind.label()} reported an error: ${job.errorText}"
-                            else -> "${kind.label()} is ${job.status.lowercase()}. Jobs will show completion, errors, and indexed output as workers process the target."
-                        },
-                    )
-                }
+            delay(FAB_STATUS_INITIAL_DELAY_MS)
+            repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
+                val terminal = container.axonRepository.getJob(kind, jobId).fold(
+                    onSuccess = { job ->
+                        val readableStatus = job.status.replaceFirstChar { it.titlecase() }
+                        updateInjection(jobId) { item ->
+                            item.copy(
+                                status = readableStatus,
+                                detail = when {
+                                    job.errorText != null -> "${kind.label()} reported an error: ${job.errorText}"
+                                    else -> "${kind.label()} is ${job.status.lowercase()}. Jobs will show completion, errors, and indexed output as workers process the target."
+                                },
+                            )
+                        }
+                        job.status.lowercase() in FAB_TERMINAL_STATUSES
+                    },
+                    onFailure = { false },
+                )
+                if (terminal || attempt == FAB_STATUS_MAX_ATTEMPTS - 1) return@launch
+                delay(FAB_STATUS_POLL_INTERVAL_MS)
             }
         }
     }
@@ -468,13 +525,13 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 com.axon.app.ui.fab.FabOp.Ingest -> {
                     appendOperationRequest(com.axon.app.ui.fab.FabOp.Ingest, input)
-                    // Infer source type from input
-                    val sourceType = when {
-                        input.contains("github.com") || input.startsWith("github/") -> "github"
-                        input.contains("youtube.com") || input.contains("youtu.be") -> "youtube"
-                        input.startsWith("r/") || input.contains("reddit.com") -> "reddit"
-                        else -> "git"
-                    }
+                    val sourceType = inferFabIngestSource(input).fold(
+                        onSuccess = { it.wire },
+                        onFailure = { e ->
+                            appendItem(ChatItem.AxonMsg("Ingest failed: ${e.message ?: "invalid target"}"))
+                            return@launch
+                        },
+                    )
                     repo.ingestStart(sourceType = sourceType, target = input).fold(
                         onSuccess = { jobId ->
                             recordRecentJob(jobId, kind = "ingest", target = input)
@@ -496,4 +553,3 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
-

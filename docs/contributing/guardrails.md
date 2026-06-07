@@ -47,6 +47,12 @@ Rules:
 - `~/.axon/panel-password` must stay mode `0600`.
 - Non-loopback HTTP binds require bearer or OAuth auth.
 - Do not expose Chrome, Qdrant, or TEI directly to a network.
+- Mobile clients must require an explicit panel-token unlock for `/api/panel/*`.
+  Do not fall back to `AXON_MCP_HTTP_TOKEN` or OAuth tokens for panel config
+  routes on the client.
+- Mobile settings UIs must not write a masked placeholder back to disk as a
+  secret value. Preserve the raw server text privately and patch only genuinely
+  changed secret fields.
 
 ## MCP OAuth
 
@@ -88,6 +94,9 @@ docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps
 - All service URLs should use `https://` in production
 - HTTP is acceptable for local development and Docker-internal networking
 - The Chrome CDP endpoint is HTTP-only by design (internal network)
+- Android allows cleartext only for the configured private Tailscale domains in
+  `apps/android/app/src/main/res/xml/network_security_config.xml`; any other
+  persisted Android server URL should be `https://`.
 
 ### URL validation
 

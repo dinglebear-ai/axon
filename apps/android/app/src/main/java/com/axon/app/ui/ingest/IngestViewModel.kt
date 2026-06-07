@@ -24,13 +24,20 @@ private const val TAG = "IngestViewModel"
  * so lookalike hosts like `github.com.attacker.com` are rejected, while non-URL forms
  * (`git@github.com:owner/repo`) flow through unchecked for the server to handle.
  */
-enum class IngestSource(val wire: String, val targetHostHint: String?) {
-    Github("github", "github.com"),
-    Gitlab("gitlab", "gitlab.com"),
+enum class IngestSource(val wire: String, private val targetHostHints: Set<String>) {
+    Github("github", setOf("github.com")),
+    Gitlab("gitlab", setOf("gitlab.com")),
     Gitea("gitea", null),
     Git("git", null),
-    Reddit("reddit", "reddit.com"),
-    Youtube("youtube", "youtube.com");
+    Reddit("reddit", setOf("reddit.com")),
+    Youtube("youtube", setOf("youtube.com", "youtu.be"));
+
+    constructor(wire: String, targetHostHint: String?) : this(
+        wire = wire,
+        targetHostHints = targetHostHint?.let { setOf(it) }.orEmpty(),
+    )
+
+    val targetHostHint: String? get() = targetHostHints.firstOrNull()
 
     /**
      * Returns null when the target is acceptable, or a human-readable rejection reason.
@@ -43,14 +50,21 @@ enum class IngestSource(val wire: String, val targetHostHint: String?) {
      */
     fun validate(target: String): String? {
         if (target.isBlank()) return "Target is required"
-        val hint = targetHostHint ?: return null
+        val hints = targetHostHints.takeIf { it.isNotEmpty() } ?: return null
         // Non-URL forms (git@host:owner/repo, ssh URIs, etc.) return null from
         // UrlValidator and defer to server-side validation.
         val host = com.axon.app.data.util.UrlValidator.hostOrNull(target) ?: return null
-        val lcHint = hint.lowercase()
-        return if (host == lcHint || host.endsWith(".$lcHint")) null
-        else "Expected target host to be $hint"
+        return if (hints.any { hostMatchesHint(host, it) }) null
+        else "Expected target host to be ${hints.joinToString(" or ")}"
     }
+
+    fun matchesHost(host: String): Boolean =
+        targetHostHints.any { hostMatchesHint(host.lowercase(), it) }
+}
+
+private fun hostMatchesHint(host: String, hint: String): Boolean {
+    val lcHint = hint.lowercase()
+    return host == lcHint || host.endsWith(".$lcHint")
 }
 
 /** Sealed state machine for the Ingest screen. Multi-stage submit flow doesn't map cleanly onto [com.axon.app.ui.common.Resource]. */

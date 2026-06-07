@@ -35,7 +35,7 @@ android {
     }
 
     lint {
-        disable += "NullSafeMutableLiveData"
+        lintConfig = file("lint.xml")
     }
 
     testOptions {
@@ -107,5 +107,6 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(libs.mockwebserver)
     debugImplementation(libs.compose.ui.test.manifest)
 }

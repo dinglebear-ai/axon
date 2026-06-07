@@ -1,9 +1,16 @@
 # Add project-specific ProGuard rules here.
-# Keep kotlinx.serialization classes
+# Keep serialization metadata used by generated serializers without retaining
+# all kotlinx.serialization library internals.
 -keepattributes *Annotation*
--keep class kotlinx.serialization.** { *; }
 -keepclassmembers class ** {
     @kotlinx.serialization.Serializable *;
+}
+-keep class com.axon.app.data.remote.**$$serializer { *; }
+-keepclassmembers class com.axon.app.data.remote.** {
+    public static ** Companion;
+}
+-keepclasseswithmembers class com.axon.app.data.remote.** {
+    kotlinx.serialization.KSerializer serializer(...);
 }
 
 # Tink references Error Prone annotations that are compile-time only. R8 reports

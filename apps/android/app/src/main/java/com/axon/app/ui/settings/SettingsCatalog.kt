@@ -238,5 +238,15 @@ object AxonSettingsCatalog {
     )
 
     val envDefaults: Map<String, String> = envGroups.flatMap { g -> g.fields.map { it.key to it.defaultValue } }.toMap()
+    val envSecretKeys: Set<String> = envGroups
+        .flatMap { it.fields }
+        .filter { it.kind == SettingKind.Secret }
+        .map { it.key }
+        .toSet()
     val configDefaults: Map<String, String> = configGroups.flatMap { g -> g.fields.map { "${g.id}.${it.key}" to it.defaultValue } }.toMap()
+    val configSecretKeys: Set<String> = configGroups
+        .flatMap { group -> group.fields.map { field -> "${group.id}.${field.key}" to field } }
+        .filter { it.second.kind == SettingKind.Secret }
+        .map { it.first }
+        .toSet()
 }

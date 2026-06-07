@@ -13,11 +13,13 @@ dependencyResolutionManagement {
     }
 }
 
-// Work around a lifecycle lint / Kotlin analysis API crash in the optional local
-// Aurora composite build while preserving app lint. The app receives Aurora's
-// compiled AAR metadata; only Aurora's own debug lint analysis task is skipped
-// when the requested task is app lint.
-if (gradle.startParameter.taskNames.any { it == ":app:lintDebug" || it == "lintDebug" }) {
+// Optional local-only workaround for older Aurora composite checkouts that hit
+// a lifecycle lint / Kotlin Analysis API crash. Keep disabled by default; pass
+// -PaxonSkipAuroraLintAnalysis=true only when the Aurora build itself is broken.
+val skipAuroraLintAnalysis = providers.gradleProperty("axonSkipAuroraLintAnalysis")
+    .map { it.toBoolean() }
+    .getOrElse(false)
+if (skipAuroraLintAnalysis && gradle.startParameter.taskNames.any { it == ":app:lintDebug" || it == "lintDebug" }) {
     gradle.startParameter.excludedTaskNames.add(":android:aurora:lintAnalyzeDebug")
 }
 

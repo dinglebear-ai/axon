@@ -257,8 +257,8 @@ private fun configPathSummary(path: String, groups: List<SettingGroup>): String 
 }
 
 private fun configAccessMessage(error: String): String =
-    if (error.contains("401")) {
-        "Panel unlock required. The API token was tried but the server requires panel auth. Save the panel password on Connection to load live file values."
+    if (error.contains("Panel unlock required") || error.contains("401")) {
+        "Panel unlock required. Save the panel password on Connection to load live file values."
     } else {
         "Could not load live file values. Catalog defaults are shown for now. $error"
     }

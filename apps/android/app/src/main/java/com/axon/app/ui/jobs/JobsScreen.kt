@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Work
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +65,10 @@ import java.util.Locale
 
 @Composable
 fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
+    DisposableEffect(vm) {
+        vm.setVisible(true)
+        onDispose { vm.setVisible(false) }
+    }
     val active by vm.activeJobs.collectAsStateWithLifecycle()
     val jobsByKind by vm.jobsByKind.collectAsStateWithLifecycle()
     val recent by vm.recentJobs.collectAsStateWithLifecycle()
@@ -323,4 +328,3 @@ private fun DrillHeader(title: String, detail: String, onBack: () -> Unit) {
         Text(detail, color = colors.textMuted.copy(alpha = 0.76f), fontSize = 10.9.sp, lineHeight = 13.8.sp, fontFamily = AxonTheme.fonts.mono)
     }
 }
-
