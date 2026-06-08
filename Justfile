@@ -46,6 +46,10 @@ web-check:
     cd apps/web && npm run lint
     cd apps/web && npm run openapi:check
 
+# Package the Chrome extension into dist/axon-page-scraper-<version>.zip
+package-extension:
+    ./apps/chrome-extension/package.sh
+
 fmt:
     cargo fmt --all
 
