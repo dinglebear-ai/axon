@@ -37,7 +37,10 @@ pub async fn run_crawl_job(
     };
     let caller_cfg =
         apply_config_snapshot_for_container(cfg, &config_json, false).map_err(lift_err)?;
-    let effective_cfg = apply_config_snapshot(cfg, &config_json).map_err(lift_err)?;
+    let mut effective_cfg = apply_config_snapshot(cfg, &config_json).map_err(lift_err)?;
+    // Stamp this crawl's start URL as the origin so the downstream embed job's
+    // config snapshot carries it and every chunk records `seed_url` = start URL.
+    effective_cfg.seed_url = Some(url.clone());
 
     validate_crawl_job_url(&url, cancel_token.as_ref()).await?;
 

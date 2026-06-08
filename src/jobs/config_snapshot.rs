@@ -118,6 +118,7 @@ struct ConfigSnapshot {
     search_time_range: Option<String>,
     since: Option<String>,
     before: Option<String>,
+    seed_url: Option<String>,
     bypass_csp: Option<bool>,
     accept_invalid_certs: Option<bool>,
     screenshot_full_page: Option<bool>,
@@ -232,6 +233,7 @@ impl ConfigSnapshot {
             search_time_range: cfg.search_time_range.clone(),
             since: cfg.since.clone(),
             before: cfg.before.clone(),
+            seed_url: cfg.seed_url.clone(),
             bypass_csp: Some(cfg.bypass_csp),
             accept_invalid_certs: Some(cfg.accept_invalid_certs),
             screenshot_full_page: Some(cfg.screenshot_full_page),
@@ -399,6 +401,7 @@ impl ConfigSnapshot {
             search_time_range,
             since,
             before,
+            seed_url,
         );
     }
 }

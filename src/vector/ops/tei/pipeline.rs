@@ -75,6 +75,16 @@ async fn embed_prepared_doc(
     let dim = vectors[0].len();
     let chunk_count = doc.chunks.len();
     let url = doc.url.clone();
+    // Origin marker stamped on every chunk: the crawl start URL or ingest target
+    // when the job runner set `cfg.seed_url`, otherwise the doc's own URL (direct
+    // embed/scrape). `axon refresh` facets on this field to re-enqueue origins.
+    let seed_url = cfg
+        .seed_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(url.as_str())
+        .to_string();
     let timestamp = Utc::now().to_rfc3339();
     let mut points = Vec::with_capacity(vectors.len());
     for (idx, (chunk, vecv)) in doc.chunks.into_iter().zip(vectors).enumerate() {
@@ -86,6 +96,7 @@ async fn embed_prepared_doc(
             "content_type": doc.content_type,
             "chunk_index": idx,
             "chunk_text": chunk,
+            "seed_url": seed_url,
             "scraped_at": timestamp,
             // Stamp the schema version this point was indexed under so that
             // retrieval can opt into version-aware filtering. Existing points

@@ -70,6 +70,7 @@ MCP docs:
 | `setup` | First-run local setup wrapper plus SSH target helper | No |
 | `screenshot <url>` | Capture a full-page screenshot via headless Chrome | No |
 | `dedupe` | Deduplicate near-identical chunks within a Qdrant collection | No |
+| `refresh [filter]` | Re-enqueue crawl/ingest jobs for previously indexed origins (full docs refresh). Facets the collection on the `seed_url` payload field, classifies each distinct origin (web URL → crawl, ingest target → ingest, sessions/non-URL → skipped), prints a plan, and confirms before enqueuing (respects `--yes`/non-TTY). Optional `filter` narrows by `source_type` (e.g. `github`) or a `seed_url` substring (e.g. a domain). Bounded by `AXON_REFRESH_FACET_LIMIT` (default 10,000). Only content indexed with `seed_url` participates. | No |
 | `completions <shell>` | Emit shell completion scripts | No |
 | `watch <sub>` | URL change-detection scheduler. A `watch` (task_type `watch`, the only supported type) diffs each URL against a stored snapshot every tick (conditional probe + `compute_diff` + `ignore_patterns` + threshold), summarizes meaningful changes via the LLM, records `url-change` artifacts, and enqueues clustered depth-bounded crawls (skipping in-flight clusters). SQLite-backed implementations: `create`, `list`, `run-now`, `history`. Schema-defined but not yet implemented: `get`, `update`, `pause`, `resume`, `delete`, `artifacts`. | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
@@ -421,6 +422,9 @@ On HTTP 429, any 5xx status, transport errors, or response decode failures, `tei
 
 ### Text chunking
 `chunk_text()` splits at 2000 chars with 200-char overlap. Each chunk = one Qdrant point. Very long pages produce many points.
+
+### `seed_url` origin tracking (distinct from `url`)
+Every chunk payload carries `seed_url` — the **origin** that started its acquisition — alongside the chunk's own page `url`. It is stamped once in `src/vector/ops/tei/pipeline.rs` from `cfg.seed_url`, which the job runners set: the crawl runner (`jobs/workers/runners/crawl.rs`) sets it to the crawl start URL (propagated to the downstream embed job via the config snapshot); the ingest runner (`jobs/workers/runners/ingest.rs`) and sync ingest set it to the re-ingestable target (`owner/repo`, `r/rust`, …). When `cfg.seed_url` is unset (direct `embed`/`scrape`), the pipeline falls back to the doc's own `url`. `seed_url` is an indexed keyword (faceted) and bumped `PAYLOAD_SCHEMA_VERSION` to 5. To add an origin-bearing path, set `cfg.seed_url` before embedding — do **not** thread it through the ~28 `PreparedDoc` builders. `axon refresh` facets on this field to re-enqueue origins; chunks indexed before 5.2.0 lack it and are invisible to refresh until re-indexed.
 
 ### Thin page filtering
 Pages with fewer than `--min-markdown-chars` (default: 200) are flagged as thin. If `--drop-thin-markdown true` (default), thin pages are skipped — not saved to disk or embedded.

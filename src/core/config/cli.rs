@@ -77,6 +77,8 @@ pub(super) enum CliCommand {
     Status,
     /// Remove duplicate points from the Qdrant collection
     Dedupe,
+    /// Re-crawl / re-ingest previously indexed origins (full docs refresh)
+    Refresh(RefreshArgs),
     /// Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube)
     Ingest(IngestArgs),
     /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
@@ -208,6 +210,15 @@ pub(super) struct MigrateArgs {
 pub(super) struct ScrapeArgs {
     #[arg(value_name = "URL")]
     pub(super) positional_urls: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct RefreshArgs {
+    /// Optional filter: a source_type (crawl/embed/scrape/github/gitlab/gitea/
+    /// git/reddit/youtube) or a domain/substring matched against indexed origins.
+    /// Omit to refresh every indexed origin.
+    #[arg(value_name = "FILTER")]
+    pub(super) filter: Option<String>,
 }
 
 #[derive(Debug, Args)]

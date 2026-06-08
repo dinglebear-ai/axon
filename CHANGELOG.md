@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] - 2026-06-08
+
+### Added
+
+- **Origin tracking (`seed_url` payload field).** Every indexed chunk now records
+  a `seed_url` — the crawl start URL or ingest target that originated it, distinct
+  from the chunk's own page `url`. Crawl chunks carry the crawl start URL; ingest
+  chunks carry the re-ingestable target (e.g. `owner/repo`, `r/rust`); direct
+  `embed`/`scrape` fall back to the doc's own URL. The field is an indexed keyword
+  (faceted), and `PAYLOAD_SCHEMA_VERSION` bumped to `5`. Existing chunks indexed
+  before this release carry no `seed_url` and are unaffected (default retrieval
+  applies no version filter).
+- **`axon refresh [FILTER]` command.** Re-enqueues crawl and ingest jobs for
+  previously indexed origins by faceting the collection on `seed_url`. Classifies
+  each origin (web URL → crawl, ingest target → ingest, sessions/non-URL →
+  skipped), prints a plan, and confirms before enqueuing (respects `--yes` /
+  non-TTY via `confirm_destructive`). Optional `FILTER` narrows by `source_type`
+  (e.g. `github`) or a `seed_url` substring (e.g. a domain). Facet breadth is
+  bounded by `AXON_REFRESH_FACET_LIMIT` (default 10,000). Only content indexed
+  with `seed_url` participates — re-crawl/re-ingest once to backfill the marker.
+
 ## [5.1.2] - 2026-06-06
 
 ### Added

@@ -248,6 +248,12 @@ pub fn print_ingest_sync_result(cfg: &Config, cmd_name: &str, chunks: usize, tar
 /// Dispatches to the appropriate service function based on the `IngestSource` variant
 /// and prints a completion summary. Called by `run_ingest` when `--wait true` is set.
 pub async fn run_ingest_sync(cfg: &Config, source: IngestSource) -> Result<(), Box<dyn Error>> {
+    // Stamp the ingest target as the chunk origin (seed_url), matching the async
+    // ingest job runner, so synchronous `--wait true` ingests record the same
+    // re-ingestable origin instead of falling back to per-doc page URLs.
+    let mut seeded_cfg = cfg.clone();
+    seeded_cfg.seed_url = Some(crate::jobs::ingest::types::target_label(&source));
+    let cfg = &seeded_cfg;
     let (chunks, source_label, target_label) = match &source {
         IngestSource::Youtube { target } => {
             let result = ingest_service::ingest_youtube(cfg, target, None).await?;

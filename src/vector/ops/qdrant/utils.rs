@@ -25,7 +25,9 @@ pub fn qdrant_base(cfg: &Config) -> &str {
 /// v4: Promoted gh_stars, gh_forks, gh_language, gh_topics, gh_is_fork,
 ///     gh_is_archived, gh_file_type, gh_line_start, gh_line_end from git_meta
 ///     blob to indexed top-level fields.
-pub const PAYLOAD_SCHEMA_VERSION: u32 = 4;
+/// v5: Added indexed top-level `seed_url` — the crawl start URL or ingest target
+///     that originated each chunk (origin tracking; consumed by `axon refresh`).
+pub const PAYLOAD_SCHEMA_VERSION: u32 = 5;
 
 pub(crate) fn validate_collection_name(name: &str) -> Result<(), CollectionNameError> {
     crate::core::config::validate_collection_name(name)

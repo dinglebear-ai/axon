@@ -186,6 +186,7 @@ impl Default for Config {
             search_time_range: None,
             since: None,
             before: None,
+            seed_url: None,
             sources_by_schema_version: false,
             sources_domain: None,
             sources_domain_all: false,
@@ -475,6 +476,7 @@ impl fmt::Debug for Config {
             .field("search_time_range", &self.search_time_range)
             .field("since", &self.since)
             .field("before", &self.before)
+            .field("seed_url", &self.seed_url)
             .field("bypass_csp", &self.bypass_csp)
             .field("accept_invalid_certs", &self.accept_invalid_certs)
             .field("screenshot_full_page", &self.screenshot_full_page)

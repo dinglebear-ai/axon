@@ -649,6 +649,15 @@ pub struct Config {
     /// Default: None (no upper bound). Flag: `--before`.
     pub before: Option<String>,
 
+    /// Transient per-job origin marker stamped onto every Qdrant chunk payload as
+    /// `seed_url`. Set to the crawl start URL (crawl path) or the ingest target
+    /// (ingest path) by the job runners before embedding, so each chunk records
+    /// the origin that started its acquisition — distinct from the chunk's own
+    /// page `url`. `None` for direct `embed`/`scrape`, where the embed pipeline
+    /// falls back to the doc's own URL. Consumed by `axon refresh` to re-enqueue
+    /// origins. Not parsed from CLI/env — runtime-only state.
+    pub seed_url: Option<String>,
+
     /// Include a per-schema-version chunk-count breakdown in `axon sources` output.
     /// O(N) scroll over the collection; opt-in only. Default: false.
     /// Flag: `--by-schema-version`. See bead `axon_rust-lu6a`.

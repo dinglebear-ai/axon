@@ -49,6 +49,7 @@ Status meanings:
 | `map` | `services::map::discover` | `map` | `POST /v1/map` = Implemented | Uses typed body with url, limit, and offset. |
 | `migrate` | `services::migrate::migrate` | no dedicated action | Deferred | One-time collection migration is intentionally not exposed remotely; `POST /v1/migrate` returns 404. |
 | `query` | `services::query::query` | `query` | `POST /v1/query` = Implemented | Uses canonical request DTO and typed query service result. |
+| `refresh` | `services::refresh::{plan_refresh,execute_refresh}` | no dedicated action | Missing | Re-enqueues crawl/ingest jobs for indexed origins; CLI-only, gated behind an interactive confirmation. |
 | `research` | `services::search::synthesis::research` | `research` | `POST /v1/research` = Implemented | HTTP applies a 35-second server-side timeout. Streaming remains deferred. |
 | `retrieve` | `services::query::retrieve` | `retrieve` | `POST /v1/retrieve` = Implemented | Supports collection, max_points, cursor, and token_budget. |
 | `scrape` | `services::scrape::{scrape_batch,scrape_batch_with_optional_embed}` | `scrape` | `POST /v1/scrape` = Implemented | Supports render mode, format, selectors, headers, collection, and optional embedding. |

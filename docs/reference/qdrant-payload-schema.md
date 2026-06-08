@@ -17,12 +17,13 @@ Every point in every collection carries these fields, regardless of source.
 |-------|-------------|---------|-------|
 | `url` | keyword | yes | Canonical source URL. Point ID = UUID v5(`NAMESPACE_URL`, `"<url>:<chunk_index>"` bytes). |
 | `domain` | keyword | yes | Hostname only (`github.com`, `reddit.com`). |
+| `seed_url` | keyword | yes | Origin that started this chunk's acquisition: the crawl start URL (crawl path) or ingest target (ingest path), distinct from the per-page `url`. Falls back to the doc's own `url` for direct `embed`/`scrape`. Faceted by `axon refresh`. Added in schema v5; absent on older points. |
 | `source_type` | keyword | yes | See Source Types below. |
 | `content_type` | keyword | no | `"markdown"` or `"text"`. |
 | `chunk_index` | integer | yes | 0-based position within the document. |
 | `chunk_text` | raw string | no | The stored text chunk. Never truncated. |
 | `scraped_at` | datetime | yes | RFC3339 timestamp at embed time. |
-| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `4`. |
+| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `5`. |
 
 ### Conditional Universal Fields
 

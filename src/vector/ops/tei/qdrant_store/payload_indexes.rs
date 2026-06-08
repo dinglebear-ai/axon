@@ -13,6 +13,8 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "url",
     "domain",
     "source_type",
+    // Crawl/ingest origin marker — faceted by `axon refresh` to re-enqueue origins.
+    "seed_url",
     "gh_file_language",
     // GitHub-specific indexed fields (top-level, not deprecated).
     "gh_language",

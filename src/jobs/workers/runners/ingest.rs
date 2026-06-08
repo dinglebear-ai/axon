@@ -30,7 +30,7 @@ pub async fn run_ingest_job(
         return Ok(None);
     };
 
-    let (source, effective_cfg) = decode_ingest_job_config(cfg, &config_json).map_err(|e| {
+    let (source, mut effective_cfg) = decode_ingest_job_config(cfg, &config_json).map_err(|e| {
         let preview: String = config_json.chars().take(120).collect();
         format!("ingest job {id}: malformed config_json: {e} (preview: {preview:?})")
     })?;
@@ -43,6 +43,10 @@ pub async fn run_ingest_job(
             .flatten();
     let source_type = source_type_label(&source).to_string();
     let target = target_label(&source);
+    // Stamp the ingest target as the origin so every chunk records `seed_url`
+    // = the re-ingestable target (e.g. "owner/repo", "r/rust"). The ingest
+    // services clone this cfg before embedding, carrying the marker through.
+    effective_cfg.seed_url = Some(target.clone());
     let (progress_tx, progress_task) =
         spawn_ingest_progress_persister(pool, id, attempt_id, source_type.clone(), target.clone());
 
