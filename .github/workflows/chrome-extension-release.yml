@@ -57,10 +57,13 @@ jobs:
           fi
 
           ./apps/chrome-extension/package.sh
-          zip="apps/chrome-extension/dist/axon-page-scraper-${version}.zip"
-          sha256sum "$zip" > "$zip.sha256"
+          dist="apps/chrome-extension/dist"
+          name="axon-page-scraper-${version}.zip"
+          # Checksum the bare filename (cd into dist first) so `sha256sum -c`
+          # works wherever a downloader saves the zip + .sha256 side by side.
+          ( cd "$dist" && sha256sum "$name" > "$name.sha256" )
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          echo "zip=$dist/$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v5
         with:
@@ -76,10 +79,22 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Chrome extension v${{ steps.build.outputs.version }}
+          # Curated body instead of generate_release_notes: the extension versions
+          # independently, so auto-notes diff against an unrelated axon v* tag and
+          # dump the whole axon PR history into the extension's notes.
+          body: |
+            Axon Page Scraper — Chrome extension v${{ steps.build.outputs.version }}.
+
+            **Install:** download `axon-page-scraper-${{ steps.build.outputs.version }}.zip`, unzip, and
+            load it via `chrome://extensions` → Developer mode → Load unpacked — or upload the zip to the
+            Chrome Web Store.
+
+            **Verify:** `sha256sum -c axon-page-scraper-${{ steps.build.outputs.version }}.zip.sha256`
+
+            See `apps/chrome-extension/README.md` for configuration.
           files: |
             ${{ steps.build.outputs.zip }}
             ${{ steps.build.outputs.zip }}.sha256
-          generate_release_notes: true
           fail_on_unmatched_files: true
           # Keep the repo's "Latest release" badge pointing at axon `v*` releases.
           make_latest: false
