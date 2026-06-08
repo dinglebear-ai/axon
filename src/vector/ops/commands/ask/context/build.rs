@@ -481,6 +481,7 @@ fn build_explain_context(context: &str, inputs: ExplainContextInputs<'_>) -> Ask
         final_source_order: inputs.final_source_order,
         context_char_budget: inputs.max_context_chars,
         context_chars_used: context.len(),
+        rendered_context: context.to_string(),
         truncated_by_budget,
     }
 }
