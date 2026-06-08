@@ -53,6 +53,7 @@ IGNORED_TOKENS = {
     "REDDIT_UA",  # Rust const (User-Agent string), not an env var; lives in src/extract/verticals/reddit.rs
     "TAVILY_BACKOFF_BASE",  # Rust const, not an env var
     "TAVILY_MAX_ATTEMPTS",  # Rust const, not an env var
+    "GEMINI_SKILL_INVOCATION",  # Rust prompt const, not an env var
     "GOOGLE_OAUTH_COLORS",  # Rust const (color hex list for brand filtering), not an env var
     "OPENAI_COMPAT_SECRET",  # fake secret string literal in runners_tests.rs redaction test, not an env var
 }
