@@ -79,6 +79,22 @@ write_override_env() {
   chmod 600 "$env_file"
 }
 
+cli_api_overrides_json() {
+  local model="$1"
+  jq -n \
+    --arg backend "openai-compat" \
+    --arg base_url "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}" \
+    --arg model "$model" \
+    --arg concurrency "1" \
+    '{
+      AXON_LLM_BACKEND: $backend,
+      AXON_OPENAI_BASE_URL: $base_url,
+      AXON_OPENAI_MODEL: $model,
+      AXON_OPENAI_API_KEY: "***",
+      AXON_LLM_COMPLETION_CONCURRENCY: $concurrency
+    }'
+}
+
 env_overrides_json() {
   local profile="$1"
   case "$profile" in
@@ -86,46 +102,13 @@ env_overrides_json() {
       jq -n '{}'
       ;;
     gemini-flash)
-      jq -n \
-        --arg backend "openai-compat" \
-        --arg base_url "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}" \
-        --arg model "${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}" \
-        --arg concurrency "1" \
-        '{
-          AXON_LLM_BACKEND: $backend,
-          AXON_OPENAI_BASE_URL: $base_url,
-          AXON_OPENAI_MODEL: $model,
-          AXON_OPENAI_API_KEY: "***",
-          AXON_LLM_COMPLETION_CONCURRENCY: $concurrency
-        }'
+      cli_api_overrides_json "${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}"
       ;;
     gpt-5.4-mini)
-      jq -n \
-        --arg backend "openai-compat" \
-        --arg base_url "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}" \
-        --arg model "${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}" \
-        --arg concurrency "1" \
-        '{
-          AXON_LLM_BACKEND: $backend,
-          AXON_OPENAI_BASE_URL: $base_url,
-          AXON_OPENAI_MODEL: $model,
-          AXON_OPENAI_API_KEY: "***",
-          AXON_LLM_COMPLETION_CONCURRENCY: $concurrency
-        }'
+      cli_api_overrides_json "${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}"
       ;;
     gemini-3.1-flash-lite)
-      jq -n \
-        --arg backend "openai-compat" \
-        --arg base_url "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}" \
-        --arg model "${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}" \
-        --arg concurrency "1" \
-        '{
-          AXON_LLM_BACKEND: $backend,
-          AXON_OPENAI_BASE_URL: $base_url,
-          AXON_OPENAI_MODEL: $model,
-          AXON_OPENAI_API_KEY: "***",
-          AXON_LLM_COMPLETION_CONCURRENCY: $concurrency
-        }'
+      cli_api_overrides_json "${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}"
       ;;
     gemma-local)
       jq -n \
@@ -165,17 +148,29 @@ capture_effective_config() {
   stderr_file="$TMP_ENV_DIR/${profile}.config.stderr.log"
   if [[ "$profile" == "current" ]]; then
     if config_json="$("$AXON_BIN" config list --json 2>"$stderr_file")"; then
-      jq -c . <<<"$config_json"
+      if jq -e type >/dev/null <<<"$config_json"; then
+        jq -c . <<<"$config_json"
+      else
+        echo "effective config capture for $profile returned invalid JSON" >&2
+        return 1
+      fi
     else
-      jq -n --arg status "unavailable" --arg stderr "$(cat "$stderr_file" 2>/dev/null || true)" \
-        '{status:$status, stderr:$stderr}'
+      echo "effective config capture failed for $profile" >&2
+      cat "$stderr_file" >&2 2>/dev/null || true
+      return 1
     fi
   else
     if config_json="$(AXON_ENV_FILE="$env_file" "$AXON_BIN" config list --json 2>"$stderr_file")"; then
-      jq -c . <<<"$config_json"
+      if jq -e type >/dev/null <<<"$config_json"; then
+        jq -c . <<<"$config_json"
+      else
+        echo "effective config capture for $profile returned invalid JSON" >&2
+        return 1
+      fi
     else
-      jq -n --arg status "unavailable" --arg stderr "$(cat "$stderr_file" 2>/dev/null || true)" \
-        '{status:$status, stderr:$stderr}'
+      echo "effective config capture failed for $profile" >&2
+      cat "$stderr_file" >&2 2>/dev/null || true
+      return 1
     fi
   fi
 }

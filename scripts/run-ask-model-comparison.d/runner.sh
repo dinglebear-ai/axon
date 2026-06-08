@@ -17,7 +17,9 @@ selected_settings_from_config() {
 
 validate_profiles() {
   local IFS=,
-  local profile
+  local profile label
+  local -A seen_profiles=()
+  local -A seen_labels=()
   for profile in $MODELS; do
     case "$profile" in
       current|gemini-flash|gpt-5.4-mini|gemini-3.1-flash-lite|gemma-local) ;;
@@ -27,6 +29,18 @@ validate_profiles() {
         exit 2
         ;;
     esac
+    if [[ -n "${seen_profiles[$profile]:-}" ]]; then
+      echo "duplicate model profile selected: $profile" >&2
+      exit 2
+    fi
+    seen_profiles["$profile"]=1
+    label="$(profile_label "$profile")"
+    if [[ -n "${seen_labels[$label]:-}" ]]; then
+      echo "duplicate computed profile label selected: $label" >&2
+      echo "profile labels must be unique after model-name slugification" >&2
+      exit 2
+    fi
+    seen_labels["$label"]=1
   done
 }
 
@@ -89,7 +103,10 @@ register_profile_config() {
   local env_file="${2:-}"
   local config_json provider model settings
   echo "capturing effective config: $(profile_label "$profile")" >&2
-  config_json="$(write_profile_config "$profile" "$env_file")"
+  if ! config_json="$(write_profile_config "$profile" "$env_file")"; then
+    echo "failed to capture profile config: $profile" >&2
+    exit 1
+  fi
   printf '%s\n' "$config_json" >>"$OUT_DIR/profile-configs.jsonl"
   provider="$(selected_provider_from_config "$profile" "$config_json")"
   model="$(selected_model_from_config "$profile" "$config_json")"
@@ -104,6 +121,29 @@ profile_results_file() {
   echo "$OUT_DIR/$(profile_label "$profile").results.jsonl"
 }
 
+run_axon_for_profile() {
+  local profile="$1"
+  shift
+  if [[ "$profile" == "current" ]]; then
+    "$AXON_BIN" "$@"
+  else
+    local env_file="$TMP_ENV_DIR/${profile}.env"
+    AXON_ENV_FILE="$env_file" "$AXON_BIN" "$@"
+  fi
+}
+
+validate_explain_json() {
+  local explain_file="$1"
+  if [[ ! -s "$explain_file" ]]; then
+    echo "explain output is empty"
+    return 1
+  fi
+  if ! jq -e '.explain.context and (.explain.context | type == "object")' "$explain_file" >/dev/null 2>&1; then
+    echo "explain output is not valid JSON with required .explain.context"
+    return 1
+  fi
+}
+
 run_profile_question() {
   local profile="$1"
   local question_id="$2"
@@ -115,6 +155,7 @@ run_profile_question() {
   local explain_stderr_file="$profile_dir/${question_id}.explain.stderr.log"
   local provider model started_at finished_at start_ns end_ns elapsed exit_code
   local explain_started_at explain_finished_at explain_start_ns explain_end_ns explain_elapsed explain_exit_code
+  local explain_valid explain_error
 
   mkdir -p "$profile_dir"
   provider="${PROFILE_PROVIDER[$profile]:-$(profile_provider "$profile")}"
@@ -124,35 +165,33 @@ run_profile_question() {
   explain_finished_at=""
   explain_elapsed=""
   explain_exit_code=0
+  explain_valid=0
+  explain_error=""
   if [[ "$CAPTURE_EXPLAIN" -eq 1 ]]; then
     explain_started_at="$(date --iso-8601=seconds)"
     explain_start_ns="$(date +%s%N)"
     set +e
-    if [[ "$profile" == "current" ]]; then
-      "$AXON_BIN" ask --explain --diagnostics --json "$question" >"$explain_file" 2>"$explain_stderr_file"
-      explain_exit_code=$?
-    else
-      local env_file="$TMP_ENV_DIR/${profile}.env"
-      AXON_ENV_FILE="$env_file" "$AXON_BIN" ask --explain --diagnostics --json "$question" >"$explain_file" 2>"$explain_stderr_file"
-      explain_exit_code=$?
-    fi
+    run_axon_for_profile "$profile" ask --explain --diagnostics --json "$question" >"$explain_file" 2>"$explain_stderr_file"
+    explain_exit_code=$?
     set -e
     explain_end_ns="$(date +%s%N)"
     explain_finished_at="$(date --iso-8601=seconds)"
     explain_elapsed="$(awk "BEGIN { printf \"%.3f\", ($explain_end_ns - $explain_start_ns) / 1000000000 }")"
+    if [[ "$explain_exit_code" -eq 0 ]]; then
+      if explain_error="$(validate_explain_json "$explain_file")"; then
+        explain_valid=1
+        explain_error=""
+      fi
+    else
+      explain_error="explain command exited with code ${explain_exit_code}"
+    fi
   fi
 
   started_at="$(date --iso-8601=seconds)"
   start_ns="$(date +%s%N)"
   set +e
-  if [[ "$profile" == "current" ]]; then
-    "$AXON_BIN" ask "$question" >"$answer_file" 2>"$stderr_file"
-    exit_code=$?
-  else
-    local env_file="$TMP_ENV_DIR/${profile}.env"
-    AXON_ENV_FILE="$env_file" "$AXON_BIN" ask "$question" >"$answer_file" 2>"$stderr_file"
-    exit_code=$?
-  fi
+  run_axon_for_profile "$profile" ask "$question" >"$answer_file" 2>"$stderr_file"
+  exit_code=$?
   set -e
   end_ns="$(date +%s%N)"
   finished_at="$(date --iso-8601=seconds)"
@@ -181,6 +220,8 @@ run_profile_question() {
     --arg explain_finished_at "$explain_finished_at" \
     --arg explain_elapsed_seconds "$explain_elapsed" \
     --argjson explain_exit_code "$explain_exit_code" \
+    --argjson explain_valid "$explain_valid" \
+    --arg explain_error "$explain_error" \
     --arg started_at "$started_at" \
     --arg finished_at "$finished_at" \
     --arg elapsed_seconds "$elapsed" \
@@ -201,6 +242,8 @@ run_profile_question() {
       explain_finished_at: (if $capture_explain == 1 then $explain_finished_at else null end),
       explain_elapsed_seconds: (if $capture_explain == 1 and ($explain_elapsed_seconds | length) > 0 then ($explain_elapsed_seconds | tonumber) else null end),
       explain_exit_code: (if $capture_explain == 1 then $explain_exit_code else null end),
+      explain_valid: (if $capture_explain == 1 then ($explain_valid == 1) else null end),
+      explain_error: (if $capture_explain == 1 and ($explain_error | length) > 0 then $explain_error else null end),
       explain_file: (if $capture_explain == 1 then $explain_file else null end),
       explain_stderr_file: (if $capture_explain == 1 then $explain_stderr_file else null end),
       started_at: $started_at,
@@ -212,7 +255,7 @@ run_profile_question() {
     }' >>"$(profile_results_file "$profile")"
 
   if [[ "$CAPTURE_EXPLAIN" -eq 1 ]]; then
-    echo "  ${question_id}: explain=${explain_elapsed}s explain_exit=${explain_exit_code} answer=${elapsed}s exit=${exit_code} file=${answer_file}" >&2
+    echo "  ${question_id}: explain=${explain_elapsed}s explain_exit=${explain_exit_code} explain_valid=${explain_valid} answer=${elapsed}s exit=${exit_code} file=${answer_file}" >&2
   else
     echo "  ${question_id}: ${elapsed}s exit=${exit_code} answer=${answer_file}" >&2
   fi
@@ -224,11 +267,13 @@ finalize_run_json() {
   results_json="$(jq -s 'sort_by(.profile, .question_id)' "$OUT_DIR"/*.results.jsonl)"
   model_list_json="$(json_string_array_from_csv "$MODELS")"
   jq -n \
-    --arg schema "axon-ask-model-comparison/v1" \
+    --arg schema "axon-ask-model-comparison/v2" \
     --arg created_at "$(date --iso-8601=seconds)" \
     --arg questions_file "$QUESTIONS_FILE" \
     --arg out_dir "$OUT_DIR" \
     --arg axon_bin "$AXON_BIN" \
+    --argjson capture_explain "$CAPTURE_EXPLAIN" \
+    --arg execution_mode "$(if [[ "$SERIAL" -eq 1 ]]; then echo serial; else echo parallel; fi)" \
     --argjson models "$model_list_json" \
     --argjson profiles "$profiles_json" \
     --argjson results "$results_json" \
@@ -238,6 +283,14 @@ finalize_run_json() {
       questions_file: $questions_file,
       out_dir: $out_dir,
       axon_bin: $axon_bin,
+      capture_explain: ($capture_explain == 1),
+      result_schema_features: [
+        "per_result_explain_valid",
+        "per_result_explain_error",
+        "top_level_capture_explain",
+        "execution_mode"
+      ],
+      execution_mode: $execution_mode,
       selected_models: $models,
       profiles: $profiles,
       results: $results
@@ -344,12 +397,17 @@ run_all() {
   fi
 
   finalize_run_json
+  local failure_count
+  failure_count="$(jq '[.results[] | select(.exit_code != 0 or (.explain_exit_code != null and .explain_exit_code != 0) or (.explain_valid == false))] | length' "$OUT_DIR/run.json")"
   {
     echo "Run complete"
     echo "  out_dir: $OUT_DIR"
     echo "  run_json: $OUT_DIR/run.json"
     echo "  result_count: $(jq '.results | length' "$OUT_DIR/run.json")"
-    echo "  failures: $(jq '[.results[] | select(.exit_code != 0)] | length' "$OUT_DIR/run.json")"
+    echo "  failures: $failure_count"
   } >&2
   echo "$OUT_DIR"
+  if [[ "$failure_count" -ne 0 ]]; then
+    exit 1
+  fi
 }

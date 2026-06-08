@@ -1,5 +1,12 @@
 # Ask Eval And Capped Retrieval Implementation Plan
 
+> **Historical note (superseded by PR #185 implementation):** This plan was
+> written before the final evaluation harness shape landed. It describes
+> `xtask ask-eval` as the canonical harness and the shell runner as a temporary
+> compatibility wrapper. The PR implementation intentionally kept the split
+> shell runner as the actual supported tool instead. Treat the `xtask` steps
+> below as historical planning context, not follow-up work to chase.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a repeatable ask-evaluation harness and improve `axon ask` retrieval/synthesis behavior for capped local models such as Gemma 4 E4B.
@@ -1270,4 +1277,3 @@ git commit -m "docs(eval): record post-tuning gemma ask results"
 **Placeholder scan:** The plan includes one generated analysis template in Task 8 with explicit instructions to replace placeholders before commit. No implementation task leaves code unspecified.
 
 **Type consistency:** `AskEvalArgs`, `Profile`, `Question`, `QuestionResult`, and `RunReport` are introduced before later tasks reference them. Production explain types are intentionally gated by a discovery step because the exact service type file may need field-name alignment.
-
