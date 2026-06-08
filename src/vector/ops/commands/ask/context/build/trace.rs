@@ -1,6 +1,6 @@
 use crate::services::types::{
-    AskExplainContextSource, AskExplainInsertionMode, AskExplainSelectionDecision,
-    AskExplainSelectionDecisionKind,
+    AskExplainContextSource, AskExplainContextSourceTier, AskExplainInsertionMode,
+    AskExplainSelectionDecision, AskExplainSelectionDecisionKind,
 };
 use crate::vector::ops::ranking;
 use std::collections::{HashMap, HashSet};
@@ -321,16 +321,16 @@ fn parse_source_header(
     let line = line.strip_prefix("## ")?;
     let (tier_text, rest) = line.split_once(" [")?;
     let tier = match tier_text {
-        "Top Chunk" => "top_chunk",
-        "Source Document" => "full_doc",
-        "Supplemental Chunk" => "supplemental",
+        "Top Chunk" => AskExplainContextSourceTier::TopChunk,
+        "Source Document" => AskExplainContextSourceTier::FullDoc,
+        "Supplemental Chunk" => AskExplainContextSourceTier::Supplemental,
         _ => return None,
     };
     let (source_id, rest) = rest.split_once("]: ")?;
     Some(AskExplainContextSource {
         source_id: source_id.to_string(),
         url: rest.to_string(),
-        tier: tier.to_string(),
+        tier,
         sort_rank,
         sort_score,
     })
@@ -354,18 +354,20 @@ fn selected_context_rank_map(
 ) -> HashMap<(String, AskExplainInsertionMode), usize> {
     let mut ranks = HashMap::new();
     for (idx, source) in sources.iter().enumerate() {
-        if let Some(mode) = insertion_mode_for_context_tier(&source.tier) {
+        if let Some(mode) = insertion_mode_for_context_tier(source.tier) {
             ranks.entry((source.url.clone(), mode)).or_insert(idx + 1);
         }
     }
     ranks
 }
 
-fn insertion_mode_for_context_tier(tier: &str) -> Option<AskExplainInsertionMode> {
+fn insertion_mode_for_context_tier(
+    tier: AskExplainContextSourceTier,
+) -> Option<AskExplainInsertionMode> {
     match tier {
-        "top_chunk" => Some(AskExplainInsertionMode::TopChunk),
-        "full_doc" => Some(AskExplainInsertionMode::InsertedFullDoc),
-        "supplemental" => Some(AskExplainInsertionMode::Supplemental),
+        AskExplainContextSourceTier::TopChunk => Some(AskExplainInsertionMode::TopChunk),
+        AskExplainContextSourceTier::FullDoc => Some(AskExplainInsertionMode::InsertedFullDoc),
+        AskExplainContextSourceTier::Supplemental => Some(AskExplainInsertionMode::Supplemental),
         _ => None,
     }
 }

@@ -227,6 +227,18 @@ compatibility = "advanced"
 reason = "Development Compose bind-mount source for the locally built Axon binary directory."
 
 [[env]]
+key = "AXON_BASE_ENV_FILE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side model-comparison runner override for the base env file copied into per-profile env files; not Axon runtime config."
+
+[[env]]
 key = "AXON_RUSTC_WRAPPER_DELEGATE"
 classification = "external/test-only"
 runtime_placement = "not-runtime"
@@ -273,6 +285,30 @@ container_allowed = false
 toml_destination = ""
 compatibility = "advanced"
 reason = "Host-side cargo rustc wrapper test/install destination override for the plugin Axon binary."
+
+[[env]]
+key = "GEMINI_FLASH_MODEL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side model-comparison runner override for the cli-api Gemini Flash profile model name; not Axon runtime config."
+
+[[env]]
+key = "GEMINI_3_1_FLASH_LITE_MODEL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side model-comparison runner override for the cli-api Gemini 3.1 Flash Lite profile model name; not Axon runtime config."
 
 [[env]]
 key = "GEMINI_HOME"

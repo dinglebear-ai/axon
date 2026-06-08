@@ -22,11 +22,15 @@ axon ask --query "<question>" [FLAGS]
 |----------|-------------|
 | `TEI_URL` | TEI embeddings base URL. Used to embed the question before Qdrant search. |
 | `QDRANT_URL` | Qdrant base URL. Searched for relevant chunks. |
-| `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
-| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation. |
+| `AXON_LLM_BACKEND` | Answer-generation backend. Defaults to `gemini-headless`; set `openai-compat` for OpenAI-compatible chat completion endpoints. |
+| `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command used by the default Gemini headless backend. Defaults to `gemini`. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation when using Gemini headless. |
+| `AXON_OPENAI_BASE_URL` | OpenAI-compatible API root when `AXON_LLM_BACKEND=openai-compat`. |
+| `AXON_OPENAI_MODEL` | Model name for the OpenAI-compatible backend. |
+| `AXON_OPENAI_API_KEY` | Optional bearer token for the OpenAI-compatible backend. |
 | `AXON_SERVER_URL` | Optional generic server endpoint. If set, buffered `ask` requests use `axon serve`; streaming requests stay in-process. |
 
-`ask` uses Qdrant + TEI retrieval and Gemini headless synthesis.
+`ask` uses Qdrant + TEI retrieval and the configured LLM backend for synthesis. The default backend is Gemini headless.
 
 ## Flags
 
@@ -116,7 +120,7 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ask --no-stream "what changed in serv
 5. Rerank by the mode-appropriate score/order; take top `ask.chunk-limit` (default: 20)
 6. For top `AXON_ASK_FULL_DOCS` (default: 6) documents, backfill additional chunks from the same document
 7. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 300,000) characters
-8. Call Gemini headless with context + question
+8. Call the configured LLM backend with context + question
 9. Apply response-quality gates (citations + policy checks)
 10. Print the normalized answer
 
@@ -182,6 +186,10 @@ topics.
 ## Explain Trace
 
 Use `--diagnostics` for aggregate health counters. Use `--explain --json` when a ranking result looks wrong and you need the per-candidate math and context decisions. Explain mode returns the normal `AskResult` shape with `answer: ""`, `timing_ms.llm: 0`, `explain.llm_skipped: true`, and no Gemini call.
+
+Raw rendered retrieval context is omitted from default explain JSON so CLI, MCP, REST, and runner artifacts do not leak the full prompt fragment by accident. Use `.explain.context.final_source_order` for source ordering metadata, `.explain.context.context_bytes_used` / `.context_bytes_budget` for the concrete budget invariant, `.explain.context.context_chars_used` for Unicode character count, and `.explain.candidates[]` for candidate scores, filter decisions, selected context ranks, insertion modes, and snippets.
+
+When an internal caller explicitly includes rendered context, it is shaped as `.explain.context.rendered_context = { "format": "axon_sources_v1", "content": "...", "bytes_used": N, "chars_used": N }`.
 
 ```text
 query
@@ -275,7 +283,7 @@ Remaining runtime ask controls are still env-only until typed TOML fields exist:
 
 ## Notes
 
-- LLM answer generation goes through Gemini headless. `AXON_HEADLESS_GEMINI_MODEL` is used as the Gemini model override.
+- LLM answer generation goes through the configured backend. By default this is Gemini headless; `AXON_HEADLESS_GEMINI_MODEL` is used as the Gemini model override on that backend.
 - If you get "No candidates met relevance threshold", lower `ask.min-relevance-score` in `~/.axon/config.toml` or run `axon crawl`/`axon embed` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.

@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <lint>
     <!--
-        AGP 8.7.0 + Kotlin 2.1.0 crashes inside
+        Some AGP/Kotlin combinations crash inside
         androidx.lifecycle.lint.NonNullableMutableLiveDataDetector before a
         baseline can be applied:
         "Found class KaCallableMemberCall, but interface was expected".
-        Keep this as a single-issue app-local suppression until the Android
-        and Aurora composite builds can move to an AGP/Kotlin pair where the
-        detector runs normally.
+        Keep this as a single-issue app-local suppression only while lintDebug
+        still hits that detector crash.
     -->
     <issue id="NullSafeMutableLiveData" severity="ignore" />
 </lint>

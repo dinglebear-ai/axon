@@ -6,7 +6,10 @@ close to the UI paths that submit work.
 
 ## Build And Verification
 
-Use the wrapper in this directory from the repository root:
+Use the wrapper in this directory from the repository root. Dependency
+verification is enabled for these commands through
+`gradle/verification-metadata.xml`; do not disable it when validating Android
+changes.
 
 ```bash
 apps/android/gradlew -p apps/android :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug --no-daemon
@@ -14,7 +17,11 @@ apps/android/gradlew -p apps/android :app:compileDebugAndroidTestKotlin --no-dae
 apps/android/gradlew -p apps/android :app:assembleRelease --no-daemon
 ```
 
-Dependency verification is enabled by `gradle/verification-metadata.xml`.
+AGP 8.13.2 requires a Gradle wrapper on 8.13 or newer. If these commands fail
+before dependency resolution with `Minimum supported Gradle version is 8.13`,
+update `gradle/wrapper/gradle-wrapper.properties` first, then rerun the full
+command set above.
+
 Refresh it only when Android dependencies intentionally change:
 
 ```bash
@@ -26,16 +33,16 @@ apps/android/gradlew -p apps/android --write-verification-metadata sha256 <tasks
 `settings.gradle.kts` auto-detects a local Aurora Android checkout unless
 `axonAuroraAndroidPath` or `AXON_AURORA_ANDROID_PATH` points elsewhere.
 
-The app and the optional Aurora composite currently stay on AGP 8.7.0 together.
-The Aurora composite may compile SDK 36, so `android.suppressUnsupportedCompileSdk=36`
-is still present until both builds can move to AGP 8.9.1 or newer in lockstep.
-Attempting to move only Axon to AGP 8.9.1 fails because Gradle rejects mixed AGP
+The app is on AGP 8.13.2. Keep the optional Aurora composite on a compatible
+AGP line when it is included; Gradle rejects incompatible Android Gradle Plugin
 versions in one composite build.
 
-`app/lint.xml` ignores only `NullSafeMutableLiveData`. AGP 8.7.0 with Kotlin
-2.1.0 crashes inside that lifecycle detector before a lint baseline can apply.
-Remove the suppression after the AGP/Kotlin pair is upgraded and `lintDebug`
-runs without the Kotlin Analysis API warnings.
+`android.suppressUnsupportedCompileSdk=36` remains in `gradle.properties`
+because the optional Aurora composite may compile SDK 36.
+
+`app/lint.xml` ignores only `NullSafeMutableLiveData`. Keep the suppression only
+while `lintDebug` still hits the lifecycle detector/Kotlin Analysis API crash;
+remove it after the detector runs normally with the current AGP/Kotlin pair.
 
 ## Connection Security
 
