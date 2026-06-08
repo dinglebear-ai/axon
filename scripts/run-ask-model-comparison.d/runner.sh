@@ -45,16 +45,74 @@ validate_profiles() {
 }
 
 preflight() {
+  if [[ ",$MODELS," == *",gemini-flash,"* || ",$MODELS," == *",gpt-5.4-mini,"* || ",$MODELS," == *",gemini-3.1-flash-lite,"* ]]; then
+    local api_key="${AXON_OPENAI_API_KEY:-}"
+    if [[ -z "$api_key" ]]; then
+      api_key="$(base_env_value AXON_OPENAI_API_KEY)"
+    fi
+    if [[ -z "$api_key" ]]; then
+      echo "cli-api profiles require a non-empty AXON_OPENAI_API_KEY in the environment or --base-env file." >&2
+      echo "Set AXON_OPENAI_API_KEY or pass --base-env PATH with that key before running cli-api profiles." >&2
+      echo "Current base env: $BASE_ENV_FILE" >&2
+      exit 1
+    fi
+  fi
+
   if [[ "$SKIP_PREFLIGHT" -eq 1 || ",$MODELS," != *",gemma-local,"* ]]; then
-    return
+    :
+  else
+    need curl
+    local base="${GEMMA_OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}"
+    local attempts="${LLAMA_PREFLIGHT_ATTEMPTS:-60}"
+    local delay="${LLAMA_PREFLIGHT_DELAY_SECS:-5}"
+    local attempt=1
+    while ! curl -fsS --max-time 4 "$base/models" >/dev/null; do
+      if [[ "$attempt" -ge "$attempts" ]]; then
+        echo "llama.cpp OpenAI-compatible endpoint is not reachable at $base/models" >&2
+        echo "start it with: docker compose --env-file ~/.axon/.env -f docker-compose.llama.yaml up -d" >&2
+        exit 1
+      fi
+      echo "waiting for llama.cpp model endpoint at $base/models (${attempt}/${attempts})" >&2
+      sleep "$delay"
+      attempt=$((attempt + 1))
+    done
   fi
-  need curl
-  local base="${GEMMA_OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}"
-  if ! curl -fsS --max-time 4 "$base/models" >/dev/null; then
-    echo "llama.cpp OpenAI-compatible endpoint is not reachable at $base/models" >&2
-    echo "start it with: docker compose --env-file ~/.axon/.env -f docker-compose.llama.yaml up -d" >&2
-    exit 1
+}
+
+ensure_profile_env_file() {
+  local profile="$1"
+  local env_file="$TMP_ENV_DIR/${profile}.env"
+  if [[ ! -f "$env_file" ]]; then
+    write_override_env "$profile" "$env_file"
   fi
+}
+
+profile_env_file() {
+  local profile="$1"
+  echo "$TMP_ENV_DIR/${profile}.env"
+}
+
+run_axon_with_env_file() {
+  local env_file="$1"
+  shift
+  AXON_ENV_FILE="$env_file" "$AXON_BIN" "$@"
+}
+
+register_profile() {
+  local profile="$1"
+  local env_file
+  ensure_profile_env_file "$profile"
+  env_file="$(profile_env_file "$profile")"
+  register_profile_config "$profile" "$env_file"
+}
+
+run_axon_for_profile() {
+  local profile="$1"
+  shift
+  local env_file
+  ensure_profile_env_file "$profile"
+  env_file="$(profile_env_file "$profile")"
+  run_axon_with_env_file "$env_file" "$@"
 }
 
 write_run_readme() {
@@ -119,17 +177,6 @@ register_profile_config() {
 profile_results_file() {
   local profile="$1"
   echo "$OUT_DIR/$(profile_label "$profile").results.jsonl"
-}
-
-run_axon_for_profile() {
-  local profile="$1"
-  shift
-  if [[ "$profile" == "current" ]]; then
-    "$AXON_BIN" "$@"
-  else
-    local env_file="$TMP_ENV_DIR/${profile}.env"
-    AXON_ENV_FILE="$env_file" "$AXON_BIN" "$@"
-  fi
 }
 
 validate_explain_json() {
@@ -361,15 +408,9 @@ run_all() {
   trap 'rm -rf "$TMP_ENV_DIR"' EXIT
 
   local IFS=,
-  local profile row question_id question env_file
+  local profile row question_id question
   for profile in $MODELS; do
-    if [[ "$profile" != "current" ]]; then
-      env_file="$TMP_ENV_DIR/${profile}.env"
-      write_override_env "$profile" "$env_file"
-      register_profile_config "$profile" "$env_file"
-    else
-      register_profile_config "$profile" ""
-    fi
+    register_profile "$profile"
   done
 
   if [[ "$SERIAL" -eq 1 ]]; then

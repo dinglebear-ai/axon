@@ -119,7 +119,7 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ask --no-stream "what changed in serv
 4. Skip that threshold in hybrid/RRF named-vector mode. RRF scores are rank-fusion outputs rather than cosine scores, so ask keeps the loose topical-overlap gate and uses Qdrant's fused ordering.
 5. Rerank by the mode-appropriate score/order; take top `ask.chunk-limit` (default: 20)
 6. For top `AXON_ASK_FULL_DOCS` (default: 6) documents, backfill additional chunks from the same document
-7. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 300,000) characters
+7. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (model-tiered fallback: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown)
 8. Call the configured LLM backend with context + question
 9. Apply response-quality gates (citations + policy checks)
 10. Print the normalized answer
@@ -276,7 +276,7 @@ Remaining runtime ask controls are still env-only until typed TOML fields exist:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `AXON_ASK_MAX_CONTEXT_CHARS` | `300000` | Total context characters; tuned for large-context one-shot synthesis |
+| `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Total context characters; defaults by model family unless explicitly overridden |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional comma-separated domains to boost in reranking |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Minimum unique citations for non-trivial answers |

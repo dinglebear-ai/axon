@@ -263,7 +263,7 @@ fn ask_max_context_chars(cfg: &Config, toml: &TomlConfig) -> usize {
 enum AskModelTier {
     /// ~1M-token windows — Gemini, Claude.
     Large,
-    /// ~400k-token window — Codex.
+    /// ~400k-token window — GPT/Codex.
     Medium,
     /// Local Gemma on the 12 GB llama.cpp path.
     LocalGemma,
@@ -280,7 +280,7 @@ fn ask_model_tier(cfg: &Config) -> AskModelTier {
         AskModelTier::Large
     } else if model.contains("gemma") {
         AskModelTier::LocalGemma
-    } else if model.contains("codex") {
+    } else if model.contains("codex") || model.starts_with("gpt-") || model.contains("/gpt-") {
         AskModelTier::Medium
     } else {
         AskModelTier::Small
@@ -293,7 +293,7 @@ fn model_context_char_budget(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
         AskModelTier::Large => 1_000_000,
         AskModelTier::Medium => 400_000,
-        AskModelTier::LocalGemma => 300_000,
+        AskModelTier::LocalGemma => 128_000,
         AskModelTier::Small => 40_000,
     }
 }

@@ -282,7 +282,7 @@ The remaining rows are runtime env controls until typed TOML fields exist.
 
 | TOML key | Env override | Default | Description |
 |----------|--------------|---------|-------------|
-| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | `300000` | Max context characters passed to the LLM (clamped 20000-1000000) |
+| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Max context characters passed to the LLM (clamped 20000-1000000). Fallbacks: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
 | `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `250` | Max retrieval candidates per prefetch (clamped 8-300) |
 | `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `20` | Max total chunks selected for LLM context |
 | `ask.full-docs` | `AXON_ASK_FULL_DOCS` | `6` | Max full documents included in context |

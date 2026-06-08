@@ -19,25 +19,71 @@ append_env_override() {
   printf '%s=%q\n' "$key" "$value" >>"$env_file"
 }
 
+base_env_value() {
+  local key="$1"
+  if [[ ! -f "$BASE_ENV_FILE" ]]; then
+    return
+  fi
+  awk -F= -v key="$key" '
+    $1 == key {
+      value=$0
+      sub(/^[^=]*=/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if ((value ~ /^".*"$/) || (value ~ /^\047.*\047$/)) {
+        value=substr(value, 2, length(value) - 2)
+      }
+      print value
+      exit
+    }
+  ' "$BASE_ENV_FILE"
+}
+
 copy_env_key_from_base() {
   local env_file="$1"
   local key="$2"
-  if [[ -f "$BASE_ENV_FILE" ]]; then
-    grep -m1 -E "^${key}=" "$BASE_ENV_FILE" >>"$env_file" || true
+  local value="${!key:-}"
+  if [[ -z "$value" ]]; then
+    value="$(base_env_value "$key")"
   fi
+  if [[ -n "$value" ]]; then
+    append_env_override "$env_file" "$key" "$value"
+  fi
+}
+
+translate_host_runtime_urls() {
+  local env_file="$1"
+  perl -0pi \
+    -e 's#^AXON_OPENAI_BASE_URL=http://llama-cpp:8080/v1$#AXON_OPENAI_BASE_URL=http://127.0.0.1:8080/v1#m;' \
+    -e 's#^QDRANT_URL=http://axon-qdrant:6333$#QDRANT_URL=http://127.0.0.1:53333#m;' \
+    -e 's#^TEI_URL=http://axon-tei:80$#TEI_URL=http://127.0.0.1:52000#m;' \
+    -e 's#^AXON_CHROME_REMOTE_URL=http://axon-chrome:6000$#AXON_CHROME_REMOTE_URL=http://127.0.0.1:6000#m;' \
+    "$env_file"
+}
+
+append_runner_runtime_overrides() {
+  local env_file="$1"
+  local profile="$2"
+  append_env_override "$env_file" AXON_SQLITE_PATH "$TMP_ENV_DIR/${profile}.jobs.db"
 }
 
 write_override_env() {
   local profile="$1"
   local env_file="$2"
 
-  if [[ -f "$BASE_ENV_FILE" ]]; then
+  if [[ -f "$BASE_ENV_FILE" && "$profile" == "current" ]]; then
+    cp "$BASE_ENV_FILE" "$env_file"
+  elif [[ -f "$BASE_ENV_FILE" ]]; then
     grep -vE '^(AXON_LLM_BACKEND|AXON_OPENAI_BASE_URL|AXON_OPENAI_MODEL|AXON_OPENAI_API_KEY|AXON_ASK_|AXON_LLM_COMPLETION_)=' "$BASE_ENV_FILE" >"$env_file" || true
   else
     : >"$env_file"
   fi
 
+  translate_host_runtime_urls "$env_file"
+  append_runner_runtime_overrides "$env_file" "$profile"
+
   case "$profile" in
+    current)
+      ;;
     gemini-flash)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
       append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}"
@@ -62,10 +108,10 @@ write_override_env() {
     gemma-local)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
       append_env_override "$env_file" AXON_OPENAI_BASE_URL "${GEMMA_OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}"
-      append_env_override "$env_file" AXON_OPENAI_MODEL "${GEMMA_MODEL:-ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M}"
+      append_env_override "$env_file" AXON_OPENAI_MODEL "${GEMMA_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}"
       append_env_override "$env_file" AXON_OPENAI_API_KEY ""
       append_env_override "$env_file" AXON_LLM_COMPLETION_CONCURRENCY "1"
-      append_env_override "$env_file" AXON_ASK_MAX_CONTEXT_CHARS "${GEMMA_CONTEXT_CHARS:-300000}"
+      append_env_override "$env_file" AXON_ASK_MAX_CONTEXT_CHARS "${GEMMA_CONTEXT_CHARS:-128000}"
       append_env_override "$env_file" AXON_ASK_CHUNK_LIMIT "${GEMMA_CHUNK_LIMIT:-20}"
       append_env_override "$env_file" AXON_ASK_CANDIDATE_LIMIT "${GEMMA_CANDIDATE_LIMIT:-120}"
       append_env_override "$env_file" AXON_ASK_HYBRID_CANDIDATES "${GEMMA_HYBRID_CANDIDATES:-100}"
@@ -114,10 +160,10 @@ env_overrides_json() {
       jq -n \
         --arg backend "openai-compat" \
         --arg base_url "${GEMMA_OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}" \
-        --arg model "${GEMMA_MODEL:-ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M}" \
+        --arg model "${GEMMA_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}" \
         --arg api_key_redacted "" \
         --arg concurrency "1" \
-        --arg context "${GEMMA_CONTEXT_CHARS:-300000}" \
+        --arg context "${GEMMA_CONTEXT_CHARS:-128000}" \
         --arg chunks "${GEMMA_CHUNK_LIMIT:-20}" \
         --arg candidates "${GEMMA_CANDIDATE_LIMIT:-120}" \
         --arg hybrid "${GEMMA_HYBRID_CANDIDATES:-100}" \
@@ -146,7 +192,7 @@ capture_effective_config() {
   local env_file="${2:-}"
   local config_json stderr_file
   stderr_file="$TMP_ENV_DIR/${profile}.config.stderr.log"
-  if [[ "$profile" == "current" ]]; then
+  if [[ -z "$env_file" ]]; then
     if config_json="$("$AXON_BIN" config list --json 2>"$stderr_file")"; then
       if jq -e type >/dev/null <<<"$config_json"; then
         jq -c . <<<"$config_json"
@@ -181,7 +227,7 @@ profile_label() {
     gemini-flash) safe_profile_label "cli-api-${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}" "$1" ;;
     gpt-5.4-mini) safe_profile_label "cli-api-${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}" "$1" ;;
     gemini-3.1-flash-lite) safe_profile_label "cli-api-${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}" "$1" ;;
-    gemma-local) echo "llamacpp-gemma-4-e4b-q4" ;;
+    gemma-local) echo "llamacpp-gemma-4-26b-a4b-q4" ;;
     *) safe_profile_label "$1" "profile" ;;
   esac
 }
@@ -201,7 +247,7 @@ profile_model() {
     gemini-flash) echo "${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}" ;;
     gpt-5.4-mini) echo "${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}" ;;
     gemini-3.1-flash-lite) echo "${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}" ;;
-    gemma-local) echo "${GEMMA_MODEL:-ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M}" ;;
+    gemma-local) echo "${GEMMA_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}" ;;
     *) echo "$1" ;;
   esac
 }

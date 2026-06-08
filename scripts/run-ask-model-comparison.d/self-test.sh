@@ -48,7 +48,7 @@ if [[ "${2:-}" == "--explain" ]]; then
       ;;
   esac
   query="${@: -1}"
-  printf '{"answer":"","diagnostics":{"context_chars":123},"explain":{"mode":"explain_only","llm_skipped":true,"query":%s,"context":{"context_char_budget":300000,"context_chars_used":123,"truncated_by_budget":false,"final_source_order":[]},"candidates":[]},"timing_ms":{"llm":0}}\n' "$(jq -Rn --arg q "$query" '$q')"
+  printf '{"answer":"","diagnostics":{"context_chars":123},"explain":{"mode":"explain_only","llm_skipped":true,"query":%s,"context":{"context_char_budget":128000,"context_chars_used":123,"truncated_by_budget":false,"final_source_order":[]},"candidates":[]},"timing_ms":{"llm":0}}\n' "$(jq -Rn --arg q "$query" '$q')"
   exit 0
 fi
 echo "answer for: $2"

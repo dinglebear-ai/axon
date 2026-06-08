@@ -34,8 +34,8 @@ Environment overrides:
                          Default: gemini-3.1-flash-lite
   CLI_API_BASE_URL      Default: https://cli-api.tootie.tv/v1
   GEMMA_OPENAI_BASE_URL Default: http://127.0.0.1:8080/v1
-  GEMMA_MODEL           Default: ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M
-  GEMMA_CONTEXT_CHARS   Default: 300000
+  GEMMA_MODEL           Default: ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M
+  GEMMA_CONTEXT_CHARS   Default: 128000
 
 Output:
   run.json              Run metadata, selected model configs, per-question timing/results
