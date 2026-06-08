@@ -1,6 +1,7 @@
 mod appenders;
 mod diagnostics;
 mod fetchers;
+mod finalize;
 mod logging;
 mod selection;
 mod supplemental;
@@ -13,7 +14,7 @@ use crate::core::logging::log_info;
 use crate::services::types::AskExplainContext;
 use crate::vector::ops::qdrant;
 use crate::vector::ops::ranking;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::collections::HashSet;
 
 pub(super) use appenders::{append_full_docs_to_context, append_top_chunks_to_context};
@@ -21,6 +22,7 @@ pub(super) use diagnostics::build_diagnostic_sources;
 #[cfg(test)]
 pub(super) use fetchers::ask_doc_cache;
 pub(super) use fetchers::fetch_full_docs;
+use finalize::{FinalizeContextInputs, FinalizedAskContext, finalize_built_context};
 use logging::{ContextCompleteLog, ContextStartLog, log_context_complete, log_context_start};
 #[cfg(test)]
 pub(super) use selection::collect_supplemental_candidate_indices;
@@ -34,6 +36,7 @@ pub(super) use trace::{
     sorted_urls,
 };
 
+pub(super) const CONTEXT_PREFIX: &str = "Sources:\n";
 const CONTEXT_SEPARATOR: &str = "\n\n---\n\n";
 
 pub(super) struct BuiltAskContext {
@@ -70,7 +73,7 @@ pub(super) async fn build_context_from_candidates(
     let doc_chunk_limit = ask_tuning.ask_doc_chunk_limit;
     let context_started = std::time::Instant::now();
     let mut context_entries: Vec<(f64, String)> = Vec::new();
-    let mut context_char_count = 0usize;
+    let mut context_char_count = CONTEXT_PREFIX.len();
     let mut source_idx = 1usize;
     let is_rrf = min_supplemental_score.is_none();
     let skip_decision = should_skip_full_doc_fetch(cfg, reranked, is_rrf);
@@ -117,7 +120,7 @@ pub(super) async fn build_context_from_candidates(
         AppendTopChunksInputs {
             reranked,
             top_chunk_indices,
-            planned_full_doc_urls_set: &planned_full_doc_urls_set,
+            suppressed_full_doc_urls_set: &inserted_full_doc_urls,
             separator: CONTEXT_SEPARATOR,
             max_context_chars,
         },
@@ -128,7 +131,7 @@ pub(super) async fn build_context_from_candidates(
     let selected_top_chunk_indices = selected_top_chunk_indices(
         reranked,
         top_chunk_indices,
-        &planned_full_doc_urls_set,
+        &inserted_full_doc_urls,
         top_chunks_selected,
     );
 
@@ -239,7 +242,7 @@ async fn append_full_docs_phase(
 struct AppendTopChunksInputs<'a> {
     reranked: &'a [ranking::AskCandidate],
     top_chunk_indices: &'a [usize],
-    planned_full_doc_urls_set: &'a HashSet<String>,
+    suppressed_full_doc_urls_set: &'a HashSet<String>,
     separator: &'a str,
     max_context_chars: usize,
 }
@@ -253,7 +256,7 @@ fn append_top_chunks_phase(
     append_top_chunks_to_context(
         inputs.reranked,
         inputs.top_chunk_indices,
-        inputs.planned_full_doc_urls_set,
+        inputs.suppressed_full_doc_urls_set,
         context_entries,
         context_char_count,
         source_idx,
@@ -351,153 +354,6 @@ async fn fetch_full_docs_for_context(inputs: FetchFullDocsInputs<'_>) -> Result<
         .timing
         .record(AskTimingSlot::FullDocFetch, full_doc_fetch_started);
     Ok(fetched_docs)
-}
-
-struct FinalizeContextInputs<'a> {
-    reranked: &'a [ranking::AskCandidate],
-    top_chunk_indices: &'a [usize],
-    top_full_doc_indices: &'a [usize],
-    selected_top_chunk_indices: &'a [usize],
-    planned_full_doc_urls_set: &'a HashSet<String>,
-    inserted_full_doc_urls: &'a HashSet<String>,
-    supplemental: &'a [usize],
-    supplemental_count: usize,
-    top_chunks_selected: usize,
-    full_docs_selected: usize,
-    max_context_chars: usize,
-    skip_decision: SkipDecision,
-    is_rrf: bool,
-    separator: &'a str,
-    context_started: std::time::Instant,
-    context_entries: Vec<(f64, String)>,
-}
-
-struct FinalizedAskContext {
-    context: String,
-    context_elapsed_ms: u128,
-    diagnostic_sources: Vec<String>,
-    explain_context: AskExplainContext,
-    selection_decisions: Vec<ContextCandidateSelection>,
-}
-
-fn finalize_built_context(mut inputs: FinalizeContextInputs<'_>) -> Result<FinalizedAskContext> {
-    if inputs.context_entries.is_empty() {
-        return Err(anyhow!("Failed to retrieve any context sources for ask"));
-    }
-
-    // Flatten by rerank_score across all buckets (top-chunks/full-docs/supplemental):
-    // LLMs have proximity bias — highest-scoring chunks should appear first
-    // regardless of which bucket they came from. (bd axon_rust-az9)
-    inputs
-        .context_entries
-        .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    let final_source_order = final_source_order_from_entries(&inputs.context_entries);
-    let joined = inputs
-        .context_entries
-        .iter()
-        .enumerate()
-        .map(|(idx, (_, entry))| renumber_source_header(entry, idx + 1))
-        .collect::<Vec<_>>();
-    let context = format!("Sources:\n{}", joined.join(inputs.separator));
-    let explain_context = build_explain_context(
-        &context,
-        ExplainContextInputs {
-            reranked: inputs.reranked,
-            top_chunk_indices: inputs.top_chunk_indices,
-            top_full_doc_indices: inputs.top_full_doc_indices,
-            selected_top_chunk_indices: inputs.selected_top_chunk_indices,
-            planned_full_doc_urls_set: inputs.planned_full_doc_urls_set,
-            supplemental: inputs.supplemental,
-            supplemental_count: inputs.supplemental_count,
-            full_docs_selected: inputs.full_docs_selected,
-            max_context_chars: inputs.max_context_chars,
-            skip_decision: inputs.skip_decision,
-            is_rrf: inputs.is_rrf,
-            final_source_order,
-        },
-    );
-    let selection_decisions = build_context_selection_decisions(ContextSelectionInputs {
-        reranked: inputs.reranked,
-        top_chunk_indices: inputs.top_chunk_indices,
-        selected_top_chunk_indices: inputs.selected_top_chunk_indices,
-        planned_full_doc_urls: inputs.planned_full_doc_urls_set,
-        top_full_doc_indices: inputs.top_full_doc_indices,
-        inserted_full_doc_urls: inputs.inserted_full_doc_urls,
-        supplemental_indices: inputs.supplemental,
-        supplemental_count: inputs.supplemental_count,
-        full_doc_fetch_skipped: inputs.skip_decision.skip,
-        final_source_order: &explain_context.final_source_order,
-    });
-
-    Ok(FinalizedAskContext {
-        context,
-        context_elapsed_ms: inputs.context_started.elapsed().as_millis(),
-        diagnostic_sources: build_diagnostic_sources(
-            inputs.reranked,
-            inputs.top_chunk_indices,
-            inputs.top_chunks_selected,
-            inputs.planned_full_doc_urls_set,
-            inputs.top_full_doc_indices,
-            inputs.supplemental,
-            inputs.supplemental_count,
-        ),
-        explain_context,
-        selection_decisions,
-    })
-}
-
-struct ExplainContextInputs<'a> {
-    reranked: &'a [ranking::AskCandidate],
-    top_chunk_indices: &'a [usize],
-    top_full_doc_indices: &'a [usize],
-    selected_top_chunk_indices: &'a [usize],
-    planned_full_doc_urls_set: &'a HashSet<String>,
-    supplemental: &'a [usize],
-    supplemental_count: usize,
-    full_docs_selected: usize,
-    max_context_chars: usize,
-    skip_decision: SkipDecision,
-    is_rrf: bool,
-    final_source_order: Vec<crate::services::types::AskExplainContextSource>,
-}
-
-fn build_explain_context(context: &str, inputs: ExplainContextInputs<'_>) -> AskExplainContext {
-    let truncated_by_budget = inputs.selected_top_chunk_indices.len()
-        + inputs.full_docs_selected
-        + inputs.supplemental_count
-        < context_source_candidate_count(
-            inputs.reranked,
-            inputs.top_chunk_indices,
-            inputs.planned_full_doc_urls_set,
-            inputs.top_full_doc_indices,
-            inputs.supplemental,
-            inputs.skip_decision.skip,
-        );
-    AskExplainContext {
-        planned_full_doc_urls: sorted_urls(inputs.planned_full_doc_urls_set),
-        full_doc_fetch_skipped: inputs.skip_decision.skip,
-        full_doc_fetch_skip_reason: inputs.skip_decision.reason.to_string(),
-        full_doc_fetch_mode: if inputs.is_rrf { "rrf" } else { "cosine" }.to_string(),
-        final_source_order: inputs.final_source_order,
-        context_char_budget: inputs.max_context_chars,
-        context_chars_used: context.len(),
-        truncated_by_budget,
-    }
-}
-
-fn renumber_source_header(entry: &str, display_id: usize) -> String {
-    let Some(start) = entry.find("[S") else {
-        return entry.to_string();
-    };
-    let rest = &entry[start + 2..];
-    let Some(end_rel) = rest.find(']') else {
-        return entry.to_string();
-    };
-    if rest[..end_rel].parse::<usize>().is_err() {
-        return entry.to_string();
-    }
-    let end = start + 2 + end_rel;
-    format!("{}S{}{}", &entry[..start + 1], display_id, &entry[end..])
 }
 
 struct ToBuiltContextInputs {

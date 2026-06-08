@@ -1,8 +1,9 @@
 use super::*;
 use crate::services::types::{
-    AskExplainCandidate, AskExplainFilterDecisionKind, AskExplainMode,
-    AskExplainScoreComponentStatus, AskExplainScoreKind, AskExplainSelectionDecisionKind,
-    AskTiming, CorpusHealthKind,
+    AskExplainCandidate, AskExplainContext, AskExplainContextRendered, AskExplainContextSourceTier,
+    AskExplainFilterDecisionKind, AskExplainFullDocFetchMode, AskExplainFullDocFetchSkipReason,
+    AskExplainMode, AskExplainRenderedContextFormat, AskExplainScoreComponentStatus,
+    AskExplainScoreKind, AskExplainSelectionDecisionKind, AskTiming, CorpusHealthKind,
 };
 use serde_json::json;
 
@@ -227,7 +228,15 @@ fn map_ask_payload_preserves_explain_contract() {
                     "tier": "top_chunk"
                 }],
                 "context_char_budget": 120000,
-                "context_chars_used": 512,
+                "context_chars_used": 90,
+                "context_bytes_budget": 120000,
+                "context_bytes_used": 90,
+                "rendered_context": {
+                    "format": "axon_sources_v1",
+                    "content": "Sources:\n## Top Chunk [S1]: docs.widget.dev/docs/en/discover-plugins\n\nofficial marketplace",
+                    "bytes_used": 90,
+                    "chars_used": 90
+                },
                 "truncated_by_budget": false
             },
             "candidate_trace_limit": 50,
@@ -262,7 +271,78 @@ fn map_ask_payload_preserves_explain_contract() {
     );
     assert_eq!(candidate.raw_rerank_rank, Some(1));
     assert_eq!(candidate.selected_context_rank, Some(1));
+    assert_eq!(
+        explain
+            .context
+            .rendered_context
+            .as_ref()
+            .map(|rendered| rendered.content.as_str()),
+        Some(
+            "Sources:\n## Top Chunk [S1]: docs.widget.dev/docs/en/discover-plugins\n\nofficial marketplace"
+        )
+    );
+    assert_eq!(
+        explain.context.final_source_order[0].tier,
+        AskExplainContextSourceTier::TopChunk
+    );
+    assert_eq!(
+        explain.context.full_doc_fetch_mode,
+        AskExplainFullDocFetchMode::Cosine
+    );
+    assert_eq!(
+        explain.context.full_doc_fetch_skip_reason,
+        AskExplainFullDocFetchSkipReason::Disabled
+    );
+    assert_eq!(explain.context.context_bytes_budget, 120000);
+    assert_eq!(explain.context.context_bytes_used, 90);
     assert!(explain.llm_skipped);
+}
+
+#[test]
+fn ask_explain_context_omits_rendered_context_by_default() {
+    let value = serde_json::json!({
+        "planned_full_doc_urls": [],
+        "full_doc_fetch_skipped": false,
+        "full_doc_fetch_skip_reason": "disabled",
+        "full_doc_fetch_mode": "cosine",
+        "final_source_order": [],
+        "context_char_budget": 120000,
+        "context_chars_used": 42,
+        "context_bytes_budget": 120000,
+        "context_bytes_used": 42,
+        "truncated_by_budget": false
+    });
+
+    let parsed: AskExplainContext = serde_json::from_value(value).unwrap();
+    assert!(parsed.rendered_context.is_none());
+    let serialized = serde_json::to_value(parsed).unwrap();
+    assert!(serialized.get("rendered_context").is_none());
+}
+
+#[test]
+fn ask_explain_rendered_context_preserves_legacy_string_payloads() {
+    let value = serde_json::json!({
+        "planned_full_doc_urls": [],
+        "full_doc_fetch_skipped": false,
+        "full_doc_fetch_skip_reason": "disabled",
+        "full_doc_fetch_mode": "cosine",
+        "final_source_order": [],
+        "context_char_budget": 120000,
+        "context_chars_used": 13,
+        "rendered_context": "Sources:\nbody",
+        "truncated_by_budget": false
+    });
+
+    let parsed: AskExplainContext = serde_json::from_value(value).unwrap();
+    assert_eq!(
+        parsed.rendered_context,
+        Some(AskExplainContextRendered {
+            format: AskExplainRenderedContextFormat::AxonSourcesV1,
+            content: "Sources:\nbody".to_string(),
+            bytes_used: "Sources:\nbody".len(),
+            chars_used: "Sources:\nbody".chars().count(),
+        })
+    );
 }
 
 #[test]

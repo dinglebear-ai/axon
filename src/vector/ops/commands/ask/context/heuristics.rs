@@ -136,7 +136,7 @@ pub(super) fn push_context_entry(
     max_chars: usize,
 ) -> bool {
     let projected = if entries.is_empty() {
-        entry.len()
+        *context_char_count + entry.len()
     } else {
         *context_char_count + separator.len() + entry.len()
     };

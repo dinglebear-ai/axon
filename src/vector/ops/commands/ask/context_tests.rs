@@ -12,7 +12,8 @@ use super::{FullDocsSource, resolve_ask_full_docs};
 use crate::core::config::Config;
 use crate::services::types::{
     AskExplainContext, AskExplainFilterDecision, AskExplainFilterDecisionKind,
-    AskExplainInsertionMode, AskExplainRetrieval, AskExplainScoreKind, AskExplainSelectionDecision,
+    AskExplainFullDocFetchMode, AskExplainFullDocFetchSkipReason, AskExplainInsertionMode,
+    AskExplainRetrieval, AskExplainScoreKind, AskExplainSelectionDecision,
     AskExplainSelectionDecisionKind, CorpusHealthKind,
 };
 use crate::vector::ops::commands::retrieval::{CandidateRankingTrace, RetrievedCandidate};
@@ -76,11 +77,14 @@ fn explain_context() -> AskExplainContext {
     AskExplainContext {
         planned_full_doc_urls: Vec::new(),
         full_doc_fetch_skipped: false,
-        full_doc_fetch_skip_reason: "disabled".to_string(),
-        full_doc_fetch_mode: "cosine".to_string(),
+        full_doc_fetch_skip_reason: AskExplainFullDocFetchSkipReason::Disabled,
+        full_doc_fetch_mode: AskExplainFullDocFetchMode::Cosine,
         final_source_order: Vec::new(),
         context_char_budget: 1000,
         context_chars_used: 100,
+        context_bytes_budget: 1000,
+        context_bytes_used: 100,
+        rendered_context: None,
         truncated_by_budget: false,
     }
 }
