@@ -154,17 +154,17 @@ Copies the base env file, removes existing LLM and ask-tuning keys, then applies
 ```text
 AXON_LLM_BACKEND=openai-compat
 AXON_OPENAI_BASE_URL=${GEMMA_OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}
-AXON_OPENAI_MODEL=${GEMMA_MODEL:-ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M}
+AXON_OPENAI_MODEL=${GEMMA_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}
 AXON_OPENAI_API_KEY=
 AXON_LLM_COMPLETION_CONCURRENCY=1
-AXON_ASK_MAX_CONTEXT_CHARS=${GEMMA_CONTEXT_CHARS:-300000}
+AXON_ASK_MAX_CONTEXT_CHARS=${GEMMA_CONTEXT_CHARS:-128000}
 AXON_ASK_CHUNK_LIMIT=${GEMMA_CHUNK_LIMIT:-20}
 AXON_ASK_CANDIDATE_LIMIT=${GEMMA_CANDIDATE_LIMIT:-120}
 AXON_ASK_HYBRID_CANDIDATES=${GEMMA_HYBRID_CANDIDATES:-100}
 AXON_ASK_DOC_FETCH_CONCURRENCY=${GEMMA_DOC_FETCH_CONCURRENCY:-1}
 ```
 
-The JSON label for this profile is `llamacpp-gemma-4-e4b-q4`.
+The JSON label for this profile is `llamacpp-gemma-4-26b-a4b-q4`.
 
 Before running this profile, the script checks:
 
@@ -179,7 +179,7 @@ Skip that check with `--skip-preflight`.
 The local Gemma profile expects the llama.cpp compose service to be online. From the repo root:
 
 ```bash
-LLAMA_CPP_HF_MODEL=ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M \
+LLAMA_CPP_HF_MODEL=ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M \
 docker compose --env-file ~/.axon/.env -f docker-compose.llama.yaml up -d
 ```
 
@@ -190,7 +190,7 @@ curl -fsS http://127.0.0.1:8080/health
 curl -fsS http://127.0.0.1:8080/v1/models | jq
 ```
 
-The compose default context is `131072` tokens. The runner caps Axon ask context for Gemma with `AXON_ASK_MAX_CONTEXT_CHARS=300000` unless overridden.
+The compose default context is `131072` tokens. The runner caps Axon ask context for Gemma with `AXON_ASK_MAX_CONTEXT_CHARS=128000` unless overridden.
 
 ## Base Env Handling
 
@@ -228,6 +228,19 @@ AXON_LLM_COMPLETION_*
 Temporary env files are created under `mktemp -d`, chmodded `600`, and removed on exit. They are not written into the report directory.
 
 Remote `cli-api` override profiles preserve the base `AXON_OPENAI_API_KEY` by copying it from the base env file after removing stale LLM keys. `run.json` records that preserved key only as `***` in `env_overrides`; the raw value is not written to runner metadata.
+
+If any `cli-api` profile is selected, the runner preflights that `AXON_OPENAI_API_KEY` is non-empty in the current environment or base env file before starting the comparison. This avoids producing one failed answer file per question when the proxy would reject every request with `401 Missing API key`.
+
+When the host runner copies a Docker-oriented base env, it rewrites local service URLs that are only valid inside Compose:
+
+```text
+AXON_OPENAI_BASE_URL=http://llama-cpp:8080/v1 -> http://127.0.0.1:8080/v1
+QDRANT_URL=http://axon-qdrant:6333 -> http://127.0.0.1:53333
+TEI_URL=http://axon-tei:80 -> http://127.0.0.1:52000
+AXON_CHROME_REMOTE_URL=http://axon-chrome:6000 -> http://127.0.0.1:6000
+```
+
+Each profile also gets a temporary `AXON_SQLITE_PATH` under the runner's `mktemp` directory so startup/job bookkeeping does not mutate the real `~/.axon/jobs.db` during comparisons.
 
 ## Labels and Paths
 
@@ -270,7 +283,7 @@ run-20260607-190000/
     Q01.md
     Q01.stderr.log
     ...
-  llamacpp-gemma-4-e4b-q4/
+  llamacpp-gemma-4-26b-a4b-q4/
     Q01.md
     Q01.stderr.log
     ...
@@ -299,16 +312,16 @@ Planned comparison run
 Before each profile runs, it prints the selected provider, model, and relevant model settings from the captured effective Axon config:
 
 ```text
-running profile: http://127.0.0.1:8080/v1 / ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M
-  label: llamacpp-gemma-4-e4b-q4
-  settings: backend=openai-compat, completion_concurrency=1, ask_max_context_chars=300000, ask_chunk_limit=20, ask_candidate_limit=120, ask_hybrid_candidates=100
+running profile: http://127.0.0.1:8080/v1 / ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M
+  label: llamacpp-gemma-4-26b-a4b-q4
+  settings: backend=openai-compat, completion_concurrency=1, ask_max_context_chars=128000, ask_chunk_limit=20, ask_candidate_limit=120, ask_hybrid_candidates=100
 ```
 
 Each question prints a start line and a completion line with elapsed wall-clock time:
 
 ```text
   Q01: starting
-  Q01: explain=0.138s explain_exit=0 explain_valid=1 answer=9.234s exit=0 file=/home/jmagar/workspace/axon/reports/.../llamacpp-gemma-4-e4b-q4/Q01.md
+  Q01: explain=0.138s explain_exit=0 explain_valid=1 answer=9.234s exit=0 file=/home/jmagar/workspace/axon/reports/.../llamacpp-gemma-4-26b-a4b-q4/Q01.md
 ```
 
 At the end it prints a compact summary:
@@ -353,15 +366,15 @@ Each profile records both the intended overrides and Axon's effective config sna
 ```json
 {
   "profile": "gemma-local",
-  "label": "llamacpp-gemma-4-e4b-q4",
+  "label": "llamacpp-gemma-4-26b-a4b-q4",
   "provider": "http://127.0.0.1:8080/v1",
-  "model": "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M",
+  "model": "ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M",
   "env_overrides": {
     "AXON_LLM_BACKEND": "openai-compat",
     "AXON_OPENAI_BASE_URL": "http://127.0.0.1:8080/v1",
-    "AXON_OPENAI_MODEL": "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M",
+    "AXON_OPENAI_MODEL": "ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M",
     "AXON_OPENAI_API_KEY": "",
-    "AXON_ASK_MAX_CONTEXT_CHARS": "300000"
+    "AXON_ASK_MAX_CONTEXT_CHARS": "128000"
   },
   "effective_config": {
     "env": {
@@ -386,9 +399,9 @@ Each result represents one model/question invocation:
   "question_id": "Q01",
   "question": "In Bun's package manager, ...",
   "profile": "gemma-local",
-  "profile_label": "llamacpp-gemma-4-e4b-q4",
+  "profile_label": "llamacpp-gemma-4-26b-a4b-q4",
   "provider": "http://127.0.0.1:8080/v1",
-  "model": "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M",
+  "model": "ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M",
   "explain_started_at": "2026-06-07T19:00:00-04:00",
   "explain_finished_at": "2026-06-07T19:00:01-04:00",
   "explain_elapsed_seconds": 0.138,
@@ -464,8 +477,8 @@ scripts/run-ask-model-comparison.sh --axon-bin target/debug/axon
 Override Gemma context and model:
 
 ```bash
-GEMMA_MODEL=ggml-org/gemma-4-E4B-it-GGUF:Q5_K_M \
-GEMMA_CONTEXT_CHARS=250000 \
+GEMMA_MODEL=ggml-org/gemma-4-26B-A4B-it-GGUF:Q5_K_M \
+GEMMA_CONTEXT_CHARS=96000 \
 scripts/run-ask-model-comparison.sh --models gemma-local
 ```
 
@@ -503,7 +516,14 @@ bash -n scripts/run-ask-model-comparison.sh
 
 ### `llama.cpp OpenAI-compatible endpoint is not reachable`
 
-Start the llama compose stack and verify `/v1/models`:
+The runner waits for `/v1/models` by default because large local models can return `503 Loading model` during startup. Tune that wait with:
+
+```bash
+LLAMA_PREFLIGHT_ATTEMPTS=60
+LLAMA_PREFLIGHT_DELAY_SECS=5
+```
+
+If the endpoint still does not become ready, start the llama compose stack and verify `/v1/models`:
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.llama.yaml up -d

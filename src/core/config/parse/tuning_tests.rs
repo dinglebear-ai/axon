@@ -34,9 +34,21 @@ fn codex_model_gets_four_hundred_thousand_chars() {
 }
 
 #[test]
+fn gpt_models_get_medium_context_budget() {
+    let cfg = cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5.5");
+    assert_eq!(model_context_char_budget(&cfg), 400_000);
+
+    let cfg = cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5.4-mini");
+    assert_eq!(model_context_char_budget(&cfg), 400_000);
+}
+
+#[test]
 fn gemma_model_gets_local_context_budget() {
-    let cfg = cfg_with(LlmBackendKind::OpenAiCompat, "gemma-4-E4B-it-GGUF");
-    assert_eq!(model_context_char_budget(&cfg), 300_000);
+    let cfg = cfg_with(
+        LlmBackendKind::OpenAiCompat,
+        "ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M",
+    );
+    assert_eq!(model_context_char_budget(&cfg), 128_000);
 }
 
 #[test]
@@ -99,6 +111,10 @@ fn model_tier_classifies_known_families() {
     );
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5-codex")),
+        AskModelTier::Medium
+    );
+    assert_eq!(
+        ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5.5")),
         AskModelTier::Medium
     );
     assert_eq!(

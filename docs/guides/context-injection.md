@@ -240,7 +240,7 @@ Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs d
 | `AXON_ASK_DOC_CHUNK_LIMIT` | Max chunks per full-doc fetch | 96 |
 | `AXON_ASK_DOC_FETCH_CONCURRENCY` | Concurrent Qdrant fetches for full docs | 4 |
 | `AXON_ASK_BACKFILL_CHUNKS` | Max supplemental chunks (Tier 3) | 5 |
-| `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | 300000 |
+| `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | Model-tiered: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | Comma-separated domains that receive an authority boost | (empty) |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | Score boost for authoritative domains | 0.0 |
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | Minimum unique citations for non-trivial answers | 2 |
