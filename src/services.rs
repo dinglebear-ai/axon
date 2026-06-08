@@ -20,6 +20,7 @@ pub mod llm_backend;
 pub mod map;
 pub mod migrate;
 pub mod query;
+pub mod refresh;
 pub mod runtime;
 pub mod scrape;
 pub mod screenshot;

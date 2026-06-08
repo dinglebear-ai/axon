@@ -262,6 +262,10 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Stats => out.command = CommandKind::Stats,
         CliCommand::Status => out.command = CommandKind::Status,
         CliCommand::Dedupe => out.command = CommandKind::Dedupe,
+        CliCommand::Refresh(args) => {
+            out.command = CommandKind::Refresh;
+            out.positional = args.filter.into_iter().collect();
+        }
         CliCommand::Ingest(args) => apply_ingest(&mut out, args),
         CliCommand::Sessions(args) => apply_sessions(&mut out, args),
         CliCommand::Screenshot(args) => {

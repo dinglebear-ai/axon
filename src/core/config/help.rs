@@ -42,7 +42,9 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     ),
     (
         "Jobs And Imports",
-        &["status", "ingest", "sessions", "watch", "monitor", "sync"],
+        &[
+            "status", "ingest", "sessions", "watch", "monitor", "sync", "refresh",
+        ],
     ),
     (
         "Runtime And Setup",
@@ -482,6 +484,10 @@ fn relevant_global_options(command_name: &str) -> Vec<(String, String)> {
             ("--wait <bool>", "Block until async jobs complete"),
             ("--active", "Show only active jobs"),
             ("--recent", "Show active and completed jobs"),
+            ("--json", "Output machine-readable JSON"),
+        ],
+        "refresh" => &[
+            ("--yes", "Skip the confirmation prompt before re-enqueuing"),
             ("--json", "Output machine-readable JSON"),
         ],
         "debug" | "doctor" => SERVICE_OPTIONS,

@@ -1607,6 +1607,18 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_REFRESH_FACET_LIMIT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; caps the seed_url facet breadth scanned by `axon refresh`. Kept in env until a typed config.toml field is wired."
+
+[[env]]
 key = "AXON_SOURCES_DOMAIN_LIMIT"
 classification = "keep-env"
 runtime_placement = "both"
