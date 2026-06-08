@@ -81,6 +81,7 @@ fn explain_context() -> AskExplainContext {
         final_source_order: Vec::new(),
         context_char_budget: 1000,
         context_chars_used: 100,
+        rendered_context: "Sources:\n".to_string(),
         truncated_by_budget: false,
     }
 }

@@ -228,6 +228,7 @@ fn map_ask_payload_preserves_explain_contract() {
                 }],
                 "context_char_budget": 120000,
                 "context_chars_used": 512,
+                "rendered_context": "Sources:\n## Top Chunk [S1]: docs.widget.dev/docs/en/discover-plugins\n\nofficial marketplace",
                 "truncated_by_budget": false
             },
             "candidate_trace_limit": 50,
@@ -262,6 +263,10 @@ fn map_ask_payload_preserves_explain_contract() {
     );
     assert_eq!(candidate.raw_rerank_rank, Some(1));
     assert_eq!(candidate.selected_context_rank, Some(1));
+    assert_eq!(
+        explain.context.rendered_context,
+        "Sources:\n## Top Chunk [S1]: docs.widget.dev/docs/en/discover-plugins\n\nofficial marketplace"
+    );
     assert!(explain.llm_skipped);
 }
 

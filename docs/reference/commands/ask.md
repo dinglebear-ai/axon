@@ -183,6 +183,14 @@ topics.
 
 Use `--diagnostics` for aggregate health counters. Use `--explain --json` when a ranking result looks wrong and you need the per-candidate math and context decisions. Explain mode returns the normal `AskResult` shape with `answer: ""`, `timing_ms.llm: 0`, `explain.llm_skipped: true`, and no Gemini call.
 
+The exact source block that would be injected into synthesis is available at:
+
+```bash
+axon ask "your question" --explain --diagnostics --json | jq -r '.explain.context.rendered_context'
+```
+
+Use `.explain.context.final_source_order` for source ordering metadata, and `.explain.candidates[]` for candidate scores, filter decisions, selected context ranks, insertion modes, and snippets.
+
 ```text
 query
   |

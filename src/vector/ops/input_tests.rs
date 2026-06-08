@@ -181,3 +181,28 @@ fn chunk_markdown_short_returns_single_chunk() {
     assert_eq!(chunks.len(), 1);
     assert!(chunks[0].contains("short paragraph"));
 }
+
+#[test]
+fn chunk_markdown_repeats_heading_context_for_split_sections() {
+    let body = "Pool risk reason details explain why special vdev redundancy matters. ".repeat(80);
+    let text = format!(
+        "# Storage Guide\n\n## Special vdev redundancy\n\n{body}\n\n## Next topic\n\nunrelated"
+    );
+
+    let chunks = chunk_markdown(&text);
+    let section_chunks = chunks
+        .iter()
+        .filter(|chunk| chunk.contains("Pool risk reason"))
+        .collect::<Vec<_>>();
+
+    assert!(
+        section_chunks.len() > 1,
+        "test fixture should force the section across multiple chunks: {chunks:?}"
+    );
+    for chunk in section_chunks {
+        assert!(
+            chunk.contains("# Storage Guide") && chunk.contains("## Special vdev redundancy"),
+            "split section chunk should carry heading breadcrumb: {chunk:?}"
+        );
+    }
+}

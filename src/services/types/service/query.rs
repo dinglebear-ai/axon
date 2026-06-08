@@ -383,6 +383,8 @@ pub struct AskExplainContext {
     pub final_source_order: Vec<AskExplainContextSource>,
     pub context_char_budget: usize,
     pub context_chars_used: usize,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub rendered_context: String,
     pub truncated_by_budget: bool,
 }
 
