@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only the referenced icons as real files (no symlinks, as required by the
   Chrome Web Store) and omits dev-only files. The version is read from
   `manifest.json` so the two cannot drift.
+- **Chrome extension releases.** A `chrome-extension-release` workflow publishes
+  a GitHub Release (zip + SHA256) on its own `chrome-ext-v*` tag, independent of
+  the axon `v*` releases. The tag version must match `manifest.json` or the
+  workflow fails; `workflow_dispatch` builds a dry-run artifact without releasing.
 
 ### Fixed
 

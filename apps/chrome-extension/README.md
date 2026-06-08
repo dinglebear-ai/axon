@@ -25,6 +25,22 @@ into the monorepo's top-level `assets/`; "Load unpacked" follows it locally, but
 a ZIP must contain real files. `package.sh` copies only the referenced icons as
 real files (no symlinks) and omits dev-only files (`README.md`, `package.sh`).
 
+## Release It
+
+The extension is released independently of the main axon `v*` releases, on its
+own tag. Bump `version` in `manifest.json`, then push a matching tag:
+
+```bash
+git tag chrome-ext-v0.1.0   # must match manifest.json's "version"
+git push origin chrome-ext-v0.1.0
+```
+
+The `chrome-extension-release` workflow builds the zip, checksums it, and
+publishes a GitHub Release with `axon-page-scraper-<version>.zip` +
+`.sha256` attached. The tag version must match `manifest.json` or the workflow
+fails. A manual **Run workflow** (workflow_dispatch) builds the zip as a run
+artifact without creating a release (dry-run).
+
 ## Use It
 
 1. Start Axon locally: `axon serve`.
