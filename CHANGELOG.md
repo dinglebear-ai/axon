@@ -5,38 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.3.1] - 2026-06-08
+## [5.4.0] - 2026-06-08
 
 ### Changed
 
-- **Chrome extension launcher internals cleanup.** Derive the per-action input
-  mode from the action catalog instead of hardcoded id-lists, unify the result
-  status-badge construction behind one helper, cache the extension config (read
-  once, refresh on `storage.onChanged`) instead of a `chrome.storage` read per
-  request, repaint the server-status dot in place rather than rebuilding the
-  browse panel, and guard tab-change re-renders on the resolved URL. No
-  behavior change.
+- **Local directory embed (`axon embed <dir>`) now recurses, filters, and
+  AST-chunks code.** Previously a directory embed read only the top level
+  (subdirectories were silently ignored), embedded every file regardless of
+  type, and **failed the entire job** on the first non-UTF-8 file. The reader in
+  `src/vector/ops/tei/prepare.rs` now walks the tree recursively, prunes
+  VCS/dependency/build directories (`.git`, `node_modules`, `target`, `dist`,
+  `.venv`, …), skips known-binary extensions, and skips (rather than aborts on)
+  any file that fails to decode as UTF-8 or any subdirectory that can't be read
+  (e.g. permissions) — only an unreadable top-level target is fatal. File
+  selection lives in the shared `src/vector/ops/input/select.rs` predicates.
+  Symlinked entries are now skipped (previously a symlink-to-file was followed
+  and embedded); this also removes a symlink-escape vector on the directory path.
+- **Code files are chunked with tree-sitter AST splitting.** Local source files
+  with a supported grammar (Rust, Python, JS/JSX, TS/TSX, Go, Bash) route through
+  `chunk_code` (run on a blocking thread) and are tagged `content_type = "text"`,
+  matching the GitHub-ingest path. Markdown/docs keep the prose splitters
+  (`chunk_markdown`, with the control-character `chunk_text` fallback) tagged
+  `content_type = "markdown"`. Crawl-output directories are unaffected — their
+  manifest URLs keep prose chunking.
+- **Server-side embed validator reconciled with the reader.** The MCP/REST
+  directory validator (`src/services/embed.rs`) now prunes the same junk
+  directories and skips the same binary extensions the reader does, so it no
+  longer rejects an embed for a dotfile or oversized blob buried in a directory
+  the reader never reads. The server-only security sandbox (allowed roots,
+  symlink/secret/size rejection) is unchanged and remains CLI-exempt.
 
-## [5.3.0] - 2026-06-08
+### Fixed
 
-### Added
-
-- **Chrome extension side-panel launcher (Aurora design).** Recreated the
-  `Axon Extension.html` design handoff as the extension's side panel
-  (`apps/chrome-extension`): an Aurora-styled launcher with a brand strip +
-  server status dot, a "this page" card with Scrape / Ingest / Endpoints quick
-  actions, and the full action surface grouped by family (Fetch & Read · Crawl &
-  Ingest · Search & Discover · Reason · System) and color-coded by tone
-  (cyan/orange/rose). Tapping an action opens a result view wired to the real
-  `/v1/*` API with faithful per-action renders (query hits, web results, sources
-  library → doc viewer, stats, doctor, status, accepted-job cards, brand, diff,
-  endpoints, screenshot, ask answer) plus a readable JSON fallback. Built
-  build-free in vanilla JS on the Aurora tokens (`aurora.css`) to match the
-  existing extension and MV3's no-remote-code rule.
-- **Extension context menus.** Right-click "Scrape with Axon", "Ingest this page
-  into Axon", and "Ask Axon about *selection*" open the side panel and run the
-  pre-filled action via a forwarded intent. Added the `contextMenus` permission
-  and a **Ctrl/⌘+Shift+Space** command to open the panel.
+- **Local directory embed no longer silently drops a file when tree-sitter
+  chunking panics.** The `spawn_blocking` code-chunk path previously collapsed a
+  `JoinError` to an empty chunk list with no log, dropping the document
+  downstream without it counting as a failure (over-reporting success). It now
+  logs the error before dropping, matching the other skip-on-error paths.
+- **Manifest-skip misses are now attributable.** A `canonicalize` failure in the
+  directory reader silently defeated the crawl-output `changed == false` skip and
+  dropped the source URL / structured payload; it now logs a warning.
 
 ## [5.2.0] - 2026-06-08
 

@@ -244,6 +244,69 @@ fn validate_server_embed_input_rejects_missing_path_like_input() {
 }
 
 #[test]
+fn validate_server_embed_input_prunes_junk_dirs_before_security_checks() {
+    // A dotfile buried in node_modules/ would trip the dotfile rejection if the
+    // validator descended into it — but the reader never reads node_modules, so
+    // the validator must prune it first and accept the directory.
+    let temp = tempfile::TempDir::new().expect("tempdir");
+    let root = temp.path().join("allowed");
+    let junk = root.join("node_modules").join(".bin");
+    std::fs::create_dir_all(&junk).expect("junk dir");
+    std::fs::write(junk.join("tool"), "#!/bin/sh\n").expect("junk file");
+    std::fs::write(root.join("main.rs"), "fn main() {}").expect("real file");
+
+    let validated = validate_server_embed_input_with_roots(
+        &root.to_string_lossy(),
+        std::slice::from_ref(&root),
+        EmbedValidationLimits {
+            max_file_bytes: 1024,
+            max_depth: 16,
+            max_entries: 10_000,
+        },
+    )
+    .expect("pruned junk dir must not fail validation");
+
+    assert_eq!(
+        validated,
+        std::fs::canonicalize(&root)
+            .expect("canonical")
+            .to_string_lossy()
+            .to_string()
+    );
+}
+
+#[test]
+fn validate_server_embed_input_skips_binary_files() {
+    // A binary-extension file is skipped by the reader, so the validator must
+    // not subject it to (e.g.) the size limit. A large .png passes even when a
+    // same-size .md would be rejected.
+    let temp = tempfile::TempDir::new().expect("tempdir");
+    let root = temp.path().join("allowed");
+    std::fs::create_dir_all(&root).expect("root dir");
+    std::fs::write(root.join("big.png"), vec![0u8; 64]).expect("png");
+    std::fs::write(root.join("ok.md"), "hi").expect("md");
+
+    let validated = validate_server_embed_input_with_roots(
+        &root.to_string_lossy(),
+        std::slice::from_ref(&root),
+        EmbedValidationLimits {
+            max_file_bytes: 8,
+            max_depth: 16,
+            max_entries: 10_000,
+        },
+    )
+    .expect("binary file should be skipped, not size-checked");
+
+    assert_eq!(
+        validated,
+        std::fs::canonicalize(&root)
+            .expect("canonical")
+            .to_string_lossy()
+            .to_string()
+    );
+}
+
+#[test]
 fn validate_server_embed_input_allows_free_text_with_slashes() {
     let validated = validate_server_embed_input_with_roots(
         "a/b testing plan",
