@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Axon Page Scraper",
-  "version": "0.1.0",
-  "description": "Scrape pages, run Axon commands, and ask indexed context from the browser.",
+  "version": "0.2.0",
+  "description": "Scrape, crawl, ingest, search and ask Axon over the page you're on — from the side panel.",
   "options_page": "options.html",
   "icons": {
     "16": "assets/png/axon-icon-16.png",
@@ -25,9 +25,18 @@
   "side_panel": {
     "default_path": "sidepanel.html"
   },
-  "permissions": ["activeTab", "clipboardWrite", "sidePanel", "storage", "tabs"],
+  "permissions": ["activeTab", "clipboardWrite", "contextMenus", "sidePanel", "storage", "tabs"],
   "host_permissions": [
     "http://*/*",
     "https://*/*"
-  ]
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Space",
+        "mac": "Command+Shift+Space"
+      },
+      "description": "Open the Axon side panel"
+    }
+  }
 }

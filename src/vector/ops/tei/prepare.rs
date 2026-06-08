@@ -5,9 +5,12 @@ use super::{
 use crate::core::config::Config;
 use crate::core::content::{is_excluded_url_path, to_markdown};
 use crate::core::http::{fetch_html, http_client};
+use crate::core::logging::log_warn;
 use crate::core::structured::extract_all;
 use crate::core::ui::{accent, symbol_for_status};
 use crate::vector::ops::input;
+use crate::vector::ops::input::classify::path_extension;
+use crate::vector::ops::input::select;
 use spider::url::Url;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -28,18 +31,20 @@ async fn read_inputs(input: &str) -> Result<Vec<InputRecord>, Box<dyn Error>> {
         )]),
         Ok(meta) if meta.is_dir() => {
             let manifest_urls = read_manifest_url_map(&path);
-            let mut dir = tokio::fs::read_dir(&path).await?;
-            let mut files = Vec::new();
-            while let Some(entry) = dir.next_entry().await? {
-                let p = entry.path();
-                if tokio::fs::metadata(&p).await.is_ok_and(|m| m.is_file()) {
-                    files.push(p);
-                }
-            }
-            files.sort();
+            let files = collect_embed_files(&path).await?;
             let mut out = Vec::new();
             for p in files {
-                let canonical = std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
+                // A canonicalize failure silently defeats the manifest lookup
+                // (keyed on the canonical path): the file would re-embed even
+                // when unchanged and lose its crawl URL / structured payload.
+                // Leave a trace so a manifest-skip miss is attributable.
+                let canonical = std::fs::canonicalize(&p).unwrap_or_else(|e| {
+                    log_warn(&format!(
+                        "command=embed canonicalize_failed path={} err={e}",
+                        p.display()
+                    ));
+                    p.clone()
+                });
                 let (source, changed, structured) = manifest_urls
                     .get(&canonical)
                     .map(|(u, c, s)| (u.clone(), *c, s.clone()))
@@ -47,13 +52,87 @@ async fn read_inputs(input: &str) -> Result<Vec<InputRecord>, Box<dyn Error>> {
                 if !changed {
                     continue;
                 }
-                let content = tokio::fs::read_to_string(&p).await?;
-                out.push((source, content, structured));
+                // Skip-on-error: a single unreadable/non-UTF-8 file (one that
+                // slipped the binary-extension filter) must not fail the whole
+                // embed job — log and move on.
+                match tokio::fs::read_to_string(&p).await {
+                    Ok(content) => out.push((source, content, structured)),
+                    Err(e) => {
+                        log_warn(&format!(
+                            "command=embed skip_unreadable_file path={} err={e}",
+                            p.display()
+                        ));
+                    }
+                }
             }
             Ok(out)
         }
         _ => Ok(vec![(input.to_string(), input.to_string(), None)]),
     }
+}
+
+/// Recursively collect embeddable files under `root`, descending into
+/// subdirectories. Prunes VCS/dependency/build directories (`select::is_pruned_dir`)
+/// and skips known-binary file extensions (`select::is_binary_ext`) before any
+/// read. Symlinks are skipped (their `file_type` is neither file nor dir). The
+/// returned paths are sorted for deterministic embed order.
+///
+/// Resilience matches the file read: the **top-level** `root` read is a hard
+/// error (nothing to embed if the target is unreadable), but an unreadable
+/// **subdirectory** is logged and skipped rather than failing the whole embed —
+/// so one permission-protected subtree doesn't sink an otherwise-fine job.
+async fn collect_embed_files(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    let mut at_root = true;
+    while let Some(dir) = stack.pop() {
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            Err(e) if at_root => {
+                return Err(format!("invalid embed directory {}: {e}", dir.display()).into());
+            }
+            Err(e) => {
+                log_warn(&format!(
+                    "command=embed skip_unreadable_dir path={} err={e}",
+                    dir.display()
+                ));
+                at_root = false;
+                continue;
+            }
+        };
+        at_root = false;
+        loop {
+            let entry = match entries.next_entry().await {
+                Ok(Some(entry)) => entry,
+                Ok(None) => break,
+                Err(e) => {
+                    log_warn(&format!(
+                        "command=embed dir_iter_error path={} err={e}",
+                        dir.display()
+                    ));
+                    break;
+                }
+            };
+            let p = entry.path();
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let Ok(file_type) = entry.file_type().await else {
+                log_warn(&format!(
+                    "command=embed skip_unknown_type path={}",
+                    p.display()
+                ));
+                continue;
+            };
+            if file_type.is_dir() {
+                if !select::is_pruned_dir(name) {
+                    stack.push(p);
+                }
+            } else if file_type.is_file() && !select::is_binary_ext(path_extension(name)) {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
 }
 
 pub(super) async fn prepare_embed_docs(
@@ -98,16 +177,10 @@ pub(super) async fn prepare_embed_docs(
         if input_is_dir && url.starts_with("http") && is_excluded_url_path(&url, exclude_prefixes) {
             continue;
         }
-        // Fall back to chunk_text for inputs containing control characters
-        // (e.g. binary or non-markdown data) — MarkdownSplitter can panic on them.
-        let chunks = if raw
-            .chars()
-            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
-        {
-            input::chunk_text(&raw)
-        } else {
-            input::chunk_markdown(&raw)
-        };
+        let (chunks, content_type) = select_chunks(&url, raw).await;
+        if chunks.is_empty() {
+            continue;
+        }
         let domain = Url::parse(&url)
             .ok()
             .and_then(|u| u.host_str().map(|s| s.to_string()))
@@ -125,7 +198,7 @@ pub(super) async fn prepare_embed_docs(
             domain,
             chunks,
             source_type: resolved_source_type.to_string(),
-            content_type: "markdown",
+            content_type,
             title: None,
             extra: None,
             extractor_name: None,
@@ -133,6 +206,54 @@ pub(super) async fn prepare_embed_docs(
         });
     }
     Ok(prepared)
+}
+
+/// Choose a chunking strategy for one document and report its content type.
+///
+/// - **Code** (local source files with a tree-sitter grammar): AST-aware
+///   `chunk_code`, run on a blocking thread because tree-sitter parsing is
+///   CPU-bound and would otherwise stall the embed worker's tokio runtime.
+///   Falls back to `chunk_text` for grammars that fail. Tagged `"text"`.
+/// - **Prose with control chars**: `chunk_text` — `MarkdownSplitter` panics on
+///   embedded control characters, so this guard is preserved. Tagged `"markdown"`.
+/// - **Prose / docs** (default): `chunk_markdown`. Tagged `"markdown"`.
+///
+/// Code chunking applies only to local paths (`url` not `http`-prefixed) — crawl
+/// output and remote single-doc embeds carry an http `url` and stay on the prose
+/// path, so this is safe for the crawl-output reuse of this function.
+async fn select_chunks(url: &str, raw: String) -> (Vec<String>, &'static str) {
+    if !url.starts_with("http") && select::should_chunk_as_code(url) {
+        let ext = path_extension(url).to_ascii_lowercase();
+        // Match the JoinError explicitly: a tree-sitter panic inside
+        // spawn_blocking must not be silently collapsed to an empty Vec (which
+        // would drop the doc downstream without any trace). Log and drop
+        // deliberately, mirroring the skip-on-error file/dir paths above.
+        let chunks = match tokio::task::spawn_blocking(move || {
+            input::code::chunk_code(&raw, &ext).unwrap_or_else(|| input::chunk_text(&raw))
+        })
+        .await
+        {
+            Ok(chunks) => chunks,
+            Err(e) => {
+                log_warn(&format!(
+                    "command=embed code_chunk_join_error url={url} err={e}"
+                ));
+                Vec::new()
+            }
+        };
+        return (chunks, "text");
+    }
+    // Fall back to chunk_text for inputs containing control characters
+    // (e.g. binary or non-markdown data) — MarkdownSplitter can panic on them.
+    let chunks = if raw
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+    {
+        input::chunk_text(&raw)
+    } else {
+        input::chunk_markdown(&raw)
+    };
+    (chunks, "markdown")
 }
 
 /// Reconstruct a `StructuredPayload` from the JSON blob stored in the crawl
@@ -199,42 +320,5 @@ pub(super) fn emit_embed_summary(cfg: &Config, docs_embedded: usize, chunks_embe
 }
 
 #[cfg(test)]
-mod tests {
-    use super::prepare_embed_docs;
-    use crate::core::config::Config;
-    use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn prepare_embed_docs_uses_given_source_type() {
-        let cfg = Config::default_minimal();
-        let temp_dir = TempDir::new().expect("tempdir");
-        let input_path = temp_dir.path().join("doc.md");
-        tokio::fs::write(&input_path, "# Crawl doc\n\nhello there")
-            .await
-            .expect("write markdown fixture");
-
-        let prepared = prepare_embed_docs(&cfg, &input_path.to_string_lossy(), &[], Some("crawl"))
-            .await
-            .expect("prepare docs");
-
-        assert_eq!(prepared.len(), 1);
-        assert_eq!(prepared[0].source_type, "crawl");
-    }
-
-    #[tokio::test]
-    async fn prepare_embed_docs_defaults_to_embed() {
-        let cfg = Config::default_minimal();
-        let temp_dir = TempDir::new().expect("tempdir");
-        let input_path = temp_dir.path().join("doc.md");
-        tokio::fs::write(&input_path, "# Embed doc\n\nthis is a test")
-            .await
-            .expect("write markdown fixture");
-
-        let prepared = prepare_embed_docs(&cfg, &input_path.to_string_lossy(), &[], None)
-            .await
-            .expect("prepare docs");
-
-        assert_eq!(prepared.len(), 1);
-        assert_eq!(prepared[0].source_type, "embed");
-    }
-}
+#[path = "prepare_tests.rs"]
+mod tests;

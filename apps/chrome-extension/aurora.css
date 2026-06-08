@@ -1,0 +1,165 @@
+/* ============================================================
+ * Aurora Design System — Colors & Type
+ * Source: jmagar/lab @ apps/gateway-admin/app/globals.css
+ * Spec:   docs/design-system-contract.md
+ * Mode:   dark-first; .light remap on the same token surface
+ *
+ * Ported verbatim from the Axon Extension design handoff
+ * (aurora-design-system/.../chrome_extension/Reference/aurora.css).
+ * Fonts are loaded via <link> in sidepanel.html, so no @import here.
+ * ============================================================ */
+
+:root {
+  /* ── Aurora raw tokens (dark canon) ─────────────────────── */
+  --aurora-page-bg:        #07131c;
+  --aurora-nav-bg:         #07111a;
+  --aurora-panel-medium:   #102330;
+  --aurora-panel-medium-top: rgba(20, 44, 60, 0.18);
+  --aurora-panel-strong:   #13293a;
+  --aurora-panel-strong-top: #173245;
+  --aurora-control-surface: #0c1a24;
+  --aurora-control-surface-top: rgba(18, 40, 56, 0.96);
+
+  --aurora-border-default: #1d3d4e;
+  --aurora-border-strong:  #24536c;
+
+  --aurora-text-primary:   #e6f4fb;
+  --aurora-text-muted:     #a7bcc9;  /* WCAG-AA lifted from #90a9b9 */
+
+  --aurora-accent-primary: #29b6f6;
+  --aurora-accent-strong:  #67cbfa;
+  --aurora-accent-deep:    #1c7fac;
+
+  /* Secondary accent — rose pink for high-glance pops (mono code, key labels,
+     send affordance, agent name in chip). Sparingly. */
+  --aurora-accent-pink:    #f9a8c4;
+  --aurora-accent-pink-strong: #fbc4d6;
+  --aurora-accent-pink-deep:   #c46b88;
+
+  --aurora-warn:    #c6a36b;
+  --aurora-error:   #c78490;
+  --aurora-success: #7dd3c7;
+
+  --aurora-focus-ring:   rgba(41, 182, 246, 0.34);
+  --aurora-active-glow:  0 0 0 1px rgba(41, 182, 246, 0.18), 0 0 16px rgba(41, 182, 246, 0.08);
+  --aurora-shadow-subtle: 0 8px 16px rgba(0, 0, 0, 0.16);
+  --aurora-shadow-medium: 0 12px 24px rgba(0, 0, 0, 0.18);
+  --aurora-shadow-strong: 0 20px 38px rgba(0, 0, 0, 0.26);
+  --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --aurora-hover-bg: #17364b;
+
+  /* Live-preview palette — restricted-scope only (exposure-policy editor). */
+  --aurora-preview-allowed:    #00e676;
+  --aurora-preview-unmatched:  #ff9100;
+  --aurora-preview-highlight:  #ffea00;
+
+  /* ── Tints (named alpha scale) ─────────────────────────── */
+  --aurora-tint-subtle:  12%;
+  --aurora-tint-soft:    18%;
+  --aurora-tint-medium:  30%;
+  --aurora-tint-strong:  40%;
+
+  /* ── Radii ─────────────────────────────────────────────── */
+  --radius-1: 14px;
+  --radius-2: 18px;
+  --radius-3: 22px;
+  --radius-pill: 999px;
+  --r-tile: 9px;
+
+  /* ── Spacing ───────────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3: 10px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 20px;
+  --space-7: 24px;
+
+  /* ── Z-index layers ────────────────────────────────────── */
+  --z-sidebar: 30;
+  --z-popover: 40;
+  --z-modal:   50;
+  --z-toast:   60;
+
+  /* ── Motion ────────────────────────────────────────────── */
+  --motion-duration-instant: 100ms;
+  --motion-duration-fast:    160ms;
+  --motion-duration-medium:  240ms;
+  --motion-duration-slow:    360ms;
+  --motion-ease-out:    cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Line heights ──────────────────────────────────────── */
+  --lh-display-tight: 1.04;
+  --lh-display:       1.16;
+  --lh-body:          1.55;
+  --lh-dense:         1.40;
+
+  /* ── Font families ─────────────────────────────────────── */
+  --font-display: 'Manrope', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-sans:    'Inter',   'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:    'JetBrains Mono', 'SFMono-Regular', 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+/* Light remap — overrides only raw Aurora vars. Semantic tokens still resolve. */
+.light {
+  --aurora-page-bg:         #f0f6f8;
+  --aurora-nav-bg:          #e4eff3;
+  --aurora-panel-medium:    #ffffff;
+  --aurora-panel-medium-top: rgba(220, 237, 243, 0.5);
+  --aurora-panel-strong:    #edf4f7;
+  --aurora-panel-strong-top:#e4eff3;
+  --aurora-control-surface: #e8f2f5;
+  --aurora-control-surface-top: rgba(215, 232, 239, 0.96);
+  --aurora-border-default:  #c5dae2;
+  --aurora-border-strong:   #9fbfcc;
+  --aurora-text-primary:    #162126;
+  --aurora-text-muted:      #4a6872;
+  --aurora-accent-primary:  #0288d1;
+  --aurora-accent-strong:   #0277bd;
+  --aurora-accent-deep:     #01579b;
+  --aurora-warn:            #8a6914;
+  --aurora-error:           #9c3545;
+  --aurora-success:         #2d7d6e;
+  --aurora-focus-ring:      rgba(2, 136, 209, 0.34);
+  --aurora-active-glow:     0 0 0 1px rgba(2, 136, 209, 0.18), 0 0 16px rgba(2, 136, 209, 0.08);
+  --aurora-shadow-medium:   0 12px 24px rgba(0, 0, 0, 0.08);
+  --aurora-shadow-strong:   0 20px 38px rgba(0, 0, 0, 0.12);
+  --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --aurora-hover-bg:        #dcedf2;
+}
+
+/* ── Aurora scrollbar (token-backed thin) ──────────────────── */
+.aurora-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--aurora-border-strong) transparent;
+}
+.aurora-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.aurora-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.aurora-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--aurora-border-strong);
+  border-radius: 999px;
+}
+.aurora-scrollbar::-webkit-scrollbar-thumb:hover { background-color: var(--aurora-accent-deep); }
+
+.aurora-muted-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--aurora-text-muted);
+}
+
+/* ── Reduced motion ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-instant: 0ms;
+    --motion-duration-fast:    0ms;
+    --motion-duration-medium:  0ms;
+    --motion-duration-slow:    0ms;
+  }
+}

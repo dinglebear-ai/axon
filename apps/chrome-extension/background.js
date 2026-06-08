@@ -5,6 +5,7 @@ const AUTO_SCRAPE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 chrome.runtime.onInstalled.addListener(() => {
   chrome.action.setBadgeBackgroundColor({ color: "#24536c" });
   setupSidePanelAction();
+  setupContextMenus();
 });
 
 chrome.runtime.onStartup.addListener(setupSidePanelAction);
@@ -164,3 +165,45 @@ function setupSidePanelAction() {
     ?.setPanelBehavior?.({ openPanelOnActionClick: true })
     .catch(() => {});
 }
+
+// Right-click menus → open the side panel and forward a pre-filled action
+// intent ({ op, arg }) that the launcher runs. Mirrors the design handoff
+// ("Scrape with Axon", "Ingest this page", "Ask Axon about <selection>").
+function setupContextMenus() {
+  if (!chrome.contextMenus?.create) {
+    return;
+  }
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({ id: "axon-scrape", title: "Scrape with Axon", contexts: ["page", "link"] });
+    chrome.contextMenus.create({ id: "axon-ingest", title: "Ingest this page into Axon", contexts: ["page"] });
+    chrome.contextMenus.create({ id: "axon-ask", title: 'Ask Axon about "%s"', contexts: ["selection"] });
+  });
+}
+
+chrome.contextMenus?.onClicked?.addListener(async (info, tab) => {
+  const intent =
+    info.menuItemId === "axon-scrape" ? { op: "scrape", arg: info.linkUrl || info.pageUrl || tab?.url || "" }
+    : info.menuItemId === "axon-ingest" ? { op: "ingest", arg: info.pageUrl || tab?.url || "" }
+    : info.menuItemId === "axon-ask" ? { op: "ask", arg: info.selectionText || "" }
+    : null;
+
+  if (!intent) {
+    return;
+  }
+
+  // Stash the intent so a freshly-opened panel can pick it up on load,
+  // then nudge any already-open panel via runtime message.
+  await chrome.storage.local.set({ axonPendingIntent: { ...intent, ts: Date.now() } });
+
+  try {
+    if (tab?.id && /^https?:\/\//i.test(tab.url || "")) {
+      await chrome.sidePanel.open({ tabId: tab.id });
+    } else if (tab?.windowId != null) {
+      await chrome.sidePanel.open({ windowId: tab.windowId });
+    }
+  } catch {
+    // Side panel may already be open, or the surface may be restricted.
+  }
+
+  chrome.runtime.sendMessage({ type: "axon-intent", ...intent }).catch(() => {});
+});

@@ -1,5 +1,6 @@
 pub mod classify;
 pub mod code;
+pub mod select;
 
 use crate::core::http::normalize_url;
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
