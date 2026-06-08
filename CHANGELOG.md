@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.1] - 2026-06-08
+
+### Added
+
+- **Chrome extension packaging.** `apps/chrome-extension/package.sh` (and the
+  `just package-extension` target) builds a distributable
+  `dist/axon-page-scraper-<version>.zip`. The `assets/` directory in the
+  extension is a symlink into the repo's top-level `assets/`; the script copies
+  only the referenced icons as real files (no symlinks, as required by the
+  Chrome Web Store) and omits dev-only files. The version is read from
+  `manifest.json` so the two cannot drift.
+- **Chrome extension releases.** A `chrome-extension-release` workflow publishes
+  a GitHub Release (zip + SHA256) on its own `chrome-ext-v*` tag, independent of
+  the axon `v*` releases. The tag version must match `manifest.json` or the
+  workflow fails; `workflow_dispatch` builds a dry-run artifact without releasing.
+
+### Fixed
+
+- **Chrome extension README.** Corrected the stale "Load unpacked" directory
+  reference (`chrome-page-scraper-extension` → `apps/chrome-extension`) and
+  documented the packaging workflow.
+
 ## [5.4.0] - 2026-06-08
 
 ### Changed
