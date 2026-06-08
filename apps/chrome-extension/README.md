@@ -7,9 +7,23 @@ Small unpacked Chrome extension that sends the current tab URL to Axon, copies u
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Click **Load unpacked**.
-4. Select this `chrome-page-scraper-extension` directory.
+4. Select this `apps/chrome-extension` directory.
 5. Open extension **Options** to set the Axon URL/token.
 6. Use the popup's **Sidebar** button or Chrome's side panel picker to pin the Axon panel.
+
+## Package It
+
+For a distributable ZIP (sharing or Chrome Web Store upload):
+
+```bash
+./package.sh   # -> dist/axon-page-scraper-<version>.zip
+# or: just package-extension
+```
+
+The version is read from `manifest.json`. The `assets/` entry here is a symlink
+into the monorepo's top-level `assets/`; "Load unpacked" follows it locally, but
+a ZIP must contain real files. `package.sh` copies only the referenced icons as
+real files (no symlinks) and omits dev-only files (`README.md`, `package.sh`).
 
 ## Use It
 
