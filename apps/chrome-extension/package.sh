@@ -16,9 +16,10 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$here"
 
-# Version comes straight from the manifest so the two never drift.
-version="$(grep -m1 '"version"' manifest.json \
-  | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
+# Version comes straight from the manifest so the two never drift. Anchor to a
+# top-level "version" key so "manifest_version" can never be matched by mistake.
+version="$(grep -m1 -E '^[[:space:]]*"version"[[:space:]]*:' manifest.json \
+  | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')"
 if [[ -z "$version" ]]; then
   echo "error: could not read version from manifest.json" >&2
   exit 1
@@ -36,7 +37,11 @@ done
 
 # Discover the assets actually referenced, then copy each as a real file
 # (cp dereferences the symlink), preserving its relative path under the stage.
-mapfile -t refs < <(
+# Use a read loop instead of `mapfile` so bash 3.2 (macOS system bash) works.
+refs=()
+while IFS= read -r ref; do
+  refs+=("$ref")
+done < <(
   grep -rhoE "assets/[A-Za-z0-9_./-]+\.(png|svg|jpg|jpeg|webp|ico|gif)" \
     manifest.json ./*.html ./*.js ./*.css 2>/dev/null | sort -u
 )

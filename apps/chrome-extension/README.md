@@ -1,4 +1,4 @@
-# Page Scraper Clipboard
+# Axon Page Scraper
 
 Small unpacked Chrome extension that sends the current tab URL to Axon, copies useful outputs to the clipboard, and can queue, poll, and cancel crawl jobs. It includes both a toolbar popup and a Chrome side panel surface.
 
