@@ -1,0 +1,109 @@
+/* ============================================================
+ * Axon Chrome Extension — side-panel launcher
+ * Aurora-aligned quick-action launcher: brand strip + current-tab
+ * quick actions + grouped action browse → run → result/doc flow.
+ *
+ * Recreated from the design handoff "Axon Extension.html" (the
+ * SidePanel mock). The faux ChromeWindow + page from the mock are
+ * presentation-only and dropped here — this IS the side panel.
+ * ============================================================ */
+
+/* ── Axon accent extension — electric orange (heavy/async ops) ── */
+:root { --axon-orange: #ff9645; --axon-orange-strong: #ffb474; --axon-orange-deep: #c96a1c; }
+.light { --axon-orange: #e0731a; --axon-orange-strong: #c25f10; --axon-orange-deep: #a8540e; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  color: var(--aurora-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* axon surface aliases — the .light remap cascades into these */
+  --axon-control: var(--aurora-control-surface);
+  --axon-page: var(--aurora-page-bg);
+  --axon-hover: var(--aurora-hover-bg);
+  --axon-surface: var(--aurora-page-bg);
+  background:
+    radial-gradient(420px 280px at 20% -2%, rgba(41,182,246,0.10), transparent 60%),
+    radial-gradient(900px 600px at 50% 0%, #0b1c28, #050c12 70%);
+}
+body.light {
+  background:
+    radial-gradient(420px 280px at 20% -2%, rgba(2,136,209,0.10), transparent 60%),
+    radial-gradient(900px 600px at 50% 0%, #e7f1f5, #d7e7ee 70%);
+}
+
+/* side panel — fills the Chrome side-panel viewport */
+.ext-panel {
+  width: 100%; height: 100%; display: flex; flex-direction: column;
+  background:
+    radial-gradient(420px 280px at 20% -5%, rgba(41,182,246,0.10), transparent 60%),
+    var(--aurora-page-bg);
+}
+
+.ext-head { flex: 0 0 auto; display: flex; align-items: center; gap: 9px; height: 48px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--aurora-border-default); background: var(--aurora-nav-bg); }
+.ext-brand { display: inline-flex; align-items: center; gap: 8px; }
+.ext-word { font-family: var(--font-display); font-weight: 800; font-size: 16px; letter-spacing: -0.02em; color: var(--aurora-text-primary); }
+.ext-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--aurora-success); box-shadow: 0 0 6px var(--aurora-success); }
+.ext-dot.is-off { background: var(--aurora-error); box-shadow: 0 0 6px var(--aurora-error); }
+.ext-dot.is-wait { background: var(--aurora-warn); box-shadow: 0 0 6px var(--aurora-warn); }
+.ext-host { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--aurora-text-muted); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ext-icon { all: unset; cursor: pointer; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--aurora-text-muted); flex: 0 0 auto; }
+.ext-icon:hover { background: var(--axon-hover); color: var(--aurora-text-primary); }
+.ext-icon:focus-visible { outline: 2px solid var(--aurora-focus-ring); outline-offset: 1px; }
+
+.ext-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 13px 14px; }
+
+.ext-tabcard { border-radius: 13px; background: var(--axon-control); border: 1px solid var(--aurora-border-default); padding: 11px 12px; margin-bottom: 14px; }
+.ext-tabcard-top { display: flex; align-items: center; gap: 7px; }
+.ext-tablabel { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em; color: var(--aurora-text-muted); }
+.ext-taburl { font-family: var(--font-mono); font-size: 12.5px; color: var(--aurora-accent-strong); margin: 6px 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ext-taburl .dim { color: var(--aurora-text-muted); }
+.ext-quick { display: flex; gap: 7px; }
+.ext-quickbtn { all: unset; cursor: pointer; flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 9px; font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--aurora-text-primary); background: var(--axon-page); border: 1px solid var(--aurora-border-default); }
+.ext-quickbtn:hover { background: var(--axon-hover); border-color: var(--aurora-border-strong); }
+.ext-quickbtn:focus-visible { outline: 2px solid var(--aurora-focus-ring); outline-offset: 1px; }
+
+.ext-seclabel { font-family: var(--font-sans); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--aurora-text-muted); margin: 14px 2px 7px; }
+.ext-row { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 12px; margin-bottom: 5px; background: var(--aurora-panel-medium); border: 1px solid var(--aurora-border-default); }
+.ext-row:hover { background: var(--axon-hover); border-color: var(--aurora-border-strong); }
+.ext-row:focus-visible { outline: 2px solid var(--aurora-focus-ring); outline-offset: 1px; }
+.ext-tile { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 9px; display: grid; place-items: center; }
+.ext-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.ext-row-name { font-family: var(--font-display); font-weight: 800; font-size: 13.5px; letter-spacing: -0.01em; color: var(--aurora-text-primary); display: flex; align-items: center; gap: 7px; }
+.ext-async { font-family: var(--font-mono); font-size: 8px; font-weight: 600; letter-spacing: 0.06em; color: var(--axon-orange-strong); padding: 1px 4px; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--axon-orange) 34%, transparent); }
+.ext-row-sub { font-family: var(--font-sans); font-size: 11.5px; color: var(--aurora-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ext-result-head { flex: 0 0 auto; display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-bottom: 1px solid var(--aurora-border-default); background: var(--aurora-nav-bg); }
+.ext-result-title { font-family: var(--font-display); font-weight: 800; font-size: 15px; color: var(--aurora-text-primary); }
+.ext-statusbadge { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 10.5px; color: var(--aurora-success); padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--aurora-success) 12%, var(--axon-control)); border: 1px solid color-mix(in srgb, var(--aurora-success) 26%, transparent); }
+.ext-statusbadge.is-error { color: var(--aurora-error); background: color-mix(in srgb, var(--aurora-error) 12%, var(--axon-control)); border-color: color-mix(in srgb, var(--aurora-error) 26%, transparent); }
+.ext-statusbadge.is-accepted { color: var(--aurora-accent-primary); background: color-mix(in srgb, var(--aurora-accent-primary) 12%, var(--axon-control)); border-color: color-mix(in srgb, var(--aurora-accent-primary) 26%, transparent); }
+
+/* arg bar — editable target/query for the running action */
+.ext-argbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--aurora-border-default); background: var(--axon-control); }
+.ext-argbar .ext-arg-icon { color: var(--aurora-accent-strong); flex: 0 0 auto; display: grid; place-items: center; }
+.ext-arginput { all: unset; flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; color: var(--aurora-text-primary); }
+.ext-arginput::placeholder { color: var(--aurora-text-muted); }
+.ext-argrun { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 11px; border-radius: 8px; font-family: var(--font-sans); font-size: 12px; font-weight: 650; color: #06131c; background: var(--aurora-accent-primary); border: 1px solid var(--aurora-accent-primary); flex: 0 0 auto; }
+.ext-argrun:hover { background: var(--aurora-accent-strong); border-color: var(--aurora-accent-strong); }
+.ext-argrun:focus-visible { outline: 2px solid var(--aurora-focus-ring); outline-offset: 1px; }
+
+/* loading + error states inside the result body */
+.ext-loading { display: flex; align-items: center; gap: 10px; padding: 6px 2px; font-family: var(--font-mono); font-size: 12px; color: var(--aurora-text-muted); }
+.ext-errorcard { border-radius: 12px; padding: 13px 14px; background: color-mix(in srgb, var(--aurora-error) 8%, var(--axon-control)); border: 1px solid color-mix(in srgb, var(--aurora-error) 30%, transparent); display: flex; flex-direction: column; gap: 8px; }
+.ext-errorcard .err-title { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 800; font-size: 14px; color: var(--aurora-error); }
+.ext-errorcard .err-body { font-family: var(--font-sans); font-size: 13px; line-height: 1.55; color: var(--aurora-text-primary); }
+.ext-errorcard .err-hint { font-family: var(--font-sans); font-size: 12px; color: var(--aurora-text-muted); }
+
+.ext-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; padding: 9px 14px; border-top: 1px solid var(--aurora-border-default); background: var(--aurora-nav-bg); font-family: var(--font-mono); font-size: 10px; color: var(--aurora-text-muted); }
+.ext-foot span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Axon neuron-mark node pulse ─────────────────────────────── */
+.axon-node { animation: axon-node-pulse 1.9s var(--motion-ease-in-out) infinite; }
+@keyframes axon-node-pulse { 0%, 100% { opacity: 0.78; } 50% { opacity: 1; } }
+.axon-pulse { animation: axon-mark-pulse 1.2s var(--motion-ease-in-out) infinite; }
+@keyframes axon-mark-pulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .axon-node, .axon-pulse { animation: none; }
+}

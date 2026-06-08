@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.1] - 2026-06-08
+
+### Changed
+
+- **Chrome extension launcher internals cleanup.** Derive the per-action input
+  mode from the action catalog instead of hardcoded id-lists, unify the result
+  status-badge construction behind one helper, cache the extension config (read
+  once, refresh on `storage.onChanged`) instead of a `chrome.storage` read per
+  request, repaint the server-status dot in place rather than rebuilding the
+  browse panel, and guard tab-change re-renders on the resolved URL. No
+  behavior change.
+
+## [5.3.0] - 2026-06-08
+
+### Added
+
+- **Chrome extension side-panel launcher (Aurora design).** Recreated the
+  `Axon Extension.html` design handoff as the extension's side panel
+  (`apps/chrome-extension`): an Aurora-styled launcher with a brand strip +
+  server status dot, a "this page" card with Scrape / Ingest / Endpoints quick
+  actions, and the full action surface grouped by family (Fetch & Read · Crawl &
+  Ingest · Search & Discover · Reason · System) and color-coded by tone
+  (cyan/orange/rose). Tapping an action opens a result view wired to the real
+  `/v1/*` API with faithful per-action renders (query hits, web results, sources
+  library → doc viewer, stats, doctor, status, accepted-job cards, brand, diff,
+  endpoints, screenshot, ask answer) plus a readable JSON fallback. Built
+  build-free in vanilla JS on the Aurora tokens (`aurora.css`) to match the
+  existing extension and MV3's no-remote-code rule.
+- **Extension context menus.** Right-click "Scrape with Axon", "Ingest this page
+  into Axon", and "Ask Axon about *selection*" open the side panel and run the
+  pre-filled action via a forwarded intent. Added the `contextMenus` permission
+  and a **Ctrl/⌘+Shift+Space** command to open the panel.
+
 ## [5.2.0] - 2026-06-08
 
 ### Added
