@@ -316,7 +316,9 @@ fn validate_local_embed_directory(
         // skip the same binary extensions BEFORE applying the server-only
         // security checks (dotfile/secret/size). Without the prune, a dotfile
         // buried in node_modules/ would fail validation for a file the reader
-        // never touches.
+        // never touches. The symlink check above is intentionally NOT deferred —
+        // symlinks anywhere under a submitted dir are rejected even inside pruned
+        // subtrees (the reader skips symlinks; the server is stricter).
         if child_meta.is_dir() {
             if select::is_pruned_dir(name) {
                 continue;

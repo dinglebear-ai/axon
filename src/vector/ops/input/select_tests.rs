@@ -67,3 +67,16 @@ fn non_code_paths_are_not_code() {
         );
     }
 }
+
+#[test]
+fn dotfiles_and_extensionless_are_not_code() {
+    // path_extension yields "" for these, so they must route to prose, not AST.
+    // Pins the behavior so a future path_extension change can't silently start
+    // AST-chunking config/dotfiles.
+    for path in [".gitignore", ".env", ".dockerignore", "LICENSE", "Makefile"] {
+        assert!(
+            !should_chunk_as_code(path),
+            "did not expect {path} to chunk as code"
+        );
+    }
+}
