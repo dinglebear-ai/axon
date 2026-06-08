@@ -11,6 +11,8 @@ use crate::services::runtime::WorkerMode;
 use crate::services::types::{
     EmbedJobResult, EmbedStartResult, ExecutionMode, JobStartOutcome, StartDisposition,
 };
+use crate::vector::ops::input::classify::path_extension;
+use crate::vector::ops::input::select;
 use crate::vector::ops::{embed_path_native, embed_path_native_with_progress};
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -306,12 +308,20 @@ fn validate_local_embed_directory(
                 "local embed directory must not contain symlinks",
             ));
         }
+        let name = child.file_name().and_then(|n| n.to_str()).unwrap_or("");
         let child_canonical =
             std::fs::canonicalize(&child).map_err(|err| format!("invalid embed path: {err}"))?;
-        validate_local_embed_relative_path(&child_canonical, allowed_root)?;
-        if child_meta.is_file() {
-            validate_local_embed_file(&child_canonical, allowed_root, child_meta.len(), limits)?;
-        } else if child_meta.is_dir() {
+        // Enumerate exactly the set the reader (collect_embed_files in
+        // tei/prepare.rs) will read: prune the same VCS/build directories and
+        // skip the same binary extensions BEFORE applying the server-only
+        // security checks (dotfile/secret/size). Without the prune, a dotfile
+        // buried in node_modules/ would fail validation for a file the reader
+        // never touches.
+        if child_meta.is_dir() {
+            if select::is_pruned_dir(name) {
+                continue;
+            }
+            validate_local_embed_relative_path(&child_canonical, allowed_root)?;
             validate_local_embed_directory(
                 &child_canonical,
                 allowed_root,
@@ -319,6 +329,12 @@ fn validate_local_embed_directory(
                 scan,
                 depth + 1,
             )?;
+        } else if child_meta.is_file() {
+            if select::is_binary_ext(path_extension(name)) {
+                continue;
+            }
+            validate_local_embed_relative_path(&child_canonical, allowed_root)?;
+            validate_local_embed_file(&child_canonical, allowed_root, child_meta.len(), limits)?;
         } else {
             return Err(embed_validation_error(
                 "local embed directory must contain only files and directories",

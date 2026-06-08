@@ -88,6 +88,8 @@ Any new command that needs URL counts/dedup **must** use `qdrant_url_facets`. A 
 ### Code Chunking (tree-sitter)
 `chunk_code()` in `input/code.rs` splits source code at AST boundaries (functions, structs, classes) using tree-sitter grammars. Returns `Option<Vec<String>>` — `None` means no grammar for the extension, caller should fall back to `chunk_text()`. Supported: Rust, Python, JavaScript, TypeScript/TSX, Go, Bash. Chunk range: 500–2000 chars. GitHub ingest builds `PreparedDoc` with code chunks and embeds via `embed_prepared_docs`.
 
+**Local directory embed** (`axon embed <dir>`, `tei/prepare.rs`) reuses the same code/prose split: it recurses the tree, prunes junk dirs and binary files via `input/select.rs`, and routes local source files (by extension) through `chunk_code` (tagged `content_type = "text"`) while markdown/docs stay on `chunk_markdown` (tagged `"markdown"`). `code::chunk_code` runs inside `spawn_blocking` there because tree-sitter parsing is CPU-bound. Crawl-output dirs (http manifest URLs) stay on prose chunking.
+
 `classify_file_type()` in `input/classify.rs` tags files as `test`/`config`/`doc`/`source` for metadata enrichment. Pure function, no I/O.
 
 ### Hybrid Search (Dense + Sparse BM42)
