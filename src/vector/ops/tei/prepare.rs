@@ -34,7 +34,17 @@ async fn read_inputs(input: &str) -> Result<Vec<InputRecord>, Box<dyn Error>> {
             let files = collect_embed_files(&path).await?;
             let mut out = Vec::new();
             for p in files {
-                let canonical = std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
+                // A canonicalize failure silently defeats the manifest lookup
+                // (keyed on the canonical path): the file would re-embed even
+                // when unchanged and lose its crawl URL / structured payload.
+                // Leave a trace so a manifest-skip miss is attributable.
+                let canonical = std::fs::canonicalize(&p).unwrap_or_else(|e| {
+                    log_warn(&format!(
+                        "command=embed canonicalize_failed path={} err={e}",
+                        p.display()
+                    ));
+                    p.clone()
+                });
                 let (source, changed, structured) = manifest_urls
                     .get(&canonical)
                     .map(|(u, c, s)| (u.clone(), *c, s.clone()))
@@ -214,11 +224,23 @@ pub(super) async fn prepare_embed_docs(
 async fn select_chunks(url: &str, raw: String) -> (Vec<String>, &'static str) {
     if !url.starts_with("http") && select::should_chunk_as_code(url) {
         let ext = path_extension(url).to_ascii_lowercase();
-        let chunks = tokio::task::spawn_blocking(move || {
+        // Match the JoinError explicitly: a tree-sitter panic inside
+        // spawn_blocking must not be silently collapsed to an empty Vec (which
+        // would drop the doc downstream without any trace). Log and drop
+        // deliberately, mirroring the skip-on-error file/dir paths above.
+        let chunks = match tokio::task::spawn_blocking(move || {
             input::code::chunk_code(&raw, &ext).unwrap_or_else(|| input::chunk_text(&raw))
         })
         .await
-        .unwrap_or_default();
+        {
+            Ok(chunks) => chunks,
+            Err(e) => {
+                log_warn(&format!(
+                    "command=embed code_chunk_join_error url={url} err={e}"
+                ));
+                Vec::new()
+            }
+        };
         return (chunks, "text");
     }
     // Fall back to chunk_text for inputs containing control characters

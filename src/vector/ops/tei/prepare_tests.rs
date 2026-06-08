@@ -196,3 +196,88 @@ async fn dir_embed_honors_crawl_manifest() {
     assert_eq!(structured.kind, "jsonld");
     assert_eq!(structured.schema_type.as_deref(), Some("Article"));
 }
+
+/// The reader skips symlinked entries (their `file_type` is neither file nor
+/// dir), so a symlink-to-file is never embedded. Guards against a regression
+/// where the file-type dispatch is "simplified" into following symlinks.
+#[tokio::test]
+#[cfg(unix)]
+async fn dir_embed_skips_symlinks() {
+    let cfg = Config::default_minimal();
+    let temp_dir = TempDir::new().expect("tempdir");
+    let root = temp_dir.path();
+    tokio::fs::write(root.join("real.md"), "# Real\n\nembedded content")
+        .await
+        .expect("write real.md");
+    std::os::unix::fs::symlink(root.join("real.md"), root.join("link.md")).expect("symlink");
+
+    let prepared = prepare_embed_docs(&cfg, &root.to_string_lossy(), &[], None)
+        .await
+        .expect("prepare docs");
+
+    let urls: Vec<&str> = prepared.iter().map(|d| d.url.as_str()).collect();
+    assert!(urls.iter().any(|u| u.ends_with("real.md")), "{urls:?}");
+    assert!(!urls.iter().any(|u| u.ends_with("link.md")), "{urls:?}");
+}
+
+/// An empty/whitespace-only code file chunks to zero chunks and is skipped — it
+/// must not produce a zero-chunk PreparedDoc.
+#[tokio::test]
+async fn dir_embed_skips_empty_code_file() {
+    let cfg = Config::default_minimal();
+    let temp_dir = TempDir::new().expect("tempdir");
+    let root = temp_dir.path();
+    tokio::fs::write(root.join("empty.rs"), "   \n\n")
+        .await
+        .expect("write empty.rs");
+    tokio::fs::write(root.join("ok.md"), "# Ok\n\nreadable content")
+        .await
+        .expect("write ok.md");
+
+    let prepared = prepare_embed_docs(&cfg, &root.to_string_lossy(), &[], None)
+        .await
+        .expect("prepare docs");
+
+    assert_eq!(prepared.len(), 1, "empty code file should be skipped");
+    assert!(prepared[0].url.ends_with("ok.md"));
+}
+
+/// Crawl-output reuse: a manifest entry whose URL carries a code extension must
+/// still chunk as prose (http source → prose path), never route to the AST
+/// chunker. Directly exercises the `!url.starts_with("http")` guard in
+/// `select_chunks`.
+#[tokio::test]
+async fn dir_embed_http_code_extension_stays_prose() {
+    let cfg = Config::default_minimal();
+    let temp_dir = TempDir::new().expect("tempdir");
+    let root = temp_dir.path();
+    let markdown_dir = root.join("markdown");
+    tokio::fs::create_dir_all(&markdown_dir)
+        .await
+        .expect("mkdir markdown");
+
+    let file = markdown_dir.join("001-script.md");
+    tokio::fs::write(&file, "# Script\n\nfn main() {}\n")
+        .await
+        .expect("write file");
+    let canon = std::fs::canonicalize(&file).expect("canon");
+    let manifest = root.join("manifest.jsonl");
+    // The manifest URL deliberately ends in a code extension (.py).
+    let line = serde_json::json!({
+        "url": "https://example.com/script.py",
+        "file_path": canon.to_string_lossy(),
+        "changed": true,
+    });
+    tokio::fs::write(&manifest, format!("{line}\n"))
+        .await
+        .expect("write manifest");
+
+    let prepared = prepare_embed_docs(&cfg, &markdown_dir.to_string_lossy(), &[], Some("crawl"))
+        .await
+        .expect("prepare docs");
+
+    assert_eq!(prepared.len(), 1);
+    assert_eq!(prepared[0].url, "https://example.com/script.py");
+    // http source → prose path despite the .py extension.
+    assert_eq!(prepared[0].content_type, "markdown");
+}

@@ -11,8 +11,11 @@
 use super::classify::path_extension;
 
 /// Directory names that are pruned from a recursive embed walk: version-control
-/// metadata, dependency caches, and build/output artifacts. Mirrors the
-/// excluded-prefix list in `crate::ingest::github::is_indexable_source_path`.
+/// metadata, dependency caches, and build/output artifacts. This is a *superset*
+/// of the excluded-prefix list in `crate::ingest::github::is_indexable_source_path`
+/// — it additionally prunes `.git` (the github path filters by file extension via
+/// its allowlist, so it never needs to prune `.git` explicitly). Keep the shared
+/// entries in sync (no compile-time link).
 const PRUNED_DIRS: &[&str] = &[
     ".git",
     "node_modules",
@@ -35,7 +38,8 @@ const PRUNED_DIRS: &[&str] = &[
 ];
 
 /// File extensions (lowercase, without the dot) treated as binary/non-text and
-/// skipped before any read attempt. Mirrors `xtask::checks::secrets::SKIP_EXTENSIONS`.
+/// skipped before any read attempt. Mirrors `xtask::checks::secrets::SKIP_EXTENSIONS`
+/// (no compile-time link; keep in sync manually).
 const BINARY_EXTENSIONS: &[&str] = &[
     // images
     "png", "jpg", "jpeg", "gif", "ico", "bmp", "webp", "tiff", // fonts
