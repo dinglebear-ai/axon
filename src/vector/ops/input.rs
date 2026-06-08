@@ -126,18 +126,18 @@ fn chunk_with_heading_context(chunk: &str, headings: Vec<&str>) -> String {
     if headings.is_empty() {
         return chunk.to_string();
     }
-    let breadcrumb = format!("{}\n\n", headings.join("\n"));
-    if chunk.trim_start().starts_with(breadcrumb.trim_end()) {
+    let trimmed_chunk = chunk.trim_start();
+    let breadcrumb = headings.join("\n");
+    if trimmed_chunk.starts_with(&breadcrumb) {
         return chunk.to_string();
     }
-    let body_budget = MARKDOWN_CHUNK_MAX.saturating_sub(breadcrumb.chars().count());
-    if body_budget == 0 {
-        return take_chars(&breadcrumb, MARKDOWN_CHUNK_MAX);
+    let chunk_chars = trimmed_chunk.chars().count();
+    if chunk_chars >= MARKDOWN_CHUNK_MAX {
+        return take_chars(trimmed_chunk, MARKDOWN_CHUNK_MAX);
     }
-    format!(
-        "{breadcrumb}{}",
-        take_chars(chunk.trim_start(), body_budget)
-    )
+    let breadcrumb_budget = MARKDOWN_CHUNK_MAX - chunk_chars;
+    let breadcrumb = take_chars(&format!("{breadcrumb}\n\n"), breadcrumb_budget);
+    format!("{breadcrumb}{trimmed_chunk}")
 }
 
 fn take_chars(text: &str, max_chars: usize) -> String {

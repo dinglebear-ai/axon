@@ -3,6 +3,8 @@ use crate::vector::ops::source_display::display_source;
 use crate::vector::ops::{qdrant, ranking};
 use std::collections::HashSet;
 
+const CONTEXT_PREFIX_LEN: usize = "Sources:\n".len();
+
 #[cfg(test)]
 fn renumber_context_source_header(entry: &str, display_id: usize) -> String {
     let Some(start) = entry.find("[S") else {
@@ -57,9 +59,8 @@ pub fn append_top_chunks_to_context(
     top_chunks_selected
 }
 
-/// Number of chunks per fetched full-doc that survive the query-relevance
-/// filter before being concatenated. Tradeoff: small enough to drop irrelevant
-/// chunks, large enough to preserve narrative context. (bd axon_rust-0fz)
+/// Initial maximum chunks per fetched full-doc before fallback attempts try
+/// smaller windows/excerpts to keep later docs from disappearing on budget.
 const FULL_DOC_RENDER_TOP_K: usize = 24;
 
 #[allow(clippy::too_many_arguments)]
@@ -115,9 +116,13 @@ fn fit_full_doc_entry_to_budget(
     separator: &str,
     max_context_chars: usize,
 ) -> Option<String> {
+    let mut smallest_text = String::new();
     for top_k in [FULL_DOC_RENDER_TOP_K, 16, 12, 8, 4, 2, 1] {
         let text =
             qdrant::render_full_doc_filtered(points.to_vec(), Some(query_tokens), Some(top_k));
+        if top_k == 1 {
+            smallest_text = text.clone();
+        }
         if text.is_empty() {
             continue;
         }
@@ -127,7 +132,6 @@ fn fit_full_doc_entry_to_budget(
         }
     }
 
-    let text = qdrant::render_full_doc_filtered(points.to_vec(), Some(query_tokens), Some(1));
     let header = format!("## Source Document [S{}]: {}\n\n", source_idx, source);
     let marker = "\n\n[Excerpt truncated to fit the context budget.]";
     let available = remaining_entry_chars(context_char_count, separator, max_context_chars)?;
@@ -135,7 +139,7 @@ fn fit_full_doc_entry_to_budget(
         return None;
     }
     let body_budget = available - header.len() - marker.len();
-    let body = truncate_to_char_boundary(text.trim(), body_budget);
+    let body = truncate_to_char_boundary(smallest_text.trim(), body_budget);
     if body.trim().is_empty() {
         return None;
     }
@@ -169,7 +173,7 @@ fn remaining_entry_chars(
     separator: &str,
     max_context_chars: usize,
 ) -> Option<usize> {
-    let sep_len = if context_char_count == 0 {
+    let sep_len = if context_char_count == 0 || context_char_count == CONTEXT_PREFIX_LEN {
         0
     } else {
         separator.len()
@@ -286,5 +290,139 @@ mod tests {
             "bounded excerpt should preserve the relevant explanation text"
         );
         assert!(context_char_count <= 280);
+    }
+
+    #[test]
+    fn top_chunk_is_backfilled_when_planned_full_doc_was_not_inserted() {
+        let reranked = vec![ranking::AskCandidate {
+            score: 0.8,
+            url: "https://docs.example.com/storage/redundancy".to_string(),
+            path: "/storage/redundancy".to_string(),
+            chunk_text: "fallback top chunk body".to_string(),
+            url_tokens: HashSet::new(),
+            chunk_tokens: HashSet::new(),
+            rerank_score: 0.8,
+        }];
+        let mut context_entries = Vec::new();
+        let mut context_char_count = 0usize;
+        let mut source_idx = 1usize;
+
+        let selected = append_top_chunks_to_context(
+            &reranked,
+            &[0],
+            &HashSet::new(),
+            &mut context_entries,
+            &mut context_char_count,
+            &mut source_idx,
+            "\n\n---\n\n",
+            1_000,
+        );
+
+        assert_eq!(selected, 1);
+        assert!(context_entries[0].1.contains("fallback top chunk body"));
+    }
+
+    #[test]
+    fn full_doc_budget_accounts_for_separator_and_sources_prefix() {
+        let mut context_entries = Vec::new();
+        let mut context_char_count = 0usize;
+        let mut inserted = HashSet::new();
+        let fetched_docs = vec![(
+            0,
+            "https://docs.example.com/one".to_string(),
+            vec![point("first doc body", 0)],
+        )];
+        let url_to_score = HashMap::from([("https://docs.example.com/one".to_string(), 1.0)]);
+
+        let (selected, _) = append_full_docs_to_context(
+            &mut context_entries,
+            &mut context_char_count,
+            &mut inserted,
+            1,
+            "\n\n---\n\n",
+            "Sources:\n".len() + 1,
+            fetched_docs,
+            &[],
+            &url_to_score,
+        );
+
+        assert_eq!(selected, 0, "prefix overhead must be part of the budget");
+        assert!(context_entries.is_empty());
+    }
+
+    #[test]
+    fn full_doc_truncation_marker_without_body_does_not_insert() {
+        let header = "## Source Document [S1]: docs.example.com/storage/redundancy\n\n";
+        let marker = "\n\n[Excerpt truncated to fit the context budget.]";
+        let entry = fit_full_doc_entry_to_budget(
+            "docs.example.com/storage/redundancy",
+            1,
+            &[point(&"large body ".repeat(40), 0)],
+            &[],
+            "Sources:\n".len(),
+            "\n\n---\n\n",
+            "Sources:\n".len() + header.len() + marker.len(),
+        );
+
+        assert!(entry.is_none());
+    }
+
+    #[test]
+    fn full_doc_truncates_at_unicode_boundary() {
+        let body = &"alpha beta café 🚀 storage redundancy details ".repeat(12);
+        let header = "## Source Document [S1]: docs.example.com/storage/redundancy\n\n";
+        let marker = "\n\n[Excerpt truncated to fit the context budget.]";
+        let entry = fit_full_doc_entry_to_budget(
+            "docs.example.com/storage/redundancy",
+            1,
+            &[point(body, 0)],
+            &["storage".to_string()],
+            "Sources:\n".len(),
+            "\n\n---\n\n",
+            "Sources:\n".len() + header.len() + marker.len() + 20,
+        )
+        .expect("unicode excerpt should fit");
+
+        assert!(entry.is_char_boundary(entry.len()));
+        assert!(entry.contains("[Excerpt truncated to fit the context budget.]"));
+    }
+
+    #[test]
+    fn full_doc_insertion_skips_oversized_first_doc_and_inserts_later_doc_that_fits() {
+        let fetched_docs = vec![
+            (
+                0,
+                format!("https://docs.example.com/{}", "huge-path/".repeat(20)),
+                vec![point(&"oversized ".repeat(200), 0)],
+            ),
+            (
+                1,
+                "https://docs.example.com/small".to_string(),
+                vec![point("small doc body", 0)],
+            ),
+        ];
+        let mut context_entries = Vec::new();
+        let mut context_char_count = "Sources:\n".len();
+        let mut inserted = HashSet::new();
+        let url_to_score = HashMap::from([
+            ("https://docs.example.com/huge".to_string(), 1.0),
+            ("https://docs.example.com/small".to_string(), 0.9),
+        ]);
+
+        let (selected, _) = append_full_docs_to_context(
+            &mut context_entries,
+            &mut context_char_count,
+            &mut inserted,
+            1,
+            "\n\n---\n\n",
+            140,
+            fetched_docs,
+            &[],
+            &url_to_score,
+        );
+
+        assert_eq!(selected, 1);
+        assert!(inserted.contains("https://docs.example.com/small"));
+        assert!(context_entries[0].1.contains("small doc body"));
     }
 }

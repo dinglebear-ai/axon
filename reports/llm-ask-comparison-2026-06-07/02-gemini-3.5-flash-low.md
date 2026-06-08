@@ -161,9 +161,9 @@ Conversation
   Assistant:
 ### How Axon's SQLite-Backed Async Jobs Work
 
-Axon’s async jobs use SQLite persistence and in-process Tokio workers to manage task execution without needing a message broker, Postgres, or Redis [S2]. The framework supports four main job families—Crawl, Extract, Embed, and Ingest—with each kind stored in its own dedicated SQLite table (such as `axon_crawl_jobs` or `axon_extract_jobs`) [S2, S16]. 
+Axon’s async jobs use SQLite persistence and in-process Tokio workers to manage task execution without needing a message broker, Postgres, or Redis [S2]. The framework supports four main job families—Crawl, Extract, Embed, and Ingest—with each kind stored in its own dedicated SQLite table (such as `axon_crawl_jobs` or `axon_extract_jobs`) [S2, S16].
 
-The async job lifecycle follows a state machine transitioning from `Pending` $\rightarrow$ `Running` $\rightarrow$ `Completed`, `Failed`, or `Cancelled` [S1]. Workers are spawned using `SqliteJobBackend::new_with_workers` [S2, S7]. Each worker lane runs a sequential loop, claiming pending rows from SQLite, updating a heartbeat, and executing the job [S15]. To prevent duplicate worker ownership under concurrent claims, SQLite write-locks the database during a `BEGIN IMMEDIATE` transaction, serializing claim attempts across tokio tasks [S15, S18]. 
+The async job lifecycle follows a state machine transitioning from `Pending` $\rightarrow$ `Running` $\rightarrow$ `Completed`, `Failed`, or `Cancelled` [S1]. Workers are spawned using `SqliteJobBackend::new_with_workers` [S2, S7]. Each worker lane runs a sequential loop, claiming pending rows from SQLite, updating a heartbeat, and executing the job [S15]. To prevent duplicate worker ownership under concurrent claims, SQLite write-locks the database during a `BEGIN IMMEDIATE` transaction, serializing claim attempts across tokio tasks [S15, S18].
 
 If a process dies mid-job, a watchdog periodically sweeps the database and reclaims stale running jobs (determined by a heartbeat check against `AXON_JOB_STALE_TIMEOUT_SECS` plus a grace period) and reverts them to `pending` [S1, S11, S20, S21]. Job cancellation is handled by updating the SQLite row status to `canceled` and triggering in-memory cancellation tokens (`CancellationToken`), which workers check at safe intervals [S1, S11, S22].
 
@@ -171,7 +171,7 @@ If a process dies mid-job, a watchdog periodically sweeps the database and recla
 
 ### What `--wait true` Changes for Axon Commands
 
-By default, Axon runs in an asynchronous, fire-and-forget mode (`--wait false`), where it writes the job payload to a SQLite table, prints a unique job ID, and exits immediately [S1, S7, S12]. 
+By default, Axon runs in an asynchronous, fire-and-forget mode (`--wait false`), where it writes the job payload to a SQLite table, prints a unique job ID, and exits immediately [S1, S7, S12].
 
 Specifying `--wait true` changes this behavior by forcing the CLI process to block until the submitted job completes, bounded by the `AXON_JOB_WAIT_TIMEOUT_SECS` limit [S1, S17]:
 
@@ -278,7 +278,7 @@ Conversation
   Assistant:
 Axon determines which search backend to use by checking the `AXON_SEARXNG_URL` environment variable [S1][S2][S4]. If `AXON_SEARXNG_URL` is set, Axon queries the self-hosted SearXNG JSON API [S1][S5]. If this variable is unset, Axon falls back to using Tavily, which requires a configured `TAVILY_API_KEY` [S1][S2][S4][S5].
 
-When you perform a standard `search`, Axon returns the ranked results (consisting of the title, URL, and snippet) and automatically enqueues one bounded crawl job per result URL [S3]. These crawl jobs are processed asynchronously by the in-process worker pool to index the pages into Qdrant [S3]. 
+When you perform a standard `search`, Axon returns the ranked results (consisting of the title, URL, and snippet) and automatically enqueues one bounded crawl job per result URL [S3]. These crawl jobs are processed asynchronously by the in-process worker pool to index the pages into Qdrant [S3].
 
 When running a `research` command, the pipeline fetches the full-page markdown content of the top sources concurrently—truncating the content to fit the LLM's context budget—and falls back to search snippets only if a page fetch fails or if `AXON_RESEARCH_FULL_CONTENT` is set to `false` [S1][S4][S5]. A configured LLM then synthesizes these source materials into a coherent summary [S4]. Finally, the `research` command enqueues bounded crawl jobs for the discovered result URLs so they are indexed asynchronously into Qdrant, though you can bypass the indexing stage by passing the `--skip-embed` flag [S2][S4].
 

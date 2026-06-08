@@ -17,7 +17,7 @@ scripts/run-ask-model-comparison.sh --dry-run --skip-preflight
 scripts/run-ask-model-comparison.sh
 ```
 
-The full default run executes 10 questions against five profiles, for 50 total `axon ask` calls.
+The full default run executes 10 questions against five profiles. With explain capture enabled, that is 50 answer calls plus 50 explain calls, for 100 total `axon ask` invocations. With `--no-explain`, it runs only the 50 answer calls.
 
 ## Prerequisites
 
@@ -91,6 +91,10 @@ Each `QNN.explain.json` includes the exact context block Axon would inject into 
 ```bash
 jq -r '.explain.context.rendered_context' QNN.explain.json
 ```
+
+When explain capture is enabled, each explain trace must be nonempty valid JSON with `.explain.context`. Invalid explain traces are recorded in `run.json` with `explain_valid: false`, included in the final failure count, and cause the runner to exit nonzero after writing the accountable run artifact.
+
+The runner rejects duplicate profile names and duplicate computed labels before running. Computed labels include model-name overrides after slugification, so two override profiles that collapse to the same output directory label fail preflight instead of sharing files.
 
 ### `current`
 
@@ -223,11 +227,15 @@ AXON_LLM_COMPLETION_*
 
 Temporary env files are created under `mktemp -d`, chmodded `600`, and removed on exit. They are not written into the report directory.
 
+Remote `cli-api` override profiles preserve the base `AXON_OPENAI_API_KEY` by copying it from the base env file after removing stale LLM keys. `run.json` records that preserved key only as `***` in `env_overrides`; the raw value is not written to runner metadata.
+
 ## Labels and Paths
 
 Profile output directories are derived from profile labels. Labels from environment-controlled model names are slugified before use, so a model override such as `../bad/model` becomes a safe directory name like `cli-api-bad-model`.
 
 The original provider and model strings are still recorded in `run.json`; only the filesystem label is normalized.
+
+Labels must be unique after slugification. For example, if two model overrides both produce `cli-api-same-model`, the runner exits before creating a misleading result set.
 
 ## Output Layout
 
@@ -270,7 +278,7 @@ run-20260607-190000/
 
 `questions.tsv` contains the extracted question IDs and text. It is a convenience file, not the timing artifact.
 
-`run.json` is the canonical machine-readable output. Each result includes answer timing and, when explain capture is enabled, `explain_elapsed_seconds`, `explain_exit_code`, `explain_file`, and `explain_stderr_file`.
+`run.json` is the canonical machine-readable output. Each result includes answer timing and, when explain capture is enabled, `explain_elapsed_seconds`, `explain_exit_code`, `explain_valid`, `explain_error`, `explain_file`, and `explain_stderr_file`.
 
 Raw answer markdown, stderr logs, and explain JSON traces can include retrieved source snippets, internal URLs, local paths, and provider diagnostics. Treat raw run directories as review-before-commit artifacts. Commit or share only after checking whether those traces should be redacted.
 
@@ -300,7 +308,7 @@ Each question prints a start line and a completion line with elapsed wall-clock 
 
 ```text
   Q01: starting
-  Q01: explain=0.138s explain_exit=0 answer=9.234s exit=0 file=/home/jmagar/workspace/axon/reports/.../llamacpp-gemma-4-e4b-q4/Q01.md
+  Q01: explain=0.138s explain_exit=0 explain_valid=1 answer=9.234s exit=0 file=/home/jmagar/workspace/axon/reports/.../llamacpp-gemma-4-e4b-q4/Q01.md
 ```
 
 At the end it prints a compact summary:
@@ -319,11 +327,19 @@ Top-level shape:
 
 ```json
 {
-  "schema": "axon-ask-model-comparison/v1",
+  "schema": "axon-ask-model-comparison/v2",
   "created_at": "2026-06-07T19:00:00-04:00",
   "questions_file": "/home/jmagar/workspace/axon/reports/...",
   "out_dir": "/home/jmagar/workspace/axon/reports/...",
   "axon_bin": "/home/jmagar/workspace/axon/target/release/axon",
+  "capture_explain": true,
+  "result_schema_features": [
+    "per_result_explain_valid",
+    "per_result_explain_error",
+    "top_level_capture_explain",
+    "execution_mode"
+  ],
+  "execution_mode": "parallel",
   "selected_models": ["current", "gemini-flash", "gemma-local"],
   "profiles": [],
   "results": []
@@ -359,6 +375,8 @@ Each profile records both the intended overrides and Axon's effective config sna
 
 `effective_config` comes from `axon config list --json`. Axon redacts known secret values as `***`. The runner itself does not manually inspect or publish secret values.
 
+Effective config capture is a preflight requirement. If `axon config list --json` exits nonzero or returns invalid JSON for any profile, the runner exits before finalizing `run.json`.
+
 ### `results[]`
 
 Each result represents one model/question invocation:
@@ -371,6 +389,14 @@ Each result represents one model/question invocation:
   "profile_label": "llamacpp-gemma-4-e4b-q4",
   "provider": "http://127.0.0.1:8080/v1",
   "model": "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M",
+  "explain_started_at": "2026-06-07T19:00:00-04:00",
+  "explain_finished_at": "2026-06-07T19:00:01-04:00",
+  "explain_elapsed_seconds": 0.138,
+  "explain_exit_code": 0,
+  "explain_valid": true,
+  "explain_error": null,
+  "explain_file": "/home/jmagar/workspace/axon/reports/.../Q01.explain.json",
+  "explain_stderr_file": "/home/jmagar/workspace/axon/reports/.../Q01.explain.stderr.log",
   "started_at": "2026-06-07T19:00:01-04:00",
   "finished_at": "2026-06-07T19:00:10-04:00",
   "elapsed_seconds": 9.123,
@@ -380,7 +406,7 @@ Each result represents one model/question invocation:
 }
 ```
 
-The answer body itself is stored in `stdout_file`. The JSON stores paths and timing, not duplicated full answer text.
+The answer body itself is stored in `stdout_file`. The JSON stores paths and timing, not duplicated full answer text. When `--no-explain` is used, all explain-specific result fields are `null`, `capture_explain` is `false`, and no `QNN.explain.json` files are written.
 
 ## Answer Markdown
 
@@ -465,7 +491,7 @@ The script includes a no-network self-test:
 scripts/run-ask-model-comparison.sh --self-test
 ```
 
-The self-test creates a temporary fake Axon binary, runs two questions across all five default profiles, verifies `run.json`, verifies that model configs are present, verifies answer markdown and explain traces exist, verifies dynamic model labels are slugified, and verifies env files plus a fake base-env secret are not leaked into the report output.
+The self-test creates a temporary fake Axon binary, runs two questions across all five default profiles, verifies `run.json`, verifies that model configs are present, verifies answer markdown and explain traces exist, verifies dynamic model labels are slugified, verifies `--no-explain` serial JSON shape, verifies explain failure accounting, rejects duplicate profiles and duplicate labels, verifies config-capture failure prevents finalizing misleading `run.json`, and verifies env files plus a fake base-env secret are not leaked into the report output.
 
 Also run:
 

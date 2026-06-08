@@ -206,3 +206,54 @@ fn chunk_markdown_repeats_heading_context_for_split_sections() {
         );
     }
 }
+
+#[test]
+fn chunk_markdown_nested_heading_reset_does_not_carry_sibling() {
+    let b_body = "Details for topic B stay under the B heading. ".repeat(25);
+    let c_body = "Details for topic C stay under the C heading. ".repeat(25);
+    let text = format!("# A\n\n## B\n\n{b_body}\n\n## C\n\n{c_body}");
+
+    let chunks = chunk_markdown(&text);
+    let c_chunk = chunks
+        .iter()
+        .find(|chunk| chunk.contains("Details for topic C"))
+        .expect("test fixture should produce a chunk containing C body text");
+
+    assert!(
+        c_chunk.contains("# A") && c_chunk.contains("## C"),
+        "C chunk should carry the active breadcrumb: {c_chunk:?}"
+    );
+    assert!(
+        !c_chunk.contains("## B"),
+        "C chunk must not carry the previous sibling heading: {c_chunk:?}"
+    );
+}
+
+#[test]
+fn chunk_with_heading_context_does_not_duplicate_existing_breadcrumb() {
+    let chunk = "# Storage Guide\n## Special vdev redundancy\n\nBody text";
+
+    let with_context =
+        chunk_with_heading_context(chunk, vec!["# Storage Guide", "## Special vdev redundancy"]);
+
+    assert_eq!(with_context.matches("# Storage Guide").count(), 1);
+    assert_eq!(
+        with_context.matches("## Special vdev redundancy").count(),
+        1
+    );
+    assert_eq!(with_context, chunk);
+}
+
+#[test]
+fn chunk_with_heading_context_preserves_body_when_breadcrumb_is_long() {
+    let h1 = format!("# {}", "A".repeat(CHUNK_SIZE));
+    let h2 = format!("## {}", "B".repeat(CHUNK_SIZE));
+    let body = "unique body text that must survive";
+
+    let with_context = chunk_with_heading_context(body, vec![h1.as_str(), h2.as_str()]);
+
+    assert!(
+        with_context.contains(body),
+        "synthetic breadcrumb context must not evict source body text: {with_context:?}"
+    );
+}
