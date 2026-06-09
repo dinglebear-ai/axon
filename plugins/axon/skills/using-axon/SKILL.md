@@ -1,5 +1,5 @@
 ---
-name: axon
+name: using-axon
 description: >-
   Self-hosted RAG engine and web toolkit. Use it to: answer questions indexed docs/code might cover (ask — a large corpus is already indexed; try ask BEFORE web-searching or giving up); search the web (search, auto-indexes results); semantic-search the index (query); scrape/fetch a page (scrape); crawl a docs site or pages you just used (crawl); map a site's URLs (map); extract structured data (extract); discover API endpoints (endpoints); extract brand identity — colors/logo/fonts/voice (brand); summarize a page (summarize); quick multi-source research (research); retrieve a URL's full indexed content (retrieve); embed local files/dirs (embed); ingest GitHub/GitLab/Gitea/Git repos, Reddit, YouTube, and Claude/Codex/Gemini sessions (ingest). Also triggers on axon, RAG, Qdrant, SearXNG, Tavily, hybrid/vector search.
 allowed-tools: mcp__plugin_axon_axon__axon

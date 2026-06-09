@@ -49,28 +49,16 @@ Response envelope:
 { "ok": true, "action": "...", "subaction": "...", "data": { ... } }
 ```
 
-Default `response_mode: "path"` writes large outputs under the configured Axon appdata root (default `~/.axon/artifacts`) and returns a compact `shape` summary plus an artifact pointer. See the `axon` skill for the full action map.
+Default `response_mode: "path"` writes large outputs under the configured Axon appdata root (default `~/.axon/artifacts`) and returns a compact `shape` summary plus an artifact pointer. See the `using-axon` skill for the full action map.
 
-## Skills (16)
+## Skills (2)
+
+The per-action skills were consolidated into a single unified usage skill.
 
 | Skill | Purpose |
 |-------|---------|
-| `axon` | Meta-skill: full action map and routing guide |
-| `ask` | RAG: retrieve + LLM-synthesized answer with citations |
-| `crawl` | Recursive site crawl (async by default) |
-| `doctor` | Service health check (Qdrant / TEI / Chrome / Tavily / LLM) |
-| `domains` | Indexed domains summary |
-| `embed` | Embed local files / dirs / URLs into Qdrant |
-| `extract` | LLM-powered structured data extraction |
-| `ingest` | GitHub / Reddit / YouTube / AI-session ingestion |
-| `map` | URL discovery (sitemap-first, anchor-fallback, no fetch) |
-| `query` | Pure semantic vector search (no LLM) |
-| `retrieve` | Fetch all chunks indexed for a specific URL |
-| `scrape` | Single-URL or small-batch scrape to markdown |
-| `search` | Tavily web search; auto-queues crawl for results |
-| `sources` | List indexed URLs with chunk counts |
-| `stats` | Qdrant collection statistics |
-| `status` | Job queue snapshot |
+| `using-axon` | Unified usage guide — full action map and routing for the single `axon` MCP/CLI tool (scrape, crawl, map, extract, search, research, embed, query, ask, ingest, …) |
+| `axon-rag-synthesize` | RAG synthesis prompt embedded at compile time into `ask` synthesis (not user-invocable) |
 
 ## Agents
 
