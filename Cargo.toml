@@ -208,10 +208,6 @@ serial_test = "3"
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 
-[[bench]]
-name = "dom_extraction"
-harness = false
-
 [lints.rust]
 unsafe_code = "deny"
 unused_import_braces = "warn"

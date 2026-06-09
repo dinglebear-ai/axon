@@ -134,3 +134,7 @@ CLAUDE.md.local
 docs/perf/results-*.json
 docs/perf/results-*.txt
 .worktrees
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.5.1] - 2026-06-09
 
+### Changed
+
+- **Axon plugin skill renamed `axon` → `using-axon`.** The packaged skill under
+  `plugins/axon/skills/` moved from `axon/` to `using-axon/` (SKILL.md plus the
+  `async-job-lifecycle` and `mcp-response-protocol` references), and the plugin
+  MCP manifest moved from `plugins/axon/mcp.json` to `plugins/axon/.mcp.json`
+  (HTTP transport pointing at `${user_config.server_url}/mcp`).
+
 ### Fixed
 
 - **MCP query-family errors now carry their cause.** `logged_internal_error`
@@ -17,6 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`"<context> failed: <cause>"`) for `ask`/`query`/`retrieve`/`evaluate`, while
   the full source chain (with any nested DSNs/paths) still goes only to the
   server log. This restores informative errors without leaking deep internals.
+- **MCP error source-chain walk is now bounded against cyclic sources.**
+  `logged_internal_error` guards the error `source()` traversal so a
+  self-referential or cyclic error chain can no longer spin indefinitely when
+  building the server-side log.
+
+### Removed
+
+- **Repo cleanup.** Dropped stray/leftover files: the empty `=12.2` artifact,
+  the unused `benches/dom_extraction.rs` benchmark (and its `[[bench]]` entry in
+  `Cargo.toml`), the duplicate top-level `bin/axon` wrapper, and a stale
+  `research-output.md`. Added `mempalace.yaml` / `entities.json` to `.gitignore`
+  (MemPalace per-project files, issue #185).
 
 ## [5.5.0] - 2026-06-08
 
