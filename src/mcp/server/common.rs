@@ -37,10 +37,13 @@ pub(super) fn logged_internal_error(
 ) -> ErrorData {
     // Walk the source chain explicitly: once the anyhow error is erased to a
     // `dyn Error` trait object, `{e:#}` no longer expands `.source()`, so build
-    // the full chain by hand for the server log.
+    // the full chain by hand for the server log. The depth cap defends against a
+    // pathological self-referential `source()` (would otherwise loop forever and
+    // grow `chain` unbounded).
     let mut chain = e.to_string();
     let mut src = e.source();
-    while let Some(cause) = src {
+    for _ in 0..16 {
+        let Some(cause) = src else { break };
         chain.push_str(&format!(": {cause}"));
         src = cause.source();
     }
