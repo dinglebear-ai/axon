@@ -26,9 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the full source chain (with any nested DSNs/paths) still goes only to the
   server log. This restores informative errors without leaking deep internals.
 - **MCP error source-chain walk is now bounded against cyclic sources.**
-  `logged_internal_error` guards the error `source()` traversal so a
-  self-referential or cyclic error chain can no longer spin indefinitely when
-  building the server-side log.
+  `logged_internal_error` (`src/mcp/server/common.rs`) guards the error
+  `source()` traversal so a self-referential or cyclic error chain can no longer
+  spin indefinitely when building the server-side log. The log line now also
+  appends a `… (source chain truncated at 16)` marker when the cap is hit, so a
+  clipped chain can't be mistaken for a terminated one.
+- **`logged_internal_error` doc-comment corrected.** It now describes the helper
+  as general (every MCP handler routes through it) and states that callers are
+  responsible for passing a client-safe top-level message, rather than claiming
+  the forwarded message is always safe.
+
+### Tests
+
+- **Unit coverage for `logged_internal_error`** (`src/mcp/server/common_tests.rs`):
+  top-level cause appears in the client message, only the top-level `Display` is
+  forwarded (deeper chain stays out of the response), and a self-referential
+  `source()` terminates via the depth cap.
 
 ### Removed
 
