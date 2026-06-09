@@ -106,7 +106,12 @@ services:
       resources:
         limits:
           cpus: '4.0'
-          memory: 12G
+          # axon collection's resident working set (int8 quant always_ram + in-RAM
+          # HNSW index) stably sits ~12.5G and was OOM-killed against a 12G cap
+          # (206 restarts, dmesg CONSTRAINT_MEMCG). 16G gives ~28% headroom over
+          # the stable set. To reduce real RAM instead, flip the axon collection's
+          # quantization always_ram:false + hnsw on_disk:true (trades query latency).
+          memory: 16G
         reservations:
           cpus: '0.5'
           memory: 1G

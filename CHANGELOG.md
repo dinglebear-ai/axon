@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.4] - 2026-06-09
+
+### Changed
+
+- **Qdrant container memory cap 12G → 16G.** The `axon` collection's resident working set (int8 `always_ram` quantization + in-RAM HNSW index) stably sits ~12.5G and was OOM-killed against the old 12G `deploy.resources.limits` cap (206 restarts, dmesg `CONSTRAINT_MEMCG`). Raised to 16G for ~28% headroom over the stable working set; the `MemoryMax` ceiling was never hit (`oom_kill=0`). To trade RAM for latency instead, flip the collection's quant `always_ram:false` + `hnsw.on_disk:true`.
+
+### Documentation
+
+- **Config / env reference sync.** Documented previously-undocumented env vars and config knobs across `.env.example`, `config.example.toml`, and `docs/guides/configuration.md`: `AXON_RESEARCH_FULL_CONTENT`, `AXON_LLM_COMPLETION_CONCURRENCY` / `_TIMEOUT_SECS`, the `GOOGLE_API_KEY` alias, the synthesis/chat model split (`AXON_SYNTHESIS_*` / `AXON_CHAT_*` with legacy `AXON_OPENAI_MODEL` / `AXON_HEADLESS_GEMINI_MODEL` aliases), `AXON_WATCH_TICK_SECS` / `AXON_WATCH_LEASE_SECS`, `AXON_MCP_TRANSPORT`, `AXON_LOG_FULL_QUERIES`, standard `NO_COLOR` (replacing `AXON_NO_COLOR`), and the `endpoints` / `suggest` / Codex-backend discovery vars. Updated `ask.chunk-limit` (default 20 → 24, clamp 3–64, model-tier-derived) and `authoritative-domains` / `authoritative-boost` defaults.
+- **`using-axon` skill gains a Configuration section** pointing at the three authoritative config references (`config.example.toml`, `.env.example`, `docs/guides/configuration.md`) instead of duplicating the env surface.
+
 ## [5.5.3] - 2026-06-09
 
 ### Fixed

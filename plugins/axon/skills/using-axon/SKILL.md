@@ -238,6 +238,16 @@ Full response-mode contract and the JSON-RPC error model: [`references/mcp-respo
 - `axon://schema/mcp-tool` — full JSON schema and routing contract (read this when you need exact field types/enums).
 - `ui://axon/status-dashboard` — interactive MCP App widget for live queue status.
 
+## Configuration
+
+This skill names only the handful of env vars that matter at the point of use (`AXON_COLLECTION`, `AXON_SEARXNG_URL`, `AXON_HYBRID_SEARCH`, `AXON_OUTPUT_DIR`, `AXON_DATA_DIR`, …). The **full** surface — every `AXON_*` env var and `~/.axon/config.toml` tuning key — is documented authoritatively and is **not** duplicated here:
+
+- `config.example.toml` (repo root) — all `config.toml` tuning knobs with defaults.
+- `.env.example` (repo root) — service URLs, API keys, and secrets.
+- `docs/guides/configuration.md` — full environment-variable reference + the two-layer (`.env` + `config.toml`) priority model.
+
+Priority: CLI flags > env vars > `~/.axon/config.toml` > built-in defaults.
+
 ## Choosing parameters — quick guide
 
 | Situation | Reach for |
