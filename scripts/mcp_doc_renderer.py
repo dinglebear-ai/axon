@@ -206,7 +206,10 @@ def _emit_response_policy(emit) -> None:
     emit("## Response Policy (Context-Safe Defaults)")
     emit("- Most actions default to artifact-first (`response_mode=path`).")
     emit("- `scrape` and `retrieve` are document-reading actions and default to inline-first paged responses.")
-    emit("- Heavy operations write result artifacts to `.cache/axon-mcp/`.")
+    emit(
+        "- Heavy operations write result artifacts to `~/.axon/artifacts/<context>/` "
+        "(override root with `AXON_MCP_ARTIFACT_DIR`)."
+    )
     emit("- Tool response returns compact metadata only by default:")
     emit("  - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`")
     emit("- Explicit `inline` and `both` modes are capped/truncated and include artifact pointers.")
