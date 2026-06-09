@@ -22,14 +22,30 @@ pub(super) fn internal_error(msg: impl Into<String>) -> ErrorData {
     ErrorData::internal_error(msg.into(), None)
 }
 
-/// Log the raw error server-side and return a generic MCP error so internal
-/// details (DSNs, file paths, stack traces) are never forwarded to clients.
+/// Log the full error (with source chain) server-side, and return an MCP error
+/// that includes the top-level error message so callers get an actionable cause
+/// instead of a bare `"<context> failed"`.
+///
+/// Only the error's own `Display` (`{e}`) is forwarded — NOT the `{e:#}` source
+/// chain — so deeper internal details (DSNs, file paths, nested transport URLs)
+/// stay in the server log. Top-level messages here are descriptive and safe
+/// (e.g. "AXON_OPENAI_BASE_URL is required for ask", "Failed to retrieve any
+/// context sources for ask", "LLM answer generation failed: ...").
 pub(super) fn logged_internal_error(
     context: &str,
     e: &(dyn std::error::Error + 'static),
 ) -> ErrorData {
-    tracing::error!("{context}: {e}");
-    ErrorData::internal_error(format!("{context} failed"), None)
+    // Walk the source chain explicitly: once the anyhow error is erased to a
+    // `dyn Error` trait object, `{e:#}` no longer expands `.source()`, so build
+    // the full chain by hand for the server log.
+    let mut chain = e.to_string();
+    let mut src = e.source();
+    while let Some(cause) = src {
+        chain.push_str(&format!(": {cause}"));
+        src = cause.source();
+    }
+    tracing::error!("{context}: {chain}");
+    ErrorData::internal_error(format!("{context} failed: {e}"), None)
 }
 
 // --- URL validation wrappers ---
