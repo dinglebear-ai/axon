@@ -1,0 +1,202 @@
+name: android-release
+
+# Releases the Axon Android APK independently of the main axon `v*` releases.
+#
+# Triggered by pushing an Android-specific tag whose version matches the
+# `versionName` in apps/android/app/build.gradle.kts, e.g.:
+#
+#   git tag android-v1.1 && git push origin android-v1.1
+#
+# Builds the release APK, signs it (zipalign + apksigner), checksums it, and
+# publishes a GitHub Release with the APK + SHA256 attached.
+#
+# Manual workflow_dispatch builds + signs the APK and uploads it to the run as
+# an artifact for inspection, but does NOT create a Release (dry-run).
+#
+# ---------------------------------------------------------------------------
+# Required configuration (Settings → Secrets and variables → Actions)
+# ---------------------------------------------------------------------------
+# Signing (release-keystore secrets). When ALL four are present the APK is
+# signed and verified; when absent the job ships an UNSIGNED APK (clearly named
+# `*-unsigned.apk`, which cannot be installed until signed):
+#   ANDROID_KEYSTORE_BASE64   base64 of the release keystore (.jks/.keystore)
+#                             e.g. `base64 -w0 release.jks`
+#   ANDROID_KEYSTORE_PASSWORD keystore (store) password
+#   ANDROID_KEY_ALIAS         signing key alias
+#   ANDROID_KEY_PASSWORD      signing key password
+#
+# Aurora design system (optional). The app depends on `tv.tootie.aurora:aurora`
+# via a local Gradle composite build (settings.gradle.kts), NOT from Maven. To
+# build it in CI, set the repository variable AURORA_REPO to the Aurora repo
+# (`owner/name`); the workflow checks it out and points the build at it via
+# AXON_AURORA_ANDROID_PATH. Optionally set AURORA_REF for a pinned branch/tag.
+# If AURORA_REPO is unset, the build proceeds and Aurora resolves from Maven
+# (which only works if it is actually published there).
+on:
+  push:
+    tags: ["android-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build android apk
+    runs-on: ubuntu-latest
+    # Only this job publishes a release; scope contents: write here rather than
+    # granting it workflow-wide to every step (build/sign included).
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # Optional Aurora composite checkout (see header). Lands a sibling
+      # checkout alongside the repo and exports its android/ path for Gradle.
+      - name: Checkout Aurora design system
+        if: vars.AURORA_REPO != ''
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          repository: ${{ vars.AURORA_REPO }}
+          ref: ${{ vars.AURORA_REF }}
+          path: .aurora-design-system
+          token: ${{ secrets.AURORA_TOKEN || github.token }}
+
+      - name: Export Aurora path
+        if: vars.AURORA_REPO != ''
+        # Use the built-in $GITHUB_WORKSPACE env var rather than a ${{ }} template
+        # expansion inside the run script (avoids the template-injection lint).
+        run: echo "AXON_AURORA_ANDROID_PATH=$GITHUB_WORKSPACE/.aurora-design-system/android" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: apps/android
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Resolve and validate version
+        id: version
+        run: |
+          set -euo pipefail
+          gradle="apps/android/app/build.gradle.kts"
+          version="$(grep -m1 -E '^[[:space:]]*versionName[[:space:]]*=' "$gradle" \
+            | sed -E 's/.*"([^"]+)".*/\1/')"
+          if [[ -z "$version" ]]; then
+            echo "::error::could not read versionName from $gradle" >&2
+            exit 1
+          fi
+
+          # On a real tag push, the tag version must match versionName so a
+          # release can never ship an APK the tag disagrees with.
+          if [[ "${GITHUB_REF}" == refs/tags/android-v* ]]; then
+            tag_version="${GITHUB_REF#refs/tags/android-v}"
+            if [[ "$tag_version" != "$version" ]]; then
+              echo "::error::tag android-v$tag_version does not match versionName $version — bump $gradle before tagging" >&2
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble release APK
+        run: ./gradlew -p apps/android :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Sign and package APK
+        id: package
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          dist="apps/android/app/build/outputs/apk/release"
+          unsigned="$dist/app-release-unsigned.apk"
+          if [[ ! -f "$unsigned" ]]; then
+            # Some AGP configs emit app-release.apk even without a signingConfig.
+            unsigned="$dist/app-release.apk"
+          fi
+          if [[ ! -f "$unsigned" ]]; then
+            echo "::error::release APK not found in $dist" >&2
+            ls -la "$dist" || true
+            exit 1
+          fi
+
+          # Pick the newest installed build-tools for zipalign/apksigner.
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          bt="$(ls -d "$sdk"/build-tools/* | sort -V | tail -n1)"
+          echo "Using build-tools at $bt"
+
+          out="axon-android-${version}.apk"
+          if [[ -n "${ANDROID_KEYSTORE_BASE64:-}" \
+                && -n "${ANDROID_KEYSTORE_PASSWORD:-}" \
+                && -n "${ANDROID_KEY_ALIAS:-}" \
+                && -n "${ANDROID_KEY_PASSWORD:-}" ]]; then
+            echo "Signing release APK"
+            ks="$RUNNER_TEMP/release-keystore.jks"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$ks"
+            aligned="$RUNNER_TEMP/aligned.apk"
+            "$bt/zipalign" -p -f 4 "$unsigned" "$aligned"
+            "$bt/apksigner" sign \
+              --ks "$ks" \
+              --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --key-pass "pass:$ANDROID_KEY_PASSWORD" \
+              --out "$out" "$aligned"
+            "$bt/apksigner" verify --verbose "$out"
+            rm -f "$ks"
+            signed=true
+          else
+            echo "::warning::no signing secrets configured — shipping UNSIGNED APK (cannot be installed until signed)"
+            out="axon-android-${version}-unsigned.apk"
+            "$bt/zipalign" -p -f 4 "$unsigned" "$out"
+            signed=false
+          fi
+
+          sha256sum "$out" > "$out.sha256"
+          echo "apk=$out" >> "$GITHUB_OUTPUT"
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-android
+          path: |
+            ${{ steps.package.outputs.apk }}
+            ${{ steps.package.outputs.apk }}.sha256
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        # Only create a release on real tag pushes; workflow_dispatch is dry-run.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/android-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Android v${{ steps.version.outputs.version }}
+          # Curated body instead of generate_release_notes: the Android app
+          # versions independently, so auto-notes would diff against an unrelated
+          # axon v* tag and dump the whole axon PR history into the app's notes.
+          body: |
+            Axon Android — app v${{ steps.version.outputs.version }}.
+
+            **Install:** download `${{ steps.package.outputs.apk }}` and install it on
+            your device (`adb install` or open it on-device). Signed: `${{ steps.package.outputs.signed }}`.
+
+            **Verify:** `sha256sum -c ${{ steps.package.outputs.apk }}.sha256`
+
+            See `apps/android/README.md` for build and configuration details.
+          files: |
+            ${{ steps.package.outputs.apk }}
+            ${{ steps.package.outputs.apk }}.sha256
+          fail_on_unmatched_files: true
+          # Keep the repo's "Latest release" badge pointing at axon `v*` releases.
+          make_latest: false

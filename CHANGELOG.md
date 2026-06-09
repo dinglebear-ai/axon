@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.0] - 2026-06-09
+
+### Added
+
+- **Android APK release workflow** (`.github/workflows/android-release.yml`).
+  Pushing an `android-v*` tag whose version matches `versionName` in
+  `apps/android/app/build.gradle.kts` builds the release APK, signs it
+  (zipalign + apksigner from release-keystore secrets, falling back to an
+  unsigned APK when secrets are absent), checksums it, and publishes a GitHub
+  Release with the APK + SHA256 attached (`make_latest: false`).
+  `workflow_dispatch` runs the same build as a dry-run that uploads the APK as a
+  run artifact without creating a Release. The Aurora design-system composite is
+  resolved via an optional `AURORA_REPO` checkout. Mirrors the
+  `chrome-extension-release` pattern so the Android app versions independently of
+  the main axon `v*` releases.
+
 ## [5.5.5] - 2026-06-09
 
 ### Changed
