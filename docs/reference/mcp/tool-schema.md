@@ -73,7 +73,7 @@ For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canon
 ## Response Policy (Context-Safe Defaults)
 - Most actions default to artifact-first (`response_mode=path`).
 - `scrape` and `retrieve` are document-reading actions and default to inline-first paged responses.
-- Heavy operations write result artifacts to `.cache/axon-mcp/`.
+- Heavy operations write result artifacts to `~/.axon/artifacts/<context>/` (override root with `AXON_MCP_ARTIFACT_DIR`).
 - Tool response returns compact metadata only by default:
   - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`
 - Explicit `inline` and `both` modes are capped/truncated and include artifact pointers.
