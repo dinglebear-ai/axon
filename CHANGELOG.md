@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.3] - 2026-06-09
+
+### Fixed
+
+- **Plugin `userConfig` missing from `plugin.json`.** The HTTP MCP transport in `.mcp.json` referenced `${user_config.server_url}` but no `userConfig` block existed — users were never prompted for the server URL, leaving the MCP connection URL malformed. Added `server_url` (required, default `http://localhost:8080`) and `api_token` (sensitive) fields.
+- **Plugin HTTP MCP auth not wired.** Added `headers: { Authorization: "Bearer ${user_config.api_token}" }` to `.mcp.json` so token-protected axon instances can authenticate the MCP connection.
+
+## [5.5.2] - 2026-06-09
+
+### Fixed
+
+- **README accuracy + completeness pass.** Corrected `/v1/actions` (a removed 404 stub) to reference the live `/v1/*` REST routes, and fixed the Claude plugin manifest path to `plugins/axon/.claude-plugin/plugin.json`. Replaced the non-matching `env_file_` test selector with `load_dotenv`.
+- **README coverage gaps closed.** Added the previously undocumented `brand`, `diff`, `endpoints`, `monitor jobs`, `refresh`, and `train` commands to the CLI Map; documented the SearXNG search backend (`AXON_SEARXNG_URL`, Tavily fallback), `GITLAB_TOKEN`/`GITEA_TOKEN`, the full ingest source list, and a new "Notable Capabilities" section covering hybrid RRF search, vertical extractors, and the `axon serve` web panel.
+
 ## [5.5.1] - 2026-06-09
 
 ### Changed
