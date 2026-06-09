@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.5] - 2026-06-09
+
+### Changed
+
+- **Renamed the `axon` usage skill to `using-axon`** so the skill directory and frontmatter `name` match the plugin's `dir == name` convention (the skill is now invoked as `axon:using-axon`). Updated the skill reference in `plugins/axon/README.md` and the global agent memory pointer.
+
+### Documentation
+
+- **`plugins/axon/README.md` skills inventory corrected** from a stale "Skills (16)" per-action list to the actual "Skills (2)" (`using-axon`, `axon-rag-synthesize`) after the per-action skills were consolidated into the unified usage skill.
+
 ## [5.5.4] - 2026-06-09
 
 ### Changed
