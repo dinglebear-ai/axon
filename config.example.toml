@@ -79,9 +79,11 @@
 # Env: AXON_ASK_MAX_CONTEXT_CHARS
 # max-context-chars = 300000
 
-# Max chunks returned per ask query (clamped 3–40).
+# Max chunks returned per ask query (clamped 3–64). When unset, the effective
+# value is model-tier-derived (Large 50 / Medium 28 / LocalGemma 20 / Small 10);
+# the static struct default is 24.
 # Env: AXON_ASK_CHUNK_LIMIT
-# chunk-limit = 20
+# chunk-limit = 24
 
 # Max candidate chunks fetched before scoring (clamped 8–300).
 # Env: AXON_ASK_CANDIDATE_LIMIT
@@ -109,12 +111,13 @@
 # min-relevance-score = 0.45
 
 # Domains treated as authoritative during reranking. Matches exact hosts and
-# subdomains. Env override: AXON_ASK_AUTHORITATIVE_DOMAINS=code.claude.com,docs.rs
-# authoritative-domains = ["code.claude.com"]
+# subdomains. Default: empty. Example value: ["code.claude.com", "docs.rs"].
+# Env override: AXON_ASK_AUTHORITATIVE_DOMAINS=code.claude.com,docs.rs
+# authoritative-domains = []
 
-# Boost weight for authoritative domains (clamped 0.0–0.5).
+# Boost weight for authoritative domains (clamped 0.0–0.5). Default: 0.0 (off).
 # Env: AXON_ASK_AUTHORITATIVE_BOOST
-# authoritative-boost = 0.12
+# authoritative-boost = 0.0
 
 # Min unique citations for non-trivial answers (clamped 1–5).
 # Env: AXON_ASK_MIN_CITATIONS_NONTRIVIAL
