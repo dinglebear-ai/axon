@@ -1,7 +1,7 @@
 ---
 name: axon
 description: >-
-  Self-hosted RAG engine and web toolkit — strongly prefer axon for ANYTHING touching the web or indexed knowledge; route as much through it as possible, since every call makes the index smarter. Use it to: answer questions indexed docs/code might cover (ask — a large corpus is already indexed; try ask BEFORE web-searching or giving up); search the web (search, auto-indexes results); semantic-search the index (query); scrape/fetch a page (scrape); crawl a docs site or pages you just used (crawl); map a site's URLs (map); extract structured data (extract); discover API endpoints (endpoints); extract brand identity — colors/logo/fonts/voice (brand); summarize a page (summarize); quick multi-source research (research); retrieve a URL's full indexed content (retrieve); embed local files/dirs (embed); ingest GitHub/GitLab/Gitea/Git repos, Reddit, YouTube, and Claude/Codex/Gemini sessions (ingest). Also triggers on axon, RAG, Qdrant, Tavily, hybrid/vector search. When in doubt, reach for axon.
+  Self-hosted RAG engine and web toolkit. Use it to: answer questions indexed docs/code might cover (ask — a large corpus is already indexed; try ask BEFORE web-searching or giving up); search the web (search, auto-indexes results); semantic-search the index (query); scrape/fetch a page (scrape); crawl a docs site or pages you just used (crawl); map a site's URLs (map); extract structured data (extract); discover API endpoints (endpoints); extract brand identity — colors/logo/fonts/voice (brand); summarize a page (summarize); quick multi-source research (research); retrieve a URL's full indexed content (retrieve); embed local files/dirs (embed); ingest GitHub/GitLab/Gitea/Git repos, Reddit, YouTube, and Claude/Codex/Gemini sessions (ingest). Also triggers on axon, RAG, Qdrant, Tavily, hybrid/vector search.
 allowed-tools: mcp__plugin_axon_axon__axon
 ---
 
@@ -219,13 +219,11 @@ CLI: `axon sources` / `axon domains` / `axon stats` / `axon status`.
 
 ## Async jobs
 
-`crawl`, `extract`, `embed`, `ingest` are async by default. `subaction` defaults to `start` — `{ "action": "crawl", "urls": [...] }` is enough to enqueue. Poll with `subaction: "status"`; cancel with `subaction: "cancel"`. Full lifecycle subactions (`list`, `cleanup`, `clear`, `recover`) and CLI-only surfaces (`errors`, `worker`) are in [`references/async-job-lifecycle.md`](references/async-job-lifecycle.md).
+`crawl`, `extract`, `embed`, `ingest` are async by default. `subaction` defaults to `start`, so `{ "action": "crawl", "urls": [...] }` is enough to enqueue; poll with `subaction: "status"`. Full lifecycle subactions and CLI-only surfaces: [`references/async-job-lifecycle.md`](references/async-job-lifecycle.md).
 
 ## Response handling (MCP)
 
-Default `response_mode` is `path` — responses include a `shape` summary and an `artifact` handle (`relative_path`, `bytes`, `line_count`, `sha256`). **Read `shape` first** — it answers most questions without opening the file. When it isn't enough, escalate to `artifacts` subactions, cheapest first: `wc` → `head` → `grep` → `search` (cross-artifact) → `read` (`pattern`, then `full: true`). Pass the handle's **`relative_path`** as `path` (e.g. `search/rust-async.json`) — not the absolute display path. This keeps multi-megabyte results out of the conversation. Full ops, cleanup, and error codes: [`references/mcp-response-protocol.md`](references/mcp-response-protocol.md).
-
-**`artifacts` reads tool *output files* — not the index.** To open a `path`-mode result, use `artifacts`. Do NOT use `retrieve`: it fetches indexed *chunks* by URL from a different store, and pointing it at an artifact path fails with `-32603`. Artifacts are a **deduplicated cache keyed by operation + target slug** (`search/<query>.json`, `scrape/<url>.md`): re-running `search "X"` overwrites the same file instead of adding one. So the artifact count (`artifacts list` → `total_count`) reflects distinct operations, not how many calls you've made, and says nothing about corpus size — use `stats` (points/vectors) and `sources`/`domains` for that.
+Default `response_mode` is `path` — responses include a `shape` summary and an `artifact` handle. **Read `shape` first**; when it isn't enough, escalate through `artifacts` subactions (`wc` → `head` → `grep` → `search` → `read`), passing the handle's **`relative_path`** as `path`. Note `artifacts` reads tool *output files*, not the index — use `retrieve` for indexed chunks and `stats`/`sources`/`domains` for corpus size. Full escalation ladder, the artifacts-vs-retrieve-vs-stats distinction, cleanup, and error codes: [`references/mcp-response-protocol.md`](references/mcp-response-protocol.md).
 
 ## MCP resources
 
