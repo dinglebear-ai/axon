@@ -132,7 +132,6 @@ URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — n
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_DATA_DIR` | `~/.axon` | Root directory for all persistent data (flat — no `axon/` subdir nesting) |
-| `HOST_HOME` | -- | Host user home for optional session-ingest bind mounts |
 
 ### Server ports
 
@@ -189,9 +188,13 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 |----------|---------|-------------|
 | `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Use `openai-compat` for llama.cpp/OpenAI-compatible `/v1/chat/completions` servers. |
 | `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. Do not include `/chat/completions`; Axon appends it. |
-| `AXON_OPENAI_MODEL` | -- | Model name sent to the OpenAI-compatible endpoint. Required when `AXON_LLM_BACKEND=openai-compat`. |
+| `AXON_SYNTHESIS_OPENAI_MODEL` | -- | Synthesis model for the OpenAI-compatible endpoint (ask/evaluate/suggest/extract/research). Required when `AXON_LLM_BACKEND=openai-compat`. |
+| `AXON_OPENAI_MODEL` | -- | Legacy alias for `AXON_SYNTHESIS_OPENAI_MODEL`. |
+| `AXON_CHAT_OPENAI_MODEL` | -- | Direct-chat model override. Empty = use the synthesis model. |
 | `AXON_OPENAI_API_KEY` | -- | Optional bearer token for OpenAI-compatible endpoints. Leave unset for local llama.cpp servers that do not require auth. |
-| `AXON_HEADLESS_GEMINI_MODEL` | -- | Gemini model override for synthesis. Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
+| `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | -- | Gemini synthesis model override (ask/evaluate/suggest/extract/research). Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
+| `AXON_HEADLESS_GEMINI_MODEL` | -- | Legacy alias for `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL`. |
+| `AXON_CHAT_HEADLESS_GEMINI_MODEL` | -- | Direct-chat Gemini model override. Empty = use the synthesis model. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent LLM completion requests. |
@@ -282,9 +285,9 @@ The remaining rows are runtime env controls until typed TOML fields exist.
 
 | TOML key | Env override | Default | Description |
 |----------|--------------|---------|-------------|
-| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Max context characters passed to the LLM (clamped 20000-1000000). Fallbacks: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
+| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered (static default `300000`) | Max context characters passed to the LLM (clamped 20000-1000000). When unset, model-tier fallbacks apply: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
 | `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `250` | Max retrieval candidates per prefetch (clamped 8-300) |
-| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `20` | Max total chunks selected for LLM context |
+| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `24` | Max total chunks selected for LLM context (clamped 3-64; when unset the effective value is model-tier-derived: 50/28/20/10) |
 | `ask.full-docs` | `AXON_ASK_FULL_DOCS` | `6` | Max full documents included in context |
 | `ask.backfill-chunks` | `AXON_ASK_BACKFILL_CHUNKS` | `5` | Backfill chunks from top documents to pad context (clamped 0-20) |
 | `ask.doc-fetch-concurrency` | `AXON_ASK_DOC_FETCH_CONCURRENCY` | `4` | Concurrent document fetches during context build (clamped 1-16) |
@@ -314,6 +317,8 @@ Queue caps now live in `~/.axon/config.toml` under `[workers]`.
 | `AXON_EMBED_DOC_CONCURRENCY` | CPU count | Max concurrent embed docs |
 | `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
 | `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Grace period before stale job reclaim |
+| `AXON_WATCH_TICK_SECS` | `15` | Watch scheduler sweep interval, seconds (min 1) |
+| `AXON_WATCH_LEASE_SECS` | `300` | Watch lease TTL, seconds; must exceed one run's wall time (min 1) |
 
 ### Web panel
 
@@ -329,6 +334,7 @@ password under `~/.axon/panel-password`. MCP and protected `/v1` routes use
 | `AXON_LOG_PATH` | `$AXON_DATA_DIR/logs/axon.log` (default `~/.axon/logs/axon.log`) | Full path to the active log file. Rotated archives (`<file>.1`, `<file>.2`, …) live in the same directory. |
 | `AXON_LOG_MAX_BYTES` | `10485760` | Size threshold (bytes) that triggers rotation. `0` disables rotation. Env-only — log rotation initialises before `config.toml` is parsed. |
 | `AXON_LOG_MAX_FILES` | `3` | Number of rotated archives to retain. `0` truncates without keeping any archive. |
+| `AXON_LOG_FULL_QUERIES` | -- | Log full query text instead of a redacted preview (verbose; default off) |
 
 ### MCP server
 
@@ -336,6 +342,7 @@ password under `~/.axon/panel-password`. MCP and protected `/v1` routes use
 |----------|---------|-------------|
 | `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address; non-loopback requires bearer or OAuth auth |
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port |
+| `AXON_MCP_TRANSPORT` | per-command | Transport override: `stdio`, `http`, or `both`. Unrecognized values fall back to the command default. Also `--transport`. |
 | `AXON_MCP_HTTP_TOKEN` | -- | Bearer or `x-api-key` token; generated by `axon setup init` for local bearer mode |
 | `AXON_MCP_AUTH_MODE` | `bearer` | Set to `oauth` to enable Google OAuth + DCR through lab-auth. |
 | `AXON_MCP_PUBLIC_URL` | -- | Public origin used for OAuth metadata, e.g. `https://axon.example.com`. |
@@ -373,7 +380,7 @@ containing cached source text.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_OUTPUT_DIR` | `$AXON_DATA_DIR/output` (default `~/.axon/output`) | Output directory for file-writing commands |
-| `AXON_NO_COLOR` | -- | Disable ANSI color output (any non-empty value) |
+| `NO_COLOR` | -- | Disable ANSI color output (standard `NO_COLOR`; any value). `FORCE_COLOR`/`CLICOLOR_FORCE` force it on |
 | `AXON_NO_WIPE` | -- | Prevent destructive cache wipes |
 | `AXON_DOMAINS_DETAILED` | -- | Enable detailed per-domain breakdown in `axon domains` |
 | `AXON_SOURCES_FACET_LIMIT` | `100000` | Facet limit for `axon sources` |
@@ -386,6 +393,15 @@ containing cached source text.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53335` | Host-accessible Qdrant URL for integration tests (backfilled by `dev-setup.sh`) |
+| `QDRANT_COLLECTION` | -- | Legacy alias for `AXON_COLLECTION` |
+| `AXON_EXCLUDE_PATH_PREFIX` | -- | Env form of `--exclude-path-prefix`; comma-separated path prefixes to skip during crawl (`none` disables the default locale list) |
+| `AXON_SUGGEST_BASE_URL_LIMIT` | `250` | Max base URLs scanned by `axon suggest` (clamped 10–5000) |
+| `AXON_SUGGEST_EXISTING_URL_LIMIT` | `500` | Max already-indexed URLs `axon suggest` considers (clamped 0–5000) |
+| `AXON_ENDPOINT_BUNDLE_CONCURRENCY` | `8` | Concurrent JS-bundle fetches during `endpoints` discovery |
+| `AXON_ENDPOINT_CHROME_CONCURRENCY` | `1` | Concurrent Chrome probes during `endpoints` discovery (Chrome is scarce) |
+| `AXON_ENDPOINT_VERIFY_CONCURRENCY` | `16` | Concurrent endpoint verification requests |
+| `AXON_CODEX_CMD` | -- | Path to the Codex CLI binary for the codex LLM backend (non-symlink executable) |
+| `AXON_CODEX_HOME` | -- | Source HOME dir holding Codex auth files (non-symlink directory) |
 
 ### Webclaw port (axon_rust-zehr)
 

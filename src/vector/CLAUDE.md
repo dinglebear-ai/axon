@@ -1,5 +1,5 @@
 # src/vector — Embeddings & Vector Search
-Last Modified: 2026-05-09
+Last Modified: 2026-06-09
 
 TEI embedding + Qdrant vector store ops. Supports both dense-only and hybrid (dense + sparse BM42) search depending on collection type.
 
@@ -169,7 +169,7 @@ A few sharp edges worth knowing before debugging retrieval:
 - **Empty sparse vector → silent dense-only fallback.** `compute_sparse_vector` returns empty for non-ASCII / all-stopword / very-short queries (every term < 3 chars). `dispatch_vector_search` routes to named-dense in that case. The fallback now logs a `tracing::warn!` with a query character profile, so it's visible at default INFO level (bd axon_rust-d71.9).
 - **`ask_min_relevance_score` is calibrated to cosine.** The threshold is intentionally skipped on the RRF code path — Qdrant's RRF fusion handles ordering, and topical-overlap is the only loose-quality gate that survives. Named collections still apply the threshold when hybrid search is disabled or the sparse query is empty. Run `axon evaluate --no-hybrid-search` for A/B comparison against dense-only behavior (bd axon_rust-d71.1 / d71.12).
 - **`compute_sparse_vector` returns `SparseVector::default()` (empty `indices`/`values`) for empty/non-indexable input.** Callers must check `sv.is_empty()` before issuing a hybrid query — Qdrant rejects empty sparse arms.
-- **Payload schema versioning.** Existing pre-`axon_rust-lu6a` points are implicit schema version `1`; new upserts carry the current `payload_schema_version = 4` (see `qdrant::PAYLOAD_SCHEMA_VERSION` in `ops/qdrant/utils.rs`; the value has since advanced 2 → 3 → 4 as vertical/GitHub fields were promoted to indexed top-level keys). Default retrieval applies no version filter — backward-compatible with all existing points. Opt-in callers use `VectorSearchRequest::with_payload_schema_version_min(Some(N))` to scope to vertical-aware fields. New keyword `extractor_name` payload field is OPTIONAL — generic crawl/embed paths leave it absent rather than writing a placeholder. `axon sources --by-schema-version` produces per-version chunk counts via collection scroll.
+- **Payload schema versioning.** Existing pre-`axon_rust-lu6a` points are implicit schema version `1`; new upserts carry the current `payload_schema_version = 5` (see `qdrant::PAYLOAD_SCHEMA_VERSION` in `ops/qdrant/utils.rs`; the value has since advanced 2 → 3 → 4 → 5 as vertical/GitHub fields were promoted to indexed top-level keys and the indexed `seed_url` origin field was added). Default retrieval applies no version filter — backward-compatible with all existing points. Opt-in callers use `VectorSearchRequest::with_payload_schema_version_min(Some(N))` to scope to vertical-aware fields. New keyword `extractor_name` payload field is OPTIONAL — generic crawl/embed paths leave it absent rather than writing a placeholder. `axon sources --by-schema-version` produces per-version chunk counts via collection scroll.
 
 ## Testing
 

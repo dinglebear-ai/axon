@@ -18,7 +18,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "5.5.0"
+version = "5.5.5"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -207,10 +207,6 @@ httpmock = "0.8"
 serial_test = "3"
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "dom_extraction"
-harness = false
 
 [lints.rust]
 unsafe_code = "deny"

@@ -1,5 +1,5 @@
 # src/extract — Vertical Extractor Framework
-Last Modified: 2026-05-16
+Last Modified: 2026-06-09
 
 Per-site/per-API "vertical" extractors that produce richer, more structured docs than the generic HTML→markdown crawl path. Shipped via `upnq` (framework) + `di8j`/`25cu`/`jj43`/`urk2` (12 extractors). Replaces the legacy webclaw mod.rs dispatcher.
 
@@ -54,7 +54,7 @@ pub struct ScrapedDoc {
 }
 ```
 
-`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 2`, see `src/vector/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on next crawl.
+`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 5`, see `src/vector/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on next crawl.
 
 ## auto_dispatch Flag
 
