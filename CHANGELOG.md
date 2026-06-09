@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.1] - 2026-06-09
+
+### Fixed
+
+- **MCP query-family errors now carry their cause.** `logged_internal_error`
+  (`src/mcp/server/common.rs`) previously returned a bare `"<context> failed"`
+  to the client while discarding the real error — only logging it server-side.
+  Callers (and the Labby gateway) saw opaque messages like `ask '...' failed`
+  with no actionable detail. It now appends the error's top-level message
+  (`"<context> failed: <cause>"`) for `ask`/`query`/`retrieve`/`evaluate`, while
+  the full source chain (with any nested DSNs/paths) still goes only to the
+  server log. This restores informative errors without leaking deep internals.
+
 ## [5.5.0] - 2026-06-08
 
 ### Added
@@ -57,7 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `axon-<rust-triple>` asset, but `release.yml` publishes a
   `axon-linux-x86_64.tar.gz` tarball, so installs 404'd against real releases.
   `install.sh` now downloads, checksum-verifies, and extracts the tarball.
-
 ## [5.4.1] - 2026-06-08
 
 ### Added
