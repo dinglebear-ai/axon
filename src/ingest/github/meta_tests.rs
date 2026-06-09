@@ -1,25 +1,27 @@
 use super::*;
+use serde_json::json;
 
 fn make_common_params() -> GitHubPayloadParams {
     GitHubPayloadParams {
         repo: "axon_rust".into(),
         owner: "jmagar".into(),
-        content_kind: "file".into(),
+        content_kind: ContentKind::File,
         default_branch: Some("main".into()),
         ..Default::default()
     }
 }
 
 #[test]
-fn payload_has_gh_and_git_keys() {
+fn payload_has_canonical_git_and_code_keys_only() {
     let params = make_common_params();
     let payload = build_github_payload(&params);
     let obj = payload.as_object().expect("payload is an object");
-    // Backwards-compat gh_* keys (32) plus canonical git_* keys and provider.
     let gh_count = obj.keys().filter(|k| k.starts_with("gh_")).count();
     let git_count = obj.keys().filter(|k| k.starts_with("git_")).count();
-    assert_eq!(gh_count, 32, "expected 32 gh_* keys, got {gh_count}");
+    let code_count = obj.keys().filter(|k| k.starts_with("code_")).count();
+    assert_eq!(gh_count, 0, "clean schema must not emit gh_* keys");
     assert!(git_count > 0, "expected git_* keys to be present");
+    assert!(code_count > 0, "expected code_* keys to be present");
     assert!(obj.contains_key("provider"), "expected provider key");
 }
 
@@ -27,10 +29,10 @@ fn payload_has_gh_and_git_keys() {
 fn payload_common_fields_always_present() {
     let params = make_common_params();
     let payload = build_github_payload(&params);
-    assert_eq!(payload["gh_repo"], "axon_rust");
-    assert_eq!(payload["gh_owner"], "jmagar");
-    assert_eq!(payload["gh_content_kind"], "file");
-    assert_eq!(payload["gh_default_branch"], "main");
+    assert_eq!(payload["git_repo"], "axon_rust");
+    assert_eq!(payload["git_owner"], "jmagar");
+    assert_eq!(payload["git_content_kind"], "file");
+    assert_eq!(payload["git_default_branch"], "main");
 }
 
 #[test]
@@ -38,7 +40,7 @@ fn payload_file_fields_populated() {
     let params = GitHubPayloadParams {
         repo: "axon_rust".into(),
         owner: "jmagar".into(),
-        content_kind: "file".into(),
+        content_kind: ContentKind::File,
         file_path: Some("src/main.rs".into()),
         file_language: Some("rust".into()),
         file_type: Some("source".into()),
@@ -47,36 +49,57 @@ fn payload_file_fields_populated() {
         ..Default::default()
     };
     let payload = build_github_payload(&params);
-    assert_eq!(payload["gh_file_path"], "src/main.rs");
-    assert_eq!(payload["gh_file_language"], "rust");
-    assert_eq!(payload["gh_file_type"], "source");
-    assert_eq!(payload["gh_is_test"], false);
-    assert_eq!(payload["gh_file_size_bytes"], 1024);
+    assert_eq!(payload["git_file_path"], "src/main.rs");
+    assert_eq!(payload["git_file_language"], "rust");
+    assert_eq!(payload["code_file_path"], "src/main.rs");
+    assert_eq!(payload["code_language"], "rust");
+    assert_eq!(payload["code_file_type"], "source");
+    assert_eq!(payload["code_is_test"], false);
+    assert_eq!(payload["code_file_size_bytes"], 1024);
+}
+
+#[test]
+fn payload_code_chunk_metadata_populated_when_present() {
+    let params = GitHubPayloadParams {
+        repo: "axon_rust".into(),
+        owner: "jmagar".into(),
+        content_kind: ContentKind::File,
+        chunking_method: Some("tree_sitter".into()),
+        symbol_name: Some("Response::parse".into()),
+        symbol_kind: Some("method".into()),
+        symbol_extraction_status: Some("ok".into()),
+        ..Default::default()
+    };
+    let payload = build_github_payload(&params);
+    assert_eq!(payload["code_chunking_method"], "tree_sitter");
+    assert_eq!(payload["symbol_name"], "Response::parse");
+    assert_eq!(payload["symbol_kind"], "method");
+    assert_eq!(payload["symbol_extraction_status"], "ok");
 }
 
 #[test]
 fn payload_issue_fields_null_for_file_chunks() {
     let params = make_common_params();
     let payload = build_github_payload(&params);
-    assert!(payload["gh_issue_number"].is_null());
-    assert!(payload["gh_state"].is_null());
-    assert!(payload["gh_author"].is_null());
-    assert!(payload["gh_labels"].is_null());
-    assert!(payload["gh_is_pr"].is_null());
-    assert!(payload["gh_merged_at"].is_null());
-    assert!(payload["gh_is_draft"].is_null());
+    assert!(payload["git_number"].is_null());
+    assert!(payload["git_state"].is_null());
+    assert!(payload["git_author"].is_null());
+    assert!(payload["git_labels"].is_null());
+    assert!(payload["git_is_pr"].is_null());
+    assert!(payload["git_merged_at"].is_null());
+    assert!(payload["git_is_draft"].is_null());
 }
 
 #[test]
 fn payload_repo_metadata_null_for_file_chunks() {
     let params = make_common_params();
     let payload = build_github_payload(&params);
-    assert!(payload["gh_stars"].is_null());
-    assert!(payload["gh_forks"].is_null());
-    assert!(payload["gh_open_issues"].is_null());
-    assert!(payload["gh_language"].is_null());
-    assert!(payload["gh_is_fork"].is_null());
-    assert!(payload["gh_is_archived"].is_null());
+    assert!(payload["git_repo_stars"].is_null());
+    assert!(payload["git_repo_forks"].is_null());
+    assert!(payload["git_repo_open_issues"].is_null());
+    assert!(payload["git_repo_language"].is_null());
+    assert!(payload["git_repo_is_fork"].is_null());
+    assert!(payload["git_repo_is_archived"].is_null());
 }
 
 #[test]
@@ -84,7 +107,7 @@ fn payload_issue_params_produce_correct_values() {
     let params = GitHubPayloadParams {
         repo: "axon_rust".into(),
         owner: "jmagar".into(),
-        content_kind: "issue".into(),
+        content_kind: ContentKind::Issue,
         issue_number: Some(42),
         state: Some("open".into()),
         author: Some("contributor".into()),
@@ -96,15 +119,16 @@ fn payload_issue_params_produce_correct_values() {
         ..Default::default()
     };
     let payload = build_github_payload(&params);
-    assert_eq!(payload["gh_content_kind"], "issue");
-    assert_eq!(payload["gh_issue_number"], 42);
-    assert_eq!(payload["gh_state"], "open");
-    assert_eq!(payload["gh_author"], "contributor");
-    assert_eq!(payload["gh_comment_count"], 5);
-    assert_eq!(payload["gh_labels"], json!(["bug", "urgent"]));
-    assert_eq!(payload["gh_is_pr"], false);
+    assert_eq!(payload["git_content_kind"], "issue");
+    assert_eq!(payload["git_number"], 42);
+    assert_eq!(payload["git_state"], "open");
+    assert_eq!(payload["git_author"], "contributor");
+    assert_eq!(payload["git_comment_count"], 5);
+    assert_eq!(payload["git_labels"], json!(["bug", "urgent"]));
+    assert_eq!(payload["git_is_pr"], false);
     // File fields should be null for issue chunks
-    assert!(payload["gh_file_path"].is_null());
+    assert!(payload["git_file_path"].is_null());
+    assert!(payload["code_file_path"].is_null());
 }
 
 #[test]
@@ -113,23 +137,25 @@ fn payload_keys_use_known_prefixes() {
     let payload = build_github_payload(&params);
     let obj = payload.as_object().unwrap();
     for key in obj.keys() {
-        let valid = key.starts_with("gh_") || key.starts_with("git_") || key == "provider";
+        let valid = key.starts_with("git_")
+            || key.starts_with("code_")
+            || matches!(
+                key.as_str(),
+                "provider" | "symbol_name" | "symbol_kind" | "symbol_extraction_status"
+            );
         assert!(
             valid,
-            "unexpected key '{key}' — expected gh_*, git_*, or provider"
+            "unexpected key '{key}' — expected git_*, code_*, provider, or symbol metadata"
         );
     }
 }
 
 #[test]
-fn promoted_fields_not_in_git_meta_blob() {
-    // gh_stars, gh_forks, gh_language, gh_topics, gh_is_fork, gh_is_archived,
-    // gh_file_type, gh_line_start, gh_line_end must live at the TOP LEVEL of the
-    // payload — not inside git_meta — so Qdrant can index and filter them.
+fn promoted_fields_are_canonical_top_level_fields() {
     let params = GitHubPayloadParams {
         repo: "axon_rust".into(),
         owner: "jmagar".into(),
-        content_kind: "file".into(),
+        content_kind: ContentKind::File,
         stars: Some(42),
         forks: Some(7),
         language: Some("Rust".into()),
@@ -137,85 +163,20 @@ fn promoted_fields_not_in_git_meta_blob() {
         is_fork: Some(false),
         is_archived: Some(false),
         file_type: Some("source".into()),
-        gh_line_start: Some(10),
-        gh_line_end: Some(50),
+        line_start: Some(10),
+        line_end: Some(50),
         ..Default::default()
     };
     let payload = build_github_payload(&params);
 
-    // Top-level assertions — these must exist as flat keys.
-    assert_eq!(payload["gh_stars"], 42, "gh_stars must be a top-level key");
-    assert_eq!(payload["gh_forks"], 7, "gh_forks must be a top-level key");
-    assert_eq!(
-        payload["gh_language"], "Rust",
-        "gh_language must be a top-level key"
-    );
-    assert_eq!(
-        payload["gh_topics"],
-        json!(["cli", "rag"]),
-        "gh_topics must be a top-level key"
-    );
-    assert_eq!(
-        payload["gh_is_fork"], false,
-        "gh_is_fork must be a top-level key"
-    );
-    assert_eq!(
-        payload["gh_is_archived"], false,
-        "gh_is_archived must be a top-level key"
-    );
-    assert_eq!(
-        payload["gh_file_type"], "source",
-        "gh_file_type must be a top-level key"
-    );
-    assert_eq!(
-        payload["gh_line_start"], 10,
-        "gh_line_start must be a top-level key"
-    );
-    assert_eq!(
-        payload["gh_line_end"], 50,
-        "gh_line_end must be a top-level key"
-    );
-
-    // git_meta assertions — git_meta exists (lower-priority extras) but must NOT
-    // contain the promoted fields. Use as_object() to fail loudly if git_meta is
-    // not a JSON object (which would indicate a structural regression).
-    let meta = payload["git_meta"]
-        .as_object()
-        .expect("git_meta must be a JSON object");
-    assert!(
-        !meta.contains_key("stars"),
-        "stars must not be stored in git_meta (found: {meta:?})"
-    );
-    assert!(
-        !meta.contains_key("forks"),
-        "forks must not be stored in git_meta (found: {meta:?})"
-    );
-    assert!(
-        !meta.contains_key("language"),
-        "language must not be stored in git_meta (found: {meta:?})"
-    );
-    assert!(
-        !meta.contains_key("topics"),
-        "topics must not be stored in git_meta (found: {meta:?})"
-    );
-    assert!(
-        !meta.contains_key("is_fork"),
-        "is_fork must not be stored in git_meta (found: {meta:?})"
-    );
-    assert!(
-        !meta.contains_key("is_archived"),
-        "is_archived must not be stored in git_meta (found: {meta:?})"
-    );
-    assert!(
-        !meta.contains_key("gh_file_type"),
-        "gh_file_type must not be stored in git_meta (found: {meta:?})"
-    );
-    assert!(
-        !meta.contains_key("gh_line_start"),
-        "gh_line_start must not be stored in git_meta (found: {meta:?})"
-    );
-    assert!(
-        !meta.contains_key("gh_line_end"),
-        "gh_line_end must not be stored in git_meta (found: {meta:?})"
-    );
+    assert_eq!(payload["git_repo_stars"], 42);
+    assert_eq!(payload["git_repo_forks"], 7);
+    assert_eq!(payload["git_repo_language"], "Rust");
+    assert_eq!(payload["git_repo_topics"], json!(["cli", "rag"]));
+    assert_eq!(payload["git_repo_is_fork"], false);
+    assert_eq!(payload["git_repo_is_archived"], false);
+    assert_eq!(payload["code_file_type"], "source");
+    assert_eq!(payload["code_line_start"], 10);
+    assert_eq!(payload["code_line_end"], 50);
+    assert!(payload["git_meta"].is_null());
 }

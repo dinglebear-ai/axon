@@ -26,10 +26,18 @@ async fn ensure_payload_indexes_fires_one_put_per_field() {
     let cfg = make_cfg(server.base_url());
     ensure_payload_indexes(&cfg).await.expect("should succeed");
 
-    // keyword(N) + integer(8) + datetime(1) + bool(2) = KEYWORD_INDEX_FIELDS.len() + 11
+    assert!(
+        KEYWORD_INDEX_FIELDS.contains(&"code_chunking_method"),
+        "code_chunking_method must be in the keyword index request list"
+    );
+    assert!(
+        KEYWORD_INDEX_FIELDS.contains(&"symbol_kind"),
+        "symbol_kind must be in the keyword index request list"
+    );
+    // keyword(N) + integer(11) + datetime(1) + bool(6) = KEYWORD_INDEX_FIELDS.len() + 18
     assert_eq!(
         mock.calls_async().await,
-        KEYWORD_INDEX_FIELDS.len() + 11,
+        KEYWORD_INDEX_FIELDS.len() + 18,
         "expected exactly one PUT per indexed field"
     );
 }

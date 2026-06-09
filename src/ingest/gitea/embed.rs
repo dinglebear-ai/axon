@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use reqwest::Client;
 
 use crate::core::config::Config;
-use crate::ingest::git_payload::{GitPayload, build_git_payload};
+use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
 use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 
 use super::GiteaTarget;
@@ -23,9 +23,6 @@ pub(crate) fn payload(
     kind: &'static str,
     kind_extra: serde_json::Value,
 ) -> serde_json::Value {
-    // Normalise Gitea "pull_request" to canonical "pr".
-    let git_content_kind: &'static str = if kind == "pull_request" { "pr" } else { kind };
-
     let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) = match kind {
         "issue" | "pull_request" => (
             kind_extra
@@ -64,7 +61,7 @@ pub(crate) fn payload(
         host: target.host.clone(),
         owner: Some(target.owner.clone()),
         repo: target.repo.clone(),
-        content_kind: git_content_kind,
+        content_kind: ContentKind::from_wire(kind),
         branch: repo.default_branch.clone(),
         state,
         number,
@@ -81,6 +78,7 @@ pub(crate) fn payload(
             "private": repo.private,
             "gitea": kind_extra,
         })),
+        ..GitPayload::default()
     })
 }
 

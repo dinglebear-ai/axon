@@ -17,6 +17,7 @@ fn make_point(chunk_text: &str, text: &str, chunk_index: Option<i64>) -> QdrantP
             chunk_text: chunk_text.to_string(),
             text: text.to_string(),
             chunk_index,
+            ..QdrantPayload::default()
         },
     }
 }
@@ -27,6 +28,7 @@ fn make_payload(chunk_text: &str, text: &str) -> QdrantPayload {
         chunk_text: chunk_text.to_string(),
         text: text.to_string(),
         chunk_index: None,
+        ..QdrantPayload::default()
     }
 }
 

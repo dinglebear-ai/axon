@@ -1,6 +1,5 @@
 mod batch;
 mod clone;
-mod line_range;
 mod prepare;
 
 use batch::collect_and_embed_batched;
@@ -57,7 +56,8 @@ pub async fn embed_files(
     ));
 
     let ctx = build_file_embed_ctx(cfg, common, repo_root);
-    let stats = collect_and_embed_batched(&ctx, file_items, files_total, reporter).await?;
+    let stats =
+        collect_and_embed_batched(&ctx, file_items, files_total, include_source, reporter).await?;
 
     reporter
         .report(serde_json::json!({
@@ -84,7 +84,8 @@ pub async fn embed_files(
     ));
     if stats.has_failed_batches() {
         bail!(
-            "github file embedding had failed batches: batches_failed={} files_failed={} docs_failed={} chunks_failed={} chunks_embedded={}",
+            "github file embedding had embed-batch failures: read_failed={} batches_failed={} files_failed={} docs_failed={} chunks_failed={} chunks_embedded={}",
+            stats.failed_file_reads,
             stats.failed_batches,
             stats.failed_files,
             stats.failed_docs,

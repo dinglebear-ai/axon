@@ -9,6 +9,32 @@ pub struct QdrantPayload {
     #[serde(default)]
     pub text: String,
     pub chunk_index: Option<i64>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub git_content_kind: Option<String>,
+    #[serde(default)]
+    pub git_file_path: Option<String>,
+    #[serde(default)]
+    pub code_file_path: Option<String>,
+    #[serde(default)]
+    pub code_language: Option<String>,
+    #[serde(default)]
+    pub code_file_type: Option<String>,
+    #[serde(default)]
+    pub code_is_test: Option<bool>,
+    #[serde(default)]
+    pub code_line_start: Option<u32>,
+    #[serde(default)]
+    pub code_line_end: Option<u32>,
+    #[serde(default)]
+    pub code_chunking_method: Option<String>,
+    #[serde(default)]
+    pub symbol_name: Option<String>,
+    #[serde(default)]
+    pub symbol_kind: Option<String>,
+    #[serde(default)]
+    pub symbol_extraction_status: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

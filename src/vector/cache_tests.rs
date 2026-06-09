@@ -17,6 +17,7 @@ fn make_point(text: &str) -> QdrantPoint {
             chunk_text: text.into(),
             text: String::new(),
             chunk_index: Some(0),
+            ..QdrantPayload::default()
         },
     }
 }

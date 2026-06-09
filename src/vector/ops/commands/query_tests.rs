@@ -1,6 +1,6 @@
 use super::{chunk_index_for_candidate, query_score_policy};
 use crate::core::config::Config;
-use crate::vector::ops::commands::retrieval::RetrievedCandidate;
+use crate::vector::ops::commands::retrieval::{CodeSearchMetadata, RetrievedCandidate};
 use crate::vector::ops::ranking;
 use crate::vector::ops::tei::{QUERY_INSTRUCTION, prepend_query_instruction};
 
@@ -48,6 +48,7 @@ fn chunk_index_for_candidate_returns_payload_index() {
             rerank_score: 0.9,
         },
         chunk_index: Some(42),
+        code: CodeSearchMetadata::default(),
     };
 
     assert_eq!(chunk_index_for_candidate(&selected), serde_json::json!(42));
@@ -74,4 +75,5 @@ fn query_score_policy_does_not_apply_ask_threshold() {
     assert!(policy.require_topical_overlap);
     assert_eq!(policy.authoritative_boost, 0.25);
     assert_eq!(policy.product_authority_boost, 0.35);
+    assert!(policy.apply_code_search_adjustment);
 }

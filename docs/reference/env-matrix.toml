@@ -1367,6 +1367,18 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_MAX_TREE_SITTER_FILE_BYTES"
+classification = "keep-env"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Advanced process-local guard for symbol extraction CPU/memory cost. Kept in env until a typed config.toml field is justified."
+
+[[env]]
 key = "AXON_LOG_MAX_FILES"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"

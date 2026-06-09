@@ -21,6 +21,7 @@ fn make_candidate(url: &str, chunk: &str, score: f64) -> RetrievedCandidate {
             rerank_score: score,
         },
         chunk_index: Some(42),
+        code: CodeSearchMetadata::default(),
     }
 }
 
@@ -33,6 +34,7 @@ fn make_hit(url: &str, chunk: &str, score: f64) -> QdrantSearchHit {
             chunk_text: chunk.to_string(),
             text: String::new(),
             chunk_index: Some(7),
+            ..QdrantPayload::default()
         },
     }
 }
@@ -123,6 +125,7 @@ fn score_policy_can_apply_threshold_and_topical_overlap() {
         authoritative_domains: &[],
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
+        apply_code_search_adjustment: false,
         min_relevance_score: Some(0.0),
         require_topical_overlap: true,
     };
@@ -143,12 +146,154 @@ fn score_policy_can_disable_threshold_for_query_modes() {
         authoritative_domains: &[],
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
+        apply_code_search_adjustment: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
     assert_eq!(
         score_and_filter_candidates(&candidates, &query_tokens, &policy).len(),
         1
+    );
+}
+
+#[test]
+fn code_intent_query_boosts_source_symbol_above_readme() {
+    let mut readme = make_candidate(
+        "https://github.com/dtolnay/itoa/blob/master/README.md#L1-L56",
+        "let mut buffer = itoa::Buffer::new(); let printed = buffer.format(128u64);",
+        1.0,
+    );
+    readme.code = CodeSearchMetadata {
+        content_kind: Some("file".to_string()),
+        file_path: Some("README.md".to_string()),
+        file_type: Some("doc".to_string()),
+        ..CodeSearchMetadata::default()
+    };
+    let mut source = make_candidate(
+        "https://github.com/dtolnay/itoa/blob/master/src/lib.rs#L62-L114",
+        "pub struct Buffer { bytes: [MaybeUninit<u8>; i128::MAX_STR_LEN] } impl Buffer { pub fn format<I: Integer>(&mut self, i: I) -> &str { i.write(unsafe { &mut *(&mut self.bytes as *mut [MaybeUninit<u8>] as *mut I::Buffer) }) } }",
+        0.75,
+    );
+    source.code = CodeSearchMetadata {
+        content_kind: Some("file".to_string()),
+        file_path: Some("src/lib.rs".to_string()),
+        file_type: Some("source".to_string()),
+        symbol_name: Some("Buffer".to_string()),
+        symbol_kind: Some("struct".to_string()),
+        ..CodeSearchMetadata::default()
+    };
+    let query_tokens = ranking::tokenize_query("itoa Buffer format function");
+    let policy = CandidateScorePolicy {
+        authoritative_domains: &[],
+        authoritative_boost: 0.0,
+        product_authority_boost: 0.0,
+        apply_code_search_adjustment: true,
+        min_relevance_score: None,
+        require_topical_overlap: true,
+    };
+
+    let selected = score_and_filter_candidates(&[readme, source], &query_tokens, &policy);
+
+    assert_eq!(
+        selected[0].code.file_path.as_deref(),
+        Some("src/lib.rs"),
+        "code-intent queries should prefer source symbols over README examples"
+    );
+}
+
+#[test]
+fn code_intent_query_prefers_symbol_match_over_benchmark_usage() {
+    let mut bench = make_candidate(
+        "https://github.com/dtolnay/itoa/blob/master/benches/bench.rs#L1-L26",
+        "fn do_bench() { let mut buf = itoa::Buffer::new(); let formatted = buf.format(int); }",
+        0.45,
+    );
+    bench.code = CodeSearchMetadata {
+        content_kind: Some("file".to_string()),
+        file_path: Some("benches/bench.rs".to_string()),
+        file_type: Some("source".to_string()),
+        symbol_name: Some("do_bench".to_string()),
+        symbol_kind: Some("function".to_string()),
+        ..CodeSearchMetadata::default()
+    };
+    let mut source = make_candidate(
+        "https://github.com/dtolnay/itoa/blob/master/src/lib.rs#L62-L114",
+        "pub struct Buffer { bytes: [MaybeUninit<u8>; i128::MAX_STR_LEN] } impl Buffer { pub fn format<I: Integer>(&mut self, i: I) -> &str { i.write(unsafe { &mut *(&mut self.bytes as *mut [MaybeUninit<u8>] as *mut I::Buffer) }) } }",
+        0.45,
+    );
+    source.code = CodeSearchMetadata {
+        content_kind: Some("file".to_string()),
+        file_path: Some("src/lib.rs".to_string()),
+        file_type: Some("source".to_string()),
+        symbol_name: Some("Buffer".to_string()),
+        symbol_kind: Some("struct".to_string()),
+        ..CodeSearchMetadata::default()
+    };
+    let query_tokens = ranking::tokenize_query("itoa Buffer format function");
+    let policy = CandidateScorePolicy {
+        authoritative_domains: &[],
+        authoritative_boost: 0.0,
+        product_authority_boost: 0.0,
+        apply_code_search_adjustment: true,
+        min_relevance_score: None,
+        require_topical_overlap: true,
+    };
+
+    let selected = score_and_filter_candidates(&[bench, source], &query_tokens, &policy);
+
+    assert_eq!(selected[0].code.symbol_name.as_deref(), Some("Buffer"));
+}
+
+#[test]
+fn code_intent_query_demotes_test_file_below_equivalent_source() {
+    let chunk =
+        "pub struct Buffer { len: usize } impl Buffer { pub fn format(&self) -> &str { \"\" } }";
+    let mut source = make_candidate(
+        "https://github.com/x/y/blob/main/src/lib.rs#L1-L10",
+        chunk,
+        0.6,
+    );
+    source.code = CodeSearchMetadata {
+        content_kind: Some("file".to_string()),
+        file_path: Some("src/lib.rs".to_string()),
+        file_type: Some("source".to_string()),
+        symbol_name: Some("Buffer".to_string()),
+        symbol_kind: Some("struct".to_string()),
+        is_test: Some(false),
+        ..CodeSearchMetadata::default()
+    };
+    let mut test_file = make_candidate(
+        "https://github.com/x/y/blob/main/tests/buffer_test.rs#L1-L10",
+        chunk,
+        0.6,
+    );
+    test_file.code = CodeSearchMetadata {
+        content_kind: Some("file".to_string()),
+        file_path: Some("tests/buffer_test.rs".to_string()),
+        file_type: Some("source".to_string()),
+        symbol_name: Some("Buffer".to_string()),
+        symbol_kind: Some("struct".to_string()),
+        is_test: Some(true),
+        ..CodeSearchMetadata::default()
+    };
+    let query_tokens = ranking::tokenize_query("Buffer format struct");
+    let policy = CandidateScorePolicy {
+        authoritative_domains: &[],
+        authoritative_boost: 0.0,
+        product_authority_boost: 0.0,
+        apply_code_search_adjustment: true,
+        min_relevance_score: None,
+        require_topical_overlap: true,
+    };
+
+    // Pass the test file first; the test-file demotion must still sort it below
+    // the otherwise-identical non-test source.
+    let selected = score_and_filter_candidates(&[test_file, source], &query_tokens, &policy);
+
+    assert_eq!(
+        selected[0].code.is_test,
+        Some(false),
+        "non-test source must outrank an equivalent test file under a code-intent query"
     );
 }
 
@@ -280,6 +425,7 @@ fn score_policy_boosts_docs_like_url_with_query_product_token() {
         authoritative_domains: &[],
         authoritative_boost: 0.0,
         product_authority_boost: 0.35,
+        apply_code_search_adjustment: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -309,6 +455,7 @@ fn score_trace_components_sum_to_final_rerank_score() {
         authoritative_domains: &["docs.widget.dev".to_string()],
         authoritative_boost: 0.12,
         product_authority_boost: 0.35,
+        apply_code_search_adjustment: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -357,6 +504,7 @@ fn score_trace_uses_supplied_dense_score_kind() {
         authoritative_domains: &[],
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
+        apply_code_search_adjustment: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -394,6 +542,7 @@ fn score_trace_preserves_normal_rerank_output() {
         authoritative_domains: &[],
         authoritative_boost: 0.0,
         product_authority_boost: 0.35,
+        apply_code_search_adjustment: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -433,6 +582,7 @@ fn rrf_score_trace_applies_lexical_boosts_without_min_relevance() {
         authoritative_domains: &[],
         authoritative_boost: 0.0,
         product_authority_boost: 0.35,
+        apply_code_search_adjustment: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };

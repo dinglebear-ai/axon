@@ -18,7 +18,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "5.4.2"
+version = "5.5.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -97,6 +97,7 @@ ssh2-config = "0.7.1"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
 subtle = "2"
 text-splitter = { version = "0.30", features = ["code", "markdown"] }
+tree-sitter = "0.26.9"
 tree-sitter-bash = "0.25"
 tree-sitter-go = "0.25"
 tree-sitter-javascript = "0.25"

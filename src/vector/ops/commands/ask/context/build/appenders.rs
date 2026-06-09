@@ -243,6 +243,7 @@ mod tests {
                 chunk_text: text.to_string(),
                 text: String::new(),
                 chunk_index: Some(chunk_index),
+                ..QdrantPayload::default()
             },
         }
     }

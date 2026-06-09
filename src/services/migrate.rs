@@ -239,14 +239,28 @@ async fn create_payload_indexes(
         "url",
         "domain",
         "source_type",
-        "gh_file_language",
-        "chunking_method",
+        "code_file_path",
+        "code_language",
+        "code_file_type",
+        "code_chunking_method",
+        "symbol_kind",
     ] {
         client
             .put(&index_url)
             .json(&serde_json::json!({
                 "field_name": field,
                 "field_schema": "keyword"
+            }))
+            .send()
+            .await?
+            .error_for_status()?;
+    }
+    for field in &["code_line_start", "code_line_end"] {
+        client
+            .put(&index_url)
+            .json(&serde_json::json!({
+                "field_name": field,
+                "field_schema": "integer"
             }))
             .send()
             .await?

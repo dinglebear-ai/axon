@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::core::logging::{log_info, log_warn};
 use crate::ingest::progress::PhaseReporter;
+use crate::vector::ops::qdrant::qdrant_delete_stale_repo_file_urls;
 use crate::vector::ops::{PreparedDoc, embed_prepared_docs};
 use anyhow::Result;
 use futures_util::stream::{self, StreamExt};
@@ -41,6 +42,16 @@ impl GitHubFileEmbedStats {
         self.failed_chunks += chunks;
     }
 
+    /// Any condition that must skip stale cleanup: a skipped file's chunks are
+    /// not in `embedded_urls`, so cleaning up would wrongly delete its prior
+    /// chunks. Read skips and embed-batch failures both qualify.
+    pub(super) fn has_failures(&self) -> bool {
+        self.failed_file_reads > 0 || self.failed_batches > 0
+    }
+
+    /// Only genuine embed-pipeline failures should abort the whole ingest. A
+    /// single unreadable file is logged and skipped (it still blocks cleanup via
+    /// [`has_failures`]) rather than failing the run.
     pub(super) fn has_failed_batches(&self) -> bool {
         self.failed_batches > 0
     }
@@ -52,6 +63,7 @@ pub(super) async fn collect_and_embed_batched(
     ctx: &Arc<FileEmbedCtx>,
     file_items: Vec<String>,
     files_total: usize,
+    include_source: bool,
     reporter: &PhaseReporter,
 ) -> Result<GitHubFileEmbedStats> {
     let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 16);
@@ -67,6 +79,7 @@ pub(super) async fn collect_and_embed_batched(
     ));
 
     let mut batch: Vec<PreparedDoc> = Vec::with_capacity(EMBED_BATCH_SIZE);
+    let mut embedded_urls = HashSet::new();
     let mut files_done = 0usize;
     let mut stats = GitHubFileEmbedStats::default();
 
@@ -82,8 +95,12 @@ pub(super) async fn collect_and_embed_batched(
             let batch_files = unique_file_count(&batch);
             let batch_docs = batch.len();
             let batch_chunks = batch.len();
+            let batch_urls = urls_for_docs(&batch);
             match flush_batch(&ctx.cfg, &mut batch, reporter).await {
-                Ok(n) => stats.chunks_embedded += n,
+                Ok(n) => {
+                    stats.chunks_embedded += n;
+                    embedded_urls.extend(batch_urls);
+                }
                 Err(e) => {
                     stats.record_failed_batch(batch_files, batch_docs, batch_chunks);
                     log_warn(&format!(
@@ -123,8 +140,12 @@ pub(super) async fn collect_and_embed_batched(
         let batch_files = unique_file_count(&batch);
         let batch_docs = batch.len();
         let batch_chunks = batch.len();
+        let batch_urls = urls_for_docs(&batch);
         match flush_batch(&ctx.cfg, &mut batch, reporter).await {
-            Ok(n) => stats.chunks_embedded += n,
+            Ok(n) => {
+                stats.chunks_embedded += n;
+                embedded_urls.extend(batch_urls);
+            }
             Err(e) => {
                 stats.record_failed_batch(batch_files, batch_docs, batch_chunks);
                 log_warn(&format!(
@@ -135,7 +156,50 @@ pub(super) async fn collect_and_embed_batched(
         }
     }
 
+    cleanup_stale_repo_file_urls(ctx, &stats, include_source, &embedded_urls).await?;
+
     Ok(stats)
+}
+
+async fn cleanup_stale_repo_file_urls(
+    ctx: &FileEmbedCtx,
+    stats: &GitHubFileEmbedStats,
+    include_source: bool,
+    embedded_urls: &HashSet<String>,
+) -> Result<()> {
+    if stats.has_failures() {
+        log_warn(&format!(
+            "github repo_file_stale_cleanup_skipped owner={} repo={} reason=prior_failures read_failed={} batches_failed={}",
+            ctx.owner, ctx.name, stats.failed_file_reads, stats.failed_batches
+        ));
+        return Ok(());
+    }
+    if !include_source {
+        log_info(&format!(
+            "github repo_file_stale_cleanup_skipped owner={} repo={} reason=partial_no_source",
+            ctx.owner, ctx.name
+        ));
+        return Ok(());
+    }
+    log_info(&format!(
+        "github repo_file_stale_cleanup_start owner={} repo={} current_urls={}",
+        ctx.owner,
+        ctx.name,
+        embedded_urls.len()
+    ));
+    let deleted = qdrant_delete_stale_repo_file_urls(
+        &ctx.cfg,
+        "github",
+        &ctx.owner,
+        &ctx.name,
+        embedded_urls,
+    )
+    .await?;
+    log_info(&format!(
+        "github repo_file_stale_cleanup_done owner={} repo={} stale_urls_deleted={deleted}",
+        ctx.owner, ctx.name
+    ));
+    Ok(())
 }
 
 fn unique_file_count(docs: &[PreparedDoc]) -> usize {
@@ -143,6 +207,10 @@ fn unique_file_count(docs: &[PreparedDoc]) -> usize {
         .filter_map(|doc| doc.title.as_deref())
         .collect::<HashSet<_>>()
         .len()
+}
+
+fn urls_for_docs(docs: &[PreparedDoc]) -> HashSet<String> {
+    docs.iter().map(|doc| doc.url.clone()).collect()
 }
 
 /// Send a batch of docs to the embed pipeline and clear the buffer.

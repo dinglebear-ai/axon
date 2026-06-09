@@ -15,12 +15,6 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "source_type",
     // Crawl/ingest origin marker — faceted by `axon refresh` to re-enqueue origins.
     "seed_url",
-    "gh_file_language",
-    // GitHub-specific indexed fields (top-level, not deprecated).
-    "gh_language",
-    "gh_file_type",
-    "gh_topics",
-    "chunking_method",
     "extractor_name",
     // Shared git provider schema (all git-backed ingest sources).
     "provider",
@@ -28,10 +22,18 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "git_owner",
     "git_repo",
     "git_content_kind",
+    "git_default_branch",
+    "git_repo_language",
+    "git_repo_topics",
     "git_state",
     "git_author",
     "git_file_language",
     "git_file_path",
+    "code_file_path",
+    "code_language",
+    "code_file_type",
+    "code_chunking_method",
+    "symbol_kind",
     // Vertical extractor fields.
     "pkg_registry",
     "pkg_name",
@@ -137,13 +139,15 @@ fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str
     let integer_fields = [
         ("chunk_index", index_url.to_string()),
         ("git_number", index_url.to_string()),
+        ("git_comment_count", index_url.to_string()),
+        ("git_repo_stars", index_url.to_string()),
+        ("git_repo_forks", index_url.to_string()),
+        ("git_repo_open_issues", index_url.to_string()),
         ("so_question_id", index_url.to_string()),
         ("payload_schema_version", index_url.to_string()),
-        // GitHub-specific integer indexes (top-level, not deprecated).
-        ("gh_stars", index_url.to_string()),
-        ("gh_forks", index_url.to_string()),
-        ("gh_line_start", index_url.to_string()),
-        ("gh_line_end", index_url.to_string()),
+        ("code_file_size_bytes", index_url.to_string()),
+        ("code_line_start", index_url.to_string()),
+        ("code_line_end", index_url.to_string()),
     ];
     for (field, url) in integer_fields {
         let c = client.clone();
@@ -166,11 +170,13 @@ fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str
         )
         .await
     }));
-    // Boolean indexes for GitHub flag fields (gh_is_fork, gh_is_archived).
-    // Qdrant has a native "bool" index type — booleans must not use "keyword".
     let bool_fields = [
-        ("gh_is_fork", index_url.to_string()),
-        ("gh_is_archived", index_url.to_string()),
+        ("git_repo_is_fork", index_url.to_string()),
+        ("git_repo_is_archived", index_url.to_string()),
+        ("git_repo_is_private", index_url.to_string()),
+        ("git_is_pr", index_url.to_string()),
+        ("git_is_draft", index_url.to_string()),
+        ("code_is_test", index_url.to_string()),
     ];
     for (field, url) in bool_fields {
         let c = client.clone();

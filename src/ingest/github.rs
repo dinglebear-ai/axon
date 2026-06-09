@@ -11,6 +11,7 @@ mod issues;
 pub(super) mod meta;
 mod wiki;
 
+use crate::ingest::git_payload::ContentKind;
 use meta::{GitHubPayloadParams, build_github_payload};
 
 /// Number of concurrent sub-tasks in `run_github_subtasks` (files, metadata, issues, PRs, wiki).
@@ -207,7 +208,7 @@ async fn embed_repo_metadata(
     let extra = build_github_payload(&GitHubPayloadParams {
         repo: common.name.clone(),
         owner: common.owner.clone(),
-        content_kind: "repo_metadata".into(),
+        content_kind: ContentKind::RepoMetadata,
         default_branch: Some(common.default_branch.clone()),
         repo_description: common.repo_description.clone(),
         pushed_at: common.pushed_at.clone(),
