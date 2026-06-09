@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use super::GitHubCommonFields;
 use super::meta::{GitHubPayloadParams, build_github_payload};
+use crate::ingest::git_payload::ContentKind;
 
 const PHASE_CLONING_WIKI: &str = "cloning_wiki";
 const PHASE_EMBEDDING_WIKI: &str = "embedding_wiki";
@@ -101,7 +102,7 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
         let extra = build_github_payload(&GitHubPayloadParams {
             repo: common.name.clone(),
             owner: common.owner.clone(),
-            content_kind: "wiki".into(),
+            content_kind: ContentKind::Wiki,
             default_branch: Some(common.default_branch.clone()),
             repo_description: common.repo_description.clone(),
             pushed_at: common.pushed_at.clone(),

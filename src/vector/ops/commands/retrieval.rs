@@ -22,6 +22,23 @@ pub(crate) use trace::{
 pub(crate) struct RetrievedCandidate {
     pub(crate) candidate: ranking::AskCandidate,
     pub(crate) chunk_index: Option<i64>,
+    pub(crate) code: CodeSearchMetadata,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct CodeSearchMetadata {
+    pub(crate) provider: Option<String>,
+    pub(crate) content_kind: Option<String>,
+    pub(crate) file_path: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) file_type: Option<String>,
+    pub(crate) is_test: Option<bool>,
+    pub(crate) line_start: Option<u32>,
+    pub(crate) line_end: Option<u32>,
+    pub(crate) chunking_method: Option<String>,
+    pub(crate) symbol_name: Option<String>,
+    pub(crate) symbol_kind: Option<String>,
+    pub(crate) symbol_extraction_status: Option<String>,
 }
 
 pub(crate) struct CandidateBuildPolicy {
@@ -32,6 +49,7 @@ pub(crate) struct CandidateScorePolicy<'a> {
     pub(crate) authoritative_domains: &'a [String],
     pub(crate) authoritative_boost: f64,
     pub(crate) product_authority_boost: f64,
+    pub(crate) apply_code_search_adjustment: bool,
     pub(crate) min_relevance_score: Option<f64>,
     pub(crate) require_topical_overlap: bool,
 }
@@ -181,6 +199,7 @@ fn retrieved_candidate_from_hit(
     url: String,
     chunk_text: String,
 ) -> RetrievedCandidate {
+    let code = code_metadata_from_payload(&hit.payload);
     let path = ranking::extract_path_from_url(&url);
     let url_tokens = ranking::tokenize_path_set(&path);
     let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
@@ -195,6 +214,27 @@ fn retrieved_candidate_from_hit(
             rerank_score: hit.score,
         },
         chunk_index: hit.payload.chunk_index,
+        code,
+    }
+}
+
+fn code_metadata_from_payload(payload: &qdrant::QdrantPayload) -> CodeSearchMetadata {
+    CodeSearchMetadata {
+        provider: payload.provider.clone(),
+        content_kind: payload.git_content_kind.clone(),
+        file_path: payload
+            .code_file_path
+            .clone()
+            .or_else(|| payload.git_file_path.clone()),
+        language: payload.code_language.clone(),
+        file_type: payload.code_file_type.clone(),
+        is_test: payload.code_is_test,
+        line_start: payload.code_line_start,
+        line_end: payload.code_line_end,
+        chunking_method: payload.code_chunking_method.clone(),
+        symbol_name: payload.symbol_name.clone(),
+        symbol_kind: payload.symbol_kind.clone(),
+        symbol_extraction_status: payload.symbol_extraction_status.clone(),
     }
 }
 

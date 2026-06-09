@@ -7,7 +7,7 @@ use crate::core::http::http_client;
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
-use crate::ingest::git_payload::{GitPayload, build_git_payload};
+use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_release",
@@ -113,7 +113,7 @@ fn build_extra(owner: &str, repo: &str) -> serde_json::Value {
         host: "github.com".to_string(),
         owner: Some(owner.to_string()),
         repo: repo.to_string(),
-        content_kind: "release",
+        content_kind: ContentKind::Release,
         ..Default::default()
     })
 }

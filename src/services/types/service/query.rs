@@ -13,6 +13,28 @@ pub struct QueryHit {
     pub source: String,
     pub snippet: String,
     pub chunk_index: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunking_method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol_extraction_status: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -1,7 +1,7 @@
 # Qdrant Payload Schema Contract
 
 Status: active
-Last updated: 2026-05-21
+Last updated: 2026-06-08
 
 This document is the authoritative reference for fields stored in Qdrant point payloads.
 Code must conform to this contract; if the code diverges, update the code and this document
@@ -23,7 +23,7 @@ Every point in every collection carries these fields, regardless of source.
 | `chunk_index` | integer | yes | 0-based position within the document. |
 | `chunk_text` | raw string | no | The stored text chunk. Never truncated. |
 | `scraped_at` | datetime | yes | RFC3339 timestamp at embed time. |
-| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `5`. |
+| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `7`. |
 
 ### Conditional Universal Fields
 
@@ -33,7 +33,6 @@ Present only when the condition is met. Absence is intentional — do not write 
 |-------|-------------|---------|--------------|
 | `title` | raw string | no | Source has a title (ingest paths, most verticals). Absent for generic crawl/embed. |
 | `extractor_name` | keyword | yes | Vertical extractor produced this point (`"github_repo"`, `"crates_io"`, etc.). Absent for crawl/embed. |
-| `chunking_method` | keyword | yes | Code chunk strategy: `"tree_sitter"` or `"prose"`. Absent when not a code chunk. |
 | `structured_kind` | keyword | no | Structured-data pass found JSON-LD/Next.js/SvelteKit: `"jsonld"`, `"next_data"`, `"sveltekit"`. |
 | `structured_type` | raw string | no | Schema.org type when `structured_kind` is present (`"Article"`, `"Product"`, …). |
 | `structured_id` | raw string | no | Schema.org `@id` when present. |
@@ -75,66 +74,52 @@ in addition to their source-type-specific fields. See `src/ingest/git_payload.rs
 | `git_repo` | keyword | yes | Repository name (final path segment). |
 | `git_content_kind` | keyword | yes | `"file"` \| `"issue"` \| `"pr"` \| `"release"` \| `"wiki"` \| `"repo_metadata"` |
 | `git_branch` | keyword | no | Default or cloned branch. |
+| `git_default_branch` | keyword | yes | Repository default branch when known. |
+| `git_repo_description` | raw string | no | Repository description when known. |
+| `git_repo_pushed_at` | raw string | no | Last pushed timestamp when known. |
+| `git_repo_is_private` | bool | yes | Whether the repo is private when known. |
+| `git_repo_stars` | integer | yes | Stargazer count at ingest time when available. |
+| `git_repo_forks` | integer | yes | Fork count at ingest time when available. |
+| `git_repo_open_issues` | integer | yes | Open issue count at ingest time when available. |
+| `git_repo_language` | keyword | yes | Primary repo language when available. |
+| `git_repo_topics` | keyword[] | yes | Repository topics/tags when available. |
+| `git_repo_is_fork` | bool | yes | Whether the repo is a fork when available. |
+| `git_repo_is_archived` | bool | yes | Whether the repo is archived when available. |
 | `git_state` | keyword | yes | `"open"` \| `"closed"` \| `"merged"` \| null. |
 | `git_number` | integer | yes | Issue or PR number. Null for non-issue/PR content. |
 | `git_author` | keyword | yes | Author login/username. |
 | `git_labels` | keyword[] | no | Labels array. |
-| `git_is_draft` | bool | no | PR draft status. |
+| `git_comment_count` | integer | yes | Issue/PR comment count when available. |
+| `git_is_pr` | bool | yes | Whether an issue-like item is a PR. |
+| `git_is_draft` | bool | yes | PR draft status. |
 | `git_merged_at` | raw string | no | ISO8601 merge timestamp. |
 | `git_created_at` | raw string | no | ISO8601 creation timestamp. |
 | `git_updated_at` | raw string | no | ISO8601 update timestamp. |
 | `git_file_path` | keyword | yes | Relative file path for `git_content_kind = "file"`. Indexed in `payload_indexes.rs`; `git_file_language` is also indexed for language-scoped file queries. |
 | `git_file_language` | keyword | yes | File language/extension for file chunks. |
-| `git_meta` | raw JSON | no | Provider-specific extras (stars, visibility, clone_url, …). Not indexed. |
+| `git_meta` | raw JSON | no | Provider-specific extras that do not generalize. Not indexed. |
 
-### GitHub-specific fields (top-level, indexed)
+### Code Search Fields
 
-These fields carry GitHub-specific metadata with no `git_*` equivalent. They are **not** deprecated —
-they are the canonical place to query GitHub-only data. All are indexed for Qdrant filtering.
+Git-backed file chunks also emit provider-neutral `code_*` and symbol fields. These are the
+Lumen-like code-search shape used by query ranking and result output.
 
 | Field | Qdrant type | Indexed | Notes |
 |-------|-------------|---------|-------|
-| `gh_language` | keyword | yes | Primary repo language (e.g. `"Rust"`, `"Python"`). |
-| `gh_file_type` | keyword | yes | File classification: `"source"` \| `"test"` \| `"config"` \| `"doc"`. From `classify_file_type()`. |
-| `gh_topics` | keyword[] | yes | GitHub topics array (e.g. `["cli", "rag"]`). |
-| `gh_is_fork` | bool | yes | Whether the repo is a fork. |
-| `gh_is_archived` | bool | yes | Whether the repo is archived. |
-| `gh_stars` | integer | yes | Stargazer count at ingest time. |
-| `gh_forks` | integer | yes | Fork count at ingest time. |
-| `gh_line_start` | integer | yes | First line of the code chunk (1-indexed, inclusive). For code attribution. |
-| `gh_line_end` | integer | yes | Last line of the code chunk (1-indexed, inclusive). |
+| `code_file_path` | keyword | yes | Relative file path for source/doc file chunks. Mirrors `git_file_path` for git providers. |
+| `code_language` | keyword | yes | File language/extension for code-ranking and filters. |
+| `code_file_type` | keyword | yes | `"source"` \| `"test"` \| `"config"` \| `"doc"`. |
+| `code_is_test` | bool | yes | Test-file classification used for code-search demotion. |
+| `code_file_size_bytes` | integer | yes | File size in bytes when known. |
+| `code_line_start` | integer | yes | First line of the chunk (1-indexed, inclusive). |
+| `code_line_end` | integer | yes | Last line of the chunk (1-indexed, inclusive). |
+| `code_chunking_method` | keyword | yes | `"tree_sitter"` for symbol-aware chunks or `"prose"` for fallback chunks. |
+| `symbol_name` | keyword | no | Extracted declaration/symbol name when available. Added in schema v6. |
+| `symbol_kind` | keyword | yes | `"function"`, `"method"`, `"struct"`, `"enum"`, `"trait"`, `"impl"`, `"const"`, `"static"`, `"type"`, `"mod"`, `"other"`. Added in schema v6. |
+| `symbol_extraction_status` | keyword | no | `"ok"`, `"unsupported"`, `"skipped_large"`, `"none_found"`, or `"prose"`. Added in schema v6. |
 
-### GitHub backwards-compat fields (deprecated)
-
-GitHub ingest also emits additional flat `gh_*` fields that duplicate `git_*` canonical fields
-for backwards compatibility with existing indexed points. **New code should query `git_*` fields.**
-The `gh_*` duplicates will be removed after a full re-index.
-
-| `gh_*` field | Duplicates | Indexed |
-|---|---|---|
-| `gh_repo` | `git_repo` | no |
-| `gh_owner` | `git_owner` | no |
-| `gh_content_kind` | `git_content_kind` | no |
-| `gh_branch` | `git_branch` | no |
-| `gh_state` | `git_state` | no |
-| `gh_issue_number` | `git_number` | no |
-| `gh_author` | `git_author` | no |
-| `gh_labels` | `git_labels` | no |
-| `gh_is_draft` | `git_is_draft` | no |
-| `gh_merged_at` | `git_merged_at` | no |
-| `gh_created_at` | `git_created_at` | no |
-| `gh_updated_at` | `git_updated_at` | no |
-| `gh_file_path` | `git_file_path` | no |
-| `gh_file_language` | `git_file_language` | yes (keyword) |
-| `gh_default_branch` | `git_branch` | no |
-| `gh_repo_description` | *(no git_* equivalent — in git_meta)* | no |
-| `gh_pushed_at` | *(no git_* equivalent — in git_meta)* | no |
-| `gh_is_private` | *(no git_* equivalent — in git_meta)* | no |
-| `gh_open_issues` | *(no git_* equivalent — in git_meta)* | no |
-
-**`git_meta` blob contents (not indexed):** `open_issues`, `is_private`, `default_branch`,
-`repo_description`, `pushed_at`, `gh_is_test`, `gh_file_size_bytes`, `gh_comment_count`, `gh_is_pr`.
-These are available for reference but cannot be efficiently filtered in Qdrant.
+GitHub no longer emits `gh_*` duplicate fields in payload schema v7. Re-index cleanly after
+upgrading if a collection still contains old `gh_*` points.
 
 ---
 
@@ -221,6 +206,9 @@ flat fields. The full per-extractor schema is defined in
 | 2 | axon_rust-lu6a | Added `payload_schema_version`, `extractor_name`, `structured_*` fields. |
 | 3 | 2026-05-21 | Added canonical git_* provider fields (git_host, git_owner, git_repo, git_content_kind, etc.) and vertical extractor extra payload fields. |
 | 4 | 2026-05-21 | Promoted gh_stars, gh_forks, gh_language, gh_topics, gh_is_fork, gh_is_archived, gh_file_type, gh_line_start, gh_line_end from git_meta blob to indexed top-level fields. Removed these keys from git_meta. |
+| 5 | 2026-05-16 | Added indexed top-level `seed_url` origin tracking for `axon refresh`. |
+| 6 | 2026-06-08 | Added code chunk `symbol_name`/`symbol_kind` metadata, `symbol_extraction_status`, and restored `chunking_method` writes for GitHub file chunks. |
+| 7 | 2026-06-08 | Clean-break git/code schema: replaced new `gh_*` writes with canonical `git_*`, `code_*`, and symbol fields. |
 
 Points without `payload_schema_version` are treated as version 1. Retrieval applies no version
 filter by default — all points are queryable. Use

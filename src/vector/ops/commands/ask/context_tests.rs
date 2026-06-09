@@ -16,7 +16,9 @@ use crate::services::types::{
     AskExplainRetrieval, AskExplainScoreKind, AskExplainSelectionDecision,
     AskExplainSelectionDecisionKind, CorpusHealthKind,
 };
-use crate::vector::ops::commands::retrieval::{CandidateRankingTrace, RetrievedCandidate};
+use crate::vector::ops::commands::retrieval::{
+    CandidateRankingTrace, CodeSearchMetadata, RetrievedCandidate,
+};
 use crate::vector::ops::ranking::AskCandidate;
 use crate::vector::ops::ranking::is_low_signal_url;
 use crate::vector::ops::tei::qdrant_store::VectorMode;
@@ -46,6 +48,7 @@ fn retrieved_candidate(url: &str, chunk: &str, score: f64) -> RetrievedCandidate
             rerank_score: 0.0,
         },
         chunk_index: Some(7),
+        code: CodeSearchMetadata::default(),
     }
 }
 
@@ -106,6 +109,7 @@ fn kept_trace(url: &str, chunk_index: i64) -> CandidateRankingTrace {
         candidate: RetrievedCandidate {
             candidate: trace_candidate(url, chunk_index, 0.7, 0.8),
             chunk_index: Some(chunk_index),
+            code: CodeSearchMetadata::default(),
         },
         score_kind: AskExplainScoreKind::Cosine,
         score_components: Vec::new(),
@@ -741,6 +745,48 @@ fn apply_mode_aware_rerank_rrf_boosts_docs_like_product_token_url() {
         "https://docs.widget.dev/docs/en/discover-plugins"
     );
     assert!(selected[0].candidate.rerank_score > selected[1].candidate.rerank_score);
+}
+
+#[test]
+fn apply_mode_aware_rerank_does_not_apply_code_search_adjustment() {
+    let mut readme = retrieved_candidate(
+        "https://github.com/dtolnay/itoa/blob/master/README.md#L1-L56",
+        "let mut buffer = itoa::Buffer::new(); let printed = buffer.format(128u64);",
+        1.0,
+    );
+    readme.code = CodeSearchMetadata {
+        content_kind: Some("file".to_string()),
+        file_path: Some("README.md".to_string()),
+        file_type: Some("doc".to_string()),
+        ..CodeSearchMetadata::default()
+    };
+    let mut source = retrieved_candidate(
+        "https://github.com/dtolnay/itoa/blob/master/src/lib.rs#L62-L114",
+        "pub struct Buffer; impl Buffer { pub fn format<I>(&mut self, i: I) -> &str { todo!() } }",
+        0.75,
+    );
+    source.code = CodeSearchMetadata {
+        content_kind: Some("file".to_string()),
+        file_path: Some("src/lib.rs".to_string()),
+        file_type: Some("source".to_string()),
+        symbol_name: Some("Buffer".to_string()),
+        symbol_kind: Some("struct".to_string()),
+        ..CodeSearchMetadata::default()
+    };
+
+    let selected = apply_mode_aware_rerank(
+        true,
+        &[readme, source],
+        &[
+            "itoa".to_string(),
+            "buffer".to_string(),
+            "format".to_string(),
+            "function".to_string(),
+        ],
+        &rerank_params(&[]),
+    );
+
+    assert_eq!(selected[0].code.file_path.as_deref(), Some("README.md"));
 }
 
 #[test]

@@ -249,6 +249,17 @@ fn query_result_has_results_vec() {
         source: "docs".to_string(),
         snippet: "snippet".to_string(),
         chunk_index: None,
+        file_path: None,
+        symbol: None,
+        kind: None,
+        start_line: None,
+        end_line: None,
+        file_type: None,
+        language: None,
+        provider: None,
+        content_kind: None,
+        chunking_method: None,
+        symbol_extraction_status: None,
     }];
     let r = QueryResult { results: v };
     assert_eq!(r.results.len(), 1);

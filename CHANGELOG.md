@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.0] - 2026-06-08
+
+### Added
+
+- **Symbol-aware code chunking for GitHub ingest.** Code files are chunked with
+  tree-sitter (new `src/vector/ops/input/code/{chunk,extract,postprocess}.rs`),
+  emitting per-chunk `symbol_name`/`symbol_kind`/`symbol_extraction_status` and
+  `code_line_*`/`code_chunking_method` metadata via a canonical `git_*`/`code_*`
+  payload (`src/ingest/git_payload.rs`). Adds the `tree-sitter` dependency.
+- **Code-aware retrieval ranking.** Query/ask retrieval factors code-symbol and
+  line-range metadata into ranking and trace output
+  (`src/vector/ops/commands/retrieval/*`, `query.rs`).
+
+### Changed
+
+- GitHub file ingest (`src/ingest/github/files/*`) reworked around the new code
+  chunker; payload-index schema extended for the `code_*`/`symbol_*` fields.
+
+> Rebuilt from PR #187 onto a proper base off `main` — the original branch was an
+> orphan with no shared history with `main` (unmergeable). No drift: `main`'s
+> #188 (`select.rs`) and `be78e629` work are untouched.
+
 ## [5.4.2] - 2026-06-08
 
 ### Fixed

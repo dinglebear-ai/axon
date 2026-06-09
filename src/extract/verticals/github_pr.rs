@@ -9,7 +9,7 @@ use crate::core::http::http_client;
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
-use crate::ingest::git_payload::{GitPayload, build_git_payload};
+use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_pr",
@@ -154,7 +154,7 @@ fn build_extra(
         host: "github.com".to_string(),
         owner: Some(owner.to_string()),
         repo: repo.to_string(),
-        content_kind: "pr",
+        content_kind: ContentKind::Pr,
         state: if pr_state.is_empty() {
             None
         } else {

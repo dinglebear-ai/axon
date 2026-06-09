@@ -198,6 +198,85 @@ func main() {
 }
 
 #[test]
+fn chunk_typed_rust_function_has_symbol_metadata() {
+    let src = "fn hello() {\n    println!(\"hello\");\n}\n";
+    let chunks = chunk_code_chunks(src, "rs").unwrap();
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].symbol_name(), Some("hello"));
+    assert_eq!(chunks[0].symbol_kind(), Some(SymbolKind::Function));
+    assert_eq!(chunks[0].declaration_start_line, 1);
+    assert_eq!(chunks[0].declaration_end_line, 3);
+}
+
+#[test]
+fn chunk_typed_go_function_has_symbol_metadata() {
+    let src = "package main\n\nfunc Hello() {\n}\n";
+    let chunks = chunk_code_chunks(src, "go").unwrap();
+    assert!(chunks.iter().any(|chunk| {
+        chunk.symbol_name() == Some("Hello") && chunk.symbol_kind() == Some(SymbolKind::Function)
+    }));
+}
+
+#[test]
+fn symbol_extraction_status_is_observable() {
+    let rust = "fn hello() {}\n";
+    let rust_chunks = chunk_code_chunks(rust, "rs").unwrap();
+    assert_eq!(
+        code_symbol_extraction_status(rust, "rs", &rust_chunks),
+        "ok"
+    );
+
+    let py = "def hello():\n    pass\n";
+    let py_chunks = chunk_code_chunks(py, "py").unwrap();
+    assert_eq!(
+        code_symbol_extraction_status(py, "py", &py_chunks),
+        "unsupported"
+    );
+
+    let text_chunks = vec![CodeChunk {
+        text: "hello".into(),
+        byte_start: 0,
+        byte_end: 5,
+        start_line: 1,
+        end_line: 1,
+        declaration_start_line: 1,
+        declaration_end_line: 1,
+        symbol: None,
+    }];
+    assert_eq!(
+        code_symbol_extraction_status("hello", "txt", &text_chunks),
+        "prose"
+    );
+}
+
+#[test]
+fn chunk_typed_python_uses_code_splitter_without_symbol_metadata() {
+    let mut src = String::new();
+    for i in 0..40 {
+        src.push_str(&format!(
+            "def func_{i}(x):\n    result = x * {i} + 1\n    return result\n\n"
+        ));
+    }
+    let chunks = chunk_code_chunks(&src, "py").unwrap();
+    assert!(chunks.len() > 1, "Python should stay code-split");
+    assert!(chunks.iter().all(|chunk| chunk.symbol_name().is_none()));
+    assert!(chunks.iter().all(|chunk| chunk.symbol_kind().is_none()));
+}
+
+#[test]
+fn oversized_rust_function_continuations_include_header() {
+    let mut src = String::from("fn big() {\n");
+    for i in 0..150 {
+        src.push_str(&format!("    let var_{i} = {i} * 2 + 1;\n"));
+    }
+    src.push_str("}\n");
+
+    let chunks = chunk_code_chunks(&src, "rs").unwrap();
+    assert!(chunks.len() > 2);
+    assert!(chunks[2].text.trim_start().starts_with("fn big()"));
+}
+
+#[test]
 fn chunk_bash_script() {
     let src = r#"
 #!/bin/bash
@@ -266,4 +345,62 @@ function App(): JSX.Element {
     let chunks = chunk_code(src, "tsx").unwrap();
     assert!(!chunks.is_empty());
     assert!(chunks[0].contains("function App"));
+}
+
+// ── SymbolKind round-trip + source-symbol classification ──────────────
+
+#[test]
+fn symbol_kind_str_roundtrips_for_every_variant() {
+    use SymbolKind::*;
+    for kind in [
+        Function, Method, Struct, Enum, Trait, Impl, Const, Static, Type, Mod, Other,
+    ] {
+        assert_eq!(
+            SymbolKind::from_str(kind.as_str()),
+            Some(kind),
+            "as_str/from_str must round-trip for {kind:?}"
+        );
+    }
+    // Strings the ranking match used to accept but no extractor ever emits.
+    assert_eq!(SymbolKind::from_str("interface"), None);
+    assert_eq!(SymbolKind::from_str("var"), None);
+    assert_eq!(SymbolKind::from_str("nonsense"), None);
+}
+
+#[test]
+fn source_symbol_classification_excludes_mod_and_other() {
+    use SymbolKind::*;
+    for kind in [
+        Function, Method, Struct, Enum, Trait, Impl, Const, Static, Type,
+    ] {
+        assert!(
+            kind.is_source_symbol(),
+            "{kind:?} should be a source symbol"
+        );
+    }
+    assert!(!Mod.is_source_symbol());
+    assert!(!Other.is_source_symbol());
+}
+
+#[test]
+fn symbol_extraction_status_none_found_for_symbolless_rust() {
+    // A supported language whose parse yields no extractable symbols.
+    let src = "// just a comment\nuse std::fmt;\n";
+    let chunks = chunk_code_chunks(src, "rs").unwrap();
+    assert!(chunks.iter().all(|chunk| chunk.symbol.is_none()));
+    assert_eq!(
+        code_symbol_extraction_status(src, "rs", &chunks),
+        "none_found"
+    );
+}
+
+#[test]
+fn oversized_multibyte_chunk_splits_without_panic() {
+    // A >2000-byte chunk full of multibyte characters exercises the char-boundary
+    // walk-back in push_bounded_chunks; a non-boundary slice would panic.
+    let body = "café ".repeat(800); // ~4 KB, multibyte
+    let src = format!("fn big() {{\n    let _s = \"{body}\";\n}}\n");
+    let chunks = chunk_code_chunks(&src, "rs").unwrap();
+    assert!(!chunks.is_empty());
+    assert!(chunks.iter().all(|chunk| !chunk.text.is_empty()));
 }

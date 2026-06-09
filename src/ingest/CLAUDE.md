@@ -14,7 +14,7 @@ ingest/
 ├── github/        # GitHub repo ingestion (code, issues, PRs, wiki)
 │   ├── files.rs   # file tree fetch + raw content via reqwest
 │   ├── issues.rs  # octocrab paginated issues + PRs
-│   ├── meta.rs    # GitHubPayloadParams unified builder → gh_* fields per chunk
+│   ├── meta.rs    # GitHubPayloadParams unified builder → git_*/code_* fields per chunk
 │   └── wiki.rs    # git clone --depth=1 subprocess; no wiki = Ok(0)
 ├── gitlab.rs      # module root + orchestration (gitlab.com + self-hosted)
 ├── gitlab/        # GitLab repo ingestion (metadata, files, issues, MRs, wiki)
@@ -81,8 +81,8 @@ ingest/
 - Source code is **included by default** — disable with `--no-source`. Code files use **tree-sitter AST-aware chunking** (Rust, Python, JavaScript, TypeScript, Go, Bash); unsupported languages fall back to 2000-char prose chunking
 - Files are fetched tree-first (one API call), then content per file concurrently via `buffer_unordered(16)` — can be slow without token on large repos
 - `wiki.rs` runs `git clone --depth=1` as a subprocess — requires `git` in PATH/container. Non-zero exit = no wiki = `Ok(0)` (not an error)
-- **Metadata**: `github/meta.rs` builds a **unified** 31-field `gh_*` payload via `GitHubPayloadParams` struct and `build_github_payload()`. All chunk types (file, issue, PR, wiki) share the same field schema — unused fields are null/default. Includes repo-level (owner, stars, forks, topics, pushed_at), file-level (path, language, file_type, is_test, chunking_method), and issue/PR-level (number, state, author, labels, merged_at, is_draft) fields.
-- **File classification**: `classify_file_type()` in `src/vector/ops/input/classify.rs` tags each file as `test`/`config`/`doc`/`source` — stored in `gh_file_type`
+- **Metadata**: `github/meta.rs` builds canonical `git_*` and `code_*` payload fields via `GitHubPayloadParams` and `build_github_payload()`. GitHub no longer emits `gh_*` duplicates in payload schema v7. Includes repo-level (`git_repo_*`), file-level (`code_file_*`, `code_line_*`, `code_chunking_method`), symbol-level (`symbol_*`), and issue/PR-level (`git_number`, `git_state`, `git_author`, labels, merge/draft fields) metadata.
+- **File classification**: `classify_file_type()` in `src/vector/ops/input/classify.rs` tags each file as `test`/`config`/`doc`/`source` — stored in `code_file_type`
 
 ### Reddit (`reddit.rs` + `reddit/`)
 - Reddit OAuth2 **client credentials** flow (app-only, no user login)
@@ -138,7 +138,7 @@ All ingest sources use the unified `embed_prepared_docs` pipeline via `PreparedD
 | `source_type` | `String` | Yes | Ingest payloads use `"github"` / `"gitlab"` / `"gitea"` / `"git"` / `"reddit"` / `"youtube"` / `"sessions"`. Session parsers may write more specific Qdrant payload values such as `"claude_session"` or `"codex_session"`. |
 | `content_type` | `&'static str` | Yes | `"text"` or `"markdown"`. Stored in Qdrant payload — affects nothing in the embed pipeline itself, but is queryable. |
 | `title` | `Option<String>` | No | Human-readable label (file path, video title, issue title). Stored in Qdrant payload. |
-| `extra` | `Option<Value>` | No | Source-specific metadata as a flat JSON object. All keys stored in Qdrant payload and queryable. Use `gh_*` / `reddit_*` / `yt_*` prefixes per source. |
+| `extra` | `Option<Value>` | No | Source-specific metadata as a flat JSON object. All keys stored in Qdrant payload and queryable. Git-backed sources should use canonical `git_*`/`code_*`; other sources keep source prefixes such as `reddit_*` / `yt_*`. |
 
 ### Canonical Pattern
 
@@ -161,8 +161,11 @@ let doc = PreparedDoc {
     content_type: "text",
     title: Some("src/lib.rs".to_string()),
     extra: Some(serde_json::json!({
-        "gh_owner": "rust-lang",
-        "gh_repo": "rust",
+        "provider": "github",
+        "git_owner": "rust-lang",
+        "git_repo": "rust",
+        "git_content_kind": "file",
+        "code_file_path": "src/lib.rs",
     })),
 };
 let summary = embed_prepared_docs(cfg, vec![doc], None).await?;

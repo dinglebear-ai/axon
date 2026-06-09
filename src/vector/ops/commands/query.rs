@@ -77,7 +77,18 @@ pub async fn query_results(
                 "url": url,
                 "source": source,
                 "snippet": snippet,
-                "chunk_index": chunk_index_for_candidate(selected)
+                "chunk_index": chunk_index_for_candidate(selected),
+                "file_path": selected.code.file_path.clone(),
+                "symbol": selected.code.symbol_name.clone(),
+                "kind": selected.code.symbol_kind.clone(),
+                "start_line": selected.code.line_start,
+                "end_line": selected.code.line_end,
+                "file_type": selected.code.file_type.clone(),
+                "language": selected.code.language.clone(),
+                "provider": selected.code.provider.clone(),
+                "content_kind": selected.code.content_kind.clone(),
+                "chunking_method": selected.code.chunking_method.clone(),
+                "symbol_extraction_status": selected.code.symbol_extraction_status.clone()
             })
         })
         .collect::<Vec<_>>())
@@ -88,6 +99,7 @@ fn query_score_policy(cfg: &Config) -> CandidateScorePolicy<'_> {
         authoritative_domains: &cfg.ask_authoritative_domains,
         authoritative_boost: cfg.ask_authoritative_boost,
         product_authority_boost: 0.35,
+        apply_code_search_adjustment: true,
         min_relevance_score: None,
         require_topical_overlap: true,
     }

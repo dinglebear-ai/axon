@@ -55,10 +55,11 @@ async fn qdrant_delete_with_retry(
             }
         }
     }
-    Err(anyhow!(
-        "{}",
-        last_error.unwrap_or_else(|| format!("{context}: unknown qdrant delete failure"))
-    ))
+    let message = match last_error {
+        Some(error) => error,
+        None => format!("{context}: unknown qdrant delete failure"),
+    };
+    Err(anyhow!("{}", message))
 }
 
 /// Delete all Qdrant points matching `url` via payload filter.
@@ -165,6 +166,78 @@ pub async fn qdrant_delete_stale_domain_urls(
     Ok(stale.len())
 }
 
+/// Delete a repo's previously-indexed `git_content_kind="file"` points whose
+/// `url` is not in `current_urls`. Returns the count of stale URLs deleted.
+///
+/// Must be called only after the current file set has been embedded — the
+/// surviving set is defined by `current_urls`, so running it before embedding
+/// would delete live chunks. Uses `wait=false` (async delete): the preceding
+/// embed already guaranteed consistency, so this maintenance delete need not
+/// block on HNSW index rebuild.
+pub async fn qdrant_delete_stale_repo_file_urls(
+    cfg: &Config,
+    provider: &str,
+    owner: &str,
+    repo: &str,
+    current_urls: &HashSet<String>,
+) -> Result<usize> {
+    let indexed = scroll_url_set(cfg, repo_file_points_filter(provider, owner, repo), None).await?;
+    let stale: Vec<String> = indexed
+        .into_iter()
+        .filter(|url| !current_urls.contains(url))
+        .collect();
+    if stale.is_empty() {
+        return Ok(0);
+    }
+
+    let url_conditions: Vec<serde_json::Value> = stale
+        .iter()
+        .map(|url| serde_json::json!({"key": "url", "match": {"value": url}}))
+        .collect();
+    let client = internal_service_http_client()?;
+    let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
+    for batch in url_conditions.chunks(500) {
+        // Scope the delete to this repo's file points (must) AND a stale URL
+        // (should), so a URL collision can never delete another repo's points.
+        qdrant_delete_with_retry(
+            client,
+            &endpoint,
+            serde_json::json!({
+                "filter": {
+                    "must": [
+                        {"key": "provider", "match": {"value": provider}},
+                        {"key": "git_owner", "match": {"value": owner}},
+                        {"key": "git_repo", "match": {"value": repo}},
+                        {"key": "git_content_kind", "match": {"value": "file"}}
+                    ],
+                    "should": batch
+                }
+            }),
+            "qdrant_delete_stale_repo_file_urls",
+        )
+        .await?;
+    }
+    Ok(stale.len())
+}
+
+#[cfg(test)]
+fn repo_code_points_delete_body(provider: &str, owner: &str, repo: &str) -> serde_json::Value {
+    serde_json::json!({
+        "filter": repo_file_points_filter(provider, owner, repo)
+    })
+}
+
+fn repo_file_points_filter(provider: &str, owner: &str, repo: &str) -> serde_json::Value {
+    serde_json::json!({
+        "must": [
+            {"key": "provider", "match": {"value": provider}},
+            {"key": "git_owner", "match": {"value": owner}},
+            {"key": "git_repo", "match": {"value": repo}},
+            {"key": "git_content_kind", "match": {"value": "file"}}
+        ]
+    })
+}
+
 pub async fn qdrant_delete_points(cfg: &Config, ids: &[String]) -> Result<usize> {
     if ids.is_empty() {
         return Ok(0);
@@ -182,3 +255,7 @@ pub async fn qdrant_delete_points(cfg: &Config, ids: &[String]) -> Result<usize>
     }
     Ok(ids.len())
 }
+
+#[cfg(test)]
+#[path = "delete_tests.rs"]
+mod repo_code_delete_tests;

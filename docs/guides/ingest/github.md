@@ -45,7 +45,7 @@ Each file is classified by `classify_file_type()` in `src/vector/ops/input/class
 | `doc` | Extensions: `.md`, `.mdx`, `.rst`, `.txt` |
 | `source` | Everything else |
 
-Classification is stored in the `gh_file_type` metadata field on each chunk.
+Classification is stored in the `code_file_type` metadata field on each chunk.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ The argument accepts:
 6. Code files are chunked via `chunk_code()` (tree-sitter AST when available, prose fallback); doc files use `chunk_text()`. Chunks are embedded through `embed_prepared_docs()` in batches
 7. Fetches issues (all states) and PRs (all states) via octocrab with automatic pagination
 8. Clones the wiki separately via `git clone --depth=1` and walks `.md`/`.rst`/`.txt` files when GitHub reports a wiki exists
-9. All chunk types carry unified `gh_*` metadata payload via `build_github_payload()` in `src/ingest/github/meta.rs`
+9. All chunk types carry canonical `git_*`/`code_*` metadata payload via `build_github_payload()` in `src/ingest/github/meta.rs`
 
 ### Clone Authentication and Fallback
 
@@ -107,52 +107,54 @@ The current threshold is fixed and conservative: any failed embed batch makes th
 
 ## Qdrant Metadata Fields
 
-All GitHub chunks carry a **unified** set of 31 `gh_*` payload fields built by `build_github_payload()` in `src/ingest/github/meta.rs` via the `GitHubPayloadParams` struct. Every chunk type gets the same field schema — unused fields are set to `null`/`""` /`[]`/`0`/`false`.
+GitHub chunks carry canonical `git_*`, `code_*`, and `symbol_*` payload fields built by `build_github_payload()` in `src/ingest/github/meta.rs` via the `GitHubPayloadParams` struct. Schema v7 is a clean break: new GitHub ingest no longer emits `gh_*` duplicate fields.
 
 ### Repository-level fields (all chunk types)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `gh_owner` | `string` | Repository owner |
-| `gh_repo` | `string` | Repository name |
-| `gh_repo_slug` | `string` | `owner/repo` canonical form |
-| `gh_default_branch` | `string` | Default branch name |
-| `gh_stars` | `integer` | Stargazer count at index time |
-| `gh_forks` | `integer` | Fork count at index time |
-| `gh_open_issues` | `integer` | Open issue count at index time |
-| `gh_language` | `string \| null` | Primary language as reported by GitHub |
-| `gh_topics` | `string[]` | Repository topics array |
-| `gh_created_at` | `string \| null` | Repository creation timestamp (RFC 3339) |
-| `gh_pushed_at` | `string \| null` | Last push timestamp (RFC 3339) |
-| `gh_is_fork` | `boolean` | Whether the repository is a fork |
-| `gh_is_archived` | `boolean` | Whether the repository is archived |
-| `gh_is_private` | `boolean` | Whether the repository is private |
-| `gh_description` | `string` | Repository description |
+| `git_owner` | `string` | Repository owner |
+| `git_repo` | `string` | Repository name |
+| `git_default_branch` | `string` | Default branch name |
+| `git_repo_stars` | `integer` | Stargazer count at index time |
+| `git_repo_forks` | `integer` | Fork count at index time |
+| `git_repo_open_issues` | `integer` | Open issue count at index time |
+| `git_repo_language` | `string \| null` | Primary language as reported by GitHub |
+| `git_repo_topics` | `string[]` | Repository topics array |
+| `git_repo_pushed_at` | `string \| null` | Last push timestamp (RFC 3339) |
+| `git_repo_is_fork` | `boolean` | Whether the repository is a fork |
+| `git_repo_is_archived` | `boolean` | Whether the repository is archived |
+| `git_repo_is_private` | `boolean` | Whether the repository is private |
+| `git_repo_description` | `string` | Repository description |
 
 ### File-specific fields (code, doc, wiki chunks)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `gh_file_path` | `string` | Relative file path within the repo |
-| `gh_file_language` | `string` | Human-readable language name (from extension) |
-| `gh_file_type` | `string` | `"test"`, `"config"`, `"doc"`, or `"source"` (from `classify_file_type()`) |
-| `gh_is_test` | `boolean` | Whether the file is a test file |
-| `gh_file_size_bytes` | `integer` | File size in bytes |
-| `gh_chunking_method` | `string` | `"tree-sitter"` or `"prose"` — how the file was chunked |
+| `git_file_path` / `code_file_path` | `string` | Relative file path within the repo |
+| `git_file_language` / `code_language` | `string` | Human-readable language name (from extension) |
+| `code_file_type` | `string` | `"test"`, `"config"`, `"doc"`, or `"source"` (from `classify_file_type()`) |
+| `code_is_test` | `boolean` | Whether the file is a test file |
+| `code_file_size_bytes` | `integer` | File size in bytes |
+| `code_line_start` / `code_line_end` | `integer` | 1-indexed inclusive source line range for the chunk |
+| `code_chunking_method` | `string` | `"tree_sitter"` or `"prose"` — how the file was chunked |
+| `symbol_name` | `string` | Declaration name for code chunks when known, e.g. `"Response::parse"` |
+| `symbol_kind` | `string` | Declaration kind for code chunks when known, e.g. `"function"` or `"method"` |
+| `symbol_extraction_status` | `string` | File-level symbol extraction status: `"ok"`, `"unsupported"`, `"skipped_large"`, `"none_found"`, or `"prose"` |
 
 ### Issue/PR fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `gh_issue_number` | `integer` | GitHub issue/PR number |
-| `gh_state` | `string` | `"open"`, `"closed"`, or `"unknown"` |
-| `gh_author` | `string` | Login of the author |
-| `gh_updated_at` | `string \| null` | Last-updated timestamp (RFC 3339) |
-| `gh_comment_count` | `integer` | Number of comments |
-| `gh_labels` | `string[]` | Label names |
-| `gh_is_pr` | `boolean` | `true` for pull requests, `false` for issues |
-| `gh_merged_at` | `string \| null` | Merge timestamp; `null` if not merged or if issue |
-| `gh_is_draft` | `boolean` | Whether the PR was a draft at index time |
+| `git_number` | `integer` | GitHub issue/PR number |
+| `git_state` | `string` | `"open"`, `"closed"`, or `"unknown"` |
+| `git_author` | `string` | Login of the author |
+| `git_updated_at` | `string \| null` | Last-updated timestamp (RFC 3339) |
+| `git_comment_count` | `integer` | Number of comments |
+| `git_labels` | `string[]` | Label names |
+| `git_is_pr` | `boolean` | `true` for pull requests, `false` for issues |
+| `git_merged_at` | `string \| null` | Merge timestamp; `null` if not merged or if issue |
+| `git_is_draft` | `boolean` | Whether the PR was a draft at index time |
 
 ## Known Limitations
 

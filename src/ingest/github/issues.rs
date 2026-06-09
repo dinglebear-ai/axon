@@ -8,6 +8,7 @@ use octocrab::{models, params};
 
 use super::GitHubCommonFields;
 use super::meta::{GitHubPayloadParams, build_github_payload, issue_state_str};
+use crate::ingest::git_payload::ContentKind;
 
 const PHASE_FETCHING_ISSUES: &str = "fetching_issues";
 const PHASE_FETCHING_PRS: &str = "fetching_prs";
@@ -75,7 +76,7 @@ pub async fn ingest_issues(
             let extra = build_github_payload(&GitHubPayloadParams {
                 repo: common.name.clone(),
                 owner: common.owner.clone(),
-                content_kind: "issue".into(),
+                content_kind: ContentKind::Issue,
                 default_branch: Some(common.default_branch.clone()),
                 repo_description: common.repo_description.clone(),
                 pushed_at: common.pushed_at.clone(),
@@ -187,7 +188,7 @@ pub async fn ingest_pull_requests(
             let extra = build_github_payload(&GitHubPayloadParams {
                 repo: common.name.clone(),
                 owner: common.owner.clone(),
-                content_kind: "pull_request".into(),
+                content_kind: ContentKind::Pr,
                 default_branch: Some(common.default_branch.clone()),
                 repo_description: common.repo_description.clone(),
                 pushed_at: common.pushed_at.clone(),

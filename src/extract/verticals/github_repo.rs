@@ -9,7 +9,7 @@ use crate::core::http::http_client;
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
-use crate::ingest::git_payload::{GitPayload, build_git_payload};
+use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_repo",
@@ -177,7 +177,7 @@ fn build_extra(owner: &str, repo: &str, data: &serde_json::Value) -> serde_json:
         host: "github.com".to_string(),
         owner: Some(owner.to_string()),
         repo: repo.to_string(),
-        content_kind: "repo_metadata",
+        content_kind: ContentKind::RepoMetadata,
         ..Default::default()
     });
     if let Some(obj) = extra.as_object_mut() {

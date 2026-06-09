@@ -13,7 +13,10 @@ pub mod retrieve;
 pub mod scroll;
 
 // Re-exports for convenience (public API)
-pub use delete::{qdrant_delete_points, qdrant_delete_stale_domain_urls, qdrant_delete_stale_tail};
+pub use delete::{
+    qdrant_delete_points, qdrant_delete_stale_domain_urls, qdrant_delete_stale_repo_file_urls,
+    qdrant_delete_stale_tail,
+};
 pub use facets::{qdrant_domain_facets, qdrant_facet, qdrant_facet_filtered, qdrant_url_facets};
 pub use retrieve::{
     qdrant_batch_retrieve_by_urls, qdrant_retrieve_by_url, qdrant_retrieve_by_url_details,
