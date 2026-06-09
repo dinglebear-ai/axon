@@ -224,7 +224,7 @@ fn print_top_level_help() {
     for example in [
         format!("{bin} scrape https://example.com --wait true --skip-embed"),
         format!("{bin} crawl https://docs.rs/spider --wait false"),
-        format!("{bin} query \"embedding pipeline\" --collection cortex"),
+        format!("{bin} query \"embedding pipeline\" --collection axon"),
     ] {
         println!("  {}", p.dim(&example));
     }
@@ -233,7 +233,7 @@ fn print_top_level_help() {
     println!("  {}", p.section("Global Options"));
     row("-h, --help", "display help");
     row("--wait <bool>", "true waits; false enqueues and returns");
-    row("--collection <name>", "vector collection (default cortex)");
+    row("--collection <name>", "vector collection (default axon)");
     row("--skip-embed", "fetch/save without indexing into Qdrant");
     row(
         "--cache <bool>",

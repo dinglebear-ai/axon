@@ -59,7 +59,7 @@ Error responses:
 
 | Mode | Behavior |
 |------|----------|
-| `path` | Write result to `.cache/axon-mcp/` artifact file, return metadata (path, bytes, sha256, preview) |
+| `path` | Write result to a `~/.axon/artifacts/<context>/` artifact file, return metadata (path, bytes, sha256, preview) |
 | `inline` | Return full result inline (capped/truncated) |
 | `both` | Write artifact and return inline content |
 | `auto_inline` | Inline if payload is below `AXON_INLINE_BYTES_THRESHOLD` (default 8192), otherwise artifact |
