@@ -168,11 +168,11 @@ RUST_LOG=info,axon::mcp=debug axon mcp
 
 ### Response artifacts
 
-When `response_mode=path` (default), responses are written to `$AXON_MCP_ARTIFACT_DIR`. Inspect artifacts:
+When a response is written in `path` mode, the artifact file lives under `~/.axon/artifacts/<context>/` (override the root with `AXON_MCP_ARTIFACT_DIR`; resolution is `AXON_MCP_ARTIFACT_DIR` → `AXON_DATA_DIR/artifacts` → `$HOME/.axon/artifacts`, with `/tmp/axon-mcp/<context>` as a fallback). Files are named `<action>/<slug>.<ext>`. Inspect them:
 
 ```bash
-ls -la .cache/axon-mcp/
-cat .cache/axon-mcp/latest-response.json | jq .
+ls -la ~/.axon/artifacts/*/
+cat ~/.axon/artifacts/*/search/*.json | jq .
 ```
 
 ### Service context

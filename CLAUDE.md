@@ -106,7 +106,7 @@ All flags are `--global` (usable with any subcommand).
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--max-pages <n>` | u32 | `0` | Page cap for crawl (0 = uncapped, default). |
-| `--max-depth <n>` | usize | `5` | Maximum crawl depth from start URL. |
+| `--max-depth <n>` | usize | `10` | Maximum crawl depth from start URL. |
 | `--budget <PATH=N>` | string | — | Per-path page cap (repeatable), e.g. `--budget /blog=100 --budget '*=1000'`. `*` applies to all paths. Unset = no budget. Wired to spider's `with_budget`. |
 | `--etag-conditional` | flag | `false` | Conditional re-crawl: seed spider's ETag cache from a persisted `etag.json` sidecar so unchanged pages return 304 and are reused from the previous run instead of re-fetched. Independent of `--cache`. 304 skips are reconciled back into the manifest as `changed=false` entries, gated on spider's visited set so deleted/undiscovered pages are not resurrected. |
 | `--render-mode <mode>` | enum | `auto-switch` | `http`, `chrome`, or `auto-switch`. Auto-switch tries HTTP first, falls back to Chrome if >60% thin pages. |
@@ -726,7 +726,7 @@ Bump type is determined by the commit message prefix:
 
 **Files to update in this repo:**
 - `Cargo.toml` — `version = "X.Y.Z"` in `[package]`
-- `.claude-plugin/plugin.json` — `"version": "X.Y.Z"`
+- `plugins/axon/.claude-plugin/plugin.json` — `"version": "X.Y.Z"`
 - `README.md` — version badge or header
 - `CHANGELOG.md` — new entry under the bumped version
 

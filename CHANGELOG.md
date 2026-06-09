@@ -5,6 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.5] - 2026-06-09
+
+### Changed
+
+- **Renamed the `axon` usage skill to `using-axon`** so the skill directory and frontmatter `name` match the plugin's `dir == name` convention (the skill is now invoked as `axon:using-axon`). Updated the skill reference in `plugins/axon/README.md` and the global agent memory pointer.
+
+### Documentation
+
+- **`plugins/axon/README.md` skills inventory corrected** from a stale "Skills (16)" per-action list to the actual "Skills (2)" (`using-axon`, `axon-rag-synthesize`) after the per-action skills were consolidated into the unified usage skill.
+
+## [5.5.4] - 2026-06-09
+
+### Changed
+
+- **Qdrant container memory cap 12G → 16G.** The `axon` collection's resident working set (int8 `always_ram` quantization + in-RAM HNSW index) stably sits ~12.5G and was OOM-killed against the old 12G `deploy.resources.limits` cap (206 restarts, dmesg `CONSTRAINT_MEMCG`). Raised to 16G for ~28% headroom over the stable working set; the `MemoryMax` ceiling was never hit (`oom_kill=0`). To trade RAM for latency instead, flip the collection's quant `always_ram:false` + `hnsw.on_disk:true`.
+
+### Documentation
+
+- **Config / env reference sync.** Documented previously-undocumented env vars and config knobs across `.env.example`, `config.example.toml`, and `docs/guides/configuration.md`: `AXON_RESEARCH_FULL_CONTENT`, `AXON_LLM_COMPLETION_CONCURRENCY` / `_TIMEOUT_SECS`, the `GOOGLE_API_KEY` alias, the synthesis/chat model split (`AXON_SYNTHESIS_*` / `AXON_CHAT_*` with legacy `AXON_OPENAI_MODEL` / `AXON_HEADLESS_GEMINI_MODEL` aliases), `AXON_WATCH_TICK_SECS` / `AXON_WATCH_LEASE_SECS`, `AXON_MCP_TRANSPORT`, `AXON_LOG_FULL_QUERIES`, standard `NO_COLOR` (replacing `AXON_NO_COLOR`), and the `endpoints` / `suggest` / Codex-backend discovery vars. Updated `ask.chunk-limit` (default 20 → 24, clamp 3–64, model-tier-derived) and `authoritative-domains` / `authoritative-boost` defaults.
+- **`using-axon` skill gains a Configuration section** pointing at the three authoritative config references (`config.example.toml`, `.env.example`, `docs/guides/configuration.md`) instead of duplicating the env surface.
+
+## [5.5.3] - 2026-06-09
+
+### Fixed
+
+- **Plugin `userConfig` missing from `plugin.json`.** The HTTP MCP transport in `.mcp.json` referenced `${user_config.server_url}` but no `userConfig` block existed — users were never prompted for the server URL, leaving the MCP connection URL malformed. Added `server_url` (required, default `http://localhost:8080`) and `api_token` (sensitive) fields.
+- **Plugin HTTP MCP auth not wired.** Added `headers: { Authorization: "Bearer ${user_config.api_token}" }` to `.mcp.json` so token-protected axon instances can authenticate the MCP connection.
+- **README accuracy + completeness pass.** Corrected `/v1/actions` (a removed 404 stub) to reference the live `/v1/*` REST routes, and fixed the Claude plugin manifest path to `plugins/axon/.claude-plugin/plugin.json`. Replaced the non-matching `env_file_` test selector with `load_dotenv`.
+- **README coverage gaps closed.** Added the previously undocumented `brand`, `diff`, `endpoints`, `monitor jobs`, `refresh`, and `train` commands to the CLI Map; documented the SearXNG search backend (`AXON_SEARXNG_URL`, Tavily fallback), `GITLAB_TOKEN`/`GITEA_TOKEN`, the full ingest source list, and a new "Notable Capabilities" section covering hybrid RRF search, vertical extractors, and the `axon serve` web panel.
+- **CLAUDE.md drift fixes.** Synced `payload_schema_version` to 5 in `src/vector` and `src/extract`, corrected the `CommandKind` count/list in `src/core`, and fixed the version-bump plugin-manifest path in the root `CLAUDE.md`.
+
+## [5.5.1] - 2026-06-09
+
+### Changed
+
+- **Axon plugin skill renamed `axon` → `using-axon`.** The packaged skill under
+  `plugins/axon/skills/` moved from `axon/` to `using-axon/` (SKILL.md plus the
+  `async-job-lifecycle` and `mcp-response-protocol` references), and the plugin
+  MCP manifest moved from `plugins/axon/mcp.json` to `plugins/axon/.mcp.json`
+  (HTTP transport pointing at `${user_config.server_url}/mcp`).
+
+### Fixed
+
+- **MCP query-family errors now carry their cause.** `logged_internal_error`
+  (`src/mcp/server/common.rs`) previously returned a bare `"<context> failed"`
+  to the client while discarding the real error — only logging it server-side.
+  Callers (and the Labby gateway) saw opaque messages like `ask '...' failed`
+  with no actionable detail. It now appends the error's top-level message
+  (`"<context> failed: <cause>"`) for `ask`/`query`/`retrieve`/`evaluate`, while
+  the full source chain (with any nested DSNs/paths) still goes only to the
+  server log. This restores informative errors without leaking deep internals.
+- **MCP error source-chain walk is now bounded against cyclic sources.**
+  `logged_internal_error` (`src/mcp/server/common.rs`) guards the error
+  `source()` traversal so a self-referential or cyclic error chain can no longer
+  spin indefinitely when building the server-side log. The log line now also
+  appends a `… (source chain truncated at 16)` marker when the cap is hit, so a
+  clipped chain can't be mistaken for a terminated one.
+- **`logged_internal_error` doc-comment corrected.** It now describes the helper
+  as general (every MCP handler routes through it) and states that callers are
+  responsible for passing a client-safe top-level message, rather than claiming
+  the forwarded message is always safe.
+
+### Tests
+
+- **Unit coverage for `logged_internal_error`** (`src/mcp/server/common_tests.rs`):
+  top-level cause appears in the client message, only the top-level `Display` is
+  forwarded (deeper chain stays out of the response), and a self-referential
+  `source()` terminates via the depth cap.
+
+### Removed
+
+- **Repo cleanup.** Dropped stray/leftover files: the empty `=12.2` artifact,
+  the unused `benches/dom_extraction.rs` benchmark (and its `[[bench]]` entry in
+  `Cargo.toml`), the duplicate top-level `bin/axon` wrapper, and a stale
+  `research-output.md`. Added `mempalace.yaml` / `entities.json` to `.gitignore`
+  (MemPalace per-project files, issue #185).
+
 ## [5.5.0] - 2026-06-08
 
 ### Added
@@ -57,7 +134,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `axon-<rust-triple>` asset, but `release.yml` publishes a
   `axon-linux-x86_64.tar.gz` tarball, so installs 404'd against real releases.
   `install.sh` now downloads, checksum-verifies, and extracts the tarball.
-
 ## [5.4.1] - 2026-06-08
 
 ### Added

@@ -1,5 +1,5 @@
 # src/core — Shared Infrastructure
-Last Modified: 2026-05-16
+Last Modified: 2026-06-09
 
 Foundational crate. Owns configuration parsing, the `Config` struct, HTTP client + SSRF protection, content transformation, logging, terminal UI, and health checks. Every other crate imports from here.
 
@@ -97,10 +97,10 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 
 ## CommandKind Enum (`config/types/enums.rs`)
 
-36 variants (verify against `src/core/config/types/enums.rs:5-40`):
-`Scrape`, `Crawl`, `Watch`, `Map`, `Endpoints`, `Extract`, `Search`, `Embed`, `Debug`, `Doctor`, `Query`, `Retrieve`, `Ask`, `Summarize`, `Evaluate`, `Train`, `Suggest`, `Sources`, `Domains`, `Stats`, `Status`, `Dedupe`, `Ingest`, `Sessions`, `Research`, `Screenshot`, `Completions`, `Mcp`, `Serve`, `Preflight`, `Smoke`, `Stack`, `Setup`, `Migrate`, `Config`, `Sync`.
+40 variants (verify against `src/core/config/types/enums.rs:5-45`):
+`Scrape`, `Crawl`, `Watch`, `Monitor`, `Map`, `Endpoints`, `Extract`, `Search`, `Embed`, `Brand`, `Debug`, `Diff`, `Doctor`, `Query`, `Retrieve`, `Ask`, `Summarize`, `Evaluate`, `Train`, `Suggest`, `Sources`, `Domains`, `Stats`, `Status`, `Dedupe`, `Refresh`, `Ingest`, `Sessions`, `Research`, `Screenshot`, `Completions`, `Mcp`, `Serve`, `Preflight`, `Smoke`, `Compose`, `Setup`, `Migrate`, `Config`, `Sync`.
 
-The legacy `Refresh`, `Github`, `Reddit`, `Youtube` variants were removed: GitHub/Reddit/YouTube are now subtypes routed through `CommandKind::Ingest` and the auto-classifier in `src/ingest/classify.rs`.
+The legacy `Github`, `Reddit`, `Youtube` variants were removed: GitHub/Reddit/YouTube are now subtypes routed through `CommandKind::Ingest` and the auto-classifier in `src/ingest/classify.rs`. (The `Stack` variant was renamed `Compose`.)
 
 Other enums: `RenderMode` (Http/Chrome/AutoSwitch), `ScrapeFormat` (Markdown/Html/RawHtml/Json), `PerformanceProfile` (HighStable/Extreme/Balanced/Max), `RedditSort` (Hot/Top/New/Rising), `RedditTime` (Hour/Day/Week/Month/Year/All)
 

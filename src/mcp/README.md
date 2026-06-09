@@ -13,7 +13,7 @@ Axon MCP server crate backing the `axon mcp` command.
 - Transport: `http`, `stdio`, or `both` via `axon mcp --transport ...`
 - Primary request shape: action-routed requests via `action` + `subaction`
 - Parser is strict (no fallback action keys, no alias remapping)
-- Context-safe default: `response_mode=path` (artifact-first output in `.cache/axon-mcp/`)
+- Context-safe default: large payloads written artifact-first to `~/.axon/artifacts/<context>/` (small payloads return inline)
 - Resource exposed: `axon://schema/mcp-tool`
 - MCP App resource exposed: `ui://axon/status-dashboard`
 - MCP Apps capability is advertised so compatible hosts can render the dashboard widget

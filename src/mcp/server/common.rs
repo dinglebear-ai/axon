@@ -22,14 +22,45 @@ pub(super) fn internal_error(msg: impl Into<String>) -> ErrorData {
     ErrorData::internal_error(msg.into(), None)
 }
 
-/// Log the raw error server-side and return a generic MCP error so internal
-/// details (DSNs, file paths, stack traces) are never forwarded to clients.
+/// Log the full error (with source chain) server-side, and return an MCP error
+/// that includes the top-level error message so callers get an actionable cause
+/// instead of a bare `"<context> failed"`.
+///
+/// Only the error's own `Display` (`{e}`) is forwarded to the client — NOT the
+/// `{e:#}` source chain — so deeper details (DSNs, file paths, nested transport
+/// URLs) that may surface in `.source()` stay in the server log. This is a
+/// general helper called from every MCP handler, so **callers are responsible
+/// for ensuring the top-level message is client-safe**: pass an error whose own
+/// `Display` is descriptive and free of secrets (e.g. a service-layer error
+/// like `"Failed to retrieve any context sources for ask"`), not a raw
+/// transport error whose `Display` might embed a URL.
 pub(super) fn logged_internal_error(
     context: &str,
     e: &(dyn std::error::Error + 'static),
 ) -> ErrorData {
-    tracing::error!("{context}: {e}");
-    ErrorData::internal_error(format!("{context} failed"), None)
+    // Walk the source chain explicitly for the server log. anyhow's chain-aware
+    // `{e:#}` formatting lives on `anyhow::Error`'s own `Display`; once the error
+    // is erased to a `&dyn Error` trait object that wrapper is bypassed, so we
+    // follow `.source()` by hand. The depth cap defends against a pathological
+    // self-referential `source()` (which would otherwise loop forever and grow
+    // `chain` unbounded).
+    const MAX_CHAIN_DEPTH: usize = 16;
+    let mut chain = e.to_string();
+    let mut src = e.source();
+    let mut depth = 0;
+    while let Some(cause) = src {
+        if depth >= MAX_CHAIN_DEPTH {
+            // Mark truncation so a reader can't mistake a clipped chain for a
+            // genuinely terminated one.
+            chain.push_str(&format!(" … (source chain truncated at {MAX_CHAIN_DEPTH})"));
+            break;
+        }
+        chain.push_str(&format!(": {cause}"));
+        src = cause.source();
+        depth += 1;
+    }
+    tracing::error!("{context}: {chain}");
+    ErrorData::internal_error(format!("{context} failed: {e}"), None)
 }
 
 // --- URL validation wrappers ---

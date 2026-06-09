@@ -1,6 +1,6 @@
 # Axon
 
-Version: 5.5.0
+Version: 5.5.5
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -14,6 +14,8 @@ Supported production runtime:
 - `Qwen/Qwen3-Embedding-0.6B` as the production embedding model.
 - Gemini CLI is the default LLM synthesis path; OpenAI-compatible endpoints
   such as llama.cpp are supported when configured with `AXON_LLM_BACKEND=openai-compat`.
+- Web search/research uses a self-hosted SearXNG instance (`AXON_SEARXNG_URL`) when
+  configured, falling back to Tavily (`TAVILY_API_KEY`) otherwise.
 - Local NVIDIA RTX 4070 target with NVIDIA Container Toolkit.
 - CLI and MCP run all actions in-process; deploy the `axon serve` container only when you need HTTP API access.
 - One shared config home: `~/.axon/.env`, `~/.axon/config.toml`, `~/.axon/jobs.db`, `~/.axon/output`, `~/.axon/logs`, `~/.axon/artifacts`, `~/.axon/screenshots`, `~/.axon/qdrant`, and `~/.axon/tei`.
@@ -56,7 +58,7 @@ Useful installer controls:
 ```bash
 AXON_INSTALL_DRY_RUN=1 ./install.sh
 AXON_INSTALL_PREFIX=/opt/axon ./install.sh
-AXON_VERSION=v4.10.0 ./install.sh
+AXON_VERSION=vX.Y.Z ./install.sh   # pin a specific release; defaults to latest
 AXON_INSTALL_SKIP_SETUP=1 ./install.sh
 ```
 
@@ -168,8 +170,8 @@ CLI flags > environment variables > ~/.axon/config.toml > built-in defaults
 
 Keep in `.env`:
 
-- URLs: `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`.
-- Secrets: `AXON_MCP_HTTP_TOKEN`, `TAVILY_API_KEY`, `GITHUB_TOKEN`, Reddit credentials, OAuth credentials, `HF_TOKEN`.
+- URLs: `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`, `AXON_SEARXNG_URL`.
+- Secrets: `AXON_MCP_HTTP_TOKEN`, `TAVILY_API_KEY`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, Reddit credentials, OAuth credentials, `HF_TOKEN`.
 - Docker/runtime bootstrap: `AXON_HOME`, `AXON_DATA_DIR`, `AXON_IMAGE`, `AXON_MCP_HTTP_PUBLISH`, `TEI_HTTP_PORT`, GPU device values.
 - LLM runtime pointers when needed: `AXON_HEADLESS_GEMINI_CMD`,
   `AXON_HEADLESS_GEMINI_HOME`, `AXON_LLM_BACKEND`, `AXON_OPENAI_BASE_URL`,
@@ -198,6 +200,12 @@ axon ask "What did we crawl?"
 
 CLI and MCP commands always run in-process against Qdrant and TEI. `axon serve` exposes the same operations over HTTP (`/v1/*`, MCP-over-HTTP) for clients that want API access to a deployed instance.
 
+## Notable Capabilities
+
+- **Hybrid search.** New Qdrant collections are created with named `dense` + `bm42` sparse vectors and queried with Reciprocal Rank Fusion (RRF). Legacy unnamed collections fall back to dense-only cosine search. Tune via the `[search]` section in `config.toml`; run `axon migrate --from <old> --to <new>` to copy a legacy unnamed collection into a new named-mode one, then point `AXON_COLLECTION` at it.
+- **Vertical extractors.** `scrape` (and the `scrape` MCP/REST action) auto-routes known URLs to structured per-site extractors (GitHub, PyPI, npm, crates.io, Reddit, YouTube, and more) instead of generic HTML→markdown. Disable with `AXON_ENABLE_VERTICALS=false` or the `[verticals]` config section.
+- **Web panel.** `axon serve` hosts an Aurora-styled control panel at the bind address (default `http://127.0.0.1:8001`) with a first-run setup flow, config/stack inspection, and a command runner, alongside the `/v1/*` REST surface and OpenAPI docs at `/docs`.
+
 ## CLI Map
 
 Core:
@@ -212,14 +220,17 @@ Core:
 - `ask <question>`
 - `summarize <url>...`
 - `evaluate <question>`
+- `diff <url-a> <url-b>` — show what changed between two URLs (content/metadata/links)
+- `brand <url>` — extract brand identity: colors, fonts, logos, favicon
 
 Discovery and ingest:
 
-- `search <query>`
-- `research <query>`
+- `search <query>` — web search via SearXNG (or Tavily), auto-queues crawl jobs
+- `research <query>` — multi-source web research with LLM synthesis
 - `suggest [focus]`
-- `ingest <target>`
-- `sessions`
+- `endpoints <url>` — discover API endpoints from page HTML and JavaScript bundles
+- `ingest <target>` — GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, or YouTube
+- `sessions` — index AI session exports (Claude, Codex, Gemini)
 
 Operations:
 
@@ -229,13 +240,16 @@ Operations:
 - `serve`
 - `mcp`
 - `status`
+- `monitor jobs` — stream job lifecycle events (start/complete/fail/cancel)
 - `sources`
 - `domains`
 - `stats`
 - `watch`
+- `refresh [filter]` — re-crawl/re-ingest previously indexed origins (full docs refresh)
 - `dedupe`
 - `migrate`
 - `screenshot`
+- `train` — collect human preference votes on retrieved RAG candidates
 - `config`
 - `completions`
 
@@ -269,7 +283,7 @@ HTTP auth modes:
 - Static bearer token with `AXON_MCP_HTTP_TOKEN`.
 - OAuth/lab-auth with `AXON_MCP_AUTH_MODE=oauth`.
 
-`/mcp`, `/v1/actions`, and `/v1/ask` use the same auth policy. Tokenless HTTP is only for loopback development binds.
+`/mcp` and the `/v1/*` REST routes (e.g. `/v1/ask`, `/v1/scrape`, `/v1/query`) share the same auth policy. Tokenless HTTP is only for loopback development binds.
 
 ## Development
 
@@ -294,7 +308,7 @@ Common focused checks:
 ```bash
 cargo test --test cli_help_contract -- --nocapture
 cargo test parse_setup -- --nocapture
-cargo test env_file_ -- --nocapture
+cargo test load_dotenv -- --nocapture
 python3 scripts/generate_mcp_schema_doc.py --check
 docker compose --env-file .env.example -f docker-compose.prod.yaml config --quiet
 ```
@@ -358,9 +372,10 @@ Common failures:
 - `docker-compose.yaml` — local development stack.
 - `.env.example` — production environment template.
 - `config.example.toml` — non-secret tuning template.
-- `.claude-plugin/plugin.json` — Claude plugin manifest.
+- `plugins/axon/.claude-plugin/plugin.json` — Claude plugin manifest.
 - `scripts/plugin-setup.sh` — plugin hook delegating to shared setup.
 - `docs/reference/mcp/tool-schema.md` — generated MCP wire contract.
+- `docs/` — full documentation tree: guides, `reference/commands/`, architecture, and operations.
 
 ## License
 
