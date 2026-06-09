@@ -22,11 +22,13 @@ need() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
 }
 
+# Asset naming MUST match .github/workflows/release.yml, which packages the
+# linux build as `axon-linux-x86_64.tar.gz` (+ `.sha256`).
 detect_target() {
   os="$(uname -s | tr '[:upper:]' '[:lower:]')"
   arch="$(uname -m)"
   case "$os:$arch" in
-    linux:x86_64|linux:amd64) printf 'x86_64-unknown-linux-gnu' ;;
+    linux:x86_64|linux:amd64) printf 'linux-x86_64' ;;
     *) fail "unsupported platform $os/$arch" ;;
   esac
 }
@@ -34,9 +36,9 @@ detect_target() {
 asset_base_url() {
   target="$1"
   if [ "$VERSION" = "latest" ]; then
-    printf 'https://github.com/%s/releases/latest/download/axon-%s' "$REPO" "$target"
+    printf 'https://github.com/%s/releases/latest/download/axon-%s.tar.gz' "$REPO" "$target"
   else
-    printf 'https://github.com/%s/releases/download/%s/axon-%s' "$REPO" "$VERSION" "$target"
+    printf 'https://github.com/%s/releases/download/%s/axon-%s.tar.gz' "$REPO" "$VERSION" "$target"
   fi
 }
 
@@ -44,6 +46,7 @@ check_prereqs() {
   need curl
   need sha256sum
   need install
+  need tar
 }
 
 check_setup_prereqs() {
@@ -71,8 +74,8 @@ download_and_verify() {
   fi
   bin_url="${AXON_INSTALL_BIN_URL:-$(asset_base_url "$target")}"
   sha_url="${AXON_INSTALL_SHA256_URL:-$bin_url.sha256}"
-  archive="$tmpdir/axon"
-  checksum="$tmpdir/axon.sha256"
+  archive="$tmpdir/axon.tar.gz"
+  checksum="$tmpdir/axon.tar.gz.sha256"
 
   say "Downloading $bin_url"
   curl -fsSL "$bin_url" -o "$archive"
@@ -82,9 +85,14 @@ download_and_verify() {
   expected="$(awk '{print $1; exit}' "$checksum")"
   [ -n "$expected" ] || fail "checksum file is empty"
   actual="$(sha256sum "$archive" | awk '{print $1}')"
-  [ "$expected" = "$actual" ] || fail "checksum mismatch for downloaded axon binary"
-  chmod +x "$archive"
-  DOWNLOADED_PATH="$archive"
+  [ "$expected" = "$actual" ] || fail "checksum mismatch for downloaded axon archive"
+
+  # Extract the `axon` binary from the release tarball (release.yml tars a single
+  # `axon` member at the archive root).
+  tar -xzf "$archive" -C "$tmpdir" axon || fail "failed to extract axon from archive"
+  [ -f "$tmpdir/axon" ] || fail "release archive did not contain an axon binary"
+  chmod +x "$tmpdir/axon"
+  DOWNLOADED_PATH="$tmpdir/axon"
   DOWNLOAD_TMPDIR="$tmpdir"
   DOWNLOAD_TMPDIR_CREATED="$CREATED_TMPDIR"
 }

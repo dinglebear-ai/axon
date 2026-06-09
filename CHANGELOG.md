@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.2] - 2026-06-08
+
+### Fixed
+
+- **Binary sync targets the in-repo plugin bundle, not the plugin cache.** `just
+  sync-container`, `just link-bin`, `just install-debug`, and the `scripts/axon`
+  background auto-sync now `install` the freshly built binary into
+  `plugins/axon/bin/axon` (the LFS-tracked bundle the plugin ships) instead of
+  symlinking it into `~/.claude/plugins/cache/jmagar-lab/axon`. The old glob
+  hardcoded a marketplace name that no longer matches every install (e.g.
+  `labby-marketplace`), so the plugin-sync step silently did nothing; it also
+  wrote into the plugin manager's cache — the wrong layer. The new behavior
+  matches what `scripts/cargo-rustc-wrapper` already does on every link, and
+  refreshes the bundle even when the binary is already current (no rebuild).
+  Runtime pickup still requires a plugin reinstall/refresh.
+- **Admin panel build.** `apps/web/lib/axon-client.ts` referenced the removed
+  `WatchCreateRequest` OpenAPI schema; corrected to `WatchDefCreateRequest` (the
+  `POST /v1/watch` request body), unblocking `next build` / `just web-build`.
+- **Release pipeline repaired.** `release.yml` never produced 5.x binary assets
+  because every build job failed: the non-cone `sparse-checkout` omitted root
+  `Cargo.toml`/`Cargo.lock` (axon jobs) and `apps/desktop` (palette jobs), and
+  the axon jobs never created the `apps/web/out` folder the binary RustEmbeds.
+  All four jobs now do a full checkout, and the axon jobs add the empty
+  `apps/web/out` placeholder (mirroring `ci.yml`). The Windows axon build also
+  disables the bash `rustc-wrapper` (which can't run as a Windows rustc wrapper —
+  os error 193), matching the palette-windows job.
+- **`install.sh` asset contract aligned.** The installer fetched a bare
+  `axon-<rust-triple>` asset, but `release.yml` publishes a
+  `axon-linux-x86_64.tar.gz` tarball, so installs 404'd against real releases.
+  `install.sh` now downloads, checksum-verifies, and extracts the tarball.
+
 ## [5.4.1] - 2026-06-08
 
 ### Added

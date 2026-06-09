@@ -34,7 +34,7 @@ type RestEmbedRequestSchema = Schemas['RestEmbedRequest'];
 type RestExtractRequestSchema = Schemas['RestExtractRequest'];
 type RestIngestRequestSchema = Schemas['RestIngestRequest'];
 type AcceptedJobSchema = Schemas['AcceptedJob'];
-type WatchCreateRequestSchema = Schemas['WatchCreateRequest'];
+type WatchCreateRequestSchema = Schemas['WatchDefCreateRequest'];
 
 export interface ErrorBody extends ErrorBodySchema {}
 

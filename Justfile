@@ -68,9 +68,10 @@ build:
 debug:
     {{rust_dev_env}}; cargo build --locked --bin axon
 
-# Symlink the compiled release binary into PATH and all known plugin cache slots.
-# Called automatically by `just build` and `just install`. Safe to call manually
-# after `cargo build --release` so that `axon` on $PATH always matches the DB state.
+# Copy the compiled release binary into PATH and the in-repo plugin bundle
+# (plugins/axon/bin/axon, LFS-tracked). Called automatically by `just build` and
+# `just install`. Safe to call manually after `cargo build --release` so that
+# `axon` on $PATH always matches the bundled plugin binary.
 link-bin:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -85,11 +86,10 @@ link-bin:
     fi
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
-    # Update every versioned slot under the plugin cache so whichever version
-    # the plugin manager activates, it always runs the workspace binary.
-    while IFS= read -r -d '' plugin_bin; do
-      ln -sf "$AXON_BIN" "$plugin_bin"
-    done < <(find "${HOME}/.claude/plugins/cache/jmagar-lab/axon" -maxdepth 3 -name "axon" \( -type f -o -type l \) -print0 2>/dev/null)
+    # Refresh the in-repo plugin bundle (LFS-tracked, shipped with the plugin).
+    # A plugin reinstall/refresh is required for a running instance to pick it up.
+    mkdir -p plugins/axon/bin
+    install -m 755 "$AXON_BIN" plugins/axon/bin/axon
     systemctl --user restart axon-mcp 2>/dev/null || true
     echo "axon → $AXON_BIN"
 
@@ -174,9 +174,8 @@ sync-container:
 
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
-    while IFS= read -r -d '' plugin_bin; do
-      ln -sf "$AXON_BIN" "$plugin_bin"
-    done < <(find "${HOME}/.claude/plugins/cache/jmagar-lab/axon" -maxdepth 3 -name "axon" \( -type f -o -type l \) -print0 2>/dev/null)
+    mkdir -p plugins/axon/bin
+    install -m 755 "$AXON_BIN" plugins/axon/bin/axon
     systemctl --user restart axon-mcp 2>/dev/null || true
     echo "axon -> $AXON_BIN"
 
@@ -239,9 +238,8 @@ install-debug:
     fi
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
-    while IFS= read -r -d '' plugin_bin; do
-      ln -sf "$AXON_BIN" "$plugin_bin"
-    done < <(find "${HOME}/.claude/plugins/cache/jmagar-lab/axon" -maxdepth 3 -name "axon" \( -type f -o -type l \) -print0 2>/dev/null)
+    mkdir -p plugins/axon/bin
+    install -m 755 "$AXON_BIN" plugins/axon/bin/axon
     systemctl --user restart axon-mcp 2>/dev/null || true
     echo "axon → $AXON_BIN"
 
