@@ -25,29 +25,21 @@ jobs:
     name: build axon (linux)
     runs-on: ubuntu-latest
     steps:
+      # Full checkout: the non-cone sparse list previously omitted root
+      # Cargo.toml/Cargo.lock (axon jobs) and apps/desktop (palette jobs),
+      # which broke every build. LFS blobs come down as pointers (lfs: false
+      # default) and are not needed to build.
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            docs/reference/api-parity.md
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-axon-linux
+      # RustEmbed (#[folder = "apps/web/out/"]) only needs the folder to exist;
+      # an empty placeholder ships an empty admin panel without a Node build.
+      - name: create web assets placeholder
+        run: mkdir -p apps/web/out
       - name: cargo build --release --bin axon
         run: cargo build --release --locked --bin axon
       - name: Package
@@ -68,31 +60,29 @@ jobs:
     name: build axon (windows)
     runs-on: windows-latest
     steps:
+      # Full checkout: the non-cone sparse list previously omitted root
+      # Cargo.toml/Cargo.lock (axon jobs) and apps/desktop (palette jobs),
+      # which broke every build. LFS blobs come down as pointers (lfs: false
+      # default) and are not needed to build.
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            docs/reference/api-parity.md
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-axon-windows
+      # RustEmbed (#[folder = "apps/web/out/"]) only needs the folder to exist;
+      # an empty placeholder ships an empty admin panel without a Node build.
+      - name: create web assets placeholder
+        shell: bash
+        run: mkdir -p apps/web/out
       - name: cargo build --release --bin axon
         run: cargo build --release --locked --bin axon
+        env:
+          # The repo's rustc-wrapper is a bash script and can't run as a Windows
+          # rustc wrapper ("%1 is not a valid Win32 application", os error 193).
+          # Disable it here, matching the palette-windows job.
+          CARGO_BUILD_RUSTC_WRAPPER: ""
       - name: Package
         shell: pwsh
         run: |
@@ -114,23 +104,11 @@ jobs:
     name: build axon-palette (linux)
     runs-on: ubuntu-latest
     steps:
+      # Full checkout: the non-cone sparse list previously omitted root
+      # Cargo.toml/Cargo.lock (axon jobs) and apps/desktop (palette jobs),
+      # which broke every build. LFS blobs come down as pointers (lfs: false
+      # default) and are not needed to build.
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            docs/reference/api-parity.md
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -167,23 +145,11 @@ jobs:
     name: build axon-palette (windows)
     runs-on: windows-latest
     steps:
+      # Full checkout: the non-cone sparse list previously omitted root
+      # Cargo.toml/Cargo.lock (axon jobs) and apps/desktop (palette jobs),
+      # which broke every build. LFS blobs come down as pointers (lfs: false
+      # default) and are not needed to build.
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            docs/reference/api-parity.md
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0

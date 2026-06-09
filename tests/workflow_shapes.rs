@@ -4,11 +4,12 @@ use std::collections::HashMap;
 fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_checkout() {
     let workflow = include_str!("../.github/workflows/release.yml");
     let blocks = checkout_sparse_blocks(workflow);
-    assert!(
-        !blocks.is_empty(),
-        "release workflow should define at least one sparse checkout block so this guard validates the active checkout shape"
-    );
-
+    // The release workflow now uses a full checkout. The non-cone sparse list
+    // previously omitted root Cargo.toml/Cargo.lock (axon jobs) and apps/desktop
+    // (palette jobs), which broke every build, so full checkout is the chosen
+    // shape and there are no sparse blocks to validate. This guard still has
+    // teeth if sparse-checkout is ever reintroduced: each block below must carry
+    // the required paths and disable cone mode.
     for (index, block) in blocks.iter().enumerate() {
         let paths = parse_sparse_checkout_paths(block);
         for required in ["tests", "scripts", "config", "vendor", ".cargo"] {
