@@ -32,6 +32,8 @@ Not supported in the production path:
 
 ## Install
 
+### Linux
+
 Prerequisites:
 
 - Linux x86_64.
@@ -47,11 +49,7 @@ One-line installer:
 curl -fsSL https://raw.githubusercontent.com/jmagar/axon/main/install.sh | sh
 ```
 
-The installer verifies the release checksum before installing the host `axon` binary to `~/.local/bin`, then delegates setup to:
-
-```bash
-axon setup
-```
+The installer verifies the release checksum, installs the `axon` binary to `~/.local/bin`, then delegates setup to `axon setup`.
 
 Useful installer controls:
 
@@ -60,6 +58,33 @@ AXON_INSTALL_DRY_RUN=1 ./install.sh
 AXON_INSTALL_PREFIX=/opt/axon ./install.sh
 AXON_VERSION=vX.Y.Z ./install.sh   # pin a specific release; defaults to latest
 AXON_INSTALL_SKIP_SETUP=1 ./install.sh
+```
+
+### Windows
+
+Prerequisites:
+
+- Windows x86_64 (PowerShell 5.1+ or PowerShell Core).
+- Docker Desktop with the WSL 2 backend (for the full stack).
+- NVIDIA driver and NVIDIA Container Toolkit (for GPU acceleration).
+- Gemini CLI installed and already authenticated, or a configured
+  OpenAI-compatible endpoint for LLM synthesis.
+
+One-line installer (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/jmagar/axon/main/install.ps1 | iex
+```
+
+The installer verifies the release checksum, installs `axon.exe` to `%USERPROFILE%\.local\bin`, adds it to your user PATH, then delegates setup to `axon setup`.
+
+Useful installer controls:
+
+```powershell
+$env:AXON_INSTALL_DRY_RUN='1'; irm .../install.ps1 | iex
+$env:AXON_INSTALL_PREFIX='C:\tools\axon'; irm .../install.ps1 | iex
+$env:AXON_VERSION='vX.Y.Z'; irm .../install.ps1 | iex  # pin a version
+$env:AXON_INSTALL_SKIP_SETUP='1'; irm .../install.ps1 | iex
 ```
 
 Claude Code plugin install:
