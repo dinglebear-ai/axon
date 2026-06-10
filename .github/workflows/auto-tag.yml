@@ -1,0 +1,68 @@
+name: auto-tag
+
+# Reads the version from Cargo.toml on every push to main. If a tag for that
+# version does not yet exist, creates and pushes it. The tag push then triggers
+# release.yml, which builds the binaries and publishes the GitHub Release.
+#
+# Result: merging to main with a bumped version automatically cuts a release.
+# If the version has not changed (e.g. a docs-only fix landing on top of an
+# already-tagged version), the tag already exists and no release is cut.
+#
+# Version bumping rules (from CLAUDE.md):
+#   feat!: / BREAKING CHANGE → major (X+1.0.0)
+#   feat / feat(...)          → minor (X.Y+1.0)
+#   everything else           → patch (X.Y.Z+1)
+#
+# All version-bearing files must be in sync before merging:
+#   Cargo.toml, README.md, CHANGELOG.md,
+#   apps/web/package.json, apps/web/openapi/axon.json
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: tag version from Cargo.toml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history so we can verify existing tags without a shallow clone.
+          fetch-depth: 0
+
+      - name: Read version from Cargo.toml
+        id: version
+        run: |
+          version=$(grep '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          if [ -z "$version" ]; then
+            echo "ERROR: could not parse version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $version"
+
+      - name: Check whether tag already exists
+        id: tag_check
+        run: |
+          tag="v${{ steps.version.outputs.version }}"
+          if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
+            echo "Tag $tag already exists — skipping release." >&2
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $tag does not exist — will create it."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+          echo "Pushed tag v${{ steps.version.outputs.version }} — release.yml will now build and publish."

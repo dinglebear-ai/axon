@@ -718,18 +718,38 @@ bd close <id>         # Complete work
 <!-- END BEADS INTEGRATION -->
 
 
-## Version Bumping
+## Release Pipeline
 
-**Every feature branch push MUST bump the version in ALL version-bearing files.**
+### How releases work
 
-Bump type is determined by the commit message prefix:
+Every push to `main` triggers `.github/workflows/auto-tag.yml`, which reads the
+version from `Cargo.toml` and creates a `v{version}` git tag if one doesn't
+already exist. That tag push triggers `.github/workflows/release.yml`, which
+builds `axon` for Linux and Windows, packages release tarballs with SHA256
+checksums, and publishes a GitHub Release with all artifacts attached.
+
+**Implication: merging to `main` with a bumped version automatically cuts a
+release.** If the version has not changed since the last merge (e.g. a follow-up
+docs fix), the tag already exists and no release is cut.
+
+To cut a release manually (e.g. re-release or hotfix without a code change):
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+### Version bumping rules
+
+**Every feature branch merge to `main` MUST bump the version in ALL
+version-bearing files.** Bump type is determined by the commit message prefix:
+
 - `feat!:` or `BREAKING CHANGE` → **major** (X+1.0.0)
 - `feat` or `feat(...)` → **minor** (X.Y+1.0)
 - Everything else (`fix`, `chore`, `refactor`, `test`, `docs`, etc.) → **patch** (X.Y.Z+1)
 
-**Files to update in this repo:**
+**Files to update:**
 - `Cargo.toml` — `version = "X.Y.Z"` in `[package]` (Cargo.lock follows on next build)
-- `README.md` — version badge or header
+- `README.md` — version header
 - `CHANGELOG.md` — new entry under the bumped version
 - `apps/web/package.json` + `apps/web/openapi/axon.json` — `"version": "X.Y.Z"`
 
@@ -739,3 +759,6 @@ versioned by the marketplace, not the manifest.
 
 All files MUST have the same version. Never bump only one file.
 CHANGELOG.md must have an entry for every version bump.
+
+The pre-push hook (`xtask-check`) enforces version parity across all files and
+will block a push if they are out of sync.
