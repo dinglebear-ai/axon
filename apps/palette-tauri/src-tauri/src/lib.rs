@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +19,7 @@ mod axon_bridge;
 mod persistence;
 mod stream;
 
+use axon_bridge::{BridgeClient, StreamClient};
 use persistence::*;
 use stream::axon_http_stream_request;
 
@@ -49,7 +53,14 @@ const SETTINGS_FILE: &str = "settings.json";
 // Runtime gate for hide-on-blur, toggled by the frontend. The launcher hides on
 // blur (click-away dismiss), but while a result/settings view is open we keep it
 // up so resizing or copying from another window doesn't make it vanish.
+// Checked together with the `hide_on_blur` user preference in the
+// `WindowEvent::Focused(false)` handler.
 struct BlurDismiss(AtomicBool);
+
+/// Tracks the shortcut label currently registered so we can unregister only
+/// that specific shortcut (rather than calling `unregister_all`) when the user
+/// changes the keybinding.
+struct ActiveShortcut(Mutex<Option<String>>);
 
 fn log_palette_warning(context: &str, err: impl Display) {
     eprintln!("axon palette: {context}: {err}");
@@ -71,11 +82,31 @@ fn save_palette_settings(
     settings: PaletteSettings,
 ) -> Result<PaletteSettings, String> {
     let settings = normalize_settings(settings);
-    write_axon_env_values(&settings.env_values).map_err(|err| err.to_string())?;
-    write_axon_config_values(&settings.config_values).map_err(|err| err.to_string())?;
-    write_settings(&app, &settings).map_err(|err| err.to_string())?;
-    register_configured_shortcut(&app, &settings).map_err(|err| err.to_string())?;
+    // 1. Validate and persist Axon runtime config (env + toml) first so that
+    //    file writes succeed before any in-process state is mutated.
+    save_axon_env(&settings)?;
+    save_axon_config(&settings)?;
+    // 2. Persist palette-only preferences (no env/config keys).
+    save_palette_prefs(&app, &settings)?;
+    // 3. Only mutate runtime state (shortcut) after all writes succeed.
+    update_shortcut(&app, &settings)?;
     Ok(settings_with_file_values(settings))
+}
+
+fn save_axon_env(settings: &PaletteSettings) -> Result<(), String> {
+    write_axon_env_values(&settings.env_values).map_err(|err| err.to_string())
+}
+
+fn save_axon_config(settings: &PaletteSettings) -> Result<(), String> {
+    write_axon_config_values(&settings.config_values).map_err(|err| err.to_string())
+}
+
+fn save_palette_prefs(app: &AppHandle, settings: &PaletteSettings) -> Result<(), String> {
+    write_settings(app, settings).map_err(|err| err.to_string())
+}
+
+fn update_shortcut(app: &AppHandle, settings: &PaletteSettings) -> Result<(), String> {
+    register_configured_shortcut(app, settings)
 }
 
 #[tauri::command]
@@ -146,12 +177,11 @@ fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) 
     normalize_settings(PaletteSettings {
         server_url: persisted
             .server_url
-            .or_else(|| Some(defaults.server_url))
+            .or(Some(defaults.server_url))
             .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string()),
         token: persisted.token.unwrap_or(defaults.token),
         shortcut: persisted
             .shortcut
-            .or_else(|| Some(DEFAULT_SHORTCUT.to_string()))
             .unwrap_or_else(|| DEFAULT_SHORTCUT.to_string()),
         collection: persisted.collection.unwrap_or(defaults.collection),
         result_limit: persisted.result_limit.unwrap_or(10),
@@ -246,6 +276,26 @@ fn normalize_shortcut_label(shortcut: &str) -> String {
     }
 }
 
+/// Validate and normalise a saved Axon server URL.
+///
+/// Shared by `axon_bridge` and `stream` so they can't diverge silently.
+pub(crate) fn validate_saved_server_url(server_url: &str) -> Result<String, String> {
+    let server_url = normalize_server_url(server_url);
+    let parsed = reqwest::Url::parse(&server_url)
+        .map_err(|err| format!("saved Axon server URL is invalid: {err}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("saved Axon server URL must use http or https".to_string());
+    }
+    if parsed.host_str().is_none()
+        || !matches!(parsed.path(), "" | "/")
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err("saved Axon server URL must be an origin URL".to_string());
+    }
+    Ok(server_url.trim_end_matches('/').to_string())
+}
+
 fn shortcut_for_label(label: &str) -> Shortcut {
     match normalize_shortcut_label(label).as_str() {
         "Alt+Space" => Shortcut::new(Some(Modifiers::ALT), Code::Space),
@@ -256,13 +306,32 @@ fn shortcut_for_label(label: &str) -> Shortcut {
 }
 
 fn register_configured_shortcut(app: &AppHandle, settings: &PaletteSettings) -> Result<(), String> {
-    let shortcut = shortcut_for_label(&settings.shortcut);
-    app.global_shortcut()
-        .unregister_all()
-        .map_err(|err| err.to_string())?;
-    app.global_shortcut()
-        .register(shortcut)
-        .map_err(|err| err.to_string())?;
+    let new_label = normalize_shortcut_label(&settings.shortcut);
+    let new_shortcut = shortcut_for_label(&new_label);
+
+    // Unregister only the previously registered shortcut if we know what it is,
+    // rather than calling `unregister_all` which would also unregister shortcuts
+    // registered by other parts of the app.
+    if let Ok(mut guard) = app.state::<ActiveShortcut>().0.lock() {
+        if let Some(old_label) = guard.take().filter(|l| l != &new_label) {
+            let old_shortcut = shortcut_for_label(&old_label);
+            if let Err(err) = app.global_shortcut().unregister(old_shortcut) {
+                eprintln!("palette: failed to unregister old shortcut '{old_label}': {err}");
+            }
+        }
+        app.global_shortcut()
+            .register(new_shortcut)
+            .map_err(|err| err.to_string())?;
+        *guard = Some(new_label);
+    } else {
+        // Mutex poisoned — fall back to unregister_all for safety.
+        app.global_shortcut()
+            .unregister_all()
+            .map_err(|err| err.to_string())?;
+        app.global_shortcut()
+            .register(new_shortcut)
+            .map_err(|err| err.to_string())?;
+    }
     Ok(())
 }
 
@@ -365,7 +434,12 @@ fn install_tray(app: &tauri::App) -> tauri::Result<()> {
 #[path = "lib_tests.rs"]
 mod tests;
 
-pub fn run() {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let bridge_client = BridgeClient::new()
+        .map_err(|err| format!("failed to build HTTP client for Axon bridge: {err}"))?;
+    let stream_client = StreamClient::new()
+        .map_err(|err| format!("failed to build HTTP client for streaming: {err}"))?;
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -389,6 +463,9 @@ pub fn run() {
             axon_http_stream_request
         ])
         .manage(BlurDismiss(AtomicBool::new(true)))
+        .manage(ActiveShortcut(Mutex::new(None)))
+        .manage(bridge_client)
+        .manage(stream_client)
         .setup(|app| {
             if let Err(err) = install_tray(app) {
                 log_palette_warning("failed to install tray icon", err);
@@ -419,14 +496,15 @@ pub fn run() {
             WindowEvent::Focused(false) => {
                 let app = window.app_handle();
                 let blur_dismiss = app.state::<BlurDismiss>().0.load(Ordering::Relaxed);
-                if blur_dismiss && merged_settings_or_default(app).hide_on_blur {
-                    if let Err(err) = window.hide() {
-                        log_palette_warning("failed to hide main window on focus loss", err);
-                    }
+                if blur_dismiss
+                    && merged_settings_or_default(app).hide_on_blur
+                    && let Err(err) = window.hide()
+                {
+                    log_palette_warning("failed to hide main window on focus loss", err);
                 }
             }
             _ => {}
         })
         .run(tauri::generate_context!())
-        .expect("error while running Axon Palette");
+        .map_err(|err| format!("error while running Axon Palette: {err}").into())
 }

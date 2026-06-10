@@ -1,15 +1,63 @@
-use std::time::Duration;
-
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-use crate::{merged_settings, normalize_server_url};
+use crate::{merged_settings, validate_saved_server_url};
+
+const PALETTE_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// A shared `reqwest::Client` held in Tauri `AppState`.
+///
+/// Creating a new client per-request is wasteful: it allocates a new
+/// connection pool and TLS context each time.  Storing one client in state
+/// lets all bridge calls share a single connection pool.
+pub(crate) struct BridgeClient(reqwest::Client);
+
+impl BridgeClient {
+    pub(crate) fn new() -> Result<Self, reqwest::Error> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .connect_timeout(PALETTE_CONNECT_TIMEOUT)
+            .user_agent(concat!("Axon Palette/", env!("CARGO_PKG_VERSION")))
+            .build()?;
+        Ok(Self(client))
+    }
+
+    pub(crate) fn client(&self) -> &reqwest::Client {
+        &self.0
+    }
+}
+
+/// A shared `reqwest::Client` for SSE streaming requests, held in Tauri `AppState`.
+///
+/// Unlike `BridgeClient`, this client has no total-request timeout so long
+/// RAG streams are not cut off at an arbitrary wall-clock limit.  A connect
+/// timeout is still applied to reject unreachable servers quickly.
+/// No read-idle timeout is set; a server that stalls mid-stream will hold the
+/// connection indefinitely — add a per-request timeout override at the call
+/// site if needed for a specific endpoint.
+pub(crate) struct StreamClient(reqwest::Client);
+
+impl StreamClient {
+    pub(crate) fn new() -> Result<Self, reqwest::Error> {
+        let client = reqwest::Client::builder()
+            .connect_timeout(PALETTE_CONNECT_TIMEOUT)
+            .user_agent(concat!("Axon Palette/", env!("CARGO_PKG_VERSION")))
+            .build()?;
+        Ok(Self(client))
+    }
+
+    pub(crate) fn client(&self) -> &reqwest::Client {
+        &self.0
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AxonHttpRequest {
+    // Intentionally ignored — the real value is loaded from app settings
     #[serde(default, rename = "baseUrl")]
     _base_url: Option<String>,
+    // Intentionally ignored — the real value is loaded from app settings
     #[serde(default, rename = "token")]
     _token: Option<String>,
     method: HttpMethod,
@@ -38,6 +86,7 @@ pub(crate) struct AxonHttpResult {
 #[tauri::command]
 pub(crate) async fn axon_http_request(
     app: AppHandle,
+    bridge: tauri::State<'_, BridgeClient>,
     request: AxonHttpRequest,
 ) -> Result<AxonHttpResult, String> {
     let path = validate_axon_route(&request)?.to_string();
@@ -45,11 +94,7 @@ pub(crate) async fn axon_http_request(
     let settings = merged_settings(&app)?;
     let base_url = validate_saved_server_url(&settings.server_url)?;
     let url = format!("{}{}", base_url.trim_end_matches('/'), path);
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(300))
-        .user_agent("Axon Palette/4.5")
-        .build()
-        .map_err(|err| err.to_string())?;
+    let client = (*bridge).client();
 
     let mut builder = match method {
         HttpMethod::Get => client.get(&url),
@@ -189,138 +234,6 @@ fn is_uuid(value: &str) -> bool {
     uuid::Uuid::parse_str(value).is_ok()
 }
 
-fn validate_saved_server_url(server_url: &str) -> Result<String, String> {
-    let server_url = normalize_server_url(server_url);
-    let parsed =
-        reqwest::Url::parse(&server_url).map_err(|_| "saved Axon server URL is invalid")?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("saved Axon server URL must use http or https".to_string());
-    }
-    if parsed.host_str().is_none()
-        || !matches!(parsed.path(), "" | "/")
-        || parsed.query().is_some()
-        || parsed.fragment().is_some()
-    {
-        return Err("saved Axon server URL must be an origin URL".to_string());
-    }
-    Ok(server_url.trim_end_matches('/').to_string())
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn request(method: HttpMethod, path: &str) -> AxonHttpRequest {
-        AxonHttpRequest {
-            _base_url: Some("https://evil.example".to_string()),
-            _token: Some("renderer-token".to_string()),
-            method,
-            path: path.to_string(),
-            body: None,
-        }
-    }
-
-    #[test]
-    fn allows_known_palette_routes() {
-        assert_eq!(
-            validate_axon_route(&request(HttpMethod::Get, "/v1/doctor")).unwrap(),
-            "/v1/doctor"
-        );
-        assert_eq!(
-            validate_axon_route(&request(HttpMethod::Post, "/v1/ask")).unwrap(),
-            "/v1/ask"
-        );
-        assert_eq!(
-            validate_axon_route(&request(HttpMethod::Post, "/v1/chat")).unwrap(),
-            "/v1/chat"
-        );
-        assert_eq!(
-            validate_axon_route(&request(HttpMethod::Post, "/v1/endpoints")).unwrap(),
-            "/v1/endpoints"
-        );
-        assert_eq!(
-            validate_axon_route(&request(HttpMethod::Post, "/v1/brand")).unwrap(),
-            "/v1/brand"
-        );
-        assert_eq!(
-            validate_axon_route(&request(HttpMethod::Post, "/v1/diff")).unwrap(),
-            "/v1/diff"
-        );
-        assert_eq!(
-            validate_axon_route(&request(HttpMethod::Post, "/v1/screenshot")).unwrap(),
-            "/v1/screenshot"
-        );
-        assert_eq!(
-            validate_axon_route(&request(HttpMethod::Delete, "/v1/crawl")).unwrap(),
-            "/v1/crawl"
-        );
-        assert_eq!(
-            validate_axon_route(&request(
-                HttpMethod::Get,
-                "/v1/crawl/00000000-0000-4000-8000-000000000000"
-            ))
-            .unwrap(),
-            "/v1/crawl/00000000-0000-4000-8000-000000000000"
-        );
-        assert_eq!(
-            validate_axon_route(&request(
-                HttpMethod::Post,
-                "/v1/watch/00000000-0000-4000-8000-000000000000/run"
-            ))
-            .unwrap(),
-            "/v1/watch/00000000-0000-4000-8000-000000000000/run"
-        );
-    }
-
-    #[test]
-    fn rejects_full_urls_and_traversal_paths() {
-        for path in [
-            "https://evil.example/v1/doctor",
-            "//evil.example/v1/doctor",
-            "/v1/../admin",
-            "/v1/%2e%2e/admin",
-            "/v1/doctor?next=/admin",
-            "/v1/doctor#fragment",
-            "/v1\\doctor",
-            " /v1/doctor",
-        ] {
-            assert!(
-                validate_axon_route(&request(HttpMethod::Get, path)).is_err(),
-                "path should be rejected: {path}"
-            );
-        }
-    }
-
-    #[test]
-    fn rejects_unknown_method_route_pairs() {
-        assert!(validate_axon_route(&request(HttpMethod::Post, "/v1/doctor")).is_err());
-        assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/ask")).is_err());
-        assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/admin")).is_err());
-        assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/crawl/not-a-uuid")).is_err());
-    }
-
-    #[test]
-    fn rejects_get_request_bodies() {
-        let mut req = request(HttpMethod::Get, "/v1/doctor");
-        req.body = Some(serde_json::json!({ "unexpected": true }));
-        assert!(validate_axon_route(&req).is_err());
-        let mut req = request(HttpMethod::Delete, "/v1/crawl");
-        req.body = Some(serde_json::json!({ "unexpected": true }));
-        assert!(validate_axon_route(&req).is_err());
-    }
-
-    #[test]
-    fn validates_saved_server_url_shape() {
-        assert_eq!(
-            validate_saved_server_url("127.0.0.1:8001").unwrap(),
-            "http://127.0.0.1:8001"
-        );
-        assert_eq!(
-            validate_saved_server_url("axon.example.com/").unwrap(),
-            "https://axon.example.com"
-        );
-        assert!(validate_saved_server_url("file:///tmp/axon.sock").is_err());
-        assert!(validate_saved_server_url("https://axon.example.com/api").is_err());
-        assert!(validate_saved_server_url("https://axon.example.com?token=leak").is_err());
-    }
-}
+#[path = "axon_bridge_tests.rs"]
+mod tests;

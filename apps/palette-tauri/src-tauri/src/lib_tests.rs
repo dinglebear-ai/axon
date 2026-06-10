@@ -6,6 +6,7 @@ use std::{
 };
 
 use super::*;
+use persistence::{write_axon_config_values, write_axon_env_values};
 
 #[test]
 fn merge_settings_uses_default_collection_when_persisted_collection_missing() {
@@ -118,6 +119,211 @@ fn config_file_writer_updates_nested_toml_sections() {
         std::env::remove_var("AXON_CONFIG_PATH");
     }
 }
+
+// ── Allowlist tests ────────────────────────────────────────────────────────
+
+#[test]
+fn env_writer_rejects_unknown_key() {
+    let _guard = env_lock().lock().expect("env lock");
+    let dir = tempfile_dir("env-allowlist-reject");
+    let path = dir.join(".env");
+    fs::write(&path, "").expect("seed env");
+    unsafe {
+        std::env::set_var("AXON_ENV_PATH", &path);
+    }
+    let mut values = HashMap::new();
+    values.insert(
+        "EVIL_UNKNOWN_KEY".to_string(),
+        serde_json::Value::String("bad".to_string()),
+    );
+
+    let result = write_axon_env_values(&values);
+
+    assert!(
+        result.is_err(),
+        "unknown env key must be rejected by the allowlist"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("allowlist") || msg.contains("EVIL_UNKNOWN_KEY"),
+        "error should mention allowlist or the offending key: {msg}"
+    );
+    unsafe {
+        std::env::remove_var("AXON_ENV_PATH");
+    }
+}
+
+#[test]
+fn config_writer_rejects_unknown_key() {
+    let _guard = env_lock().lock().expect("env lock");
+    let dir = tempfile_dir("config-allowlist-reject");
+    let path = dir.join("config.toml");
+    fs::write(&path, "").expect("seed config");
+    unsafe {
+        std::env::set_var("AXON_CONFIG_PATH", &path);
+    }
+    let mut values = HashMap::new();
+    values.insert(
+        "evil.unknown".to_string(),
+        serde_json::Value::String("bad".to_string()),
+    );
+
+    let result = write_axon_config_values(&values);
+
+    assert!(
+        result.is_err(),
+        "unknown config key must be rejected by the allowlist"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("allowlist") || msg.contains("evil.unknown"),
+        "error should mention allowlist or the offending key: {msg}"
+    );
+    unsafe {
+        std::env::remove_var("AXON_CONFIG_PATH");
+    }
+}
+
+#[test]
+fn env_writer_succeeds_with_allowed_key() {
+    let _guard = env_lock().lock().expect("env lock");
+    let dir = tempfile_dir("env-allowlist-ok");
+    let path = dir.join(".env");
+    fs::write(&path, "QDRANT_URL=http://old\n").expect("seed env");
+    unsafe {
+        std::env::set_var("AXON_ENV_PATH", &path);
+    }
+    let mut values = HashMap::new();
+    values.insert(
+        "QDRANT_URL".to_string(),
+        serde_json::Value::String("http://new:6333".to_string()),
+    );
+
+    let result = write_axon_env_values(&values);
+
+    assert!(result.is_ok(), "allowed key must succeed: {:?}", result);
+    let contents = fs::read_to_string(&path).expect("read env");
+    assert!(contents.contains("QDRANT_URL=http://new:6333"));
+    unsafe {
+        std::env::remove_var("AXON_ENV_PATH");
+    }
+}
+
+// ── Atomic write / permissions tests ─────────────────────────────────────
+
+#[test]
+fn env_file_exists_after_write() {
+    let _guard = env_lock().lock().expect("env lock");
+    let dir = tempfile_dir("env-exists");
+    let path = dir.join(".env");
+    unsafe {
+        std::env::set_var("AXON_ENV_PATH", &path);
+    }
+    let mut values = HashMap::new();
+    values.insert(
+        "TEI_URL".to_string(),
+        serde_json::Value::String("http://127.0.0.1:52000".to_string()),
+    );
+
+    write_axon_env_values(&values).expect("write env");
+
+    assert!(path.exists(), ".env must exist after write");
+    unsafe {
+        std::env::remove_var("AXON_ENV_PATH");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn env_file_has_private_permissions_after_write() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = env_lock().lock().expect("env lock");
+    let dir = tempfile_dir("env-perms");
+    let path = dir.join(".env");
+    unsafe {
+        std::env::set_var("AXON_ENV_PATH", &path);
+    }
+    let mut values = HashMap::new();
+    values.insert(
+        "TEI_URL".to_string(),
+        serde_json::Value::String("http://127.0.0.1:52000".to_string()),
+    );
+
+    write_axon_env_values(&values).expect("write env");
+
+    let mode = fs::metadata(&path).expect("metadata").permissions().mode();
+    // Mask to the low 9 permission bits: expect 0o600 (owner rw only).
+    assert_eq!(
+        mode & 0o777,
+        0o600,
+        ".env file mode should be 0o600, got {:#o}",
+        mode & 0o777
+    );
+    unsafe {
+        std::env::remove_var("AXON_ENV_PATH");
+    }
+}
+
+// ── Atomic write correctness ──────────────────────────────────────────────
+
+#[test]
+fn no_tmp_file_after_successful_atomic_write() {
+    let _guard = env_lock().lock().expect("env lock");
+    let dir = tempfile_dir("atomic-no-tmp");
+    let path = dir.join(".env");
+    unsafe {
+        std::env::set_var("AXON_ENV_PATH", &path);
+    }
+    let mut values = HashMap::new();
+    values.insert(
+        "TEI_URL".to_string(),
+        serde_json::Value::String("http://127.0.0.1:52000".to_string()),
+    );
+
+    write_axon_env_values(&values).expect("write env");
+
+    let tmp = path.with_extension("tmp");
+    assert!(
+        !tmp.exists(),
+        ".env.tmp must not exist after successful write"
+    );
+    unsafe {
+        std::env::remove_var("AXON_ENV_PATH");
+    }
+}
+
+// ── normalize_shortcut_label ──────────────────────────────────────────────
+
+#[test]
+fn normalize_shortcut_label_canonicalizes_known_aliases() {
+    assert_eq!(normalize_shortcut_label("option+space"), "Alt+Space");
+    assert_eq!(normalize_shortcut_label("Alt+Space"), "Alt+Space");
+    assert_eq!(normalize_shortcut_label("ctrl+space"), "Ctrl+Space");
+    assert_eq!(normalize_shortcut_label("Ctrl+Space"), "Ctrl+Space");
+    assert_eq!(normalize_shortcut_label("control+space"), "Ctrl+Space");
+    assert_eq!(
+        normalize_shortcut_label("cmd+shift+space"),
+        "Cmd+Shift+Space"
+    );
+    assert_eq!(
+        normalize_shortcut_label("super+shift+space"),
+        "Cmd+Shift+Space"
+    );
+    assert_eq!(
+        normalize_shortcut_label("command+shift+space"),
+        "Cmd+Shift+Space"
+    );
+}
+
+#[test]
+fn normalize_shortcut_label_falls_back_to_default_for_unknown() {
+    assert_eq!(normalize_shortcut_label("Win+Q"), DEFAULT_SHORTCUT);
+    assert_eq!(normalize_shortcut_label(""), DEFAULT_SHORTCUT);
+    assert_eq!(normalize_shortcut_label("not-a-shortcut"), DEFAULT_SHORTCUT);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

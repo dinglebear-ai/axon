@@ -21,7 +21,8 @@ import {
 import { useState } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
-import type { PaletteConfig } from "@/lib/axonClient";
+import { createAxonClient, executeAction, type PaletteConfig } from "@/lib/axonClient";
+import { ACTIONS } from "@/lib/actions";
 import {
   CONFIG_COUNT,
   CONFIG_DEFAULTS,
@@ -63,6 +64,8 @@ const iconMap: Record<string, LucideIcon> = {
   zap: Zap,
 };
 
+type ConnectionStatus = "unknown" | "connected" | "error" | "checking";
+
 export function SettingsPanel({
   configError,
   draftConfig,
@@ -72,8 +75,33 @@ export function SettingsPanel({
   onSave,
 }: SettingsPanelProps) {
   const [tab, setTab] = useState<SettingsTab>("connection");
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("unknown");
   const envValues = { ...ENV_DEFAULTS, ...(draftConfig.envValues ?? {}) } as Record<string, SettingValue>;
   const configValues = { ...CONFIG_DEFAULTS, ...(draftConfig.configValues ?? {}) } as Record<string, SettingValue>;
+
+  const testConnection = async () => {
+    setConnectionStatus("checking");
+    try {
+      const doctorAction = ACTIONS.find((a) => a.subcommand === "doctor");
+      if (!doctorAction) {
+        setConnectionStatus("error");
+        return;
+      }
+      const result = await executeAction(createAxonClient(draftConfig), doctorAction, "", draftConfig);
+      setConnectionStatus(result.ok ? "connected" : "error");
+    } catch {
+      setConnectionStatus("error");
+    }
+  };
+
+  const connectionLabel =
+    connectionStatus === "checking"
+      ? "checking…"
+      : connectionStatus === "connected"
+        ? "connected"
+        : connectionStatus === "error"
+          ? "connection failed"
+          : "not tested";
 
   const updateConfig = <Key extends keyof PaletteConfig>(key: Key, value: PaletteConfig[Key]) => {
     onChange({ ...draftConfig, [key]: value });
@@ -89,9 +117,9 @@ export function SettingsPanel({
     <section className="settings-panel settings-panel-mock">
       <header className="settings-topline">
         <span className="settings-eyebrow">Settings</span>
-        <span className="settings-health">
+        <span className="settings-health" data-status={connectionStatus}>
           <span aria-hidden="true" />
-          axon connected
+          {connectionLabel}
         </span>
       </header>
 
@@ -186,9 +214,15 @@ export function SettingsPanel({
       </div>
 
       <footer className="settings-footer">
-        <Button size="sm" variant="neutral">
+        <Button
+          size="sm"
+          variant="neutral"
+          onClick={() => void testConnection()}
+          disabled={connectionStatus === "checking"}
+          aria-label="Test Axon server connection"
+        >
           <Activity size={14} />
-          Test connection
+          {connectionStatus === "checking" ? "Checking…" : "Test connection"}
         </Button>
         <span className="settings-footer-meta">
           {tab === "env" ? `${ENV_COUNT} env vars` : tab === "config" ? `${CONFIG_COUNT} config knobs` : "precedence: CLI > env > config.toml > defaults"}
