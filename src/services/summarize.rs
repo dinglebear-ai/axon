@@ -1,11 +1,9 @@
 use crate::core::config::{Config, ConfigOverrides, ScrapeFormat};
-use crate::core::logging::log_warn;
-use crate::services::events::{LogLevel, ServiceEvent, emit};
-use crate::services::llm_backend::{self, CompletionRequest};
+use crate::core::llm::{self, CompletionRequest};
+use crate::services::events::{LogLevel, ServiceEvent, emit, synthesis_delta_handler};
 use crate::services::scrape;
 use crate::services::types::{SummarizeDocument, SummarizeResult, SummarizeTiming, SummarizeUsage};
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tokio::sync::mpsc;
 
@@ -64,7 +62,7 @@ pub async fn summarize(
     let request = CompletionRequest::new(summary_user_prompt(&context))
         .system_prompt(summary_system_prompt())
         .backend_from_config(cfg);
-    let completion = llm_backend::complete_streaming(request, summarize_delta_handler(tx.clone()))
+    let completion = llm::complete_streaming(request, summarize_delta_handler(tx.clone()))
         .await
         .map_err(|err| -> Box<dyn Error> {
             format!("summary LLM completion failed: {err}").into()
@@ -166,20 +164,7 @@ fn truncate_chars(value: &str, max_chars: usize) -> &str {
 fn summarize_delta_handler(
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> impl FnMut(&str) -> Result<(), Box<dyn Error + Send + Sync>> + Send {
-    static WARNED_ONCE: AtomicBool = AtomicBool::new(false);
-    move |delta| {
-        if let Some(ref sender) = tx
-            && let Err(e) = sender.try_send(ServiceEvent::SynthesisDelta {
-                text: delta.to_string(),
-            })
-            && !WARNED_ONCE.swap(true, Ordering::Relaxed)
-        {
-            log_warn(&format!(
-                "summarize synthesis_delta dropped (subsequent drops suppressed): {e}"
-            ));
-        }
-        Ok(())
-    }
+    synthesis_delta_handler(tx, "summarize")
 }
 
 #[cfg(test)]

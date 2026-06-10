@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -114,7 +114,7 @@ class IngestViewModel(app: Application) : AndroidViewModel(app) {
 
     fun checkStatus(jobId: String) {
         viewModelScope.launch {
-            container.axonRepository.getJob(AxonClient.JobKind.Ingest, jobId).fold(
+            container.axonRepository.getJob(JobFamily.Ingest, jobId).fold(
                 onSuccess = { _uiState.value = IngestUi.Status(it) },
                 onFailure = { _uiState.value = IngestUi.Error(it.message ?: "Error") },
             )
@@ -123,7 +123,7 @@ class IngestViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancel(jobId: String) {
         viewModelScope.launch {
-            container.axonRepository.cancelJob(AxonClient.JobKind.Ingest, jobId).fold(
+            container.axonRepository.cancelJob(JobFamily.Ingest, jobId).fold(
                 onSuccess = { canceled ->
                     if (!canceled) {
                         // Server acknowledged the request but reported the job was no longer

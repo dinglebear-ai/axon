@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "formatting_rest_tests.rs"]
+mod tests;
+
 const SUMMARY_LIMIT: usize = 10;
 
 pub(super) fn rest_output_text(subcommand: &str, text: &str) -> Option<String> {
@@ -18,6 +22,7 @@ pub(super) fn rest_output_text(subcommand: &str, text: &str) -> Option<String> {
         "map" => map_result(&value),
         "suggest" => suggestions_result(&value),
         "evaluate" => evaluate_result(&value),
+        "screenshot" => screenshot_result(&value),
         "crawl" | "embed" | "extract" | "ingest" => job_start_result(subcommand, &value),
         "sources" => sources_result(&value),
         "domains" => domains_result(&value),
@@ -205,6 +210,11 @@ fn evaluate_result(value: &serde_json::Value) -> String {
 }
 
 fn job_start_result(subcommand: &str, value: &serde_json::Value) -> String {
+    // Terminal job state from polling: { "job": { "status": "completed", ... } }
+    if let Some(job) = value.get("job") {
+        return job_terminal_result(subcommand, job);
+    }
+    // Accepted-job response: show job ID so the user can still track it manually
     let result = value.get("result").unwrap_or(value);
     let mut lines = Vec::new();
     if let Some(disposition) = string_field(value, "disposition") {
@@ -232,6 +242,39 @@ fn job_start_result(subcommand: &str, value: &serde_json::Value) -> String {
         lines.push("Next: status".to_string());
     }
     non_empty_or_compact(lines, value)
+}
+
+/// Format a terminal job state returned by the status-polling path.
+/// Shows status, key metrics from `result_json`, and the job's target URL.
+fn job_terminal_result(subcommand: &str, job: &serde_json::Value) -> String {
+    let status = string_field(job, "status").unwrap_or_else(|| "unknown".to_string());
+    let mut lines = vec![format!("{subcommand} {status}")];
+    if let Some(err) = string_field(job, "error_text") {
+        lines.push(format!("error: {err}"));
+    }
+    if let Some(result) = job.get("result_json") {
+        for key in &[
+            "pages_crawled",
+            "docs_embedded",
+            "chunks_embedded",
+            "md_created",
+        ] {
+            if let Some(v) = result.get(*key).and_then(|v| v.as_u64()).filter(|&n| n > 0) {
+                lines.push(format!("{key}: {v}"));
+            }
+        }
+        if let Some(ms) = result
+            .get("elapsed_ms")
+            .and_then(|v| v.as_u64())
+            .filter(|&n| n >= 1000)
+        {
+            lines.push(format!("elapsed: {:.1}s", ms as f64 / 1000.0));
+        }
+    }
+    if let Some(target) = string_field(job, "url").or_else(|| string_field(job, "target")) {
+        lines.push(target);
+    }
+    lines.join("\n")
 }
 
 fn sources_result(value: &serde_json::Value) -> String {
@@ -339,6 +382,42 @@ fn scalar_text(value: &serde_json::Value) -> Option<String> {
         serde_json::Value::Number(value) => Some(value.to_string()),
         serde_json::Value::Bool(value) => Some(value.to_string()),
         _ => None,
+    }
+}
+
+fn screenshot_result(value: &serde_json::Value) -> String {
+    let mut lines = Vec::new();
+    if let Some(url) = string_field(value, "url") {
+        lines.push(url);
+    }
+    let handle = value.get("artifact_handle");
+    let relative_path = handle
+        .and_then(|h| h.get("relative_path"))
+        .and_then(|v| v.as_str());
+    let size_bytes = handle
+        .and_then(|h| h.get("bytes"))
+        .and_then(|v| v.as_u64())
+        .or_else(|| value.get("size_bytes")?.as_u64());
+    let mut meta = Vec::new();
+    if let Some(b) = size_bytes {
+        meta.push(format_bytes(b));
+    }
+    if let Some(path) = relative_path {
+        meta.push(format!("artifact: {path}"));
+    }
+    if !meta.is_empty() {
+        lines.push(meta.join(" · "));
+    }
+    non_empty_or_compact(lines, value)
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1_048_576 {
+        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+    } else if bytes >= 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes} B")
     }
 }
 

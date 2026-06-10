@@ -22,6 +22,9 @@ use axum::{
 use lab_auth::AuthContext;
 use std::sync::Arc;
 
+/// The state type every `/v1` REST subrouter is built over.
+type ServeState = (AppState, Arc<Config>);
+
 pub(super) fn router(
     cfg: Arc<Config>,
     panel: Arc<crate::web::server::state::PanelRuntimeState>,
@@ -32,10 +35,32 @@ pub(super) fn router(
         panel,
         service_context: Arc::clone(&service_context),
     };
-    let ask_router = ask_router::<(AppState, Arc<Config>)>(Arc::clone(&cfg));
-    let rest_body_limit = DefaultBodyLimit::max(128 * 1024);
-    let prepared_sessions_body_limit = DefaultBodyLimit::max(96 * 1024 * 1024);
-    let read_routes = Router::new()
+    let rest_routes = protect_routes(read_routes(), &auth_policy, ScopeRequirement::Read)
+        .merge(protect_routes(
+            write_routes(Arc::clone(&cfg), &service_context),
+            &auth_policy,
+            ScopeRequirement::Write,
+        ))
+        .merge(protect_routes(
+            large_write_routes(&service_context),
+            &auth_policy,
+            ScopeRequirement::Write,
+        ));
+    Router::new()
+        .route("/healthz", get(super::super::health::healthz))
+        .route("/readyz", get(super::super::health::readyz))
+        .route("/v1/actions", post(v1_actions_removed))
+        .route("/v1/migrate", post(v1_migrate_not_exposed))
+        .merge(super::openapi::docs_router())
+        .merge(panel_routes())
+        .merge(rest_routes)
+        .fallback(super::super::static_assets::serve_static)
+        .with_state((state, Arc::clone(&cfg)))
+}
+
+/// Routes reachable with `axon:read` — metadata and pure retrieval only.
+fn read_routes() -> Router<ServeState> {
+    Router::new()
         .route("/v1/capabilities", get(v1_capabilities))
         .route("/v1/sources", get(handlers::discovery::sources))
         .route("/v1/domains", get(handlers::discovery::domains))
@@ -44,16 +69,24 @@ pub(super) fn router(
         .route("/v1/doctor", get(handlers::discovery::doctor))
         .route("/v1/query", post(handlers::rag::query))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
-        .route("/v1/map", post(handlers::exploration::map));
-    let write_routes = Router::new()
-        // Active-network operations require axon:write. Endpoint discovery
-        // fetches pages, bundles, probes endpoints, and may execute Chrome
-        // capture — it must not be accessible with read-only tokens.
+        .route("/v1/map", post(handlers::exploration::map))
+        .route(
+            "/v1/artifacts/{*path}",
+            get(handlers::artifacts::serve_artifact),
+        )
+}
+
+/// Routes requiring `axon:write` — active-network operations, job
+/// submission, and destructive ops. Endpoint discovery fetches pages,
+/// bundles, probes endpoints, and may execute Chrome capture — it must not
+/// be accessible with read-only tokens.
+fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Router<ServeState> {
+    Router::new()
         .route("/v1/endpoints", post(handlers::exploration::endpoints))
         .route("/v1/brand", post(handlers::exploration::brand))
         .route("/v1/diff", post(handlers::exploration::diff))
         .route("/v1/screenshot", post(handlers::exploration::screenshot))
-        .merge(ask_router)
+        .merge(ask_router::<ServeState>(cfg))
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
         .route("/v1/scrape", post(handlers::exploration::scrape))
@@ -70,19 +103,19 @@ pub(super) fn router(
         )
         .nest(
             "/v1/crawl",
-            handlers::async_jobs::crawl_router(Arc::clone(&service_context)),
+            handlers::async_jobs::crawl_router(Arc::clone(service_context)),
         )
         .nest(
             "/v1/embed",
-            handlers::async_jobs::embed_router(Arc::clone(&service_context)),
+            handlers::async_jobs::embed_router(Arc::clone(service_context)),
         )
         .nest(
             "/v1/extract",
-            handlers::async_jobs::extract_router(Arc::clone(&service_context)),
+            handlers::async_jobs::extract_router(Arc::clone(service_context)),
         )
         .nest(
             "/v1/ingest",
-            handlers::async_jobs::ingest_router(Arc::clone(&service_context)),
+            handlers::async_jobs::ingest_router(Arc::clone(service_context)),
         )
         .route("/v1/dedupe", post(handlers::admin::dedupe))
         .route(
@@ -90,30 +123,23 @@ pub(super) fn router(
             get(handlers::admin::list_watch).post(handlers::admin::create_watch),
         )
         .route("/v1/watch/{id}/run", post(handlers::admin::run_watch))
-        .layer(rest_body_limit);
-    let large_write_routes = Router::new()
+        .layer(DefaultBodyLimit::max(128 * 1024))
+}
+
+/// Write-scoped routes whose payloads exceed the standard REST body cap
+/// (prepared session exports ship megabytes of transcript JSON).
+fn large_write_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
+    Router::new()
         .nest(
             "/v1/ingest/sessions/prepared",
-            handlers::async_jobs::prepared_sessions_router(Arc::clone(&service_context)),
+            handlers::async_jobs::prepared_sessions_router(Arc::clone(service_context)),
         )
-        .layer(prepared_sessions_body_limit);
-    let rest_routes = protect_routes(read_routes, &auth_policy, ScopeRequirement::Read)
-        .merge(protect_routes(
-            write_routes,
-            &auth_policy,
-            ScopeRequirement::Write,
-        ))
-        .merge(protect_routes(
-            large_write_routes,
-            &auth_policy,
-            ScopeRequirement::Write,
-        ));
+        .layer(DefaultBodyLimit::max(96 * 1024 * 1024))
+}
+
+/// Panel-scoped routes — all protected by the panel password session cookie.
+fn panel_routes() -> Router<ServeState> {
     Router::new()
-        .route("/healthz", get(super::super::health::healthz))
-        .route("/readyz", get(super::super::health::readyz))
-        .route("/v1/actions", post(v1_actions_removed))
-        .route("/v1/migrate", post(v1_migrate_not_exposed))
-        .merge(super::openapi::docs_router())
         .route("/api/panel/state", get(handlers::panel_state))
         .route("/api/panel/login", post(handlers::login))
         .route(
@@ -141,9 +167,6 @@ pub(super) fn router(
             post(super::super::panel_first_run::first_run_ask),
         )
         .route("/api/panel/setup/targets", get(handlers::setup_targets))
-        .merge(rest_routes)
-        .fallback(super::super::static_assets::serve_static)
-        .with_state((state, Arc::clone(&cfg)))
 }
 
 async fn v1_capabilities() -> Json<ServerInfo> {

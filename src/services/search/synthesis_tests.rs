@@ -63,7 +63,7 @@ fn escape_xml_attr_strips_control_chars() {
 
 #[test]
 fn parse_response_accepts_json_summary_for_compatibility() {
-    let (summary, usage) = parse_response(llm_backend::CompletionResponse {
+    let (summary, usage) = parse_response(llm::CompletionResponse {
         text: r#"{"summary":"JSON summary text"}"#.to_string(),
         usage: None,
     });
@@ -73,9 +73,9 @@ fn parse_response_accepts_json_summary_for_compatibility() {
 
 #[test]
 fn parse_response_accepts_plain_text_contract() {
-    let (summary, usage) = parse_response(llm_backend::CompletionResponse {
+    let (summary, usage) = parse_response(llm::CompletionResponse {
         text: "Plain text summary.".to_string(),
-        usage: Some(llm_backend::UsageSnapshot {
+        usage: Some(llm::UsageSnapshot {
             prompt_tokens: 10,
             completion_tokens: 5,
             total_tokens: 15,
@@ -167,7 +167,7 @@ fn build_extraction_preserves_full_content_for_large_context_models() {
 fn build_extraction_truncates_unknown_small_context_models() {
     let mut cfg = Config::test_default();
     cfg.ask_max_context_chars = 8_000;
-    cfg.llm_backend = llm_backend::LlmBackendKind::OpenAiCompat;
+    cfg.llm_backend = llm::LlmBackendKind::OpenAiCompat;
     cfg.headless_gemini_model.clear();
     cfg.openai_model = "llama-local".to_string();
     let hit = RawHit {

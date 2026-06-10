@@ -206,7 +206,7 @@ fn populate_services_and_ask_basics(
 ) -> Result<(), String> {
     cfg.tei_url = tei_url;
     cfg.qdrant_url = qdrant_url;
-    cfg.llm_backend = crate::services::llm_backend::LlmBackendKind::parse(
+    cfg.llm_backend = crate::core::llm::LlmBackendKind::parse(
         &non_empty_env("AXON_LLM_BACKEND").unwrap_or_default(),
     )?;
     cfg.headless_gemini_model = non_empty_env("AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL")

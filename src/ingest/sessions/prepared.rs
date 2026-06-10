@@ -156,17 +156,14 @@ impl PreparedSessionDoc {
             serde_json::Value::String(self.session_file.clone()),
         );
 
-        Ok(PreparedDoc {
-            url: self.url.clone(),
-            domain: url_to_domain(&self.url),
-            chunks: chunk_text(&self.text),
-            source_type: source_type.to_string(),
-            content_type: "text",
-            title: self.title.clone(),
-            extra: Some(serde_json::Value::Object(extra)),
-            extractor_name: None,
-            structured: None,
-        })
+        Ok(PreparedDoc::ingest(
+            self.url.clone(),
+            url_to_domain(&self.url),
+            chunk_text(&self.text),
+            source_type,
+            self.title.clone(),
+            Some(serde_json::Value::Object(extra)),
+        ))
     }
 
     fn collection_stem(&self) -> String {

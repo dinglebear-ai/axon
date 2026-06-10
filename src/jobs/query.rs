@@ -33,6 +33,39 @@ pub(crate) fn ms_to_dt(ms: i64) -> DateTime<Utc> {
     })
 }
 
+/// Most recently stored config snapshot for a crawl job with this exact start
+/// URL, if any. Used by `axon refresh` to replay the original job's
+/// crawl-shaping settings instead of re-enqueuing with process defaults.
+pub async fn latest_crawl_config_json(
+    pool: &SqlitePool,
+    url: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT config_json FROM axon_crawl_jobs WHERE url = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(url)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Most recently stored config snapshot for an ingest job with this
+/// `(source_type, target)` pair, if any. Companion to
+/// [`latest_crawl_config_json`] for `axon refresh`.
+pub async fn latest_ingest_config_json(
+    pool: &SqlitePool,
+    source_type: &str,
+    target: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT config_json FROM axon_ingest_jobs WHERE source_type = ? AND target = ? \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(source_type)
+    .bind(target)
+    .fetch_optional(pool)
+    .await
+}
+
 /// Count all jobs in a table.
 pub async fn count_jobs(pool: &SqlitePool, kind: JobKind) -> Result<i64, sqlx::Error> {
     let table = kind.table_name();

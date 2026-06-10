@@ -262,17 +262,14 @@ async fn build_post_doc(
     }
 
     Ok(PostBuildResult {
-        doc: Some(PreparedDoc {
-            url: post_url.clone(),
-            domain: url_to_domain(&post_url),
+        doc: Some(PreparedDoc::ingest(
+            post_url.clone(),
+            url_to_domain(&post_url),
             chunks,
-            source_type: "reddit".to_string(),
-            content_type: "text",
-            title: Some(title.to_string()),
-            extra: Some(extra),
-            extractor_name: None,
-            structured: None,
-        }),
+            "reddit",
+            Some(title.to_string()),
+            Some(extra),
+        )),
         comment_fetch_attempted,
         comment_fetch_failed,
     })
@@ -338,17 +335,14 @@ async fn ingest_thread(
             },
         });
     }
-    let doc = PreparedDoc {
-        url: canonical_url.clone(),
-        domain: url_to_domain(&canonical_url),
+    let doc = PreparedDoc::ingest(
+        canonical_url.clone(),
+        url_to_domain(&canonical_url),
         chunks,
-        source_type: "reddit".to_string(),
-        content_type: "text",
-        title: Some(title.to_string()),
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    };
+        "reddit",
+        Some(title.to_string()),
+        Some(extra),
+    );
     let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
     Ok(RedditIngestSummary {
         chunks_embedded: summary.chunks_embedded,

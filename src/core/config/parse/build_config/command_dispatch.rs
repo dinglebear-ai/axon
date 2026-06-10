@@ -6,8 +6,8 @@
 
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
-    IngestArgs, MonitorSubcommand, ServeArgs, ServeSubcommand, SessionsArgs, SetupArgs,
-    SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
+    IngestArgs, MonitorSubcommand, PaletteArgs, ServeArgs, ServeSubcommand, SessionsArgs,
+    SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -70,6 +70,8 @@ pub(super) struct DispatchOutput {
     pub sources_domain: Option<String>,
     pub sources_domain_all: bool,
     pub domains_domain: Option<String>,
+    /// Binary acquisition method passed in by install.sh via `axon setup --method pull|build`
+    pub setup_method: Option<String>,
 }
 
 impl DispatchOutput {
@@ -119,6 +121,7 @@ impl DispatchOutput {
             sources_domain: None,
             sources_domain_all: false,
             domains_domain: None,
+            setup_method: None,
         }
     }
 }
@@ -303,6 +306,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
                 SyncSubcommand::Pending => vec!["pending".to_string()],
             };
         }
+        CliCommand::Palette(args) => apply_palette(&mut out, args),
     }
     out
 }
@@ -445,6 +449,9 @@ fn apply_config(out: &mut DispatchOutput, args: ConfigArgs) {
 
 fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
     out.command = CommandKind::Setup;
+    if let Some(method) = args.method {
+        out.setup_method = Some(method.as_str().to_string());
+    }
     match args.action {
         None => {}
         Some(SetupSubcommand::PluginHook { no_setup }) => {
@@ -519,6 +526,14 @@ fn setup_init_positionals(init: SetupInitArgs) -> Vec<String> {
         init.reddit_client_secret,
     );
     out
+}
+
+fn apply_palette(out: &mut DispatchOutput, args: PaletteArgs) {
+    out.command = CommandKind::Palette;
+    out.positional = args.action.into_iter().collect();
+    if let Some(method) = args.method {
+        out.setup_method = Some(method.as_str().to_string());
+    }
 }
 
 fn push_opt(out: &mut Vec<String>, flag: &str, value: Option<String>) {

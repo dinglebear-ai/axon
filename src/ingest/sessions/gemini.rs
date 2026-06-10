@@ -197,17 +197,14 @@ async fn process_gemini_file(
         "session_id": session_id,
         "session_date": mtime_chrono.to_rfc3339(),
     });
-    let doc = PreparedDoc {
-        domain: url_to_domain(&url),
-        url,
+    let doc = PreparedDoc::ingest(
+        url.clone(),
+        url_to_domain(&url),
         chunks,
-        source_type: "gemini_session".to_string(),
-        content_type: "text",
+        "gemini_session",
         title,
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    };
+        Some(extra),
+    );
     Ok(Some(SessionDoc {
         doc,
         collection,

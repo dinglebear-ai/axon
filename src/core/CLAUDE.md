@@ -107,7 +107,7 @@ Other enums: `RenderMode` (Http/Chrome/AutoSwitch), `ScrapeFormat` (Markdown/Htm
 ## `into_config()` — CLI → Config Translation (`config/parse/build_config.rs`)
 
 Translates `clap` output into the runtime `Config` struct:
-1. Extracts command-specific args (ask_diagnostics, github_include_source (default: true, disabled by `--no-source`), reddit_*, sessions_*, serve_port)
+1. Extracts command-specific args (ask_diagnostics, github_include_source (default: true, disabled by `--no-source`; `--include-source` was removed as a no-op), reddit_*, sessions_*, serve_port)
 2. Maps `CliCommand` → `(CommandKind, Vec<String> positional)`
 3. Normalizes service URLs via `normalize_local_service_url()` (Docker detection)
 4. Applies `profile_settings()` for performance defaults

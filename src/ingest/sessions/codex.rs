@@ -226,17 +226,14 @@ async fn parse_codex_file(
         "tools_used": parsed.tools_used,
         "workspace_path": parsed.workspace_path,
     });
-    let doc = PreparedDoc {
+    let doc = PreparedDoc::ingest(
         url,
-        domain: "local".to_string(),
+        "local".to_string(),
         chunks,
-        source_type: "codex_session".to_string(),
-        content_type: "text",
+        "codex_session",
         title,
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    };
+        Some(extra),
+    );
     Ok(Some(SessionDoc {
         doc,
         collection,

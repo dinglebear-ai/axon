@@ -263,13 +263,12 @@ impl ConfigSnapshot {
         cfg: &mut Config,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(value) = self.llm_backend.take() {
-            let kind =
-                crate::services::llm_backend::LlmBackendKind::parse(&value).map_err(|err| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("invalid llm_backend in config snapshot {value:?}: {err}"),
-                    )
-                })?;
+            let kind = crate::core::llm::LlmBackendKind::parse(&value).map_err(|err| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid llm_backend in config snapshot {value:?}: {err}"),
+                )
+            })?;
             cfg.llm_backend = kind;
         }
         Ok(())
@@ -427,12 +426,10 @@ fn snapshot_endpoints(
     })
 }
 
-fn llm_backend_snapshot(kind: crate::services::llm_backend::LlmBackendKind) -> String {
+fn llm_backend_snapshot(kind: crate::core::llm::LlmBackendKind) -> String {
     match kind {
-        crate::services::llm_backend::LlmBackendKind::GeminiHeadless => {
-            "gemini-headless".to_string()
-        }
-        crate::services::llm_backend::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
+        crate::core::llm::LlmBackendKind::GeminiHeadless => "gemini-headless".to_string(),
+        crate::core::llm::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
     }
 }
 

@@ -86,9 +86,11 @@ pub async fn update_latest_reflink(
 
 /// Prepare the output directory before a crawl run.
 ///
-/// - Cache mode: archives existing `markdown/` to `markdown.old/` (Recycling Bin Pattern)
-///   so the collector can surgically reuse unchanged pages.
-/// - Non-cache mode: wipes the directory unless `AXON_NO_WIPE` is set.
+/// - Cache or etag-conditional mode: archives existing `markdown/` to `markdown.old/`
+///   (Recycling Bin Pattern) so the collector can surgically reuse unchanged pages.
+///   `--etag-conditional` needs the recycling bin even without `--cache` so that
+///   304-skipped pages can be relinked from `markdown.old` during reconciliation.
+/// - Non-cache/non-etag mode: wipes the directory unless `AXON_NO_WIPE` is set.
 /// - Always ensures `markdown/` exists at the end.
 pub(super) async fn prepare_crawl_output_dir(
     output_dir: &Path,
@@ -97,7 +99,7 @@ pub(super) async fn prepare_crawl_output_dir(
     cfg: &Config,
 ) -> Result<(), Box<dyn Error>> {
     if path_exists(output_dir).await {
-        if cfg.cache {
+        if cfg.cache || cfg.etag_conditional {
             if path_exists(markdown_dir).await {
                 if path_exists(recycling_bin).await {
                     tokio::fs::remove_dir_all(recycling_bin).await?;

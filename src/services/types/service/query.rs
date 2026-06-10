@@ -1,8 +1,8 @@
 // ── Query / retrieve / ask / evaluate / suggest ──────────────────────────────
 
-mod ask_explain;
+// ask_explain types moved to crate::core::ask_explain (A-C1 cycle break)
 
-pub use ask_explain::*;
+pub use crate::core::ask_explain::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct QueryHit {
@@ -251,24 +251,8 @@ pub struct AskDiagnostics {
     pub corpus_health: Option<CorpusHealthDiagnostic>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum CorpusHealthKind {
-    Healthy,
-    NoRetrievalCandidates,
-    ThinDomain,
-    RetrievedNotSelected,
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CorpusHealthDiagnostic {
-    pub kind: CorpusHealthKind,
-    pub reason: String,
-    pub selected_domain_count: usize,
-    pub top_domain_count: usize,
-}
+// CorpusHealthKind and CorpusHealthDiagnostic moved to crate::core::ask_explain
+// (A-C1 cycle break); re-exported above via `pub use crate::core::ask_explain::*`.
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AskTiming {

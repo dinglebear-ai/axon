@@ -1,18 +1,21 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use reqwest::Client;
 use reqwest::StatusCode;
 
 use crate::core::config::Config;
-use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
+use crate::ingest::git_payload::{
+    ContentKind, GitPayload, build_git_payload, extract_git_item_fields,
+};
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
-use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::vector::ops::{PreparedDoc, chunk_text};
 
 use super::client::fetch_paginated;
 use super::types::{
     GitLabIssue, GitLabMergeRequest, GitLabProject, GitLabTarget, GitLabUser, GitLabWikiPage,
 };
+use crate::ingest::git_files::embed_docs;
 
 /// Build the canonical `git_*` payload for a GitLab chunk, plus GitLab-specific fields.
 ///
@@ -33,8 +36,9 @@ pub(crate) fn gitlab_payload(
     // Canonical content_kind: GitLab uses "merge_request"; from_wire normalises.
     let kind = ContentKind::from_wire(content_kind);
 
+    // GitLab uses "iid" as the item number field (Q-H4: shared decoder)
     let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) =
-        extract_kind_fields(&kind_extra, content_kind);
+        extract_git_item_fields(&kind_extra, "iid");
 
     let file_path = kind_extra
         .get("path")
@@ -87,61 +91,6 @@ pub(crate) fn gitlab_payload(
     })
 }
 
-/// Decomposed fields extracted from a GitLab issue or merge request payload.
-/// Tuple: (state, number, author, labels, is_draft, merged_at, created_at, updated_at)
-type KindFields = (
-    Option<String>,
-    Option<u64>,
-    Option<String>,
-    Option<Vec<String>>,
-    Option<bool>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-);
-
-fn extract_kind_fields(extra: &serde_json::Value, content_kind: &str) -> KindFields {
-    match content_kind {
-        "issue" | "merge_request" => (
-            extra
-                .get("state")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            extra.get("iid").and_then(|v| v.as_u64()),
-            extra
-                .get("author")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            extra.get("labels").and_then(|v| v.as_array()).map(|a| {
-                a.iter()
-                    .filter_map(|s| s.as_str().map(str::to_string))
-                    .collect()
-            }),
-            extra.get("is_draft").and_then(|v| v.as_bool()),
-            extra
-                .get("merged_at")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            extra
-                .get("created_at")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            extra
-                .get("updated_at")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-        ),
-        _ => (None, None, None, None, None, None, None, None),
-    }
-}
-
-pub(crate) async fn embed_docs(cfg: &Config, docs: Vec<PreparedDoc>) -> Result<usize> {
-    let summary = embed_prepared_docs(cfg, docs, None)
-        .await
-        .map_err(|e| anyhow!("{e}"))?;
-    Ok(summary.chunks_embedded)
-}
-
 pub(crate) async fn embed_metadata(
     cfg: &Config,
     target: &GitLabTarget,
@@ -188,17 +137,14 @@ pub(crate) async fn embed_metadata(
     );
     embed_docs(
         cfg,
-        vec![PreparedDoc {
-            url: project.web_url.clone(),
-            domain: target.host.clone(),
+        vec![PreparedDoc::ingest(
+            project.web_url.clone(),
+            target.host.clone(),
             chunks,
-            source_type: "gitlab".to_string(),
-            content_type: "text",
-            title: Some(project.path_with_namespace.clone()),
-            extra: Some(extra),
-            extractor_name: None,
-            structured: None,
-        }],
+            "gitlab",
+            Some(project.path_with_namespace.clone()),
+            Some(extra),
+        )],
     )
     .await
 }
@@ -279,17 +225,14 @@ fn issue_doc(
             "comment_count": issue.user_notes_count,
         }),
     );
-    Some(PreparedDoc {
+    Some(PreparedDoc::ingest(
         url,
-        domain: target.host.clone(),
+        target.host.clone(),
         chunks,
-        source_type: "gitlab".to_string(),
-        content_type: "text",
-        title: Some(format!("Issue #{}: {}", issue.iid, issue.title)),
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    })
+        "gitlab",
+        Some(format!("Issue #{}: {}", issue.iid, issue.title)),
+        Some(extra),
+    ))
 }
 
 pub(crate) async fn embed_merge_requests(
@@ -356,17 +299,14 @@ fn merge_request_doc(
             "is_draft": mr.draft,
         }),
     );
-    Some(PreparedDoc {
+    Some(PreparedDoc::ingest(
         url,
-        domain: target.host.clone(),
+        target.host.clone(),
         chunks,
-        source_type: "gitlab".to_string(),
-        content_type: "text",
-        title: Some(format!("MR !{}: {}", mr.iid, mr.title)),
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    })
+        "gitlab",
+        Some(format!("MR !{}: {}", mr.iid, mr.title)),
+        Some(extra),
+    ))
 }
 
 pub(crate) async fn embed_wiki(
@@ -423,15 +363,12 @@ fn wiki_doc(
             "encoding": page.encoding,
         }),
     );
-    Some(PreparedDoc {
-        url: format!("{}/-/wikis/{}", target.web_url, page.slug),
-        domain: target.host.clone(),
+    Some(PreparedDoc::ingest(
+        format!("{}/-/wikis/{}", target.web_url, page.slug),
+        target.host.clone(),
         chunks,
-        source_type: "gitlab".to_string(),
-        content_type: "text",
-        title: Some(format!("Wiki: {}", page.title)),
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    })
+        "gitlab",
+        Some(format!("Wiki: {}", page.title)),
+        Some(extra),
+    ))
 }

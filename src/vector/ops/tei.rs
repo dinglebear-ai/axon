@@ -58,6 +58,43 @@ pub(crate) struct PreparedDoc {
     /// The full payload lives in `structured_blob` (capped to
     /// `cfg.structured_data_max_bytes` by the caller). See bead `axon_rust-xvu9`.
     pub(crate) structured: Option<StructuredPayload>,
+    /// Optional per-chunk payload overrides, positionally parallel to `chunks`.
+    /// When `chunk_extra[i]` is present, its object keys are merged into chunk
+    /// `i`'s Qdrant payload on top of the doc-level `extra` (chunk keys win,
+    /// reserved system keys excepted). Empty for the common case. GitHub code
+    /// ingest uses this to attach per-chunk `symbol_*` / `code_line_*` metadata
+    /// while still grouping a file's chunks into a single `PreparedDoc` (P-H1),
+    /// so the symbol-boost retrieval signal survives the per-file batching.
+    pub(crate) chunk_extra: Vec<serde_json::Value>,
+}
+
+impl PreparedDoc {
+    /// Constructor for ingest-source documents (github/gitlab/gitea/generic-git/
+    /// reddit/youtube/sessions). Fills the ingest-path invariants: `content_type`
+    /// is always `"text"`, and ingest sources carry no vertical extractor or
+    /// page-level structured payload. Crawl/embed paths build the struct literally
+    /// because they vary `content_type`/`extractor_name`/`structured`.
+    pub(crate) fn ingest(
+        url: String,
+        domain: String,
+        chunks: Vec<String>,
+        source_type: impl Into<String>,
+        title: Option<String>,
+        extra: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            url,
+            domain,
+            chunks,
+            source_type: source_type.into(),
+            content_type: "text",
+            title,
+            extra,
+            extractor_name: None,
+            structured: None,
+            chunk_extra: Vec::new(),
+        }
+    }
 }
 
 /// Per-page structured-data payload attached to every chunk of a doc.

@@ -49,7 +49,7 @@ pub async fn run_research(
     if !cfg.quiet && !cfg.json_output {
         log_info(&format!("command=research query_len={}", query.len()));
         print_phase("\u{25d0}", "Researching", &query);
-        let model = crate::services::llm_backend::configured_model_from_config(cfg)
+        let model = crate::core::llm::configured_model_from_config(cfg)
             .unwrap_or_else(|| "(backend default)".to_string());
         let provider = if cfg.searxng_url.is_empty() {
             "tavily"

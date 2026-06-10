@@ -1,5 +1,6 @@
 pub mod classify;
 pub mod generic_git;
+pub mod git_files;
 pub mod git_payload;
 pub mod gitea;
 pub mod github;

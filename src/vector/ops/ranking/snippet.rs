@@ -263,6 +263,7 @@ fn score_chunk_for_preview(text: &str, query_tokens: &[String]) -> f32 {
 /// Scans up to 8 candidates per URL. Falls back to `fallback_idx` if none match.
 ///
 /// Ported from TS `selectBestPreviewItem` in `utils/snippet.ts`.
+#[must_use]
 pub fn select_best_preview_chunk(
     candidates: &[AskCandidate],
     url: &str,
@@ -284,6 +285,7 @@ pub fn select_best_preview_chunk(
 /// Ported from axon/src/utils/snippet.ts `getMeaningfulSnippet`.
 /// Steps: clean → split sentences → filter nav → score per token → select ≤5
 /// (≤700 chars) in doc order → pad if <3 → fallback to first 5 / 220 chars.
+#[must_use]
 pub fn get_meaningful_snippet(text: &str, query_tokens: &[String]) -> String {
     let phrase = query_tokens.join(" ");
     let cleaned = clean_snippet_source(text);
@@ -378,3 +380,7 @@ pub fn get_meaningful_snippet(text: &str, query_tokens: &[String]) -> String {
     }
     out.join(" ")
 }
+
+#[cfg(test)]
+#[path = "snippet_tests.rs"]
+mod tests;

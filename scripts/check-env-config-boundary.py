@@ -45,6 +45,11 @@ IGNORED_TOKENS = {
     "AXON_DEV_BIN",  # local shell variable in scripts/axon
     "AXON_DEV_BIN_DIR",  # local shell variable in scripts/axon
     "AXON_HOME_DIR",  # local shell variable in scripts/axon
+    "AXON_BACKUP_DIR",  # operational var in scripts/axon-backup.sh, not axon runtime config
+    "QDRANT_DEST",  # local shell variable in scripts/axon-backup.sh
+    "QDRANT_DIR",  # local shell variable in scripts/axon-backup.sh
+    "QDRANT_SHA256",  # local shell variable in scripts/axon-backup.sh
+    "QDRANT_SIZE",  # local shell variable in scripts/axon-backup.sh
     "AXON_API_UA",  # Rust User-Agent const, not an env var
     "AXON_FULL_ACCESS_SCOPE",  # Rust authz const, not an env var
     "AXON_API_UA",  # Rust const (User-Agent string), not an env var

@@ -91,11 +91,30 @@ async fn scrape_with_vertical_timeout(
     vertical_timeout: Duration,
 ) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = validate_and_normalize_scrape_url(url, &tx).await?;
-    if let Some(result) = try_vertical_scrape(cfg, &normalized, &tx, vertical_timeout).await? {
-        return Ok(result);
+    let mut result =
+        if let Some(r) = try_vertical_scrape(cfg, &normalized, &tx, vertical_timeout).await? {
+            r
+        } else {
+            let r = generic_scrape(cfg, &normalized).await?;
+            emit_scrape_complete(&tx, &normalized).await;
+            r
+        };
+    // Service-side artifact write: if output_path is configured, write atomically
+    // so all callers (CLI, MCP, /v1/actions) share identical write semantics.
+    if let Some(output_path) = cfg.output_path.as_ref() {
+        crate::services::artifacts::atomic_write_explicit(output_path, result.output.as_bytes())
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+        result.artifact_handle = ArtifactHandle::try_from_path(
+            "scrape",
+            &cfg.output_dir,
+            output_path,
+            result.output.len() as u64,
+            Some(result.output.lines().count() as u64),
+            None,
+            Some(normalized.to_string()),
+        );
     }
-    let result = generic_scrape(cfg, &normalized).await?;
-    emit_scrape_complete(&tx, &normalized).await;
     Ok(result)
 }
 
@@ -156,12 +175,48 @@ async fn try_vertical_scrape(
     }
 }
 
+/// Extract markdown hyperlinks from `[text](href)` patterns and return them as
+/// `{href, text}` objects matching the format produced by `build_scrape_json`.
+/// Capped at 512 entries (same limit as the generic HTML scrape path).
+fn extract_markdown_links(markdown: &str) -> Vec<serde_json::Value> {
+    // Matches [text](href) where href is an http/https URL.
+    // Uses a simple byte scan rather than a regex dep: find `](` then scan for `)`.
+    const LIMIT: usize = 512;
+    let mut links = Vec::new();
+    let bytes = markdown.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    while i + 3 < len && links.len() < LIMIT {
+        // Find `](`
+        if bytes[i] == b']' && bytes[i + 1] == b'(' {
+            let href_start = i + 2;
+            // Find the closing `)`
+            if let Some(rel) = bytes[href_start..].iter().position(|&b| b == b')') {
+                let href = &markdown[href_start..href_start + rel];
+                if href.starts_with("http://") || href.starts_with("https://") {
+                    // Extract the link text between the preceding `[` and `]`
+                    let text_end = i;
+                    let text_start = markdown[..text_end]
+                        .rfind('[')
+                        .map(|p| p + 1)
+                        .unwrap_or(text_end);
+                    let text = &markdown[text_start..text_end];
+                    links.push(serde_json::json!({ "href": href, "text": text }));
+                }
+                i = href_start + rel + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    links
+}
+
 fn vertical_doc_to_scrape_result(
     doc: crate::extract::ScrapedDoc,
 ) -> Result<ScrapeResult, Box<dyn Error>> {
-    // TODO(watch): vertical payloads omit `links`, so watch link-change
-    // detection is markdown-only for vertical URLs.
-    let payload = serde_json::json!({ "url": doc.url, "markdown": doc.markdown });
+    let links = extract_markdown_links(&doc.markdown);
+    let payload = serde_json::json!({ "url": doc.url, "markdown": doc.markdown, "links": links });
     let mut scrape_result = map_scrape_payload(payload)?;
     scrape_result.backend = Some(DocumentBackend::LiveScrape);
     scrape_result.follow_crawl_urls = doc.follow_crawl_urls;
@@ -199,17 +254,6 @@ async fn generic_scrape(cfg: &Config, normalized: &str) -> Result<ScrapeResult, 
     )?;
     let mut result = map_scrape_payload(payload)?;
     result.output = output;
-    result.artifact_handle = cfg.output_path.as_ref().and_then(|path| {
-        ArtifactHandle::try_from_path(
-            "scrape",
-            &cfg.output_dir,
-            path,
-            result.output.len() as u64,
-            Some(result.output.lines().count() as u64),
-            None,
-            Some(normalized.to_string()),
-        )
-    });
     Ok(result)
 }
 
@@ -358,6 +402,7 @@ pub(crate) fn scrape_result_to_prepared_doc(result: &ScrapeResult) -> PreparedDo
         extra: result.extra.clone(),
         extractor_name: result.extractor_name.clone(),
         structured: None,
+        chunk_extra: Vec::new(),
     }
 }
 

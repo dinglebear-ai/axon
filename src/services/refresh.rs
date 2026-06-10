@@ -13,12 +13,9 @@
 use std::error::Error;
 
 use crate::core::config::Config;
+use crate::jobs::ingest::RE_INGESTABLE_SOURCE_TYPES;
 use crate::services::context::ServiceContext;
 use crate::vector::ops::qdrant::{env_usize_clamped, qdrant_facet, qdrant_facet_filtered};
-
-/// `source_type` values produced by the ingest pipeline whose `seed_url` is a
-/// re-classifiable ingest target (round-trips through `classify_target`).
-const INGEST_SOURCE_TYPES: &[&str] = &["github", "gitlab", "gitea", "git", "reddit", "youtube"];
 
 /// What `refresh` will do with a single indexed origin.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,7 +87,7 @@ pub struct RefreshOutcome {
 /// Classify an origin into a re-runnable action based on its `source_type` and
 /// `seed_url` shape.
 fn classify_action(source_type: &str, seed_url: &str) -> RefreshAction {
-    if INGEST_SOURCE_TYPES.contains(&source_type) {
+    if RE_INGESTABLE_SOURCE_TYPES.contains(&source_type) {
         RefreshAction::Ingest
     } else if source_type == "sessions" || source_type == "prepared_sessions" {
         RefreshAction::Skip("sessions are not re-runnable from an origin marker")
@@ -164,6 +161,13 @@ pub async fn plan_refresh(
 /// Re-enqueue jobs for every actionable origin in `plan`. Always enqueue-only
 /// (never blocks on `--wait`); failures are collected per-origin so one bad
 /// origin does not abort the run.
+///
+/// Each origin is re-enqueued with the **original job's** stored config
+/// snapshot (max_depth, scoping, budgets, headers, …) when one exists in the
+/// jobs DB — re-crawling with current process defaults would silently widen or
+/// narrow a previously scoped crawl. Collection and service endpoints always
+/// follow the current process config: refresh targets the collection it
+/// faceted, not whatever the original job wrote to.
 pub async fn execute_refresh(
     cfg: &Config,
     service_context: &ServiceContext,
@@ -172,13 +176,33 @@ pub async fn execute_refresh(
     let mut enqueue_cfg = cfg.clone();
     enqueue_cfg.wait = false;
 
+    // Job-history lookups are best-effort: refresh still works (with current
+    // defaults) when the jobs DB is unavailable or holds no prior job.
+    let pool = match crate::jobs::store::open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await
+    {
+        Ok(pool) => Some(pool),
+        Err(e) => {
+            tracing::warn!(error = %e, "refresh: jobs DB unavailable; re-enqueuing with current config defaults");
+            None
+        }
+    };
+
     let mut outcome = RefreshOutcome::default();
     for origin in &plan.origins {
         match origin.action {
             RefreshAction::Skip(_) => outcome.skipped += 1,
             RefreshAction::Crawl => {
+                let snapshot = match &pool {
+                    Some(pool) => {
+                        crate::jobs::query::latest_crawl_config_json(pool, &origin.seed_url)
+                            .await
+                            .unwrap_or_default()
+                    }
+                    None => None,
+                };
+                let job_cfg = origin_config(&enqueue_cfg, snapshot.as_deref());
                 match crate::services::crawl::crawl_start_with_context(
-                    &enqueue_cfg,
+                    &job_cfg,
                     std::slice::from_ref(&origin.seed_url),
                     service_context,
                     None,
@@ -192,13 +216,24 @@ pub async fn execute_refresh(
                 }
             }
             RefreshAction::Ingest => {
+                let snapshot = match &pool {
+                    Some(pool) => crate::jobs::query::latest_ingest_config_json(
+                        pool,
+                        &origin.source_type,
+                        &origin.seed_url,
+                    )
+                    .await
+                    .unwrap_or_default(),
+                    None => None,
+                };
+                let job_cfg = origin_config(&enqueue_cfg, snapshot.as_deref());
                 match crate::services::ingest::classify_target(
                     &origin.seed_url,
-                    enqueue_cfg.github_include_source,
+                    job_cfg.github_include_source,
                 ) {
                     Ok(source) => {
                         match crate::services::ingest::ingest_start_with_context(
-                            &enqueue_cfg,
+                            &job_cfg,
                             source,
                             service_context,
                         )
@@ -218,6 +253,33 @@ pub async fn execute_refresh(
         }
     }
     Ok(outcome)
+}
+
+/// Rebuild the config for one origin from the original job's stored snapshot.
+///
+/// Replays the job-shaping fields (depth, page caps, subdomain scoping,
+/// headers, budgets, include-source, …) and pins the runtime back to the
+/// current process: collection and service endpoints follow today's config,
+/// the worker stamps `seed_url` itself, and refresh is always enqueue-only.
+/// Falls back to the base config when no snapshot exists or it fails to parse.
+fn origin_config(base: &Config, snapshot_json: Option<&str>) -> Config {
+    let Some(snapshot_json) = snapshot_json else {
+        return base.clone();
+    };
+    match crate::jobs::config_snapshot::apply_config_snapshot(base, snapshot_json) {
+        Ok(mut replayed) => {
+            replayed.collection = base.collection.clone();
+            replayed.qdrant_url = base.qdrant_url.clone();
+            replayed.tei_url = base.tei_url.clone();
+            replayed.seed_url = None;
+            replayed.wait = false;
+            replayed
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "refresh: stored job config snapshot failed to apply; using current config defaults");
+            base.clone()
+        }
+    }
 }
 
 #[cfg(test)]

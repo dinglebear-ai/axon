@@ -1,5 +1,5 @@
 use super::*;
-use crate::services::llm_backend::{CompletionRequest, LlmBackendConfig, LlmBackendKind};
+use crate::core::llm::{CompletionRequest, LlmBackendConfig, LlmBackendKind};
 use httpmock::prelude::*;
 
 fn backend(server: &MockServer, api_key: Option<&str>) -> LlmBackendConfig {

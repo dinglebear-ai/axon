@@ -227,17 +227,14 @@ async fn embed_repo_metadata(
         return Ok(0);
     }
     let domain = "github.com".to_string();
-    let doc = PreparedDoc {
+    let doc = PreparedDoc::ingest(
         url,
         domain,
         chunks,
-        source_type: "github".to_string(),
-        content_type: "text",
-        title: Some(owner_name.to_string()),
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    };
+        "github",
+        Some(owner_name.to_string()),
+        Some(extra),
+    );
     let summary = embed_prepared_docs(cfg, vec![doc], None)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;

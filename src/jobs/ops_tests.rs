@@ -536,6 +536,86 @@ async fn ingest_queue_cap_rejects_when_full() {
 }
 
 #[tokio::test]
+async fn ingest_claim_serializes_same_target_jobs() {
+    // Two jobs for the same (source_type, target) must never run concurrently:
+    // the first job's repo-scoped stale cleanup would delete points the second
+    // just upserted. A pending job whose target has a running sibling is left
+    // queued; jobs for other targets are claimed past it.
+    let pool = test_pool().await;
+    let dup_1 = "00000000-0000-0000-0000-000000000001";
+    let dup_2 = "00000000-0000-0000-0000-000000000002";
+    let other = "00000000-0000-0000-0000-000000000003";
+    for (id, created_at, source_type, target) in [
+        (dup_1, 0, "github", "owner/repo"),
+        (dup_2, 1, "github", "owner/repo"),
+        (other, 2, "reddit", "r/rust"),
+    ] {
+        sqlx::query(
+            "INSERT INTO axon_ingest_jobs (id, status, target, source_type, config_json, created_at, updated_at) \
+             VALUES (?, 'pending', ?, ?, '{}', ?, ?)",
+        )
+        .bind(id)
+        .bind(target)
+        .bind(source_type)
+        .bind(created_at)
+        .bind(created_at)
+        .execute(&pool)
+        .await
+        .expect("seed row");
+    }
+
+    let claimed_ids = |pool: &SqlitePool| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, String>(
+                "SELECT id FROM axon_ingest_jobs WHERE status='running' ORDER BY id",
+            )
+            .fetch_all(&pool)
+            .await
+            .expect("running ids")
+        }
+    };
+
+    // First claim: oldest pending job (dup_1) starts running.
+    claim_next_pending(&pool, JobKind::Ingest)
+        .await
+        .expect("claim 1")
+        .expect("dup_1 claimable");
+    assert_eq!(claimed_ids(&pool).await, vec![dup_1.to_string()]);
+
+    // Second claim must skip dup_2 (same target as the running dup_1) and
+    // claim the other-target job instead.
+    claim_next_pending(&pool, JobKind::Ingest)
+        .await
+        .expect("claim 2")
+        .expect("other-target job claimable");
+    assert_eq!(
+        claimed_ids(&pool).await,
+        vec![dup_1.to_string(), other.to_string()]
+    );
+
+    // Nothing left that is safe to claim while dup_1 runs.
+    assert_eq!(
+        claim_next_pending(&pool, JobKind::Ingest)
+            .await
+            .expect("claim 3"),
+        None
+    );
+
+    // Once dup_1 reaches a terminal state, dup_2 becomes claimable.
+    sqlx::query("UPDATE axon_ingest_jobs SET status='completed' WHERE id=?")
+        .bind(dup_1)
+        .execute(&pool)
+        .await
+        .expect("complete dup_1");
+    let claimed = claim_next_pending(&pool, JobKind::Ingest)
+        .await
+        .expect("claim 4")
+        .expect("dup_2 claimable after sibling completes");
+    assert_eq!(claimed.to_string(), dup_2);
+}
+
+#[tokio::test]
 async fn embed_queue_cap_zero_disables_limit() {
     let pool = test_pool().await;
     // Setting limit=0 should allow any number of pending jobs.

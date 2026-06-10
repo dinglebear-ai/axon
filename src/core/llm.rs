@@ -5,6 +5,7 @@ pub mod headless;
 pub mod openai_compat;
 pub mod types;
 
+pub(crate) use concurrency::CompletionKey;
 pub use types::{
     CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult,
     LlmBackendConfig, LlmBackendKind, LlmModelPurpose, UsageSnapshot,
@@ -48,18 +49,16 @@ where
     }
 }
 
-fn completion_limiter_key(req: &CompletionRequest) -> String {
+pub(crate) fn completion_limiter_key(req: &CompletionRequest) -> CompletionKey {
     match req.backend.kind {
-        LlmBackendKind::GeminiHeadless => format!(
-            "gemini:{}:{}",
-            req.backend.gemini_cmd,
-            req.backend.gemini_model.as_deref().unwrap_or_default()
-        ),
-        LlmBackendKind::OpenAiCompat => format!(
-            "openai:{}:{}",
-            req.backend.openai_base_url.as_deref().unwrap_or_default(),
-            req.backend.openai_model.as_deref().unwrap_or_default()
-        ),
+        LlmBackendKind::GeminiHeadless => CompletionKey::Gemini {
+            cmd: req.backend.gemini_cmd.clone(),
+            model: req.backend.gemini_model.clone().unwrap_or_default(),
+        },
+        LlmBackendKind::OpenAiCompat => CompletionKey::OpenAi {
+            base_url: req.backend.openai_base_url.clone().unwrap_or_default(),
+            model: req.backend.openai_model.clone().unwrap_or_default(),
+        },
     }
 }
 
@@ -99,42 +98,5 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn limiter_key_uses_configured_backend_model_not_request_override() {
-        let backend = LlmBackendConfig {
-            kind: LlmBackendKind::OpenAiCompat,
-            openai_base_url: Some("http://127.0.0.1:8080/v1".to_string()),
-            openai_model: Some("default-model".to_string()),
-            configured: true,
-            ..LlmBackendConfig::default()
-        };
-        let mut req = CompletionRequest::new("hello").model("override-model");
-        req.backend = backend;
-
-        assert_eq!(
-            completion_limiter_key(&req),
-            "openai:http://127.0.0.1:8080/v1:default-model"
-        );
-    }
-
-    #[test]
-    fn limiter_key_falls_back_to_backend_model() {
-        let backend = LlmBackendConfig {
-            kind: LlmBackendKind::GeminiHeadless,
-            gemini_cmd: "gemini".to_string(),
-            gemini_model: Some("configured-model".to_string()),
-            configured: true,
-            ..LlmBackendConfig::default()
-        };
-        let mut req = CompletionRequest::new("hello");
-        req.backend = backend;
-
-        assert_eq!(
-            completion_limiter_key(&req),
-            "gemini:gemini:configured-model"
-        );
-    }
-}
+#[path = "llm_backend_tests.rs"]
+mod tests;

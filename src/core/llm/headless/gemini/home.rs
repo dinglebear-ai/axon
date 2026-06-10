@@ -1,4 +1,4 @@
-use crate::services::llm_backend::LlmBackendConfig;
+use crate::core::llm::LlmBackendConfig;
 use serde_json::{Value, json};
 use std::error::Error as StdError;
 use std::fs;

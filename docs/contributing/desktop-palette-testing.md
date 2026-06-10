@@ -1,100 +1,88 @@
 # Desktop Palette Testing
-Last Modified: 2026-05-18
+Last Modified: 2026-06-09
 
-This document covers the Windows screenshot harness for `axon-palette.exe` and
-the current UX review checklist for operation output rendering.
+This document covers how to validate `axon-palette.exe` on Windows and the
+current UX review checklist for operation output rendering.
 
-## Capture Harness
+## Capture Workflow
 
-Use [`scripts/capture-palette-operations.ps1`](../scripts/capture-palette-operations.ps1)
-to launch the Windows palette, submit operations, capture PNGs, and write a
-`manifest.json` beside the captures.
+> **Note:** The `scripts/capture-palette-operations.ps1` script referenced in
+> older versions of this document was never committed to the repository. Use the
+> Windows-MCP approach below instead.
 
-The script is intended to run on the Windows desktop session. A plain SSH
-PowerShell session can start the app, but may not foreground the GPUI window or
-deliver keyboard input reliably. Use Windows-MCP PowerShell for unattended
-desktop runs.
+Palette testing runs on **agent-os** (Claude's Windows 11 VM on tootie,
+reachable via `ssh agent-os`). Use the `vibin:desktop-app-testing` skill or
+drive agent-os directly via the Windows-MCP tool available through Labby.
 
-## Prerequisites
+### Prerequisites
 
-1. Download or build a portable Windows palette directory containing:
+1. Build or download a portable Windows palette directory containing:
    - `axon-palette.exe`
    - `axon.exe`
-2. Copy the local Axon runtime config to the Windows user:
-   - `~/.axon/.env`
-   - `~/.axon/config.toml`
-3. Unblock downloaded executables and scripts:
+2. Copy the runtime config to the Windows user:
 
 ```powershell
-Get-ChildItem C:\axon-test\portable -Recurse -Include *.exe,*.ps1 | Unblock-File
+# Run from dookie
+scp ~/.axon/.env agent-os:'C:/Users/User/.axon/.env'
+scp ~/.axon/config.toml agent-os:'C:/Users/User/.axon/config.toml'
 ```
 
-4. Accept or pre-create Windows Firewall rules for `axon.exe` if a network
-   prompt appears. The first child process that binds or connects can block the
-   palette until this is handled.
-
-## Copy And Run
-
-Copy the harness to the Windows target:
+3. Copy the palette binaries to agent-os:
 
 ```bash
-scp scripts/capture-palette-operations.ps1 \
-  agent-os:'C:/axon-test/portable-56a2b8c4/capture-palette-operations.ps1'
+scp ./target/x86_64-pc-windows-gnu/release/axon-palette.exe \
+    ./target/x86_64-pc-windows-gnu/release/axon.exe \
+    agent-os:'C:/axon-test/portable/'
 ```
 
-Run a small smoke first:
+4. Unblock downloaded executables (if copied from Linux or downloaded):
+
+```powershell
+Get-ChildItem C:\axon-test\portable -Recurse -Include *.exe | Unblock-File
+```
+
+5. Accept or pre-create Windows Firewall rules for `axon.exe` if a network
+   prompt appears on first launch.
+
+### Running via Windows-MCP
+
+Use Windows-MCP on agent-os to launch and interact with the palette. For each
+operation to capture:
+
+1. Kill any running palette process:
 
 ```powershell
 Stop-Process -Name axon-palette,axon -Force -ErrorAction SilentlyContinue
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File C:\axon-test\portable-56a2b8c4\capture-palette-operations.ps1 `
-  -PalettePath C:\axon-test\portable-56a2b8c4\axon-palette.exe `
-  -OutputDir C:\axon-test\portable-56a2b8c4\operation-screens-smoke `
-  -Only status,doctor
 ```
 
-Run the full set in chunks to avoid the Windows-MCP call timeout:
+2. Launch the palette:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File C:\axon-test\portable-56a2b8c4\capture-palette-operations.ps1 `
-  -PalettePath C:\axon-test\portable-56a2b8c4\axon-palette.exe `
-  -OutputDir C:\axon-test\portable-56a2b8c4\operation-screens-a `
-  -Only status,doctor,map,scrape
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File C:\axon-test\portable-56a2b8c4\capture-palette-operations.ps1 `
-  -PalettePath C:\axon-test\portable-56a2b8c4\axon-palette.exe `
-  -OutputDir C:\axon-test\portable-56a2b8c4\operation-screens-b `
-  -Only crawl,search,research,ask
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File C:\axon-test\portable-56a2b8c4\capture-palette-operations.ps1 `
-  -PalettePath C:\axon-test\portable-56a2b8c4\axon-palette.exe `
-  -OutputDir C:\axon-test\portable-56a2b8c4\operation-screens-c `
-  -Only ingest,ask-reset
+Start-Process C:\axon-test\portable\axon-palette.exe
+Start-Sleep -Seconds 2
 ```
 
-Fetch captures back to Linux:
+3. Send the operation input via Windows-MCP keyboard automation, then take a
+   screenshot with the Windows-MCP `Screenshot` action. Repeat for each
+   operation (`status`, `doctor`, `map`, `scrape`, `crawl`, `search`,
+   `research`, `ask`, `ingest`, `ask-reset`).
+
+4. Fetch screenshots back to Linux:
 
 ```bash
 mkdir -p /tmp/axon-agent-os/final-captures
-scp agent-os:'C:/axon-test/portable-56a2b8c4/operation-screens-a/*.png' /tmp/axon-agent-os/final-captures/
-scp agent-os:'C:/axon-test/portable-56a2b8c4/operation-screens-b/*.png' /tmp/axon-agent-os/final-captures/
-scp agent-os:'C:/axon-test/portable-56a2b8c4/operation-screens-c/*.png' /tmp/axon-agent-os/final-captures/
+scp 'agent-os:C:/axon-test/captures/*.png' /tmp/axon-agent-os/final-captures/
 ```
 
-## Harness Notes
+### Notes
 
-- `-Only` accepts operation names or numbered names, with comma-separated or
-  space-separated values: `-Only status,map` or `-Only status map`.
-- The harness kills and relaunches the palette for each operation so selected
-  mode, input text, and output state do not leak between captures.
-- Window-only screenshots are default. Pass `-FullScreen` when a system dialog
-  or other desktop-level problem needs to be captured.
-- If Windows-MCP `Screenshot` or `Snapshot` fails because the guest Python
-  environment is missing `cv2`, use the script's built-in PowerShell screenshot
-  path instead.
+- Kill and relaunch the palette between operations so selected mode, input
+  text, and output state do not leak between captures.
+- Use `-FullScreen` (or Windows-MCP full-desktop screenshot) when a system
+  dialog or other desktop-level issue needs to be captured.
+- A plain SSH PowerShell session can start the app but may not foreground the
+  GPUI window or deliver keyboard input reliably — use the Windows-MCP desktop
+  automation path instead.
 
 ## Job ID Follow-Up
 

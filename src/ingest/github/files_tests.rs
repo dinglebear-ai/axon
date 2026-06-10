@@ -1,7 +1,6 @@
 use super::super::GitHubCommonFields;
 use super::clone::should_retry_unauthenticated_clone;
-use super::prepare::next_search_start;
-use crate::vector::ops::input::{chunk_text, code::chunk_code};
+use crate::vector::ops::input::{chunk_text, chunk_text_with_offsets, code::chunk_code};
 
 fn github_common(is_private: Option<bool>) -> GitHubCommonFields {
     GitHubCommonFields {
@@ -24,22 +23,21 @@ fn chunk_text_produces_bounded_content() {
 }
 
 #[test]
-fn search_start_stays_on_char_boundary_with_multibyte_content() {
+fn chunk_offsets_stay_on_char_boundaries_with_multibyte_content() {
     let mut text = String::new();
     text.push_str(&"a".repeat(2000));
     text.push_str("─".repeat(200).as_str());
     text.push_str(&"b".repeat(500));
 
-    let mut search_start = 0usize;
-    for chunk in &chunk_text(&text) {
-        let byte_offset = text[search_start..]
-            .find(chunk.as_str())
-            .map(|pos| search_start + pos)
-            .unwrap_or(search_start);
-        search_start = next_search_start(&text, byte_offset, chunk.len());
+    for (byte_offset, chunk) in chunk_text_with_offsets(&text) {
         assert!(
-            text.is_char_boundary(search_start),
-            "search_start {search_start} is not a char boundary"
+            text.is_char_boundary(byte_offset),
+            "offset {byte_offset} is not a char boundary"
+        );
+        assert_eq!(
+            &text[byte_offset..byte_offset + chunk.len()],
+            chunk,
+            "offset must point at the chunk's true position"
         );
     }
 }

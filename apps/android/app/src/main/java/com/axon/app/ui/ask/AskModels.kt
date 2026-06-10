@@ -1,6 +1,5 @@
 package com.axon.app.ui.ask
 
-import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.AskResultUi
 
 /** A single completed Q/A turn kept in-VM for follow-up context injection. */
@@ -111,12 +110,6 @@ internal fun humanMarkdownPreview(markdown: String): String =
         }
         .joinToString("\n\n")
 
-internal fun AxonClient.JobKind.label(): String = when (this) {
-    AxonClient.JobKind.Crawl -> "Crawl"
-    AxonClient.JobKind.Embed -> "Embed"
-    AxonClient.JobKind.Extract -> "Extract"
-    AxonClient.JobKind.Ingest -> "Ingest"
-}
 
 internal fun activityForPhase(phase: String, query: String): ChatItem.Activity? {
     val normalized = phase.trim().lowercase()

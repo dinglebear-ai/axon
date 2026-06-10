@@ -1,7 +1,7 @@
+use crate::core::ask_explain::{CorpusHealthDiagnostic, CorpusHealthKind};
 use crate::core::config::Config;
+use crate::core::llm;
 use crate::core::logging::log_info;
-use crate::services::llm_backend;
-use crate::services::types::{CorpusHealthDiagnostic, CorpusHealthKind};
 
 mod context;
 mod normalize;
@@ -20,13 +20,12 @@ pub(crate) use normalize::normalize_ask_answer;
 pub(crate) use timing::{AskTiming, AskTimingSlot};
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
-    let backend = llm_backend::LlmBackendConfig::from_config(cfg);
+    let backend = llm::LlmBackendConfig::from_config(cfg);
     match backend.kind {
-        llm_backend::LlmBackendKind::GeminiHeadless => {
-            llm_backend::headless::gemini::validate_config(&backend)
-                .map_err(|e| anyhow::anyhow!("{e}"))
+        llm::LlmBackendKind::GeminiHeadless => {
+            llm::headless::gemini::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
         }
-        llm_backend::LlmBackendKind::OpenAiCompat => {
+        llm::LlmBackendKind::OpenAiCompat => {
             backend
                 .openai_base_url
                 .as_deref()
@@ -110,21 +109,48 @@ where
         ));
     }
 
-    validate_ask_llm_config(cfg)?;
     let context = ask_context_with_follow_up(cfg, &ctx.context);
+    let (answer, llm_total_ms) =
+        resolve_answer_and_timing(cfg, query, &context, on_delta.take(), &mut timing).await?;
+    Ok(assemble_ask_payload(
+        cfg,
+        query,
+        &ctx,
+        &answer,
+        llm_total_ms,
+        ask_started.elapsed().as_millis(),
+        &timing,
+        diagnostics_enabled,
+    ))
+}
+
+/// Run the LLM step and normalise the answer text.  Called by the non-explain
+/// path only; returns the normalised answer and the raw LLM wall-clock ms.
+async fn resolve_answer_and_timing<F>(
+    cfg: &Config,
+    query: &str,
+    context: &str,
+    on_delta: Option<F>,
+    timing: &mut AskTiming,
+) -> anyhow::Result<(String, u128)>
+where
+    F: FnMut(&str) + Send,
+{
+    validate_ask_llm_config(cfg)?;
     log_info(&format!(
         "ask llm starting backend={:?} model={} context_chars={} stream={}",
         cfg.llm_backend,
-        llm_backend::configured_model_from_config(cfg).unwrap_or_else(|| "<default>".to_string()),
+        llm::configured_model_from_config(cfg).unwrap_or_else(|| "<default>".to_string()),
         context.len(),
         cfg.ask_stream,
     ));
-    let llm = if let Some(callback) = on_delta.take() {
-        output::ask_llm_answer_with_deltas(cfg, query, &context, callback).await
+    let llm = if let Some(callback) = on_delta {
+        output::ask_llm_answer_with_deltas(cfg, query, context, callback).await
     } else {
-        output::ask_llm_answer(cfg, query, &context).await
+        output::ask_llm_answer(cfg, query, context).await
     }
     .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
+
     let (answer_text, llm_total_ms) = match &llm {
         output::AskLlmCompletion::Streamed {
             answer,
@@ -151,36 +177,48 @@ where
     timing.set(AskTimingSlot::LlmTotal, llm_total_ms);
 
     let normalize_started = std::time::Instant::now();
-    let answer = normalize_ask_answer(cfg, query, answer_text, &context);
+    let answer = normalize_ask_answer(cfg, query, answer_text, context);
     timing.record(AskTimingSlot::Normalize, normalize_started);
     if cfg.ask_stream && !cfg.json_output && !cfg.ask_explain && answer.trim() != answer_text.trim()
     {
         print_normalized_stream_correction(&answer);
     }
+    Ok((answer, llm_total_ms))
+}
 
-    let total_elapsed_ms = ask_started.elapsed().as_millis();
+/// Build the final JSON payload for a completed ask (non-explain path).
+#[allow(clippy::too_many_arguments)]
+fn assemble_ask_payload(
+    cfg: &Config,
+    query: &str,
+    ctx: &AskContext,
+    answer: &str,
+    llm_total_ms: u128,
+    total_elapsed_ms: u128,
+    timing: &AskTiming,
+    diagnostics_enabled: bool,
+) -> serde_json::Value {
     log_info(&format!(
         "ask complete answer_chars={} llm_ms={} total_ms={}",
         answer.len(),
         llm_total_ms,
         total_elapsed_ms,
     ));
-
-    Ok(serde_json::json!({
+    serde_json::json!({
         "query": query,
         "answer": answer,
         "session": serde_json::Value::Null,
         "warnings": &ctx.warnings,
-        "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
+        "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, ctx),
         "explain": serde_json::Value::Null,
         "timing_ms": build_timing_json(
             ctx.retrieval_elapsed_ms,
             ctx.context_elapsed_ms,
             llm_total_ms,
             total_elapsed_ms,
-            &timing,
+            timing,
         ),
-    }))
+    })
 }
 
 fn build_explain_payload(
@@ -352,38 +390,25 @@ fn build_timing_json(
     let Some(e) = timing.enabled() else {
         return serde_json::Value::Object(obj);
     };
-    if let Some(v) = e.tei_embed_ms {
-        obj.insert("tei_embed_ms".into(), ms(v));
-    }
-    if let Some(v) = e.qdrant_primary_ms {
-        obj.insert("qdrant_primary_ms".into(), ms(v));
-    }
-    if let Some(v) = e.qdrant_secondary_ms {
-        obj.insert("qdrant_secondary_ms".into(), ms(v));
-    }
-    if let Some(v) = e.rerank_ms {
-        obj.insert("rerank_ms".into(), ms(v));
-    }
-    if let Some(v) = e.top_select_ms {
-        obj.insert("top_select_ms".into(), ms(v));
-    }
-    if let Some(v) = e.full_doc_fetch_ms {
-        obj.insert("full_doc_fetch_ms".into(), ms(v));
-    }
-    if let Some(v) = e.supplemental_ms {
-        obj.insert("supplemental_ms".into(), ms(v));
-    }
-    if let Some(v) = e.llm_ttft_ms {
-        obj.insert("llm_ttft_ms".into(), ms(v));
-    }
-    if let Some(v) = e.llm_total_ms {
-        obj.insert("llm_total_ms".into(), ms(v));
+    let timing_fields: &[(&str, Option<u128>)] = &[
+        ("tei_embed_ms", e.tei_embed_ms),
+        ("qdrant_primary_ms", e.qdrant_primary_ms),
+        ("qdrant_secondary_ms", e.qdrant_secondary_ms),
+        ("rerank_ms", e.rerank_ms),
+        ("top_select_ms", e.top_select_ms),
+        ("full_doc_fetch_ms", e.full_doc_fetch_ms),
+        ("supplemental_ms", e.supplemental_ms),
+        ("llm_ttft_ms", e.llm_ttft_ms),
+        ("llm_total_ms", e.llm_total_ms),
+        ("normalize_ms", e.normalize_ms),
+    ];
+    for &(key, val) in timing_fields {
+        if let Some(v) = val {
+            obj.insert(key.into(), ms(v));
+        }
     }
     if let Some(v) = e.streamed {
         obj.insert("streamed".into(), v.into());
-    }
-    if let Some(v) = e.normalize_ms {
-        obj.insert("normalize_ms".into(), ms(v));
     }
     serde_json::Value::Object(obj)
 }

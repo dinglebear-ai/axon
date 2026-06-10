@@ -39,8 +39,14 @@ use crate::core::logging::log_debug;
 use crate::vector::ops::sparse::SparseVector;
 use crate::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
 use anyhow::{Result, anyhow};
+use serde::Serialize;
 use std::time::Instant;
 
+// Reuse the typed request-body structs from hybrid.rs so the batch path and
+// the single-query path share one representation (Q-M3).
+use super::hybrid::{
+    DenseParams, FusionSpec, HybridQueryBody, NamedDenseQueryBody, PrefetchArm, QuantizationParams,
+};
 use super::types::{QdrantBatchQueryResponse, QdrantSearchHit};
 use super::utils::{qdrant_collection_endpoint, qdrant_post_json_with_retry};
 
@@ -64,56 +70,72 @@ pub(crate) struct DualSearchResult {
     pub(crate) secondary: Vec<QdrantSearchHit>,
 }
 
-/// Build one batch entry — the same body shape as a single `/points/query`
-/// call — selecting between RRF (hybrid) and named-dense per the VectorMode
-/// dispatch rules. `VectorMode::Unnamed` is rejected upstream, so this only
-/// has to handle the Named arms.
-fn build_named_query_body(
-    arm: &DualSearchArm<'_>,
+/// One search arm inside a `/points/query/batch` request — either RRF hybrid
+/// or named-dense, using the same typed structs as the single-query path in
+/// `hybrid.rs`. `#[serde(untagged)]` emits the inner struct's fields directly.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum NamedQueryArm<'a> {
+    Hybrid(HybridQueryBody<'a>),
+    Dense(NamedDenseQueryBody<'a>),
+}
+
+/// Typed body for `/points/query/batch`. Two arms share the same typed
+/// representation as their single-query counterparts — no `json!` macros
+/// on the batch hot path (Q-M3).
+#[derive(Serialize)]
+struct BatchQueryBody<'a> {
+    searches: [NamedQueryArm<'a>; 2],
+}
+
+/// Build one typed batch arm, selecting between RRF hybrid and named-dense per
+/// the VectorMode dispatch rules. `VectorMode::Unnamed` is rejected upstream.
+fn build_named_query_arm<'a>(
+    arm: &DualSearchArm<'a>,
     limit: usize,
     candidates: usize,
     hybrid_enabled: bool,
     hnsw_ef: usize,
-) -> serde_json::Value {
-    let dense_params = serde_json::json!({
-        "hnsw_ef": hnsw_ef,
-        "quantization": {"rescore": true, "oversampling": 1.5},
-    });
-    let use_hybrid = hybrid_enabled && !arm.sparse.is_empty();
-    let mut body = if use_hybrid {
-        serde_json::json!({
-            "prefetch": [
-                {
-                    "query": arm.dense,
-                    "using": "dense",
-                    "limit": candidates,
-                    "params": dense_params,
+) -> NamedQueryArm<'a> {
+    let dense_params = DenseParams {
+        hnsw_ef,
+        quantization: QuantizationParams {
+            rescore: true,
+            oversampling: 1.5,
+        },
+    };
+    if hybrid_enabled && !arm.sparse.is_empty() {
+        NamedQueryArm::Hybrid(HybridQueryBody {
+            prefetch: [
+                PrefetchArm::Dense {
+                    query: arm.dense,
+                    using: "dense",
+                    limit: candidates,
+                    params: dense_params,
                 },
-                {
-                    "query": arm.sparse,
-                    "using": "bm42",
-                    "limit": candidates,
+                PrefetchArm::Sparse {
+                    query: arm.sparse,
+                    using: "bm42",
+                    limit: candidates,
                 },
             ],
-            "query": {"fusion": "rrf"},
-            "limit": limit,
-            "with_payload": true,
-            "with_vector": false,
+            query: FusionSpec { fusion: "rrf" },
+            limit,
+            with_payload: true,
+            with_vector: false,
+            filter: arm.filter,
         })
     } else {
-        serde_json::json!({
-            "query": arm.dense,
-            "using": "dense",
-            "limit": limit,
-            "with_payload": true,
-            "with_vector": false,
-            "params": dense_params,
+        NamedQueryArm::Dense(NamedDenseQueryBody {
+            query: arm.dense,
+            using: "dense",
+            limit,
+            with_payload: true,
+            with_vector: false,
+            params: dense_params,
+            filter: arm.filter,
         })
-    };
-    if let Some(f) = arm.filter {
-        body["filter"] = f.clone();
     }
-    body
 }
 
 /// Issue both arms of an ask dual-embed search in a single
@@ -163,13 +185,12 @@ pub(crate) async fn qdrant_dual_search(
         .max(limit);
     let hybrid_enabled = cfg.hybrid_search_enabled;
     let hnsw_ef = cfg.hnsw_ef_search;
-    let primary_body = build_named_query_body(&primary, limit, candidates, hybrid_enabled, hnsw_ef);
-    let secondary_body =
-        build_named_query_body(&secondary, limit, candidates, hybrid_enabled, hnsw_ef);
-
-    let body = serde_json::json!({
-        "searches": [primary_body, secondary_body],
-    });
+    let body = BatchQueryBody {
+        searches: [
+            build_named_query_arm(&primary, limit, candidates, hybrid_enabled, hnsw_ef),
+            build_named_query_arm(&secondary, limit, candidates, hybrid_enabled, hnsw_ef),
+        ],
+    };
 
     let client = internal_service_http_client()?;
     let url = qdrant_collection_endpoint(cfg, "points/query/batch")?;

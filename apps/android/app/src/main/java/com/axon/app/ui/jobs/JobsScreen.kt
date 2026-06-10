@@ -46,7 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.data.repository.WatchUi
@@ -140,7 +140,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
 }
 
 private sealed interface JobDrill {
-    data class Kind(val kind: AxonClient.JobKind) : JobDrill
+    data class Kind(val kind: JobFamily) : JobDrill
     data object Watches : JobDrill
 }
 
@@ -158,11 +158,11 @@ private data class JobOverviewRowModel(
 
 @Composable
 private fun jobOverviewRows(
-    jobsByKind: Map<AxonClient.JobKind, List<JobUi>>,
+    jobsByKind: Map<JobFamily, List<JobUi>>,
     watches: List<WatchUi>,
 ): List<JobOverviewRowModel> {
     val colors = AxonTheme.colors
-    fun row(kind: AxonClient.JobKind): JobOverviewRowModel {
+    fun row(kind: JobFamily): JobOverviewRowModel {
         val jobs = jobsByKind[kind].orEmpty()
         val runningCount = jobs.count { it.status.lowercase() in setOf("pending", "running", "processing") }
         val failedCount = jobs.count { it.status.lowercase() in setOf("failed", "error") }
@@ -187,19 +187,19 @@ private fun jobOverviewRows(
                 ?.let { progressForJob(it) },
             icon = iconForKind(kind),
             tone = when (kind) {
-                AxonClient.JobKind.Crawl -> colors.accentPrimary
-                AxonClient.JobKind.Embed -> colors.accentPink
-                AxonClient.JobKind.Extract -> colors.orange
-                AxonClient.JobKind.Ingest -> colors.accentStrong
+                JobFamily.Crawl -> colors.accentPrimary
+                JobFamily.Embed -> colors.accentPink
+                JobFamily.Extract -> colors.orange
+                JobFamily.Ingest -> colors.accentStrong
             },
             drill = JobDrill.Kind(kind),
         )
     }
     return listOf(
-        row(AxonClient.JobKind.Crawl),
-        row(AxonClient.JobKind.Embed),
-        row(AxonClient.JobKind.Ingest),
-        row(AxonClient.JobKind.Extract),
+        row(JobFamily.Crawl),
+        row(JobFamily.Embed),
+        row(JobFamily.Ingest),
+        row(JobFamily.Extract),
         JobOverviewRowModel(
             key = "watches",
             title = "Watches",

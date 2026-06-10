@@ -8,7 +8,7 @@ use super::super::utils::authorized;
 use crate::core::config::Config;
 use crate::mcp::schema::{
     AxonRequest, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction, ResponseMode,
-    ScrapeRequest, StatusRequest,
+    ScrapeRequest, ScreenshotRequest, StatusRequest,
 };
 use crate::services::{
     action_api, config as config_service, query as query_service, setup, system,
@@ -285,7 +285,19 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                 },
             )))
         }
-        _ => Err("supported commands: status, scrape <url>, crawl <url>, ask <question>, extract <prompt> from <url>".to_string()),
+        "screenshot" => {
+            let url = required_arg(rest, "screenshot requires a URL")?;
+            Ok(ParsedPanelCommand::Action(AxonRequest::Screenshot(
+                ScreenshotRequest {
+                    url: Some(normalize_url(url)),
+                    full_page: Some(true),
+                    viewport: None,
+                    output: None,
+                    response_mode: Some(ResponseMode::Inline),
+                },
+            )))
+        }
+        _ => Err("supported commands: status, scrape <url>, crawl <url>, ask <question>, extract <prompt> from <url>, screenshot <url>".to_string()),
     }
 }
 

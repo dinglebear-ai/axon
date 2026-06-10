@@ -5,6 +5,30 @@ use crate::ingest::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
 use super::super::GitHubCommonFields;
 use crate::core::logging::log_warn;
 
+/// Validate that a git ref name is safe to pass as `--branch <branch>`.
+///
+/// Rejects inputs that could be mistaken for git options or cause path
+/// traversal / NUL injection:
+/// - empty string
+/// - leading `-` (would look like a flag to git)
+/// - `..` anywhere (git object range / path traversal)
+/// - NUL byte (git terminates strings at NUL)
+pub fn validate_branch_ref(branch: &str) -> Result<()> {
+    if branch.is_empty() {
+        bail!("git branch ref must not be empty");
+    }
+    if branch.starts_with('-') {
+        bail!("git branch ref must not start with '-': {branch:?}");
+    }
+    if branch.contains("..") {
+        bail!("git branch ref must not contain '..': {branch:?}");
+    }
+    if branch.contains('\0') {
+        bail!("git branch ref must not contain NUL bytes");
+    }
+    Ok(())
+}
+
 pub(super) fn stderr_has_auth_or_permission_failure(stderr: &str) -> bool {
     let stderr = stderr.to_ascii_lowercase();
     [
@@ -54,6 +78,9 @@ pub(super) async fn clone_repo(
 ) -> Result<tempfile::TempDir> {
     use crate::core::http::validate_url;
     use base64::Engine as _;
+
+    // S-M4: Validate ref name before passing to --branch to prevent option injection
+    validate_branch_ref(branch)?;
 
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path().to_string_lossy().to_string();
@@ -139,3 +166,7 @@ pub(super) async fn clone_repo(
         stderr
     );
 }
+
+#[cfg(test)]
+#[path = "clone_tests.rs"]
+mod tests;

@@ -220,6 +220,21 @@ pub async fn qdrant_delete_stale_repo_file_urls(
     Ok(stale.len())
 }
 
+/// Test helper: build the delete body that `qdrant_delete_stale_tail` would
+/// send for the given `url` and `new_chunk_count`. Used by `delete_tests.rs`
+/// to assert the filter shape without making live HTTP calls (T-H3).
+#[cfg(test)]
+pub(crate) fn stale_tail_filter_body(url: &str, new_chunk_count: usize) -> serde_json::Value {
+    serde_json::json!({
+        "filter": {
+            "must": [
+                {"key": "url", "match": {"value": url}},
+                {"key": "chunk_index", "range": {"gte": new_chunk_count}}
+            ]
+        }
+    })
+}
+
 #[cfg(test)]
 fn repo_code_points_delete_body(provider: &str, owner: &str, repo: &str) -> serde_json::Value {
     serde_json::json!({

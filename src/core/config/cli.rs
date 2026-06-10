@@ -106,6 +106,8 @@ pub(super) enum CliCommand {
     Config(ConfigArgs),
     /// Reconcile locally produced server-mode artifacts
     Sync(SyncArgs),
+    /// Resolve, launch, and optionally install the axon-palette desktop binary
+    Palette(PaletteArgs),
 }
 
 #[derive(Debug, Args)]
@@ -170,11 +172,31 @@ pub(super) enum ServeSubcommand {
     Mcp(McpArgs),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(super) enum SetupMethod {
+    /// Download the axon binary from GitHub releases (default)
+    Pull,
+    /// Build the axon binary from source with cargo
+    Build,
+}
+
+impl SetupMethod {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Pull => "pull",
+            Self::Build => "build",
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 #[command(args_conflicts_with_subcommands = true)]
 pub(super) struct SetupArgs {
     #[command(subcommand)]
     pub(super) action: Option<SetupSubcommand>,
+    /// Binary acquisition method passed through from install.sh (pull = GitHub release, build = cargo)
+    #[arg(long, value_enum)]
+    pub(super) method: Option<SetupMethod>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -204,6 +226,17 @@ pub(super) struct MigrateArgs {
     /// Destination collection to create with named dense + bm42 sparse vectors
     #[arg(long)]
     pub(super) to: String,
+}
+
+#[derive(Debug, Args)]
+#[command(args_conflicts_with_subcommands = true)]
+pub(super) struct PaletteArgs {
+    /// Subcommand: launch (default), install, desktop, autostart
+    #[arg(value_name = "SUBCOMMAND")]
+    pub(super) action: Option<String>,
+    /// Binary acquisition method when the palette binary is missing or during install
+    #[arg(long, value_enum)]
+    pub(super) method: Option<SetupMethod>,
 }
 
 #[derive(Debug, Args)]
@@ -499,11 +532,8 @@ pub(super) struct IngestArgs {
     #[arg(value_name = "TARGET")]
     pub(super) target: Option<String>,
 
-    /// (GitHub only) Also index source code files in addition to markdown, issues, and PRs
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) include_source: bool,
-
-    /// (GitHub only) Skip source code files when ingesting a GitHub repository (default: include source).
+    /// Skip source code files when ingesting a Git repository (GitHub, GitLab, Gitea, or generic git).
+    /// By default source code is included. Has no effect on Reddit or YouTube targets.
     #[arg(long = "no-source")]
     pub(super) no_source: bool,
     // ── GitHub-specific limits (ignored for Reddit / YouTube) ────────────

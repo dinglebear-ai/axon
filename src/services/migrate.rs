@@ -54,6 +54,17 @@ pub async fn migrate(cfg: &Config) -> Result<MigrateResult, Box<dyn Error>> {
     clear_collection_mode_cache(&from);
     clear_collection_mode_cache(&to);
 
+    // O-L2: Loud success-gated worker-restart warning.
+    // The VectorMode cache invalidation above handles the current process.
+    // Any OTHER running process (a separate `axon serve` or `axon mcp`) still
+    // holds a stale `Unnamed` mode in memory and will use dense-only retrieval
+    // for queries/embeds against the new named-mode collection until restarted.
+    log_warn(&format!(
+        "IMPORTANT: migration complete — restart all running axon workers/servers to flush \
+         their stale VectorMode cache (from={from} to={to}). Workers that are not restarted \
+         will continue using dense-only retrieval instead of hybrid RRF."
+    ));
+
     Ok(MigrateResult {
         from,
         to,

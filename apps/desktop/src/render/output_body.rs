@@ -1,6 +1,6 @@
 use gpui::{
     Div, FontWeight, IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Styled,
-    div, prelude::*, px, rgb,
+    div, img, prelude::*, px, rgb,
 };
 
 use super::pulsing_dot;
@@ -134,6 +134,7 @@ fn render_output_section(
     let accent = kind.accent_color();
     let rendered_lines = section.rendered_lines.clone();
     let markdown = section.markdown.clone();
+    let image = section.image.clone();
 
     div()
         .flex()
@@ -195,6 +196,14 @@ fn render_output_section(
                         }))
                 }),
         )
+        .when_some(image, |el, image_data| {
+            el.child(
+                div()
+                    .px_3()
+                    .pb_3()
+                    .child(img(image_data).w_full().rounded_sm()),
+            )
+        })
 }
 
 fn render_output_tabs(errors_open: bool, error_lines: usize) -> impl IntoElement {

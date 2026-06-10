@@ -10,26 +10,32 @@ use crate::core::health::doctor::{
 use crate::core::http::internal_service_http_client;
 use serde_json::{Map, Value};
 use std::error::Error;
+use std::path::Path;
 use std::time::Duration;
 
 /// SQLite-runtime doctor: skip PG/Redis/AMQP probes, check SQLite file and HTTP services.
 pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     let diagnostics = browser_diagnostics_pattern();
     let probes = collect_service_probes(cfg).await;
+    let pending_jobs = count_pending_jobs(&cfg.sqlite_path).await;
 
     let sqlite_path = cfg.sqlite_path.display().to_string();
     let sqlite_exists = cfg.sqlite_path.exists();
     let gemini_probe = probe_gemini_headless(cfg);
     let tei_model = probes.tei_info.0.as_ref().and_then(tei_model_from_info);
     let tei_summary = probes.tei_info.0.as_ref().and_then(tei_info_summary);
+    let tei_dim = probes.tei_info.0.as_ref().and_then(tei_embedding_dim);
     let (chrome_ok, ref chrome_detail) = probes.chrome;
     let tei_ok = probes.tei.0;
     let qdrant_ok = probes.qdrant.0;
     let browser_runtime = build_browser_runtime(&diagnostics);
 
-    let vector_mode = probe_vector_mode_if_reachable(cfg, qdrant_ok, probes.client_ok).await;
+    let (vector_mode, qdrant_vector_size) =
+        probe_collection_info_if_reachable(cfg, qdrant_ok, probes.client_ok).await;
     let vector_mode_str = vector_mode.as_deref();
     let vector_mode_mismatch = vector_mode_mismatch_warning(vector_mode_str, cfg);
+    let dimension_mismatch = dimension_mismatch_warning(tei_dim, qdrant_vector_size);
+
     let mut services = Map::new();
     services.insert(
         "sqlite".to_string(),
@@ -54,6 +60,8 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
             probes.qdrant.1,
             vector_mode_str,
             vector_mode_mismatch,
+            qdrant_vector_size,
+            dimension_mismatch.as_deref(),
         ),
     );
     services.insert(
@@ -105,8 +113,8 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
         "queue_names": {},
         "browser_runtime": browser_runtime,
         "stale_jobs": 0_i64,
-        "pending_jobs": 0_i64,
-        "all_ok": tei_ok && qdrant_ok && vector_mode_mismatch.is_none(),
+        "pending_jobs": pending_jobs,
+        "all_ok": tei_ok && qdrant_ok && vector_mode_mismatch.is_none() && dimension_mismatch.is_none(),
     }))
 }
 
@@ -244,6 +252,8 @@ fn qdrant_service_json(
     detail: Option<String>,
     vector_mode: Option<&str>,
     mode_mismatch: Option<&str>,
+    vector_size: Option<u64>,
+    dimension_mismatch: Option<&str>,
 ) -> Value {
     serde_json::json!({
         "ok": ok,
@@ -257,8 +267,10 @@ fn qdrant_service_json(
         "detail": detail,
         "collection": cfg.collection,
         "vector_mode": vector_mode,
+        "vector_size": vector_size,
         "hybrid_search_enabled": cfg.hybrid_search_enabled,
         "mode_mismatch_warning": mode_mismatch,
+        "dimension_mismatch_warning": dimension_mismatch,
     })
 }
 
@@ -287,8 +299,8 @@ fn gemini_service_json(cfg: &Config, probe: &(bool, String)) -> Value {
 }
 
 fn probe_gemini_headless(cfg: &Config) -> (bool, String) {
-    let gemini_backend = crate::services::llm_backend::LlmBackendConfig::from_config(cfg);
-    match crate::services::llm_backend::headless::gemini::validate_config(&gemini_backend) {
+    let gemini_backend = crate::core::llm::LlmBackendConfig::from_config(cfg);
+    match crate::core::llm::headless::gemini::validate_config(&gemini_backend) {
         Ok(()) => (
             true,
             "Gemini headless command validation passed".to_string(),
@@ -297,15 +309,15 @@ fn probe_gemini_headless(cfg: &Config) -> (bool, String) {
     }
 }
 
-async fn probe_vector_mode_if_reachable(
+async fn probe_collection_info_if_reachable(
     cfg: &Config,
     qdrant_ok: bool,
     client_ok: bool,
-) -> Option<String> {
+) -> (Option<String>, Option<u64>) {
     if qdrant_ok && client_ok {
-        probe_vector_mode(&cfg.qdrant_url, &cfg.collection).await
+        probe_collection_info(&cfg.qdrant_url, &cfg.collection).await
     } else {
-        None
+        (None, None)
     }
 }
 
@@ -319,37 +331,123 @@ fn vector_mode_mismatch_warning(vector_mode: Option<&str>, cfg: &Config) -> Opti
     }
 }
 
-/// GET `/collections/{name}` and classify the vectors block as named/unnamed.
+/// Extract the embedding output dimension from a TEI `/info` response.
 ///
-/// Returns `Some("named")` when `result.config.params.vectors` contains a
-/// `dense` (or `bm42`) entry, `Some("unnamed")` when it has a bare `size`
-/// field, and `None` if the collection is missing or the response shape is
-/// unexpected. Best-effort — never fails the doctor probe.
-async fn probe_vector_mode(qdrant_url: &str, collection: &str) -> Option<String> {
+/// Tries several field names used across TEI versions. Returns `None` when the
+/// field is absent — dimension check is silently skipped (best-effort, no false
+/// positives on older TEI releases that don't expose this field).
+fn tei_embedding_dim(info: &Value) -> Option<u64> {
+    for key in ["embedding_dim", "dim", "hidden_size", "output_dim"] {
+        if let Some(v) = info.get(key).and_then(Value::as_u64) {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// Warn when the TEI output dimension is known and differs from the Qdrant
+/// collection's dense-vector size. Silently skips when either value is
+/// unavailable so there are no false positives on partially-configured stacks.
+fn dimension_mismatch_warning(tei_dim: Option<u64>, qdrant_size: Option<u64>) -> Option<String> {
+    match (tei_dim, qdrant_size) {
+        (Some(tei), Some(qdrant)) if tei != qdrant => Some(format!(
+            "TEI embedding dimension ({tei}) does not match Qdrant dense-vector size ({qdrant}); \
+             embed ops will fail — re-create the collection or switch TEI models to match"
+        )),
+        _ => None,
+    }
+}
+
+/// GET `/collections/{name}`, classify the vectors block, and extract the dense vector size.
+///
+/// Returns `(mode, dense_size)` where:
+/// - `mode` is `Some("named")`, `Some("unnamed")`, or `None` if unreachable/missing.
+/// - `dense_size` is the dimension of the dense vector config:
+///   unnamed → `vectors.size`; named → `vectors.dense.size`.
+///   `None` when the field is absent or the collection does not exist.
+///
+/// Best-effort — never fails the doctor probe.
+async fn probe_collection_info(
+    qdrant_url: &str,
+    collection: &str,
+) -> (Option<String>, Option<u64>) {
     let url = format!(
         "{}/collections/{}",
         qdrant_url.trim_end_matches('/'),
         collection
     );
-    let client = reqwest::Client::builder()
+    let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
-        .ok()?;
-    let resp = client.get(&url).send().await.ok()?;
+    {
+        Ok(c) => c,
+        Err(_) => return (None, None),
+    };
+    let resp = match client.get(&url).send().await {
+        Ok(r) => r,
+        Err(_) => return (None, None),
+    };
     if !resp.status().is_success() {
-        return None;
+        return (None, None);
     }
-    let body: Value = resp.json().await.ok()?;
-    let vectors = body
-        .get("result")?
-        .get("config")?
-        .get("params")?
-        .get("vectors")?;
-    if vectors.get("size").is_some() {
-        Some("unnamed".to_string())
+    let body: Value = match resp.json().await {
+        Ok(v) => v,
+        Err(_) => return (None, None),
+    };
+    let vectors = match body
+        .get("result")
+        .and_then(|r| r.get("config"))
+        .and_then(|c| c.get("params"))
+        .and_then(|p| p.get("vectors"))
+    {
+        Some(v) => v,
+        None => return (None, None),
+    };
+
+    if let Some(size) = vectors.get("size").and_then(Value::as_u64) {
+        // Unnamed (legacy) collection — single flat vectors block with a `size` key.
+        (Some("unnamed".to_string()), Some(size))
     } else if vectors.is_object() {
-        Some("named".to_string())
+        // Named collection — dense vector lives under the "dense" key.
+        let dense_size = vectors
+            .get("dense")
+            .and_then(|d| d.get("size"))
+            .and_then(Value::as_u64);
+        (Some("named".to_string()), dense_size)
     } else {
-        None
+        (None, None)
     }
+}
+
+/// Count all pending jobs across the four job tables. Best-effort: returns 0
+/// if the DB file does not exist yet, cannot be opened, or a table is missing
+/// (fresh install before the first schema migration).
+///
+/// SAFETY: every table name below is a compile-time `&'static str` from a
+/// closed set; no caller-controlled value reaches the SQL string.
+async fn count_pending_jobs(sqlite_path: &Path) -> i64 {
+    if !sqlite_path.exists() {
+        return 0;
+    }
+    let path_str = sqlite_path.to_string_lossy();
+    let pool = match crate::jobs::store::open_sqlite_pool(&path_str).await {
+        Ok(p) => p,
+        Err(_) => return 0,
+    };
+    let tables = [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs",
+    ];
+    let mut total: i64 = 0;
+    for table in &tables {
+        let query = format!("SELECT COUNT(*) FROM {table} WHERE status='pending'");
+        let count: i64 = sqlx::query_scalar(&query)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(0);
+        total += count;
+    }
+    total
 }

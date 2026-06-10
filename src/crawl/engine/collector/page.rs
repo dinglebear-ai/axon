@@ -13,8 +13,8 @@ use super::super::{
 use crate::core::content::{
     LadderThresholds, LadderTier, extract_with_ladder, url_to_stable_filename,
 };
+use crate::core::error::ChallengeVendor;
 use crate::crawl::manifest::ManifestEntry;
-use crate::services::error::ChallengeVendor;
 
 pub struct CollectorConfig {
     pub markdown_dir: PathBuf,

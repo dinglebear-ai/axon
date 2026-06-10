@@ -3,6 +3,10 @@ use std::error::Error;
 
 use super::{EmbedProgress, EmbedSummary, PreparedDoc, prepare};
 
+#[cfg(test)]
+#[path = "text_embed_tests.rs"]
+mod tests;
+
 /// Embed a batch of pre-prepared documents through the unified concurrent pipeline.
 ///
 /// Each `PreparedDoc` must already be chunked. The pipeline processes documents

@@ -139,6 +139,36 @@ fn validate_server_embed_input_rejects_nested_directory_symlink() {
 }
 
 #[test]
+#[cfg(unix)]
+fn validate_server_embed_input_allows_symlinks_inside_pruned_dirs() {
+    // node_modules/.bin/* is symlinks by design; the reader prunes the whole
+    // subtree, so the validator must not reject the embed for files that are
+    // never read.
+    let temp = tempfile::TempDir::new().expect("tempdir");
+    let root = temp.path().join("allowed");
+    let input = root.join("project");
+    let bin = input.join("node_modules").join(".bin");
+    std::fs::create_dir_all(&bin).expect("node_modules/.bin");
+    std::fs::write(input.join("index.js"), "console.log(1)").expect("source file");
+    std::fs::write(bin.join("tool.js"), "#!/usr/bin/env node").expect("tool file");
+    std::os::unix::fs::symlink(bin.join("tool.js"), input.join("node_modules").join("tool"))
+        .expect("symlink inside pruned dir");
+
+    let validated = validate_server_embed_input_with_roots(
+        &input.to_string_lossy(),
+        &[root],
+        EmbedValidationLimits {
+            max_file_bytes: 1024,
+            max_depth: 16,
+            max_entries: 10_000,
+        },
+    )
+    .expect("symlink inside a pruned dir must not fail validation");
+
+    assert!(validated.ends_with("project"));
+}
+
+#[test]
 fn validate_server_embed_input_canonicalizes_allowed_local_file() {
     let temp = tempfile::TempDir::new().expect("tempdir");
     let root = temp.path().join("allowed");

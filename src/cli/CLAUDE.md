@@ -52,12 +52,7 @@ cli/
     │   ├── runtime_migration_tests.rs
     │   ├── sync_backfill_migration_tests.rs
     │   ├── sync_crawl_migration_tests.rs
-    │   └── audit/                # crawl audit + crawl diff: snapshot generation and comparison
-    │       ├── audit.rs          # Entry point + snapshot/diff dispatch
-    │       ├── audit_diff.rs     # Diff computation (added/removed/changed URLs)
-    │       ├── manifest_audit.rs # Snapshot persistence to disk
-    │       ├── sitemap.rs        # Sitemap + robots.txt URL discovery (adapter over engine)
-    │       └── sitemap_migration_tests.rs
+    │   └── audit.rs              # Thin shim — delegates to src/services/crawl/audit
     ├── screenshot/
     │   ├── screenshot_migration_tests.rs
     │   └── util.rs               # Filename generation, require_chrome()

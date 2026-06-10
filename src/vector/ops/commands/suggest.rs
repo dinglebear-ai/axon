@@ -1,13 +1,13 @@
 use crate::core::config::Config;
 use crate::core::http::normalize_url;
-use crate::services::llm_backend::{self, CompletionRequest};
+use crate::core::llm::{self, CompletionRequest};
 use crate::vector::ops::{input, qdrant};
 use spider::url::Url;
 use std::collections::HashSet;
 use std::error::Error;
 
 #[cfg(test)]
-use crate::services::llm_backend::CompletionRunner;
+use crate::core::llm::CompletionRunner;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Suggestion {
@@ -240,7 +240,7 @@ fn build_suggest_completion_request(cfg: &Config, user_prompt: &str) -> Completi
         .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
         .stream(false);
     let req = req.backend_from_config(cfg);
-    match llm_backend::configured_model_from_config(cfg) {
+    match llm::configured_model_from_config(cfg) {
         Some(model) => req.model(model),
         None => req,
     }
@@ -257,7 +257,7 @@ where
     let req = CompletionRequest::new(user_prompt)
         .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
         .stream(false);
-    let response = llm_backend::complete_text_with_runner(runner, req).await?;
+    let response = llm::complete_text_with_runner(runner, req).await?;
     Ok(response.text)
 }
 

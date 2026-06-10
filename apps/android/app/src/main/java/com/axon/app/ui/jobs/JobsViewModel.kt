@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.ui.common.Resource
@@ -51,7 +51,7 @@ class JobsViewModel(
 ) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
 
-    private val _selectedTab = MutableStateFlow(AxonClient.JobKind.Crawl)
+    private val _selectedTab = MutableStateFlow(JobFamily.Crawl)
 
     /** Visible-tab job list (R10). Uses capped exponential backoff on network failures. */
     val visibleJobs: StateFlow<Resource<List<JobUi>>> = _selectedTab
@@ -103,7 +103,7 @@ class JobsViewModel(
     }
 
     /** Switch the visible tab. Triggers `flatMapLatest` to cancel + restart the poll. */
-    fun selectTab(kind: AxonClient.JobKind) {
+    fun selectTab(kind: JobFamily) {
         _selectedTab.value = kind
     }
 

@@ -52,10 +52,12 @@ impl AskScoreBreakdown {
     }
 }
 
+#[must_use]
 pub fn tokenize_query(text: &str) -> Vec<String> {
     super::token_policy::query_tokens(text)
 }
 
+#[must_use]
 pub fn tokenize_text_set(text: &str) -> HashSet<String> {
     text.to_ascii_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
@@ -64,6 +66,7 @@ pub fn tokenize_text_set(text: &str) -> HashSet<String> {
         .collect()
 }
 
+#[must_use]
 pub fn extract_path_from_url(path_or_url: &str) -> String {
     Url::parse(path_or_url)
         .ok()
@@ -71,6 +74,7 @@ pub fn extract_path_from_url(path_or_url: &str) -> String {
         .unwrap_or_else(|| path_or_url.to_string())
 }
 
+#[must_use]
 pub fn tokenize_path_set(path_or_url: &str) -> HashSet<String> {
     path_or_url
         .to_ascii_lowercase()
@@ -84,6 +88,7 @@ pub fn tokenize_path_set(path_or_url: &str) -> HashSet<String> {
 /// sorted by score descending. Caller can filter by threshold before
 /// materializing the selected candidates — avoids cloning ~150 candidates
 /// (~5-10 KiB each) just to throw most of them away. (bd axon_rust-d71.22)
+#[must_use]
 pub fn score_ask_candidates(
     candidates: &[AskCandidate],
     query_tokens: &[String],
@@ -107,6 +112,7 @@ pub fn score_ask_candidates(
 
 /// Score borrowed candidates without cloning, returning `(index, rerank_score)`
 /// pairs sorted by score descending.
+#[must_use]
 pub fn score_ask_candidate_refs(
     candidates: &[&AskCandidate],
     query_tokens: &[String],
@@ -130,6 +136,7 @@ pub fn score_ask_candidate_refs(
 
 /// Score borrowed candidates with a component breakdown from the same scoring
 /// path as `score_ask_candidate_refs`.
+#[must_use]
 pub fn score_ask_candidate_ref_breakdowns(
     candidates: &[&AskCandidate],
     query_tokens: &[String],
@@ -151,6 +158,7 @@ pub fn score_ask_candidate_ref_breakdowns(
     )
 }
 
+#[must_use]
 /// Rerank candidates in place and return sorted. Takes ownership to avoid cloning
 /// all candidate structs (each contains ~2KB chunk_text + HashSets).
 ///
@@ -344,6 +352,7 @@ fn authority_boost_for_normalized_domains(
     }
 }
 
+#[must_use]
 pub fn select_diverse_candidates(
     candidates: &[AskCandidate],
     target_count: usize,
@@ -353,6 +362,7 @@ pub fn select_diverse_candidates(
     select_diverse_candidates_from_indices(candidates, &all_indices, target_count, max_per_url)
 }
 
+#[must_use]
 pub fn select_diverse_candidates_from_indices(
     candidates: &[AskCandidate],
     candidate_indices: &[usize],
@@ -403,6 +413,7 @@ pub fn select_diverse_candidates_from_indices(
     selected
 }
 
+#[must_use]
 /// Returns `true` for URLs that are low-signal noise sources and should be
 /// excluded from general query results unless the user explicitly requests them.
 ///
@@ -427,6 +438,7 @@ pub fn is_low_signal_url(url: &str) -> bool {
         || (!is_web_url && lower.ends_with(".log"))
 }
 
+#[must_use]
 /// Returns `true` when the query explicitly asks for session logs, history, or
 /// similar low-signal sources that are normally filtered from results.
 ///

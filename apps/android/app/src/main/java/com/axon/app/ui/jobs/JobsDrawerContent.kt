@@ -32,7 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.data.repository.JobFamily
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.DrawerSubItem
 
@@ -105,25 +105,25 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
                 DrawerSubItem(
                     icon = Icons.Rounded.Work,
                     label = "Crawls",
-                    detail = "${jobs.count { it.kind == AxonClient.JobKind.Crawl }} active",
+                    detail = "${jobs.count { it.kind == JobFamily.Crawl }} active",
                     onClick = { selectedLevel = JobsDrawerLevel.Crawl },
                 )
                 DrawerSubItem(
                     icon = Icons.Rounded.Storage,
                     label = "Embeddings",
-                    detail = "${jobs.count { it.kind == AxonClient.JobKind.Embed }} active",
+                    detail = "${jobs.count { it.kind == JobFamily.Embed }} active",
                     onClick = { selectedLevel = JobsDrawerLevel.Embed },
                 )
                 DrawerSubItem(
                     icon = Icons.Rounded.CloudDownload,
                     label = "Ingestions",
-                    detail = "${jobs.count { it.kind == AxonClient.JobKind.Ingest }} active",
+                    detail = "${jobs.count { it.kind == JobFamily.Ingest }} active",
                     onClick = { selectedLevel = JobsDrawerLevel.Ingest },
                 )
                 DrawerSubItem(
                     icon = Icons.Rounded.DataObject,
                     label = "Extractions",
-                    detail = "${jobs.count { it.kind == AxonClient.JobKind.Extract }} active",
+                    detail = "${jobs.count { it.kind == JobFamily.Extract }} active",
                     onClick = { selectedLevel = JobsDrawerLevel.Extract },
                 )
                 DrawerSubItem(
@@ -160,10 +160,10 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
             }
             else -> {
                 val kind = when (selectedLevel) {
-                    JobsDrawerLevel.Crawl -> AxonClient.JobKind.Crawl
-                    JobsDrawerLevel.Embed -> AxonClient.JobKind.Embed
-                    JobsDrawerLevel.Ingest -> AxonClient.JobKind.Ingest
-                    JobsDrawerLevel.Extract -> AxonClient.JobKind.Extract
+                    JobsDrawerLevel.Crawl -> JobFamily.Crawl
+                    JobsDrawerLevel.Embed -> JobFamily.Embed
+                    JobsDrawerLevel.Ingest -> JobFamily.Ingest
+                    JobsDrawerLevel.Extract -> JobFamily.Extract
                     else -> null
                 }
                 val filteredJobs = jobs.filter { it.kind == kind }

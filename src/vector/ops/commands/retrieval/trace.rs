@@ -2,7 +2,7 @@ use super::{
     CandidateScorePolicy, RetrievedCandidate, candidate_has_topical_overlap,
     product_authority_boost_for_url,
 };
-use crate::services::types::{
+use crate::core::ask_explain::{
     AskExplainFilterDecision, AskExplainFilterDecisionKind, AskExplainScoreComponent,
     AskExplainScoreComponentStatus, AskExplainScoreKind,
 };

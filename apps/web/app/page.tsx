@@ -99,6 +99,11 @@ type ServiceJob = {
   urls_json?: unknown;
 };
 
+type ArtifactHandle = {
+  relative_path: string;
+  bytes?: number;
+};
+
 type PanelCommandResponse = {
   command: string;
   action: unknown;
@@ -112,6 +117,7 @@ type CommandResultView = {
   rows: Array<{ label: string; value: string }>;
   body?: string;
   raw?: string;
+  imageUrl?: string;
 };
 
 type PanelDoctorResponse = {
@@ -951,6 +957,9 @@ function CommandResultCard({ result }: { result: CommandResultView }) {
           ))}
         </dl>
       )}
+      {result.imageUrl && (
+        <img className="palette-result-image" src={result.imageUrl} alt="Screenshot" />
+      )}
       {result.body && <p className="palette-result-body">{result.body}</p>}
       {result.raw && <pre className="palette-result-raw">{result.raw}</pre>}
     </section>
@@ -1106,13 +1115,17 @@ function formatCommandResponse(response: PanelCommandResponse): CommandResultVie
   const subtitle = commandResultSubtitle(action, result);
   rows.push(...commandResultRows(action, result));
 
+  const handle = extractArtifactHandle(result);
+  const imageUrl = handle ? `/v1/artifacts/${handle.relative_path}` : undefined;
+
   return {
     ok: true,
     title,
     subtitle,
     rows: compactRows(rows),
     body: commandResultBody(action, result),
-    raw: shouldShowRawResult(action, result) ? JSON.stringify(response.result, null, 2) : undefined
+    raw: shouldShowRawResult(action, result) ? JSON.stringify(response.result, null, 2) : undefined,
+    imageUrl
   };
 }
 
@@ -1121,10 +1134,18 @@ function commandVerb(command: string): string {
 }
 
 function commandResultTitle(action: string, result: Record<string, unknown> | null): string {
+  const job = extractTerminalJob(result);
+  if (job) {
+    const status = String(job.status);
+    if (status === 'completed') return `${titleLabel(action)} complete`;
+    if (status === 'failed') return `${titleLabel(action)} failed`;
+    return `${titleLabel(action)} ${status}`;
+  }
   if (action === 'ask') return 'Answer ready';
   if (action === 'status') return 'Status loaded';
   if (action === 'crawl') return hasJobIds(result) ? 'Crawl queued' : 'Crawl complete';
   if (action === 'scrape') return 'Scrape complete';
+  if (action === 'screenshot') return 'Screenshot captured';
   if (action === 'extract') return hasJobIds(result) ? 'Extract queued' : 'Extract complete';
   return `${titleLabel(action)} complete`;
 }
@@ -1146,12 +1167,17 @@ function commandResultRows(action: string, result: Record<string, unknown> | nul
       .filter((row) => row.value);
   }
 
+  // Terminal job result (from polling path) — show metrics, not raw job IDs
+  const job = extractTerminalJob(result);
+  if (job) return terminalJobRows(action, job);
+
   const rows: Array<{ label: string; value: string }> = [];
   const jobIds = stringArrayField(result, 'job_ids');
   const jobs = arrayField(result, 'jobs');
   const urls = stringArrayField(result, 'urls');
   const outputFiles = stringArrayField(result, 'output_files');
   const predictedPaths = stringArrayField(result, 'predicted_paths');
+  const hasArtifact = Boolean(extractArtifactHandle(result));
 
   if (jobIds.length > 0) rows.push({ label: jobIds.length === 1 ? 'Job ID' : 'Jobs', value: jobIds.join(', ') });
   if (jobs.length > 0) rows.push({ label: 'Jobs', value: String(jobs.length) });
@@ -1165,8 +1191,37 @@ function commandResultRows(action: string, result: Record<string, unknown> | nul
   addNumberRow(rows, 'Count', result.count);
 
   if (outputFiles.length > 0) rows.push({ label: 'Files', value: outputFiles.map(compactJobTarget).slice(0, 3).join(', ') });
-  if (predictedPaths.length > 0 && outputFiles.length === 0) {
+  // Only show predicted paths when there are no real output files and no rendered artifact
+  if (predictedPaths.length > 0 && outputFiles.length === 0 && !hasArtifact) {
     rows.push({ label: 'Predicted files', value: predictedPaths.map(compactJobTarget).slice(0, 3).join(', ') });
+  }
+
+  return rows;
+}
+
+function terminalJobRows(action: string, job: Record<string, unknown>): Array<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = [];
+  const resultJson = asRecord(job.result_json);
+
+  if (job.status === 'failed' && typeof job.error_text === 'string' && job.error_text) {
+    rows.push({ label: 'Error', value: job.error_text });
+  }
+
+  for (const key of ['pages_crawled', 'docs_embedded', 'chunks_embedded', 'md_created']) {
+    const val = resultJson?.[key];
+    if (typeof val === 'number' && val > 0) {
+      rows.push({ label: titleLabel(key.replaceAll('_', ' ')), value: val.toLocaleString() });
+    }
+  }
+
+  const elapsedMs = resultJson?.elapsed_ms;
+  if (typeof elapsedMs === 'number' && elapsedMs >= 1000) {
+    rows.push({ label: 'Elapsed', value: `${(elapsedMs / 1000).toFixed(1)}s` });
+  }
+
+  const target = firstStringField(job, ['url', 'target']);
+  if (target) {
+    rows.push({ label: action === 'ingest' ? 'Source' : 'URL', value: compactJobTarget(target) });
   }
 
   return rows;
@@ -1176,18 +1231,48 @@ function commandResultBody(action: string, result: Record<string, unknown> | nul
   if (!result) return undefined;
   if (action === 'ask') return firstStringField(result, ['answer', 'response', 'text', 'summary']);
   if (action === 'status') return firstStringField(result, ['text']);
+  if (action === 'screenshot') {
+    const handle = extractArtifactHandle(result);
+    if (handle?.bytes) return formatBytes(handle.bytes);
+  }
   return firstStringField(result, ['message', 'summary', 'detail']);
 }
 
 function shouldShowRawResult(action: string, result: Record<string, unknown> | null): boolean {
   if (!result) return true;
   if (action === 'status' || action === 'ask') return false;
+  if (extractTerminalJob(result)) return false;
+  if (extractArtifactHandle(result)) return false;
   return commandResultRows(action, result).length <= 2 && !commandResultBody(action, result);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
   return null;
+}
+
+function extractTerminalJob(result: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!result) return null;
+  const job = asRecord(result.job);
+  if (!job || typeof job.status !== 'string') return null;
+  if (!['completed', 'failed', 'canceled', 'cancelled'].includes(job.status)) return null;
+  return job;
+}
+
+function extractArtifactHandle(result: Record<string, unknown> | null): ArtifactHandle | null {
+  if (!result) return null;
+  const handle = asRecord(result.artifact_handle);
+  if (!handle || typeof handle.relative_path !== 'string') return null;
+  return {
+    relative_path: handle.relative_path,
+    bytes: typeof handle.bytes === 'number' ? handle.bytes : undefined
+  };
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
 }
 
 function arrayField(record: Record<string, unknown>, key: string): unknown[] {

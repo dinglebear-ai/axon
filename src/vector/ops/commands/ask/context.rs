@@ -11,7 +11,7 @@ mod retrieval;
 mod tests;
 
 use super::AskTiming;
-use crate::services::types::{AskExplainTrace, CorpusHealthDiagnostic, CorpusHealthKind};
+use crate::core::ask_explain::{AskExplainTrace, CorpusHealthDiagnostic, CorpusHealthKind};
 use build::build_context_from_candidates;
 use query_rewrite::{QueryComplexity, build_query_forms};
 use retrieval::retrieve_ask_candidates;
@@ -137,13 +137,13 @@ pub(crate) async fn build_ask_context(
     let corpus_health = classify_corpus_health(
         &retrieval.top_domains,
         &selected_urls,
-        retrieval.candidates.len(),
+        retrieval.candidate_count,
         context.len(),
     );
 
     Ok(AskContext {
         context,
-        candidate_count: retrieval.candidates.len(),
+        candidate_count: retrieval.candidate_count,
         reranked_count: retrieval.reranked.len(),
         chunks_selected: built.chunks_selected,
         full_docs_selected: built.full_docs_selected,
@@ -180,12 +180,12 @@ pub(crate) async fn build_ask_context(
 fn build_explain_trace(
     query: &str,
     reranked: &[crate::vector::ops::ranking::AskCandidate],
-    retrieval: Option<crate::services::types::AskExplainRetrieval>,
+    retrieval: Option<crate::core::ask_explain::AskExplainRetrieval>,
     candidate_traces: Vec<crate::vector::ops::commands::retrieval::CandidateRankingTrace>,
-    context: crate::services::types::AskExplainContext,
+    context: crate::core::ask_explain::AskExplainContext,
     selections: Vec<build::ContextCandidateSelection>,
 ) -> Option<AskExplainTrace> {
-    use crate::services::types::{AskExplainCandidate, AskExplainMode};
+    use crate::core::ask_explain::{AskExplainCandidate, AskExplainMode};
     use crate::vector::ops::ranking;
     use std::collections::{HashMap, VecDeque};
 
@@ -213,7 +213,7 @@ fn build_explain_trace(
         .map(|(idx, trace)| {
             let (selection_decisions, selection_metadata) =
                 if trace.filter_decisions.iter().any(|decision| {
-                    decision.kind == crate::services::types::AskExplainFilterDecisionKind::Kept
+                    decision.kind == crate::core::ask_explain::AskExplainFilterDecisionKind::Kept
                 }) {
                     pop_front_for_key(
                         &mut selections_by_key,
@@ -277,9 +277,9 @@ fn selected_context_urls(selections: &[build::ContextCandidateSelection]) -> Vec
             matches!(
                 selection.metadata.insertion_mode,
                 Some(
-                    crate::services::types::AskExplainInsertionMode::TopChunk
-                        | crate::services::types::AskExplainInsertionMode::InsertedFullDoc
-                        | crate::services::types::AskExplainInsertionMode::Supplemental
+                    crate::core::ask_explain::AskExplainInsertionMode::TopChunk
+                        | crate::core::ask_explain::AskExplainInsertionMode::InsertedFullDoc
+                        | crate::core::ask_explain::AskExplainInsertionMode::Supplemental
                 )
             )
         })
@@ -337,18 +337,18 @@ fn classify_corpus_health(
 }
 
 fn default_not_selected_selection() -> (
-    Vec<crate::services::types::AskExplainSelectionDecision>,
+    Vec<crate::core::ask_explain::AskExplainSelectionDecision>,
     build::CandidateSelectionMetadata,
 ) {
     (
-        vec![crate::services::types::AskExplainSelectionDecision {
-            kind: crate::services::types::AskExplainSelectionDecisionKind::NotSelected,
+        vec![crate::core::ask_explain::AskExplainSelectionDecision {
+            kind: crate::core::ask_explain::AskExplainSelectionDecisionKind::NotSelected,
             reason: None,
         }],
         build::CandidateSelectionMetadata {
             planned_full_doc_rank: None,
             selected_context_rank: None,
-            insertion_mode: Some(crate::services::types::AskExplainInsertionMode::NotSelected),
+            insertion_mode: Some(crate::core::ask_explain::AskExplainInsertionMode::NotSelected),
         },
     )
 }

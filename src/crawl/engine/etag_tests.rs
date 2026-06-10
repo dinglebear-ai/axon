@@ -69,7 +69,7 @@ fn reconcile_targets_selects_only_seeded_and_absent() {
         .map(|s| s.to_string())
         .collect();
 
-    let targets = reconcile_targets(&prev, &seeded, &arrived, &visited);
+    let targets = reconcile_targets(&prev, &seeded, &arrived, &visited, &HashMap::new());
     assert_eq!(targets, vec!["https://x/a".to_string()]);
 }
 
@@ -82,7 +82,7 @@ fn reconcile_targets_empty_seed_yields_no_zombies() {
     let seeded = HashSet::new();
     let arrived = HashSet::new();
     let visited = HashSet::new();
-    assert!(reconcile_targets(&prev, &seeded, &arrived, &visited).is_empty());
+    assert!(reconcile_targets(&prev, &seeded, &arrived, &visited, &HashMap::new()).is_empty());
 }
 
 #[test]
@@ -105,7 +105,7 @@ fn reconcile_targets_orphan_not_visited_is_excluded() {
     // Not in visited → not a 304 skip → excluded.
     let visited = HashSet::new();
     assert!(
-        reconcile_targets(&prev, &seeded, &arrived, &visited).is_empty(),
+        reconcile_targets(&prev, &seeded, &arrived, &visited, &HashMap::new()).is_empty(),
         "an undiscovered (not-visited) page must never be reconciled"
     );
 }
@@ -140,8 +140,15 @@ async fn reconcile_unmodified_relinks_archived_markdown_and_appends_entry() {
     // Visited this run (spider scheduled it and got a 304).
     let visited: HashSet<String> = [prev_entry.url.clone()].into_iter().collect();
 
-    let reconciled =
-        reconcile_unmodified(output_dir, &previous_manifest, &seeded, &arrived, &visited).await;
+    let reconciled = reconcile_unmodified(
+        output_dir,
+        &previous_manifest,
+        &seeded,
+        &arrived,
+        &visited,
+        &HashMap::new(),
+    )
+    .await;
     assert_eq!(reconciled, 1);
 
     // Markdown was relinked into the live dir.
@@ -187,8 +194,15 @@ async fn reconcile_unmodified_skips_when_archive_missing() {
     let arrived = HashSet::new();
     let visited: HashSet<String> = [prev_entry.url.clone()].into_iter().collect();
 
-    let reconciled =
-        reconcile_unmodified(output_dir, &previous_manifest, &seeded, &arrived, &visited).await;
+    let reconciled = reconcile_unmodified(
+        output_dir,
+        &previous_manifest,
+        &seeded,
+        &arrived,
+        &visited,
+        &HashMap::new(),
+    )
+    .await;
     assert_eq!(reconciled, 0);
     let manifest = tokio::fs::read_to_string(output_dir.join("manifest.jsonl"))
         .await
@@ -234,8 +248,15 @@ async fn reconcile_unmodified_excludes_undiscovered_pages() {
     // never scheduled.
     let visited: HashSet<String> = [kept.url.clone()].into_iter().collect();
 
-    let reconciled =
-        reconcile_unmodified(output_dir, &previous_manifest, &seeded, &arrived, &visited).await;
+    let reconciled = reconcile_unmodified(
+        output_dir,
+        &previous_manifest,
+        &seeded,
+        &arrived,
+        &visited,
+        &HashMap::new(),
+    )
+    .await;
     assert_eq!(reconciled, 1, "only the visited 304 skip is reconciled");
 
     let manifest = tokio::fs::read_to_string(output_dir.join("manifest.jsonl"))
@@ -268,6 +289,7 @@ async fn sidecar_round_trips() {
         EtagEntry {
             etag: Some("\"abc\"".to_string()),
             last_modified: Some("Wed, 21 Oct 2026 07:28:00 GMT".to_string()),
+            ..Default::default()
         },
     );
     write_sidecar(tmp.path(), &data).await.unwrap();
@@ -298,7 +320,7 @@ fn seed_website_etag_cache_materializes_and_round_trips() {
         "http://127.0.0.1/page".to_string(),
         EtagEntry {
             etag: Some("\"v1\"".to_string()),
-            last_modified: None,
+            ..Default::default()
         },
     );
 
@@ -339,7 +361,7 @@ fn build_next_sidecar_carries_forward_unrefreshed_validators() {
         "http://127.0.0.1/stable".to_string(),
         EtagEntry {
             etag: Some("\"keep\"".to_string()),
-            last_modified: None,
+            ..Default::default()
         },
     );
     // "stable" did NOT arrive this run (304-skipped) → not in arrived set.
@@ -410,6 +432,7 @@ fn seeded_validators_drive_conditional_request_and_304_drops_page() {
             EtagEntry {
                 etag: Some("\"v1\"".to_string()),
                 last_modified: None,
+                ..Default::default()
             },
         );
         let seeded = seed_website_etag_cache(&mut website, &sidecar);
@@ -509,4 +532,139 @@ fn run1_populates_sidecar_with_seedable_key() {
             next.keys().collect::<Vec<_>>()
         );
     });
+}
+
+// ── age-out: miss_count increments + drop + reconcile_targets guard ─────────
+
+#[test]
+fn build_next_sidecar_increments_miss_count_for_non_arrived() {
+    let mut website = Website::new("http://127.0.0.1/");
+    website.configuration.with_etag_cache(true);
+    let _ = seed_website_etag_cache(&mut website, &HashMap::new());
+
+    let mut previous = HashMap::new();
+    previous.insert(
+        "http://127.0.0.1/stable".to_string(),
+        EtagEntry {
+            etag: Some("\"v1\"".to_string()),
+            ..Default::default()
+        },
+    );
+    // URL did NOT arrive → miss_count should increment from 0 → 1.
+    let arrived: HashSet<String> = HashSet::new();
+    let next = build_next_sidecar(&website, &previous, &arrived);
+    assert_eq!(
+        next.get("http://127.0.0.1/stable").map(|e| e.miss_count),
+        Some(1),
+        "miss_count must increment for a non-arrived URL"
+    );
+}
+
+#[test]
+fn build_next_sidecar_resets_miss_count_on_arrival() {
+    let mut website = Website::new("http://127.0.0.1/");
+    website.configuration.with_etag_cache(true);
+    let _ = seed_website_etag_cache(&mut website, &HashMap::new());
+
+    let mut previous = HashMap::new();
+    previous.insert(
+        "http://127.0.0.1/page".to_string(),
+        EtagEntry {
+            etag: Some("\"v1\"".to_string()),
+            miss_count: 2,
+            ..Default::default()
+        },
+    );
+    // URL arrived fresh this run → miss_count should reset to 0.
+    let arrived: HashSet<String> = ["http://127.0.0.1/page".to_string()].into_iter().collect();
+    let next = build_next_sidecar(&website, &previous, &arrived);
+    assert_eq!(
+        next.get("http://127.0.0.1/page").map(|e| e.miss_count),
+        Some(0),
+        "miss_count must reset to 0 when a URL arrives fresh"
+    );
+}
+
+#[test]
+fn build_next_sidecar_drops_aged_out_entry() {
+    // AXON_ETAG_MAX_MISS_RUNS defaults to 3; set miss_count to 2 so one more
+    // non-arriving run tips it over the limit.
+    let mut website = Website::new("http://127.0.0.1/");
+    website.configuration.with_etag_cache(true);
+    let _ = seed_website_etag_cache(&mut website, &HashMap::new());
+
+    let mut previous = HashMap::new();
+    previous.insert(
+        "http://127.0.0.1/stale".to_string(),
+        EtagEntry {
+            etag: Some("\"old\"".to_string()),
+            miss_count: 2, // one more miss → 3 == max → aged out
+            ..Default::default()
+        },
+    );
+    let arrived: HashSet<String> = HashSet::new();
+    let next = build_next_sidecar(&website, &previous, &arrived);
+    assert!(
+        !next.contains_key("http://127.0.0.1/stale"),
+        "aged-out entry (miss_count >= max_miss_runs) must be dropped from the sidecar"
+    );
+}
+
+#[test]
+fn reconcile_targets_excludes_aged_out_urls() {
+    // A URL at miss_count == max_miss_runs() must NOT be reconciled even when it
+    // passes the seeded/absent/visited gates — it's about to be aged out of the sidecar.
+    let url = "https://x/stale".to_string();
+    let mut prev = HashMap::new();
+    prev.insert(url.clone(), entry(&url, "h1"));
+
+    let seeded: HashSet<String> = [url.clone()].into_iter().collect();
+    let arrived: HashSet<String> = HashSet::new();
+    let visited: HashSet<String> = [url.clone()].into_iter().collect();
+
+    // Sidecar with miss_count at the default limit (3).
+    let mut sidecar = HashMap::new();
+    sidecar.insert(
+        url.clone(),
+        EtagEntry {
+            etag: Some("\"old\"".to_string()),
+            miss_count: 3,
+            ..Default::default()
+        },
+    );
+
+    let targets = reconcile_targets(&prev, &seeded, &arrived, &visited, &sidecar);
+    assert!(
+        targets.is_empty(),
+        "a URL at the miss_count limit must be excluded from reconciliation"
+    );
+}
+
+#[test]
+fn reconcile_targets_still_reconciles_below_limit() {
+    // A URL at miss_count 2 (below the default limit of 3) must still be reconciled.
+    let url = "https://x/almost-stale".to_string();
+    let mut prev = HashMap::new();
+    prev.insert(url.clone(), entry(&url, "h1"));
+
+    let seeded: HashSet<String> = [url.clone()].into_iter().collect();
+    let arrived: HashSet<String> = HashSet::new();
+    let visited: HashSet<String> = [url.clone()].into_iter().collect();
+
+    let mut sidecar = HashMap::new();
+    sidecar.insert(
+        url.clone(),
+        EtagEntry {
+            etag: Some("\"v1\"".to_string()),
+            miss_count: 2, // below the default limit of 3
+            ..Default::default()
+        },
+    );
+
+    let targets = reconcile_targets(&prev, &seeded, &arrived, &visited, &sidecar);
+    assert_eq!(
+        targets,
+        vec![url],
+        "URLs below the limit must still be reconciled"
+    );
 }

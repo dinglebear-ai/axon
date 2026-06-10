@@ -4,13 +4,14 @@ pub mod types;
 #[path = "ingest_tests.rs"]
 mod tests;
 
-pub use self::types::{IngestJob, IngestJobConfig, IngestSource};
+pub use self::types::{IngestJob, IngestJobConfig, IngestSource, RE_INGESTABLE_SOURCE_TYPES};
 
 use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, JobPayload};
 use crate::jobs::ingest::types::{source_type_label, target_label};
 use crate::jobs::query::ms_to_dt;
 use crate::jobs::store::open_sqlite_pool;
+use sqlx::SqlitePool;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -103,14 +104,22 @@ pub async fn list_ingest_jobs(
     Ok(rows.into_iter().map(row_to_ingest_job).collect())
 }
 
-/// Enqueue a new ingest job in SQLite. Returns the new job UUID.
-pub async fn start_ingest_job(cfg: &Config, source: IngestSource) -> Result<Uuid, Box<dyn Error>> {
-    let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
+/// Enqueue a new ingest job using a **shared** `SqlitePool` (preferred path).
+///
+/// Callers that already hold a pool (e.g. `ServiceContext`, `SqliteJobBackend`)
+/// should use this to avoid the per-call pool-open overhead and connection-limit
+/// churn.  Pending-cap enforcement (`cfg.max_pending_ingest_jobs`) is applied
+/// identically to `start_ingest_job`.
+pub async fn start_ingest_job_with_pool(
+    pool: &SqlitePool,
+    cfg: &Config,
+    source: IngestSource,
+) -> Result<Uuid, Box<dyn Error>> {
     let source_type = source_type_label(&source).to_string();
     let target = target_label(&source);
     let config_json = serde_json::to_string(&source)?;
     Ok(crate::jobs::ops::enqueue_job(
-        &pool,
+        pool,
         &JobPayload::Ingest {
             target,
             source_type,
@@ -119,4 +128,13 @@ pub async fn start_ingest_job(cfg: &Config, source: IngestSource) -> Result<Uuid
         cfg,
     )
     .await?)
+}
+
+/// Enqueue a new ingest job in SQLite. Returns the new job UUID.
+///
+/// Opens a new pool for each call; prefer [`start_ingest_job_with_pool`] when a
+/// shared pool is available.
+pub async fn start_ingest_job(cfg: &Config, source: IngestSource) -> Result<Uuid, Box<dyn Error>> {
+    let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
+    start_ingest_job_with_pool(&pool, cfg, source).await
 }

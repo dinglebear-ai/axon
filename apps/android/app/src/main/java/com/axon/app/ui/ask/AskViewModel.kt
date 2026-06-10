@@ -7,7 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.remote.AskStreamEvent
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.AskResultUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.data.util.UrlValidator
@@ -207,7 +207,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun pollJobOnce(kind: AxonClient.JobKind, jobId: String) {
+    private fun pollJobOnce(kind: JobFamily, jobId: String) {
         viewModelScope.launch {
             delay(FAB_STATUS_INITIAL_DELAY_MS)
             repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
@@ -401,7 +401,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                                     detail = "Extraction is queued. Jobs will show schema output and any server errors.",
                                 ),
                             )
-                            pollJobOnce(AxonClient.JobKind.Extract, jobId)
+                            pollJobOnce(JobFamily.Extract, jobId)
                         },
                         onFailure = { e -> appendItem(ChatItem.AxonMsg("Extract failed: ${e.message}")) },
                     )
@@ -420,7 +420,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                                     detail = "Embed is queued. Chunks, document count, and errors are tracked in Jobs.",
                                 ),
                             )
-                            pollJobOnce(AxonClient.JobKind.Embed, jobId)
+                            pollJobOnce(JobFamily.Embed, jobId)
                         },
                         onFailure = { e -> appendItem(ChatItem.AxonMsg("Embed failed: ${e.message}")) },
                     )
@@ -544,7 +544,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                                     detail = "Ingest is queued. Source discovery and embedding progress are tracked in Jobs.",
                                 ),
                             )
-                            pollJobOnce(AxonClient.JobKind.Ingest, jobId)
+                            pollJobOnce(JobFamily.Ingest, jobId)
                         },
                         onFailure = { e -> appendItem(ChatItem.AxonMsg("Ingest failed: ${e.message}")) },
                     )

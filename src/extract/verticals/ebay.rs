@@ -7,12 +7,12 @@
 //! Returns VerticalBlockedAntibot when the response signals a challenge.
 
 use crate::core::config::RenderMode;
+use crate::core::error::ServiceTaxonomyError;
 use crate::core::http::http_client;
 use crate::crawl::scrape::{build_scrape_website, fetch_single_page};
 use crate::extract::context::VerticalContext;
 use crate::extract::error::VerticalError;
 use crate::extract::types::{ExtractorInfo, ScrapedDoc};
-use crate::services::error::ServiceTaxonomyError;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "ebay",
@@ -49,7 +49,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     if is_blocked {
         return Err(ServiceTaxonomyError::VerticalBlockedAntibot {
             vertical: INFO.name,
-            vendor: crate::services::error::ChallengeVendor::Other("ebay-bot"),
+            vendor: crate::core::error::ChallengeVendor::Other("ebay-bot"),
         });
     }
 
@@ -87,7 +87,7 @@ async fn fetch_via_chrome(url: &str, ctx: &VerticalContext) -> Result<String, Ve
     match page.status_code {
         403 | 503 => Err(ServiceTaxonomyError::VerticalBlockedAntibot {
             vertical: INFO.name,
-            vendor: crate::services::error::ChallengeVendor::Other("ebay-bot"),
+            vendor: crate::core::error::ChallengeVendor::Other("ebay-bot"),
         }),
         404 => Err(VerticalError::VerticalTargetNotFound {
             vertical: INFO.name,
@@ -128,7 +128,7 @@ async fn fetch_via_reqwest(url: &str, ctx: &VerticalContext) -> Result<String, V
         403 | 503 => {
             return Err(ServiceTaxonomyError::VerticalBlockedAntibot {
                 vertical: INFO.name,
-                vendor: crate::services::error::ChallengeVendor::Other("ebay-bot"),
+                vendor: crate::core::error::ChallengeVendor::Other("ebay-bot"),
             });
         }
         404 => {

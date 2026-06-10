@@ -1,6 +1,6 @@
 use super::SearchHitsResult;
+use crate::core::ask_explain::AskExplainScoreKind;
 use crate::core::logging::log_warn;
-use crate::services::types::AskExplainScoreKind;
 use crate::vector::ops::commands::retrieval::{
     CandidateBuildPolicy, CandidateRankingTrace, RetrievedCandidate, build_candidates_from_hits,
     build_candidates_from_hits_with_trace, merge_candidates, merge_candidates_with_trace,
@@ -91,28 +91,5 @@ fn merge_candidate_sets(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{SearchHitsResult, build_ask_candidates};
-    use crate::vector::ops::commands::retrieval::CandidateBuildPolicy;
-
-    #[test]
-    fn keyword_search_failure_returns_warning() {
-        let secondary: SearchHitsResult = Err("keyword backend timed out".into());
-        let built = build_ask_candidates(
-            Vec::new(),
-            Some(secondary),
-            &CandidateBuildPolicy {
-                allow_low_signal: false,
-            },
-            None,
-        );
-
-        assert_eq!(built.warnings.len(), 1);
-        assert!(
-            built.warnings[0].contains("keyword search failed"),
-            "warning should describe degraded keyword retrieval: {:?}",
-            built.warnings
-        );
-        assert!(!built.warnings[0].contains("keyword backend timed out"));
-    }
-}
+#[path = "build_tests.rs"]
+mod tests;

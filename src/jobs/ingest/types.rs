@@ -80,6 +80,15 @@ impl IngestJob {
     }
 }
 
+/// `source_type` values (see [`source_type_label`]) whose `(source_type,
+/// target)` pair fully identifies the job's work — the stored target / payload
+/// `seed_url` round-trips through `services::ingest::classify_target` into a
+/// re-runnable job. Sessions are excluded: their content arrives via a sidecar
+/// payload, not the target string. This is the single source of truth for
+/// `axon refresh` origin classification — extend it when adding a provider.
+pub const RE_INGESTABLE_SOURCE_TYPES: &[&str] =
+    &["github", "gitlab", "gitea", "git", "reddit", "youtube"];
+
 pub(crate) fn source_type_label(source: &IngestSource) -> &'static str {
     match source {
         IngestSource::Github { .. } => "github",

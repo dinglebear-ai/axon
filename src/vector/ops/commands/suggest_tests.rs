@@ -2,7 +2,7 @@ use super::{
     already_indexed, filter_new_suggestions, parse_suggestions_from_llm,
     request_suggestions_from_runner,
 };
-use crate::services::llm_backend::{CompletionRequest, CompletionRunner, CompletionTurnResult};
+use crate::core::llm::{CompletionRequest, CompletionRunner, CompletionTurnResult};
 use std::collections::HashSet;
 use std::error::Error;
 use std::sync::{Arc, Mutex};

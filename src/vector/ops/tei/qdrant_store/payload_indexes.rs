@@ -94,7 +94,27 @@ async fn put_index_with_retry(
 ///
 /// Required by the Qdrant `/facet` endpoint used by `domains` and `sources`.
 /// The operation is idempotent — safe to call on every embed.
-pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn Error>> {
+///
+/// `collection_info` is the `GET /collections/{name}` response when the caller
+/// already fetched it (ensure_collection does): fields present in its
+/// `result.payload_schema` are skipped, so a warm collection issues **zero**
+/// index PUTs instead of ~46 concurrent re-asserts per embed.
+///
+/// Index failures are non-fatal: an index is a query-time optimization, and a
+/// slow/overloaded Qdrant must not turn an idempotent index assertion into a
+/// failed embed. Missing indexes are retried on the next embed (cheaply, since
+/// existing ones are skipped); facets on a still-unindexed field fail loudly
+/// at query time.
+pub(super) async fn ensure_payload_indexes(
+    cfg: &Config,
+    collection_info: Option<&serde_json::Value>,
+) -> Result<(), Box<dyn Error>> {
+    let existing: std::collections::HashSet<String> = collection_info
+        .and_then(|info| info.pointer("/result/payload_schema"))
+        .and_then(|schema| schema.as_object())
+        .map(|fields| fields.keys().cloned().collect())
+        .unwrap_or_default();
+
     let client = internal_service_http_client()?;
     let index_url = format!(
         "{}/collections/{}/index?wait=false",
@@ -102,10 +122,13 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
         cfg.collection
     );
 
-    // keyword(N) + integer(8) + datetime(1) + bool(2) = N + 11
-    let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(KEYWORD_INDEX_FIELDS.len() + 11);
+    // keyword(N) + integer(11) + datetime(1) + bool(6)
+    let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(KEYWORD_INDEX_FIELDS.len() + 18);
 
     for field in KEYWORD_INDEX_FIELDS {
+        if existing.contains(*field) {
+            continue;
+        }
         let url = index_url.clone();
         let c = client.clone();
         futures.push(Box::pin(async move {
@@ -118,17 +141,35 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
         }));
     }
 
-    push_non_keyword_indexes(&mut futures, &index_url);
+    push_non_keyword_indexes(&mut futures, &index_url, &existing);
 
+    if futures.is_empty() {
+        return Ok(());
+    }
+    tracing::debug!(
+        missing = futures.len(),
+        existing = existing.len(),
+        "qdrant payload indexes: asserting missing fields"
+    );
     let results = futures_util::future::join_all(futures).await;
-    for result in results {
-        result.map_err(|e| -> Box<dyn Error> { e })?;
+    let failed = results.iter().filter(|r| r.is_err()).count();
+    if failed > 0 {
+        tracing::warn!(
+            failed,
+            "qdrant payload index assertion failed for {failed} field(s); \
+             continuing — missing indexes are retried on the next embed"
+        );
     }
     Ok(())
 }
 
-/// Appends integer, datetime, and bool index futures to the shared futures vec.
-fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str) {
+/// Appends integer, datetime, and bool index futures to the shared futures
+/// vec, skipping fields already present in `existing`.
+fn push_non_keyword_indexes<'a>(
+    futures: &mut Vec<IndexFut<'a>>,
+    index_url: &str,
+    existing: &std::collections::HashSet<String>,
+) {
     let client = match internal_service_http_client() {
         Ok(c) => c,
         Err(e) => {
@@ -136,55 +177,37 @@ fn push_non_keyword_indexes<'a>(futures: &mut Vec<IndexFut<'a>>, index_url: &str
             return;
         }
     };
-    let integer_fields = [
-        ("chunk_index", index_url.to_string()),
-        ("git_number", index_url.to_string()),
-        ("git_comment_count", index_url.to_string()),
-        ("git_repo_stars", index_url.to_string()),
-        ("git_repo_forks", index_url.to_string()),
-        ("git_repo_open_issues", index_url.to_string()),
-        ("so_question_id", index_url.to_string()),
-        ("payload_schema_version", index_url.to_string()),
-        ("code_file_size_bytes", index_url.to_string()),
-        ("code_line_start", index_url.to_string()),
-        ("code_line_end", index_url.to_string()),
+    let typed_fields = [
+        ("chunk_index", "integer"),
+        ("git_number", "integer"),
+        ("git_comment_count", "integer"),
+        ("git_repo_stars", "integer"),
+        ("git_repo_forks", "integer"),
+        ("git_repo_open_issues", "integer"),
+        ("so_question_id", "integer"),
+        ("payload_schema_version", "integer"),
+        ("code_file_size_bytes", "integer"),
+        ("code_line_start", "integer"),
+        ("code_line_end", "integer"),
+        ("scraped_at", "datetime"),
+        ("git_repo_is_fork", "bool"),
+        ("git_repo_is_archived", "bool"),
+        ("git_repo_is_private", "bool"),
+        ("git_is_pr", "bool"),
+        ("git_is_draft", "bool"),
+        ("code_is_test", "bool"),
     ];
-    for (field, url) in integer_fields {
+    for (field, schema) in typed_fields {
+        if existing.contains(field) {
+            continue;
+        }
+        let url = index_url.to_string();
         let c = client.clone();
         futures.push(Box::pin(async move {
             put_index_with_retry(
                 c,
                 url,
-                serde_json::json!({"field_name": field, "field_schema": "integer"}),
-            )
-            .await
-        }));
-    }
-    let datetime_url = index_url.to_string();
-    let c = client.clone();
-    futures.push(Box::pin(async move {
-        put_index_with_retry(
-            c,
-            datetime_url,
-            serde_json::json!({"field_name": "scraped_at", "field_schema": "datetime"}),
-        )
-        .await
-    }));
-    let bool_fields = [
-        ("git_repo_is_fork", index_url.to_string()),
-        ("git_repo_is_archived", index_url.to_string()),
-        ("git_repo_is_private", index_url.to_string()),
-        ("git_is_pr", index_url.to_string()),
-        ("git_is_draft", index_url.to_string()),
-        ("code_is_test", index_url.to_string()),
-    ];
-    for (field, url) in bool_fields {
-        let c = client.clone();
-        futures.push(Box::pin(async move {
-            put_index_with_retry(
-                c,
-                url,
-                serde_json::json!({"field_name": field, "field_schema": "bool"}),
+                serde_json::json!({"field_name": field, "field_schema": schema}),
             )
             .await
         }));

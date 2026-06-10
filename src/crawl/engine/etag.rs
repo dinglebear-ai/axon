@@ -46,6 +46,22 @@ use tokio::io::AsyncWriteExt;
 
 use crate::crawl::manifest::ManifestEntry;
 
+fn is_zero(v: &u8) -> bool {
+    *v == 0
+}
+
+/// Maximum consecutive reconcile-only runs before a sidecar entry is aged out.
+/// An entry whose `miss_count` reaches this value is removed from the next sidecar
+/// and excluded from reconciliation. Override with `AXON_ETAG_MAX_MISS_RUNS`
+/// (must be ≥1; clamped to `u8`). Default 3.
+fn max_miss_runs() -> u8 {
+    std::env::var("AXON_ETAG_MAX_MISS_RUNS")
+        .ok()
+        .and_then(|v| v.parse::<u8>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(3)
+}
+
 /// One URL's cached conditional-request validators.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EtagEntry {
@@ -53,6 +69,12 @@ pub struct EtagEntry {
     pub etag: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_modified: Option<String>,
+    /// Consecutive runs in which this URL was reconciled (spider 304) but never
+    /// arrived fresh. When this reaches `max_miss_runs()` the entry is dropped
+    /// from the sidecar so genuinely-deleted pages are not reused indefinitely.
+    /// Not serialized when 0 to keep sidecar files compact.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub miss_count: u8,
 }
 
 impl EtagEntry {
@@ -169,30 +191,68 @@ pub async fn load_and_seed(
 /// Carry-forward matters because spider's 304 path returns *before* it re-stores
 /// validators, so a URL that 304'd this run has no entry in the live cache — its
 /// validators would vanish after one hop without carrying the old sidecar forward.
+///
+/// Age-out: for every URL NOT in `arrived_urls`, `miss_count` is incremented.
+/// Once `miss_count` reaches `max_miss_runs()` the entry is removed from the
+/// next sidecar entirely, preventing indefinitely-reconciled deleted pages.
 pub fn build_next_sidecar(
     website: &Website,
     previous: &HashMap<String, EtagEntry>,
     arrived_urls: &HashSet<String>,
 ) -> HashMap<String, EtagEntry> {
+    let max_miss = max_miss_runs();
     // Start from the previous sidecar so 304'd URLs keep their validators.
     let mut next = previous.clone();
 
+    // Refresh validators and reset miss_count for URLs that arrived this run.
     if let Some(cache) = website.get_etag_cache() {
-        // Refresh validators for URLs that actually arrived this run.
         for url in arrived_urls {
             if let Some((etag, last_modified)) = cache.get(url) {
                 let entry = EtagEntry {
                     etag: etag.map(|s| s.to_string()),
                     last_modified: last_modified.map(|s| s.to_string()),
+                    miss_count: 0,
                 };
                 if entry.is_empty() {
                     next.remove(url);
                 } else {
                     next.insert(url.clone(), entry);
                 }
+            } else if let Some(e) = next.get_mut(url) {
+                // Arrived but no live-cache entry — keep validators, reset counter.
+                e.miss_count = 0;
+            }
+        }
+    } else {
+        // No live cache — still reset miss_count for arrived URLs.
+        for url in arrived_urls {
+            if let Some(e) = next.get_mut(url) {
+                e.miss_count = 0;
             }
         }
     }
+
+    // Age-out: increment miss_count for non-arrived URLs; drop at the limit.
+    let mut to_drop = Vec::new();
+    for (url, entry) in next.iter_mut() {
+        if !arrived_urls.contains(url) {
+            entry.miss_count = entry.miss_count.saturating_add(1);
+            if entry.miss_count >= max_miss {
+                to_drop.push(url.clone());
+            }
+        }
+    }
+    if !to_drop.is_empty() {
+        crate::core::logging::log_info(&format!(
+            "etag: aged out {} validator(s) after {} consecutive non-arriving run(s)",
+            to_drop.len(),
+            max_miss,
+        ));
+        for url in to_drop {
+            next.remove(&url);
+        }
+    }
+
     next
 }
 
@@ -215,18 +275,28 @@ pub async fn persist_next_sidecar(
 /// The visited-set gate is what distinguishes a genuine 304 skip (spider fetched
 /// it and got Not-Modified) from a page that is no longer discovered at all
 /// (never scheduled this run) — only the former is reused.
+///
+/// URLs whose `miss_count` in `sidecar` has reached `max_miss_runs()` are excluded:
+/// they will be dropped from the next sidecar by `build_next_sidecar` and should not
+/// be reconciled again to prevent indefinite reuse of deleted pages.
 pub fn reconcile_targets(
     previous_manifest: &HashMap<String, ManifestEntry>,
     seeded_urls: &HashSet<String>,
     arrived_urls: &HashSet<String>,
     visited_urls: &HashSet<String>,
+    sidecar: &HashMap<String, EtagEntry>,
 ) -> Vec<String> {
+    let max_miss = max_miss_runs();
     let mut targets: Vec<String> = previous_manifest
         .keys()
         .filter(|url| {
             seeded_urls.contains(*url)
                 && !arrived_urls.contains(*url)
                 && visited_urls.contains(*url)
+                && sidecar
+                    .get(*url)
+                    .map(|e| e.miss_count < max_miss)
+                    .unwrap_or(true)
         })
         .cloned()
         .collect();
@@ -238,6 +308,9 @@ pub fn reconcile_targets(
 /// markdown from the recycling bin (`markdown.old`) and appending reused entries
 /// to the (now-closed) manifest, which is reopened in append mode.
 ///
+/// `sidecar` is the PREVIOUS run's sidecar — used to skip URLs whose `miss_count`
+/// has reached `max_miss_runs()` so aged-out entries are not reconciled.
+///
 /// Returns the number of pages reconciled. Failures to relink an individual page
 /// are logged and skipped — a partial reconcile is better than a failed crawl.
 pub async fn reconcile_unmodified(
@@ -246,8 +319,15 @@ pub async fn reconcile_unmodified(
     seeded_urls: &HashSet<String>,
     arrived_urls: &HashSet<String>,
     visited_urls: &HashSet<String>,
+    sidecar: &HashMap<String, EtagEntry>,
 ) -> usize {
-    let targets = reconcile_targets(previous_manifest, seeded_urls, arrived_urls, visited_urls);
+    let targets = reconcile_targets(
+        previous_manifest,
+        seeded_urls,
+        arrived_urls,
+        visited_urls,
+        sidecar,
+    );
     if targets.is_empty() {
         return 0;
     }

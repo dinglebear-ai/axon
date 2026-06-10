@@ -11,7 +11,7 @@ mod plugin_options;
 pub use plugin_options::apply_plugin_options;
 
 const USAGE_LINES: &[&str] = &[
-    "axon setup",
+    "axon setup [--method pull|build] [--yes]",
     "axon setup init [--auth-mode bearer|oauth] [--mcp-host HOST] [--mcp-port PORT]",
     "axon preflight",
     "axon smoke",
@@ -30,7 +30,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     match cfg.positional.first().map(String::as_str) {
-        None => run_local_setup_command(cfg, LocalSetupMode::Setup).await,
+        None => run_setup_wizard(cfg).await,
         Some("plugin-hook" | "hook") => run_plugin_hook_setup_command(cfg).await,
         Some("init") => run_setup_init_command(cfg).await,
         Some("preflight" | "check") => {
@@ -40,6 +40,45 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         Some("targets") => run_targets_command(cfg),
         _ => print_usage(cfg),
     }
+}
+
+/// Full setup wizard: init env/compose → start stack → install self to ~/.local/bin.
+///
+/// This is the default action when `axon setup` is invoked with no subcommand,
+/// including when called from `install.sh` after the binary has been placed.
+/// `cfg.setup_method` carries the acquisition method (`pull`/`build`/`None`).
+async fn run_setup_wizard(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    if let Some(method) = &cfg.setup_method
+        && !cfg.json_output
+    {
+        println!("{} {}", muted("acquisition method:"), accent(method));
+    }
+    run_local_setup_command(cfg, LocalSetupMode::Setup).await?;
+    match install_self() {
+        Ok(dest) => {
+            if cfg.json_output {
+                // json output already printed by run_local_setup_command; no-op here
+            } else {
+                println!(
+                    "{} {}",
+                    muted("installed binary →"),
+                    accent(&dest.display().to_string())
+                );
+            }
+        }
+        Err(err) => {
+            // Non-fatal: stack is up, user just needs to copy manually.
+            if cfg.json_output {
+                eprintln!(
+                    "{{\"install_self_warn\": {}}}",
+                    serde_json::to_string(&err.to_string())?
+                );
+            } else {
+                eprintln!("warn: self-install skipped: {err}");
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Copy the running axon binary into ~/.local/bin so it is callable as a bare

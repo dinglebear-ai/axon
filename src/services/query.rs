@@ -1,10 +1,9 @@
 use crate::core::config::{Config, ConfigOverrides, ScrapeFormat};
-use crate::core::logging::log_warn;
+use crate::core::error::{ServiceError, diagnostics_from_error};
 use crate::services::document::{
     decode_document_cursor_backend, is_stale, paginate_document, read_latest_stored_source,
 };
-use crate::services::error::{ServiceError, diagnostics_from_error};
-use crate::services::events::{LogLevel, ServiceEvent, emit};
+use crate::services::events::{LogLevel, ServiceEvent, emit, synthesis_delta_handler_infallible};
 use crate::services::scrape as scrape_svc;
 use crate::services::types::{
     AskResult, DocumentBackend, EvaluateResult, Pagination, QueryHit, QueryResult, RetrieveOptions,
@@ -16,7 +15,6 @@ use crate::vector::ops::commands::evaluate_payload;
 use crate::vector::ops::commands::query_results;
 use crate::vector::ops::qdrant::{DirectRetrieveResult, retrieve_result};
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -432,19 +430,7 @@ pub async fn ask(
 }
 
 fn ask_delta_handler(tx: Option<mpsc::Sender<ServiceEvent>>) -> impl FnMut(&str) + Send {
-    static WARNED_ONCE: AtomicBool = AtomicBool::new(false);
-    move |delta| {
-        if let Some(ref sender) = tx
-            && let Err(e) = sender.try_send(ServiceEvent::SynthesisDelta {
-                text: delta.to_string(),
-            })
-            && !WARNED_ONCE.swap(true, Ordering::Relaxed)
-        {
-            log_warn(&format!(
-                "ask synthesis_delta dropped (subsequent drops suppressed): {e}"
-            ));
-        }
-    }
+    synthesis_delta_handler_infallible(tx, "ask")
 }
 
 /// RAG ask with token deltas emitted as the LLM streams.

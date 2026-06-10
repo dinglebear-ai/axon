@@ -5,7 +5,7 @@ use super::common::{
     env_or_default, redacted_stderr_tail,
 };
 use super::env::apply_env_allowlist;
-use crate::services::llm_backend::{CompletionRequest, CompletionResponse, LlmBackendConfig};
+use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use serde_json::Value;
 use std::error::Error as StdError;
 use std::fs;

@@ -195,15 +195,27 @@ async fn insert_payload(
             .await?;
         }
         JobPayload::Embed { input, config_json } => {
+            // Stamp fs_namespace for local-path inputs so workers in a different
+            // filesystem namespace (e.g. the host CLI) do not claim container-path
+            // jobs they cannot read. URL/free-text inputs get NULL — claimable by
+            // any worker. Mirrors `select::looks_path_like` without importing
+            // `src/vector` from `src/jobs`.
+            let ns = if embed_input_looks_like_local_path(input) {
+                std::env::var("AXON_FS_NAMESPACE").ok()
+            } else {
+                None
+            };
             sqlx::query(
-                "INSERT INTO axon_embed_jobs (id, status, input_text, config_json, created_at, updated_at) \
-                 VALUES (?, 'pending', ?, ?, ?, ?)",
+                "INSERT INTO axon_embed_jobs \
+                 (id, status, input_text, config_json, created_at, updated_at, fs_namespace) \
+                 VALUES (?, 'pending', ?, ?, ?, ?, ?)",
             )
             .bind(id_str)
             .bind(input)
             .bind(config_json)
             .bind(now)
             .bind(now)
+            .bind(ns)
             .execute(&mut *conn)
             .await?;
         }
@@ -242,6 +254,28 @@ async fn insert_payload(
         }
     }
     Ok(())
+}
+
+/// True when an embed input string looks like a filesystem path rather than a
+/// URL or free-text query. Used to decide whether to stamp `fs_namespace` at
+/// enqueue time. Mirrors `vector::ops::input::select::looks_path_like` to
+/// avoid a `src/jobs → src/vector` dependency.
+fn embed_input_looks_like_local_path(input: &str) -> bool {
+    let input = input.trim();
+    if input.is_empty() {
+        return false;
+    }
+    let bytes = input.as_bytes();
+    let windows_drive = input.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\');
+    input.starts_with('/')
+        || input.starts_with("./")
+        || input.starts_with("../")
+        || input.starts_with("~/")
+        || input.starts_with("\\\\")
+        || windows_drive
 }
 
 async fn insert_sidecar_payload(

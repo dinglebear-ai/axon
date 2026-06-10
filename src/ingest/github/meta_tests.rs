@@ -49,8 +49,8 @@ fn payload_file_fields_populated() {
         ..Default::default()
     };
     let payload = build_github_payload(&params);
-    assert_eq!(payload["git_file_path"], "src/main.rs");
-    assert_eq!(payload["git_file_language"], "rust");
+    // git_file_path / git_file_language were dropped (Q-M5) — file path/language
+    // now live only under the code_* namespace to avoid duplicate payload keys.
     assert_eq!(payload["code_file_path"], "src/main.rs");
     assert_eq!(payload["code_language"], "rust");
     assert_eq!(payload["code_file_type"], "source");

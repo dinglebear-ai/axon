@@ -14,7 +14,7 @@
 use serde_json::{Value, json};
 use std::error::Error as StdError;
 
-use crate::services::llm_backend::{CompletionResponse, UsageSnapshot};
+use crate::core::llm::{CompletionResponse, UsageSnapshot};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
 

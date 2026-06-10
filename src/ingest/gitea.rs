@@ -90,50 +90,74 @@ pub async fn ingest_gitea(
     let target = parse_gitea_target(target)?;
     let client = build_client(cfg)?;
     let repo = fetch_repo(&client, &target).await?;
-    let mut total = embed_metadata(cfg, &target, &repo)
-        .await
-        .unwrap_or_else(|err| {
-            log_warn(&format!(
-                "gitea metadata_failed target={} err={err}",
-                target.web_url
-            ));
-            0
-        });
+
+    reporter
+        .report(serde_json::json!({
+            "phase": "ingesting",
+            "tasks_total": 4,
+            "tasks_done": 0,
+        }))
+        .await;
+
+    let mut total = 0usize;
+    let mut tasks_done = 0usize;
+    const TASKS_TOTAL: usize = 4;
+
+    macro_rules! run_phase {
+        ($label:expr, $fut:expr) => {{
+            reporter
+                .report(serde_json::json!({
+                    "phase": $label,
+                    "tasks_done": tasks_done,
+                    "tasks_total": TASKS_TOTAL,
+                }))
+                .await;
+            match $fut.await {
+                Ok(chunks) => {
+                    total += chunks;
+                    log_info(&format!(
+                        "gitea task_done task={} target={} chunks={chunks}",
+                        $label,
+                        target.web_url
+                    ));
+                }
+                Err(err) => log_warn(&format!(
+                    "gitea task_failed task={} target={} err={err}",
+                    $label,
+                    target.web_url
+                )),
+            }
+            tasks_done += 1;
+        }};
+    }
+
+    run_phase!("metadata", embed_metadata(cfg, &target, &repo));
+
     let clone_target = repo.clone_url.as_deref().unwrap_or(target.web_url.as_str());
-    total += ingest_git_repository(
-        cfg,
-        &format!("git:{clone_target}"),
-        include_source,
-        reporter,
-        "gitea",
-        "gitea",
-    )
-    .await
-    .unwrap_or_else(|err| {
-        log_warn(&format!(
-            "gitea files_failed target={} err={err}",
-            target.web_url
-        ));
-        0
-    });
-    total += embed_issues(cfg, &client, &target, &repo)
-        .await
-        .unwrap_or_else(|err| {
-            log_warn(&format!(
-                "gitea issues_failed target={} err={err}",
-                target.web_url
-            ));
-            0
-        });
-    total += embed_pulls(cfg, &client, &target, &repo)
-        .await
-        .unwrap_or_else(|err| {
-            log_warn(&format!(
-                "gitea pulls_failed target={} err={err}",
-                target.web_url
-            ));
-            0
-        });
+    let clone_url = format!("git:{clone_target}");
+    run_phase!(
+        "files",
+        ingest_git_repository(
+            cfg,
+            &clone_url,
+            include_source,
+            reporter.clone(),
+            "gitea",
+            "gitea"
+        )
+    );
+
+    run_phase!("issues", embed_issues(cfg, &client, &target, &repo));
+    run_phase!("pulls", embed_pulls(cfg, &client, &target, &repo));
+
+    reporter
+        .report(serde_json::json!({
+            "tasks_done": tasks_done,
+            "tasks_total": TASKS_TOTAL,
+            "chunks_embedded": total,
+            "phase": "completed",
+        }))
+        .await;
     log_done(&format!(
         "command=ingest source=gitea target={} chunk_count={total}",
         target.web_url

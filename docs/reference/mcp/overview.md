@@ -206,6 +206,22 @@ The server uses strict deserialization:
 - No action alias remapping
 - No token normalization (`-`/spaces/case are not rewritten)
 
+## Published Input Schema Shape
+The `tools/list` `inputSchema` carries the per-action contract twice, on purpose:
+- A top-level `oneOf` with one strict branch per action (`additionalProperties: false`,
+  per-action `required`) — the validation contract, mirrored by serde parsing.
+- A flattened superset of every per-action field in top-level `properties`
+  (all optional except `action`), each annotated with a
+  `"Applies to action(s): …"` description prefix and an `x-axon-actions` array.
+  Fields whose shape differs across actions (e.g. `limit`) publish an `anyOf`
+  union of the distinct shapes.
+
+The flattening exists because many MCP clients (Codex, mcporter signatures,
+Labby Code Mode `.d.ts` consumers) render callable parameters from top-level
+`properties` only and ignore `oneOf`; without it they see just
+`{action, subaction}`. Implemented in `src/mcp/server/tool_schema.rs`
+(`collect_lifted_fields`/`insert_lifted_fields`).
+
 ## Online Operations
 Direct actions:
 - `help`

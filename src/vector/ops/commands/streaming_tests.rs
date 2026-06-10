@@ -1,8 +1,6 @@
 use super::*;
 use crate::core::config::Config;
-use crate::services::llm_backend::{
-    CompletionRequest, CompletionRunner, CompletionTurnResult, LlmBackendKind,
-};
+use crate::core::llm::{CompletionRequest, CompletionRunner, CompletionTurnResult, LlmBackendKind};
 use crate::vector::ops::commands::ask::synthesis_prompt::{SKILL_MD, synthesis_prompt_for_gemini};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;

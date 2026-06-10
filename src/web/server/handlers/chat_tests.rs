@@ -20,7 +20,7 @@ async fn v1_chat_rejects_empty_message() {
 #[test]
 fn completion_request_has_no_rag_system_prompt() {
     let cfg = Config {
-        llm_backend: crate::services::llm_backend::LlmBackendKind::OpenAiCompat,
+        llm_backend: crate::core::llm::LlmBackendKind::OpenAiCompat,
         openai_model: "synthesis-model".to_string(),
         openai_chat_model: "chat-model".to_string(),
         ..Config::default()

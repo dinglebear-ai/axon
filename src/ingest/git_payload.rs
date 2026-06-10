@@ -122,6 +122,61 @@ pub struct GitPayload {
     pub meta: Option<Value>,
 }
 
+/// Decoded fields extracted from a git item (issue or PR) extra payload.
+///
+/// Tuple order: (state, number, author, labels, is_draft, merged_at,
+///               created_at, updated_at)
+///
+/// `number_field` is the JSON key that holds the item's number:
+/// - GitLab uses `"iid"` for both issues and merge requests
+/// - Gitea/GitHub use `"number"`
+pub type GitItemFields = (
+    Option<String>,
+    Option<u64>,
+    Option<String>,
+    Option<Vec<String>>,
+    Option<bool>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// Extract the common issue/PR fields from an extra-payload JSON blob.
+/// Parameterised by `number_field` so GitLab (`"iid"`) and Gitea/GitHub
+/// (`"number"`) can both use this function without branching at the call site.
+pub fn extract_git_item_fields(extra: &Value, number_field: &str) -> GitItemFields {
+    let state = extra
+        .get("state")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let number = extra.get(number_field).and_then(|v| v.as_u64());
+    let author = extra
+        .get("author")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let labels = extra.get("labels").and_then(|v| v.as_array()).map(|a| {
+        a.iter()
+            .filter_map(|s| s.as_str().map(str::to_string))
+            .collect()
+    });
+    let is_draft = extra.get("is_draft").and_then(|v| v.as_bool());
+    let merged_at = extra
+        .get("merged_at")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let created_at = extra
+        .get("created_at")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let updated_at = extra
+        .get("updated_at")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    (
+        state, number, author, labels, is_draft, merged_at, created_at, updated_at,
+    )
+}
+
 /// Build the canonical `git_*` payload object.
 ///
 /// Returns a flat JSON object. Callers may extend it with additional
@@ -156,8 +211,6 @@ pub fn build_git_payload(p: &GitPayload) -> Value {
         "git_merged_at":     p.merged_at,
         "git_created_at":    p.created_at,
         "git_updated_at":    p.updated_at,
-        "git_file_path":     p.file_path,
-        "git_file_language": p.file_language,
         "code_file_path":    p.file_path,
         "code_language":     p.file_language,
         "code_file_type":    p.file_type,

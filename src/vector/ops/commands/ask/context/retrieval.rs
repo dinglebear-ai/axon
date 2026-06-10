@@ -1,7 +1,7 @@
 use super::super::timing::{AskTiming, AskTimingSlot};
+use crate::core::ask_explain::{AskExplainRetrieval, AskExplainScoreKind};
 use crate::core::config::Config;
 use crate::core::logging::{log_debug, log_info};
-use crate::services::types::{AskExplainRetrieval, AskExplainScoreKind};
 use crate::vector::ops::commands::retrieval::{
     CandidateBuildPolicy, CandidateRankingTrace, CandidateScorePolicy, RetrievedCandidate,
     authoritative_ratio, candidates_only, embed_retrieval_inputs, product_authority_ratio,
@@ -23,7 +23,7 @@ type SearchHitsResult =
 const ASK_PRODUCT_AUTHORITY_BOOST: f64 = 0.35;
 
 pub(super) struct AskRetrieval {
-    pub(super) candidates: Vec<ranking::AskCandidate>,
+    pub(super) candidate_count: usize,
     pub(super) reranked: Vec<ranking::AskCandidate>,
     pub(super) top_chunk_indices: Vec<usize>,
     pub(super) top_full_doc_indices: Vec<usize>,
@@ -350,7 +350,7 @@ fn finalize_retrieval(inputs: FinalizeRetrievalInputs<'_>) -> AskRetrieval {
         authoritative_ratio: configured_authority_ratio.max(product_authority_ratio),
         configured_authority_ratio,
         product_authority_ratio,
-        candidates: candidates_only(inputs.retrieved_candidates),
+        candidate_count: inputs.retrieved_candidates.len(),
         reranked: inputs.reranked,
         retrieval_elapsed_ms: inputs.retrieval_started.elapsed().as_millis(),
         min_supplemental_score: min_supplemental_score(

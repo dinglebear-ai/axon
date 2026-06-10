@@ -18,20 +18,102 @@ use uuid::Uuid;
 
 // Aliases used for futures that must be Send to work in FuturesUnordered across await points.
 type SendError = Box<dyn Error + Send + Sync>;
-type DocFuture<'a> = Pin<
-    Box<
-        dyn Future<Output = Result<(usize, String, usize, Vec<serde_json::Value>), SendError>>
-            + Send
-            + 'a,
-    >,
->;
+type DocFuture<'a> = Pin<Box<dyn Future<Output = Result<EmbeddedDoc, SendError>> + Send + 'a>>;
+
+/// Named result of embedding one `PreparedDoc` through the TEI pipeline.
+///
+/// Replaces the anonymous `(usize, String, usize, Vec<Value>)` 4-tuple with named
+/// fields so destructure sites are self-documenting. (B-H3)
+struct EmbeddedDoc {
+    dim: usize,
+    url: String,
+    chunk_count: usize,
+    points: Vec<serde_json::Value>,
+}
+
+/// Qdrant payload fields owned by the pipeline that `doc.extra` must never overwrite.
+///
+/// `apply_extra` uses this list as a defensive guard. System fields are authoritative;
+/// any extra key that collides is silently dropped. (S-M1 / T-C3)
+pub(crate) const RESERVED_PAYLOAD_KEYS: &[&str] = &[
+    "url",
+    "domain",
+    "source_type",
+    "content_type",
+    "chunk_index",
+    "chunk_text",
+    "seed_url",
+    "scraped_at",
+    "payload_schema_version",
+    "title",
+    "extractor_name",
+    "structured_kind",
+    "structured_type",
+    "structured_id",
+    "structured_blob",
+];
+
+/// Merge source-specific metadata from `extra` into `payload`, skipping any key that
+/// is a reserved system field.
+///
+/// `extra` is written first so that system fields written by the caller afterwards
+/// remain authoritative. The reserved-key guard is a defense-in-depth safeguard
+/// against ingest builders accidentally injecting a reserved key. (S-M1 / T-C3)
+pub(crate) fn apply_extra(payload: &mut serde_json::Value, extra: &serde_json::Value) {
+    let serde_json::Value::Object(map) = extra else {
+        return;
+    };
+    let serde_json::Value::Object(payload_map) = payload else {
+        return;
+    };
+    for (k, v) in map {
+        if !RESERVED_PAYLOAD_KEYS.contains(&k.as_str()) {
+            payload_map.insert(k.clone(), v.clone());
+        }
+    }
+}
+
+/// Drop whitespace-only chunks, keeping `chunk_extra` (P-H1 per-chunk payload
+/// overrides) positionally aligned with `chunks`.
+///
+/// `chunk_extra[i]` describes `chunks[i]`, but the two are separate vectors.
+/// Filtering only `chunks` (e.g. via a bare `retain`) would shift every override
+/// after a dropped blank chunk onto the wrong chunk and silently discard the last
+/// one — corrupting the per-chunk symbol-boost signal P-H1 exists to preserve. So
+/// when overrides are present we filter both by the same predicate in lockstep.
+/// When `chunk_extra` is empty (the common crawl/embed/non-code path) only
+/// `chunks` is filtered. A non-empty-but-mismatched `chunk_extra` is a producer
+/// bug (debug-asserted); in release we filter chunks only and drop the unaligned
+/// overrides rather than risk misattributing them.
+fn drop_blank_chunks_aligned(chunks: &mut Vec<String>, chunk_extra: &mut Vec<serde_json::Value>) {
+    if !chunk_extra.is_empty() && chunk_extra.len() == chunks.len() {
+        let paired_chunks = std::mem::take(chunks);
+        let paired_extra = std::mem::take(chunk_extra);
+        let (kept_chunks, kept_extra): (Vec<String>, Vec<serde_json::Value>) = paired_chunks
+            .into_iter()
+            .zip(paired_extra)
+            .filter(|(c, _)| !c.trim().is_empty())
+            .unzip();
+        *chunks = kept_chunks;
+        *chunk_extra = kept_extra;
+    } else {
+        debug_assert!(
+            chunk_extra.is_empty(),
+            "chunk_extra ({}) must be empty or positionally parallel to chunks ({})",
+            chunk_extra.len(),
+            chunks.len()
+        );
+        chunks.retain(|c| !c.trim().is_empty());
+        chunk_extra.clear();
+    }
+}
 
 async fn embed_prepared_doc(
     cfg: &Config,
     mut doc: PreparedDoc,
     mode: VectorMode,
-) -> Result<(usize, String, usize, Vec<serde_json::Value>), SendError> {
-    doc.chunks.retain(|c| !c.trim().is_empty());
+) -> Result<EmbeddedDoc, SendError> {
+    drop_blank_chunks_aligned(&mut doc.chunks, &mut doc.chunk_extra);
     if doc.chunks.is_empty() {
         return Err(format!("all chunks empty for {}", doc.url).into());
     }
@@ -87,39 +169,48 @@ async fn embed_prepared_doc(
         .to_string();
     let timestamp = Utc::now().to_rfc3339();
     let mut points = Vec::with_capacity(vectors.len());
+    // Per-chunk payload overrides (P-H1): taken out before `doc.chunks` is moved
+    // by `into_iter()` below so the two positionally-parallel vectors zip cleanly.
+    let chunk_extra = std::mem::take(&mut doc.chunk_extra);
     for (idx, (chunk, vecv)) in doc.chunks.into_iter().zip(vectors).enumerate() {
         let point_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{}:{}", url, idx).as_bytes());
-        let mut payload = serde_json::json!({
-            "url": url,
-            "domain": doc.domain,
-            "source_type": doc.source_type,
-            "content_type": doc.content_type,
-            "chunk_index": idx,
-            "chunk_text": chunk,
-            "seed_url": seed_url,
-            "scraped_at": timestamp,
-            // Stamp the schema version this point was indexed under so that
-            // retrieval can opt into version-aware filtering. Existing points
-            // (~3.79M as of axon_rust-lu6a) lack this field and are treated
-            // as implicit version 1. See `qdrant::PAYLOAD_SCHEMA_VERSION`.
-            "payload_schema_version": PAYLOAD_SCHEMA_VERSION,
-        });
+        // Apply extra metadata first so that system fields written below always win.
+        // RESERVED_PAYLOAD_KEYS in apply_extra() provides a second line of defense. (S-M1)
+        let mut payload = serde_json::json!({});
+        if let Some(ref extra) = doc.extra {
+            apply_extra(&mut payload, extra);
+        }
+        // Per-chunk overrides win over doc-level extra (reserved system keys excepted).
+        if let Some(chunk_override) = chunk_extra.get(idx) {
+            apply_extra(&mut payload, chunk_override);
+        }
+        // System fields — written after extra so they are always authoritative.
+        payload["url"] = serde_json::Value::String(url.clone());
+        payload["domain"] = serde_json::Value::String(doc.domain.clone());
+        payload["source_type"] = serde_json::Value::String(doc.source_type.clone());
+        payload["content_type"] = serde_json::Value::String(doc.content_type.to_string());
+        payload["chunk_index"] = serde_json::Value::Number(idx.into());
+        payload["chunk_text"] = serde_json::Value::String(chunk.clone());
+        payload["seed_url"] = serde_json::Value::String(seed_url.clone());
+        payload["scraped_at"] = serde_json::Value::String(timestamp.clone());
+        // Stamp the schema version so retrieval can opt into version-aware filtering.
+        // Existing points without this field are treated as implicit version 1.
+        // See `qdrant::PAYLOAD_SCHEMA_VERSION` for the current value. (D-M2)
+        payload["payload_schema_version"] =
+            serde_json::Value::Number(PAYLOAD_SCHEMA_VERSION.into());
         if let Some(t) = &doc.title {
             payload["title"] = serde_json::Value::String(t.clone());
         }
         // `extractor_name` is OPTIONAL — generic crawl/embed paths leave it
-        // None so the field is absent. Vertical extractors (xvu9 / upnq) set
-        // it to a stable keyword; filtering on absence is the agent-native
-        // pattern. (bd axon_rust-lu6a)
+        // None so the field is absent. Vertical extractors set it to a stable
+        // keyword; filtering on absence is the agent-native pattern.
         if let Some(name) = &doc.extractor_name
             && !name.is_empty()
         {
             payload["extractor_name"] = serde_json::Value::String(name.clone());
         }
         // Structured-data fields are OPTIONAL — only populated when a page
-        // produced JSON-LD / __NEXT_DATA__ / SvelteKit data via the
-        // `core::structured::extract_all()` pass. Same agent-native absent-
-        // when-empty pattern as `extractor_name`. (bd axon_rust-xvu9)
+        // produced JSON-LD / __NEXT_DATA__ / SvelteKit data.
         if let Some(sd) = &doc.structured {
             payload["structured_kind"] = serde_json::Value::String(sd.kind.to_string());
             if let Some(t) = &sd.schema_type {
@@ -130,16 +221,16 @@ async fn embed_prepared_doc(
             }
             payload["structured_blob"] = sd.blob.clone();
         }
-        if let Some(serde_json::Value::Object(map)) = &doc.extra {
-            for (k, v) in map {
-                payload[k] = v.clone();
-            }
-        }
         points.push(build_point(point_id, vecv, &chunk, payload, mode));
     }
     // Return URL and chunk count so the caller can run stale-tail cleanup
     // AFTER the upsert succeeds -- never before.
-    Ok((dim, url, chunk_count, points))
+    Ok(EmbeddedDoc {
+        dim,
+        url,
+        chunk_count,
+        points,
+    })
 }
 
 async fn embed_prepared_doc_with_timeout(
@@ -147,7 +238,7 @@ async fn embed_prepared_doc_with_timeout(
     doc: PreparedDoc,
     timeout_secs: u64,
     mode: VectorMode,
-) -> Result<(usize, String, usize, Vec<serde_json::Value>), SendError> {
+) -> Result<EmbeddedDoc, SendError> {
     let url = doc.url.clone();
     match tokio::time::timeout(
         Duration::from_secs(timeout_secs),
@@ -171,6 +262,9 @@ async fn embed_prepared_doc_with_timeout(
 fn rebuild_points_as_named(
     points: Vec<serde_json::Value>,
 ) -> Result<Vec<serde_json::Value>, SendError> {
+    // Constant empty slice avoids a per-point heap allocation for the fallback
+    // case where a point has no "vector" array. (B-L6)
+    const EMPTY: &[serde_json::Value] = &[];
     points
         .into_iter()
         .map(|pt| {
@@ -188,10 +282,10 @@ fn rebuild_points_as_named(
                 }
             };
             let payload = pt["payload"].clone();
-            let empty_vec = vec![];
             let dense: Vec<f32> = pt["vector"]
                 .as_array()
-                .unwrap_or(&empty_vec)
+                .map(|v| v.as_slice())
+                .unwrap_or(EMPTY)
                 .iter()
                 .filter_map(|v| v.as_f64().map(|f| f as f32))
                 .collect();
@@ -222,7 +316,12 @@ async fn bootstrap_first_doc(
     stale_tail_queue: &mut Vec<(String, usize)>,
 ) -> Result<(VectorMode, usize, usize), SendError> {
     match embed_prepared_doc_with_timeout(cfg, doc, doc_timeout_secs, VectorMode::Unnamed).await {
-        Ok((dim, url, chunk_count, points)) => {
+        Ok(EmbeddedDoc {
+            dim,
+            url,
+            chunk_count,
+            points,
+        }) => {
             let mode = qdrant_store::collection_init_or_cached(cfg, dim)
                 .await
                 .map_err(|e| -> SendError { format!("collection init/cache: {e}").into() })?;
@@ -262,6 +361,11 @@ async fn flush_and_cleanup(
         .map_err(|e| -> SendError { format!("qdrant upsert: {e}").into() })?;
     points.clear();
     for (tail_url, count) in stale_tail_queue.drain(..) {
+        // chunk_count == 1 means the stale-tail filter is `chunk_index >= 1`,
+        // which matches zero points by construction — skip the no-op DELETE. (P-H1)
+        if count <= 1 {
+            continue;
+        }
         if let Err(e) = qdrant_delete_stale_tail(cfg, &tail_url, count).await {
             log_warn(&format!(
                 "embed stale-tail cleanup failed for {tail_url}: {e}"
@@ -315,7 +419,12 @@ async fn drain_concurrent_docs<'a>(
 
     while let Some(result) = inflight.next().await {
         match result {
-            Ok((_dim, url, chunk_count, mut points)) => {
+            Ok(EmbeddedDoc {
+                url,
+                chunk_count,
+                mut points,
+                ..
+            }) => {
                 chunks_embedded += points.len();
                 state.pending_points.append(&mut points);
                 state.stale_tail_queue.push((url, chunk_count));
@@ -331,13 +440,15 @@ async fn drain_concurrent_docs<'a>(
         }
         state.docs_completed += 1;
         if let Some(tx) = progress_tx {
-            tx.send(EmbedProgress {
-                docs_total: params.docs_total,
-                docs_completed: state.docs_completed,
-                chunks_embedded,
-            })
-            .await
-            .ok();
+            // If the receiver has been dropped, ignore the error and continue — embed
+            // results are what matter; progress reporting is best-effort. (B-L5)
+            let _ = tx
+                .send(EmbedProgress {
+                    docs_total: params.docs_total,
+                    docs_completed: state.docs_completed,
+                    chunks_embedded,
+                })
+                .await;
         }
         if let Some(doc) = work.next() {
             inflight.push(Box::pin(embed_prepared_doc_with_timeout(
@@ -408,13 +519,13 @@ pub(super) async fn run_embed_pipeline(
     .await?;
     state.docs_completed = 1;
     if let Some(tx) = &progress_tx {
-        tx.send(EmbedProgress {
-            docs_total,
-            docs_completed: state.docs_completed,
-            chunks_embedded,
-        })
-        .await
-        .ok();
+        let _ = tx
+            .send(EmbedProgress {
+                docs_total,
+                docs_completed: state.docs_completed,
+                chunks_embedded,
+            })
+            .await;
     }
 
     let params = PipelineParams {

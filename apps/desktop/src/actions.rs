@@ -48,6 +48,14 @@ pub(crate) const ACTIONS: &[CommandAction] = &[
         example: "map https://code.claude.com/docs",
     },
     CommandAction {
+        label: "Screenshot URL",
+        subcommand: "screenshot",
+        arg_mode: ArgMode::Split,
+        aliases: &["screenshot", "capture", "snap"],
+        description: "Capture a full-page screenshot of a URL via headless Chrome.",
+        example: "screenshot https://example.com",
+    },
+    CommandAction {
         label: "Summarize URL",
         subcommand: "summarize",
         arg_mode: ArgMode::Split,
@@ -208,7 +216,14 @@ impl CommandAction {
     pub(crate) fn accepts_direct_url(self) -> bool {
         matches!(
             self.subcommand,
-            "scrape" | "crawl" | "map" | "summarize" | "retrieve" | "embed" | "extract"
+            "scrape"
+                | "crawl"
+                | "map"
+                | "screenshot"
+                | "summarize"
+                | "retrieve"
+                | "embed"
+                | "extract"
         )
     }
 }

@@ -6,19 +6,9 @@
 # Format:
 #   path/to/file.rs  # expires: YYYY-MM-DD | owner: <name> | split: <plan>
 
-# Web files pending extraction sprint
-apps/web/app/jobs/[id]/job-detail-ui.tsx  # expires: 2026-06-09 | owner: jmagar | split: job-detail/{header,timeline,artifacts}.tsx
-apps/web/components/shell/axon-shell-state.ts  # expires: 2026-06-09 | owner: jmagar | split: shell-state/{pane,mobile,actions}.ts
-apps/web/hooks/ws-messages/provider.ts  # expires: 2026-06-09 | owner: jmagar | split: ws-messages/{provider,reducer,types}.ts
-
 # Rust files still over 500 lines -- needs splitting
 src/services/query.rs  # expires: 2026-07-11 | owner: jmagar | split: query/{ask,retrieve,suggest}.rs
-src/crawl/scrape.rs  # expires: 2026-06-09 | owner: jmagar | split: scrape/{fetch,transform,pipeline}.rs
-src/core/config/parse.rs  # expires: 2026-06-09 | owner: jmagar | split: parse/{args,env,merge}.rs
-src/core/config/types/config.rs  # expires: 2026-06-09 | owner: jmagar | split: config/types/{crawl,embed,job}.rs
-src/services/system.rs  # expires: 2026-06-09 | owner: jmagar | split: system/{health,metrics,diagnostics}.rs
-src/services/types/service.rs  # expires: 2026-06-09 | owner: jmagar | split: types/service/{query,lifecycle,system}.rs
-src/crawl/engine/sitemap.rs  # expires: 2026-06-09 | owner: jmagar | split: sitemap/{discover,backfill,filter}.rs
+src/jobs/workers/runners/ingest.rs  # expires: 2026-07-17 | owner: jmagar | split: ingest/{merge,progress}.rs (payload-merge helpers + progress persister)
 
 # Vendored lab-auth source (upstream pinned SHA 87cec324).
 # Cannot be split — upstream code vendored to resolve libsqlite3-sys link conflict.

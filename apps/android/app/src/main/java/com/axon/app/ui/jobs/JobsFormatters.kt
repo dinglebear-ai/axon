@@ -8,7 +8,7 @@ import androidx.compose.material.icons.rounded.Work
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.ui.theme.AxonTheme
 import kotlinx.serialization.json.JsonArray
@@ -61,26 +61,12 @@ internal fun firstMetric(obj: JsonObject, vararg keys: String): Long? {
 internal fun primitiveLong(element: JsonElement): Long? =
     (element as? JsonPrimitive)?.longOrNull
 
-internal fun AxonClient.JobKind.label(): String = when (this) {
-    AxonClient.JobKind.Crawl -> "Crawl"
-    AxonClient.JobKind.Embed -> "Embed"
-    AxonClient.JobKind.Extract -> "Extract"
-    AxonClient.JobKind.Ingest -> "Ingest"
-}
-
-internal fun AxonClient.JobKind.drillTitle(): String = when (this) {
-    AxonClient.JobKind.Crawl -> "Crawls"
-    AxonClient.JobKind.Embed -> "Embeddings"
-    AxonClient.JobKind.Extract -> "Extractions"
-    AxonClient.JobKind.Ingest -> "Ingestions"
-}
-
 @Composable
-internal fun jobTone(kind: AxonClient.JobKind?): Color = when (kind) {
-    AxonClient.JobKind.Crawl -> AxonTheme.colors.accentPrimary
-    AxonClient.JobKind.Embed -> AxonTheme.colors.accentPink
-    AxonClient.JobKind.Extract -> AxonTheme.colors.orange
-    AxonClient.JobKind.Ingest -> AxonTheme.colors.accentStrong
+internal fun jobTone(kind: JobFamily?): Color = when (kind) {
+    JobFamily.Crawl -> AxonTheme.colors.accentPrimary
+    JobFamily.Embed -> AxonTheme.colors.accentPink
+    JobFamily.Extract -> AxonTheme.colors.orange
+    JobFamily.Ingest -> AxonTheme.colors.accentStrong
     null -> AxonTheme.colors.accentPrimary
 }
 
@@ -93,11 +79,11 @@ internal fun toneForKindName(kind: String): Color = when (kind.lowercase()) {
     else -> AxonTheme.colors.accentPrimary
 }
 
-internal fun iconForKind(kind: AxonClient.JobKind?): ImageVector = when (kind) {
-    AxonClient.JobKind.Crawl -> Icons.Rounded.TravelExplore
-    AxonClient.JobKind.Embed -> Icons.Rounded.Work
-    AxonClient.JobKind.Extract -> Icons.Rounded.DataObject
-    AxonClient.JobKind.Ingest -> Icons.Rounded.CloudDownload
+internal fun iconForKind(kind: JobFamily?): ImageVector = when (kind) {
+    JobFamily.Crawl -> Icons.Rounded.TravelExplore
+    JobFamily.Embed -> Icons.Rounded.Work
+    JobFamily.Extract -> Icons.Rounded.DataObject
+    JobFamily.Ingest -> Icons.Rounded.CloudDownload
     null -> Icons.Rounded.Work
 }
 

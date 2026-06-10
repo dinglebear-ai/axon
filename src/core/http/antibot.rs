@@ -23,7 +23,7 @@
 //! default 150 KiB from zehr). Pages larger than that get a single one-pass
 //! head-scan; we never lowercase a multi-MB body.
 
-use crate::services::error::ChallengeVendor;
+use crate::core::error::ChallengeVendor;
 
 /// What a single `detect_challenge` call returns.
 #[derive(Debug, Clone, PartialEq, Eq)]

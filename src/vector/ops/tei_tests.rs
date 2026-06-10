@@ -193,6 +193,7 @@ fn prepared_doc_with_ingest_metadata_compiles() {
         extra: Some(serde_json::json!({"gh_owner": "owner", "gh_repo": "repo"})),
         extractor_name: None,
         structured: None,
+        chunk_extra: Vec::new(),
     };
     assert_eq!(doc.source_type, "github");
     assert_eq!(doc.content_type, "text");

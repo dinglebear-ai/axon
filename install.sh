@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+# install.sh — thin bootstrap: acquire the axon binary, then hand off to `axon setup`.
+# All prerequisite checks (docker, nvidia-smi, gemini) happen inside `axon setup preflight`.
 set -eu
 
 REPO="${AXON_INSTALL_REPO:-jmagar/axon}"
@@ -8,6 +10,8 @@ BIN_DIR="$PREFIX/bin"
 BIN="$BIN_DIR/axon"
 DRY_RUN="${AXON_INSTALL_DRY_RUN:-0}"
 SKIP_SETUP="${AXON_INSTALL_SKIP_SETUP:-0}"
+# METHOD: pull (download GitHub release tarball) or build (cargo build --release).
+METHOD="${AXON_INSTALL_METHOD:-pull}"
 
 say() {
   printf '%s\n' "$*" >&2
@@ -49,12 +53,15 @@ check_prereqs() {
   need tar
 }
 
-check_setup_prereqs() {
-  need docker
-  docker compose version >/dev/null 2>&1 || fail "docker compose is required"
-  command -v nvidia-smi >/dev/null 2>&1 || fail "nvidia-smi is required for the RTX 4070 production target"
-  command -v gemini >/dev/null 2>&1 || fail "gemini CLI is required on PATH; axon setup ask-smoke verifies auth and completion"
-  say "Gemini CLI found; axon setup ask-smoke verifies auth and completion"
+build_from_source() {
+  need cargo
+  say "Building axon from source (cargo build --release)..."
+  cargo build --release --bin axon
+  BUILT_PATH="$(pwd)/target/release/axon"
+  [ -f "$BUILT_PATH" ] || fail "cargo build succeeded but axon binary not found at $BUILT_PATH"
+  DOWNLOADED_PATH="$BUILT_PATH"
+  DOWNLOAD_TMPDIR=""
+  DOWNLOAD_TMPDIR_CREATED=0
 }
 
 download_and_verify() {
@@ -104,24 +111,35 @@ cleanup_download() {
 }
 
 main() {
-  target="$(detect_target)"
-  check_prereqs
   if [ "$DRY_RUN" = "1" ]; then
-    say "Dry run OK: target=$target prefix=$PREFIX repo=$REPO version=$VERSION"
+    target="$(detect_target)"
+    say "Dry run OK: target=$target prefix=$PREFIX repo=$REPO version=$VERSION method=$METHOD"
     exit 0
   fi
-  if [ "$SKIP_SETUP" != "1" ]; then
-    check_setup_prereqs
-  fi
 
-  download_and_verify "$target"
-  trap cleanup_download EXIT HUP INT TERM
+  case "$METHOD" in
+    pull)
+      target="$(detect_target)"
+      check_prereqs
+      download_and_verify "$target"
+      trap cleanup_download EXIT HUP INT TERM
+      ;;
+    build)
+      build_from_source
+      ;;
+    *)
+      fail "unknown METHOD '$METHOD'; expected pull or build"
+      ;;
+  esac
+
   mkdir -p "$BIN_DIR"
   install -m 0755 "$DOWNLOADED_PATH" "$BIN"
   say "Installed $BIN"
 
   if [ "$SKIP_SETUP" != "1" ]; then
-    "$BIN" setup
+    # Hand off to axon setup wizard. All prerequisite checks (docker, nvidia-smi,
+    # gemini CLI) happen inside `axon setup preflight` rather than in this script.
+    "$BIN" setup --method "$METHOD"
   fi
 }
 

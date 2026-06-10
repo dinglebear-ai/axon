@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::core::health::build_doctor_report;
-use crate::services::llm_backend::{self, CompletionRequest};
+use crate::core::llm::{self, CompletionRequest};
 use crate::services::types::DebugResult;
 use std::error::Error;
 
@@ -31,11 +31,11 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
         "You are a senior self-hosted infrastructure debugging assistant. Be precise and avoid generic advice."
     );
     request = request.backend_from_config(cfg);
-    let model = llm_backend::configured_model_from_config(cfg);
+    let model = llm::configured_model_from_config(cfg);
     if let Some(model) = model.clone() {
         request = request.model(model);
     }
-    let completion = llm_backend::complete_text(request)
+    let completion = llm::complete_text(request)
         .await
         .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     let analysis = if completion.text.trim().is_empty() {

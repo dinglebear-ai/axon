@@ -24,11 +24,13 @@ const MAX_CODE_CHUNK_BYTES_DEFAULT: usize = 2 * 1024 * 1024;
 /// (functions, blocks, statements) when possible. The overlap ensures that
 /// a function signature split across chunk boundaries appears in both chunks,
 /// matching the 200-char overlap used by `chunk_text()`.
+#[must_use]
 pub fn chunk_code(content: &str, file_extension: &str) -> Option<Vec<String>> {
     chunk_code_chunks(content, file_extension)
         .map(|chunks| chunks.into_iter().map(|chunk| chunk.text).collect())
 }
 
+#[must_use]
 /// Split source code into AST-aware [`CodeChunk`]s carrying per-chunk symbol
 /// metadata (name, kind, declaration line range).
 ///
@@ -87,6 +89,7 @@ pub fn chunk_code_chunks(content: &str, file_extension: &str) -> Option<Vec<Code
     Some(out)
 }
 
+#[must_use]
 pub fn supports_tree_sitter_chunking(file_extension: &str) -> bool {
     language_for_extension(file_extension).is_some()
 }
@@ -99,6 +102,7 @@ pub fn supports_tree_sitter_chunking(file_extension: &str) -> bool {
 /// - `"skipped_large"` — file exceeded `AXON_MAX_TREE_SITTER_FILE_BYTES`
 /// - `"ok"`            — at least one chunk carries a symbol
 /// - `"none_found"`    — extractor ran but found no symbols
+#[must_use]
 pub fn code_symbol_extraction_status(
     content: &str,
     file_extension: &str,
@@ -127,7 +131,9 @@ fn split_code_indices(
     let config = ChunkConfig::new(500..2000)
         .with_overlap(CHUNK_OVERLAP)
         .expect("CHUNK_OVERLAP < max chunk size");
-    let splitter = CodeSplitter::new(lang, config).expect("valid language");
+    // Use `.ok()?` rather than `.expect`: a tree-sitter ABI mismatch would
+    // panic on every file instead of gracefully falling back to prose chunking.
+    let splitter = CodeSplitter::new(lang, config).ok()?;
 
     let mut chunks: Vec<(usize, &str)> = Vec::new();
     for (offset, chunk) in splitter

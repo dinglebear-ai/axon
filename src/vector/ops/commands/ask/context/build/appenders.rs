@@ -2,8 +2,67 @@ use super::super::heuristics::push_context_entry;
 use crate::vector::ops::source_display::display_source;
 use crate::vector::ops::{qdrant, ranking};
 use std::collections::HashSet;
+use std::sync::Arc;
 
 const CONTEXT_PREFIX_LEN: usize = "Sources:\n".len();
+
+/// Byte overhead added to every retrieved-content entry by the
+/// `<retrieved_content trust="evidence_only">` XML boundary.
+/// Used to adjust budget estimates so they remain correct after wrapping.
+pub(super) const XML_WRAPPER_OVERHEAD: usize =
+    "<retrieved_content trust=\"evidence_only\">\n".len() + "\n</retrieved_content>".len();
+
+/// Wrap the body of a retrieved chunk in an XML trust boundary and return
+/// the full entry string including the axon-generated `header`.
+///
+/// The boundary tells the synthesis model that the enclosed content is
+/// untrusted indexed data, not axon-emitted scaffolding.  Pairs with
+/// `defang_chunk_text` which breaks structural markers *inside* the body.
+fn wrap_retrieved_content(header: &str, body: &str) -> String {
+    format!("{header}<retrieved_content trust=\"evidence_only\">\n{body}\n</retrieved_content>")
+}
+
+/// Defang structural markers that the ask synthesis prompt treats as
+/// axon-generated context scaffolding.  Prevents indexed content from
+/// injecting forged citation keys (`[S{n}]`) or source-section headers
+/// (`## Sources`, `## Source Document`, etc.) into the synthesis context.
+///
+/// Uses a zero-width space (U+200B) to break marker recognition without
+/// altering the visible text rendered to a user.
+pub(super) fn defang_chunk_text(text: &str) -> String {
+    // Break markdown headers that match axon's own context markers.
+    let s = text
+        .replace("## Sources", "## \u{200b}Sources")
+        .replace("## Source Document", "## \u{200b}Source Document")
+        .replace("## Top Chunk", "## \u{200b}Top Chunk")
+        .replace("## Supplemental Chunk", "## \u{200b}Supplemental Chunk");
+    // Break [S{digits}] citation-like patterns.
+    defang_citation_patterns(&s)
+}
+
+/// Replace `[S{digits}]` with `[​S{digits}]` (zero-width space after `[`)
+/// so indexed content cannot inject forged citation references.
+fn defang_citation_patterns(text: &str) -> String {
+    let mut result = String::with_capacity(text.len() + 16);
+    let mut rest = text;
+    while let Some(pos) = rest.find("[S") {
+        result.push_str(&rest[..pos]);
+        let tail = &rest[pos + 2..]; // content after "[S"
+        let digit_end = tail.bytes().take_while(|b| b.is_ascii_digit()).count();
+        if digit_end > 0 && tail[digit_end..].starts_with(']') {
+            // Matched [S{digits}] — insert zero-width space after '['
+            result.push_str("[\u{200b}S");
+            result.push_str(&tail[..digit_end]);
+            result.push(']');
+            rest = &tail[digit_end + 1..];
+        } else {
+            result.push_str("[S");
+            rest = tail;
+        }
+    }
+    result.push_str(rest);
+    result
+}
 
 #[cfg(test)]
 fn renumber_context_source_header(entry: &str, display_id: usize) -> String {
@@ -39,10 +98,9 @@ pub fn append_top_chunks_to_context(
             continue;
         }
         let source = display_source(&chunk.url);
-        let entry = format!(
-            "## Top Chunk [S{}]: {}\n\n{}",
-            *source_idx, source, chunk.chunk_text
-        );
+        let header = format!("## Top Chunk [S{}]: {}\n\n", *source_idx, source);
+        let body = defang_chunk_text(&chunk.chunk_text);
+        let entry = wrap_retrieved_content(&header, &body);
         if !push_context_entry(
             context_entries,
             context_char_count,
@@ -71,7 +129,7 @@ pub fn append_full_docs_to_context(
     mut source_idx: usize,
     separator: &str,
     max_context_chars: usize,
-    fetched_docs: Vec<(usize, String, Vec<qdrant::QdrantPoint>)>,
+    fetched_docs: Vec<(usize, String, Arc<Vec<qdrant::QdrantPoint>>)>,
     query_tokens: &[String],
     url_to_score: &std::collections::HashMap<String, f64>,
 ) -> (usize, usize) {
@@ -116,56 +174,71 @@ fn fit_full_doc_entry_to_budget(
     separator: &str,
     max_context_chars: usize,
 ) -> Option<String> {
-    let mut smallest_text = String::new();
+    let available = remaining_entry_chars(context_char_count, separator, max_context_chars)?;
+    let header = format!("## Source Document [S{}]: {}\n\n", source_idx, source);
+
+    // Rank the chunks once, then walk the top-k ladder on length arithmetic —
+    // the previous loop cloned the points and re-scored + re-rendered the
+    // whole document on every rung (up to 7 full renders per doc on the hot
+    // ask path). Only the rung that fits is actually rendered.
+    let order = qdrant::rank_points_by_query_overlap(points, query_tokens);
+    let mut prev_k = usize::MAX;
     for top_k in [FULL_DOC_RENDER_TOP_K, 16, 12, 8, 4, 2, 1] {
-        let text =
-            qdrant::render_full_doc_filtered(points.to_vec(), Some(query_tokens), Some(top_k));
-        if top_k == 1 {
-            smallest_text = text.clone();
-        }
-        if text.is_empty() {
+        let k = top_k.min(order.len());
+        if k == 0 || k == prev_k {
             continue;
         }
-        let entry = source_document_entry(source_idx, source, &text, false);
-        if entry_fits_context(&entry, context_char_count, separator, max_context_chars) {
-            return Some(entry);
+        prev_k = k;
+        // Conservative upper bound on the rendered size — an estimate that fits
+        // guarantees the real render fits.  XML_WRAPPER_OVERHEAD is included so
+        // the estimate stays accurate after content wrapping.
+        let estimate: usize = order[..k]
+            .iter()
+            .map(|&i| {
+                let text = qdrant::payload_text_typed(&points[i].payload);
+                if text.is_empty() { 0 } else { text.len() + 1 }
+            })
+            .sum();
+        if estimate == 0 {
+            break;
+        }
+        if header.len() + XML_WRAPPER_OVERHEAD + estimate <= available {
+            let raw_text = qdrant::render_points_in_doc_order(points, &order[..k]);
+            if raw_text.is_empty() {
+                break;
+            }
+            let text = defang_chunk_text(&raw_text);
+            return Some(source_document_entry(source_idx, source, &text, false));
         }
     }
 
-    let header = format!("## Source Document [S{}]: {}\n\n", source_idx, source);
     let marker = "\n\n[Excerpt truncated to fit the context budget.]";
-    let available = remaining_entry_chars(context_char_count, separator, max_context_chars)?;
-    if available <= header.len() + marker.len() {
+    // Available must exceed header + XML wrapper + at least one content char + marker.
+    if available <= header.len() + XML_WRAPPER_OVERHEAD + marker.len() {
         return None;
     }
-    let body_budget = available - header.len() - marker.len();
-    let body = truncate_to_char_boundary(smallest_text.trim(), body_budget);
-    if body.trim().is_empty() {
-        return None;
-    }
-    Some(format!("{header}{body}{marker}"))
-}
-
-fn source_document_entry(source_idx: usize, source: &str, text: &str, truncated: bool) -> String {
-    let marker = if truncated {
-        "\n\n[Excerpt truncated to fit the context budget.]"
+    let smallest_text = if order.is_empty() {
+        String::new()
     } else {
-        ""
+        qdrant::render_points_in_doc_order(points, &order[..1])
     };
-    format!(
-        "## Source Document [S{}]: {}\n\n{}{}",
-        source_idx, source, text, marker
-    )
+    let body_budget = available - header.len() - XML_WRAPPER_OVERHEAD - marker.len();
+    let raw_body = truncate_to_char_boundary(smallest_text.trim(), body_budget);
+    if raw_body.trim().is_empty() {
+        return None;
+    }
+    let body = defang_chunk_text(raw_body);
+    Some(source_document_entry(
+        source_idx,
+        source,
+        &format!("{body}{marker}"),
+        true,
+    ))
 }
 
-fn entry_fits_context(
-    entry: &str,
-    context_char_count: usize,
-    separator: &str,
-    max_context_chars: usize,
-) -> bool {
-    remaining_entry_chars(context_char_count, separator, max_context_chars)
-        .is_some_and(|remaining| entry.len() <= remaining)
+fn source_document_entry(source_idx: usize, source: &str, body: &str, _truncated: bool) -> String {
+    let header = format!("## Source Document [S{}]: {}\n\n", source_idx, source);
+    wrap_retrieved_content(&header, body)
 }
 
 fn remaining_entry_chars(
@@ -205,10 +278,9 @@ pub fn append_supplemental_chunks(
     for &chunk_idx in supplemental {
         let chunk = &reranked[chunk_idx];
         let source = display_source(&chunk.url);
-        let entry = format!(
-            "## Supplemental Chunk [S{}]: {}\n\n{}",
-            *source_idx, source, chunk.chunk_text
-        );
+        let header = format!("## Supplemental Chunk [S{}]: {}\n\n", *source_idx, source);
+        let body = defang_chunk_text(&chunk.chunk_text);
+        let entry = wrap_retrieved_content(&header, &body);
         if !push_context_entry(
             context_entries,
             context_char_count,
@@ -230,200 +302,5 @@ pub fn append_supplemental_chunks(
 mod renumber_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::vector::ops::qdrant::{QdrantPayload, QdrantPoint};
-    use std::collections::{HashMap, HashSet};
-
-    fn point(text: &str, chunk_index: i64) -> QdrantPoint {
-        QdrantPoint {
-            id: serde_json::Value::Null,
-            payload: QdrantPayload {
-                url: "https://docs.example.com/storage/redundancy".to_string(),
-                chunk_text: text.to_string(),
-                text: String::new(),
-                chunk_index: Some(chunk_index),
-                ..QdrantPayload::default()
-            },
-        }
-    }
-
-    #[test]
-    fn full_doc_insertion_keeps_bounded_excerpt_when_relevant_doc_exceeds_budget() {
-        let large_relevant = format!(
-            "pool risk reason special vdev redundancy {}",
-            "details ".repeat(120)
-        );
-        let fetched_docs = vec![(
-            0,
-            "https://docs.example.com/storage/redundancy".to_string(),
-            vec![point(&large_relevant, 0)],
-        )];
-        let mut context_entries = Vec::new();
-        let mut context_char_count = 0usize;
-        let mut inserted = HashSet::new();
-        let query_tokens = vec!["pool".to_string(), "risk".to_string(), "reason".to_string()];
-        let url_to_score = HashMap::from([(
-            "https://docs.example.com/storage/redundancy".to_string(),
-            1.0,
-        )]);
-
-        let (selected, _) = append_full_docs_to_context(
-            &mut context_entries,
-            &mut context_char_count,
-            &mut inserted,
-            1,
-            "\n\n---\n\n",
-            280,
-            fetched_docs,
-            &query_tokens,
-            &url_to_score,
-        );
-
-        assert_eq!(selected, 1);
-        assert_eq!(
-            inserted,
-            HashSet::from(["https://docs.example.com/storage/redundancy".to_string()])
-        );
-        assert_eq!(context_entries.len(), 1);
-        assert!(
-            context_entries[0].1.contains("pool risk reason"),
-            "bounded excerpt should preserve the relevant explanation text"
-        );
-        assert!(context_char_count <= 280);
-    }
-
-    #[test]
-    fn top_chunk_is_backfilled_when_planned_full_doc_was_not_inserted() {
-        let reranked = vec![ranking::AskCandidate {
-            score: 0.8,
-            url: "https://docs.example.com/storage/redundancy".to_string(),
-            path: "/storage/redundancy".to_string(),
-            chunk_text: "fallback top chunk body".to_string(),
-            url_tokens: HashSet::new(),
-            chunk_tokens: HashSet::new(),
-            rerank_score: 0.8,
-        }];
-        let mut context_entries = Vec::new();
-        let mut context_char_count = 0usize;
-        let mut source_idx = 1usize;
-
-        let selected = append_top_chunks_to_context(
-            &reranked,
-            &[0],
-            &HashSet::new(),
-            &mut context_entries,
-            &mut context_char_count,
-            &mut source_idx,
-            "\n\n---\n\n",
-            1_000,
-        );
-
-        assert_eq!(selected, 1);
-        assert!(context_entries[0].1.contains("fallback top chunk body"));
-    }
-
-    #[test]
-    fn full_doc_budget_accounts_for_separator_and_sources_prefix() {
-        let mut context_entries = Vec::new();
-        let mut context_char_count = 0usize;
-        let mut inserted = HashSet::new();
-        let fetched_docs = vec![(
-            0,
-            "https://docs.example.com/one".to_string(),
-            vec![point("first doc body", 0)],
-        )];
-        let url_to_score = HashMap::from([("https://docs.example.com/one".to_string(), 1.0)]);
-
-        let (selected, _) = append_full_docs_to_context(
-            &mut context_entries,
-            &mut context_char_count,
-            &mut inserted,
-            1,
-            "\n\n---\n\n",
-            "Sources:\n".len() + 1,
-            fetched_docs,
-            &[],
-            &url_to_score,
-        );
-
-        assert_eq!(selected, 0, "prefix overhead must be part of the budget");
-        assert!(context_entries.is_empty());
-    }
-
-    #[test]
-    fn full_doc_truncation_marker_without_body_does_not_insert() {
-        let header = "## Source Document [S1]: docs.example.com/storage/redundancy\n\n";
-        let marker = "\n\n[Excerpt truncated to fit the context budget.]";
-        let entry = fit_full_doc_entry_to_budget(
-            "docs.example.com/storage/redundancy",
-            1,
-            &[point(&"large body ".repeat(40), 0)],
-            &[],
-            "Sources:\n".len(),
-            "\n\n---\n\n",
-            "Sources:\n".len() + header.len() + marker.len(),
-        );
-
-        assert!(entry.is_none());
-    }
-
-    #[test]
-    fn full_doc_truncates_at_unicode_boundary() {
-        let body = &"alpha beta café 🚀 storage redundancy details ".repeat(12);
-        let header = "## Source Document [S1]: docs.example.com/storage/redundancy\n\n";
-        let marker = "\n\n[Excerpt truncated to fit the context budget.]";
-        let entry = fit_full_doc_entry_to_budget(
-            "docs.example.com/storage/redundancy",
-            1,
-            &[point(body, 0)],
-            &["storage".to_string()],
-            "Sources:\n".len(),
-            "\n\n---\n\n",
-            "Sources:\n".len() + header.len() + marker.len() + 20,
-        )
-        .expect("unicode excerpt should fit");
-
-        assert!(entry.is_char_boundary(entry.len()));
-        assert!(entry.contains("[Excerpt truncated to fit the context budget.]"));
-    }
-
-    #[test]
-    fn full_doc_insertion_skips_oversized_first_doc_and_inserts_later_doc_that_fits() {
-        let fetched_docs = vec![
-            (
-                0,
-                format!("https://docs.example.com/{}", "huge-path/".repeat(20)),
-                vec![point(&"oversized ".repeat(200), 0)],
-            ),
-            (
-                1,
-                "https://docs.example.com/small".to_string(),
-                vec![point("small doc body", 0)],
-            ),
-        ];
-        let mut context_entries = Vec::new();
-        let mut context_char_count = "Sources:\n".len();
-        let mut inserted = HashSet::new();
-        let url_to_score = HashMap::from([
-            ("https://docs.example.com/huge".to_string(), 1.0),
-            ("https://docs.example.com/small".to_string(), 0.9),
-        ]);
-
-        let (selected, _) = append_full_docs_to_context(
-            &mut context_entries,
-            &mut context_char_count,
-            &mut inserted,
-            1,
-            "\n\n---\n\n",
-            140,
-            fetched_docs,
-            &[],
-            &url_to_score,
-        );
-
-        assert_eq!(selected, 1);
-        assert!(inserted.contains("https://docs.example.com/small"));
-        assert!(context_entries[0].1.contains("small doc body"));
-    }
-}
+#[path = "appenders_tests.rs"]
+mod tests;

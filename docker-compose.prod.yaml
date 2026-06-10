@@ -63,6 +63,13 @@ services:
       AXON_ENV_FILE: ""
       AXON_CONFIG_PATH: ""
       TZ: ${TZ:-America/New_York}
+      # Filesystem-namespace claim affinity (axon_rust-p2oc). Embed jobs whose
+      # input is a local path are stamped with the enqueueing process's namespace
+      # at insert time, then only claimed by workers in the same namespace. The
+      # container uses "axon-container"; host CLI workers leave this unset (or
+      # set it explicitly) so they only claim namespace-NULL (URL/text) jobs and
+      # their own local-path jobs — never container-path jobs.
+      AXON_FS_NAMESPACE: axon-container
     volumes:
       # Persist config + secrets + jobs.db + output + logs + artifacts on the host.
       - ${AXON_HOME:-${HOME}/.axon}:/home/axon/.axon
@@ -96,6 +103,12 @@ services:
     <<: *common-service
     image: qdrant/qdrant:v1.13.1
     container_name: axon-qdrant
+    # Shield the vector DB from the kernel's *global* OOM killer: under host
+    # memory pressure (concurrent cargo builds + optimizer churn) qdrant is the
+    # largest RSS on the box and got picked twice in 10 minutes (dmesg
+    # CONSTRAINT_NONE — host-level, not this container's cgroup cap). Prefer
+    # killing a rebuildable build process over the database.
+    oom_score_adj: -500
     ports:
       - "53333:6333"
       - "53334:6334"  # gRPC
@@ -105,7 +118,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
+          # 8 of the host's 20 cores: the 2026-06-09 always_ram→on-disk
+          # re-optimization of the 4.5M-point axon collection was CPU-bound at
+          # the old 4-CPU cap (collection optimizer threads raised 2→4 via live
+          # PATCH the same evening — that setting persists in the collection
+          # config; production.yaml's max_optimization_threads=2 remains the
+          # default for new collections).
+          cpus: '8.0'
           # axon collection's resident working set (int8 quant always_ram + in-RAM
           # HNSW index) stably sits ~12.5G and was OOM-killed against a 12G cap
           # (206 restarts, dmesg CONSTRAINT_MEMCG). 16G gives ~28% headroom over

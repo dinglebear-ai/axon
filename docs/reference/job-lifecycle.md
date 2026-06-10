@@ -1,5 +1,5 @@
 # Job Lifecycle
-Last Modified: 2026-05-06
+Last Modified: 2026-06-09
 
 The async-job state machine for axon. Jobs use SQLite persistence and in-process tokio workers; there is no message broker, Postgres, or Redis runtime.
 
@@ -363,3 +363,86 @@ Companion docs:
 - `src/services/CLAUDE.md` — services-first contract, `ServiceContext`, `SqliteJobBackend` worker split
 
 Legacy refresh and graph job tables are not created by current migrations.
+
+## App UX Contract — Artifact Handles and Terminal Job Results
+
+This section describes the behavior contract between the server and user-facing apps (desktop palette, web panel command palette). It is separate from the automation/agent API contract, which remains unchanged.
+
+### Two tiers of consumers
+
+| Consumer | Behavior | Expectations |
+|---|---|---|
+| Automation / agents / CLI | Fire-and-forget or explicit `--wait`; receives 202 with `job_id` + `status_url` | Raw JSON, job IDs, absolute paths all acceptable |
+| Desktop palette / web panel | Always polls to terminal state; renders final metrics and artifacts | No raw paths, no bare job IDs, human-readable output only |
+
+### Accepted-job response (202)
+
+When a crawl/embed/extract/ingest command is submitted to the server, it returns HTTP 202:
+
+```json
+{
+  "job_id": "abc-123",
+  "status": "accepted",
+  "status_url": "/v1/crawl/abc-123"
+}
+```
+
+The `status_url` field is the polling path for app clients. The desktop polls this URL at 2-second intervals (up to 150 attempts, ~5 min) and waits for a terminal status before rendering results. The web panel command endpoint also waits for a terminal response before returning to the UI.
+
+### Terminal job response
+
+Once a job reaches a terminal state, `GET <status_url>` returns:
+
+```json
+{
+  "job": {
+    "status": "completed",
+    "url": "https://docs.example.com",
+    "result_json": {
+      "pages_crawled": 42,
+      "docs_embedded": 38,
+      "chunks_embedded": 512,
+      "elapsed_ms": 14500
+    }
+  }
+}
+```
+
+Terminal statuses: `completed`, `failed`, `canceled`, `cancelled`.
+
+App formatters (`formatting_rest.rs` on desktop, `formatCommandResponse` in `apps/web/app/page.tsx`) detect the `job` key and branch to the terminal-result rendering path. Zero-value metrics and sub-second elapsed times are omitted. The target URL or ingest source is shown as the final line.
+
+### Artifact handles
+
+Screenshot commands return an `artifact_handle` alongside the standard response fields:
+
+```json
+{
+  "url": "https://example.com",
+  "artifact_handle": {
+    "relative_path": "screenshots/example.com-2024.png",
+    "bytes": 153600
+  }
+}
+```
+
+Apps use `relative_path` to construct a safe URL: `/v1/artifacts/<relative_path>`. The absolute server path (e.g. `/home/axon/.axon/screenshots/...`) is **never** shown in the UI. The desktop palette renders the PNG inline; the web panel renders it as a full-width `<img>` in the command result card.
+
+### What must not regress
+
+- App flows must never display raw absolute server paths (`/home/axon/.axon/...`) as primary output.
+- App flows must never stop at a job ID without polling to a terminal state when `status_url` is present.
+- Automation API endpoints (`POST /v1/crawl`, `GET /v1/crawl/{id}`, `GET /v1/artifacts/{path}`) must remain available unchanged.
+
+### Coverage
+
+| Behavior | Test file | Tests |
+|---|---|---|
+| Accepted-job response → poll path extraction | `apps/desktop/src/ui_commands_tests.rs` | `accepted_job_poll_path_*` |
+| Terminal status detection | `apps/desktop/src/ui_commands_tests.rs` | `terminal_statuses_are_identified_correctly` |
+| Async command classification | `apps/desktop/src/ui_commands_tests.rs` | `async_job_commands_are_identified_correctly` |
+| Terminal job result formatting (desktop) | `apps/desktop/src/output/formatting_rest_tests.rs` | `job_terminal_result_*` |
+| Accepted-job fallback still shows job_id | `apps/desktop/src/output/formatting_rest_tests.rs` | `job_start_result_accepted_still_shows_job_id` |
+| Screenshot artifact path construction | `apps/desktop/src/ui_commands_tests.rs` | `screenshot_artifact_path_*` |
+| Screenshot artifact formatting (no raw paths) | `apps/desktop/src/output/formatting_rest_tests.rs` | `screenshot_with_artifact_handle_*`, `screenshot_without_artifact_handle_*` |
+| Web panel TypeScript types + build | `apps/web/` | `npx tsc --noEmit` + `npm run build` |
