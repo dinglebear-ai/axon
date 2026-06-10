@@ -22,21 +22,9 @@ export_if_set() {
 }
 
 ensure_axon_binary() {
-  if command -v axon >/dev/null 2>&1; then
-    return 0
-  fi
-
-  local bundled="${CLAUDE_PLUGIN_ROOT:-$(pwd)}/bin/axon"
-  if [[ -x "${bundled}" ]]; then
-    mkdir -p "${HOME}/.local/bin"
-    ln -sf "${bundled}" "${HOME}/.local/bin/axon"
-    export PATH="${HOME}/.local/bin:${PATH}"
-  fi
-
-  command -v axon >/dev/null 2>&1 || {
-    printf 'axon plugin setup: axon binary not found on PATH or at %s\n' "${bundled}" >&2
-    exit 1
-  }
+  command -v axon >/dev/null 2>&1 && return 0
+  printf 'axon is not installed — install it with:\n  curl -fsSL https://raw.githubusercontent.com/jmagar/axon/main/install.sh | sh\nThen run: axon setup\n' >&2
+  exit 1
 }
 
 warn_stale_systemd_unit() {
