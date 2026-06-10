@@ -1,9 +1,12 @@
+pub mod ask_explain;
 pub mod binary_status;
 pub mod config;
 pub mod content;
 pub mod endpoints;
+pub mod error;
 pub mod health;
 pub mod http;
+pub mod llm;
 pub mod logging;
 pub mod paths;
 pub mod structured;

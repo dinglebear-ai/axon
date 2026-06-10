@@ -177,3 +177,7 @@ pub(super) fn extract_source_urls(diagnostic_sources: &[String]) -> Vec<String> 
         })
         .collect()
 }
+
+#[cfg(test)]
+#[path = "scoring_tests.rs"]
+mod tests;

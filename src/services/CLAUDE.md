@@ -200,6 +200,28 @@ cargo test -- --nocapture    # show log output
 
 Pure mapping tests (`map_*` functions) and channel tests run without live services. Tests for `query`, `ask`, `sources`, etc. that call into `src/vector` require Qdrant + TEI.
 
+## Two-Tier Signature Convention
+
+Service functions split into two tiers depending on what they need from the runtime:
+
+| Tier | Signature | Used by |
+|------|-----------|---------|
+| Job-lifecycle | `fn start_*(ctx: &ServiceContext, ...)` | Enqueue/cancel/list jobs — needs `ctx.jobs` |
+| Read/RAG | `fn <name>(cfg: &Config, ...)` | Qdrant/TEI queries only — `&Config` is sufficient |
+
+**Rule:** If a function never touches `ctx.jobs`, accept `&Config` directly — not `&ctx.cfg`. This keeps read/RAG functions independently testable without constructing a full `ServiceContext`.
+
+```rust
+// ✓ Job-lifecycle: needs the job runtime
+pub async fn start_crawl(ctx: &ServiceContext, url: Url, ...) -> Result<CrawlStartResult, ...>
+
+// ✓ Read/RAG: only needs config
+pub async fn query(cfg: &Config, text: &str, ...) -> Result<QueryResult, ...>
+
+// ✗ Wrong: read function unnecessarily requires full ServiceContext
+pub async fn query(ctx: &ServiceContext, text: &str, ...) -> Result<QueryResult, ...>
+```
+
 ## Adding a New Service Function
 
 1. Add the function to the appropriate `src/services/<name>.rs` — signature takes `&ServiceContext`

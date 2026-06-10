@@ -166,7 +166,12 @@ fn looks_like_secret_token(token: &str) -> bool {
         && token.chars().any(|c| c.is_ascii_digit())
 }
 
-/// Execute a Tavily web search and return raw JSON result items.
+/// Execute a web search and return raw JSON result items.
+///
+/// Uses self-hosted SearXNG when `cfg.searxng_url` is set; falls back to
+/// Tavily otherwise. The `enforce_pagination_window` guard only applies to
+/// the Tavily path — Tavily caps results at `SEARCH_WINDOW_MAX` per query,
+/// while SearXNG walks pages internally up to its own `MAX_SEARXNG_PAGES` limit.
 pub async fn search_results(
     cfg: &Config,
     query: &str,
@@ -174,8 +179,6 @@ pub async fn search_results(
     offset: usize,
     time_range: Option<TimeRange>,
 ) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    enforce_pagination_window(limit, offset)?;
-
     // Prefer self-hosted SearXNG when configured; fall back to Tavily otherwise.
     if !cfg.searxng_url.is_empty() {
         let total = limit.saturating_add(offset).max(1);
@@ -196,6 +199,8 @@ pub async fn search_results(
             .collect());
     }
 
+    // Tavily path: enforce the API's hard result-count cap before calling out.
+    enforce_pagination_window(limit, offset)?;
     ensure_tavily_configured(cfg, "search")?;
     let total = limit.saturating_add(offset).max(1);
     let mut search_opts = SpiderSearchOptions::new().with_limit(total);

@@ -1,6 +1,6 @@
 use super::*;
 use crate::core::config::types::Config;
-use crate::services::llm_backend::LlmBackendKind;
+use crate::core::llm::LlmBackendKind;
 
 fn cfg_with(backend: LlmBackendKind, openai_model: &str) -> Config {
     let mut cfg = Config::default_minimal();

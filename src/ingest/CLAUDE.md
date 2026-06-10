@@ -1,5 +1,5 @@
 # src/ingest — Source Ingestion Handlers
-Last Modified: 2026-05-21
+Last Modified: 2026-06-09
 
 Ingests external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube, AI sessions) into Qdrant.
 
@@ -12,7 +12,7 @@ ingest/
 ├── subprocess.rs  # Subprocess launch helpers (used by youtube + git clone paths)
 ├── github.rs      # module root + orchestration
 ├── github/        # GitHub repo ingestion (code, issues, PRs, wiki)
-│   ├── files.rs   # file tree fetch + raw content via reqwest
+│   ├── files.rs   # git clone --depth=1 + file traversal + embed_files()
 │   ├── issues.rs  # octocrab paginated issues + PRs
 │   ├── meta.rs    # GitHubPayloadParams unified builder → git_*/code_* fields per chunk
 │   └── wiki.rs    # git clone --depth=1 subprocess; no wiki = Ok(0)
@@ -76,10 +76,10 @@ ingest/
 - Indexes repository docs by default and source files when source inclusion is enabled. It does not call provider APIs, so it does not ingest issues, PRs, wiki pages, releases, or repository metadata beyond clone-derived file metadata.
 
 ### GitHub (`github/`)
-- Uses raw `reqwest` for file content fetching; `octocrab` for issues/PRs pagination
+- Uses `git clone --depth=1` subprocess for source files and wiki clone; `octocrab` for issues/PRs pagination
 - `GITHUB_TOKEN` is **optional** but strongly recommended — unauthenticated rate limit is 60 req/hr; authenticated is 5000 req/hr
 - Source code is **included by default** — disable with `--no-source`. Code files use **tree-sitter AST-aware chunking** (Rust, Python, JavaScript, TypeScript, Go, Bash); unsupported languages fall back to 2000-char prose chunking
-- Files are fetched tree-first (one API call), then content per file concurrently via `buffer_unordered(16)` — can be slow without token on large repos
+- Files are ingested via `clone_repo()` (`git clone --depth=1` subprocess), then walked and embedded — requires `git` in PATH/container
 - `wiki.rs` runs `git clone --depth=1` as a subprocess — requires `git` in PATH/container. Non-zero exit = no wiki = `Ok(0)` (not an error)
 - **Metadata**: `github/meta.rs` builds canonical `git_*` and `code_*` payload fields via `GitHubPayloadParams` and `build_github_payload()`. GitHub no longer emits `gh_*` duplicates in payload schema v7. Includes repo-level (`git_repo_*`), file-level (`code_file_*`, `code_line_*`, `code_chunking_method`), symbol-level (`symbol_*`), and issue/PR-level (`git_number`, `git_state`, `git_author`, labels, merge/draft fields) metadata.
 - **File classification**: `classify_file_type()` in `src/vector/ops/input/classify.rs` tags each file as `test`/`config`/`doc`/`source` — stored in `code_file_type`
@@ -94,7 +94,7 @@ ingest/
 ### YouTube (`youtube.rs` + `youtube/`)
 - Invokes `yt-dlp` as a **subprocess** (not a library) — `yt-dlp` must be installed and on `$PATH`
 - **Single video** (`ingest_youtube`): downloads `.vtt` + `.info.json` → `parse_vtt_to_text()` → embed transcript + description with full metadata payload
-- **Playlist / channel** (`ingest_youtube_playlist`): `--flat-playlist` enumeration → N=5 concurrent via `FuturesUnordered` → per-video `ingest_youtube` calls → progress + `completed_urls` persisted to DB on each completion
+- **Playlist / channel** (`ingest_youtube_playlist`): `--flat-playlist` enumeration (capped at 500 videos via `MAX_PLAYLIST_VIDEOS`) → sequential `for` loop of per-video `ingest_youtube` calls → progress reported after each video; failed videos are logged as warnings and skipped (job continues)
 - `is_playlist_or_channel_url()` detects `@handle`, `/c/`, `/channel/`, `/user/`, `?list=` — routes to playlist pipeline automatically
 - `extract_video_id()` handles full URLs, short URLs (`youtu.be/`), path patterns, and bare IDs
 - **Resume**: `completed_urls` in `result_json` JSONB lets a restarted job skip already-done videos

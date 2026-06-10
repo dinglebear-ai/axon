@@ -19,7 +19,11 @@ crawl/
 │   │   └── util.rs            # Shared collector helpers
 │   ├── map.rs             # Map-mode helpers
 │   ├── map/               # `crawl_and_collect_map()` lives here (engine/map/strategy.rs)
-│   ├── sitemap.rs         # `append_sitemap_backfill()`, sitemap discovery + filtering, `<lastmod>` parsing, `should_retry_status` (52x dead-host classification)
+│   ├── sitemap.rs         # Module root: shared bounded-HTTP fetch helpers (`fetch_text_with_retry`, body caps, `should_retry_status` 52x dead-host classification) + re-exports
+│   ├── sitemap/
+│   │   ├── discover.rs    # `discover_sitemap_urls()` — robots.txt + seed paths, batched JoinSet fetching, `<sitemapindex>` recursion
+│   │   ├── backfill.rs    # `append_sitemap_backfill()`/`append_candidate_backfill()` — fetch missed URLs, convert, append to manifest
+│   │   └── filter.rs      # `loc_in_scope()`, `<lastmod>` recency, `is_already_markdown()` passthrough check
 │   ├── etag.rs            # Conditional re-crawl (ETag/304): sidecar seed/persist + visited-set-gated reconciliation (axon_rust-hiyf)
 │   ├── etag_tests.rs      # sidecar tests for etag.rs
 │   ├── thin_refetch.rs    # Re-fetch thin pages with Chrome
@@ -170,7 +174,7 @@ Engine tests use a live HTTP server (via `httpmock`) — no Docker services requ
 | 97%+ thin pages | `readability: true` stripping docs | Verify `readability: false` in `content.rs` |
 | Thin pages on known-good site | JS-rendered SPA | Use `--render-mode chrome` |
 | Chrome fallback not triggering | Chrome not reachable | Check `AXON_CHROME_REMOTE_URL`; verify `axon-chrome` is up |
-| `NoResponse` errors from `spider::features::chrome` (every ~2s, ×10) | `CHROME_URL` env var contains a Docker hostname (`axon-chrome:6000`) that spider reads raw without normalization. In AutoSwitch/Http modes, axon didn't previously set `chrome_connection_url`, so spider fell back to `CHROM_BASE = CHROME_URL`. | Fixed in `runtime.rs`: `with_chrome_connection` is now called for ALL render modes when `chrome_remote_url` is configured. Also set `CHROME_URL=http://127.0.0.1:6000` (not `axon-chrome:6000`) in `.env` — spider reads this directly, no normalization. |
+| `NoResponse` errors from `spider::features::chrome` (every ~2s, ×10) | Spider reads `CHROME_URL` from the environment as `CHROM_BASE` and may use an unresolvable Docker hostname. | Fixed: `runtime.rs` calls `with_chrome_connection` for ALL render modes when `cfg.chrome_remote_url` is set, so spider always uses axon's normalised localhost URL instead of `CHROM_BASE`. Do NOT add a bare `CHROME_URL=…` to `.env` — it is a stale alias deleted by `axon config migrate`; use `AXON_CHROME_REMOTE_URL` only. |
 | Crawl stops at first level | `--max-depth 0` set accidentally | Default is 10; check CLI args |
 | Crawling other subdomains instead of target host | `--include-subdomains true` enabled | Default is now `false`; only use `--include-subdomains true` when you intentionally want all `*.parent.com` |
 | Crawl explodes to unrelated domains (GitHub, CDN, etc.) | Spider follows cross-domain links by default | Fixed in `set_on_link_find`: cross-domain links are dropped when `include_subdomains = false`. If you see it again, verify the start URL's host is being parsed correctly from `apply_request_and_identity_settings`. |

@@ -160,9 +160,8 @@ Use `cd apps/web && npm run build` when changing panel assets.
 
 Use [`docs/contributing/desktop-palette-testing.md`](desktop-palette-testing.md)
 when validating the Windows `axon-palette.exe` operation output. It documents
-the PowerShell capture harness in
-[`scripts/capture-palette-operations.ps1`](../scripts/capture-palette-operations.ps1)
-and the current screenshot review checklist.
+the Windows-MCP capture workflow on agent-os and the current screenshot review
+checklist.
 
 ## Test-Only Security Escape Hatches
 

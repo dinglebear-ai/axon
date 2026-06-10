@@ -1,7 +1,7 @@
 # src/extract — Vertical Extractor Framework
 Last Modified: 2026-06-09
 
-Per-site/per-API "vertical" extractors that produce richer, more structured docs than the generic HTML→markdown crawl path. Shipped via `upnq` (framework) + `di8j`/`25cu`/`jj43`/`urk2` (12 extractors). Replaces the legacy webclaw mod.rs dispatcher.
+Per-site/per-API "vertical" extractors that produce richer, more structured docs than the generic HTML→markdown crawl path. Ships 13 extractors across a match-chain dispatcher. Replaces the legacy webclaw mod.rs dispatcher.
 
 ## Module Layout
 
@@ -37,7 +37,7 @@ Two entry points, both in `registry.rs`:
 | `dispatch_by_url(url, ctx)` | `auto_dispatch: true` extractors only; first matching `matches(url)` wins | `services::scrape::scrape` — called before the generic HTTP path when `cfg.enable_verticals` is true |
 | `dispatch_by_name(name, url, ctx)` | Explicit by extractor name — fires `auto_dispatch: false` extractors too | MCP `vertical_scrape` (catalog-only), reserved for future `--vertical <name>` CLI shortcut |
 
-**No trait objects** — plain match-chain. webclaw's original `mod.rs:9-11` rejected a trait registry at 28 extractors; named-function dispatch is cleaner and faster at this scale.
+**No trait objects** — plain match-chain. Named-function dispatch is cleaner and faster at this scale.
 
 **Exhaustiveness:** a unit test asserts every `list()` entry has a corresponding arm in `dispatch_by_name()` so the "added to catalog but forgot to wire" bug is impossible.
 
@@ -54,7 +54,7 @@ pub struct ScrapedDoc {
 }
 ```
 
-`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 5`, see `src/vector/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on next crawl.
+`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 7`, see `src/vector/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on next crawl.
 
 ## auto_dispatch Flag
 

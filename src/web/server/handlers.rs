@@ -1,5 +1,7 @@
 #[path = "handlers/admin.rs"]
 pub mod admin;
+#[path = "handlers/artifacts.rs"]
+pub mod artifacts;
 #[path = "handlers/ask.rs"]
 pub mod ask;
 #[path = "handlers/ask_stream.rs"]

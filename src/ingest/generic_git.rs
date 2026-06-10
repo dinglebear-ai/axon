@@ -5,14 +5,17 @@ use reqwest::Url;
 
 use crate::core::config::Config;
 use crate::core::http::validate_url;
-use crate::core::logging::{log_done, log_info};
+use crate::core::logging::{log_done, log_info, log_warn};
+use crate::ingest::git_files::collect_repo_files;
 use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
-use crate::ingest::github::{is_indexable_doc_path, is_indexable_source_path};
 use crate::ingest::progress::PhaseReporter;
-use crate::ingest::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
+use crate::ingest::subprocess::{
+    MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
+};
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
+use crate::vector::ops::input::code::chunk_code;
 use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,36 +95,6 @@ async fn current_branch(repo_root: &Path) -> Option<String> {
     (!branch.is_empty()).then_some(branch)
 }
 
-async fn collect_files(root: &Path, include_source: bool) -> Result<Vec<PathBuf>> {
-    let mut dirs = vec![root.to_path_buf()];
-    let mut files = Vec::new();
-    while let Some(dir) = dirs.pop() {
-        let mut entries = tokio::fs::read_dir(&dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            let file_type = entry.file_type().await?;
-            if file_type.is_dir() {
-                if entry.file_name() != ".git" {
-                    dirs.push(path);
-                }
-                continue;
-            }
-            if !file_type.is_file() {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(root)?
-                .to_string_lossy()
-                .replace('\\', "/");
-            if is_indexable_doc_path(&rel) || (include_source && is_indexable_source_path(&rel)) {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    Ok(files)
-}
-
 pub async fn ingest_generic_git(
     cfg: &Config,
     target: &str,
@@ -150,7 +123,7 @@ pub(crate) async fn ingest_git_repository(
     let branch = current_branch(tmp.path())
         .await
         .unwrap_or_else(|| "HEAD".to_string());
-    let files = collect_files(tmp.path(), include_source).await?;
+    let files = collect_repo_files(tmp.path(), include_source).await?;
     let total = files.len();
     let mut docs = Vec::new();
     for (index, file) in files.into_iter().enumerate() {
@@ -195,10 +168,52 @@ async fn file_doc(
         .strip_prefix(root)?
         .to_string_lossy()
         .replace('\\', "/");
-    let Ok(content) = tokio::fs::read_to_string(&file).await else {
-        return Ok(None);
+
+    // S-M2: per-file size cap — skip oversized files rather than OOM-ing
+    match tokio::fs::metadata(&file).await {
+        Ok(meta) if meta.len() > MAX_INGEST_FILE_BYTES => {
+            log_warn(&format!(
+                "command=ingest_git skip_large_file path={rel} size_bytes={}",
+                meta.len()
+            ));
+            return Ok(None);
+        }
+        Err(e) => {
+            log_warn(&format!(
+                "command=ingest_git stat_failed path={rel} err={e}"
+            ));
+            return Ok(None);
+        }
+        _ => {}
+    }
+
+    // Separate I/O error (hard failure) from non-UTF-8 (benign skip)
+    let bytes = match tokio::fs::read(&file).await {
+        Ok(b) => b,
+        Err(e) => {
+            log_warn(&format!(
+                "command=ingest_git read_failed path={rel} err={e}"
+            ));
+            return Ok(None);
+        }
     };
-    let chunks = chunk_text(&content);
+    let content = match String::from_utf8(bytes) {
+        Ok(t) => t,
+        Err(_) => {
+            log_warn(&format!("command=ingest_git skip_non_utf8 path={rel}"));
+            return Ok(None);
+        }
+    };
+
+    // Q-H1: tree-sitter AST-aware chunking with extension routing + text fallback
+    let ext = path_extension(&rel).to_ascii_lowercase();
+    let chunks = tokio::task::spawn_blocking({
+        let content = content.clone();
+        let ext = ext.clone();
+        move || chunk_code(&content, &ext).unwrap_or_else(|| chunk_text(&content))
+    })
+    .await
+    .unwrap_or_else(|_| chunk_text(&content));
     if chunks.is_empty() {
         return Ok(None);
     }
@@ -216,17 +231,14 @@ async fn file_doc(
         meta: Some(serde_json::json!({ "clone_url": target.clone_url })),
         ..GitPayload::default()
     });
-    Ok(Some(PreparedDoc {
-        url: format!("{}#{}:{}", target.web_url, branch, rel),
-        domain: target.host.clone(),
+    Ok(Some(PreparedDoc::ingest(
+        format!("{}#{}:{}", target.web_url, branch, rel),
+        target.host.clone(),
         chunks,
-        source_type: source_type.to_string(),
-        content_type: "text",
-        title: Some(rel.clone()),
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    }))
+        source_type,
+        Some(rel.clone()),
+        Some(extra),
+    )))
 }
 
 #[cfg(test)]

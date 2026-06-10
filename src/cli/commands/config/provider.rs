@@ -7,7 +7,7 @@
 use crate::core::config::Config;
 use crate::core::ui::{accent, muted, primary};
 use crate::services::config as svc;
-use crate::services::llm_backend::LlmBackendKind;
+use crate::core::llm::LlmBackendKind;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;

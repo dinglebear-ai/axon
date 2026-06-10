@@ -319,17 +319,14 @@ pub async fn ingest_youtube(
 
         let transcript_chunks = chunk_text(&text);
         if !transcript_chunks.is_empty() {
-            docs.push(PreparedDoc {
-                url: source_url.clone(),
-                domain: url_to_domain(&source_url),
-                chunks: transcript_chunks,
-                source_type: "youtube".to_string(),
-                content_type: "text",
-                title: Some(title.to_string()),
-                extra: extra.clone(),
-                extractor_name: None,
-                structured: None,
-            });
+            docs.push(PreparedDoc::ingest(
+                source_url.clone(),
+                url_to_domain(&source_url),
+                transcript_chunks,
+                "youtube",
+                Some(title.to_string()),
+                extra.clone(),
+            ));
         }
 
         // Embed description as a separate document (often contains commands, links, timestamps)
@@ -339,17 +336,14 @@ pub async fn ingest_youtube(
             let desc_url = format!("{source_url}?section=description");
             let desc_chunks = chunk_text(&m.description);
             if !desc_chunks.is_empty() {
-                docs.push(PreparedDoc {
-                    url: desc_url.clone(),
-                    domain: url_to_domain(&desc_url),
-                    chunks: desc_chunks,
-                    source_type: "youtube".to_string(),
-                    content_type: "text",
-                    title: Some(format!("{} — description", m.title)),
-                    extra: extra.clone(),
-                    extractor_name: None,
-                    structured: None,
-                });
+                docs.push(PreparedDoc::ingest(
+                    desc_url.clone(),
+                    url_to_domain(&desc_url),
+                    desc_chunks,
+                    "youtube",
+                    Some(format!("{} — description", m.title)),
+                    extra.clone(),
+                ));
             }
         }
 

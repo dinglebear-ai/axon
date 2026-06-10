@@ -20,6 +20,17 @@ pub(super) struct PostInit {
 }
 
 pub(super) fn apply(cfg: &mut Config, ctx: PostInit) -> Result<(), String> {
+    // Validate that --etag-conditional is not set without --cache.
+    // etag_conditional seeds spider's ETag cache from a persisted sidecar and
+    // reconciles 304 responses back into the manifest — that path requires the
+    // cached markdown.old file, which only exists when `cache` is enabled.
+    if cfg.etag_conditional && !cfg.cache {
+        return Err(
+            "--etag-conditional requires --cache (pass --cache true or omit --cache false)"
+                .to_string(),
+        );
+    }
+
     // Validate output path parent exists when explicitly set.
     if let Some(ref path) = cfg.output_path
         && let Some(parent) = path.parent()

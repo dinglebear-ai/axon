@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.data.repository.WatchUi
@@ -29,8 +29,8 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
     private val _activeJobs = MutableStateFlow<List<JobUi>>(emptyList())
     val activeJobs: StateFlow<List<JobUi>> = _activeJobs.asStateFlow()
 
-    private val _jobsByKind = MutableStateFlow<Map<AxonClient.JobKind, List<JobUi>>>(emptyMap())
-    val jobsByKind: StateFlow<Map<AxonClient.JobKind, List<JobUi>>> = _jobsByKind.asStateFlow()
+    private val _jobsByKind = MutableStateFlow<Map<JobFamily, List<JobUi>>>(emptyMap())
+    val jobsByKind: StateFlow<Map<JobFamily, List<JobUi>>> = _jobsByKind.asStateFlow()
 
     val recentJobs: StateFlow<List<RecentJob>> = container.recentJobs.recent
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -63,10 +63,10 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun loadOverview() {
-        val kinds = AxonClient.JobKind.entries
+        val kinds = JobFamily.entries
         val recent = container.recentJobs.recent.first()
         val all = mutableListOf<JobUi>()
-        val byKind = mutableMapOf<AxonClient.JobKind, List<JobUi>>()
+        val byKind = mutableMapOf<JobFamily, List<JobUi>>()
         var failures = 0
         var firstError: String? = null
         for (kind in kinds) {
@@ -80,7 +80,7 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
                     if (firstError == null) firstError = e.message
                     Log.w(OVERVIEW_TAG, "listJobs($kind) failed", e)
                     val fallback = recent
-                        .filter { it.kind.equals(kind.path, ignoreCase = true) }
+                        .filter { it.kind.equals(kind.name, ignoreCase = true) }
                         .map { it.toFallbackJob(kind) }
                     if (fallback.isNotEmpty()) {
                         byKind[kind] = fallback
@@ -100,7 +100,7 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
         _errorMessage.value = if (failures == kinds.size && byKind.isEmpty()) firstError else null
     }
 
-    private fun RecentJob.toFallbackJob(kind: AxonClient.JobKind): JobUi =
+    private fun RecentJob.toFallbackJob(kind: JobFamily): JobUi =
         JobUi(
             kind = kind,
             id = jobId,

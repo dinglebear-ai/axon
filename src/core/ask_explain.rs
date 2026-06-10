@@ -254,3 +254,25 @@ pub struct AskExplainTrace {
     pub candidate_trace_truncated: bool,
     pub llm_skipped: bool,
 }
+
+// Corpus-health diagnostics. Moved here from services::types::service::query
+// (A-C1 cycle break) so the vector layer can produce them without importing
+// from the services layer. Re-exported through services::types for wire/CLI.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CorpusHealthKind {
+    Healthy,
+    NoRetrievalCandidates,
+    ThinDomain,
+    RetrievedNotSelected,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct CorpusHealthDiagnostic {
+    pub kind: CorpusHealthKind,
+    pub reason: String,
+    pub selected_domain_count: usize,
+    pub top_domain_count: usize,
+}

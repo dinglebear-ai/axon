@@ -1,6 +1,5 @@
-use crate::services::llm_backend::{
-    CompletionRequest, CompletionResponse, LlmBackendConfig, UsageSnapshot,
-};
+use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig, UsageSnapshot};
+use crate::services::events::is_secret_like;
 use futures_util::StreamExt;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -206,17 +205,9 @@ fn sanitize_error_json(value: &serde_json::Value) -> serde_json::Value {
 }
 
 fn is_sensitive_error_key(lower_key: &str) -> bool {
-    lower_key == "api_key"
-        || lower_key == "apikey"
-        || lower_key == "authorization"
-        || lower_key == "proxy_authorization"
-        || lower_key == "access_token"
-        || lower_key == "refresh_token"
-        || lower_key == "id_token"
-        || lower_key == "token"
-        || lower_key.ends_with("_token")
-        || lower_key.contains("secret")
-        || lower_key == "password"
+    // Delegate to the shared `is_secret_like` helper (S-L1) — single source of
+    // truth for both embed path validation and error-body redaction.
+    is_secret_like(lower_key)
 }
 
 fn is_request_echo_key(lower_key: &str) -> bool {
@@ -318,20 +309,28 @@ where
         return Err("OpenAI-compatible streaming completion returned no content".into());
     }
     let mut text = String::new();
-    let mut pending = String::new();
+    // Buffer raw bytes; decode only on complete lines (Q-M8/B-M5).
+    // The previous `from_utf8_lossy` per-chunk call corrupts multibyte chars
+    // (e.g. `café`) when the network splits them across chunk boundaries.
+    // `\n` (0x0A) is a single ASCII byte so splitting on it never bisects a
+    // multibyte sequence — once we have a complete line, decoding is safe.
+    let mut pending_bytes: Vec<u8> = Vec::new();
     let mut terminal = false;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        pending.push_str(&String::from_utf8_lossy(&chunk));
-        while let Some(pos) = pending.find('\n') {
-            let line = pending[..pos].trim_end_matches('\r').to_string();
-            pending.drain(..=pos);
-            terminal |= handle_sse_line(&line, &mut text, on_delta)?;
+        pending_bytes.extend_from_slice(&chunk?);
+        while let Some(pos) = pending_bytes.iter().position(|&b| b == b'\n') {
+            let line = String::from_utf8_lossy(&pending_bytes[..pos]);
+            terminal |= handle_sse_line(line.trim_end_matches('\r'), &mut text, on_delta)?;
+            pending_bytes.drain(..=pos);
         }
     }
-    if !pending.trim().is_empty() {
-        terminal |= handle_sse_line(pending.trim_end_matches('\r'), &mut text, on_delta)?;
+    if !pending_bytes.is_empty() {
+        let line = String::from_utf8_lossy(&pending_bytes);
+        let trimmed = line.trim_end_matches('\r');
+        if !trimmed.trim().is_empty() {
+            terminal |= handle_sse_line(trimmed, &mut text, on_delta)?;
+        }
     }
     if text.trim().is_empty() {
         return Err("OpenAI-compatible streaming completion returned no token payload".into());

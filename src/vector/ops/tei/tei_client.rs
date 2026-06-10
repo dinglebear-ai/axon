@@ -4,6 +4,7 @@ use crate::core::logging::{log_debug, log_warn};
 use crate::vector::ops::qdrant::env_usize_clamped;
 use rand::RngExt as _;
 use reqwest::StatusCode;
+use std::collections::VecDeque;
 use std::error::Error;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -97,7 +98,10 @@ static TEI_CONCURRENCY: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64)));
 
 fn retry_delay(attempt: usize) -> Duration {
-    let base_ms = 1000_u64.saturating_mul(2u64.saturating_pow(attempt as u32 - 1));
+    // saturating_sub: attempt is always >= 1 at all call sites (loop from 1),
+    // but guard against hypothetical attempt=0 to prevent u32 underflow. (Q-L5)
+    let exponent = (attempt as u32).saturating_sub(1);
+    let base_ms = 1000_u64.saturating_mul(2u64.saturating_pow(exponent));
     let capped_ms = base_ms.min(TEI_MAX_BACKOFF_MS);
     let jitter = Duration::from_millis(rand::rng().random_range(0..500));
     Duration::from_millis(capped_ms) + jitter
@@ -111,6 +115,16 @@ enum ChunkOutcome {
     Vectors(Vec<Vec<f32>>),
     /// Chunk was too large (HTTP 413); caller should split and retry.
     Split,
+}
+
+/// Wire shape for a single TEI /embed request.
+///
+/// Built once per chunk before the retry loop so the same borrowed reference is
+/// re-serialised on each attempt rather than re-constructing a `serde_json::Value`
+/// on every pass through the loop. (P-M3)
+#[derive(serde::Serialize)]
+struct EmbedReq<'a> {
+    inputs: &'a [String],
 }
 
 /// Logs a retry warning and sleeps for the backoff delay.
@@ -142,6 +156,9 @@ async fn send_chunk_with_retries(
     max_attempts: usize,
     request_timeout_ms: u64,
 ) -> Result<ChunkOutcome, Box<dyn Error>> {
+    // Build the request body once before the retry loop — avoids reconstructing a
+    // serde_json::Value on every attempt. Borrows `chunk` for the function lifetime. (P-M3)
+    let body = EmbedReq { inputs: chunk };
     for attempt in 1..=max_attempts {
         // Acquire the concurrency permit just before the HTTP request and drop
         // it immediately after the response completes.  Previously the permit
@@ -155,7 +172,7 @@ async fn send_chunk_with_retries(
         let resp = match client
             .post(embed_url)
             .timeout(Duration::from_millis(request_timeout_ms))
-            .json(&serde_json::json!({"inputs": chunk}))
+            .json(&body)
             .send()
             .await
         {
@@ -271,10 +288,11 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
     ));
     let tei_start = std::time::Instant::now();
 
-    let mut stack: Vec<&[String]> = inputs.chunks(batch_size).collect();
-    stack.reverse();
+    // VecDeque gives O(1) pop_front / push_front — clearer intent than the
+    // Vec + reverse() + pop() trick for a FIFO queue with front-priority splits. (B-L1)
+    let mut queue: VecDeque<&[String]> = inputs.chunks(batch_size).collect();
 
-    while let Some(chunk) = stack.pop() {
+    while let Some(chunk) = queue.pop_front() {
         match send_chunk_with_retries(client, &embed_url, chunk, max_attempts, request_timeout_ms)
             .await?
         {
@@ -287,8 +305,10 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
                 ));
                 let mid = chunk.len() / 2;
                 let (left, right) = chunk.split_at(mid);
-                stack.push(right);
-                stack.push(left);
+                // Push sub-halves to the front so left is processed before right,
+                // preserving document order within the batch.
+                queue.push_front(right);
+                queue.push_front(left);
             }
         }
     }

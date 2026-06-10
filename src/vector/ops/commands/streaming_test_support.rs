@@ -1,5 +1,5 @@
 use super::*;
-use crate::services::llm_backend::{self, CompletionRunner};
+use crate::core::llm::{self, CompletionRunner};
 
 fn extract_sse_token(data: &str) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
@@ -60,7 +60,7 @@ where
     let mut first_sources_pos: Option<usize> = None;
     let mut sources_search_from = 0usize;
     let mut repeat_guard_triggered = false;
-    let response = llm_backend::complete_streaming_with_runner(runner, req, |delta| {
+    let response = llm::complete_streaming_with_runner(runner, req, |delta| {
         if repeat_guard_triggered {
             return Ok(());
         }
@@ -95,7 +95,7 @@ async fn run_llm_text_completion_with_runner<R>(
 where
     R: CompletionRunner + ?Sized,
 {
-    let response = llm_backend::complete_text_with_runner(runner, req).await?;
+    let response = llm::complete_text_with_runner(runner, req).await?;
     Ok(response.text)
 }
 

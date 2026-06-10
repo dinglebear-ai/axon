@@ -1,4 +1,4 @@
-use crate::services::error::{ServiceTaxonomyError, diagnostics_from_error, taxonomy_from_error};
+use crate::core::error::{ServiceTaxonomyError, diagnostics_from_error, taxonomy_from_error};
 use axum::{
     Json,
     http::StatusCode,

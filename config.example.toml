@@ -1,6 +1,12 @@
 # Axon configuration — tuning knobs only.
 # Copy to ~/.axon/config.toml or point AXON_CONFIG_PATH at a custom location.
 #
+# ┌─ SINGLE SOURCE OF TRUTH ───────────────────────────────────────────────────┐
+# │ This file is the authoritative reference for every TOML config key.        │
+# │ The docs tables in CLAUDE.md and docs/guides/configuration.md are           │
+# │ summaries — if they disagree with this file, this file wins.               │
+# └────────────────────────────────────────────────────────────────────────────┘
+#
 # Usage:
 #   mkdir -m 700 ~/.axon
 #   cp config.example.toml ~/.axon/config.toml

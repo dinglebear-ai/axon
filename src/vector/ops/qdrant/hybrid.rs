@@ -16,21 +16,23 @@ use super::utils::{qdrant_collection_endpoint, qdrant_post_json_with_retry};
 
 // Typed request bodies for Qdrant `/points/query`. Replaces serde_json::json!{...}
 // macro allocations on the retrieval hot path. (bd axon_rust-d71.25)
+// pub(crate) visibility so dual_search.rs can reuse these structs for the batch
+// path without duplicating them (Q-M3).
 
 #[derive(Serialize)]
-struct HybridQueryBody<'a> {
-    prefetch: [PrefetchArm<'a>; 2],
-    query: FusionSpec,
-    limit: usize,
-    with_payload: bool,
-    with_vector: bool,
+pub(crate) struct HybridQueryBody<'a> {
+    pub(crate) prefetch: [PrefetchArm<'a>; 2],
+    pub(crate) query: FusionSpec,
+    pub(crate) limit: usize,
+    pub(crate) with_payload: bool,
+    pub(crate) with_vector: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    filter: Option<&'a serde_json::Value>,
+    pub(crate) filter: Option<&'a serde_json::Value>,
 }
 
 #[derive(Serialize)]
 #[serde(untagged)]
-enum PrefetchArm<'a> {
+pub(crate) enum PrefetchArm<'a> {
     Dense {
         query: &'a [f32],
         using: &'static str,
@@ -45,32 +47,32 @@ enum PrefetchArm<'a> {
 }
 
 #[derive(Serialize)]
-struct DenseParams {
-    hnsw_ef: usize,
-    quantization: QuantizationParams,
+pub(crate) struct DenseParams {
+    pub(crate) hnsw_ef: usize,
+    pub(crate) quantization: QuantizationParams,
 }
 
 #[derive(Serialize)]
-struct QuantizationParams {
-    rescore: bool,
-    oversampling: f32,
+pub(crate) struct QuantizationParams {
+    pub(crate) rescore: bool,
+    pub(crate) oversampling: f32,
 }
 
 #[derive(Serialize)]
-struct FusionSpec {
-    fusion: &'static str,
+pub(crate) struct FusionSpec {
+    pub(crate) fusion: &'static str,
 }
 
 #[derive(Serialize)]
-struct NamedDenseQueryBody<'a> {
-    query: &'a [f32],
-    using: &'static str,
-    limit: usize,
-    with_payload: bool,
-    with_vector: bool,
-    params: DenseParams,
+pub(crate) struct NamedDenseQueryBody<'a> {
+    pub(crate) query: &'a [f32],
+    pub(crate) using: &'static str,
+    pub(crate) limit: usize,
+    pub(crate) with_payload: bool,
+    pub(crate) with_vector: bool,
+    pub(crate) params: DenseParams,
     #[serde(skip_serializing_if = "Option::is_none")]
-    filter: Option<&'a serde_json::Value>,
+    pub(crate) filter: Option<&'a serde_json::Value>,
 }
 
 /// Perform hybrid search using dense + BM42 sparse prefetch with RRF fusion.

@@ -1,4 +1,4 @@
-use super::read_manifest_url_map;
+use super::*;
 use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -23,7 +23,8 @@ fn read_manifest_url_map_maps_markdown_file_to_url() {
     let mapped = read_manifest_url_map(&markdown_dir);
     let key = fs::canonicalize(&markdown_file).unwrap_or_else(|_| PathBuf::from(&markdown_file));
     assert_eq!(
-        mapped.get(&key).map(|(u, _)| u.as_str()),
+        // ManifestEntry = (String, bool, Option<Value>) — 3-tuple, not 2
+        mapped.get(&key).map(|(u, _, _)| u.as_str()),
         Some("https://example.com/docs")
     );
 

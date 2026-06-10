@@ -11,7 +11,7 @@
 //! server, hooks, and OTLP. Auth via `OPENAI_API_KEY` in the environment also
 //! works when no `auth.json` is present.
 
-use crate::services::llm_backend::LlmBackendConfig;
+use crate::core::llm::LlmBackendConfig;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
 use std::fs;

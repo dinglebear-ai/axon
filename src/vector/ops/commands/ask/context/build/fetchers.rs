@@ -8,6 +8,11 @@ use anyhow::Result;
 use futures_util::stream::{self, StreamExt};
 use std::sync::Arc;
 
+/// The element type returned per fetched document.  The points are wrapped in
+/// `Arc` so that cache-hits share the allocation without cloning the entire
+/// `Vec<QdrantPoint>`.
+pub type FetchedDoc = (usize, String, Arc<Vec<qdrant::QdrantPoint>>);
+
 pub async fn fetch_full_docs(
     cfg: &Config,
     reranked: &[crate::vector::ops::ranking::AskCandidate],
@@ -16,7 +21,7 @@ pub async fn fetch_full_docs(
     max_context_chars: usize,
     doc_chunk_limit: usize,
     doc_fetch_concurrency: usize,
-) -> Result<Vec<(usize, String, Vec<qdrant::QdrantPoint>)>> {
+) -> Result<Vec<FetchedDoc>> {
     let mut fetched_docs = Vec::new();
     if context_char_count >= max_context_chars {
         return Ok(fetched_docs);
@@ -49,7 +54,7 @@ pub async fn fetch_full_docs(
                             "ask: no points found for full document {url}; continuing with remaining context"
                         ));
                     } else {
-                        fetched_docs.push((order, url, points));
+                        fetched_docs.push((order, url, Arc::new(points)));
                     }
                 }
                 fetched_docs.sort_by_key(|(order, _, _)| *order);
@@ -87,7 +92,7 @@ pub async fn fetch_full_docs(
         let collection = collection.clone();
         let doc_cache = doc_cache.clone();
         async move {
-            let points = if cache_enabled {
+            let points: Result<Arc<Vec<qdrant::QdrantPoint>>> = if cache_enabled {
                 let key = DocCacheKey {
                     collection,
                     url: url.clone(),
@@ -106,9 +111,11 @@ pub async fn fetch_full_docs(
                         .await
                     })
                     .await
-                    .map(|arc| (*arc).clone())
+                // Cache returns Arc<Vec<_>> directly — no clone needed.
             } else {
-                qdrant::qdrant_retrieve_by_url(&cfg_for_task, &url, Some(doc_chunk_limit)).await
+                qdrant::qdrant_retrieve_by_url(&cfg_for_task, &url, Some(doc_chunk_limit))
+                    .await
+                    .map(Arc::new)
             };
             (order, url, points)
         }

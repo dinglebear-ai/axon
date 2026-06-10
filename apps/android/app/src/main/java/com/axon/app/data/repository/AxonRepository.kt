@@ -75,7 +75,7 @@ import kotlinx.serialization.json.intOrNull
 )
 
 @Stable data class JobUi(
-    val kind: AxonClient.JobKind? = null,
+    val kind: JobFamily? = null,
     val id: String,
     val status: String,
     val url: String?,
@@ -314,12 +314,14 @@ class AxonRepository(
         client.embedStart(EmbedRequest(input = input, collection = collection)).map { it.jobId }
     }
 
-    suspend fun getJob(kind: AxonClient.JobKind, id: String): Result<JobUi> = withToken {
-        client.getJob(kind, id).map { it.toJobUi(kind) }
+    suspend fun getJob(kind: JobFamily, id: String): Result<JobUi> = withToken {
+        val clientKind = kind.toClientKind()
+        client.getJob(clientKind, id).map { it.toJobUi(kind) }
     }
 
-    suspend fun listJobs(kind: AxonClient.JobKind): Result<List<JobUi>> = withToken {
-        client.listJobs(kind).map { list -> list.map { it.toJobUi(kind) } }
+    suspend fun listJobs(kind: JobFamily): Result<List<JobUi>> = withToken {
+        val clientKind = kind.toClientKind()
+        client.listJobs(clientKind).map { list -> list.map { it.toJobUi(kind) } }
     }
 
     suspend fun listWatches(): Result<List<WatchUi>> = withToken {
@@ -337,8 +339,8 @@ class AxonRepository(
         }
     }
 
-    suspend fun cancelJob(kind: AxonClient.JobKind, id: String): Result<Boolean> = withToken {
-        client.cancelJob(kind, id).map { it.canceled }
+    suspend fun cancelJob(kind: JobFamily, id: String): Result<Boolean> = withToken {
+        client.cancelJob(kind.toClientKind(), id).map { it.canceled }
     }
 
     suspend fun statusPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {

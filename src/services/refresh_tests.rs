@@ -70,6 +70,49 @@ fn filter_matches_source_type_or_seed_substring() {
 }
 
 #[test]
+fn origin_config_replays_job_shape_but_pins_current_runtime() {
+    // The "original job": tightly scoped crawl with custom knobs.
+    let mut original = Config::test_default();
+    original.max_pages = 42;
+    original.max_depth = 3;
+    original.include_subdomains = true;
+    original.custom_headers = vec!["X-Auth: token".to_string()];
+    original.collection = "old_collection".to_string();
+    original.seed_url = Some("https://docs.example.com".to_string());
+    original.wait = true;
+    let snapshot = crate::jobs::config_snapshot::config_snapshot_json(&original)
+        .expect("snapshot original config");
+
+    // Current process config at refresh time: defaults + a migrated collection.
+    let mut base = Config::test_default();
+    base.collection = "new_collection".to_string();
+    base.wait = false;
+
+    let replayed = origin_config(&base, Some(&snapshot));
+
+    // Job-shaping fields come from the original job…
+    assert_eq!(replayed.max_pages, 42);
+    assert_eq!(replayed.max_depth, 3);
+    assert!(replayed.include_subdomains);
+    assert_eq!(replayed.custom_headers, vec!["X-Auth: token".to_string()]);
+    // …while the runtime is pinned to the current process.
+    assert_eq!(replayed.collection, "new_collection");
+    assert_eq!(replayed.seed_url, None, "worker stamps seed_url itself");
+    assert!(!replayed.wait, "refresh is always enqueue-only");
+}
+
+#[test]
+fn origin_config_falls_back_to_base_without_snapshot() {
+    let base = Config::test_default();
+    let replayed = origin_config(&base, None);
+    assert_eq!(replayed.max_pages, base.max_pages);
+
+    // Garbage snapshot → base config, not an error.
+    let replayed = origin_config(&base, Some("{not json"));
+    assert_eq!(replayed.max_pages, base.max_pages);
+}
+
+#[test]
 fn plan_counts_by_action() {
     let plan = RefreshPlan {
         origins: vec![

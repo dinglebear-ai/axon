@@ -83,13 +83,19 @@ fn cached_unnamed_mode_is_not_authoritative_when_hybrid_enabled() {
 
     assert!(!cached_vector_mode_is_authoritative(
         &cfg,
+        "test_auth_key",
         VectorMode::Unnamed
     ));
-    assert!(cached_vector_mode_is_authoritative(&cfg, VectorMode::Named));
+    assert!(cached_vector_mode_is_authoritative(
+        &cfg,
+        "test_auth_key",
+        VectorMode::Named
+    ));
 
     cfg.hybrid_search_enabled = false;
     assert!(cached_vector_mode_is_authoritative(
         &cfg,
+        "test_auth_key",
         VectorMode::Unnamed
     ));
 }

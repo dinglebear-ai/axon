@@ -37,27 +37,31 @@ async fn read_file_embed_docs_writes_symbol_payload_contract() {
         .await
         .expect("read docs");
 
-    let method_doc = docs
-        .iter()
-        .find(|doc| {
-            doc.extra
-                .as_ref()
-                .and_then(|extra| extra.get("symbol_name"))
-                .and_then(|value| value.as_str())
-                == Some("Response::parse")
-        })
-        .expect("method doc with symbol payload");
-    let extra = method_doc.extra.as_ref().expect("github payload");
+    // P-H1: a file's chunks share one file-level PreparedDoc for TEI batching;
+    // per-chunk symbol_* / code_line_* metadata lives in `chunk_extra`, merged
+    // over `doc.extra` per chunk in the embed pipeline so the symbol-boost survives.
+    let doc = docs.first().expect("one file-level doc");
+    let extra = doc.extra.as_ref().expect("github payload");
     assert_eq!(extra["provider"], "github");
     assert_eq!(extra["git_content_kind"], "file");
     assert_eq!(extra["code_chunking_method"], "tree_sitter");
-    assert_eq!(extra["symbol_name"], "Response::parse");
-    assert_eq!(extra["symbol_kind"], "method");
     assert_eq!(extra["symbol_extraction_status"], "ok");
+
+    let method_chunk = doc
+        .chunk_extra
+        .iter()
+        .find(|ce| ce.get("symbol_name").and_then(|v| v.as_str()) == Some("Response::parse"))
+        .expect("chunk with method symbol payload");
+    assert_eq!(method_chunk["symbol_name"], "Response::parse");
+    assert_eq!(method_chunk["symbol_kind"], "method");
     assert!(
-        method_doc
-            .url
-            .starts_with("https://github.com/owner/repo/blob/main/src/lib.rs#L")
+        method_chunk.get("code_line_start").is_some(),
+        "per-chunk payload must carry its own line range"
+    );
+
+    assert_eq!(
+        doc.url,
+        "https://github.com/owner/repo/blob/main/src/lib.rs"
     );
 }
 
@@ -86,9 +90,8 @@ async fn non_utf8_file_is_skipped_not_failed() {
 
 #[test]
 fn text_chunks_line_ranges_are_monotonic_with_duplicate_lines() {
-    // Repeated identical lines make chunk text ambiguous; the moving-cursor offset
-    // resolution must still assign non-regressing, correct line ranges (the
-    // behaviour the deleted line_range tests guarded).
+    // Repeated identical lines make chunk text ambiguous; offsets must come
+    // from the chunker itself so line ranges stay non-regressing and correct.
     let line = "the quick brown fox jumps over the lazy dog\n";
     let text = line.repeat(200);
     let chunks = text_chunks(&text);
@@ -109,6 +112,35 @@ fn text_chunks_line_ranges_are_monotonic_with_duplicate_lines() {
         "a later chunk must cover later lines"
     );
     assert!(last.end_line <= 201);
+}
+
+#[test]
+fn text_chunks_byte_ranges_point_at_true_positions_with_repeated_content() {
+    // A repeated block bigger than the overlap window: substring re-discovery
+    // would lock the second chunk onto the first occurrence and emit wrong
+    // byte ranges + line numbers. Offsets must point at each chunk's true slice
+    // and advance strictly forward.
+    let block = "fn dup() { body(); }\n".repeat(150);
+    let text = format!("{block}// divider\n{block}");
+    let chunks = text_chunks(&text);
+    assert!(chunks.len() >= 2, "expected multiple prose chunks");
+    let mut prev_start = 0usize;
+    for (i, chunk) in chunks.iter().enumerate() {
+        assert_eq!(
+            &text[chunk.byte_start..chunk.byte_end],
+            chunk.text,
+            "chunk {i} byte range must slice its own text"
+        );
+        if i > 0 {
+            assert!(
+                chunk.byte_start > prev_start,
+                "chunk {i} byte_start must advance past the previous chunk's"
+            );
+        }
+        prev_start = chunk.byte_start;
+    }
+    let last = chunks.last().expect("at least one chunk");
+    assert_eq!(last.byte_end, text.len(), "final chunk must reach EOF");
 }
 
 #[test]

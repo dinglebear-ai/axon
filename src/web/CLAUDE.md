@@ -13,6 +13,7 @@ web/
 │   ├── handlers.rs           # handler module index
 │   ├── handlers/
 │   │   ├── admin.rs          # dedupe + watch CRUD
+│   │   ├── artifacts.rs      # /v1/artifacts/{*path} — safe file serving from output_dir
 │   │   ├── ask.rs            # /v1/ask (RAG synthesis)
 │   │   ├── async_jobs.rs     # nested routers for /v1/{crawl,embed,extract,ingest}
 │   │   ├── auth.rs           # panel_state, login
@@ -57,7 +58,7 @@ Callers (`src/cli/commands/serve.rs`) construct `PanelRuntimeState::initialize(h
 | `/healthz`, `/readyz` | none | Always public |
 | `/docs/*` | none | Swagger/Scalar OpenAPI docs |
 | `/api/panel/*` | cookie session (panel password) | First-run, config, stack, command runner |
-| `/v1/capabilities`, `/v1/sources`, `/v1/domains`, `/v1/stats`, `/v1/status`, `/v1/doctor`, `/v1/query`, `/v1/retrieve`, `/v1/map` | `axon:read` | Read-only; safe for read-token clients |
+| `/v1/capabilities`, `/v1/sources`, `/v1/domains`, `/v1/stats`, `/v1/status`, `/v1/doctor`, `/v1/query`, `/v1/retrieve`, `/v1/map`, `/v1/artifacts/{*path}` | `axon:read` | Read-only; safe for read-token clients |
 | `/v1/ask`, `/v1/evaluate`, `/v1/suggest`, `/v1/scrape`, `/v1/summarize`, `/v1/search`, `/v1/research`, `/v1/endpoints`, `/v1/dedupe`, `/v1/watch*`, `/v1/{crawl,embed,extract,ingest}/*` | `axon:write` | Active network/destructive ops |
 | `/v1/actions`, `/v1/migrate` | — | Stub `404` (removed from REST; use direct routes / CLI) |
 

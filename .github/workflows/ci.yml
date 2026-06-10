@@ -51,6 +51,32 @@ jobs:
       - name: Enforce MCP CLI transport mode support
         run: cargo xtask check-mcp-http
 
+  version-sync:
+    name: version-sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask
+      - name: Verify version parity across Cargo.toml / README / CHANGELOG / plugin.json
+        run: cargo xtask check-version-sync
+
   no-mod-rs:
     name: no-mod-rs
     runs-on: ubuntu-latest
@@ -1014,6 +1040,7 @@ jobs:
     needs:
       - monolith
       - no-mod-rs
+      - version-sync
       - fmt
       - check
       - clippy
@@ -1026,6 +1053,7 @@ jobs:
         run: |
           test "${{ needs.monolith.result }}" = "success"
           test "${{ needs.no-mod-rs.result }}" = "success"
+          test "${{ needs.version-sync.result }}" = "success"
           test "${{ needs.fmt.result }}" = "success"
           test "${{ needs.check.result }}" = "success"
           test "${{ needs.clippy.result }}" = "success"

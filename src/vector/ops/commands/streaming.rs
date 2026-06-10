@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::services::llm_backend::{self, CompletionRequest};
+use crate::core::llm::{self, CompletionRequest};
 use std::error::Error;
 use std::io::Write;
 use tokio::sync::mpsc::UnboundedSender;
@@ -212,16 +212,29 @@ fn judge_completion_request(
 }
 
 fn apply_optional_model(req: CompletionRequest, cfg: &Config) -> CompletionRequest {
-    match llm_backend::configured_model_from_config(cfg) {
+    match llm::configured_model_from_config(cfg) {
         Some(model) => req.model(model),
         None => req,
     }
 }
 
-const REPEAT_GUARD_STOP: &str = "repeat_guard_stop";
+/// Signals that the repeat-guard fired — the synthesised answer already
+/// contains a second `## Sources` block; further delta processing is stopped.
+#[derive(Debug)]
+struct RepeatGuardStop;
 
+impl std::fmt::Display for RepeatGuardStop {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("repeat_guard_stop")
+    }
+}
+
+impl Error for RepeatGuardStop {}
+
+/// Returns true when the error message came from a `RepeatGuardStop` signal,
+/// including cases where the LLM backend appends cleanup details after it.
 fn is_repeat_guard_stop_error(message: &str) -> bool {
-    message.starts_with(REPEAT_GUARD_STOP)
+    message.starts_with("repeat_guard_stop")
 }
 
 #[derive(Default)]
@@ -244,7 +257,7 @@ fn process_one_delta(
     capture_ttft: bool,
 ) -> Result<(), Box<dyn Error>> {
     if state.repeat_guard_triggered {
-        return Err(REPEAT_GUARD_STOP.into());
+        return Err(Box::new(RepeatGuardStop));
     }
     // Record TTFT on the first non-empty delta — before any further work.
     if capture_ttft && state.first_token_at.is_none() && !delta.is_empty() {
@@ -315,7 +328,7 @@ where
 {
     let req = req.backend_from_config(cfg);
     let mut state = StreamProcessorState::default();
-    let stream_result = llm_backend::complete_streaming(req, |delta| {
+    let stream_result = llm::complete_streaming(req, |delta| {
         process_one_delta(
             &mut state,
             delta,
@@ -375,7 +388,7 @@ pub(super) async fn run_text_completion(
     cfg: &Config,
     req: CompletionRequest,
 ) -> Result<String, Box<dyn Error>> {
-    llm_backend::complete_text(req.backend_from_config(cfg))
+    llm::complete_text(req.backend_from_config(cfg))
         .await
         .map(|response| response.text)
         .map_err(|err| err.to_string().into())

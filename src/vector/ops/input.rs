@@ -11,33 +11,81 @@ use text_splitter::{ChunkConfig, MarkdownSplitter};
 pub const CHUNK_OVERLAP: usize = 200;
 const MARKDOWN_CHUNK_MAX: usize = 2000;
 
+#[must_use]
 pub fn chunk_text(text: &str) -> Vec<String> {
-    // Fast-path: avoid the 800 KB Vec<usize> allocation for short documents.
-    if text.chars().count() <= MARKDOWN_CHUNK_MAX {
-        return vec![text.to_string()];
+    chunk_text_with_offsets(text)
+        .into_iter()
+        .map(|(_, chunk)| chunk)
+        .collect()
+}
+
+/// Like [`chunk_text`], but each chunk carries its byte offset into `text`.
+///
+/// Callers that need source positions (line numbers, `#L` fragments) must use
+/// the offsets returned here — re-discovering a chunk's position by substring
+/// search locks onto the first occurrence and mislabels files with repeated
+/// content.
+#[must_use]
+pub fn chunk_text_with_offsets(text: &str) -> Vec<(usize, String)> {
+    use std::collections::VecDeque;
+
+    // Step size between consecutive chunk starts (non-overlapping advance).
+    const STEP: usize = MARKDOWN_CHUNK_MAX - CHUNK_OVERLAP;
+
+    // Ring buffer of byte positions — holds at most MARKDOWN_CHUNK_MAX+1 entries
+    // (one entry per char in the current [start .. start+MARKDOWN_CHUNK_MAX] window).
+    // This avoids materialising a full Vec<usize> of every char index in the text.
+    let mut ring: VecDeque<usize> = VecDeque::with_capacity(MARKDOWN_CHUNK_MAX + 2);
+    let mut char_iter = text.char_indices();
+
+    // Pre-fill with up to MARKDOWN_CHUNK_MAX+1 byte positions.
+    for _ in 0..=MARKDOWN_CHUNK_MAX {
+        match char_iter.next() {
+            Some((pos, _)) => ring.push_back(pos),
+            None => break,
+        }
     }
 
-    let offsets: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
-    let char_count = offsets.len();
+    // Fast-path: the whole text fits in a single chunk.
+    if ring.len() <= MARKDOWN_CHUNK_MAX {
+        return vec![(0, text.to_string())];
+    }
+
     let mut out = Vec::new();
-    let mut i = 0usize;
-    while i < char_count {
-        let end = (i + MARKDOWN_CHUNK_MAX).min(char_count);
-        let byte_start = offsets[i];
-        let byte_end = if end < char_count {
-            offsets[end]
+
+    loop {
+        let byte_start = *ring.front().expect("ring non-empty");
+        let byte_end = if ring.len() > MARKDOWN_CHUNK_MAX {
+            // Full window available: byte_end is the start of char at position
+            // MARKDOWN_CHUNK_MAX (exclusive slice end).
+            ring[MARKDOWN_CHUNK_MAX]
         } else {
+            // Partial tail chunk: include through end of string.
             text.len()
         };
-        out.push(text[byte_start..byte_end].to_string());
-        if end == char_count {
-            break;
+
+        out.push((byte_start, text[byte_start..byte_end].to_string()));
+
+        if ring.len() <= MARKDOWN_CHUNK_MAX {
+            break; // just emitted the last chunk
         }
-        i = end.saturating_sub(CHUNK_OVERLAP);
+
+        // Advance by STEP chars: drain the leading STEP positions, then refill.
+        for _ in 0..STEP {
+            ring.pop_front();
+        }
+        while ring.len() <= MARKDOWN_CHUNK_MAX {
+            match char_iter.next() {
+                Some((pos, _)) => ring.push_back(pos),
+                None => break,
+            }
+        }
     }
+
     out
 }
 
+#[must_use]
 /// Split markdown content at structural boundaries (headers, paragraphs).
 ///
 /// Uses `MarkdownSplitter` from the `text_splitter` crate. Chunks target
@@ -145,6 +193,7 @@ fn take_chars(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect()
 }
 
+#[must_use]
 pub fn url_lookup_candidates(target: &str) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();

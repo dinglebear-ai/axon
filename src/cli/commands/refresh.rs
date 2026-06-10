@@ -39,7 +39,18 @@ pub async fn run_refresh(
     }
 
     let outcome = refresh::execute_refresh(cfg, service_context, &plan).await?;
-    report_outcome(cfg, &outcome)
+    report_outcome(cfg, &outcome)?;
+    // Partial failure must be visible to scripts: the per-origin failures are
+    // already rendered above, so exit nonzero instead of pretending success.
+    if !outcome.failures.is_empty() {
+        return Err(format!(
+            "refresh: {} of {} origin(s) failed to enqueue",
+            outcome.failures.len(),
+            plan.origins.len()
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn render_plan(plan: &RefreshPlan) {

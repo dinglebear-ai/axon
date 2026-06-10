@@ -1,17 +1,20 @@
 use crate::core::config::Config;
 use crate::core::http::internal_service_http_client;
 use crate::core::logging::{log_debug, log_info, log_warn};
-use crate::vector::ops::qdrant::{env_usize_clamped, qdrant_base};
+use crate::vector::ops::qdrant::qdrant_base;
 use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{LazyLock, RwLock};
+use std::time::Instant;
 
 mod payload_indexes;
 #[cfg(test)]
 #[path = "qdrant_store_tests.rs"]
 mod tests;
+mod upsert;
 use payload_indexes::ensure_payload_indexes;
+pub(super) use upsert::qdrant_upsert;
 
 /// Describes how a Qdrant collection's vectors are configured.
 ///
@@ -35,6 +38,13 @@ pub(crate) enum VectorMode {
 static COLLECTION_MODES: LazyLock<RwLock<HashMap<String, VectorMode>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
+/// Timestamps of the last successful mode-probe per collection cache key.
+///
+/// Used to rate-limit re-probes for `Unnamed` collections when hybrid search is
+/// enabled — we re-probe at most every ~60s instead of on every embed/query. (P-M7)
+static COLLECTION_MODE_LAST_PROBE: LazyLock<RwLock<HashMap<String, Instant>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
 fn collection_mode_cache_key(cfg: &Config) -> String {
     format!(
         "{}\x1f{}",
@@ -51,8 +61,33 @@ fn cached_vector_mode_key(key: &str) -> Option<VectorMode> {
         .and_then(|map| map.get(key).copied())
 }
 
-fn cached_vector_mode_is_authoritative(cfg: &Config, mode: VectorMode) -> bool {
-    !(cfg.hybrid_search_enabled && matches!(mode, VectorMode::Unnamed))
+/// Return `true` if we should skip a live Qdrant re-probe for this cache key.
+///
+/// `Unnamed` + hybrid-enabled: re-probe at most every 60s to preserve the
+/// post-migrate self-healing behavior without paying a round-trip on every
+/// embed/query. (P-M7)
+fn cached_vector_mode_is_authoritative(cfg: &Config, key: &str, mode: VectorMode) -> bool {
+    if !matches!(mode, VectorMode::Unnamed) {
+        return true; // Named is permanently authoritative
+    }
+    if !cfg.hybrid_search_enabled {
+        return true; // Hybrid disabled — no need to watch for schema upgrades
+    }
+    // Unnamed + hybrid: gate re-probes to at most once per 60s.
+    const PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+    COLLECTION_MODE_LAST_PROBE
+        .read()
+        .ok()
+        .and_then(|m| m.get(key).copied())
+        .is_some_and(|last| last.elapsed() < PROBE_INTERVAL)
+}
+
+/// Record a successful mode-probe timestamp so the rate-limiter can skip future
+/// probes within the window. (P-M7)
+fn record_probe_time(key: &str) {
+    if let Ok(mut m) = COLLECTION_MODE_LAST_PROBE.write() {
+        m.insert(key.to_owned(), Instant::now());
+    }
 }
 
 #[cfg(test)]
@@ -108,7 +143,7 @@ pub(super) async fn collection_init_or_cached(
 ) -> Result<VectorMode, Box<dyn Error>> {
     let cache_key = collection_mode_cache_key(cfg);
     if let Some(mode) = cached_vector_mode_key(&cache_key) {
-        if cached_vector_mode_is_authoritative(cfg, mode) {
+        if cached_vector_mode_is_authoritative(cfg, &cache_key, mode) {
             return Ok(mode);
         }
         log_info(&format!(
@@ -118,6 +153,7 @@ pub(super) async fn collection_init_or_cached(
     }
     let mode = ensure_collection(cfg, dim).await?;
     cache_vector_mode_key(&cache_key, mode);
+    record_probe_time(&cache_key);
     Ok(mode)
 }
 
@@ -134,7 +170,7 @@ pub(super) async fn collection_init_or_cached(
 pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode, Box<dyn Error>> {
     let cache_key = collection_mode_cache_key(cfg);
     if let Some(mode) = cached_vector_mode_key(&cache_key) {
-        if cached_vector_mode_is_authoritative(cfg, mode) {
+        if cached_vector_mode_is_authoritative(cfg, &cache_key, mode) {
             return Ok(mode);
         }
         log_info(&format!(
@@ -222,6 +258,7 @@ pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode,
         }
     };
     cache_vector_mode_key(&cache_key, mode);
+    record_probe_time(&cache_key);
     Ok(mode)
 }
 
@@ -267,6 +304,19 @@ fn validate_existing_dim(
     Ok(())
 }
 
+/// Read `AXON_QDRANT_HNSW_ON_DISK` (default `false`) and
+/// `AXON_QDRANT_QUANTIZATION_ALWAYS_RAM` (default `true`).
+/// Lever B (axon_rust-o9y2): trade ~5-6 GiB RAM for higher query latency.
+fn memory_settings() -> (bool, bool) {
+    let hnsw_on_disk = std::env::var("AXON_QDRANT_HNSW_ON_DISK")
+        .ok()
+        .is_some_and(|v| matches!(v.trim(), "1" | "true" | "yes"));
+    let always_ram = std::env::var("AXON_QDRANT_QUANTIZATION_ALWAYS_RAM")
+        .ok()
+        .is_none_or(|v| !matches!(v.trim(), "0" | "false" | "no"));
+    (hnsw_on_disk, always_ram)
+}
+
 /// Ensure the collection exists and is configured with the right vector schema.
 ///
 /// Returns the `VectorMode` that describes the collection after this call.
@@ -274,7 +324,7 @@ fn validate_existing_dim(
 /// | Prior state | Action | Returns |
 /// |-------------|--------|---------|
 /// | Does not exist | Create with named `dense` + `bm42` sparse | `Named` |
-/// | Exists, named `dense` | Ensure sparse; PATCH to add `bm42` if missing | `Named` |
+/// | Exists, named `dense` | Ensure sparse; PATCH sparse/memory if needed | `Named` |
 /// | Exists, unnamed dense | Log warning; leave unchanged | `Unnamed` |
 pub(super) async fn ensure_collection(
     cfg: &Config,
@@ -298,6 +348,7 @@ pub(super) async fn ensure_collection(
                 if !has_sparse {
                     patch_add_sparse(cfg).await?;
                 }
+                maybe_patch_memory_settings(cfg, &body).await?;
             }
             VectorMode::Unnamed => {
                 log_warn(&format!(
@@ -312,7 +363,7 @@ pub(super) async fn ensure_collection(
             "qdrant collection_exists collection={} mode={:?}",
             cfg.collection, mode
         ));
-        ensure_payload_indexes(cfg).await?;
+        ensure_payload_indexes(cfg, Some(&body)).await?;
         return Ok(mode);
     } else if get_status != StatusCode::NOT_FOUND {
         // 500, 401, 403, etc. -- do not silently fall through to collection creation.
@@ -324,6 +375,7 @@ pub(super) async fn ensure_collection(
         .into());
     }
 
+    let (hnsw_on_disk, always_ram) = memory_settings();
     let create = serde_json::json!({
         // Memory-bounded large-collection recipe: keep the raw f32 vectors on
         // disk (they're only needed for rescore), but pin the small int8
@@ -334,6 +386,8 @@ pub(super) async fn ensure_collection(
         // trips the 30s internal HTTP client timeout. `vectors.on_disk` must
         // stay true here: with always_ram quantization the raw vectors don't
         // belong in RAM too, or a 3.95M-point collection needs ~19GB.
+        // Set AXON_QDRANT_HNSW_ON_DISK=true / AXON_QDRANT_QUANTIZATION_ALWAYS_RAM=false
+        // to trade latency for ~5-6GiB RSS savings (lever B, axon_rust-o9y2).
         "vectors": {
             "dense": {"size": dim, "distance": "Cosine", "on_disk": true}
         },
@@ -343,13 +397,13 @@ pub(super) async fn ensure_collection(
         "hnsw_config": {
             "m": 32,
             "ef_construct": 256,
-            "on_disk": false
+            "on_disk": hnsw_on_disk
         },
         "quantization_config": {
             "scalar": {
                 "type": "int8",
                 "quantile": 0.99,
-                "always_ram": true
+                "always_ram": always_ram
             }
         }
     });
@@ -361,10 +415,10 @@ pub(super) async fn ensure_collection(
     // entries from a prior incarnation become unreachable. (axon_rust-pmc)
     crate::vector::cache::bump_generation(&cfg.collection);
     log_info(&format!(
-        "qdrant collection_created collection={} mode=Named",
+        "qdrant collection_created collection={} mode=Named hnsw_on_disk={hnsw_on_disk} always_ram={always_ram}",
         cfg.collection
     ));
-    ensure_payload_indexes(cfg).await?;
+    ensure_payload_indexes(cfg, None).await?;
     Ok(VectorMode::Named)
 }
 
@@ -392,69 +446,46 @@ async fn patch_add_sparse(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Upsert points into Qdrant with automatic batching and retry.
+/// PATCH memory-pressure knobs on an existing Named collection when the desired
+/// settings diverge from the current ones.
 ///
-/// Points are split into batches of `AXON_QDRANT_UPSERT_BATCH_SIZE` (default 256)
-/// and each batch is retried up to 3 times with exponential backoff (500ms, 1s, 2s).
-/// Uses `?wait=true` so the call blocks until Qdrant has committed the write.
-pub(super) async fn qdrant_upsert(
+/// Applies `hnsw_config.on_disk` and `quantization_config.scalar.always_ram` from
+/// the `AXON_QDRANT_HNSW_ON_DISK` / `AXON_QDRANT_QUANTIZATION_ALWAYS_RAM` env vars
+/// (lever B for axon_rust-o9y2). Qdrant rebuilds the HNSW graph asynchronously after
+/// an `on_disk` flip — the PATCH returns immediately and the rebuild runs in the
+/// background, so this does not block the embed path.
+async fn maybe_patch_memory_settings(
     cfg: &Config,
-    points: &[serde_json::Value],
+    body: &serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
-    if points.is_empty() {
+    let (desired_hnsw_on_disk, desired_always_ram) = memory_settings();
+    let current_hnsw_on_disk = body
+        .pointer("/result/config/hnsw_config/on_disk")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let current_always_ram = body
+        .pointer("/result/config/quantization_config/scalar/always_ram")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    if current_hnsw_on_disk == desired_hnsw_on_disk && current_always_ram == desired_always_ram {
         return Ok(());
     }
     let client = internal_service_http_client()?;
-    let upsert_batch_size = env_usize_clamped("AXON_QDRANT_UPSERT_BATCH_SIZE", 256, 1, 4096);
-    let url = format!(
-        "{}/collections/{}/points?wait=true",
-        qdrant_base(cfg),
-        cfg.collection
-    );
-    log_debug(&format!(
-        "qdrant upsert_start point_count={} collection={}",
-        points.len(),
+    let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
+    client
+        .patch(&url)
+        .json(&serde_json::json!({
+            "hnsw_config": {"on_disk": desired_hnsw_on_disk},
+            "quantization_config": {
+                "scalar": {"type": "int8", "quantile": 0.99, "always_ram": desired_always_ram}
+            }
+        }))
+        .send()
+        .await?
+        .error_for_status()?;
+    log_info(&format!(
+        "qdrant collection_patched_memory collection={} hnsw_on_disk={desired_hnsw_on_disk} always_ram={desired_always_ram}",
         cfg.collection
     ));
-    for batch in points.chunks(upsert_batch_size) {
-        let mut last_err = String::new();
-        let mut succeeded = false;
-        for attempt in 1..=3u32 {
-            match client
-                .put(&url)
-                .json(&serde_json::json!({"points": batch}))
-                .send()
-                .await
-                .and_then(|r| r.error_for_status())
-            {
-                Ok(_) => {
-                    succeeded = true;
-                    break;
-                }
-                Err(e) => {
-                    last_err = e.to_string();
-                    if attempt < 3 {
-                        let backoff_ms = 500u64 * (1u64 << (attempt - 1));
-                        log_warn(&format!(
-                            "qdrant upsert attempt {attempt}/3 failed (collection={}): {e} — retrying in {backoff_ms}ms",
-                            cfg.collection
-                        ));
-                        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
-                    }
-                }
-            }
-        }
-        if !succeeded {
-            return Err(format!(
-                "qdrant upsert failed after 3 attempts (collection={}): {last_err}",
-                cfg.collection
-            )
-            .into());
-        }
-    }
-    // All batches succeeded -- bump generation once per upsert call so
-    // cached doc-chunk entries reflect the new contents on next read.
-    // (axon_rust-pmc)
-    crate::vector::cache::bump_generation(&cfg.collection);
     Ok(())
 }

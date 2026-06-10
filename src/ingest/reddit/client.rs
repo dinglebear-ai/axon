@@ -75,10 +75,21 @@ pub(super) async fn fetch_reddit_json_with_cancel(
         }
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            // S-L4: bound + sanitize error body; upstream could craft huge/hostile content
+            let raw = resp.bytes().await.unwrap_or_default();
+            let truncated = &raw[..raw.len().min(4096)];
+            let body: String = String::from_utf8_lossy(truncated)
+                .chars()
+                .filter(|c| !c.is_control() || *c == '\n')
+                .collect();
             return Err(format!("Reddit API error ({status}): {body}").into());
         }
-        return Ok(resp.json().await?);
+        // S-M3: bound success response to 10 MiB before deserializing
+        let bytes = resp.bytes().await?;
+        if bytes.len() > 10 * 1024 * 1024 {
+            return Err(format!("Reddit API response too large: {} bytes", bytes.len()).into());
+        }
+        return Ok(serde_json::from_slice(&bytes)?);
     }
 }
 

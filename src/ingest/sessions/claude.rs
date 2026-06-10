@@ -256,17 +256,14 @@ async fn parse_claude_file(
         "git_branch": parsed.git_branch,
         "last_message_at": parsed.last_message_at,
     });
-    let doc = PreparedDoc {
+    let doc = PreparedDoc::ingest(
         url,
-        domain: "local".to_string(),
+        "local".to_string(),
         chunks,
-        source_type: "claude_session".to_string(),
-        content_type: "text",
+        "claude_session",
         title,
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    };
+        Some(extra),
+    );
     Ok(Some(SessionDoc {
         doc,
         collection,

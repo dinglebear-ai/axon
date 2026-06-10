@@ -258,7 +258,7 @@ temporary overrides and legacy scripts.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_CHROME_REMOTE_URL` | `http://axon-chrome:6000` | CDP management endpoint |
-| `CHROME_URL` | `http://127.0.0.1:6000` | Spider-rs native CDP var (always use localhost URL here) |
+| ~~`CHROME_URL`~~ | — | **Stale alias — do not set.** Superseded by `AXON_CHROME_REMOTE_URL`. Deleted by `axon config migrate`. Spider reads this as `CHROM_BASE` but axon's `runtime.rs` pins the connection via `with_chrome_connection` so the spider fallback never fires. |
 | `AXON_CHROME_PROXY` | -- | Proxy URL for Chrome requests |
 | `AXON_CHROME_USER_AGENT` | -- | User-Agent override for Chrome requests |
 | `AXON_CHROME_DIAGNOSTICS` | `false` | Enable browser diagnostics artifact collection |

@@ -504,6 +504,100 @@ Volumes (`${AXON_HOME:-$HOME/.axon}/{qdrant,tei,...}`) are bind-mounted on the h
 
 ---
 
+## Qdrant OOM Alerting
+
+`axon-qdrant` uses `restart: unless-stopped` and recovers automatically from OOM kills, but the restart event is silent unless you wire alerting. With ~4.5M+ points and ~15–16 GiB memory capped, OOM risk is real — especially during scroll-heavy operations like `dedupe` or `sources`.
+
+### Alert via LoggiFly + Apprise/Gotify
+
+If your stack includes [LoggiFly](https://github.com/nicklan/loggifly) and Apprise or Gotify:
+
+1. **Add `axon-qdrant` to your LoggiFly watch config** (`~/.lab/config.toml` or equivalent):
+
+   ```toml
+   [[containers]]
+   name = "axon-qdrant"
+   # Alert on OOM kills and crash restarts
+   patterns = [
+     "SIGSEGV",
+     "exiting",
+     "killed",
+     "OOM",
+   ]
+   apprise_url = "gotify://your-gotify-host/your-token"
+   ```
+
+2. **Restart LoggiFly** to pick up the new container:
+   ```bash
+   docker compose restart loggifly
+   ```
+
+### Alert via Docker health + Apprise directly
+
+If you don't run LoggiFly, use a cron job that watches the container restart count:
+
+```bash
+# ~/.axon/scripts/check-qdrant.sh
+#!/usr/bin/env bash
+COUNT=$(docker inspect axon-qdrant --format '{{.RestartCount}}' 2>/dev/null || echo 0)
+LAST=$(cat ~/.axon/.qdrant-restart-count 2>/dev/null || echo 0)
+if [[ "$COUNT" -gt "$LAST" ]]; then
+    curl -s "https://your-apprise-url/notify" \
+        -d "body=axon-qdrant restarted (count=${COUNT}) — possible OOM kill" \
+        -d "tag=homelab"
+fi
+echo "$COUNT" > ~/.axon/.qdrant-restart-count
+```
+
+Add to crontab: `*/5 * * * * /home/user/.axon/scripts/check-qdrant.sh`
+
+### Levers to reduce OOM pressure
+
+| Action | Effect |
+|--------|--------|
+| `axon dedupe` off-peak | Dedup scroll loads large point slices — run outside business hours |
+| Reduce `mem_limit` in `docker-compose.prod.yaml` increments of 512m | Forces earlier OOM before host pressure |
+| `axon sources --limit 1000` instead of full facet | Lower memory than `axon sources` with no limit |
+| Prune stale collections | `curl -X DELETE ${QDRANT_URL}/collections/<name>` frees allocated segments |
+
+See also: `~/.axon/memory/qdrant-oom-crashloop.md` for historical OOM context on this deployment.
+
+---
+
+## Backup and Restore
+
+Axon's knowledge base and job state live in two places:
+
+| Data | Location | Backup tool |
+|------|----------|-------------|
+| Vector corpus | `axon-qdrant` container volume | Qdrant snapshot API |
+| Job queue + history | `~/.axon/jobs.db` | SQLite `.backup` |
+
+Use `scripts/axon-backup.sh` for both in a single operation:
+
+```bash
+./scripts/axon-backup.sh                        # interactive
+./scripts/axon-backup.sh --yes                  # non-interactive (cron-safe)
+./scripts/axon-backup.sh --collection my_col    # specific collection
+./scripts/axon-backup.sh --output-dir /mnt/nas/axon-backups
+```
+
+The script creates timestamped archives in `~/.axon/backups/` (override with `--output-dir` or `AXON_BACKUP_DIR`), prints SHA-256 checksums, and cleans up the server-side Qdrant snapshot. On ZFS hosts that replicate to a backup box (e.g. `shart`), the backup directory is automatically replicated — no separate transfer step.
+
+**Restore:**
+
+```bash
+# Qdrant — stop axon first, then:
+curl -X POST "${QDRANT_URL}/collections/axon/snapshots/recover" \
+  -H "Content-Type: application/json" \
+  -d "{\"location\": \"file:///path/to/axon-20260101-0200.tar.gz\"}"
+
+# SQLite — stop workers first, then:
+cp ~/.axon/backups/sqlite/jobs-20260101-0200.db ~/.axon/jobs.db
+```
+
+---
+
 ## Source map
 
 | Path | Purpose |

@@ -10,7 +10,7 @@
 //! pre-profile behavior (fully backward compatible).
 
 use super::super::toml_config::{TomlConfig, TomlProvider};
-use crate::services::llm_backend::LlmBackendKind;
+use crate::core::llm::LlmBackendKind;
 
 /// Per-field overlay sourced from the active provider profile. `None` fields
 /// fall through to the env layer, so a profile may specify only what it needs

@@ -175,46 +175,53 @@ pub fn render_full_doc_from_points(points: Vec<QdrantPoint>) -> String {
 /// When `query_tokens` is `None`, behaves as before: all chunks concatenated
 /// in `chunk_index` order. (bd axon_rust-0fz)
 pub fn render_full_doc_filtered(
-    mut points: Vec<QdrantPoint>,
+    points: Vec<QdrantPoint>,
     query_tokens: Option<&[String]>,
     top_k: Option<usize>,
 ) -> String {
-    if let (Some(tokens), Some(k)) = (query_tokens, top_k)
-        && !tokens.is_empty()
-        && k > 0
-        && points.len() > k
-    {
-        let mut scored: Vec<(usize, f64)> = points
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                (
-                    i,
-                    score_chunk_against_tokens(payload_text_typed(&p.payload), tokens),
-                )
-            })
-            .collect();
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(k);
-        let kept: std::collections::HashSet<usize> =
-            scored.into_iter().map(|(idx, _)| idx).collect();
-        let mut filtered = Vec::with_capacity(kept.len());
-        for (i, p) in points.into_iter().enumerate() {
-            if kept.contains(&i) {
-                filtered.push(p);
-            }
+    let kept: Vec<usize> = match (query_tokens, top_k) {
+        (Some(tokens), Some(k)) if !tokens.is_empty() && k > 0 && points.len() > k => {
+            let mut order = rank_points_by_query_overlap(&points, tokens);
+            order.truncate(k);
+            order
         }
-        points = filtered;
-    }
+        _ => (0..points.len()).collect(),
+    };
+    render_points_in_doc_order(&points, &kept)
+}
 
-    points.sort_by_key(|p| p.payload.chunk_index.unwrap_or(i64::MAX));
-    let capacity = points
+/// Relevance order over `points` by query-token overlap, descending. The sort
+/// is stable, so ties (including the all-zero case for empty tokens) preserve
+/// enumeration order. Callers walk this once and slice prefixes instead of
+/// re-scoring per candidate window.
+pub fn rank_points_by_query_overlap(points: &[QdrantPoint], tokens: &[String]) -> Vec<usize> {
+    let mut scored: Vec<(usize, f64)> = points
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            (
+                i,
+                score_chunk_against_tokens(payload_text_typed(&p.payload), tokens),
+            )
+        })
+        .collect();
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.into_iter().map(|(idx, _)| idx).collect()
+}
+
+/// Render the chunks at `kept` indices re-sorted into `chunk_index` order for
+/// narrative coherence — the LLM still reads the document in document order,
+/// just without the irrelevant interludes. (bd axon_rust-0fz)
+pub fn render_points_in_doc_order(points: &[QdrantPoint], kept: &[usize]) -> String {
+    let mut selected: Vec<&QdrantPoint> = kept.iter().map(|&i| &points[i]).collect();
+    selected.sort_by_key(|p| p.payload.chunk_index.unwrap_or(i64::MAX));
+    let capacity = selected
         .iter()
         .map(|point| payload_text_typed(&point.payload).len())
         .sum::<usize>()
-        + points.len();
+        + selected.len();
     let mut text = String::with_capacity(capacity);
-    for point in points {
+    for point in selected {
         let chunk = payload_text_typed(&point.payload);
         if chunk.is_empty() {
             continue;

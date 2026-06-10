@@ -1236,6 +1236,14 @@ textarea {
   line-height: 1.45;
 }
 
+.palette-result-image {
+  display: block;
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--aurora-border-default);
+  object-fit: contain;
+}
+
 .palette-result-body {
   color: var(--aurora-text-primary);
   font-size: var(--aurora-type-body-sm);

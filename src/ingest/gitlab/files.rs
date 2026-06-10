@@ -1,16 +1,18 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Result, bail};
 use base64::Engine as _;
 
 use crate::core::config::Config;
-use crate::ingest::github::{is_indexable_doc_path, is_indexable_source_path};
+use crate::core::logging::log_warn;
+use crate::ingest::git_files::{collect_repo_files, embed_docs};
 use crate::ingest::progress::PhaseReporter;
+use crate::ingest::subprocess::MAX_INGEST_FILE_BYTES;
 use crate::ingest::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
 use crate::vector::ops::input::code::chunk_code;
 use crate::vector::ops::{PreparedDoc, chunk_text};
 
-use super::embed::{embed_docs, gitlab_payload};
+use super::embed::gitlab_payload;
 use super::types::{GitLabProject, GitLabTarget};
 
 async fn clone_repo(
@@ -64,36 +66,6 @@ async fn clone_repo(
     bail!("git clone failed for {}: {}", target.namespace_path, stderr);
 }
 
-async fn collect_files(root: &Path, include_source: bool) -> Result<Vec<PathBuf>> {
-    let mut dirs = vec![root.to_path_buf()];
-    let mut files = Vec::new();
-    while let Some(dir) = dirs.pop() {
-        let mut entries = tokio::fs::read_dir(&dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            let file_type = entry.file_type().await?;
-            if file_type.is_dir() {
-                if entry.file_name() != ".git" {
-                    dirs.push(path);
-                }
-                continue;
-            }
-            if !file_type.is_file() {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(root)?
-                .to_string_lossy()
-                .replace('\\', "/");
-            if is_indexable_doc_path(&rel) || (include_source && is_indexable_source_path(&rel)) {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    Ok(files)
-}
-
 pub(crate) async fn embed_files(
     cfg: &Config,
     target: &GitLabTarget,
@@ -106,7 +78,7 @@ pub(crate) async fn embed_files(
         .report(serde_json::json!({"phase": "cloning", "repo": target.namespace_path}))
         .await;
     let tmp = clone_repo(cfg, target, branch).await?;
-    let files = collect_files(tmp.path(), include_source).await?;
+    let files = collect_repo_files(tmp.path(), include_source).await?;
     let total = files.len();
     let mut docs = Vec::new();
     for (index, file) in files.into_iter().enumerate() {
@@ -114,8 +86,39 @@ pub(crate) async fn embed_files(
             .strip_prefix(tmp.path())?
             .to_string_lossy()
             .replace('\\', "/");
-        let Ok(content) = tokio::fs::read_to_string(&file).await else {
-            continue;
+        // S-M2: stat before read — skip files over the ingest size cap
+        match tokio::fs::metadata(&file).await {
+            Ok(meta) if meta.len() > MAX_INGEST_FILE_BYTES => {
+                log_warn(&format!(
+                    "command=ingest_gitlab skip_large_file path={rel} size_bytes={}",
+                    meta.len()
+                ));
+                continue;
+            }
+            Err(e) => {
+                log_warn(&format!(
+                    "command=ingest_gitlab stat_failed path={rel} err={e}"
+                ));
+                continue;
+            }
+            _ => {}
+        }
+        // Separate I/O errors (hard) from non-UTF-8 (benign skip)
+        let bytes = match tokio::fs::read(&file).await {
+            Ok(b) => b,
+            Err(e) => {
+                log_warn(&format!(
+                    "command=ingest_gitlab read_failed path={rel} err={e}"
+                ));
+                continue;
+            }
+        };
+        let content = match String::from_utf8(bytes) {
+            Ok(t) => t,
+            Err(_) => {
+                log_warn(&format!("command=ingest_gitlab skip_non_utf8 path={rel}"));
+                continue;
+            }
         };
         let ext = Path::new(&rel)
             .extension()
@@ -123,7 +126,6 @@ pub(crate) async fn embed_files(
             .unwrap_or("")
             .to_ascii_lowercase();
         // Move content into spawn_blocking — avoids cloning large files.
-        // On JoinError (panic/cancellation) log a warning and skip the file.
         let chunks = match tokio::task::spawn_blocking(move || {
             chunk_code(&content, &ext).unwrap_or_else(|| chunk_text(&content))
         })
@@ -131,27 +133,26 @@ pub(crate) async fn embed_files(
         {
             Ok(chunks) => chunks,
             Err(e) => {
-                tracing::warn!(path = %rel, error = %e, "spawn_blocking panicked during code chunking; skipping file");
+                log_warn(&format!(
+                    "command=ingest_gitlab chunk_panicked path={rel} err={e}"
+                ));
                 vec![]
             }
         };
         if !chunks.is_empty() {
-            docs.push(PreparedDoc {
-                url: format!("{}/-/blob/{}/{}", target.web_url, branch, rel),
-                domain: target.host.clone(),
+            docs.push(PreparedDoc::ingest(
+                format!("{}/-/blob/{}/{}", target.web_url, branch, rel),
+                target.host.clone(),
                 chunks,
-                source_type: "gitlab".to_string(),
-                content_type: "text",
-                title: Some(rel.clone()),
-                extra: Some(gitlab_payload(
+                "gitlab",
+                Some(rel.clone()),
+                Some(gitlab_payload(
                     target,
                     project,
                     "file",
                     serde_json::json!({"path": rel, "branch": branch}),
                 )),
-                extractor_name: None,
-                structured: None,
-            });
+            ));
         }
         if (index + 1) % 25 == 0 || index + 1 == total {
             reporter

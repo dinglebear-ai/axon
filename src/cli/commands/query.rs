@@ -1,8 +1,8 @@
 use crate::cli::commands::resolve_input_text;
 use crate::core::config::Config;
+use crate::core::error::diagnostics_from_error;
 use crate::core::logging::log_info;
 use crate::core::ui::{accent, muted, primary, status_text};
-use crate::services::error::diagnostics_from_error;
 use crate::services::query as query_svc;
 use crate::services::types::Pagination;
 use std::error::Error;

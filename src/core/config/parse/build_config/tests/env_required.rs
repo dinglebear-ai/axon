@@ -104,11 +104,8 @@ fn into_config_reads_openai_compat_env_settings() {
             env::set_var("AXON_OPENAI_API_KEY", "local-key");
             env::set_var("AXON_OPENAI_MODEL", "gemma-4-e4b");
             let cfg = into_config_via_args(&["status"]).expect("status config");
-            let backend = crate::services::llm_backend::LlmBackendConfig::from_config(&cfg);
-            assert_eq!(
-                backend.kind,
-                crate::services::llm_backend::LlmBackendKind::OpenAiCompat
-            );
+            let backend = crate::core::llm::LlmBackendConfig::from_config(&cfg);
+            assert_eq!(backend.kind, crate::core::llm::LlmBackendKind::OpenAiCompat);
             assert_eq!(
                 backend.openai_base_url.as_deref(),
                 Some("http://127.0.0.1:8080/v1")

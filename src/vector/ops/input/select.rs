@@ -76,6 +76,29 @@ pub fn should_chunk_as_code(path: &str) -> bool {
     CODE_EXTENSIONS.contains(&ext.as_str())
 }
 
+/// Returns true when an embed input string is shaped like a filesystem path.
+///
+/// Used to distinguish "this path doesn't exist" (an error the caller must
+/// surface — embedding the path *string* as content silently corrupts the
+/// index) from genuine free-text embed input. Shared by the embed reader
+/// (`vector::ops::tei::prepare`) and the server-side input validator
+/// (`services::embed`).
+pub fn looks_path_like(input: &str) -> bool {
+    let input = input.trim();
+    let bytes = input.as_bytes();
+    let windows_drive = input.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\');
+
+    input.starts_with('/')
+        || input.starts_with("./")
+        || input.starts_with("../")
+        || input.starts_with("~/")
+        || input.starts_with("\\\\")
+        || windows_drive
+}
+
 #[cfg(test)]
 #[path = "select_tests.rs"]
 mod tests;

@@ -1,9 +1,7 @@
 use super::super::error::HttpError;
 use crate::core::config::Config;
-use crate::services::{
-    client_contract::{RestChatRequest, RestChatResponse},
-    llm_backend::{self, CompletionRequest, LlmModelPurpose},
-};
+use crate::core::llm::{self, CompletionRequest, LlmModelPurpose};
+use crate::services::client_contract::{RestChatRequest, RestChatResponse};
 use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
 use std::sync::Arc;
 
@@ -49,7 +47,7 @@ pub async fn v1_chat(
 
     let request = completion_request(&cfg, &req.message, false);
     let model = request.model.clone();
-    match llm_backend::complete_text(request).await {
+    match llm::complete_text(request).await {
         Ok(completion) => Json(RestChatResponse {
             message: req.message,
             answer: completion.text,

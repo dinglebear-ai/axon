@@ -55,6 +55,34 @@ impl RestClient {
         })
     }
 
+    /// Lightweight connectivity probe: GET `/healthz` (no auth, no Qdrant/TEI probes).
+    ///
+    /// Used for the connection-state dot. Returns `true` on any HTTP 2xx response.
+    pub(crate) fn health_check(&self) -> Result<bool, String> {
+        let url = format!("{}/healthz", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .map_err(|err| format!("connect to {url}: {err}"))?;
+        Ok(response.status().is_success())
+    }
+
+    /// Fetch raw bytes from an artifact path, e.g. `/v1/artifacts/screenshots/foo.png`.
+    /// Returns `None` on any error so callers can treat a missing image as optional.
+    pub(crate) fn fetch_bytes(&self, path: &str) -> Option<Vec<u8>> {
+        let url = format!("{}{}", self.base_url, path);
+        let mut builder = self.client.get(&url);
+        if let Some(token) = &self.token {
+            builder = builder.bearer_auth(token);
+        }
+        let response = builder.send().ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        response.bytes().ok().map(|b| b.to_vec())
+    }
+
     pub(crate) fn execute(&self, request: &RestRequest) -> Result<RestOutput, String> {
         let url = format!("{}{}", self.base_url, request.path);
         let mut builder = match request.method {
@@ -182,10 +210,10 @@ fn request_for_words(subcommand: &str, words: &[String]) -> Result<RestRequest, 
         "sources" => Ok(get("/v1/sources?limit=100", "GET /v1/sources")),
         "domains" => Ok(get("/v1/domains?limit=100", "GET /v1/domains")),
         "stats" => Ok(get("/v1/stats", "GET /v1/stats")),
-        "scrape" => {
-            let url = first_arg(&words, "url")?;
-            Ok(post("/v1/scrape", json!({ "url": url }), "POST /v1/scrape"))
-        }
+        "scrape" => first_arg(&words, "url")
+            .map(|u| post("/v1/scrape", json!({ "url": u }), "POST /v1/scrape")),
+        "screenshot" => first_arg(&words, "url")
+            .map(|u| post("/v1/screenshot", json!({ "url": u }), "POST /v1/screenshot")),
         "crawl" => {
             let urls = require_args(&words, "urls")?;
             Ok(post("/v1/crawl", json!({ "urls": urls }), "POST /v1/crawl"))

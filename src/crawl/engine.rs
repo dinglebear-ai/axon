@@ -340,6 +340,7 @@ pub async fn run_crawl_once(
             &etag_seeded_urls,
             &urls,
             &etag_visited,
+            &etag_previous_sidecar,
         )
         .await;
         summary.reused_pages += reused as u32;

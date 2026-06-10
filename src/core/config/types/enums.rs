@@ -43,6 +43,7 @@ pub enum CommandKind {
     Migrate,
     Config,
     Sync,
+    Palette,
 }
 
 impl CommandKind {
@@ -88,6 +89,7 @@ impl CommandKind {
             Self::Migrate => "migrate",
             Self::Config => "config",
             Self::Sync => "sync",
+            Self::Palette => "palette",
         }
     }
 }

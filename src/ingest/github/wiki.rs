@@ -112,17 +112,14 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
 
         let chunks = chunk_markdown(&content);
         if !chunks.is_empty() {
-            docs.push(PreparedDoc {
-                url: wiki_url,
-                domain: "github.com".to_string(),
+            docs.push(PreparedDoc::ingest(
+                wiki_url,
+                "github.com".to_string(),
                 chunks,
-                source_type: "github".to_string(),
-                content_type: "text",
-                title: Some(title),
-                extra: Some(extra),
-                extractor_name: None,
-                structured: None,
-            });
+                "github",
+                Some(title),
+                Some(extra),
+            ));
         }
     }
 

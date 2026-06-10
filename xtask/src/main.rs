@@ -26,6 +26,8 @@ enum Command {
     CheckBrokenSymlinks,
     /// Scan staged files for secrets and credentials.
     CheckSecrets,
+    /// Verify Cargo.toml, README.md, CHANGELOG.md, and plugin.json carry the same version.
+    CheckVersionSync,
 }
 
 fn main() -> Result<()> {
@@ -40,6 +42,7 @@ fn main() -> Result<()> {
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
         Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
         Command::CheckSecrets => checks::secrets::check(&root),
+        Command::CheckVersionSync => checks::version_sync::check(&root),
     }
 }
 

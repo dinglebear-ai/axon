@@ -68,12 +68,15 @@ pub struct DocCacheStats {
 }
 
 impl DocCacheStats {
+    #[must_use]
     pub fn hits(&self) -> u64 {
         self.hits.load(Ordering::Relaxed)
     }
+    #[must_use]
     pub fn misses(&self) -> u64 {
         self.misses.load(Ordering::Relaxed)
     }
+    #[must_use]
     pub fn evicted(&self) -> u64 {
         self.evicted.load(Ordering::Relaxed)
     }
@@ -118,6 +121,7 @@ impl Default for DocCacheConfig {
 
 impl DocCacheConfig {
     /// Build the document cache config from the parsed runtime config.
+    #[must_use]
     pub fn from_ask_config(cfg: &crate::core::config::Config) -> Self {
         Self {
             max_capacity_bytes: cfg.ask_cache_max_capacity_bytes,
@@ -126,6 +130,7 @@ impl DocCacheConfig {
     }
 
     /// TTL after applying the hard security cap.
+    #[must_use]
     pub fn effective_ttl_secs(&self) -> u64 {
         self.ttl_secs.min(CACHE_TTL_HARD_CAP_SECS)
     }
@@ -162,11 +167,13 @@ impl DocCache {
     }
 
     /// Returns the effective cache configuration.
+    #[must_use]
     pub fn config(&self) -> &DocCacheConfig {
         &self.config
     }
 
     /// Returns the shared stats handle for diagnostics.
+    #[must_use]
     pub fn stats(&self) -> Arc<DocCacheStats> {
         Arc::clone(&self.stats)
     }
@@ -229,6 +236,7 @@ static CACHE_REGISTRY: LazyLock<Mutex<HashMap<DocCacheConfig, Arc<DocCache>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Returns the process-global cache instance matching the supplied config.
+#[must_use]
 pub fn doc_cache_for_config(config: DocCacheConfig) -> Arc<DocCache> {
     let mut registry = CACHE_REGISTRY
         .lock()

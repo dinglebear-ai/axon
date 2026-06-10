@@ -95,17 +95,14 @@ pub async fn ingest_issues(
             let chunks = chunk_text(&content);
             if !chunks.is_empty() {
                 let domain = "github.com".to_string();
-                docs.push(PreparedDoc {
+                docs.push(PreparedDoc::ingest(
                     url,
                     domain,
                     chunks,
-                    source_type: "github".to_string(),
-                    content_type: "text",
-                    title: Some(title),
-                    extra: Some(extra),
-                    extractor_name: None,
-                    structured: None,
-                });
+                    "github",
+                    Some(title),
+                    Some(extra),
+                ));
             }
         }
 
@@ -209,17 +206,14 @@ pub async fn ingest_pull_requests(
             let chunks = chunk_text(&content);
             if !chunks.is_empty() {
                 let domain = "github.com".to_string();
-                docs.push(PreparedDoc {
+                docs.push(PreparedDoc::ingest(
                     url,
                     domain,
                     chunks,
-                    source_type: "github".to_string(),
-                    content_type: "text",
-                    title: Some(embed_title),
-                    extra: Some(extra),
-                    extractor_name: None,
-                    structured: None,
-                });
+                    "github",
+                    Some(embed_title),
+                    Some(extra),
+                ));
             }
         }
 

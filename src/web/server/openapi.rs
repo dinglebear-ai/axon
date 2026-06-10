@@ -66,7 +66,8 @@ use super::{handlers, openapi_jobs};
         handlers::admin::dedupe,
         handlers::admin::list_watch,
         handlers::admin::create_watch,
-        handlers::admin::run_watch
+        handlers::admin::run_watch,
+        handlers::artifacts::serve_artifact
     ),
     components(schemas(
         crate::services::client_contract::RestAskRequest,

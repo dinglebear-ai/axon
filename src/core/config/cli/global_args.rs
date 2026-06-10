@@ -44,7 +44,7 @@ pub(in crate::core::config) struct GlobalArgs {
 
     /// Enable conditional re-crawl (ETag / If-Modified-Since). Re-crawls send
     /// validators and 304-unchanged pages are reused from the previous run
-    /// instead of being re-fetched. Independent of `--cache`.
+    /// instead of being re-fetched. Requires `--cache true` (the default).
     #[arg(global = true, long, action = ArgAction::SetTrue)]
     pub(in crate::core::config) etag_conditional: bool,
 

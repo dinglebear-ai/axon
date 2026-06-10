@@ -38,6 +38,60 @@ pub async fn claim_next_pending_for_attempt(
     .await
 }
 
+/// Fetch the oldest pending job row that this worker may claim.
+///
+/// Embed jobs apply filesystem-namespace affinity: a job stamped with a
+/// `fs_namespace` value can only be claimed by a worker whose
+/// `AXON_FS_NAMESPACE` env var matches. Jobs with NULL namespace (URL /
+/// free-text inputs, plus all pre-migration rows) are claimable by any worker.
+///
+/// Ingest jobs serialize per `(source_type, target)` to prevent concurrent
+/// runs on the same repository from racing each other.
+async fn fetch_next_pending_row(
+    conn: &mut sqlx::SqliteConnection,
+    kind: JobKind,
+    table: &str,
+) -> Result<Option<(String, Option<String>, i64)>, sqlx::Error> {
+    match kind {
+        JobKind::Ingest => {
+            let sql = format!(
+                "SELECT id, error_text, attempt_count FROM {table} AS p \
+                 WHERE p.status='pending' \
+                 AND NOT EXISTS (SELECT 1 FROM {table} AS r WHERE r.status='running' \
+                     AND r.source_type = p.source_type AND r.target = p.target) \
+                 ORDER BY p.created_at LIMIT 1"
+            );
+            sqlx::query_as(&sql).fetch_optional(conn).await
+        }
+        JobKind::Embed => match std::env::var("AXON_FS_NAMESPACE").ok() {
+            Some(ns) => {
+                let sql = format!(
+                    "SELECT id, error_text, attempt_count FROM {table} \
+                         WHERE status='pending' \
+                         AND (fs_namespace IS NULL OR fs_namespace = ?) \
+                         ORDER BY created_at LIMIT 1"
+                );
+                sqlx::query_as(&sql).bind(ns).fetch_optional(conn).await
+            }
+            None => {
+                let sql = format!(
+                    "SELECT id, error_text, attempt_count FROM {table} \
+                         WHERE status='pending' AND fs_namespace IS NULL \
+                         ORDER BY created_at LIMIT 1"
+                );
+                sqlx::query_as(&sql).fetch_optional(conn).await
+            }
+        },
+        _ => {
+            let sql = format!(
+                "SELECT id, error_text, attempt_count FROM {table} \
+                 WHERE status='pending' ORDER BY created_at LIMIT 1"
+            );
+            sqlx::query_as(&sql).fetch_optional(conn).await
+        }
+    }
+}
+
 async fn claim_next_pending_for_attempt_inner(
     pool: &SqlitePool,
     kind: JobKind,
@@ -51,19 +105,27 @@ async fn claim_next_pending_for_attempt_inner(
     // concurrent workers.
     sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
 
-    let row: Option<(String, Option<String>, i64)> = match sqlx::query_as(&format!(
-        "SELECT id, error_text, attempt_count FROM {} WHERE status='pending' ORDER BY created_at LIMIT 1",
-        table
-    ))
-    .fetch_optional(&mut *conn)
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-            return Err(e);
-        }
-    };
+    // Ingest claims serialize per (source_type, target): two jobs for the same
+    // repo running on parallel lanes race — the first job's repo-scoped stale
+    // cleanup can delete points the second job just upserted. A pending job
+    // whose target has a running sibling stays queued (later targets are
+    // claimed past it) until the sibling reaches a terminal state; the
+    // watchdog reclaims crashed `running` rows so a dead job cannot block its
+    // target forever.
+    //
+    // Embed claims apply fs_namespace affinity (axon_rust-p2oc): local-path
+    // embed jobs stamped with a namespace are only claimable by workers that
+    // share that namespace (same AXON_FS_NAMESPACE value). Jobs with NULL
+    // namespace (URL/free-text inputs, pre-migration rows) are claimable by
+    // any worker regardless of its namespace setting.
+    let row: Option<(String, Option<String>, i64)> =
+        match fetch_next_pending_row(&mut conn, kind, table).await {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(e);
+            }
+        };
 
     match row {
         None => {

@@ -14,6 +14,9 @@ use crate::services::types::IngestResult;
 
 use super::JobResult;
 
+mod merge;
+use merge::*;
+
 pub async fn run_ingest_job(
     pool: &SqlitePool,
     cfg: &Config,
@@ -148,15 +151,59 @@ async fn execute_ingest_source(
         IngestSource::Gitlab {
             target,
             include_source,
-        } => run_gitlab_ingest(cfg, target, include_source, progress_tx, cancel_token).await,
+        } => {
+            run_git_provider_ingest(
+                cfg,
+                target,
+                include_source,
+                progress_tx,
+                cancel_token,
+                |c, t, tx| async move {
+                    crate::services::ingest::ingest_gitlab_with_progress(&c, &t, None, Some(tx))
+                        .await
+                },
+            )
+            .await
+        }
         IngestSource::Gitea {
             target,
             include_source,
-        } => run_gitea_ingest(cfg, target, include_source, progress_tx, cancel_token).await,
+        } => {
+            run_git_provider_ingest(
+                cfg,
+                target,
+                include_source,
+                progress_tx,
+                cancel_token,
+                |c, t, tx| async move {
+                    crate::services::ingest::ingest_gitea_with_progress(&c, &t, None, Some(tx))
+                        .await
+                },
+            )
+            .await
+        }
         IngestSource::GenericGit {
             target,
             include_source,
-        } => run_generic_git_ingest(cfg, target, include_source, progress_tx, cancel_token).await,
+        } => {
+            run_git_provider_ingest(
+                cfg,
+                target,
+                include_source,
+                progress_tx,
+                cancel_token,
+                |c, t, tx| async move {
+                    crate::services::ingest::ingest_generic_git_with_progress(
+                        &c,
+                        &t,
+                        None,
+                        Some(tx),
+                    )
+                    .await
+                },
+            )
+            .await
+        }
         IngestSource::Reddit { target } => {
             let options = cancel_token
                 .map(crate::ingest::reddit::RedditIngestOptions::with_cancel_token)
@@ -228,57 +275,26 @@ async fn run_github_ingest(
     cancelable(fut, cancel_token.as_ref()).await
 }
 
-async fn run_gitlab_ingest(
+/// Shared runner for GitLab, Gitea, and generic-git providers (A-M5).
+///
+/// All three follow an identical pattern: clone config, set `github_include_source`,
+/// call the provider service function, wrap with cancellation. The only variation
+/// is the service function, which the caller supplies as a closure.
+async fn run_git_provider_ingest<F, Fut>(
     cfg: &Config,
     target: String,
     include_source: bool,
     progress_tx: mpsc::Sender<serde_json::Value>,
     cancel_token: Option<CancellationToken>,
-) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
-    let mut gitlab_cfg = cfg.clone();
-    gitlab_cfg.github_include_source = include_source;
-    let fut = crate::services::ingest::ingest_gitlab_with_progress(
-        &gitlab_cfg,
-        &target,
-        None,
-        Some(progress_tx),
-    );
-    cancelable(fut, cancel_token.as_ref()).await
-}
-
-async fn run_gitea_ingest(
-    cfg: &Config,
-    target: String,
-    include_source: bool,
-    progress_tx: mpsc::Sender<serde_json::Value>,
-    cancel_token: Option<CancellationToken>,
-) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
-    let mut gitea_cfg = cfg.clone();
-    gitea_cfg.github_include_source = include_source;
-    let fut = crate::services::ingest::ingest_gitea_with_progress(
-        &gitea_cfg,
-        &target,
-        None,
-        Some(progress_tx),
-    );
-    cancelable(fut, cancel_token.as_ref()).await
-}
-
-async fn run_generic_git_ingest(
-    cfg: &Config,
-    target: String,
-    include_source: bool,
-    progress_tx: mpsc::Sender<serde_json::Value>,
-    cancel_token: Option<CancellationToken>,
-) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
-    let mut git_cfg = cfg.clone();
-    git_cfg.github_include_source = include_source;
-    let fut = crate::services::ingest::ingest_generic_git_with_progress(
-        &git_cfg,
-        &target,
-        None,
-        Some(progress_tx),
-    );
+    make_fut: F,
+) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>>
+where
+    F: FnOnce(Config, String, mpsc::Sender<serde_json::Value>) -> Fut,
+    Fut: Future<Output = Result<IngestResult, Box<dyn std::error::Error>>>,
+{
+    let mut provider_cfg = cfg.clone();
+    provider_cfg.github_include_source = include_source;
+    let fut = make_fut(provider_cfg, target, progress_tx);
     cancelable(fut, cancel_token.as_ref()).await
 }
 
@@ -325,156 +341,6 @@ fn spawn_ingest_progress_persister(
         }
     });
     (tx, task)
-}
-
-fn merge_progress(
-    current: &mut serde_json::Value,
-    progress: serde_json::Value,
-    job_id: uuid::Uuid,
-    source_type: &str,
-    target: &str,
-) {
-    if let serde_json::Value::Object(progress) = progress
-        && let Some(current) = current.as_object_mut()
-    {
-        for (key, value) in progress {
-            current.insert(key, value);
-        }
-        return;
-    }
-
-    let warning = progress_warning(job_id, source_type, "progress update was not a JSON object");
-    tracing::warn!(
-        job_id = %job_id,
-        source_type,
-        target,
-        "ignoring malformed ingest progress update: progress update was not a JSON object"
-    );
-    if let Some(current) = current.as_object_mut() {
-        current.insert(
-            "progress_warning".to_string(),
-            serde_json::Value::String(warning),
-        );
-    } else {
-        let mut replacement = serde_json::Map::new();
-        replacement.insert(
-            "progress_warning".to_string(),
-            serde_json::Value::String(warning),
-        );
-        *current = serde_json::Value::Object(replacement);
-    }
-}
-
-fn current_progress_from_result_json(
-    job_id: uuid::Uuid,
-    source_type: &str,
-    target: &str,
-    result_json: Option<String>,
-) -> serde_json::Value {
-    let Some(result_json) = result_json else {
-        return serde_json::Value::Object(serde_json::Map::new());
-    };
-
-    match serde_json::from_str::<serde_json::Value>(&result_json) {
-        Ok(value @ serde_json::Value::Object(_)) => value,
-        Ok(value) => {
-            let detail = format!(
-                "stored result_json was {}, not a JSON object",
-                json_type(&value)
-            );
-            tracing::warn!(
-                job_id = %job_id,
-                source_type,
-                target,
-                value_type = json_type(&value),
-                "ignoring malformed ingest result_json: stored result_json was not a JSON object"
-            );
-            warning_object(
-                "result_json_warning",
-                result_json_warning(job_id, source_type, &detail),
-            )
-        }
-        Err(e) => {
-            let detail = format!("stored result_json was invalid JSON: {e}");
-            tracing::warn!(
-                job_id = %job_id,
-                source_type,
-                target,
-                error = %e,
-                "ignoring malformed ingest result_json: stored result_json was invalid JSON"
-            );
-            warning_object(
-                "result_json_warning",
-                result_json_warning(job_id, source_type, &detail),
-            )
-        }
-    }
-}
-
-fn warning_object(field: &str, warning: String) -> serde_json::Value {
-    let mut object = serde_json::Map::new();
-    object.insert(field.to_string(), serde_json::Value::String(warning));
-    serde_json::Value::Object(object)
-}
-
-fn progress_warning(job_id: uuid::Uuid, source_type: &str, detail: &str) -> String {
-    format!("job_id={job_id} source={source_type}: {detail}")
-}
-
-fn result_json_warning(job_id: uuid::Uuid, source_type: &str, detail: &str) -> String {
-    format!("job_id={job_id} source={source_type}: {detail}")
-}
-
-fn json_type(value: &serde_json::Value) -> &'static str {
-    match value {
-        serde_json::Value::Null => "null",
-        serde_json::Value::Bool(_) => "boolean",
-        serde_json::Value::Number(_) => "number",
-        serde_json::Value::String(_) => "string",
-        serde_json::Value::Array(_) => "array",
-        serde_json::Value::Object(_) => "object",
-    }
-}
-
-fn merge_final_payload(
-    current_progress: serde_json::Value,
-    final_payload: serde_json::Value,
-) -> serde_json::Value {
-    let mut merged = current_progress
-        .as_object()
-        .cloned()
-        .unwrap_or_else(serde_json::Map::new);
-    let progress_warning = merged.get("progress_warning").cloned();
-    let result_json_warning = merged.get("result_json_warning").cloned();
-
-    if let serde_json::Value::Object(final_object) = final_payload {
-        for (key, value) in final_object {
-            merged.insert(key, value);
-        }
-    }
-    if let Some(warning) = progress_warning {
-        merged.insert("progress_warning".to_string(), warning);
-    }
-    if let Some(warning) = result_json_warning {
-        merged.insert("result_json_warning".to_string(), warning);
-    }
-
-    if !merged.contains_key("chunks_embedded")
-        && let Some(chunks) = merged.get("chunks").cloned()
-    {
-        merged.insert("chunks_embedded".to_string(), chunks);
-    }
-    if !merged.contains_key("chunks")
-        && let Some(chunks) = merged.get("chunks_embedded").cloned()
-    {
-        merged.insert("chunks".to_string(), chunks);
-    }
-    merged.insert(
-        "phase".to_string(),
-        serde_json::Value::String("completed".to_string()),
-    );
-
-    serde_json::Value::Object(merged)
 }
 
 #[cfg(test)]

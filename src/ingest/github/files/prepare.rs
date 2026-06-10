@@ -11,7 +11,7 @@ use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
 use crate::vector::ops::input::{
-    CHUNK_OVERLAP, chunk_text,
+    chunk_text_with_offsets,
     code::{
         CodeChunk, chunk_code_chunks, code_symbol_extraction_status, supports_tree_sitter_chunking,
     },
@@ -24,23 +24,6 @@ const MAX_FILE_BYTES: u64 = MAX_INGEST_FILE_BYTES;
 
 pub(super) fn file_extension(path: &str) -> String {
     path_extension(path).to_ascii_lowercase()
-}
-
-/// Advance the chunk search cursor past the current chunk, walking back one
-/// character at a time so the next search begins inside the overlap window.
-pub fn next_search_start(text: &str, byte_offset: usize, chunk_len: usize) -> usize {
-    let chunk_end = (byte_offset + chunk_len).min(text.len());
-    let mut pos = chunk_end;
-    for _ in 0..CHUNK_OVERLAP {
-        if pos == 0 {
-            break;
-        }
-        pos -= 1;
-        while pos > 0 && !text.is_char_boundary(pos) {
-            pos -= 1;
-        }
-    }
-    pos
 }
 
 pub(super) struct FileEmbedCtx {
@@ -88,7 +71,16 @@ pub(super) async fn collect_indexable_files(
     Ok(files)
 }
 
-/// Read a single file from the cloned repo and build one `PreparedDoc` per chunk.
+/// Read a single file from the cloned repo and build **one** `PreparedDoc` for the
+/// entire file (all chunks as `chunks: Vec<String>`).
+///
+/// P-H1: Previously this emitted one `PreparedDoc` per chunk, which caused:
+/// - TEI to receive a single-chunk batch per doc (batching never engaged).
+/// - A guaranteed no-op stale-tail delete per chunk (filter `chunk_index >= 1`
+///   on a 1-chunk doc is always empty).
+///
+/// Now each file produces exactly one `PreparedDoc`; TEI can batch all chunks
+/// together and the stale-tail delete fires once per file with the true count.
 pub(super) async fn read_file_embed_docs(
     ctx: &FileEmbedCtx,
     path: &str,
@@ -165,22 +157,66 @@ pub(super) async fn read_file_embed_docs(
         ));
     }
 
-    let attrs = FileDocAttrs {
-        base_url,
-        path,
-        ext: &ext,
-        lang: &lang,
-        ftype: &ftype,
-        is_test,
-        file_size,
-        symbol_status,
-    };
-    let docs = chunks
-        .into_iter()
-        .map(|chunk| prepared_doc_for_chunk(ctx, &attrs, chunk))
+    // Use the overall file line range (first chunk start → last chunk end).
+    let file_line_start = chunks.first().map(|c| c.start_line);
+    let file_line_end = chunks.last().map(|c| c.end_line);
+    let chunk_method = chunking_method(&ext, chunks.first().expect("non-empty"));
+
+    // Per-chunk payload overrides (P-H1): the file's chunks share one PreparedDoc
+    // for TEI batching, but each chunk keeps its own symbol_* and code_line_*
+    // metadata. The embed pipeline merges these over the file-level `extra`, so
+    // the ranking symbol-boost still fires per chunk despite the per-file grouping.
+    let chunk_extra: Vec<serde_json::Value> = chunks
+        .iter()
+        .map(|c| {
+            let mut obj = serde_json::Map::new();
+            obj.insert("code_line_start".into(), c.start_line.into());
+            obj.insert("code_line_end".into(), c.end_line.into());
+            if let Some(name) = c.symbol_name() {
+                obj.insert("symbol_name".into(), name.into());
+            }
+            if let Some(kind) = c.symbol_kind_str() {
+                obj.insert("symbol_kind".into(), kind.into());
+            }
+            serde_json::Value::Object(obj)
+        })
         .collect();
 
-    Ok(docs)
+    let chunk_texts: Vec<String> = chunks.into_iter().map(|c| c.text).collect();
+
+    let extra = build_github_payload(&GitHubPayloadParams {
+        repo: ctx.name.clone(),
+        owner: ctx.owner.clone(),
+        content_kind: ContentKind::File,
+        branch: Some(ctx.default_branch.clone()),
+        default_branch: Some(ctx.default_branch.clone()),
+        repo_description: ctx.repo_description.clone(),
+        pushed_at: ctx.pushed_at.clone(),
+        is_private: ctx.is_private,
+        file_path: Some(path.to_string()),
+        file_language: Some(lang.clone()),
+        file_type: Some(ftype.clone()),
+        is_test: Some(is_test),
+        file_size_bytes: Some(file_size),
+        line_start: file_line_start,
+        line_end: file_line_end,
+        chunking_method: Some(chunk_method.to_string()),
+        symbol_name: None, // file-level doc; per-chunk symbols not tracked at this level
+        symbol_kind: None,
+        symbol_extraction_status: Some(symbol_status.to_string()),
+        ..Default::default()
+    });
+
+    let mut doc = PreparedDoc::ingest(
+        base_url,
+        "github.com".to_string(),
+        chunk_texts,
+        "github",
+        Some(path.to_string()),
+        Some(extra),
+    );
+    doc.chunk_extra = chunk_extra;
+    Ok(vec![doc])
 }
 
 fn code_or_text_chunks(text: &str, ext: &str) -> Vec<CodeChunk> {
@@ -194,24 +230,22 @@ fn code_or_text_chunks(text: &str, ext: &str) -> Vec<CodeChunk> {
 }
 
 fn text_chunks(text: &str) -> Vec<CodeChunk> {
-    chunk_text(text)
+    // The chunker reports each chunk's true byte offset — never re-discover the
+    // position by substring search, which matches the first duplicate
+    // occurrence and mislabels line ranges on files with repeated content.
+    chunk_text_with_offsets(text)
         .into_iter()
-        .scan(0usize, |search_start, chunk| {
-            let byte_offset = text[*search_start..]
-                .find(chunk.as_str())
-                .map(|pos| *search_start + pos)
-                .unwrap_or(*search_start);
+        .map(|(byte_offset, chunk)| {
             let chunk_len = chunk.len();
-            *search_start = next_search_start(text, byte_offset, chunk_len);
             let line_start = line_for_byte(text, byte_offset);
             // Inclusive end so a chunk ending on a newline maps to its own last
             // line, not the next one.
             let line_end = if chunk_len > 0 {
                 line_for_byte(text, byte_offset + chunk_len - 1)
             } else {
-                line_for_byte(text, byte_offset)
+                line_start
             };
-            Some(CodeChunk {
+            CodeChunk {
                 text: chunk,
                 byte_start: byte_offset,
                 byte_end: byte_offset + chunk_len,
@@ -220,63 +254,9 @@ fn text_chunks(text: &str) -> Vec<CodeChunk> {
                 declaration_start_line: line_start,
                 declaration_end_line: line_end,
                 symbol: None,
-            })
+            }
         })
         .collect()
-}
-
-struct FileDocAttrs<'a> {
-    base_url: String,
-    path: &'a str,
-    ext: &'a str,
-    lang: &'a str,
-    ftype: &'a str,
-    is_test: bool,
-    file_size: usize,
-    symbol_status: &'static str,
-}
-
-fn prepared_doc_for_chunk(
-    ctx: &FileEmbedCtx,
-    attrs: &FileDocAttrs<'_>,
-    chunk: CodeChunk,
-) -> PreparedDoc {
-    let line_start = chunk.start_line;
-    let line_end = chunk.end_line;
-    let extra = build_github_payload(&GitHubPayloadParams {
-        repo: ctx.name.clone(),
-        owner: ctx.owner.clone(),
-        content_kind: ContentKind::File,
-        branch: Some(ctx.default_branch.clone()),
-        default_branch: Some(ctx.default_branch.clone()),
-        repo_description: ctx.repo_description.clone(),
-        pushed_at: ctx.pushed_at.clone(),
-        is_private: ctx.is_private,
-        file_path: Some(attrs.path.to_string()),
-        file_language: Some(attrs.lang.to_string()),
-        file_type: Some(attrs.ftype.to_string()),
-        is_test: Some(attrs.is_test),
-        file_size_bytes: Some(attrs.file_size),
-        line_start: Some(line_start),
-        line_end: Some(line_end),
-        chunking_method: Some(chunking_method(attrs.ext, &chunk).to_string()),
-        symbol_name: chunk.symbol_name().map(str::to_string),
-        symbol_kind: chunk.symbol_kind_str().map(str::to_string),
-        symbol_extraction_status: Some(attrs.symbol_status.to_string()),
-        ..Default::default()
-    });
-
-    PreparedDoc {
-        url: format!("{}#L{line_start}-L{line_end}", attrs.base_url),
-        domain: "github.com".to_string(),
-        chunks: vec![chunk.text],
-        source_type: "github".to_string(),
-        content_type: "text",
-        title: Some(attrs.path.to_string()),
-        extra: Some(extra),
-        extractor_name: None,
-        structured: None,
-    }
 }
 
 fn chunking_method(ext: &str, chunk: &CodeChunk) -> &'static str {

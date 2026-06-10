@@ -12,23 +12,17 @@ claude plugin install <path>
 
 The plugin manifest declares a minimal `userConfig` block. Claude Code prompts for the shared Axon server URL, bearer token, optional Tavily/GitHub/Reddit credentials, and optional OAuth settings. Qdrant, TEI, Chrome, Qwen3 embedding, and LLM backend settings are configured by the shared Docker setup path, not by plugin prompts.
 
-The SessionStart hook invokes `${CLAUDE_PLUGIN_ROOT}/bin/axon setup plugin-hook` directly. It maps the `CLAUDE_PLUGIN_OPTION_*` plugin options to `AXON_*` env vars, refreshes the user's `~/.local/bin/axon` copy, and then **probes the stack — it does not deploy**:
+There is no SessionStart hook. The plugin has no session-start side-effects — it does not probe the stack, install binaries, or modify `~/.axon/` on startup.
 
-1. Map plugin options (server URL, bearer token, Tavily/GitHub/Reddit credentials, OAuth settings) to `AXON_*` env vars.
-2. Probe `/readyz` once (3s) at the configured bind (`AXON_MCP_HTTP_HOST`/`AXON_MCP_HTTP_PORT` from `~/.axon/.env`, default `127.0.0.1:8001`; bind-all hosts are probed over loopback). Because `/readyz` asserts qdrant + tei readiness, a 200 means the whole stack is up.
-   - **Up** → exit `0` silently (no stdout in human mode; `--json` prints `{"stack":"already_healthy",...}`).
-   - **Down** → print one line, `axon stack not reachable on /readyz — run /axon-deploy to start it`, and exit `0` (non-blocking).
-3. Existing `~/.axon/.env` and `~/.axon/config.toml` are never modified by the hook.
+To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
 
-**The hook never deploys.** Provisioning is the `/axon-deploy` slash command (or `axon setup` / `axon compose up`). This keeps session start quiet on running hosts and out of the deploy business entirely — a missing prerequisite or a down stack produces a one-line nudge, never a `compose pull`/`up`.
-
-No systemd unit is created, and the plugin-cache binary is not symlinked into `~/.local/bin`. Docker Compose is the only production deployment target. The `.mcp.json` connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
+No systemd unit is created. Docker Compose is the only production deployment target. The `.mcp.json` connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
 
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
-| `/axon-deploy [up\|restart\|rebuild]` | Explicit on-demand deploy/restart/rebuild of the stack (`axon compose …` + `axon doctor`). This is how you provision — the SessionStart hook is probe-only and never deploys. |
+| `/axon-deploy [up\|restart\|rebuild]` | On-demand deploy/restart/rebuild of the stack (`axon compose …` + `axon doctor`). This is how you provision the stack. |
 
 `~/.axon` is the canonical appdata root for plugin deployments too. Keep `~/.axon/.env`, `~/.axon/config.toml`, jobs, artifacts, output, logs, and service data there.
 

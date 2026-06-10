@@ -5,12 +5,8 @@ argument-hint: [up|restart|rebuild]
 
 # Deploy Axon
 
-Explicitly bring up the axon stack. Use this when the SessionStart hook reports
-the stack is down, or after editing `~/.axon/.env` / `~/.axon/config.toml`.
-
-The session-start hook only auto-deploys when `/readyz` is unreachable; it stays
-silent when the stack is already healthy. This command is the manual escape hatch
-for an on-demand deploy, restart, or rebuild.
+Bring up the axon stack on demand. Use this when the stack is not running, or
+after editing `~/.axon/.env` / `~/.axon/config.toml`.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT:-plugins/axon}/bin/axon" compose ${ARGUMENTS:-up}

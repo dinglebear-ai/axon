@@ -20,16 +20,10 @@ pub(crate) fn synthesis_prompt_for_openai_compat() -> String {
     strip_yaml_frontmatter(SKILL_MD)
 }
 
-pub(crate) fn synthesis_prompt_for_backend(
-    backend: crate::services::llm_backend::LlmBackendKind,
-) -> String {
+pub(crate) fn synthesis_prompt_for_backend(backend: crate::core::llm::LlmBackendKind) -> String {
     match backend {
-        crate::services::llm_backend::LlmBackendKind::GeminiHeadless => {
-            synthesis_prompt_for_gemini()
-        }
-        crate::services::llm_backend::LlmBackendKind::OpenAiCompat => {
-            synthesis_prompt_for_openai_compat()
-        }
+        crate::core::llm::LlmBackendKind::GeminiHeadless => synthesis_prompt_for_gemini(),
+        crate::core::llm::LlmBackendKind::OpenAiCompat => synthesis_prompt_for_openai_compat(),
     }
 }
 

@@ -1,4 +1,4 @@
-use super::prepare_embed_docs;
+use super::{prepare_embed_docs, read_inputs, read_inputs_with_max_bytes};
 use crate::core::config::Config;
 use tempfile::TempDir;
 
@@ -220,6 +220,34 @@ async fn dir_embed_skips_symlinks() {
     assert!(!urls.iter().any(|u| u.ends_with("link.md")), "{urls:?}");
 }
 
+/// POSIX-style symlink policy: a symlink named explicitly as the embed target
+/// IS followed (like `du`/`find -H` follow command-line symlinks), while
+/// symlinks encountered during traversal are skipped (covered above). Guards
+/// the intent so the root-follow isn't "fixed" into a skip — or vice versa —
+/// without revisiting the policy.
+#[tokio::test]
+#[cfg(unix)]
+async fn dir_embed_follows_explicit_root_symlink() {
+    let cfg = Config::default_minimal();
+    let temp_dir = TempDir::new().expect("tempdir");
+    let real_root = temp_dir.path().join("real");
+    tokio::fs::create_dir_all(&real_root)
+        .await
+        .expect("real dir");
+    tokio::fs::write(real_root.join("doc.md"), "# Doc\n\nlinked-root content")
+        .await
+        .expect("write doc.md");
+    let link_root = temp_dir.path().join("link");
+    std::os::unix::fs::symlink(&real_root, &link_root).expect("root symlink");
+
+    let prepared = prepare_embed_docs(&cfg, &link_root.to_string_lossy(), &[], None)
+        .await
+        .expect("prepare docs");
+
+    assert_eq!(prepared.len(), 1, "explicit root symlink must be followed");
+    assert!(prepared[0].url.ends_with("doc.md"));
+}
+
 /// An empty/whitespace-only code file chunks to zero chunks and is skipped — it
 /// must not produce a zero-chunk PreparedDoc.
 #[tokio::test]
@@ -240,6 +268,58 @@ async fn dir_embed_skips_empty_code_file() {
 
     assert_eq!(prepared.len(), 1, "empty code file should be skipped");
     assert!(prepared[0].url.ends_with("ok.md"));
+}
+
+/// A path-shaped input that doesn't resolve must be a hard error — never
+/// embedded as free text. Guards the container-claims-host-path failure where
+/// `/home/<user>/docs` was "successfully" embedded as a one-chunk document by
+/// a worker that couldn't see the path.
+#[tokio::test]
+async fn missing_path_like_input_errors_instead_of_embedding_the_string() {
+    let err = read_inputs("/definitely/not/a/real/path/docs")
+        .await
+        .expect_err("missing path-like input must error");
+    assert!(
+        err.to_string().contains("does not exist or is not visible"),
+        "{err}"
+    );
+}
+
+/// Free-text input (not path-shaped) still embeds as a text document.
+#[tokio::test]
+async fn free_text_input_still_embeds_as_text() {
+    let records = read_inputs("just some words to embed")
+        .await
+        .expect("free text embeds");
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].1, "just some words to embed");
+}
+
+/// Directory walks skip oversized files with a warning; an explicitly named
+/// oversized file is a hard error so the user learns the cap.
+#[tokio::test]
+async fn oversized_files_are_skipped_in_dirs_and_rejected_when_explicit() {
+    let temp_dir = TempDir::new().expect("tempdir");
+    let root = temp_dir.path();
+    tokio::fs::write(root.join("big.md"), "x".repeat(64))
+        .await
+        .expect("write big.md");
+    tokio::fs::write(root.join("ok.md"), "# Ok\n\ncontent")
+        .await
+        .expect("write ok.md");
+
+    // Dir walk with a 32-byte cap: big.md skipped, ok.md read.
+    let records = read_inputs_with_max_bytes(&root.to_string_lossy(), 32)
+        .await
+        .expect("dir embed survives oversized file");
+    assert_eq!(records.len(), 1, "oversized file must be skipped");
+    assert!(records[0].0.ends_with("ok.md"));
+
+    // Explicit single oversized file: hard error naming the cap.
+    let err = read_inputs_with_max_bytes(&root.join("big.md").to_string_lossy(), 32)
+        .await
+        .expect_err("explicit oversized file must error");
+    assert!(err.to_string().contains("local file cap"), "{err}");
 }
 
 /// Crawl-output reuse: a manifest entry whose URL carries a code extension must

@@ -2817,3 +2817,51 @@ container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Watch scheduler lease TTL in seconds (default 300, min 1); non-secret tuning knob. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_FS_NAMESPACE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "compose-env-file", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Embed-job claim affinity namespace; set per-deployment (compose) so workers only claim jobs for their namespace. Deployment placement knob, stays in env."
+
+[[env]]
+key = "AXON_ETAG_MAX_MISS_RUNS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Crawl ETag conditional re-crawl: max consecutive missed runs before a cached page is re-fetched. Non-secret tuning knob; kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_QDRANT_HNSW_ON_DISK"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Qdrant collection HNSW on-disk toggle (trades latency for RAM safety on large collections). Non-secret tuning knob; kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_QDRANT_QUANTIZATION_ALWAYS_RAM"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Qdrant int8 quantization always-in-RAM toggle (memory vs latency for the quantized vectors). Non-secret tuning knob; kept in env until a typed config.toml field is wired."

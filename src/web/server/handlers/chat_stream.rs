@@ -1,5 +1,6 @@
 use crate::core::config::Config;
-use crate::services::{client_contract::RestChatRequest, llm_backend};
+use crate::core::llm;
+use crate::services::client_contract::RestChatRequest;
 use axum::{
     Extension, Json,
     response::{
@@ -75,7 +76,7 @@ pub async fn v1_chat_stream(
         let delta_disconnected = Arc::clone(&disconnected);
         let delta_tx = tx.clone();
         let request = super::chat::completion_request(&req_cfg, &req.message, true);
-        let result = llm_backend::complete_streaming(request, move |text| {
+        let result = llm::complete_streaming(request, move |text| {
             if delta_disconnected.load(Ordering::Relaxed) {
                 return Ok(());
             }

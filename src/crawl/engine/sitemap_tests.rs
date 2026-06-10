@@ -1,6 +1,6 @@
 use super::*;
 use crate::core::config::Config;
-use crate::core::http::LoopbackGuard;
+use crate::core::http::{LoopbackGuard, build_client};
 
 /// Unit test for `sitemap_loc_in_scope` using real domain names.
 /// The integration test uses a loopback mock server (IP address) where

@@ -49,6 +49,17 @@ impl ServiceContext {
         self.jobs = jobs;
         self
     }
+
+    /// Convenience accessor for the resolved config (A-H1).
+    ///
+    /// Read/RAG service functions (`query`, `ask`, `retrieve`, …) take `&Config`
+    /// directly — use this when you only have a `&ServiceContext` but need to
+    /// call a Tier-2 service fn without `Arc::clone`.
+    ///
+    /// See the Two-Tier Signature Convention in `src/services/CLAUDE.md`.
+    pub fn cfg(&self) -> &Config {
+        &self.cfg
+    }
 }
 
 /// Periodic queue-depth summary logger for log-based monitoring.

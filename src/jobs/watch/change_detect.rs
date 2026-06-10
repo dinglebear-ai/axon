@@ -12,10 +12,38 @@ use crate::jobs::store::now_ms;
 use crate::jobs::watch::filter::{apply_ignore, content_hash, normalize_markdown};
 use crate::jobs::watch::url_state::{UrlState, get_url_state, upsert_url_state};
 use crate::services::diff::{compute_diff, extract_links_from_payload};
-use crate::services::types::{DiffResult, DiffStatus, LinkEntry};
+use crate::services::types::{DiffResult, DiffStatus, LinkEntry, ScrapeResult};
+use async_trait::async_trait;
 use regex::Regex;
 use sqlx::SqlitePool;
 use uuid::Uuid;
+
+/// Probe/scrape injection seam — enables offline deterministic testing of
+/// [`detect_url_change`] without live HTTP access.
+///
+/// The production path uses [`LiveFetcher`]. Tests inject a stub.
+#[async_trait]
+pub(crate) trait WatchFetcher: Send + Sync {
+    async fn probe(&self, url: &str, etag: Option<&str>, last_modified: Option<&str>) -> Probe;
+    /// Returns `Ok(result)` on success or `Err(message)` on failure (the error
+    /// message is already prefixed with "scrape failed: " by convention).
+    async fn scrape_url(&self, cfg: &Config, url: &str) -> Result<ScrapeResult, String>;
+}
+
+/// Live production fetcher — delegates to the real HTTP stack.
+pub(crate) struct LiveFetcher;
+
+#[async_trait]
+impl WatchFetcher for LiveFetcher {
+    async fn probe(&self, url: &str, etag: Option<&str>, lm: Option<&str>) -> Probe {
+        conditional_probe(url, etag, lm).await
+    }
+    async fn scrape_url(&self, cfg: &Config, url: &str) -> Result<ScrapeResult, String> {
+        crate::services::scrape::scrape(cfg, url, None)
+            .await
+            .map_err(|e| format!("scrape failed: {e}"))
+    }
+}
 
 /// Outcome of detecting a change for one URL. Enum so illegal states (e.g.
 /// "meaningful but no diff") are unrepresentable.
@@ -67,7 +95,30 @@ async fn persist_unchanged(
     }
 }
 
+/// Public entry point — uses the live HTTP stack.
 pub async fn detect_url_change(
+    cfg: &Config,
+    pool: &SqlitePool,
+    watch_id: Uuid,
+    url: &str,
+    ignore: &[Regex],
+    threshold_words: i64,
+) -> UrlOutcome {
+    detect_url_change_with(
+        &LiveFetcher,
+        cfg,
+        pool,
+        watch_id,
+        url,
+        ignore,
+        threshold_words,
+    )
+    .await
+}
+
+/// Testable core — accepts any [`WatchFetcher`] so stubs can be injected.
+pub(crate) async fn detect_url_change_with(
+    fetcher: &impl WatchFetcher,
     cfg: &Config,
     pool: &SqlitePool,
     watch_id: Uuid,
@@ -90,12 +141,13 @@ pub async fn detect_url_change(
     let now = now_ms();
 
     // 1) Conditional probe.
-    let (etag, last_modified) = match conditional_probe(
-        url,
-        prior.as_ref().and_then(|p| p.etag.as_deref()),
-        prior.as_ref().and_then(|p| p.last_modified.as_deref()),
-    )
-    .await
+    let (etag, last_modified) = match fetcher
+        .probe(
+            url,
+            prior.as_ref().and_then(|p| p.etag.as_deref()),
+            prior.as_ref().and_then(|p| p.last_modified.as_deref()),
+        )
+        .await
     {
         Probe::NotModified => {
             persist_unchanged(pool, watch_id, url, prior.as_ref(), now).await;
@@ -123,13 +175,7 @@ pub async fn detect_url_change(
     };
 
     // 2) Scrape + 3) filter.
-    // Map the (non-Send) boxed scrape error to a String at the await boundary so
-    // the resulting non-Send type never enters this future's state machine — it
-    // must stay Send for the scheduler's tokio::spawn.
-    let scraped = match crate::services::scrape::scrape(cfg, url, None)
-        .await
-        .map_err(|e| format!("scrape failed: {e}"))
-    {
+    let scraped = match fetcher.scrape_url(cfg, url).await {
         Ok(r) => r,
         Err(msg) => {
             persist_unchanged(pool, watch_id, url, prior.as_ref(), now).await;

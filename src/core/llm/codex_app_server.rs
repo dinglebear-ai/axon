@@ -19,10 +19,10 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::task::JoinHandle;
 
-use crate::services::llm_backend::headless::common::{
+use crate::core::llm::headless::common::{
     joined_prompt, kill_and_wait, read_bounded_stderr, redacted_stderr_tail,
 };
-use crate::services::llm_backend::{CompletionRequest, CompletionResponse, LlmBackendConfig};
+use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use protocol::{CodexStep, CodexStreamState};
 
 type BoxError = Box<dyn StdError + Send + Sync>;

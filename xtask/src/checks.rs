@@ -8,6 +8,7 @@ pub mod mcp_http;
 pub mod no_mod_rs;
 pub mod secrets;
 pub mod unwraps;
+pub mod version_sync;
 
 pub fn check(root: &Path) -> Result<()> {
     no_mod_rs::check(root)?;
@@ -17,6 +18,7 @@ pub fn check(root: &Path) -> Result<()> {
     claude_symlinks::check(root)?;
     broken_symlinks::check(root)?;
     secrets::check(root)?;
+    version_sync::check(root)?;
     println!("All checks passed.");
     Ok(())
 }

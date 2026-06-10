@@ -103,3 +103,30 @@ async fn vertical_extractor_timeout_returns_error_instead_of_generic_fallback() 
         "unexpected error: {err}"
     );
 }
+
+// ── extract_markdown_links ────────────────────────────────────────────────────
+
+#[test]
+fn extract_markdown_links_finds_http_and_https() {
+    let md = "See [docs](https://docs.rs/foo) and [home](http://example.com).";
+    let links = super::extract_markdown_links(md);
+    assert_eq!(links.len(), 2);
+    assert_eq!(links[0]["href"], "https://docs.rs/foo");
+    assert_eq!(links[0]["text"], "docs");
+    assert_eq!(links[1]["href"], "http://example.com");
+    assert_eq!(links[1]["text"], "home");
+}
+
+#[test]
+fn extract_markdown_links_ignores_relative_and_anchor_links() {
+    let md = "See [page](/relative) and [section](#anchor) and [abs](https://ok.com).";
+    let links = super::extract_markdown_links(md);
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0]["href"], "https://ok.com");
+}
+
+#[test]
+fn extract_markdown_links_empty_markdown_returns_empty() {
+    assert!(super::extract_markdown_links("").is_empty());
+    assert!(super::extract_markdown_links("No links here at all.").is_empty());
+}

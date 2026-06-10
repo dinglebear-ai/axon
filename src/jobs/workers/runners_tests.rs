@@ -21,7 +21,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.fetch_retries = 7;
     submitted.qdrant_url = "http://submitted-qdrant:6333".to_string();
     submitted.tei_url = "http://submitted-tei:80".to_string();
-    submitted.llm_backend = crate::services::llm_backend::LlmBackendKind::OpenAiCompat;
+    submitted.llm_backend = crate::core::llm::LlmBackendKind::OpenAiCompat;
     submitted.openai_base_url = "http://submitted-openai:8080/v1".to_string();
     submitted.openai_api_key = "submitted-openai-secret".to_string();
     submitted.openai_model = "submitted-gemma".to_string();
@@ -47,7 +47,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     worker.fetch_retries = 1;
     worker.qdrant_url = "http://worker-qdrant:6333".to_string();
     worker.tei_url = "http://worker-tei:80".to_string();
-    worker.llm_backend = crate::services::llm_backend::LlmBackendKind::GeminiHeadless;
+    worker.llm_backend = crate::core::llm::LlmBackendKind::GeminiHeadless;
     worker.openai_base_url = "http://worker-openai:8080/v1".to_string();
     worker.openai_api_key = "worker-openai-secret".to_string();
     worker.openai_model = "worker-gemma".to_string();
@@ -83,7 +83,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     assert_eq!(effective.tei_url, "http://submitted-tei:80");
     assert_eq!(
         effective.llm_backend,
-        crate::services::llm_backend::LlmBackendKind::OpenAiCompat
+        crate::core::llm::LlmBackendKind::OpenAiCompat
     );
     assert_eq!(effective.openai_base_url, "http://submitted-openai:8080/v1");
     assert_eq!(effective.openai_api_key, "worker-openai-secret");

@@ -5,6 +5,340 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.8] - 2026-06-10
+
+Collapse PR #197 (`feat/qdrant-affinity-tei-burst`) into this branch by
+cherry-picking its four unique commits, so #196 merges to main as a single PR
+with no stack.
+
+### Added
+
+- **`docker-compose.prod.yaml`** — shield `axon-qdrant` from the global OOM
+  killer (`oom_score_adj -500`) and raise its CPU limit from 4 to 8.
+
+### Changed
+
+- **`src/web/server/routing.rs`** — split the monolithic `router()` into scoped
+  route-table builders (`read_routes`/`write_routes`/`large_write_routes`/
+  `panel_routes`). Preserved this branch's `/v1/artifacts/{*path}` read route;
+  dropped the affinity branch's `/api/panel/artifact` route (its `panel_artifact`
+  handler is not part of this branch).
+
+## [5.7.7] - 2026-06-10
+
+### Changed
+
+- **Monolith policy: sitemap split + allowlist cleanup.** Split
+  `src/crawl/engine/sitemap.rs` (721 lines) into
+  `sitemap/{discover,backfill,filter}.rs` with the module root keeping the
+  shared bounded-HTTP fetch helpers and re-exports — no public-surface or
+  behavior change. Pruned 7 stale `.monolith-allowlist` entries: 3 web files
+  that no longer exist (`job-detail-ui.tsx`, `axon-shell-state.ts`,
+  `ws-messages/provider.ts`) and 4 Rust files now under the cap or
+  pattern-exempt (`crawl/scrape.rs`, `core/config/parse.rs`,
+  `core/config/types/config.rs`, `services/system.rs`,
+  `services/types/service.rs`). Pre-commit hooks pass again without
+  `--no-verify`.
+
+## [5.7.6] - 2026-06-10
+
+### Fixed
+
+- **MCP: per-action fields now visible to schema-flattening clients.** The
+  `axon` tool's `tools/list` `inputSchema` kept all per-action request fields
+  (`query`, `url`, `job_id`, `response_mode`, …) inside `oneOf` branches, so
+  clients that render callable parameters from top-level `properties` only
+  (Codex, mcporter signatures, Labby Code Mode `.d.ts` consumers) saw just
+  `{action, subaction}`. `enrich_tool_input_schema` now lifts a merged,
+  all-optional superset of every per-action field into top-level `properties`,
+  each annotated with an `Applies to action(s): …` description prefix and an
+  `x-axon-actions` array; fields with conflicting shapes across actions (e.g.
+  `limit`) publish an `anyOf` union. The strict `oneOf` validation contract and
+  serde parsing are unchanged. (`src/mcp/server/tool_schema.rs`)
+
+## [5.7.5] - 2026-06-09
+
+Consolidates the multi-lane RAG code-review hardening (P1/P2/P3) plus the two
+critical findings reserved for the lead pass. Tree verified green: `cargo fmt`,
+`cargo check --all-targets`, and `cargo clippy --workspace --all-targets -- -D
+warnings` all clean.
+
+### Changed
+
+- **A-C1 — services↔vector dependency cycle broken.** Relocated the shared leaf
+  code out of the `services` layer so `vector` depends *down* on `core` instead
+  of cyclically on `services`:
+  - `src/services/llm_backend{.rs,/}` → `src/core/llm{.rs,/}` (`crate::core::llm`)
+  - `src/services/error{.rs,/}` (`ServiceError` + taxonomy) → `src/core/error{.rs,/}`
+    (`crate::core::error`)
+  - `AskExplain*` / `CorpusHealthKind` / `CorpusHealthDiagnostic` trace and
+    diagnostic types moved from `services::types::service::query` to
+    `crate::core::ask_explain`, re-exported through `services::types` for the
+    wire/CLI surface (`AskResult`/`AskTiming` remain service-layer wire
+    contracts). The `vector` layer now imports zero `crate::services` paths in
+    production code.
+- **Q-H3 — `PreparedDoc::ingest()` constructor** added to `src/vector/ops/tei.rs`;
+  all 22 ingest-source `PreparedDoc { .. }` literals migrated to it, removing the
+  repeated `content_type: "text", extractor_name: None, structured: None` tail.
+
+### Fixed
+
+- **O-C1 — ask-quality regression gate no longer silently passes.**
+  `scripts/test-ask-quality-regressions.sh` now runs every `cargo test` filter
+  through `scripts/cargo_test_filter_guard.py`, so a filter that matches zero
+  tests hard-fails instead of exiting 0. Removed four filters whose target tests
+  do not exist (citation-grounding / authoritative-allowlist / five-query
+  fixture) — flagged as follow-up coverage to author with their underlying
+  policy code.
+- Removed an unused `SetupMethod` import, fixed `unused_qualifications` warnings
+  in `src/jobs/watch/change_detect_tests.rs`, `collapsible_if` lints in
+  `src/cli/commands/{palette,setup}.rs`, and an orphaned `src/services/crawl/audit.rs`
+  stub surfaced during the green-tree pass.
+
+## [5.7.4] - 2026-06-09
+
+Fix compile errors from parallel lanes (routing type, Vec<String> test
+assertions, doc comment lint) and add screenshot support to desktop app.
+
+### Fixed
+
+- **`src/web/server/routing.rs`** — `panel_routes()` return type changed from
+  generic `Router<S>` to concrete `Router<(AppState, Arc<Config>)>`; the
+  `setup_targets` handler requires `State<(AppState, Arc<Config>)>` so the
+  generic bound was never satisfiable at the call site.
+- **`src/vector/ops/token_policy_tests.rs`** — four `Vec<String>::contains("lit")`
+  calls updated to `contains(&"lit".to_string())`; `Vec<T>::contains` requires
+  `&T`, not `&str` (unlike `HashSet` which accepts `&str` via `Borrow`).
+- **`src/ingest/github/files/prepare.rs`** — inserted blank `///` line before
+  continuation paragraph to satisfy `clippy::doc_lazy_continuation`.
+
+### Added
+
+- **Desktop screenshot command** — new `screenshot` action in the palette;
+  `RestClient::fetch_bytes()` retrieves the PNG artifact; `OutputSection` carries
+  an `image` field so the rendered output body can display the screenshot inline.
+- **`src/services/scrape.rs`** — artifact write logic moved from `generic_scrape`
+  to the service layer so all callers (CLI, MCP, REST) share identical write
+  semantics.
+
+## [5.7.3] - 2026-06-09
+
+Fix desktop palette health check endpoint and add offline test coverage for
+watch change-detection branches.
+
+### Fixed
+
+- **Desktop palette** — health-check dot now probes `/healthz` (unauthenticated,
+  lightweight) instead of `/v1/doctor`; adds disconnected-server UX warning before
+  submitting commands.
+
+### Tests
+
+- **`src/jobs/watch/change_detect`** — added `WatchFetcher` injection seam
+  (`LiveFetcher` production path + `StubFetcher` for tests); four offline
+  `#[tokio::test]` cases now cover the 304 short-circuit, probe-failure fallback,
+  hash-equal skip, and first-seen (seed) branches deterministically without any
+  live HTTP.
+
+### Internal
+
+- **`src/services/llm_backend/concurrency`** — tighten `acquire_completion_permit_for_key`
+  visibility to `pub(crate)`.
+
+## [5.7.2] - 2026-06-09
+
+Documentation accuracy: remove stale `CHROME_URL` workaround instructions.
+
+### Documentation
+
+- **`src/crawl/CLAUDE.md`** — updated `NoResponse` troubleshooting row: `CHROME_URL`
+  in `.env` is a stale alias (deleted by `axon config migrate`); `runtime.rs` already
+  pins the connection via `with_chrome_connection` so the spider `CHROM_BASE` fallback
+  never fires.
+- **`docs/guides/configuration.md`** — marked `CHROME_URL` as a stale alias in the
+  Chrome browser env-var table; added clear "do not set" instruction pointing to
+  `AXON_CHROME_REMOTE_URL`.
+
+## [5.7.1] - 2026-06-09
+
+Bug fixes and documentation accuracy corrections.
+
+### Fixed
+
+- **`--etag-conditional` without `--cache` lost 304-skipped pages** (`src/crawl/engine/dir_ops.rs`) —
+  `prepare_crawl_output_dir` now archives `markdown/` to `markdown.old/` when either
+  `cfg.cache` OR `cfg.etag_conditional` is set; previously `etag_conditional=true` with
+  `cache=false` left no recycling bin, so `reconcile_unmodified()` could not relink
+  unchanged pages and they were silently dropped.
+- **SearXNG search wrongly constrained by Tavily's 100-result cap** (`src/services/search.rs`) —
+  `enforce_pagination_window()` is now applied only on the Tavily code path; SearXNG
+  queries above 100 results no longer fail with a misleading Tavily cap error.
+- **`--no-source` / `--include-source` help text said `(GitHub only)`** (`src/core/config/cli.rs`) —
+  these flags apply to all Git providers (GitHub, GitLab, Gitea, generic-git); the
+  redundant `--include-source` flag (inverse of `--no-source`) has been removed.
+
+### Documentation
+
+- **`src/ingest/CLAUDE.md`** — corrected two stale claims: GitHub file ingest now uses
+  `git clone --depth=1` (not reqwest tree-fetch); YouTube playlist ingest is a sequential
+  `for` loop capped at 500 videos (not N=5 concurrent via `FuturesUnordered`).
+
+## [5.7.0] - 2026-06-09
+
+Multi-lane RAG-pipeline hardening: Qdrant/TEI accuracy fixes, ingest unification,
+jobs ops improvements, documentation correctness sweep, CI hygiene, and plugin cleanup.
+
+### Security
+
+- **Prompt-injection defence in ask context** (`ask/context/build/appenders.rs`) —
+  every retrieved chunk body is now wrapped in a
+  `<retrieved_content trust="evidence_only">` XML trust boundary so the synthesis
+  model can distinguish indexed content from axon-generated scaffolding.  Structural
+  markers (`## Sources`, `## Source Document`, `## Top Chunk`, `## Supplemental Chunk`)
+  and forged citation keys (`[S{n}]`) inside chunk bodies are defanged with
+  U+200B zero-width spaces, preventing indexed content from injecting forged
+  citations or misleading section headers into the answer context. (S-H2)
+
+### Added
+
+- **`xtask check-version-sync`** — new pre-commit and CI check that verifies
+  `Cargo.toml`, `README.md`, and `CHANGELOG.md` all carry the same version string
+  and that `plugin.json` does NOT contain a `version` key.
+- **`scripts/axon-backup.sh`** — Qdrant snapshot API + `sqlite3 .backup` script
+  with SHA256 checksums and restore instructions.
+- **`benches/chunking.rs`** — criterion benchmarks for `chunk_text` and `chunk_markdown`.
+- **Prompt-injection regression tests** (`ask/context/build/appenders_tests.rs`) —
+  T-C2 tests verify `## Sources`/`[S{n}]` blocks injected into retrieved content
+  are defanged before reaching the synthesis prompt. (T-C2)
+- **Budget-fitting and truncation tests** (`ask/context/build/appenders_tests.rs`) —
+  T-H4 tests cover: XML overhead in the minimum-budget guard, unicode-boundary
+  truncation of oversized excerpts, the multi-doc skip-and-continue path, and
+  separator accounting. (T-H4)
+- **Malformed-judge output parse tests** (`evaluate/scoring_tests.rs`) — T-M5
+  sidecar covers empty/garbage judge responses, partial axis detection, winner
+  resolution, `rag_underperformed`, `build_suggestion_focus`, and source URL
+  extraction edge cases. (T-M5)
+- **CI path filtering** — `dorny/paths-filter@v3` gates `test-infra` and `live-qdrant`
+  jobs to only run when relevant source paths change; new `version-sync` job in
+  `production-gate`.
+
+### Changed
+
+- **`ask_payload_with_delta_handler` decomposed** into three focused functions
+  (`resolve_answer_and_timing`, `assemble_ask_payload`, trimmed orchestrator)
+  each ≤60 lines; eliminates a 124-line mixed-concern function. (Q-M2)
+- **`fetch_full_docs` returns `Arc<Vec<QdrantPoint>>`** — doc-cache hits now
+  share the allocation without cloning the entire point vector; `FetchedDoc` type
+  alias reflects the Arc wrapper throughout `fetchers.rs` / `build.rs` /
+  `appenders.rs`. (P-M4)
+- **One candidate-count integer instead of a cloned pool** — `AskRetrieval` now
+  stores `candidate_count: usize` rather than `candidates: Vec<AskCandidate>`.
+  The pool was materialised only to call `.len()` two lines later; eliminates
+  a full `candidates_only()` clone on every ask request. (P-M5)
+- **`RepeatGuardStop` is a typed error struct** in `streaming.rs` instead of a
+  `const &str` sentinel; `Display` still emits `"repeat_guard_stop"` so LLM
+  backend error-string detection remains stable. (B-M4)
+- **`build_timing_json` slice-iterates the diagnostics fields** — replaces 10
+  repeated `if let Some(v) = e.field { obj.insert(...) }` blocks with a single
+  `&[(&str, Option<u128>)]` loop. (L2)
+- **Inline test blocks → sidecar files** in `ask/output.rs`,
+  `ask/context/retrieval/build.rs`, and `ask/context/retrieval/dispatch.rs`
+  per the project's sidecar `_tests.rs` convention. (B-H1)
+
+### Fixed
+
+- **TEI retry documentation corrected** — 6 attempts (not 5), backoff includes 16s tier,
+  triggers on 429 + any 5xx only (not transport errors), worst-case budget ~213s.
+- **`PAYLOAD_SCHEMA_VERSION` corrected to 7** throughout CLAUDE.md files.
+- **VectorMode cache reconciliation** — `axon migrate` restart note clarified:
+  restart only required when the destination collection name differs from the source.
+- **BM42 collision math** corrected in `src/vector/CLAUDE.md` (12% at 100 terms, 24% at 200).
+- **Plugin SessionStart hook removed** — the axon plugin no longer runs
+  `setup plugin-hook` on every session start; no session side-effects on startup.
+- **Two-Tier Signature Convention documented** in `src/services/CLAUDE.md`.
+
+## [5.6.1] - 2026-06-09
+
+Remediation of the 10 surviving findings from the four-PR code review of
+#185 / #186 / #188 / #192.
+
+### Fixed
+
+- **Server-side embed no longer fails on `node_modules` symlinks** — the
+  MCP/REST embed validator (`src/services/embed.rs`) now prunes
+  VCS/dependency/build directories **before** its symlink check.
+  `node_modules/.bin/*` is symlinks by design and the reader never visits
+  pruned subtrees, so validation no longer rejects JS projects over files that
+  are never read. Symlinks outside pruned dirs are still rejected.
+- **Concurrent same-repo ingest race eliminated** — ingest job claims
+  (`src/jobs/ops/lifecycle.rs`) now serialize per `(source_type, target)`: a
+  pending job whose target has a running sibling stays queued (other targets
+  are claimed past it). Previously two jobs for the same repo on parallel
+  lanes could race, letting one job's repo-scoped stale cleanup delete points
+  the other had just upserted.
+- **`axon refresh` replays the original job's config** — each re-enqueued
+  origin now applies the most recent stored config snapshot for that crawl URL
+  / ingest target (max-depth, page caps, subdomain scoping, headers,
+  include-source, …) instead of current process defaults, which silently
+  widened or narrowed previously scoped crawls. Collection and service
+  endpoints always follow the current process config.
+- **`axon refresh` exits nonzero on partial failure** — when origins fail to
+  enqueue (e.g. the pending-job cap is hit mid-loop), the per-origin failures
+  were printed but the command still exited 0; scripted `--yes` runs could not
+  detect that most origins were never enqueued.
+- **Prose-fallback chunk line numbers are exact on files with repeated
+  content** — GitHub ingest's fallback chunker re-discovered each chunk's byte
+  offset by substring search, which locks onto the first duplicate occurrence
+  and emits wrong `code_line_start`/`code_line_end` + `#L` fragments. The
+  chunker (`chunk_text_with_offsets`) now reports true byte offsets.
+- **CLI embed root-symlink policy made explicit** — POSIX-style (like `du` /
+  `find -H`): a symlink named explicitly as the embed target is followed,
+  symlinks encountered during traversal are skipped; now documented and
+  regression-tested (the server path still rejects symlinked roots).
+- **Local embed no longer drops empty docs silently** — docs that are empty or
+  chunk to nothing are counted and reported via a single
+  `skipped_empty_docs count=N` warning (per-file detail at debug level).
+- **`axon embed <host path>` no longer embeds the literal path string** — a
+  fire-and-forget local-path embed landed on the axon container's worker
+  (shared jobs DB), where the host path doesn't exist; the reader's free-text
+  fallback then "successfully" embedded `/home/<user>/docs` as a one-chunk
+  document. Two fixes: path-shaped inputs that don't resolve are now a hard
+  error in the reader (both claim directions fail loudly instead of corrupting
+  the index), and the CLI runs local-path embeds in-process even without
+  `--wait` — a local path can only be embedded by a process that shares its
+  filesystem, so queueing it was never serviceable.
+- **Local embed file-size cap (10 MB, matching the server validator)** — a
+  31 MB machine-generated JSON ground the prose chunker for minutes (release)
+  to hours (debug) and would have flooded the collection with junk chunks.
+  Directory walks skip oversized files with a `skip_oversized_file` warning;
+  an explicitly named oversized file is a hard error naming the cap.
+- **Payload-index assertion no longer fails embeds or re-PUTs every index** —
+  `ensure_payload_indexes` previously fired ~46 concurrent index PUTs on every
+  embed and treated a single timeout as fatal, so a slow/overloaded Qdrant
+  failed the whole embed during collection init. It now reads the collection's
+  `payload_schema` (from the GET ensure_collection already performs) and only
+  asserts missing indexes — zero PUTs on a warm collection — and index
+  failures log a warning instead of aborting (missing indexes retry on the
+  next embed).
+
+### Changed
+
+- **Ask full-doc budget fitting renders once, not up to 7×** — the top-k
+  ladder in `fit_full_doc_entry_to_budget` now ranks chunks once and walks the
+  ladder on length arithmetic, rendering only the rung that fits (previously
+  each rung cloned all points and re-scored + re-rendered the document).
+- **Single source of truth for re-ingestable source types** —
+  `RE_INGESTABLE_SOURCE_TYPES` now lives in `src/jobs/ingest/types.rs` next to
+  `source_type_label`; `axon refresh` imports it instead of duplicating the
+  provider list (adding a provider previously required touching both).
+
+### Documentation
+
+- New CLAUDE.md gotcha: **GitHub stale cleanup only sees schema-v7+ points** —
+  file chunks indexed before payload schema v7 (5.5.0) lack the `git_*` filter
+  fields and are invisible to `qdrant_delete_stale_repo_file_urls` until their
+  repo is re-ingested at v7+.
+
 ## [5.6.0] - 2026-06-09
 
 ### Added

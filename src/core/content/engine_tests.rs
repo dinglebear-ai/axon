@@ -12,7 +12,7 @@ async fn extract_chrome_mode_without_remote_url_falls_back_to_http() {
         start_url: "https://example.invalid".to_string(),
         prompt: "test".to_string(),
         limit: 1,
-        llm_backend: crate::services::llm_backend::LlmBackendConfig::default(),
+        llm_backend: crate::core::llm::LlmBackendConfig::default(),
         custom_headers: vec![],
         render_mode: RenderMode::Chrome,
         chrome_remote_url: None, // ← no Chrome configured
@@ -59,7 +59,7 @@ async fn extract_limit_one_uses_exact_single_url_path() {
         start_url: format!("{}/docs/page", server.base_url()),
         prompt: String::new(),
         limit: 1,
-        llm_backend: crate::services::llm_backend::LlmBackendConfig::default(),
+        llm_backend: crate::core::llm::LlmBackendConfig::default(),
         custom_headers: vec![],
         render_mode: RenderMode::Http,
         chrome_remote_url: None,

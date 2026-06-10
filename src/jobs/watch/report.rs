@@ -2,8 +2,8 @@
 //! artifact so the history is browsable.
 
 use crate::core::config::Config;
+use crate::core::llm::{self, CompletionRequest};
 use crate::jobs::store::now_ms;
-use crate::services::llm_backend::{self, CompletionRequest};
 use crate::services::types::DiffResult;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -53,7 +53,7 @@ pub async fn summarize_diff(cfg: &Config, url: &str, diff: &DiffResult) -> Optio
     let req = CompletionRequest::new(summary_user_prompt(url, diff))
         .system_prompt(summary_system_prompt())
         .backend_from_config(cfg);
-    match llm_backend::complete_text(req).await {
+    match llm::complete_text(req).await {
         Ok(resp) => {
             let text = resp.text.trim().to_string();
             if text.is_empty() { None } else { Some(text) }

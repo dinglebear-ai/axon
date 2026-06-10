@@ -1,7 +1,7 @@
 use super::normalize::{extract_cited_source_ids, normalize_ask_answer, parse_context_source_map};
 use super::validate_ask_llm_config;
 use crate::core::config::Config;
-use crate::services::llm_backend::LlmBackendKind;
+use crate::core::llm::LlmBackendKind;
 use crate::services::types::AskResult;
 
 fn cfg() -> Config {

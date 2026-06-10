@@ -57,6 +57,8 @@ pub(crate) struct OutputSection {
     /// frames can clone cheap `SharedString`s instead of reallocating lines.
     pub(crate) rendered_lines: Vec<SharedString>,
     pub(crate) markdown: Option<MarkdownDocument>,
+    /// Optional pre-fetched PNG image (e.g. screenshot artifact).
+    pub(crate) image: Option<std::sync::Arc<gpui::Image>>,
 }
 
 #[cfg(test)]
@@ -154,14 +156,24 @@ impl CommandOutput {
         }
     }
 
-    pub(crate) fn from_rest(command_line: &str, subcommand: &str, output: RestOutput) -> Self {
+    pub(crate) fn from_rest(
+        command_line: &str,
+        subcommand: &str,
+        output: RestOutput,
+        image_bytes: Option<Vec<u8>>,
+    ) -> Self {
         let use_markdown = matches!(
             subcommand,
             "scrape" | "ask" | "research" | "summarize" | "retrieve"
         );
         let stdout = output.stdout.as_deref().and_then(|text| {
             let text = rest_output_text(subcommand, text);
-            OutputSection::from_text_for_command("stdout", subcommand, &text, use_markdown)
+            let section =
+                OutputSection::from_text_for_command("stdout", subcommand, &text, use_markdown)?;
+            Some(match image_bytes {
+                Some(bytes) if subcommand == "screenshot" => section.with_image(bytes),
+                _ => section,
+            })
         });
         let stderr = output.stderr.as_deref().and_then(|text| {
             let text = rest_output_text(subcommand, text);
@@ -292,7 +304,17 @@ impl OutputSection {
             line_count,
             rendered_lines,
             markdown,
+            image: None,
         }
+    }
+
+    /// Attach a pre-fetched PNG image to this section (e.g. from a screenshot artifact).
+    pub(super) fn with_image(mut self, bytes: Vec<u8>) -> Self {
+        self.image = Some(std::sync::Arc::new(gpui::Image::from_bytes(
+            gpui::ImageFormat::Png,
+            bytes,
+        )));
+        self
     }
 }
 

@@ -75,16 +75,19 @@ impl SparseVector {
     }
 }
 
-/// Map a single lowercase alphanumeric term to a Qdrant bucket index.
+/// Map an alphanumeric term to a Qdrant bucket index.
 ///
 /// Uses FNV-1a with a fixed seed so the mapping is stable across runs.
+/// Case is folded inside the hash loop so callers do not need to pre-lowercase
+/// the term — `term_to_index("Rust")` and `term_to_index("rust")` produce the
+/// same bucket. (P-L1)
 /// Exposed as `pub` so tests can verify specific terms are excluded.
 pub fn term_to_index(term: &str) -> u32 {
     const FNV_OFFSET: u32 = 2_166_136_261;
     const FNV_PRIME: u32 = 16_777_619;
     let mut hash = FNV_OFFSET;
     for byte in term.as_bytes() {
-        hash ^= u32::from(*byte);
+        hash ^= u32::from(byte.to_ascii_lowercase());
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     hash % SPARSE_DIM
@@ -114,8 +117,29 @@ pub fn compute_sparse_vector(text: &str) -> SparseVector {
     let mut bucket_tf: HashMap<u32, u32> = HashMap::with_capacity(estimated_capacity);
     let mut scanned: usize = 0;
     for term in text.split(|c: char| !c.is_ascii_alphanumeric()) {
-        let lower = term.to_ascii_lowercase();
-        if lower.len() < 3 || STOP_WORDS.contains(lower.as_str()) {
+        if term.len() < 3 {
+            continue;
+        }
+        // Allocation-free stop-word check. (P-L1)
+        // All stop words are ASCII-lowercase and ≤ 5 bytes. Any term longer
+        // than 5 bytes cannot match a stop word. For short terms we do a
+        // direct HashSet lookup when the term is already lowercase (the common
+        // case), and only build a tiny 5-byte stack copy otherwise.
+        let is_stop_word = if term.len() > 5 {
+            false
+        } else if term.bytes().all(|b| b.is_ascii_lowercase()) {
+            STOP_WORDS.contains(term)
+        } else {
+            // term has uppercase — lowercase into a stack buffer, no heap alloc.
+            let mut buf = [0u8; 5];
+            for (i, b) in term.bytes().enumerate() {
+                buf[i] = b.to_ascii_lowercase();
+            }
+            // SAFETY: buf[..n] contains only ASCII bytes from to_ascii_lowercase().
+            let s = std::str::from_utf8(&buf[..term.len()]).unwrap_or("");
+            STOP_WORDS.contains(s)
+        };
+        if is_stop_word {
             continue;
         }
         scanned += 1;
@@ -127,7 +151,8 @@ pub fn compute_sparse_vector(text: &str) -> SparseVector {
             );
             break;
         }
-        let idx = term_to_index(&lower);
+        // term_to_index folds case internally — pass raw term, no String needed. (P-L1)
+        let idx = term_to_index(term);
         *bucket_tf.entry(idx).or_insert(0) += 1;
     }
     if bucket_tf.is_empty() {

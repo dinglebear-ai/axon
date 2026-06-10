@@ -1,4 +1,4 @@
-use axon::services::llm_backend::{
+use axon::core::llm::{
     CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult, UsageSnapshot,
     complete_streaming_with_runner, complete_text_with_runner,
 };

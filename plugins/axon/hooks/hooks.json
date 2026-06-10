@@ -1,14 +1,3 @@
 {
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/axon setup plugin-hook"
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": {}
 }

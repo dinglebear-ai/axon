@@ -1,5 +1,5 @@
+use crate::core::llm::{self, CompletionRequest};
 use crate::core::logging::log_warn;
-use crate::services::llm_backend::{self, CompletionRequest};
 use html5gum::{Token, Tokenizer};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
@@ -278,7 +278,7 @@ pub(crate) struct FallbackResponse {
 
 pub(crate) async fn extract_items_fallback(
     _client: &reqwest::Client,
-    llm_backend: llm_backend::LlmBackendConfig,
+    llm_backend: llm::LlmBackendConfig,
     prompt: &str,
     page_url: &str,
     markdown: &str,
@@ -298,7 +298,7 @@ pub(crate) async fn extract_items_fallback(
     {
         request.model = Some(model);
     }
-    let response = llm_backend::complete_text(request)
+    let response = llm::complete_text(request)
         .await
         .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     let prompt_tokens = response

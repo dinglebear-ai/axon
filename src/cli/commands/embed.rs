@@ -122,12 +122,22 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         ));
         let embed_start = std::time::Instant::now();
         let input = resolve_embed_input(cfg);
-        if !cfg.wait {
+        // A local path can only be embedded by a process that shares its
+        // filesystem. A fire-and-forget CLI never services its own queue, so
+        // an enqueued host path lands on whatever long-running worker exists —
+        // usually the axon container, which cannot see the host home dir.
+        // Local-path embeds therefore always run in-process here; only URL /
+        // free-text inputs go through the shared queue when --wait is false.
+        let input_is_local_path = Path::new(&input).exists();
+        if !cfg.wait && !input_is_local_path {
             let result = enqueue_embed_job(cfg, &input, service_context).await;
             if result.is_ok() {
                 log_info("job_enqueued command=embed");
             }
             return result;
+        }
+        if !cfg.wait && input_is_local_path {
+            log_info("command=embed local_path_runs_in_process");
         }
 
         let sp = wait_spinner_for(cfg, &format!("Embedding {}…", input));

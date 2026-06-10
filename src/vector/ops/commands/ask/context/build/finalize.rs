@@ -4,7 +4,7 @@ use super::{
     build_context_selection_decisions, build_diagnostic_sources, context_source_candidate_count,
     final_source_order_from_entries, sorted_urls,
 };
-use crate::services::types::{
+use crate::core::ask_explain::{
     AskExplainContext, AskExplainFullDocFetchMode, AskExplainFullDocFetchSkipReason,
 };
 use crate::vector::ops::ranking;
@@ -119,7 +119,7 @@ struct ExplainContextInputs<'a> {
     max_context_chars: usize,
     skip_decision: SkipDecision,
     is_rrf: bool,
-    final_source_order: Vec<crate::services::types::AskExplainContextSource>,
+    final_source_order: Vec<crate::core::ask_explain::AskExplainContextSource>,
 }
 
 fn build_explain_context(context: &str, inputs: ExplainContextInputs<'_>) -> AskExplainContext {
@@ -157,8 +157,8 @@ fn build_explain_context(context: &str, inputs: ExplainContextInputs<'_>) -> Ask
 
 #[cfg(test)]
 fn include_rendered_context(context: &str, explain_context: &mut AskExplainContext) {
-    explain_context.rendered_context = Some(crate::services::types::AskExplainContextRendered {
-        format: crate::services::types::AskExplainRenderedContextFormat::AxonSourcesV1,
+    explain_context.rendered_context = Some(crate::core::ask_explain::AskExplainContextRendered {
+        format: crate::core::ask_explain::AskExplainRenderedContextFormat::AxonSourcesV1,
         content: context.to_string(),
         bytes_used: context.len(),
         chars_used: context.chars().count(),

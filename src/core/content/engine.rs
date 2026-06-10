@@ -27,7 +27,7 @@ pub struct ExtractWebConfig {
     pub start_url: String,
     pub prompt: String,
     pub limit: u32,
-    pub llm_backend: crate::services::llm_backend::LlmBackendConfig,
+    pub llm_backend: crate::core::llm::LlmBackendConfig,
     /// Custom HTTP headers in `"Key: Value"` format, passed through to spider.
     pub custom_headers: Vec<String>,
     // ── Rendering / Chrome ──────────────────────────────────────────────────
@@ -46,7 +46,7 @@ pub struct ExtractWebConfig {
 }
 
 struct FallbackConfig {
-    llm_backend: crate::services::llm_backend::LlmBackendConfig,
+    llm_backend: crate::core::llm::LlmBackendConfig,
     prompt_text: String,
     has_fallback: bool,
 }

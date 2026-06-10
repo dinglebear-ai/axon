@@ -1,7 +1,7 @@
 use super::*;
 use crate::core::config::Config;
 use crate::core::http::http_client;
-use crate::services::llm_backend::{CompletionRequest, CompletionRunner, CompletionTurnResult};
+use crate::core::llm::{CompletionRequest, CompletionRunner, CompletionTurnResult};
 use std::sync::{Arc, Mutex};
 
 use super::super::super::streaming::{

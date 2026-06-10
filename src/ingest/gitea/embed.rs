@@ -1,21 +1,17 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use reqwest::Client;
 
 use crate::core::config::Config;
-use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
-use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::ingest::git_payload::{
+    ContentKind, GitPayload, build_git_payload, extract_git_item_fields,
+};
+use crate::vector::ops::{PreparedDoc, chunk_text};
 
 use super::GiteaTarget;
 use super::client::{
     GiteaIssue, GiteaLabel, GiteaPullRequest, GiteaRepo, GiteaUser, fetch_paginated,
 };
-
-pub(crate) async fn embed_docs(cfg: &Config, docs: Vec<PreparedDoc>) -> Result<usize> {
-    let summary = embed_prepared_docs(cfg, docs, None)
-        .await
-        .map_err(|e| anyhow!("{}", e))?;
-    Ok(summary.chunks_embedded)
-}
+use crate::ingest::git_files::embed_docs;
 
 pub(crate) fn payload(
     target: &GiteaTarget,
@@ -23,38 +19,13 @@ pub(crate) fn payload(
     kind: &'static str,
     kind_extra: serde_json::Value,
 ) -> serde_json::Value {
-    let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) = match kind {
-        "issue" | "pull_request" => (
-            kind_extra
-                .get("state")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            kind_extra.get("number").and_then(|v| v.as_u64()),
-            kind_extra
-                .get("author")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            kind_extra
-                .get("labels")
-                .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|s| s.as_str().map(str::to_string))
-                        .collect()
-                }),
-            None::<bool>,
-            None::<String>,
-            kind_extra
-                .get("created_at")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-            kind_extra
-                .get("updated_at")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-        ),
-        _ => (None, None, None, None, None, None, None, None),
-    };
+    // Gitea uses "number" as the item number field (Q-H4: shared decoder)
+    let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) =
+        if matches!(kind, "issue" | "pull_request") {
+            extract_git_item_fields(&kind_extra, "number")
+        } else {
+            (None, None, None, None, None, None, None, None)
+        };
 
     build_git_payload(&GitPayload {
         provider: "gitea".to_string(),
@@ -110,17 +81,15 @@ pub(crate) async fn embed_metadata(
     }
     embed_docs(
         cfg,
-        vec![PreparedDoc {
-            url: repo
-                .html_url
+        vec![PreparedDoc::ingest(
+            repo.html_url
                 .clone()
                 .unwrap_or_else(|| target.web_url.clone()),
-            domain: target.host.clone(),
+            target.host.clone(),
             chunks,
-            source_type: "gitea".to_string(),
-            content_type: "text",
-            title: Some(title),
-            extra: Some(payload(
+            "gitea",
+            Some(title),
+            Some(payload(
                 target,
                 repo,
                 "repo_metadata",
@@ -131,9 +100,7 @@ pub(crate) async fn embed_metadata(
                     "open_issues": repo.open_issues_count,
                 }),
             )),
-            extractor_name: None,
-            structured: None,
-        }],
+        )],
     )
     .await
 }
@@ -193,16 +160,15 @@ pub(crate) fn issue_doc(
     if chunks.is_empty() {
         return None;
     }
-    Some(PreparedDoc {
-        url: issue
+    Some(PreparedDoc::ingest(
+        issue
             .html_url
             .unwrap_or_else(|| format!("{}/issues/{}", target.web_url, issue.number)),
-        domain: target.host.clone(),
+        target.host.clone(),
         chunks,
-        source_type: "gitea".to_string(),
-        content_type: "text",
-        title: Some(format!("Issue #{}: {}", issue.number, issue.title)),
-        extra: Some(payload(
+        "gitea",
+        Some(format!("Issue #{}: {}", issue.number, issue.title)),
+        Some(payload(
             target,
             repo,
             "issue",
@@ -216,9 +182,7 @@ pub(crate) fn issue_doc(
                 "comment_count": issue.comments,
             }),
         )),
-        extractor_name: None,
-        structured: None,
-    })
+    ))
 }
 
 pub(crate) async fn embed_pulls(
@@ -257,16 +221,14 @@ pub(crate) fn pull_doc(
     if chunks.is_empty() {
         return None;
     }
-    Some(PreparedDoc {
-        url: pull
-            .html_url
+    Some(PreparedDoc::ingest(
+        pull.html_url
             .unwrap_or_else(|| format!("{}/pulls/{}", target.web_url, pull.number)),
-        domain: target.host.clone(),
+        target.host.clone(),
         chunks,
-        source_type: "gitea".to_string(),
-        content_type: "text",
-        title: Some(format!("PR #{}: {}", pull.number, pull.title)),
-        extra: Some(payload(
+        "gitea",
+        Some(format!("PR #{}: {}", pull.number, pull.title)),
+        Some(payload(
             target,
             repo,
             "pull_request",
@@ -281,7 +243,5 @@ pub(crate) fn pull_doc(
                 "merged": pull.merged,
             }),
         )),
-        extractor_name: None,
-        structured: None,
-    })
+    ))
 }

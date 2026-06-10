@@ -5,7 +5,7 @@ use crate::mcp::schema::{
 };
 use rmcp::schemars::JsonSchema;
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::{Arc, LazyLock};
 
 pub(super) fn axon_tool_input_schema() -> Arc<rmcp::model::JsonObject> {
@@ -52,6 +52,7 @@ fn build_axon_tool_input_schema() -> rmcp::model::JsonObject {
 }
 
 fn enrich_tool_input_schema(schema: &mut Value, supported_actions: &[&'static str]) {
+    let lifted_fields = collect_lifted_fields(schema);
     let Some(object) = schema.as_object_mut() else {
         return;
     };
@@ -78,6 +79,7 @@ fn enrich_tool_input_schema(schema: &mut Value, supported_actions: &[&'static st
             "description": "Operation within a subaction family. See x-axon-subactions for valid values by action."
         }),
     );
+    insert_lifted_fields(properties, lifted_fields);
     object.insert("x-axon-action-metadata".to_string(), axon_action_metadata());
     object.insert("x-axon-subactions".to_string(), axon_subaction_metadata());
     object.insert(
@@ -97,6 +99,90 @@ fn enrich_tool_input_schema(schema: &mut Value, supported_actions: &[&'static st
             "schema_resource": MCP_TOOL_SCHEMA_URI
         }),
     );
+}
+
+/// Per-action request fields harvested from the `oneOf` branches so they can
+/// be republished as an optional superset in top-level `properties`.
+///
+/// Many MCP clients (Codex, mcporter signatures, Labby's codemode `.d.ts`
+/// surface consumers) render a tool's callable parameters from top-level
+/// `properties` only and ignore `oneOf` — without this lift they see just
+/// `{action, subaction}`. Per-action requirements and `additionalProperties`
+/// strictness stay in the untouched `oneOf` branches; serde enforcement in
+/// `parse_axon_request` is unaffected.
+struct LiftedField {
+    /// Distinct field shapes across branches, descriptions stripped.
+    variants: Vec<Value>,
+    /// First non-empty description encountered across branches.
+    description: Option<String>,
+    /// Actions whose branch declares this field.
+    actions: BTreeSet<String>,
+}
+
+fn collect_lifted_fields(schema: &Value) -> BTreeMap<String, LiftedField> {
+    let mut fields: BTreeMap<String, LiftedField> = BTreeMap::new();
+    let Some(branches) = schema.get("oneOf").and_then(Value::as_array) else {
+        return fields;
+    };
+    for branch in branches {
+        let Some(action) = schema_branch_action(branch) else {
+            continue;
+        };
+        let Some(properties) = branch.get("properties").and_then(Value::as_object) else {
+            continue;
+        };
+        for (name, prop) in properties {
+            // `action` and `subaction` keep their injected top-level forms.
+            if name == "action" || name == "subaction" {
+                continue;
+            }
+            let mut stripped = prop.clone();
+            let description = stripped
+                .as_object_mut()
+                .and_then(|object| object.remove("description"))
+                .and_then(|value| value.as_str().map(str::to_string))
+                .filter(|text| !text.is_empty());
+            let entry = fields.entry(name.clone()).or_insert_with(|| LiftedField {
+                variants: Vec::new(),
+                description: None,
+                actions: BTreeSet::new(),
+            });
+            entry.actions.insert(action.to_string());
+            if entry.description.is_none() {
+                entry.description = description;
+            }
+            if !entry.variants.contains(&stripped) {
+                entry.variants.push(stripped);
+            }
+        }
+    }
+    fields
+}
+
+fn insert_lifted_fields(
+    properties: &mut serde_json::Map<String, Value>,
+    lifted_fields: BTreeMap<String, LiftedField>,
+) {
+    for (name, field) in lifted_fields {
+        if properties.contains_key(&name) {
+            continue;
+        }
+        let mut prop = match <[Value; 1]>::try_from(field.variants) {
+            Ok([only]) => only,
+            Err(variants) => json!({ "anyOf": variants }),
+        };
+        if let Some(object) = prop.as_object_mut() {
+            let actions: Vec<&str> = field.actions.iter().map(String::as_str).collect();
+            let prefix = format!("Applies to action(s): {}.", actions.join(", "));
+            let description = match &field.description {
+                Some(text) => format!("{prefix} {text}"),
+                None => prefix,
+            };
+            object.insert("description".to_string(), json!(description));
+            object.insert("x-axon-actions".to_string(), json!(actions));
+        }
+        properties.insert(name, prop);
+    }
 }
 
 fn axon_action_metadata() -> Value {

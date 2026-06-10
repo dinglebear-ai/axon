@@ -4,7 +4,7 @@ use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, JobPayload};
 use crate::jobs::config_snapshot::config_snapshot_json;
 use crate::services::context::ServiceContext;
-use crate::services::events::ServiceEvent;
+use crate::services::events::{ServiceEvent, is_secret_like};
 use crate::services::jobs as job_service;
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::runtime::WorkerMode;
@@ -170,8 +170,10 @@ pub async fn embed_now_with_source(
 ///
 /// URL and free-text inputs are allowed. Existing local files/directories must
 /// live under `AXON_MCP_EMBED_ALLOWED_ROOTS`; paths with dotfiles, secret-like
-/// names, oversized files, or symlinks anywhere below a submitted directory are
-/// rejected before an embed job can enqueue.
+/// names, oversized files, or symlinks below a submitted directory are rejected
+/// before an embed job can enqueue. Pruned directories (`select::is_pruned_dir`
+/// — node_modules, target, …) are exempt from those checks: the reader never
+/// visits them, and they routinely contain symlinks by design.
 pub fn validate_server_embed_input_with_config(
     cfg: &Config,
     input: &str,
@@ -232,19 +234,7 @@ fn embed_validation_error(message: impl Into<String>) -> EmbedValidationError {
 }
 
 fn looks_path_like_input(input: &str) -> bool {
-    let input = input.trim();
-    let bytes = input.as_bytes();
-    let windows_drive = input.len() >= 3
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-        && matches!(bytes[2], b'/' | b'\\');
-
-    input.starts_with('/')
-        || input.starts_with("./")
-        || input.starts_with("../")
-        || input.starts_with("~/")
-        || input.starts_with("\\\\")
-        || windows_drive
+    select::looks_path_like(input)
 }
 
 fn validate_local_embed_entry(
@@ -303,26 +293,26 @@ fn validate_local_embed_directory(
         let child = entry.path();
         let child_meta = std::fs::symlink_metadata(&child)
             .map_err(|err| format!("invalid embed entry metadata: {err}"))?;
+        let name = child.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        // Enumerate exactly the set the reader (collect_embed_files in
+        // tei/prepare.rs) will read: prune the same VCS/build directories and
+        // skip the same binary extensions BEFORE applying the server-only
+        // security checks (symlink/dotfile/secret/size). Pruned subtrees contain
+        // symlinks by design (node_modules/.bin/*), and the reader never visits
+        // them — checking symlinks first failed server-side embeds of any JS
+        // project over files that are never read. A symlink occupying a pruned
+        // name is skipped too (the reader skips all symlinks).
+        if select::is_pruned_dir(name) && !child_meta.is_file() {
+            continue;
+        }
         if child_meta.file_type().is_symlink() {
             return Err(embed_validation_error(
                 "local embed directory must not contain symlinks",
             ));
         }
-        let name = child.file_name().and_then(|n| n.to_str()).unwrap_or("");
         let child_canonical =
             std::fs::canonicalize(&child).map_err(|err| format!("invalid embed path: {err}"))?;
-        // Enumerate exactly the set the reader (collect_embed_files in
-        // tei/prepare.rs) will read: prune the same VCS/build directories and
-        // skip the same binary extensions BEFORE applying the server-only
-        // security checks (dotfile/secret/size). Without the prune, a dotfile
-        // buried in node_modules/ would fail validation for a file the reader
-        // never touches. The symlink check above is intentionally NOT deferred —
-        // symlinks anywhere under a submitted dir are rejected even inside pruned
-        // subtrees (the reader skips symlinks; the server is stricter).
         if child_meta.is_dir() {
-            if select::is_pruned_dir(name) {
-                continue;
-            }
             validate_local_embed_relative_path(&child_canonical, allowed_root)?;
             validate_local_embed_directory(
                 &child_canonical,
@@ -377,16 +367,7 @@ fn validate_local_embed_relative_path(
                 "local embed path must not include dotfiles",
             ));
         }
-        if lower == "id_rsa"
-            || lower == "id_dsa"
-            || lower == "id_ecdsa"
-            || lower == "id_ed25519"
-            || lower.ends_with(".pem")
-            || lower.ends_with(".key")
-            || lower.contains("secret")
-            || lower.contains("credential")
-            || lower.contains("token")
-        {
+        if is_secret_like(&lower) {
             return Err(embed_validation_error(
                 "local embed path appears to contain secret material",
             ));

@@ -63,6 +63,12 @@ pub async fn run_embed_job(
         "input": input,
         "collection": worker_cfg.collection,
         "docs_embedded": summary.docs_embedded,
+        "docs_failed": summary.docs_failed,
         "chunks_embedded": summary.chunks_embedded,
+        "seed_url": worker_cfg.seed_url,
     })))
 }
+
+#[cfg(test)]
+#[path = "embed_tests.rs"]
+mod tests;

@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::services::llm_backend;
+use crate::core::llm;
 use crate::services::types::{
     ResearchExtraction, SourceInstructionTrust, SourceReputation, SourceType,
 };
@@ -44,8 +44,8 @@ pub(super) fn build_extraction(
 }
 
 fn preserve_full_research_sources(cfg: &Config) -> bool {
-    use crate::services::llm_backend::LlmBackendKind;
-    let configured = llm_backend::configured_model_from_config(cfg)
+    use crate::core::llm::LlmBackendKind;
+    let configured = llm::configured_model_from_config(cfg)
         .unwrap_or_else(|| cfg.openai_model.clone())
         .to_ascii_lowercase();
     matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
