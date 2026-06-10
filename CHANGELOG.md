@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.0] - 2026-06-10
+
+### Added
+
+- **Web panel artifact rendering** — commands that return artifact handles now
+  render them in the panel: screenshot artifacts display inline as `<img>`, other
+  kinds show concise file-metadata rows (kind badge, filename, size, download
+  link). New `GET /api/panel/artifact/{*path}` route serves files from
+  `cfg.output_dir` with MIME detection, path-containment validation, and
+  panel-auth gating. (Ported from the closed #197 affinity branch.)
+
 ## [5.7.9] - 2026-06-10
 
 ### Changed
