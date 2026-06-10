@@ -44,14 +44,14 @@ async fn dir_embed_recurses_and_filters() {
     let temp_dir = TempDir::new().expect("tempdir");
     let root = temp_dir.path();
 
-    // Nested source file (should be embedded).
+    // Nested source file (should be embedded — one PreparedDoc per chunk).
     tokio::fs::create_dir_all(root.join("a/b"))
         .await
         .expect("mkdir a/b");
     tokio::fs::write(root.join("a/b/c.rs"), "fn main() { println!(\"hi\"); }")
         .await
         .expect("write c.rs");
-    // Top-level doc (should be embedded).
+    // Top-level doc (should be embedded — one PreparedDoc).
     tokio::fs::write(root.join("r.md"), "# Title\n\nbody text here")
         .await
         .expect("write r.md");
@@ -72,19 +72,24 @@ async fn dir_embed_recurses_and_filters() {
         .expect("prepare docs");
 
     let urls: Vec<&str> = prepared.iter().map(|d| d.url.as_str()).collect();
-    assert_eq!(
-        prepared.len(),
-        2,
-        "expected only c.rs and r.md, got {urls:?}"
+    // c.rs is a code file → one PreparedDoc per chunk (at least 1); r.md is prose → 1 doc.
+    assert!(
+        prepared.len() >= 2,
+        "expected at least one doc for c.rs and one for r.md, got {urls:?}"
     );
-    assert!(urls.iter().any(|u| u.ends_with("a/b/c.rs")), "{urls:?}");
+    // Code chunks carry `#L{start}-L{end}` suffix; the path prefix is still present.
+    assert!(
+        urls.iter().any(|u| u.contains("a/b/c.rs")),
+        "expected a/b/c.rs in urls: {urls:?}"
+    );
     assert!(urls.iter().any(|u| u.ends_with("r.md")), "{urls:?}");
     assert!(!urls.iter().any(|u| u.ends_with("img.png")), "{urls:?}");
     assert!(!urls.iter().any(|u| u.contains("node_modules")), "{urls:?}");
 }
 
 /// Code files route through AST chunking and are tagged `content_type = "text"`;
-/// markdown/docs stay on the prose path tagged `"markdown"`.
+/// markdown/docs stay on the prose path tagged `"markdown"`. Code files produce
+/// one PreparedDoc per chunk, with the chunk URL carrying a `#L{start}-L{end}` suffix.
 #[tokio::test]
 async fn dir_embed_tags_code_and_prose_distinctly() {
     let cfg = Config::default_minimal();
@@ -101,9 +106,10 @@ async fn dir_embed_tags_code_and_prose_distinctly() {
         .await
         .expect("prepare docs");
 
+    // lib.rs → per-chunk docs; url contains "lib.rs" with optional "#L..." suffix.
     let rs = prepared
         .iter()
-        .find(|d| d.url.ends_with("lib.rs"))
+        .find(|d| d.url.contains("lib.rs"))
         .expect("lib.rs doc");
     let md = prepared
         .iter()
@@ -114,7 +120,19 @@ async fn dir_embed_tags_code_and_prose_distinctly() {
         md.content_type, "markdown",
         "docs should be tagged markdown"
     );
-    assert!(!rs.chunks.is_empty());
+    // Each per-chunk doc carries exactly one chunk string.
+    assert_eq!(
+        rs.chunks.len(),
+        1,
+        "per-chunk doc must have exactly one chunk"
+    );
+    // Code chunks also carry code_* extra payload.
+    let extra = rs
+        .extra
+        .as_ref()
+        .expect("code chunk must have extra payload");
+    assert!(extra.get("code_chunking_method").is_some());
+    assert!(extra.get("code_file_type").is_some());
 }
 
 /// A single unreadable / non-UTF-8 file in the directory is skipped, not fatal —
@@ -360,4 +378,66 @@ async fn dir_embed_http_code_extension_stays_prose() {
     assert_eq!(prepared[0].url, "https://example.com/script.py");
     // http source → prose path despite the .py extension.
     assert_eq!(prepared[0].content_type, "markdown");
+}
+
+/// A local Rust code file embedded via `embed <dir>` must produce per-chunk
+/// `PreparedDoc`s carrying canonical `code_*` and `symbol_*` extra payload.
+/// Exercises the new code branch that mirrors the ingest path so embed and ingest
+/// produce equivalent Qdrant payloads for code files.
+#[tokio::test]
+async fn dir_embed_code_file_gets_symbol_payload() {
+    let cfg = Config::default_minimal();
+    let temp_dir = TempDir::new().expect("tempdir");
+    let root = temp_dir.path();
+    tokio::fs::write(
+        root.join("lib.rs"),
+        "fn alpha() -> u32 { 1 }\n\nfn beta() -> u32 { 2 }\n",
+    )
+    .await
+    .expect("write lib.rs");
+
+    let prepared = prepare_embed_docs(&cfg, &root.to_string_lossy(), &[], None)
+        .await
+        .expect("prepare docs");
+
+    assert!(
+        !prepared.is_empty(),
+        "expected at least one chunk from lib.rs"
+    );
+    for doc in &prepared {
+        assert!(
+            doc.url.contains("lib.rs"),
+            "url should reference lib.rs: {}",
+            doc.url
+        );
+        assert_eq!(
+            doc.content_type, "text",
+            "code chunks must be tagged 'text'"
+        );
+        assert_eq!(
+            doc.chunks.len(),
+            1,
+            "per-chunk doc must hold exactly one chunk"
+        );
+        let extra = doc
+            .extra
+            .as_ref()
+            .expect("code chunk must have extra payload");
+        assert_eq!(
+            extra["code_chunking_method"], "tree_sitter",
+            "Rust file must use tree-sitter chunking"
+        );
+        assert_eq!(
+            extra["code_file_type"], "source",
+            "lib.rs should be classified as source"
+        );
+        assert!(extra.get("symbol_extraction_status").is_some());
+    }
+    // At least one chunk should carry a function symbol.
+    assert!(
+        prepared
+            .iter()
+            .any(|d| d.extra.as_ref().and_then(|e| e["symbol_kind"].as_str()) == Some("function")),
+        "expected at least one function-symbol chunk"
+    );
 }

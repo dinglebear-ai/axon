@@ -9,6 +9,7 @@ use crate::ingest::git_payload::{
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
+use crate::vector::ops::input::code::CodeChunk;
 use crate::vector::ops::{PreparedDoc, chunk_text};
 
 use super::client::fetch_paginated;
@@ -372,3 +373,51 @@ fn wiki_doc(
         Some(extra),
     ))
 }
+
+/// Build a canonical per-chunk GitLab file payload with code + symbol metadata.
+///
+/// Produces the same `git_*`/`code_*`/`symbol_*` fields as GitHub file chunks
+/// so cross-provider Qdrant filters work uniformly.
+pub(crate) fn gitlab_file_chunk_payload(
+    target: &GitLabTarget,
+    project: &GitLabProject,
+    rel: &str,
+    branch: &str,
+    chunk: &CodeChunk,
+    chunking_method: &str,
+    symbol_status: &str,
+) -> serde_json::Value {
+    let owner: Option<String> = {
+        let path = &target.namespace_path;
+        path.rfind('/').map(|i| path[..i].to_string())
+    };
+    build_git_payload(&GitPayload {
+        provider: "gitlab".to_string(),
+        host: target.host.clone(),
+        owner,
+        repo: target.project.clone(),
+        content_kind: ContentKind::File,
+        branch: Some(branch.to_string()),
+        file_path: Some(rel.to_string()),
+        file_language: Some(language_name(path_extension(rel)).to_string()),
+        file_type: Some(classify_file_type(rel).to_string()),
+        file_is_test: Some(is_test_path(rel)),
+        line_start: Some(chunk.start_line),
+        line_end: Some(chunk.end_line),
+        chunking_method: Some(chunking_method.to_string()),
+        symbol_name: chunk.symbol_name().map(str::to_string),
+        symbol_kind: chunk.symbol_kind_str().map(str::to_string),
+        symbol_extraction_status: Some(symbol_status.to_string()),
+        meta: Some(serde_json::json!({
+            "namespace_path": target.namespace_path,
+            "visibility": project.visibility,
+            "last_activity_at": project.last_activity_at,
+            "default_branch": project.default_branch,
+        })),
+        ..GitPayload::default()
+    })
+}
+
+#[cfg(test)]
+#[path = "embed_tests.rs"]
+mod tests;

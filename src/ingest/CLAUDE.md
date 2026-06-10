@@ -62,18 +62,19 @@ ingest/
 - **403/404 graceful degradation:** `is_missing_or_forbidden()` returns `Ok(0)` for any phase that 403s or 404s — private features just silently produce no chunks
 - **Pagination:** `fetch_paginated()` in `client.rs` follows `x-next-page` response header, `per_page=100`; respects `max_items` cap (reuses `cfg.github_max_issues` / `cfg.github_max_prs`)
 - **Payload schema:** `source_type = "gitlab"`. Every chunk carries `provider`, `host`, `namespace_path`, `project`, `content_kind` (`"repo_metadata"` / `"file"` / `"issue"` / `"merge_request"` / `"wiki"`), `default_branch`, `visibility`, `last_activity_at`, plus a `gitlab` nested object with type-specific fields
-- **No file-level chunking strategy selection** — all file content uses `chunk_text()` (prose chunking); tree-sitter code chunking is not yet applied to GitLab files (unlike GitHub)
+- **File chunking** — `gitlab/files.rs` now uses the shared `file_ingest` engine (`chunk_file` / `collect_files`) for tree-sitter code chunking with `code_*`/`symbol_*` payload, matching the GitHub and generic-Git paths. One `PreparedDoc` per `CodeChunk`.
 
 ### Gitea/Forgejo (`gitea.rs`)
 - Uses the Gitea-compatible REST API for repository metadata, issues, and pull requests.
 - `GITEA_TOKEN` is optional for public repositories and is sent as `Authorization: token <token>` when present.
 - Known public hosts (`gitea.com`, `codeberg.org`) auto-classify from URL; self-hosted instances should use `gitea:<host>/<owner>/<repo>` or `forgejo:<host>/<owner>/<repo>`.
-- File ingest delegates to the shared generic Git clone path but preserves `source_type = "gitea"` and `provider = "gitea"` in Qdrant payloads.
+- File ingest delegates to `ingest_git_repository` in `generic_git.rs`, which now uses the shared `file_ingest` engine for tree-sitter code chunking and `code_*`/`symbol_*` payload. Preserves `source_type = "gitea"` and `provider = "gitea"` in Qdrant payloads.
 
 ### Generic Git (`generic_git.rs`)
 - Explicit-only target form: `git:https://host/path/repo.git`.
 - HTTPS-only by design; SSH and local filesystem paths are rejected.
 - Indexes repository docs by default and source files when source inclusion is enabled. It does not call provider APIs, so it does not ingest issues, PRs, wiki pages, releases, or repository metadata beyond clone-derived file metadata.
+- File ingest uses the shared engine (`src/vector/ops/file_ingest.rs`): tree-sitter code chunking with canonical `code_*`/`symbol_*` payload per chunk. One `PreparedDoc` is emitted per `CodeChunk`.
 
 ### GitHub (`github/`)
 - Uses `git clone --depth=1` subprocess for source files and wiki clone; `octocrab` for issues/PRs pagination
@@ -146,17 +147,18 @@ All ingest sources use the unified `embed_prepared_docs` pipeline via `PreparedD
 use crate::core::content::url_to_domain;
 use crate::vector::ops::PreparedDoc;
 use crate::vector::ops::tei::embed_prepared_docs;
-use crate::vector::ops::input::chunk_text;       // prose: 2000-char with 200-char overlap
-use crate::vector::ops::input::code::chunk_code;  // tree-sitter AST-aware chunking
+use crate::vector::ops::file_ingest::{SelectionPolicy, chunk_file, chunking_method, collect_files};
+use crate::vector::ops::input::classify::path_extension;
 
 let url = "https://github.com/rust-lang/rust/blob/main/src/lib.rs".to_string();
 let domain = url_to_domain(&url);  // → "github.com"
-let chunks = chunk_code(&content, "rs").unwrap_or_else(|| chunk_text(&content));
+let ext = path_extension(&rel).to_ascii_lowercase();
+let chunks = chunk_file(&content, &ext); // Vec<CodeChunk> — tree-sitter or prose fallback
 
 let doc = PreparedDoc {
     url,
     domain,
-    chunks,
+    chunks: chunks.into_iter().map(|c| c.text).collect(),
     source_type: "github".to_string(),
     content_type: "text",
     title: Some("src/lib.rs".to_string()),
@@ -181,10 +183,11 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 5. Individual doc failures are logged and skipped (reported via `EmbedSummary.docs_failed`)
 
 ### Chunking
-- **Prose** (`chunk_text`): 2000-char chunks with 200-char overlap
-- **Code** (`chunk_code`): tree-sitter AST-aware (Rust, Python, JS, TS, Go, Bash); falls back to `chunk_text` for unsupported extensions
+- All git providers and local `embed <dir>` use `chunk_file(&content, ext) → Vec<CodeChunk>` from `src/vector/ops/file_ingest.rs`. Use `chunk_code` / `chunk_text` only if you need the lower-level primitives directly.
+- **`chunk_file`**: tries tree-sitter via `chunk_code_chunks`; falls back to synthetic `CodeChunk`s wrapping `chunk_text_with_offsets` — callers always get `Vec<CodeChunk>` with line ranges regardless of extension.
+- **Prose** (`chunk_text`): 2000-char chunks with 200-char overlap (low-level; prefer `chunk_file`)
+- **Code** (`chunk_code`): tree-sitter AST-aware (Rust, Python, JS, TS, Go, Bash); falls back to `chunk_text` for unsupported extensions (low-level; prefer `chunk_file`)
 - Callers must chunk content **before** building `PreparedDoc` — the pipeline expects pre-chunked `chunks: Vec<String>`
-- Choose based on file extension: `chunk_code(&text, &ext).unwrap_or_else(|| chunk_text(&text))`
 
 ## ingest_jobs Schema
 `axon_ingest_jobs` differs from other job tables:

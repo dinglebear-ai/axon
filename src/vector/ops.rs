@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod file_ingest;
 pub mod input;
 pub mod qdrant;
 pub mod ranking;
