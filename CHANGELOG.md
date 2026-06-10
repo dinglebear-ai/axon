@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.1] - 2026-06-10
+
+### Changed
+
+- **Split `apps/web/app/page.tsx`** (1467 → 460 lines) into five sibling modules
+  to satisfy the monolith policy (≤500 lines): `panel-types.ts` (type defs),
+  `command-format.ts` (command/result formatting + `commandExamples`),
+  `job-helpers.ts` (job/doctor data helpers), `panel-components.tsx`
+  (presentational components), and `use-panel-data.ts` (state + handlers hook).
+  Pure structural extraction — no behavior change. Deduped a duplicate
+  `formatBytes` and tightened the `ArtifactHandle` type to carry
+  `kind`/`display_path`/`line_count`.
+
 ## [5.8.0] - 2026-06-10
 
 ### Added
