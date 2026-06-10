@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.0] - 2026-06-10
+
+### Added
+
+- **Unified file-ingest engine** (`src/vector/ops/file_ingest.rs`) — a single
+  shared `collect_files` walker and `chunk_file` adapter that replaces four
+  divergent copies in GitHub, GitLab, generic Git, and `embed <dir>`. All git
+  providers now produce tree-sitter AST-aware chunks with canonical
+  `code_*`/`symbol_*` Qdrant payload fields; previously only GitHub did.
+- **Symbol metadata for GitLab file ingest** — `gitlab_file_chunk_payload` added
+  to `src/ingest/gitlab/embed.rs`; closes `axon_rust-wavn`.
+- **Symbol metadata for generic Git / Gitea file ingest** — `file_docs` in
+  `src/ingest/generic_git.rs` now emits one `PreparedDoc` per `CodeChunk` with
+  `line_start/end`, `chunking_method`, `symbol_name/kind`, and
+  `symbol_extraction_status`.
+- **Symbol metadata for local `embed <dir>` code files** — `prepare_embed_docs`
+  in `src/vector/ops/tei/prepare.rs` now routes local code files through the
+  shared `chunk_file` engine and attaches `code_*`/`symbol_*` extra payload per
+  chunk, aligning `axon embed` output with the ingest path.
+
+### Changed
+
+- `src/ingest/git_files.rs` — removed the now-redundant `collect_repo_files`
+  walker (superseded by `file_ingest::collect_files`); `embed_docs` wrapper
+  retained.
+
 ## [5.8.1] - 2026-06-10
 
 ### Changed

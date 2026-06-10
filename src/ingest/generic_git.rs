@@ -6,17 +6,20 @@ use reqwest::Url;
 use crate::core::config::Config;
 use crate::core::http::validate_url;
 use crate::core::logging::{log_done, log_info, log_warn};
-use crate::ingest::git_files::collect_repo_files;
 use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
 use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{
     MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
 };
+use crate::vector::ops::PreparedDoc;
+use crate::vector::ops::embed_prepared_docs;
+use crate::vector::ops::file_ingest::{
+    SelectionPolicy, chunk_file, chunking_method, collect_files,
+};
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
-use crate::vector::ops::input::code::chunk_code;
-use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::vector::ops::input::code::code_symbol_extraction_status;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericGitTarget {
@@ -123,15 +126,15 @@ pub(crate) async fn ingest_git_repository(
     let branch = current_branch(tmp.path())
         .await
         .unwrap_or_else(|| "HEAD".to_string());
-    let files = collect_repo_files(tmp.path(), include_source).await?;
+    let files = collect_files(tmp.path(), SelectionPolicy::Allowlist { include_source })
+        .await
+        .map_err(|e| anyhow!("{e}"))?;
     let total = files.len();
     let mut docs = Vec::new();
     for (index, file) in files.into_iter().enumerate() {
-        if let Some(doc) =
-            file_doc(tmp.path(), &target, &branch, file, source_type, provider).await?
-        {
-            docs.push(doc);
-        }
+        let mut file_docs =
+            file_docs(tmp.path(), &target, &branch, file, source_type, provider).await?;
+        docs.append(&mut file_docs);
         if (index + 1) % 25 == 0 || index + 1 == total {
             reporter
                 .report(serde_json::json!({"files_done": index + 1, "files_total": total}))
@@ -156,14 +159,14 @@ pub(crate) async fn ingest_git_repository(
     Ok(summary.chunks_embedded)
 }
 
-async fn file_doc(
+pub(crate) async fn file_docs(
     root: &Path,
     target: &GenericGitTarget,
     branch: &str,
     file: PathBuf,
     source_type: &str,
     provider: &str,
-) -> Result<Option<PreparedDoc>> {
+) -> Result<Vec<PreparedDoc>> {
     let rel = file
         .strip_prefix(root)?
         .to_string_lossy()
@@ -176,13 +179,13 @@ async fn file_doc(
                 "command=ingest_git skip_large_file path={rel} size_bytes={}",
                 meta.len()
             ));
-            return Ok(None);
+            return Ok(Vec::new());
         }
         Err(e) => {
             log_warn(&format!(
                 "command=ingest_git stat_failed path={rel} err={e}"
             ));
-            return Ok(None);
+            return Ok(Vec::new());
         }
         _ => {}
     }
@@ -194,51 +197,76 @@ async fn file_doc(
             log_warn(&format!(
                 "command=ingest_git read_failed path={rel} err={e}"
             ));
-            return Ok(None);
+            return Ok(Vec::new());
         }
     };
     let content = match String::from_utf8(bytes) {
         Ok(t) => t,
         Err(_) => {
             log_warn(&format!("command=ingest_git skip_non_utf8 path={rel}"));
-            return Ok(None);
+            return Ok(Vec::new());
         }
     };
 
-    // Q-H1: tree-sitter AST-aware chunking with extension routing + text fallback
+    if content.trim().is_empty() {
+        return Ok(Vec::new());
+    }
     let ext = path_extension(&rel).to_ascii_lowercase();
-    let chunks = tokio::task::spawn_blocking({
+    // Move content + ext into spawn_blocking; return both so
+    // code_symbol_extraction_status can run after on the calling thread.
+    let (code_chunks, content, ext) = tokio::task::spawn_blocking({
         let content = content.clone();
         let ext = ext.clone();
-        move || chunk_code(&content, &ext).unwrap_or_else(|| chunk_text(&content))
+        move || {
+            let chunks = chunk_file(&content, &ext);
+            (chunks, content, ext)
+        }
     })
     .await
-    .unwrap_or_else(|_| chunk_text(&content));
-    if chunks.is_empty() {
-        return Ok(None);
+    .map_err(|e| anyhow!("chunk_file panicked for {rel}: {e}"))?;
+    if code_chunks.is_empty() {
+        return Ok(Vec::new());
     }
-    let extra = build_git_payload(&GitPayload {
-        provider: provider.to_string(),
-        host: target.host.clone(),
-        owner: None,
-        repo: target.name.clone(),
-        content_kind: ContentKind::File,
-        branch: Some(branch.to_string()),
-        file_path: Some(rel.clone()),
-        file_language: Some(language_name(path_extension(&rel)).to_string()),
-        file_type: Some(classify_file_type(&rel).to_string()),
-        file_is_test: Some(is_test_path(&rel)),
-        meta: Some(serde_json::json!({ "clone_url": target.clone_url })),
-        ..GitPayload::default()
-    });
-    Ok(Some(PreparedDoc::ingest(
-        format!("{}#{}:{}", target.web_url, branch, rel),
-        target.host.clone(),
-        chunks,
-        source_type,
-        Some(rel.clone()),
-        Some(extra),
-    )))
+    let symbol_status = code_symbol_extraction_status(&content, &ext, &code_chunks);
+    let lang = language_name(&ext).to_string();
+    let ftype = classify_file_type(&rel).to_string();
+    let is_test = is_test_path(&rel);
+    let mut docs = Vec::with_capacity(code_chunks.len());
+    for (idx, chunk) in code_chunks.into_iter().enumerate() {
+        let method = chunking_method(&ext, &chunk);
+        let extra = build_git_payload(&GitPayload {
+            provider: provider.to_string(),
+            host: target.host.clone(),
+            owner: None,
+            repo: target.name.clone(),
+            content_kind: ContentKind::File,
+            branch: Some(branch.to_string()),
+            file_path: Some(rel.clone()),
+            file_language: Some(lang.clone()),
+            file_type: Some(ftype.clone()),
+            file_is_test: Some(is_test),
+            line_start: Some(chunk.start_line),
+            line_end: Some(chunk.end_line),
+            chunking_method: Some(method.to_string()),
+            symbol_name: chunk.symbol_name().map(str::to_string),
+            symbol_kind: chunk.symbol_kind_str().map(str::to_string),
+            symbol_extraction_status: Some(symbol_status.to_string()),
+            meta: Some(serde_json::json!({ "clone_url": target.clone_url })),
+            ..GitPayload::default()
+        });
+        docs.push(PreparedDoc::ingest(
+            format!(
+                "{}#{}:{}#L{}-L{}#{}",
+                target.web_url, branch, rel, chunk.start_line, chunk.end_line, idx
+            ),
+            target.host.clone(),
+            vec![chunk.text],
+            source_type,
+            Some(rel.clone()),
+            Some(extra),
+        ));
+    }
+    Ok(docs)
 }
 
 #[cfg(test)]

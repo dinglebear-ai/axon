@@ -7,18 +7,16 @@ use crate::core::config::Config;
 use crate::core::logging::log_warn;
 use crate::ingest::subprocess::MAX_INGEST_FILE_BYTES;
 use crate::vector::ops::PreparedDoc;
+use crate::vector::ops::file_ingest::{
+    SelectionPolicy, chunk_file, chunking_method, collect_files,
+};
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
-use crate::vector::ops::input::{
-    chunk_text_with_offsets,
-    code::{
-        CodeChunk, chunk_code_chunks, code_symbol_extraction_status, supports_tree_sitter_chunking,
-    },
-};
+use crate::vector::ops::input::code::code_symbol_extraction_status;
 
+use super::super::GitHubCommonFields;
 use super::super::meta::{GitHubPayloadParams, build_github_payload};
-use super::super::{GitHubCommonFields, is_indexable_doc_path, is_indexable_source_path};
 use crate::ingest::git_payload::ContentKind;
 const MAX_FILE_BYTES: u64 = MAX_INGEST_FILE_BYTES;
 
@@ -37,38 +35,25 @@ pub(super) struct FileEmbedCtx {
     pub is_private: Option<bool>,
 }
 
-/// Recursively walk a directory and collect file paths relative to `root`.
+/// Recursively walk `root` and return indexable file paths relative to `root`.
+///
+/// Thin wrapper over the shared `file_ingest::collect_files` engine so GitHub
+/// uses the same walker as all other git providers.
 pub(super) async fn collect_indexable_files(
     root: &Path,
     include_source: bool,
 ) -> Result<Vec<String>> {
-    let mut files = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-
-    while let Some(dir) = stack.pop() {
-        let mut entries = tokio::fs::read_dir(&dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-            if name == ".git" || name == "node_modules" || name == "__pycache__" {
-                continue;
-            }
-
-            if entry.file_type().await?.is_dir() {
-                stack.push(path);
-            } else if let Ok(rel) = path.strip_prefix(root) {
-                let rel_str = rel.to_string_lossy().to_string();
-                let should_index = is_indexable_doc_path(&rel_str)
-                    || (include_source && is_indexable_source_path(&rel_str));
-                if should_index {
-                    files.push(rel_str);
-                }
-            }
-        }
-    }
-
-    Ok(files)
+    let abs = collect_files(root, SelectionPolicy::Allowlist { include_source })
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(abs
+        .into_iter()
+        .filter_map(|p| {
+            p.strip_prefix(root)
+                .ok()
+                .map(|r| r.to_string_lossy().replace('\\', "/"))
+        })
+        .collect())
 }
 
 /// Read a single file from the cloned repo and build **one** `PreparedDoc` for the
@@ -132,11 +117,11 @@ pub(super) async fn read_file_embed_docs(
     let ext = file_extension(path);
     let ext_for_chunk = ext.clone();
     let (chunks, text) = tokio::task::spawn_blocking(move || {
-        let chunks = code_or_text_chunks(&text, &ext_for_chunk);
+        let chunks = chunk_file(&text, &ext_for_chunk);
         (chunks, text)
     })
     .await
-    .map_err(|e| format!("chunk_code panicked: {e}"))?;
+    .map_err(|e| format!("chunk_file panicked: {e}"))?;
     if chunks.is_empty() {
         return Ok(Vec::new());
     }
@@ -160,7 +145,10 @@ pub(super) async fn read_file_embed_docs(
     // Use the overall file line range (first chunk start → last chunk end).
     let file_line_start = chunks.first().map(|c| c.start_line);
     let file_line_end = chunks.last().map(|c| c.end_line);
-    let chunk_method = chunking_method(&ext, chunks.first().expect("non-empty"));
+    let chunk_method = match chunks.first() {
+        Some(c) => chunking_method(&ext, c),
+        None => return Ok(Vec::new()),
+    };
 
     // Per-chunk payload overrides (P-H1): the file's chunks share one PreparedDoc
     // for TEI batching, but each chunk keeps its own symbol_* and code_line_*
@@ -217,64 +205,6 @@ pub(super) async fn read_file_embed_docs(
     );
     doc.chunk_extra = chunk_extra;
     Ok(vec![doc])
-}
-
-fn code_or_text_chunks(text: &str, ext: &str) -> Vec<CodeChunk> {
-    // Fall back to prose chunking both for unsupported extensions (`None`) and
-    // for supported-language files that tree-sitter splits into zero non-empty
-    // chunks (`Some([])`) — otherwise such a file would be silently dropped.
-    match chunk_code_chunks(text, ext) {
-        Some(chunks) if !chunks.is_empty() => chunks,
-        _ => text_chunks(text),
-    }
-}
-
-fn text_chunks(text: &str) -> Vec<CodeChunk> {
-    // The chunker reports each chunk's true byte offset — never re-discover the
-    // position by substring search, which matches the first duplicate
-    // occurrence and mislabels line ranges on files with repeated content.
-    chunk_text_with_offsets(text)
-        .into_iter()
-        .map(|(byte_offset, chunk)| {
-            let chunk_len = chunk.len();
-            let line_start = line_for_byte(text, byte_offset);
-            // Inclusive end so a chunk ending on a newline maps to its own last
-            // line, not the next one.
-            let line_end = if chunk_len > 0 {
-                line_for_byte(text, byte_offset + chunk_len - 1)
-            } else {
-                line_start
-            };
-            CodeChunk {
-                text: chunk,
-                byte_start: byte_offset,
-                byte_end: byte_offset + chunk_len,
-                start_line: line_start,
-                end_line: line_end,
-                declaration_start_line: line_start,
-                declaration_end_line: line_end,
-                symbol: None,
-            }
-        })
-        .collect()
-}
-
-fn chunking_method(ext: &str, chunk: &CodeChunk) -> &'static str {
-    if chunk.symbol.is_some() || supports_tree_sitter_chunking(ext) {
-        "tree_sitter"
-    } else {
-        "prose"
-    }
-}
-
-fn line_for_byte(content: &str, byte: usize) -> u32 {
-    // Snap to a char boundary: an inclusive end may land inside a multibyte
-    // character, and slicing on a non-boundary panics.
-    let mut capped = byte.min(content.len());
-    while capped > 0 && !content.is_char_boundary(capped) {
-        capped -= 1;
-    }
-    content[..capped].bytes().filter(|b| *b == b'\n').count() as u32 + 1
 }
 
 pub(super) fn build_file_embed_ctx(

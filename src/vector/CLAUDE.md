@@ -9,6 +9,7 @@ TEI embedding + Qdrant vector store ops. Supports both dense-only and hybrid (de
 vector/
 ├── ops.rs           # Crate-level module root re-exporting ops/*
 └── ops/
+    ├── file_ingest.rs / file_ingest_tests.rs   # Shared walker + chunker used by all git providers and local embed
     ├── commands.rs / commands/
     │   ├── ask.rs               # Module root for the ask path
     │   ├── ask/
@@ -86,9 +87,15 @@ It also detects (and caches) the collection's **VectorMode**:
 Any new command that needs URL counts/dedup **must** use `qdrant_url_facets`. A full scroll on a 2M+ point collection takes 60-80 seconds.
 
 ### Code Chunking (tree-sitter)
-`chunk_code()` in `input/code.rs` splits source code at AST boundaries (functions, structs, classes) using tree-sitter grammars. Returns `Option<Vec<String>>` — `None` means no grammar for the extension, caller should fall back to `chunk_text()`. Supported: Rust, Python, JavaScript, TypeScript/TSX, Go, Bash. Chunk range: 500–2000 chars. GitHub ingest builds `PreparedDoc` with code chunks and embeds via `embed_prepared_docs`.
+`chunk_code()` in `input/code.rs` splits source code at AST boundaries (functions, structs, classes) using tree-sitter grammars. Returns `Option<Vec<String>>` — `None` means no grammar for the extension, caller should fall back to `chunk_text()`. Supported: Rust, Python, JavaScript, TypeScript/TSX, Go, Bash. Chunk range: 500–2000 chars.
 
-**Local directory embed** (`axon embed <dir>`, `tei/prepare.rs`) reuses the same code/prose split: it recurses the tree, prunes junk dirs and binary files via `input/select.rs`, and routes local source files (by extension) through `chunk_code` (tagged `content_type = "text"`) while markdown/docs stay on `chunk_markdown` (tagged `"markdown"`). `code::chunk_code` runs inside `spawn_blocking` there because tree-sitter parsing is CPU-bound. Crawl-output dirs (http manifest URLs) stay on prose chunking.
+**Shared file-ingest engine** (`ops/file_ingest.rs`) — the canonical entry point for all git providers and local `embed <dir>`:
+- `collect_files(root, SelectionPolicy)` — BFS walker with pruning (`select::is_pruned_dir`) and binary-ext filtering. `SelectionPolicy::Allowlist { include_source }` matches the GitHub/GitLab/generic-git allowlist; `SelectionPolicy::Permissive` accepts all non-binary, non-pruned files (used by the embed CLI path).
+- `chunk_file(content, ext)` → `Vec<CodeChunk>` — tries tree-sitter via `chunk_code_chunks`; falls back to synthetic `CodeChunk`s wrapping `chunk_text_with_offsets` so callers always get `CodeChunk` with line ranges.
+- `chunking_method(ext, chunk)` → `&'static str` — returns `"tree_sitter"` or `"prose"` based on whether the chunk carries a symbol.
+All providers (GitHub, GitLab, generic Git, Gitea) and `embed <dir>` now call this engine and emit one `PreparedDoc` per `CodeChunk` with canonical `code_*`/`symbol_*` payload fields.
+
+**Local directory embed** (`axon embed <dir>`, `tei/prepare.rs`) routes local code files through `chunk_file` + `code_symbol_extraction_status` inside `spawn_blocking`, emitting one `PreparedDoc` per chunk with `code_*`/`symbol_*` extra payload. Crawl-output dirs (http manifest URLs) stay on prose chunking via `select_chunks`.
 
 `classify_file_type()` in `input/classify.rs` tags files as `test`/`config`/`doc`/`source` for metadata enrichment. Pure function, no I/O.
 

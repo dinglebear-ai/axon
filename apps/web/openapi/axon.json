@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "5.8.1"
+    "version": "5.9.0"
   },
   "paths": {
     "/v1/ask": {

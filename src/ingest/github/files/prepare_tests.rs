@@ -92,9 +92,10 @@ async fn non_utf8_file_is_skipped_not_failed() {
 fn text_chunks_line_ranges_are_monotonic_with_duplicate_lines() {
     // Repeated identical lines make chunk text ambiguous; offsets must come
     // from the chunker itself so line ranges stay non-regressing and correct.
+    // Use a non-code extension so the prose path is exercised.
     let line = "the quick brown fox jumps over the lazy dog\n";
     let text = line.repeat(200);
-    let chunks = text_chunks(&text);
+    let chunks = chunk_file(&text, "txt");
     assert!(chunks.len() >= 2, "expected multiple prose chunks");
     let mut prev_start = 0u32;
     for chunk in &chunks {
@@ -119,10 +120,11 @@ fn text_chunks_byte_ranges_point_at_true_positions_with_repeated_content() {
     // A repeated block bigger than the overlap window: substring re-discovery
     // would lock the second chunk onto the first occurrence and emit wrong
     // byte ranges + line numbers. Offsets must point at each chunk's true slice
-    // and advance strictly forward.
+    // and advance strictly forward. Use a non-code extension so the prose
+    // path is exercised (chunk_file falls back to text_chunks for unknown ext).
     let block = "fn dup() { body(); }\n".repeat(150);
     let text = format!("{block}// divider\n{block}");
-    let chunks = text_chunks(&text);
+    let chunks = chunk_file(&text, "txt");
     assert!(chunks.len() >= 2, "expected multiple prose chunks");
     let mut prev_start = 0usize;
     for (i, chunk) in chunks.iter().enumerate() {
@@ -146,7 +148,7 @@ fn text_chunks_byte_ranges_point_at_true_positions_with_repeated_content() {
 #[test]
 fn prose_file_uses_prose_chunking_method() {
     let text = format!("# Title\n\n{}", "prose body line\n".repeat(60));
-    let chunks = code_or_text_chunks(&text, "md");
+    let chunks = chunk_file(&text, "md");
     assert!(!chunks.is_empty());
     assert!(chunks.iter().all(|chunk| chunk.symbol.is_none()));
     assert_eq!(chunking_method("md", &chunks[0]), "prose");

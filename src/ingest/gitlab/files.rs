@@ -5,14 +5,17 @@ use base64::Engine as _;
 
 use crate::core::config::Config;
 use crate::core::logging::log_warn;
-use crate::ingest::git_files::{collect_repo_files, embed_docs};
+use crate::ingest::git_files::embed_docs;
 use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::MAX_INGEST_FILE_BYTES;
 use crate::ingest::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
-use crate::vector::ops::input::code::chunk_code;
-use crate::vector::ops::{PreparedDoc, chunk_text};
+use crate::vector::ops::PreparedDoc;
+use crate::vector::ops::file_ingest::{
+    SelectionPolicy, chunk_file, chunking_method, collect_files,
+};
+use crate::vector::ops::input::code::code_symbol_extraction_status;
 
-use super::embed::gitlab_payload;
+use super::embed::gitlab_file_chunk_payload;
 use super::types::{GitLabProject, GitLabTarget};
 
 async fn clone_repo(
@@ -78,7 +81,9 @@ pub(crate) async fn embed_files(
         .report(serde_json::json!({"phase": "cloning", "repo": target.namespace_path}))
         .await;
     let tmp = clone_repo(cfg, target, branch).await?;
-    let files = collect_repo_files(tmp.path(), include_source).await?;
+    let files = collect_files(tmp.path(), SelectionPolicy::Allowlist { include_source })
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let total = files.len();
     let mut docs = Vec::new();
     for (index, file) in files.into_iter().enumerate() {
@@ -125,32 +130,48 @@ pub(crate) async fn embed_files(
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        // Move content into spawn_blocking — avoids cloning large files.
-        let chunks = match tokio::task::spawn_blocking(move || {
-            chunk_code(&content, &ext).unwrap_or_else(|| chunk_text(&content))
+        // Move content + ext into spawn_blocking; return content + ext so
+        // code_symbol_extraction_status can run after on the calling thread.
+        let (code_chunks, content, ext) = match tokio::task::spawn_blocking(move || {
+            let chunks = chunk_file(&content, &ext);
+            (chunks, content, ext)
         })
         .await
         {
-            Ok(chunks) => chunks,
+            Ok(triple) => triple,
             Err(e) => {
-                log_warn(&format!(
-                    "command=ingest_gitlab chunk_panicked path={rel} err={e}"
-                ));
-                vec![]
+                tracing::error!(
+                    namespace = %target.namespace_path,
+                    path = %rel,
+                    err = %e,
+                    "ingest_gitlab: chunk_file task panicked"
+                );
+                continue;
             }
         };
-        if !chunks.is_empty() {
+        if code_chunks.is_empty() {
+            continue;
+        }
+        let symbol_status = code_symbol_extraction_status(&content, &ext, &code_chunks);
+        for (idx, chunk) in code_chunks.into_iter().enumerate() {
+            let method = chunking_method(&ext, &chunk);
             docs.push(PreparedDoc::ingest(
-                format!("{}/-/blob/{}/{}", target.web_url, branch, rel),
+                format!(
+                    "{}/-/blob/{}/{}#L{}-L{}#{}",
+                    target.web_url, branch, rel, chunk.start_line, chunk.end_line, idx
+                ),
                 target.host.clone(),
-                chunks,
+                vec![chunk.text.clone()],
                 "gitlab",
                 Some(rel.clone()),
-                Some(gitlab_payload(
+                Some(gitlab_file_chunk_payload(
                     target,
                     project,
-                    "file",
-                    serde_json::json!({"path": rel, "branch": branch}),
+                    &rel,
+                    branch,
+                    &chunk,
+                    method,
+                    symbol_status,
                 )),
             ));
         }
@@ -171,3 +192,7 @@ pub(crate) async fn embed_files(
         .await;
     Ok(chunks)
 }
+
+#[cfg(test)]
+#[path = "files_tests.rs"]
+mod tests;
