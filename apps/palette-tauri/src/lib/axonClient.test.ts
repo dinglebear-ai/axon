@@ -159,4 +159,84 @@ describe("executeAction", () => {
       expect(candidate.example, candidate.subcommand).toMatch(uuidPattern);
     }
   });
+
+  // M8: Cross-layer route contract test.
+  //
+  // Every action subcommand used in buildActionRequest must have a
+  // corresponding entry in the Rust ALLOWED_ROUTES set (axon_bridge.rs
+  // `is_allowed_route`).  This test encodes the known-good list of
+  // subcommands so that adding a new action on the TS side without wiring
+  // it in Rust is caught at test time.
+  it("all action subcommands are in the Rust ALLOWED_ROUTES allowlist", () => {
+    // This list must match the routes accepted by `is_allowed_route` in
+    // apps/palette-tauri/src-tauri/src/axon_bridge.rs.
+    const RUST_ALLOWED_SUBCOMMANDS = new Set([
+      // Static GET routes
+      "doctor",
+      "status",
+      "sources",
+      "domains",
+      "stats",
+      "watch-list",
+      // Static POST routes
+      "scrape",
+      "crawl",
+      "map",
+      "summarize",
+      "ask",
+      "chat",
+      "query",
+      "retrieve",
+      "suggest",
+      "evaluate",
+      "search",
+      "research",
+      "embed",
+      "extract",
+      "ingest",
+      "endpoints",
+      "brand",
+      "diff",
+      "screenshot",
+      "dedupe",
+      "watch-create",
+      "ingest-sessions-prepared",
+      // Job lifecycle (family-operation pairs)
+      "crawl-list",
+      "crawl-status",
+      "crawl-cancel",
+      "crawl-cleanup",
+      "crawl-clear",
+      "crawl-recover",
+      "embed-list",
+      "embed-status",
+      "embed-cancel",
+      "embed-cleanup",
+      "embed-clear",
+      "embed-recover",
+      "extract-list",
+      "extract-status",
+      "extract-cancel",
+      "extract-cleanup",
+      "extract-clear",
+      "extract-recover",
+      "ingest-list",
+      "ingest-status",
+      "ingest-cancel",
+      "ingest-cleanup",
+      "ingest-clear",
+      "ingest-recover",
+      // Dynamic watch routes
+      "watch-run",
+    ]);
+
+    const actionSubcommands = ACTIONS.map((a) => a.subcommand);
+    const unlisted = actionSubcommands.filter((s) => !RUST_ALLOWED_SUBCOMMANDS.has(s));
+
+    expect(
+      unlisted,
+      `Action subcommands not in Rust ALLOWED_ROUTES: ${unlisted.join(", ")}\n` +
+        `Add them to is_allowed_route() in axon_bridge.rs and to RUST_ALLOWED_SUBCOMMANDS above.`,
+    ).toHaveLength(0);
+  });
 });

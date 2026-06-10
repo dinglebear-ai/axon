@@ -1,16 +1,24 @@
-use std::time::Duration;
-
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use crate::{merged_settings, normalize_server_url};
+use crate::axon_bridge::StreamClient;
+use crate::{merged_settings, validate_saved_server_url};
+
+/// Maximum allowed size (in bytes) for a single SSE line.
+///
+/// A rogue or misconfigured server could send an unbounded stream of bytes
+/// without a newline, growing the in-memory `pending` buffer without limit.
+/// This cap returns an error rather than allowing OOM growth.
+const MAX_SSE_LINE_BYTES: usize = 1024 * 1024; // 1 MiB
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PaletteStreamRequest {
+    // Intentionally ignored — the real value is loaded from app settings
     #[serde(default, rename = "baseUrl")]
     _base_url: Option<String>,
+    // Intentionally ignored — the real value is loaded from app settings
     #[serde(default, rename = "token")]
     _token: Option<String>,
     request_id: String,
@@ -47,6 +55,7 @@ enum PaletteStreamEvent {
 pub(crate) async fn axon_http_stream_request(
     app: AppHandle,
     window: tauri::Window,
+    stream_client: tauri::State<'_, StreamClient>,
     request: PaletteStreamRequest,
 ) -> Result<(), String> {
     if !matches!(request.path.as_str(), "/v1/ask/stream" | "/v1/chat/stream") {
@@ -65,12 +74,8 @@ pub(crate) async fn axon_http_stream_request(
         )
         .map_err(|err| err.to_string())?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
-        .user_agent("Axon Palette/4.5")
-        .build()
-        .map_err(|err| err.to_string())?;
-    let mut builder = client
+    let mut builder = (*stream_client)
+        .client()
         .post(url)
         .header(reqwest::header::ACCEPT, "text/event-stream")
         .json(&request.body);
@@ -86,7 +91,10 @@ pub(crate) async fn axon_http_stream_request(
     let response = builder.send().await.map_err(|err| err.to_string())?;
     if !response.status().is_success() {
         let status = response.status();
-        let text = response.text().await.unwrap_or_default();
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|err| format!("<failed to read body: {err}>"));
         return Err(format!("stream request failed with HTTP {status}: {text}"));
     }
 
@@ -107,39 +115,35 @@ pub(crate) async fn axon_http_stream_request(
     }
     if !terminal {
         let message = "stream ended before done".to_string();
-        let _ = window.emit(
+        if let Err(err) = window.emit(
             "palette://stream",
             PaletteStreamEvent::Error {
                 request_id: request.request_id,
                 message: message.clone(),
             },
-        );
+        ) {
+            eprintln!("palette: failed to emit stream error event: {err}");
+        }
         return Err(message);
     }
     Ok(())
 }
 
-fn validate_saved_server_url(server_url: &str) -> Result<String, String> {
-    let server_url = normalize_server_url(server_url);
-    let parsed =
-        reqwest::Url::parse(&server_url).map_err(|_| "saved Axon server URL is invalid")?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("saved Axon server URL must use http or https".to_string());
-    }
-    if parsed.host_str().is_none()
-        || !matches!(parsed.path(), "" | "/")
-        || parsed.query().is_some()
-        || parsed.fragment().is_some()
-    {
-        return Err("saved Axon server URL must be an origin URL".to_string());
-    }
-    Ok(server_url.trim_end_matches('/').to_string())
-}
-
 fn drain_sse_lines(pending: &mut Vec<u8>, chunk: &[u8]) -> Result<Vec<String>, String> {
     pending.extend_from_slice(chunk);
+    if pending.len() > MAX_SSE_LINE_BYTES && !pending.contains(&b'\n') {
+        return Err(format!(
+            "SSE line exceeded {MAX_SSE_LINE_BYTES} bytes without a newline — \
+             refusing to buffer further"
+        ));
+    }
     let mut lines = Vec::new();
     while let Some(pos) = pending.iter().position(|byte| *byte == b'\n') {
+        if pos > MAX_SSE_LINE_BYTES {
+            return Err(format!(
+                "SSE line of {pos} bytes exceeds the {MAX_SSE_LINE_BYTES}-byte limit"
+            ));
+        }
         let raw: Vec<u8> = pending.drain(..=pos).collect();
         lines.push(decode_sse_line(raw)?);
     }
@@ -172,10 +176,13 @@ fn handle_palette_sse_line(
     let value: serde_json::Value = serde_json::from_str(&data).map_err(|err| err.to_string())?;
     match value.get("type").and_then(|kind| kind.as_str()) {
         Some("delta") => {
-            let text = value
-                .get("text")
-                .and_then(|text| text.as_str())
-                .unwrap_or_default();
+            let text = match value.get("text").and_then(|t| t.as_str()) {
+                Some(t) => t,
+                None => {
+                    eprintln!("palette: delta SSE event missing 'text' field — data: {data}");
+                    ""
+                }
+            };
             window
                 .emit(
                     "palette://stream",
@@ -220,40 +227,14 @@ fn handle_palette_sse_line(
                 .map_err(|err| err.to_string())?;
             Ok(true)
         }
-        _ => Ok(false),
+        Some(unknown) => {
+            eprintln!("palette: unknown SSE event type '{unknown}' — ignoring");
+            Ok(false)
+        }
+        None => Ok(false),
     }
 }
 
 #[cfg(test)]
-mod stream_tests {
-    use super::{drain_sse_lines, parse_sse_data_line as parse_data_line};
-
-    #[test]
-    fn parse_sse_data_line() {
-        assert_eq!(
-            parse_data_line("data: {\"type\":\"delta\",\"text\":\"hi\"}"),
-            Some("{\"type\":\"delta\",\"text\":\"hi\"}".to_string())
-        );
-    }
-
-    #[test]
-    fn ignores_non_data_sse_line() {
-        assert_eq!(parse_data_line("event: delta"), None);
-    }
-
-    #[test]
-    fn buffers_split_utf8_until_complete_line() {
-        let mut pending = Vec::new();
-        let snowman = "data: {\"type\":\"delta\",\"text\":\"☃\"}\n".as_bytes();
-        assert!(
-            drain_sse_lines(&mut pending, &snowman[..snowman.len() - 2])
-                .unwrap()
-                .is_empty()
-        );
-
-        let lines = drain_sse_lines(&mut pending, &snowman[snowman.len() - 2..]).unwrap();
-
-        assert_eq!(lines, vec!["data: {\"type\":\"delta\",\"text\":\"☃\"}"]);
-        assert!(pending.is_empty());
-    }
-}
+#[path = "stream_tests.rs"]
+mod stream_tests;

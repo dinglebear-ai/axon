@@ -1,3 +1,10 @@
+// NOTE (M1): OpenAPI types are generated into `./axon-api.d.ts` via
+// `pnpm generate:api`.  Request execution is currently hand-coded here; a full
+// migration to the generated request helpers (`openapi-fetch`) is tracked in
+// GitHub issue #177 (finding M1).  Until that migration is complete the
+// generated types serve as a reference for the wire shapes in `bodyFor()`.
+// See: apps/palette-tauri/src/lib/axon-api.d.ts (generated)
+
 import { invoke } from "./invoke";
 
 import type { PaletteAction } from "./actions";

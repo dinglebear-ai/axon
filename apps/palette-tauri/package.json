@@ -11,7 +11,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "vite:dev": "vite --host 127.0.0.1",
-    "vite:build": "vite build"
+    "vite:build": "vite build",
+    "verify": "pnpm install --frozen-lockfile && pnpm test && pnpm typecheck && pnpm vite:build"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

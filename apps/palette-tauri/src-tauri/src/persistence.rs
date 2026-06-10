@@ -1,5 +1,29 @@
 //! Disk persistence for the palette: reads/writes `settings.json`, the Axon
 //! `.env`, and `config.toml`, plus the JSON↔TOML/env value conversions.
+//!
+//! # Allowlists
+//!
+//! `write_axon_env_values` and `write_axon_config_values` only write keys that
+//! appear in `ALLOWED_ENV_KEYS` and `ALLOWED_TOML_SECTION_PREFIXES` (prefix
+//! match) respectively.  Any key not on the list is rejected with a descriptive
+//! error before touching disk.
+//! This ensures renderer-supplied input cannot overwrite arbitrary keys.
+//!
+//! # Dotenv parser limitations
+//!
+//! The bundled dotenv parser/writer handles the common subset of dotenv syntax:
+//! - `KEY=value`, `KEY="quoted"`, `KEY='single-quoted'`
+//! - Blank lines and `#`-prefixed comment lines are preserved verbatim
+//! - Inline comments (e.g. `KEY=val # comment`) are **not** stripped — the
+//!   comment text becomes part of the value.  This is intentional: the writer
+//!   only touches keys in the allowlist, so exotic line shapes that the palette
+//!   never writes are preserved as-is.
+//!
+//! # Atomic writes
+//!
+//! Both `.env` and `config.toml` writes use an atomic rename pattern:
+//! write to `<path>.tmp`, fsync, then `rename` to the target.  On Unix the
+//! target file is created with mode `0o600`.
 
 use std::{
     collections::HashMap,
@@ -12,9 +36,84 @@ use toml_edit::{Array, DocumentMut, Item, Table};
 
 use crate::{PaletteSettings, PartialPaletteSettings, SETTINGS_FILE};
 
+/// Allowed keys for the `~/.axon/.env` layer.
+///
+/// Any key supplied by the renderer that is **not** in this set is rejected
+/// before writing.  Add keys here when the palette gains the ability to
+/// configure a new env variable.
+const ALLOWED_ENV_KEYS: &[&str] = &[
+    "AXON_DATA_DIR",
+    "AXON_HOME",
+    "QDRANT_URL",
+    "TEI_URL",
+    "AXON_CHROME_REMOTE_URL",
+    "AXON_COLLECTION",
+    "AXON_MCP_HTTP_HOST",
+    "AXON_MCP_HTTP_PORT",
+    "AXON_MCP_HTTP_TOKEN",
+    "AXON_MCP_AUTH_MODE",
+    "AXON_MCP_PUBLIC_URL",
+    "AXON_MCP_GOOGLE_CLIENT_ID",
+    "AXON_MCP_GOOGLE_CLIENT_SECRET",
+    "AXON_MCP_AUTH_ADMIN_EMAIL",
+    "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
+    "AXON_MCP_ALLOWED_ORIGINS",
+    "TAVILY_API_KEY",
+    "AXON_SEARXNG_URL",
+    "GITHUB_TOKEN",
+    "GITLAB_TOKEN",
+    "GITEA_TOKEN",
+    "REDDIT_CLIENT_ID",
+    "REDDIT_CLIENT_SECRET",
+    "HF_TOKEN",
+    "AXON_LLM_BACKEND",
+    "AXON_OPENAI_BASE_URL",
+    "AXON_OPENAI_MODEL",
+    "AXON_OPENAI_API_KEY",
+    "GEMINI_API_KEY",
+    "GEMINI_HOME",
+    "AXON_HEADLESS_GEMINI_HOME",
+    "AXON_HEADLESS_GEMINI_CMD",
+    "AXON_HEADLESS_GEMINI_MODEL",
+    "AXON_USER_AGENT",
+    "AXON_CHROME_USER_AGENT",
+    "AXON_LOG_PATH",
+    "AXON_LOG_MAX_BYTES",
+    "AXON_IMAGE",
+    "AXON_MCP_HTTP_PUBLISH",
+    "TEI_EMBEDDING_MODEL",
+    "TEI_HTTP_PORT",
+    "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
+    "NVIDIA_VISIBLE_DEVICES",
+    "CUDA_VISIBLE_DEVICES",
+    // Connection fields managed directly by the palette settings UI
+    "AXON_SERVER_URL",
+];
+
+/// Allowed dotted-key prefixes for the `~/.axon/config.toml` layer.
+///
+/// The palette uses dotted paths such as `search.collection`.  Any key
+/// supplied by the renderer that does **not** start with one of these section
+/// prefixes (or equal a section prefix exactly) is rejected.
+const ALLOWED_TOML_SECTION_PREFIXES: &[&str] = &[
+    "search.",
+    "ask.",
+    "tei.",
+    "workers.",
+    "chrome.",
+    "scrape.",
+    "verticals.",
+    "antibot.",
+    "payload.",
+];
+
 pub(crate) fn read_settings_result(app: &AppHandle) -> Result<PartialPaletteSettings, String> {
-    let Some(path) = settings_path(app) else {
-        return Ok(PartialPaletteSettings::default());
+    let path = match settings_path(app) {
+        Ok(p) => p,
+        Err(err) => {
+            eprintln!("palette: {err}");
+            return Ok(PartialPaletteSettings::default());
+        }
     };
     let contents = match fs::read_to_string(&path) {
         Ok(contents) => contents,
@@ -47,14 +146,17 @@ pub(crate) fn write_settings(
     app: &AppHandle,
     settings: &PaletteSettings,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = settings_path(app).ok_or("settings path unavailable")?;
+    let path = settings_path(app)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let mut palette_only = settings.clone();
     palette_only.env_values.clear();
     palette_only.config_values.clear();
-    fs::write(path, serde_json::to_string_pretty(&palette_only)?)?;
+    atomic_write(
+        &path,
+        serde_json::to_string_pretty(&palette_only)?.as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -67,11 +169,11 @@ pub(crate) fn settings_with_file_values(mut settings: PaletteSettings) -> Palett
     settings
 }
 
-fn settings_path(app: &AppHandle) -> Option<PathBuf> {
+fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_config_dir()
-        .ok()
         .map(|dir| dir.join(SETTINGS_FILE))
+        .map_err(|err| format!("failed to resolve app config directory: {err}"))
 }
 
 pub(crate) fn value_for(key: &str, file_entries: &[(String, String)]) -> Option<String> {
@@ -90,8 +192,16 @@ pub(crate) fn read_default_env_entries() -> Vec<(String, String)> {
     let Some(path) = default_env_path() else {
         return Vec::new();
     };
-    let Ok(contents) = fs::read_to_string(path) else {
-        return Vec::new();
+    let contents = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Vec::new(),
+        Err(err) => {
+            eprintln!(
+                "palette: failed to read Axon env file at {}: {err}",
+                path.display()
+            );
+            return Vec::new();
+        }
     };
     parse_env_entries(&contents)
 }
@@ -131,23 +241,67 @@ fn trim_env_value(value: &str) -> String {
     let value = value.trim();
     if value.len() >= 2 {
         let bytes = value.as_bytes();
-        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
-            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
-        {
+        if bytes[0] == b'"' && bytes[value.len() - 1] == b'"' {
+            return unescape_double_quoted(&value[1..value.len() - 1]);
+        }
+        if bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'' {
             return value[1..value.len() - 1].to_string();
         }
     }
     value.to_string()
 }
 
+fn unescape_double_quoted(inner: &str) -> String {
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 pub(crate) fn write_axon_env_values(
     values: &HashMap<String, serde_json::Value>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Validate all keys before touching disk.
+    for key in values.keys() {
+        if !ALLOWED_ENV_KEYS.contains(&key.as_str()) {
+            return Err(format!(
+                "env key '{key}' is not in the palette allowlist; \
+                 only recognised Axon env keys may be written"
+            )
+            .into());
+        }
+    }
+
     let path = default_env_path().ok_or("env path unavailable")?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let existing = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(err) => {
+            return Err(format!(
+                "failed to read existing env file at {} before writing — \
+                 refusing to continue to avoid data loss: {err}",
+                path.display()
+            )
+            .into());
+        }
+    };
     let mut pending: HashMap<String, String> = values
         .iter()
         .map(|(key, value)| (key.clone(), json_value_to_env_string(value)))
@@ -172,7 +326,7 @@ pub(crate) fn write_axon_env_values(
     }
     let mut remaining: Vec<_> = pending.into_iter().collect();
     remaining.sort_by(|(left, _), (right, _)| left.cmp(right));
-    if !remaining.is_empty() && !lines.last().is_none_or(|line| line.is_empty()) {
+    if !remaining.is_empty() && lines.last().is_some_and(|line| !line.is_empty()) {
         lines.push(String::new());
     }
     for (key, value) in remaining {
@@ -180,7 +334,7 @@ pub(crate) fn write_axon_env_values(
     }
     let mut output = lines.join("\n");
     output.push('\n');
-    fs::write(path, output)?;
+    atomic_write(&path, output.as_bytes())?;
     Ok(())
 }
 
@@ -188,11 +342,26 @@ pub(crate) fn read_default_config_values() -> HashMap<String, serde_json::Value>
     let Some(path) = default_config_path() else {
         return HashMap::new();
     };
-    let Ok(contents) = fs::read_to_string(path) else {
-        return HashMap::new();
+    let contents = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return HashMap::new(),
+        Err(err) => {
+            eprintln!(
+                "palette: failed to read Axon config file at {}: {err}",
+                path.display()
+            );
+            return HashMap::new();
+        }
     };
-    let Ok(doc) = contents.parse::<DocumentMut>() else {
-        return HashMap::new();
+    let doc = match contents.parse::<DocumentMut>() {
+        Ok(d) => d,
+        Err(err) => {
+            eprintln!(
+                "palette: failed to parse Axon config file at {}: {err}",
+                path.display()
+            );
+            return HashMap::new();
+        }
     };
     let mut values = HashMap::new();
     collect_toml_values("", doc.as_item(), &mut values);
@@ -202,20 +371,83 @@ pub(crate) fn read_default_config_values() -> HashMap<String, serde_json::Value>
 pub(crate) fn write_axon_config_values(
     values: &HashMap<String, serde_json::Value>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Validate all keys before touching disk.
+    for key in values.keys() {
+        let allowed = ALLOWED_TOML_SECTION_PREFIXES
+            .iter()
+            .any(|prefix| key.starts_with(prefix));
+        if !allowed {
+            return Err(format!(
+                "config key '{key}' is not in the palette allowlist; \
+                 only recognised Axon config.toml sections may be written"
+            )
+            .into());
+        }
+    }
+
     let path = default_config_path().ok_or("config path unavailable")?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let contents = fs::read_to_string(&path).unwrap_or_default();
-    let mut doc = contents
-        .parse::<DocumentMut>()
-        .unwrap_or_else(|_| DocumentMut::new());
+    let contents = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(err) => {
+            return Err(format!(
+                "failed to read existing config file at {} before writing — \
+                 refusing to continue to avoid data loss: {err}",
+                path.display()
+            )
+            .into());
+        }
+    };
+    let mut doc = match contents.parse::<DocumentMut>() {
+        Ok(d) => d,
+        Err(err) => {
+            return Err(format!(
+                "failed to parse existing config file at {} — \
+                 refusing to continue to avoid data loss: {err}",
+                path.display()
+            )
+            .into());
+        }
+    };
     let mut entries: Vec<_> = values.iter().collect();
-    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    entries.sort_by_key(|(key, _)| *key);
     for (path, value) in entries {
         set_toml_value(&mut doc, path, value);
     }
-    fs::write(path, doc.to_string())?;
+    atomic_write(&path, doc.to_string().as_bytes())?;
+    Ok(())
+}
+
+/// Write `data` to `path` atomically: write to `<path>.tmp`, then rename.
+///
+/// On Unix, permissions are set to `0o600` immediately after the file is
+/// created but before any data is written.  Note: a brief window exists
+/// between `open` and `set_permissions` where the file inherits the process
+/// umask.  On Windows no explicit permission change is applied; rely on the
+/// directory ACL to restrict access.
+fn atomic_write(path: &Path, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let tmp = path.with_extension("tmp");
+    {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&tmp)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        }
+
+        use std::io::Write;
+        file.write_all(data)?;
+        file.sync_all()?;
+    }
+    fs::rename(&tmp, path)?;
     Ok(())
 }
 
@@ -231,10 +463,8 @@ fn collect_toml_values(prefix: &str, item: &Item, values: &mut HashMap<String, s
                 collect_toml_values(&next, value, values);
             }
         }
-        Item::Value(value) => {
-            if !prefix.is_empty() {
-                values.insert(prefix.to_string(), toml_value_to_json(value));
-            }
+        Item::Value(value) if !prefix.is_empty() => {
+            values.insert(prefix.to_string(), toml_value_to_json(value));
         }
         _ => {}
     }
@@ -266,12 +496,9 @@ fn toml_value_to_json(value: &toml_edit::Value) -> serde_json::Value {
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
         toml_edit::Value::Boolean(value) => serde_json::Value::Bool(*value.value()),
-        toml_edit::Value::Array(array) => serde_json::Value::Array(
-            array
-                .iter()
-                .map(|item| toml_value_to_json(item))
-                .collect::<Vec<_>>(),
-        ),
+        toml_edit::Value::Array(array) => {
+            serde_json::Value::Array(array.iter().map(toml_value_to_json).collect::<Vec<_>>())
+        }
         _ => serde_json::Value::String(value.to_string()),
     }
 }
@@ -339,3 +566,7 @@ fn format_env_value(value: &str) -> String {
         value.to_string()
     }
 }
+
+#[cfg(test)]
+#[path = "persistence_tests.rs"]
+mod tests;
