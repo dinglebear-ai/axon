@@ -1,2 +1,6 @@
 [toolchain]
-channel = "1.94.0"
+channel = "1.96.0"
+# Self-describe components so that when this file overrides CI's default toolchain
+# to 1.96.0, rustup auto-installs clippy + rustfmt for it (the dtolnay action only
+# installs components for the toolchain it pins, not the rust-toolchain.toml override).
+components = ["clippy", "rustfmt"]
