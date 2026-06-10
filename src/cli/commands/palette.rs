@@ -1,41 +1,35 @@
-//! `axon palette` — resolve, launch, and optionally install the axon-palette desktop binary.
+//! `axon palette` — resolve, launch, and optionally self-install the axon-palette desktop binary.
 //!
-//! The palette binary (`axon-palette`) is a SEPARATE GPUI application (`apps/desktop`) with a
-//! conflicting dependency tree (wasm-bindgen 0.2.120+ via gpui_wgpu conflicts with reqwest-locked
-//! 0.2.118). It must NOT be merged into this workspace.
+//! The palette binary is a separate GPUI application (`apps/desktop`). It must NOT be merged into
+//! this workspace — its wasm-bindgen version conflicts with reqwest's locked 0.2.118.
 //!
-//! Subcommands (via positional arg):
-//!   axon palette           — resolve and launch (install .desktop on first run)
-//!   axon palette launch    — same as bare invocation
-//!   axon palette install   — acquire binary (requires --method pull|build)
-//!   axon palette desktop   — write/refresh ~/.local/share/applications/axon-palette.desktop
-//!   axon palette autostart — write/refresh ~/.config/autostart/axon-palette.desktop
-//!
-//! Acquisition methods (--method):
-//!   pull  — download release tarball from GitHub releases
-//!   build — cargo build --manifest-path apps/desktop/Cargo.toml
+//! Subcommands:
+//!   axon palette                     — find and launch (auto-install prompt if missing)
+//!   axon palette launch              — same as bare invocation
+//!   axon palette install             — download release tarball matching this axon version
+//!   axon palette install --method build  — build from source
+//!   axon palette desktop             — write/refresh .desktop entry (Linux only)
+//!   axon palette autostart           — write/refresh autostart entry (Linux only)
 
 use crate::core::config::Config;
 use crate::core::ui::{accent, muted, primary};
+use sha2::Digest;
 use std::error::Error;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
+#[cfg(windows)]
+const PALETTE_BIN: &str = "axon-palette.exe";
+#[cfg(not(windows))]
 const PALETTE_BIN: &str = "axon-palette";
-const RELEASE_TARBALL_URL: &str =
-    "https://github.com/jmagar/axon/releases/latest/download/axon-palette-linux-x86_64.tar.gz";
-const DESKTOP_ENTRY_PATH: &str = "~/.local/share/applications/axon-palette.desktop";
-const AUTOSTART_PATH: &str = "~/.config/autostart/axon-palette.desktop";
-
-/// Search directories probed in priority order when locating the palette binary.
-const PALETTE_SEARCH_DIRS: &[&str] = &["~/.local/bin", "~/.axon/bin"];
 
 pub async fn run_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let sub = cfg.positional.first().map(String::as_str);
     match sub {
+        Some("install") => pull_or_build_palette(cfg).await,
+        Some("launch") | None => launch_palette(cfg).await,
         Some("desktop") => write_desktop_entry_cmd(cfg),
         Some("autostart") => write_autostart_entry_cmd(cfg),
-        Some("install") => acquire_palette(cfg),
-        Some("launch") | None => launch_palette(cfg),
         Some(unknown) => Err(format!(
             "unknown palette subcommand '{unknown}'; valid: launch, install, desktop, autostart"
         )
@@ -43,17 +37,17 @@ pub async fn run_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 }
 
-// ─── Launch ──────────────────────────────────────────────────────────────────
+// ── Launch ────────────────────────────────────────────────────────────────────
 
-fn launch_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let palette_path = match resolve_palette_binary() {
+async fn launch_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let exe = match resolve_palette_binary() {
         Some(p) => p,
         None => {
-            // Try acquisition when --method was supplied alongside the bare command.
-            if cfg.setup_method.is_some() {
-                acquire_palette(cfg)?;
+            if cfg.yes {
+                // --yes acts as consent to auto-install
+                pull_palette(cfg).await?;
                 resolve_palette_binary()
-                    .ok_or("palette binary not found after install; check $PATH or ~/.axon/bin")?
+                    .ok_or("palette binary not found after install; check PATH")?
             } else {
                 print_not_found(cfg);
                 return Err("axon-palette binary not found".into());
@@ -61,95 +55,77 @@ fn launch_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    // Silently write a .desktop entry on the very first launch.
-    let desktop = expand_tilde(DESKTOP_ENTRY_PATH);
-    if !desktop.exists() {
-        let _ = write_desktop_entry_at(&palette_path, &desktop);
-    }
-
     if cfg.json_output {
         println!(
             "{}",
             serde_json::to_string(&serde_json::json!({
                 "status": "launching",
-                "binary": palette_path.display().to_string(),
+                "binary": exe.display().to_string(),
             }))?
         );
     } else {
         eprintln!(
             "{} {}",
             muted("launching"),
-            accent(&palette_path.display().to_string())
+            accent(&exe.display().to_string())
         );
     }
 
-    std::process::Command::new(&palette_path)
+    std::process::Command::new(&exe)
         .spawn()
-        .map_err(|e| -> Box<dyn Error> {
-            format!("failed to launch {}: {e}", palette_path.display()).into()
-        })?;
-
+        .map_err(|e| format!("failed to launch {}: {e}", exe.display()))?;
     Ok(())
 }
 
 fn print_not_found(cfg: &Config) {
     if cfg.json_output {
-        let msg = serde_json::json!({
-            "error": "axon-palette binary not found",
-            "hint": "acquire with: axon palette install --method pull|build",
-        });
-        println!("{}", serde_json::to_string(&msg).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "error": "axon-palette binary not found",
+                "hint": "run: axon palette install",
+            }))
+            .unwrap_or_default()
+        );
     } else {
         eprintln!(
-            "{} {}\n  {}\n  {}",
+            "{} {}\n  {}",
             primary("axon-palette not found"),
-            muted("— acquire with one of:"),
-            accent("axon palette install --method pull"),
-            accent("axon palette install --method build"),
+            muted("— install with:"),
+            accent("axon palette install"),
         );
     }
 }
 
-// ─── Acquisition ─────────────────────────────────────────────────────────────
+// ── Acquisition ───────────────────────────────────────────────────────────────
 
-fn acquire_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn pull_or_build_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.setup_method.as_deref() {
-        Some("pull") => pull_palette(cfg),
         Some("build") => build_palette(cfg),
-        _ => Err("--method pull or --method build is required for palette install".into()),
+        _ => pull_palette(cfg).await,
     }
 }
 
-fn pull_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn pull_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let (archive_url, sha_url) = palette_asset_urls();
     if !cfg.json_output {
         eprintln!(
             "{}",
-            muted(&format!("downloading {PALETTE_BIN} from GitHub releases…"))
+            muted(&format!("downloading {PALETTE_BIN} from {archive_url}…"))
         );
     }
 
-    let dest_dir = expand_tilde("~/.local/bin");
+    let archive_bytes = download_verified(&archive_url, &sha_url).await?;
+    let dest_dir = palette_install_dir()?;
     std::fs::create_dir_all(&dest_dir)?;
+    extract_palette(&archive_bytes, &dest_dir)?;
 
-    let status = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(format!(
-            "curl -fsSL '{url}' | tar -xzf - -C '{dir}' {bin} 2>&1",
-            url = RELEASE_TARBALL_URL,
-            dir = dest_dir.display(),
-            bin = PALETTE_BIN,
-        ))
-        .status()
-        .map_err(|e| format!("curl/tar failed: {e}"))?;
-
-    if !status.success() {
-        return Err(format!(
-            "failed to download {PALETTE_BIN}; check network and release at {RELEASE_TARBALL_URL}"
-        )
-        .into());
+    let dest = dest_dir.join(PALETTE_BIN);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))?;
     }
-
-    let dest = make_executable(dest_dir.join(PALETTE_BIN))?;
     report_installed(cfg, &dest, "pull")
 }
 
@@ -157,50 +133,36 @@ fn build_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if !cfg.json_output {
         eprintln!(
             "{}",
-            muted("building axon-palette from source (this may take a few minutes)…")
+            muted("building axon-palette from source (may take several minutes)…")
         );
     }
-
-    let manifest_path = find_desktop_manifest()?;
-
+    let manifest = find_desktop_manifest()?;
     let status = std::process::Command::new("cargo")
         .args(["build", "--release", "--manifest-path"])
-        .arg(&manifest_path)
+        .arg(&manifest)
         .status()
         .map_err(|e| format!("cargo build failed: {e}"))?;
-
     if !status.success() {
         return Err("cargo build of axon-palette failed; see output above".into());
     }
-
-    let built = manifest_path
+    let built = manifest
         .parent()
         .unwrap_or(Path::new("."))
         .join("target/release")
         .join(PALETTE_BIN);
-
-    let dest_dir = expand_tilde("~/.local/bin");
+    let dest_dir = palette_install_dir()?;
     std::fs::create_dir_all(&dest_dir)?;
-    let dest_path = dest_dir.join(PALETTE_BIN);
-
-    // Atomic copy: write to a temp file, make executable, rename into place.
+    let dest = dest_dir.join(PALETTE_BIN);
     let tmp = dest_dir.join(format!(".{PALETTE_BIN}.tmp"));
     std::fs::copy(&built, &tmp)
         .map_err(|e| format!("copy {} → {}: {e}", built.display(), tmp.display()))?;
-    let dest = make_executable(tmp)?;
-    std::fs::rename(&dest, &dest_path)
-        .map_err(|e| format!("rename into {}: {e}", dest_path.display()))?;
-
-    report_installed(cfg, &dest_path, "build")
-}
-
-fn make_executable(path: PathBuf) -> Result<PathBuf, Box<dyn Error>> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
     }
-    Ok(path)
+    std::fs::rename(&tmp, &dest).map_err(|e| format!("rename into {}: {e}", dest.display()))?;
+    report_installed(cfg, &dest, "build")
 }
 
 fn report_installed(cfg: &Config, dest: &Path, method: &str) -> Result<(), Box<dyn Error>> {
@@ -223,24 +185,213 @@ fn report_installed(cfg: &Config, dest: &Path, method: &str) -> Result<(), Box<d
     Ok(())
 }
 
-// ─── Desktop integration ─────────────────────────────────────────────────────
+// ── Download + verify ─────────────────────────────────────────────────────────
+
+async fn download_verified(archive_url: &str, sha_url: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+
+    let sha_text = client
+        .get(sha_url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let expected = sha_text
+        .split_whitespace()
+        .next()
+        .ok_or("sha256 file is empty")?
+        .to_lowercase();
+
+    let archive_bytes = client
+        .get(archive_url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(&archive_bytes);
+    let actual = hex::encode(hasher.finalize());
+
+    if expected != actual {
+        return Err(format!("checksum mismatch — expected {expected}, got {actual}").into());
+    }
+
+    Ok(archive_bytes.to_vec())
+}
+
+// ── Extraction ────────────────────────────────────────────────────────────────
+
+fn extract_palette(archive_bytes: &Vec<u8>, dest_dir: &Path) -> Result<(), Box<dyn Error>> {
+    #[cfg(windows)]
+    {
+        extract_zip(archive_bytes, dest_dir)
+    }
+    #[cfg(not(windows))]
+    {
+        extract_targz(archive_bytes, dest_dir)
+    }
+}
+
+#[cfg(not(windows))]
+fn extract_targz(bytes: &Vec<u8>, dest_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let gz = flate2::read::GzDecoder::new(Cursor::new(bytes));
+    let mut archive = tar::Archive::new(gz);
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let entry_path = entry.path()?.into_owned();
+        let name = entry_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        if name == PALETTE_BIN {
+            entry.unpack(dest_dir.join(PALETTE_BIN))?;
+            return Ok(());
+        }
+    }
+    Err(format!("release archive did not contain {PALETTE_BIN}").into())
+}
+
+#[cfg(windows)]
+fn extract_zip(bytes: &Vec<u8>, dest_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let name = file.name().to_owned();
+        if std::path::Path::new(&name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            == Some(PALETTE_BIN)
+        {
+            let dest = dest_dir.join(PALETTE_BIN);
+            let mut out = std::fs::File::create(&dest)?;
+            std::io::copy(&mut file, &mut out)?;
+            return Ok(());
+        }
+    }
+    Err(format!("release archive did not contain {PALETTE_BIN}").into())
+}
+
+// ── Resolution ────────────────────────────────────────────────────────────────
+
+/// Find the palette binary: check the same dir as the running axon exe first
+/// (co-installed), then walk PATH. Cross-platform, no `which` call needed.
+fn resolve_palette_binary() -> Option<PathBuf> {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let candidate = dir.join(PALETTE_BIN);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(PALETTE_BIN);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Install next to the running axon binary so `resolve_palette_binary()` finds
+/// it immediately on the next call. Falls back to `~/.local/bin` if the exe dir
+/// is not writable or cannot be determined.
+fn palette_install_dir() -> Result<PathBuf, Box<dyn Error>> {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+        && !dir.as_os_str().is_empty()
+    {
+        return Ok(dir.to_path_buf());
+    }
+    Ok(expand_home("~/.local/bin"))
+}
+
+fn expand_home(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        #[cfg(windows)]
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
+        #[cfg(not(windows))]
+        let home = std::env::var_os("HOME");
+        if let Some(h) = home {
+            return PathBuf::from(h).join(rest);
+        }
+    }
+    PathBuf::from(path)
+}
+
+/// Walk up from the running binary to find `apps/desktop/Cargo.toml`.
+fn find_desktop_manifest() -> Result<PathBuf, Box<dyn Error>> {
+    let start = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let mut cur = start.as_path();
+    for _ in 0..8 {
+        let m = cur.join("apps/desktop/Cargo.toml");
+        if m.is_file() {
+            return Ok(m);
+        }
+        match cur.parent() {
+            Some(p) => cur = p,
+            None => break,
+        }
+    }
+    let cwd = std::env::current_dir()?.join("apps/desktop/Cargo.toml");
+    if cwd.is_file() {
+        return Ok(cwd);
+    }
+    Err("cannot find apps/desktop/Cargo.toml; run from the axon repo root".into())
+}
+
+/// Version-matched, platform-aware asset URLs. Uses the running binary's own
+/// version so `axon palette install` always fetches the matching palette release.
+fn palette_asset_urls() -> (String, String) {
+    let version = env!("CARGO_PKG_VERSION");
+    #[cfg(windows)]
+    let (target, ext) = ("windows-x86_64", "zip");
+    #[cfg(not(windows))]
+    let (target, ext) = ("linux-x86_64", "tar.gz");
+    let base = format!(
+        "https://github.com/jmagar/axon/releases/download/v{version}/axon-palette-{target}.{ext}"
+    );
+    let sha = format!("{base}.sha256");
+    (base, sha)
+}
+
+// ── Desktop integration (Linux only) ─────────────────────────────────────────
 
 fn write_desktop_entry_cmd(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let palette_path = resolve_palette_binary()
-        .ok_or("axon-palette not found; install first with: axon palette install")?;
-    let dest = expand_tilde(DESKTOP_ENTRY_PATH);
-    write_desktop_entry_at(&palette_path, &dest)?;
-    report_path(cfg, "desktop_entry", &dest)
+    #[cfg(not(unix))]
+    return Err("desktop integration is only supported on Linux".into());
+    #[cfg(unix)]
+    {
+        let palette_path = resolve_palette_binary()
+            .ok_or("axon-palette not found; install first with: axon palette install")?;
+        let dest = expand_home("~/.local/share/applications/axon-palette.desktop");
+        write_desktop_entry_at(&palette_path, &dest)?;
+        report_path(cfg, "desktop_entry", &dest)
+    }
 }
 
 fn write_autostart_entry_cmd(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let palette_path = resolve_palette_binary()
-        .ok_or("axon-palette not found; install first with: axon palette install")?;
-    let dest = expand_tilde(AUTOSTART_PATH);
-    write_desktop_entry_at(&palette_path, &dest)?;
-    report_path(cfg, "autostart_entry", &dest)
+    #[cfg(not(unix))]
+    return Err("autostart integration is only supported on Linux".into());
+    #[cfg(unix)]
+    {
+        let palette_path = resolve_palette_binary()
+            .ok_or("axon-palette not found; install first with: axon palette install")?;
+        let dest = expand_home("~/.config/autostart/axon-palette.desktop");
+        write_desktop_entry_at(&palette_path, &dest)?;
+        report_path(cfg, "autostart_entry", &dest)
+    }
 }
 
+#[cfg(unix)]
 fn write_desktop_entry_at(binary: &Path, dest: &Path) -> Result<(), Box<dyn Error>> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
@@ -264,10 +415,9 @@ fn report_path(cfg: &Config, key: &str, path: &Path) -> Result<(), Box<dyn Error
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::to_string(&serde_json::json!({
-                "status": "ok",
-                key: path.display().to_string(),
-            }))?
+            serde_json::to_string(
+                &serde_json::json!({ "status": "ok", key: path.display().to_string() })
+            )?
         );
     } else {
         eprintln!(
@@ -277,70 +427,6 @@ fn report_path(cfg: &Config, key: &str, path: &Path) -> Result<(), Box<dyn Error
         );
     }
     Ok(())
-}
-
-// ─── Resolution helpers ───────────────────────────────────────────────────────
-
-/// Probe `which axon-palette`, then fall back to known install directories.
-fn resolve_palette_binary() -> Option<PathBuf> {
-    // 1. `which` covers the user's current PATH (handles rbenv/mise shims, etc.).
-    if let Ok(out) = std::process::Command::new("which")
-        .arg(PALETTE_BIN)
-        .output()
-        && out.status.success()
-    {
-        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !path.is_empty() {
-            return Some(PathBuf::from(path));
-        }
-    }
-
-    // 2. Known directories not always on PATH (e.g. first-run before shell reload).
-    for dir in PALETTE_SEARCH_DIRS {
-        let candidate = expand_tilde(dir).join(PALETTE_BIN);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-
-    None
-}
-
-/// Walk up from the running binary to find `apps/desktop/Cargo.toml`.
-fn find_desktop_manifest() -> Result<PathBuf, Box<dyn Error>> {
-    let search_root = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-
-    let mut candidate = search_root.as_path();
-    for _ in 0..8 {
-        let manifest = candidate.join("apps/desktop/Cargo.toml");
-        if manifest.is_file() {
-            return Ok(manifest);
-        }
-        match candidate.parent() {
-            Some(p) => candidate = p,
-            None => break,
-        }
-    }
-
-    // Final fallback: current working directory.
-    let cwd_manifest = std::env::current_dir()?.join("apps/desktop/Cargo.toml");
-    if cwd_manifest.is_file() {
-        return Ok(cwd_manifest);
-    }
-
-    Err("cannot find apps/desktop/Cargo.toml; run from the axon repo root or a git worktree".into())
-}
-
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/")
-        && let Ok(home) = std::env::var("HOME")
-    {
-        return PathBuf::from(home).join(rest);
-    }
-    PathBuf::from(path)
 }
 
 #[cfg(test)]
