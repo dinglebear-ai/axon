@@ -5,8 +5,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if command -v axon >/dev/null 2>&1; then axon --version; else echo 'axon is not installed — install it with: curl -fsSL https://raw.githubusercontent.com/jmagar/axon/main/install.sh | sh  (then run: axon setup)'; fi",
-            "timeout": 10
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/plugin-setup.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "user_settings",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/plugin-setup.sh",
+            "timeout": 30
           }
         ]
       }

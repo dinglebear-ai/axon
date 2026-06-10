@@ -68,7 +68,7 @@ Claude Code plugin install:
 claude plugin install <path-to-this-repo>
 ```
 
-The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook is a thin adapter around `axon setup plugin-hook`, which is **probe-only and never deploys**: it checks `/readyz` and exits silently when the stack is up, or prints a one-line `run /axon-deploy` advisory when it is down. Provisioning is the `/axon-deploy` slash command (or `axon setup` / `axon compose up`). It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
+The plugin ships no binary. Install `axon` first via `install.sh`, then install the plugin. Its `SessionStart` hook runs `scripts/plugin-setup.sh`, which syncs `CLAUDE_PLUGIN_OPTION_*` settings into process env and delegates to `axon setup plugin-hook`. That subcommand is **probe-only and never deploys**: it checks `/readyz` and exits silently when the stack is up, or prints a one-line `run /axon-deploy` advisory when it is down. `ConfigChange` runs the same script so updated plugin settings take effect immediately. Provisioning is the `/axon-deploy` slash command (or `axon setup` / `axon compose up`). No systemd unit is created.
 
 ## Setup Flow
 
