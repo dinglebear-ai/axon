@@ -61,17 +61,14 @@ clippy:
 
 build:
     {{rust_dev_env}}; cargo build --release --locked
-    mkdir -p bin
-    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; cp "$AXON_TARGET_DIR/release/axon" bin/axon
     just link-bin
 
 debug:
     {{rust_dev_env}}; cargo build --locked --bin axon
 
-# Copy the compiled release binary into PATH and the in-repo plugin bundle
-# (plugins/axon/bin/axon, LFS-tracked). Called automatically by `just build` and
-# `just install`. Safe to call manually after `cargo build --release` so that
-# `axon` on $PATH always matches the bundled plugin binary.
+# Install the release binary into ~/.local/bin/axon. Called automatically by
+# `just build` and `just install`. Safe to call manually after
+# `cargo build --release` to refresh the PATH copy.
 link-bin:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -86,24 +83,12 @@ link-bin:
     fi
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
-    # Refresh the in-repo plugin bundle (LFS-tracked, shipped with the plugin).
-    # A plugin reinstall/refresh is required for a running instance to pick it up.
-    mkdir -p plugins/axon/bin
-    install -m 755 "$AXON_BIN" plugins/axon/bin/axon
     systemctl --user restart axon-mcp 2>/dev/null || true
     echo "axon → $AXON_BIN"
 
 install:
     {{rust_dev_env}}; cargo build --release --locked
     just link-bin
-
-# Build the release binary and bundle it into the Claude Code plugin (Git LFS),
-# so plugins/axon/bin/axon ships a prebuilt binary like the rest of the family.
-build-plugin:
-    {{rust_dev_env}}; cargo build --release --locked --bin axon
-    mkdir -p plugins/axon/bin
-    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; install -m 755 "$AXON_TARGET_DIR/release/axon" plugins/axon/bin/axon
-    @echo "Bundled plugins/axon/bin/axon"
 
 # Build the local dev runtime image from this checkout.
 container-build:
@@ -174,8 +159,6 @@ sync-container:
 
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
-    mkdir -p plugins/axon/bin
-    install -m 755 "$AXON_BIN" plugins/axon/bin/axon
     systemctl --user restart axon-mcp 2>/dev/null || true
     echo "axon -> $AXON_BIN"
 
@@ -238,8 +221,6 @@ install-debug:
     fi
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
-    mkdir -p plugins/axon/bin
-    install -m 755 "$AXON_BIN" plugins/axon/bin/axon
     systemctl --user restart axon-mcp 2>/dev/null || true
     echo "axon → $AXON_BIN"
 
