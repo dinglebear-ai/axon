@@ -961,9 +961,53 @@ function CommandResultCard({ result }: { result: CommandResultView }) {
         <img className="palette-result-image" src={result.imageUrl} alt="Screenshot" />
       )}
       {result.body && <p className="palette-result-body">{result.body}</p>}
+      {result.artifacts && result.artifacts.length > 0 && (
+        <div className="artifact-list">
+          <p className="artifact-list-label">Artifacts</p>
+          {result.artifacts.map((a) => (
+            <ArtifactRow key={a.relative_path} artifact={a} />
+          ))}
+        </div>
+      )}
       {result.raw && <pre className="palette-result-raw">{result.raw}</pre>}
     </section>
   );
+}
+
+function ArtifactRow({ artifact }: { artifact: ArtifactHandle }) {
+  const isScreenshot = artifact.kind === 'screenshot';
+  const isImage = isScreenshot || artifact.kind.startsWith('image');
+  const src = `/api/panel/artifact/${artifact.relative_path}`;
+  const name = artifact.display_path.split('/').pop() ?? artifact.display_path;
+  const meta = formatBytes(artifact.bytes) + (artifact.line_count ? ` · ${artifact.line_count.toLocaleString()} lines` : '');
+
+  if (isImage) {
+    return (
+      <div className="artifact-row artifact-row-image">
+        <span className="artifact-kind">{artifact.kind}</span>
+        <a href={src} target="_blank" rel="noreferrer" className="artifact-preview-link">
+          <img src={src} alt={artifact.display_path} className="artifact-preview" />
+        </a>
+        <span className="artifact-name" title={artifact.display_path}>{name}</span>
+        <span className="artifact-meta">{meta}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="artifact-row">
+      <span className="artifact-kind">{artifact.kind}</span>
+      <span className="artifact-name" title={artifact.display_path}>{name}</span>
+      <span className="artifact-meta">{meta}</span>
+      <a href={src} target="_blank" rel="noreferrer" download={name} className="artifact-download">↓</a>
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function DoctorCard({ service }: { service: DoctorService & { name: string } }) {
@@ -1103,6 +1147,25 @@ function titleLabel(value: string): string {
     .join(' ');
 }
 
+function extractArtifactHandles(result: Record<string, unknown> | null): ArtifactHandle[] {
+  if (!result) return [];
+  const candidates: unknown[] = [];
+  const single = result.artifact_handle;
+  if (single && typeof single === 'object') candidates.push(single);
+  for (const key of ['predicted_artifact_handles', 'output_file_handles', 'artifact_handles']) {
+    const arr = result[key];
+    if (Array.isArray(arr)) candidates.push(...arr);
+  }
+  return candidates.filter((item): item is ArtifactHandle =>
+    item !== null &&
+    typeof item === 'object' &&
+    'kind' in (item as object) &&
+    'relative_path' in (item as object) &&
+    typeof (item as ArtifactHandle).relative_path === 'string' &&
+    (item as ArtifactHandle).relative_path.length > 0
+  );
+}
+
 function formatCommandResponse(response: PanelCommandResponse): CommandResultView {
   const action = commandVerb(response.command);
   const result = asRecord(response.result);
@@ -1114,6 +1177,7 @@ function formatCommandResponse(response: PanelCommandResponse): CommandResultVie
   const title = commandResultTitle(action, result);
   const subtitle = commandResultSubtitle(action, result);
   rows.push(...commandResultRows(action, result));
+  const artifacts = extractArtifactHandles(result);
 
   const handle = extractArtifactHandle(result);
   const imageUrl = handle ? `/v1/artifacts/${handle.relative_path}` : undefined;
@@ -1124,6 +1188,7 @@ function formatCommandResponse(response: PanelCommandResponse): CommandResultVie
     subtitle,
     rows: compactRows(rows),
     body: commandResultBody(action, result),
+    artifacts: artifacts.length > 0 ? artifacts : undefined,
     raw: shouldShowRawResult(action, result) ? JSON.stringify(response.result, null, 2) : undefined,
     imageUrl
   };
