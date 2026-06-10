@@ -1,23 +1,23 @@
 use super::*;
 
 #[test]
-fn expand_tilde_replaces_home() {
+fn expand_home_replaces_home() {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let result = expand_tilde("~/foo/bar");
+    let result = expand_home("~/foo/bar");
     assert_eq!(result, PathBuf::from(&home).join("foo/bar"));
 }
 
 #[test]
-fn expand_tilde_no_tilde_unchanged() {
-    let result = expand_tilde("/absolute/path");
+fn expand_home_no_tilde_unchanged() {
+    let result = expand_home("/absolute/path");
     assert_eq!(result, PathBuf::from("/absolute/path"));
 }
 
 #[test]
-fn expand_tilde_bare_tilde_returns_home() {
+fn expand_home_bare_tilde_returns_home() {
     // A path that starts with "~/" but has a trailing component.
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let result = expand_tilde("~/.local/bin");
+    let result = expand_home("~/.local/bin");
     assert_eq!(result, PathBuf::from(&home).join(".local/bin"));
 }
 
