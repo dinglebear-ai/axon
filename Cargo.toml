@@ -32,6 +32,8 @@ name = "axon"
 anyhow = "1"
 async-trait = "0.1"
 flate2 = "1"
+tar = "0.4"
+zip = "2"
 axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
