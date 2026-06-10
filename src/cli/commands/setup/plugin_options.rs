@@ -74,14 +74,17 @@ pub fn apply_plugin_options() {
 /// Advisory warning ported from the bash hook: a leftover user systemd unit can
 /// fight the canonical Docker Compose setup for the MCP port. One stderr line.
 fn warn_stale_systemd_unit() {
-    let Some(home) = std::env::var_os("HOME") else {
-        return;
-    };
-    let unit = std::path::Path::new(&home).join(".config/systemd/user/axon-mcp.service");
-    if unit.exists() {
-        eprintln!(
-            "axon plugin setup: stale systemd unit detected at {}; Docker setup is canonical, remove the unit to avoid port conflicts",
-            unit.display()
-        );
+    #[cfg(unix)]
+    {
+        let Some(home) = std::env::var_os("HOME") else {
+            return;
+        };
+        let unit = std::path::Path::new(&home).join(".config/systemd/user/axon-mcp.service");
+        if unit.exists() {
+            eprintln!(
+                "axon plugin setup: stale systemd unit detected at {}; Docker setup is canonical, remove the unit to avoid port conflicts",
+                unit.display()
+            );
+        }
     }
 }

@@ -81,14 +81,12 @@ async fn run_setup_wizard(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Copy the running axon binary into ~/.local/bin so it is callable as a bare
-/// command in the user's own terminal. Copy (not symlink) so it survives
-/// `/plugin update`.
+/// Copy the running axon binary into the platform local bin dir so it is
+/// callable as a bare command. Copy (not symlink) so it survives `/plugin update`.
 fn install_self() -> Result<std::path::PathBuf, Box<dyn Error>> {
     let exe = std::env::current_exe()?;
     let name = exe.file_name().ok_or("cannot determine binary name")?;
-    let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
-    let bin_dir = std::path::PathBuf::from(home).join(".local").join("bin");
+    let bin_dir = local_bin_dir().ok_or("cannot determine home directory")?;
     std::fs::create_dir_all(&bin_dir)?;
     let dest = bin_dir.join(name);
     if dest == exe {
@@ -106,12 +104,33 @@ fn install_self() -> Result<std::path::PathBuf, Box<dyn Error>> {
         .map(|p| std::env::split_paths(&p).any(|d| d == bin_dir))
         .unwrap_or(false);
     if !on_path {
+        #[cfg(windows)]
+        eprintln!(
+            "note: {} is not on your PATH; add it with:\n  [Environment]::SetEnvironmentVariable('Path', $env:Path + ';{}', 'User')",
+            bin_dir.display(),
+            bin_dir.display()
+        );
+        #[cfg(not(windows))]
         eprintln!(
             "note: {} is not on your PATH; add:  export PATH=\"$HOME/.local/bin:$PATH\"",
             bin_dir.display()
         );
     }
     Ok(dest)
+}
+
+/// Returns `$HOME/.local/bin` on Unix/macOS, `%USERPROFILE%\.local\bin` on Windows.
+fn local_bin_dir() -> Option<std::path::PathBuf> {
+    #[cfg(windows)]
+    {
+        std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .map(|h| std::path::PathBuf::from(h).join(".local").join("bin"))
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local").join("bin"))
+    }
 }
 
 async fn run_install_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {

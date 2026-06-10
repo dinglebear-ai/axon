@@ -33,6 +33,8 @@ detect_target() {
   arch="$(uname -m)"
   case "$os:$arch" in
     linux:x86_64|linux:amd64) printf 'linux-x86_64' ;;
+    mingw*:*|msys*:*|cygwin*:*)
+      fail "Windows detected — use install.ps1 instead: irm https://raw.githubusercontent.com/jmagar/axon/main/install.ps1 | iex" ;;
     *) fail "unsupported platform $os/$arch" ;;
   esac
 }
