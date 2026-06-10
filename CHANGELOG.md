@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.9] - 2026-06-10
+
+### Changed
+
+- **Toolchain: pin Rust 1.96.0** (`rust-toolchain.toml` 1.94.0 → 1.96.0,
+  current stable). Recent branches were already building and passing the full
+  test suite under 1.96; the pin now matches. The sccache wrapper's toolchain
+  canonicalization keys `stable` and `1.96.0` to the same compiler path, so
+  dist cache archives stay consistent.
+
 ## [5.7.8] - 2026-06-10
 
 Collapse PR #197 (`feat/qdrant-affinity-tei-burst`) into this branch by

@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "5.7.8"
+version = "5.7.9"
 dependencies = [
  "anyhow",
  "async-trait",
