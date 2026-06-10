@@ -1,8 +1,11 @@
 name: auto-tag
 
 # Reads the version from Cargo.toml on every push to main. If a tag for that
-# version does not yet exist, creates and pushes it. The tag push then triggers
-# release.yml, which builds the binaries and publishes the GitHub Release.
+# version does not yet exist, creates it and explicitly dispatches release.yml.
+#
+# NOTE: tags pushed via GITHUB_TOKEN do NOT trigger other workflows (GitHub
+# security model). We therefore dispatch release.yml explicitly via the API
+# after creating the tag — no PAT required.
 #
 # Result: merging to main with a bumped version automatically cuts a release.
 # If the version has not changed (e.g. a docs-only fix landing on top of an
@@ -23,6 +26,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # required to dispatch release.yml
 
 jobs:
   tag:
@@ -65,4 +69,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
-          echo "Pushed tag v${{ steps.version.outputs.version }} — release.yml will now build and publish."
+          echo "Pushed tag v${{ steps.version.outputs.version }}"
+
+      - name: Dispatch release.yml
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          gh workflow run release.yml --ref "v${{ steps.version.outputs.version }}"
+          echo "Dispatched release.yml for v${{ steps.version.outputs.version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
