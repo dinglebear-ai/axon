@@ -1,3 +1,15 @@
 {
-  "hooks": {}
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v axon >/dev/null 2>&1; then axon --version; else echo 'axon is not installed — install it with: curl -fsSL https://raw.githubusercontent.com/jmagar/axon/main/install.sh | sh  (then run: axon setup)'; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }

@@ -40,13 +40,9 @@ if [ ! -e "$CONTAINER_BINARY_SENTINEL" ] || [ "$AXON_BIN" -nt "$CONTAINER_BINARY
     _dev_bin_changed=1
 fi
 
-# ── Sync PATH symlink + in-repo plugin bundle (debug binary during dev) ───────
+# ── Sync PATH symlink ─────────────────────────────────────────────────────────
 mkdir -p ~/.local/bin
 ln -sf "$AXON_BIN" ~/.local/bin/axon
-# Refresh the LFS-tracked plugin bundle; a plugin refresh is required for a
-# running instance to pick it up.
-mkdir -p "$REPO/plugins/axon/bin"
-install -m 755 "$AXON_BIN" "$REPO/plugins/axon/bin/axon"
 
 # ── Rebuild container image only when image-level inputs changed ──────────────
 _stale=0
