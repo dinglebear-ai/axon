@@ -33,7 +33,7 @@ anyhow = "1"
 async-trait = "0.1"
 flate2 = "1"
 tar = "0.4"
-zip = "2"
+zip = "3"
 axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
@@ -46,6 +46,7 @@ dialoguer = "0.12"
 indicatif = "0.18"
 supports-hyperlinks = "3"
 moka = { version = "0.12", features = ["future"] }
+notify = "8"
 octocrab = "0.49"
 psl = "2"
 pulldown-cmark = "0.13"

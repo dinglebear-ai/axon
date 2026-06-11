@@ -2,6 +2,7 @@ mod config;
 mod config_impls;
 mod enums;
 pub mod overrides;
+mod session_watch;
 pub mod subconfigs;
 
 pub use config::Config;
@@ -10,6 +11,7 @@ pub use enums::{
     RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 pub use overrides::ConfigOverrides;
+pub use session_watch::{SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction};
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;

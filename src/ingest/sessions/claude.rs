@@ -14,6 +14,7 @@ use std::time::{Duration, SystemTime};
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+#[derive(Debug)]
 pub(crate) struct ParsedClaudeSession {
     pub(crate) text: String,
     pub(crate) turn_count: u32,
@@ -110,6 +111,42 @@ pub(super) async fn collect_claude_docs(
     Ok(docs)
 }
 
+pub(super) async fn collect_claude_file_doc(
+    cfg: &Config,
+    path: PathBuf,
+) -> IngestResult<Option<SessionDoc>> {
+    let meta = fs::metadata(&path).await?;
+    let mtime = meta.modified()?;
+    let project_dir_name = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown");
+    let clean_name = clean_claude_project_name(project_dir_name);
+    if !matches_project_filter(cfg, &clean_name) {
+        return Ok(None);
+    }
+    let project_path_opt = super::decode_claude_project_path(project_dir_name);
+    let gh_repo = match project_path_opt {
+        Some(ref project_path) => super::read_git_remote_origin(project_path).await,
+        None => None,
+    };
+    let session_meta = SessionMeta {
+        agent: "claude",
+        project_name: clean_name.clone(),
+        project_path: project_path_opt.map(|path| path.to_string_lossy().into_owned()),
+        gh_repo,
+    };
+    parse_claude_file(
+        path,
+        resolve_collection(cfg, &clean_name),
+        mtime,
+        session_meta,
+        super::session_ingest_max_bytes_for_config(cfg),
+    )
+    .await
+}
+
 /// Stream a Claude JSONL session file line-by-line, accumulating extracted text up to
 /// `max_text_bytes`. Avoids loading the entire file into memory, so files of any size are
 /// handled — large files are truncated at the text limit rather than skipped.
@@ -129,10 +166,23 @@ async fn parse_claude_file_streamed(
     let mut workspace_path: Option<String> = None;
     let mut git_branch: Option<String> = None;
     let mut last_message_at: Option<String> = None;
+    let mut malformed_lines = 0_u32;
 
     while let Some(line) = lines.next_line().await? {
-        let Ok(val) = serde_json::from_str::<Value>(&line) else {
+        if line.trim().is_empty() {
             continue;
+        }
+        let val = match serde_json::from_str::<Value>(&line) {
+            Ok(val) => val,
+            Err(error) => {
+                malformed_lines += 1;
+                tracing::debug!(
+                    path = %path.display(),
+                    detail = %error,
+                    "skipping malformed Claude session JSONL line"
+                );
+                continue;
+            }
         };
 
         if workspace_path.is_none() {
@@ -203,6 +253,12 @@ async fn parse_claude_file_streamed(
 
     let mut tools_list: Vec<String> = tools_used.into_iter().collect();
     tools_list.sort();
+
+    if session_text.trim().is_empty() && malformed_lines > 0 {
+        return Err(anyhow::anyhow!(
+            "claude session JSONL parse failed: {malformed_lines} malformed line(s)"
+        ));
+    }
 
     Ok(ParsedClaudeSession {
         text: session_text,

@@ -318,7 +318,7 @@ fn render_command_help(command: &Command, path: &[&str]) {
     let p = Palette::new();
     let about = command_about(command);
     let arguments = local_arguments(command);
-    let options = command_options(command);
+    let options = command_options(command, path);
     let subcommands = local_subcommands(command);
 
     println!("{}", p.bold(&p.primary(&about)));
@@ -389,7 +389,7 @@ fn local_subcommands(command: &Command) -> Vec<(String, String)> {
         .get_subcommands()
         .filter(|subcommand| !subcommand.is_hide_set() && subcommand.get_name() != "help")
         .map(|subcommand| {
-            let name = subcommand_name(subcommand);
+            let name = subcommand_name(command.get_name(), subcommand);
             let desc = subcommand_description(command.get_name(), subcommand);
             (name, desc)
         })
@@ -430,10 +430,12 @@ fn subcommand_description(parent_name: &str, command: &Command) -> String {
     }
 }
 
-fn subcommand_name(command: &Command) -> String {
-    match command.get_name() {
-        "status" | "cancel" | "errors" => format!("{} <job_id>", command.get_name()),
-        other => other.to_string(),
+fn subcommand_name(parent_name: &str, command: &Command) -> String {
+    match (parent_name, command.get_name()) {
+        ("crawl" | "extract" | "embed" | "ingest" | "sessions", "status" | "cancel" | "errors") => {
+            format!("{} <job_id>", command.get_name())
+        }
+        _ => command.get_name().to_string(),
     }
 }
 
@@ -453,15 +455,18 @@ fn local_options(command: &Command) -> Vec<(String, String)> {
         .collect()
 }
 
-fn command_options(command: &Command) -> Vec<(String, String)> {
+fn command_options(command: &Command, path: &[&str]) -> Vec<(String, String)> {
     let mut options = local_options(command);
-    options.extend(relevant_global_options(command.get_name()));
+    options.extend(relevant_global_options(command.get_name(), path));
 
     options.push(("-h, --help".to_string(), "Print help".to_string()));
     options
 }
 
-fn relevant_global_options(command_name: &str) -> Vec<(String, String)> {
+fn relevant_global_options(command_name: &str, path: &[&str]) -> Vec<(String, String)> {
+    if matches!(path, ["setup", "session-watch-service", "status"]) {
+        return Vec::new();
+    }
     let specs: &[(&str, &str)] = match command_name {
         "scrape" | "crawl" | "extract" | "map" | "screenshot" | "diff" | "brand" => WEB_OPTIONS,
         "search" => SEARCH_OPTIONS,

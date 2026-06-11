@@ -181,6 +181,9 @@ fn populate_perf_and_credentials(
     cfg.sessions_codex = d.sessions_codex;
     cfg.sessions_gemini = d.sessions_gemini;
     cfg.sessions_project = d.sessions_project.clone();
+    cfg.sessions_watch = d.sessions_watch.clone();
+    cfg.sessions_action = d.sessions_action;
+    cfg.setup_session_watch_action = d.setup_session_watch_action;
     cfg.github_token = env::var("GITHUB_TOKEN").ok();
     cfg.gitlab_token = env::var("GITLAB_TOKEN").ok();
     cfg.gitea_token = env::var("GITEA_TOKEN").ok();

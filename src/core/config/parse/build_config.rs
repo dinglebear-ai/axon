@@ -62,6 +62,9 @@ pub(super) fn into_config_with_sources(
             watch_mode: global.watch,
             yes: global.yes,
             setup_method: dispatched.setup_method,
+            sessions_watch: dispatched.sessions_watch,
+            sessions_action: dispatched.sessions_action,
+            setup_session_watch_action: dispatched.setup_session_watch_action,
             ..Config::default()
         });
     }

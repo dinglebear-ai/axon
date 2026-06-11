@@ -706,3 +706,54 @@ fn parse_setup_init_preflight_smoke_and_stack_modes() {
         "removed setup command should be rejected"
     );
 }
+
+#[test]
+fn parse_sessions_watch_provider_and_project_filters_are_typed() {
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "sessions",
+        "watch",
+        "--codex",
+        "--project",
+        "axon",
+        "--no-initial-scan",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("sessions watch should parse");
+
+    assert!(cfg.sessions_watch.is_some());
+    assert!(cfg.sessions_codex);
+    assert!(!cfg.sessions_claude);
+    assert!(!cfg.sessions_gemini);
+    assert_eq!(cfg.sessions_project.as_deref(), Some("axon"));
+    assert!(cfg.positional.is_empty());
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_setup_session_watch_service_actions_are_typed() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    unsafe {
+        env::remove_var("TEI_URL");
+        env::remove_var("QDRANT_URL");
+    }
+
+    use crate::core::config::SessionWatchServiceAction;
+    for (subcommand, expected) in [
+        ("install", SessionWatchServiceAction::Install),
+        ("check", SessionWatchServiceAction::Check),
+        ("remove", SessionWatchServiceAction::Remove),
+        ("status", SessionWatchServiceAction::Status),
+    ] {
+        let cli = super::Cli::parse_from(["axon", "setup", "session-watch-service", subcommand]);
+        let cfg = super::build_config::into_config(cli)
+            .expect("setup session-watch-service should parse");
+
+        assert!(matches!(cfg.command, CommandKind::Setup));
+        assert_eq!(cfg.setup_session_watch_action, Some(expected));
+        assert!(cfg.positional.is_empty());
+    }
+}

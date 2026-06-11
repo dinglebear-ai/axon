@@ -118,13 +118,14 @@ services:
     deploy:
       resources:
         limits:
-          # 8 of the host's 20 cores: the 2026-06-09 always_ram→on-disk
-          # re-optimization of the 4.5M-point axon collection was CPU-bound at
-          # the old 4-CPU cap (collection optimizer threads raised 2→4 via live
+          # 4 cores: the 2026-06-09 always_ram→on-disk re-optimization of the
+          # 4.5M-point axon collection was CPU-bound at the old lower cap
+          # (collection optimizer threads raised 2→4 via live
           # PATCH the same evening — that setting persists in the collection
           # config; production.yaml's max_optimization_threads=2 remains the
-          # default for new collections).
-          cpus: '8.0'
+          # default for new collections). Keep this <=4 so CI smoke jobs on
+          # 4-core Docker runners can parse and start the compose stack.
+          cpus: '4.0'
           # axon collection's resident working set (int8 quant always_ram + in-RAM
           # HNSW index) stably sits ~12.5G and was OOM-killed against a 12G cap
           # (206 restarts, dmesg CONSTRAINT_MEMCG). 16G gives ~28% headroom over

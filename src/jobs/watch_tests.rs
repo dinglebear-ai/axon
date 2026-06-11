@@ -554,7 +554,7 @@ fn spawn_mutable_page(initial: &str) -> Result<MutablePageServer, Box<dyn Error>
 
 fn run_watch_now_on_large_stack(
     cfg: Config,
-    pool: SqlitePool,
+    db_path: std::path::PathBuf,
     watch: WatchDef,
 ) -> Result<WatchRun, Box<dyn Error>> {
     std::thread::Builder::new()
@@ -563,8 +563,16 @@ fn run_watch_now_on_large_stack(
             let _loopback = LoopbackReset::enable();
             tokio::runtime::Runtime::new()
                 .expect("tokio runtime")
-                .block_on(run_watch_now_with_pool(&cfg, &pool, &watch))
-                .map_err(|e| e.to_string())
+                .block_on(async {
+                    let pool = crate::jobs::store::open_sqlite_pool(&db_path.to_string_lossy())
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let run = run_watch_now_with_pool(&cfg, &pool, &watch)
+                        .await
+                        .map_err(|e| e.to_string());
+                    pool.close().await;
+                    run
+                })
         })
         .expect("thread spawn")
         .join()
@@ -599,7 +607,8 @@ async fn live_watch_only_recrawls_when_page_changes() -> Result<(), Box<dyn Erro
     )
     .await?;
 
-    let first = run_watch_now_on_large_stack(cfg.clone(), pool.clone(), watch.clone())?;
+    let first =
+        run_watch_now_on_large_stack(cfg.clone(), temp.path().to_path_buf(), watch.clone())?;
     let crawl_count_after_seed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
         .fetch_one(&pool)
         .await?;
@@ -613,7 +622,8 @@ async fn live_watch_only_recrawls_when_page_changes() -> Result<(), Box<dyn Erro
         Some(1)
     );
 
-    let second = run_watch_now_on_large_stack(cfg.clone(), pool.clone(), watch.clone())?;
+    let second =
+        run_watch_now_on_large_stack(cfg.clone(), temp.path().to_path_buf(), watch.clone())?;
     let crawl_count_after_unchanged: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
             .fetch_one(&pool)
@@ -640,7 +650,8 @@ async fn live_watch_only_recrawls_when_page_changes() -> Result<(), Box<dyn Erro
 
     *server.body.lock().expect("page body lock") =
         "Welcome to the docs.\nVersion two content with a new release note.".to_string();
-    let third = run_watch_now_on_large_stack(cfg.clone(), pool.clone(), watch.clone())?;
+    let third =
+        run_watch_now_on_large_stack(cfg.clone(), temp.path().to_path_buf(), watch.clone())?;
     let crawl_count_after_change: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
         .fetch_one(&pool)
         .await?;

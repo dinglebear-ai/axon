@@ -17,6 +17,7 @@ axon compose rebuild [--json]
 axon smoke [--json]
 axon setup targets [--json]
 axon setup plugin-hook [--json]
+axon setup session-watch-service install|check|status|remove [--json]
 ```
 
 ## Commands
@@ -34,6 +35,33 @@ axon setup plugin-hook [--json]
 | `smoke` | Prewarm TEI, crawl `example.com`, and run a simple `ask` proof. |
 | `setup targets` | List concrete SSH aliases from `~/.ssh/config`. |
 | `setup plugin-hook` | Probe-only path used by Claude Code SessionStart. Checks `/readyz`; exits silently when the stack is up, or advises `/axon-deploy` when it is down. Never deploys. |
+| `setup session-watch-service` | Manage the host-local user systemd service for automatic AI session ingestion. |
+
+## `setup session-watch-service`
+
+`axon setup session-watch-service` manages the host-local user systemd service for automatic AI session ingestion.
+
+```bash
+axon setup session-watch-service install
+axon setup session-watch-service check
+axon setup session-watch-service status
+axon setup session-watch-service remove
+```
+
+The install action writes:
+
+| Path | Purpose |
+|------|---------|
+| `~/.config/axon/session-watch.env` | Private environment file for the watcher process. |
+| `~/.config/systemd/user/session-watch-service.service` | User systemd unit. |
+
+The service runs:
+
+```bash
+axon sessions watch --no-initial-scan --json
+```
+
+Install performs one initial `axon sessions --wait true --json` ingest before enabling the service. The systemd service is host-local and reads the user's transcript roots directly; it is not Docker-owned. The command and unit are named `session-watch-service`; Axon does not use Cortex's setup command name.
 
 ## `setup plugin-hook` Behavior
 
@@ -96,4 +124,5 @@ axon compose up
 axon preflight
 axon smoke
 axon setup plugin-hook
+axon setup session-watch-service install
 ```

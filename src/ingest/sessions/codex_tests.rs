@@ -40,6 +40,39 @@ fn parse_codex_jsonl_malformed_lines_no_panic() {
     assert!(result.text.contains("Valid"));
 }
 
+#[tokio::test]
+async fn parse_codex_file_streamed_keeps_valid_lines_around_malformed_jsonl() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("session.jsonl");
+    std::fs::write(
+        &path,
+        "{\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"content\":[{\"text\":\"Before\"}]}}\n\
+         {\"incomplete\":\n\
+         {\"type\":\"response_item\",\"payload\":{\"role\":\"assistant\",\"content\":[{\"text\":\"After\"}]}}\n",
+    )
+    .unwrap();
+
+    let result = parse_codex_file_streamed(&path, 10_000).await.unwrap();
+
+    assert!(result.text.contains("Before"));
+    assert!(result.text.contains("After"));
+    assert_eq!(result.turn_count, 1);
+}
+
+#[tokio::test]
+async fn parse_codex_file_streamed_errors_when_only_malformed_jsonl() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("session.jsonl");
+    std::fs::write(&path, "{\"incomplete\":\n").unwrap();
+
+    let error = parse_codex_file_streamed(&path, 10_000)
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("malformed line"));
+}
+
 #[test]
 fn parse_codex_jsonl_empty_input_returns_empty() {
     assert!(parse_codex_jsonl("").text.trim().is_empty());

@@ -90,6 +90,39 @@ fn parse_claude_jsonl_malformed_lines_no_panic() {
     assert!(result.text.contains("Fine"));
 }
 
+#[tokio::test]
+async fn parse_claude_file_streamed_keeps_valid_lines_around_malformed_jsonl() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("session.jsonl");
+    std::fs::write(
+        &path,
+        "{\"type\":\"user\",\"message\":{\"content\":\"Before\"}}\n\
+         {\"broken\":\n\
+         {\"type\":\"assistant\",\"message\":{\"content\":\"After\"}}\n",
+    )
+    .unwrap();
+
+    let result = parse_claude_file_streamed(&path, 10_000).await.unwrap();
+
+    assert!(result.text.contains("Before"));
+    assert!(result.text.contains("After"));
+    assert_eq!(result.turn_count, 1);
+}
+
+#[tokio::test]
+async fn parse_claude_file_streamed_errors_when_only_malformed_jsonl() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("session.jsonl");
+    std::fs::write(&path, "{\"broken\":\n").unwrap();
+
+    let error = parse_claude_file_streamed(&path, 10_000)
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("malformed line"));
+}
+
 #[test]
 fn parse_claude_jsonl_empty_input_returns_empty() {
     assert!(parse_claude_jsonl("").text.trim().is_empty());

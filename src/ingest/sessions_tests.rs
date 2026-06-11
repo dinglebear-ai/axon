@@ -1,4 +1,238 @@
 use super::*;
+use crate::ingest::sessions::watch::validate::{
+    SessionProvider, SessionWatchRoots, validate_session_file_path,
+};
+
+fn home_provider_tempdir(relative_root: &str) -> tempfile::TempDir {
+    let home = std::env::var_os("HOME").expect("HOME for session tests");
+    let root = PathBuf::from(home).join(relative_root);
+    std::fs::create_dir_all(&root).unwrap();
+    tempfile::Builder::new()
+        .prefix("axon-session-test-")
+        .tempdir_in(root)
+        .unwrap()
+}
+
+#[test]
+fn validates_codex_file_only_under_canonical_codex_root() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let good = home.join(".codex/sessions/2026/06/11/session.jsonl");
+    std::fs::create_dir_all(good.parent().unwrap()).unwrap();
+    std::fs::write(&good, "{}\n").unwrap();
+
+    let roots = SessionWatchRoots::for_home(home);
+    let validated = validate_session_file_path(&roots, &good).unwrap();
+    assert_eq!(validated.provider, SessionProvider::Codex);
+    assert_eq!(validated.basename, "session.jsonl");
+    assert!(
+        !validated
+            .redacted_display
+            .contains(home.to_string_lossy().as_ref())
+    );
+}
+
+#[test]
+fn rejects_substring_match_outside_provider_roots() {
+    let temp = tempfile::tempdir().unwrap();
+    let fake = temp.path().join("tmp/.codex/sessions/session.jsonl");
+    std::fs::create_dir_all(fake.parent().unwrap()).unwrap();
+    std::fs::write(&fake, "{}\n").unwrap();
+    let roots = SessionWatchRoots::for_home(temp.path().join("home"));
+    assert!(validate_session_file_path(&roots, &fake).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn rejects_symlinked_watch_file() {
+    use std::os::unix::fs::symlink;
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let real = home.join("outside/session.jsonl");
+    std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+    std::fs::write(&real, "{}\n").unwrap();
+    let link = home.join(".codex/sessions/link.jsonl");
+    std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+    symlink(&real, &link).unwrap();
+    let roots = SessionWatchRoots::for_home(home);
+    assert!(validate_session_file_path(&roots, &link).is_err());
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_prepared_session_file_doc_parses_claude_file() {
+    let project_dir = home_provider_tempdir(".claude/projects");
+    let file = project_dir.path().join("claude-1.jsonl");
+    std::fs::write(
+        &file,
+        serde_json::json!({
+            "type": "user",
+            "timestamp": "2026-06-11T12:00:00Z",
+            "cwd": "/tmp/axon",
+            "message": { "content": "remember this claude session" }
+        })
+        .to_string()
+            + "\n",
+    )
+    .unwrap();
+
+    let cfg = Config {
+        collection: "axon-test".to_string(),
+        ..Config::default()
+    };
+    let doc = collect_prepared_session_file_doc(&cfg, &file)
+        .await
+        .unwrap()
+        .expect("claude doc");
+
+    assert_eq!(doc.session_platform, "claude");
+    assert!(doc.text.contains("remember this claude session"));
+    assert_eq!(doc.session_file, file.to_string_lossy());
+    assert!(doc.url.starts_with("file://"));
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_prepared_session_file_doc_parses_codex_file() {
+    let session_dir = home_provider_tempdir(".codex/sessions");
+    let file = session_dir.path().join("codex-1.jsonl");
+    std::fs::write(
+        &file,
+        serde_json::json!({
+            "type": "session_meta",
+            "payload": { "cwd": "/tmp/axon", "model": "gpt-5" }
+        })
+        .to_string()
+            + "\n"
+            + &serde_json::json!({
+                "type": "response_item",
+                "payload": {
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": "remember this codex session" }]
+                }
+            })
+            .to_string()
+            + "\n",
+    )
+    .unwrap();
+
+    let cfg = Config::default();
+    let doc = collect_prepared_session_file_doc(&cfg, &file)
+        .await
+        .unwrap()
+        .expect("codex doc");
+
+    assert_eq!(doc.session_platform, "codex");
+    assert!(doc.text.contains("remember this codex session"));
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_prepared_session_file_doc_filters_codex_date_tree_by_workspace_project() {
+    let home = PathBuf::from(std::env::var_os("HOME").expect("HOME for session tests"));
+    let session_dir = home.join(".codex/sessions/2026/06/11");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let file = session_dir.join(format!("codex-date-tree-{}.jsonl", uuid::Uuid::new_v4()));
+    std::fs::write(
+        &file,
+        serde_json::json!({
+            "type": "session_meta",
+            "payload": { "cwd": "/home/jmagar/workspace/axon", "model": "gpt-5" }
+        })
+        .to_string()
+            + "\n"
+            + &serde_json::json!({
+                "type": "response_item",
+                "payload": {
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": "date tree codex project filter" }]
+                }
+            })
+            .to_string()
+            + "\n",
+    )
+    .unwrap();
+
+    let cfg = Config {
+        sessions_project: Some("axon".to_string()),
+        ..Config::default()
+    };
+    let doc = collect_prepared_session_file_doc(&cfg, &file)
+        .await
+        .unwrap()
+        .expect("codex doc matching workspace project");
+
+    assert_eq!(doc.session_project.as_deref(), Some("axon"));
+    assert!(doc.text.contains("date tree codex project filter"));
+
+    let cfg = Config {
+        sessions_project: Some("not-axon".to_string()),
+        ..Config::default()
+    };
+    assert!(
+        collect_prepared_session_file_doc(&cfg, &file)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_prepared_session_file_doc_parses_gemini_project_metadata() {
+    let home = PathBuf::from(std::env::var_os("HOME").expect("HOME for session tests"));
+    let gemini_root = home.join(".gemini");
+    std::fs::create_dir_all(&gemini_root).unwrap();
+    let project_dir = home_provider_tempdir(".gemini/history");
+    let project_name = project_dir
+        .path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let chats_dir = project_dir.path().join("chats");
+    std::fs::create_dir_all(&chats_dir).unwrap();
+    let file = chats_dir.join("gemini-1.json");
+    std::fs::write(
+        &file,
+        serde_json::json!({
+            "messages": [{
+                "type": "user",
+                "content": [{ "text": "remember this gemini session" }]
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let cfg = Config {
+        sessions_project: Some(project_name.clone()),
+        ..Config::default()
+    };
+    let doc = collect_prepared_session_file_doc(&cfg, &file)
+        .await
+        .unwrap()
+        .expect("gemini doc");
+
+    assert_eq!(doc.session_platform, "gemini");
+    assert_eq!(doc.session_project.as_deref(), Some(project_name.as_str()));
+    assert!(doc.text.contains("remember this gemini session"));
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn collect_prepared_session_file_doc_rejects_unsupported_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("notes.txt");
+    std::fs::write(&file, "not a session").unwrap();
+    let cfg = Config::default();
+
+    let err = collect_prepared_session_file_doc(&cfg, &file)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("unsupported session file"));
+}
 
 #[test]
 fn session_text_redacts_common_secret_tokens() {

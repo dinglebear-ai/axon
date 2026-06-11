@@ -247,6 +247,15 @@ pub struct Config {
     /// Filter sessions by project name (substring match). Flag: `--project`.
     pub sessions_project: Option<String>,
 
+    /// Typed options for `axon sessions watch`.
+    pub sessions_watch: Option<super::session_watch::SessionWatchConfig>,
+
+    /// Typed runtime action for session watcher sub-actions.
+    pub sessions_action: Option<super::session_watch::SessionsRuntimeAction>,
+
+    /// Typed action for `axon setup session-watch-service`.
+    pub setup_session_watch_action: Option<super::session_watch::SessionWatchServiceAction>,
+
     /// GitHub personal access token for authenticated API requests. Env: `GITHUB_TOKEN`. **Secret.**
     pub github_token: Option<String>,
 
