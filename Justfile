@@ -315,14 +315,24 @@ gen-mcp-schema *ARGS:
 clean:
     cargo clean
 
-# Start infrastructure services (qdrant, tei, chrome)
+# Start local infrastructure services. Qdrant runs remotely on tootie by
+# default, so this starts only the local TEI + Chrome dependencies.
 services-up:
-    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml up -d axon-tei axon-chrome
 
 # Stop infrastructure services
 services-down:
-    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml stop axon-qdrant axon-tei axon-chrome
-    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml rm -f axon-qdrant axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml stop axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml rm -f axon-tei axon-chrome
+
+# Start/stop an explicitly local Qdrant. Use this only for local test data or
+# when AXON_QDRANT_URL=http://axon-qdrant:6333 is set for the axon container.
+qdrant-up:
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant up -d axon-qdrant
+
+qdrant-down:
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant stop axon-qdrant
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant rm -f axon-qdrant
 
 # Backward-compatible aliases used by setup/docs for local infra.
 test-infra-up:
@@ -345,7 +355,8 @@ stop:
     -pkill -f 'axon.*(mcp|crawl worker|embed worker|extract worker|ingest worker)' 2>/dev/null || true
     @echo "Stopped running servers and workers"
 
-# Start infra (Qdrant, TEI, Chrome), then run axon mcp as the worker daemon.
+# Start local infra (TEI, Chrome), then run axon mcp as the worker daemon.
+# Qdrant is expected at AXON_QDRANT_URL/QDRANT_URL, defaulting to tootie.
 # Fire-and-forget CLI jobs require axon mcp running to be processed.
 dev:
     #!/usr/bin/env bash
@@ -356,7 +367,7 @@ dev:
     {{rust_dev_env}};
     cargo build --locked --bin axon
     AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"
-    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml up -d --wait axon-qdrant axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml up -d --wait axon-tei axon-chrome
     "$AXON_BIN" mcp
 
 # ── Perf bench ────────────────────────────────────────────────────────────────

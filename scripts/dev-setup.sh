@@ -348,7 +348,6 @@ ok "AXON_DATA_DIR=${AXON_DATA_DIR}"
 # Always ensure volume-mount directories exist (idempotent).
 info "Ensuring data directories under ${AXON_DATA_DIR}..."
 mkdir -p \
-  "${AXON_DATA_DIR}/qdrant" \
   "${AXON_DATA_DIR}/tei" \
   "${AXON_DATA_DIR}/output" \
   "${AXON_DATA_DIR}/artifacts" \
@@ -369,6 +368,11 @@ fi
 set_env_if_missing AXON_MCP_HTTP_TOKEN "$(gen_secret)"
 ok "Secrets verified"
 
+# Qdrant runs on tootie by default so its large resident working set does not
+# compete with local builds on dookie.
+set_env_if_missing QDRANT_URL "http://100.120.242.29:53333"
+set_env_if_missing AXON_QDRANT_URL "http://100.120.242.29:53333"
+
 # ── Test infrastructure URLs — static values, backfill if absent ──────────────
 set_env_if_missing AXON_TEST_QDRANT_URL "http://127.0.0.1:53335"
 ok "Test service URLs verified"
@@ -387,8 +391,8 @@ if [[ "$NO_DOCKER" == "false" ]]; then
 
   ok "Infrastructure containers:"
   (cd "$REPO" && docker compose --env-file "$ENV_FILE" -f docker-compose.yaml ps --format "  {{.Name}}: {{.Status}}" \
-    axon-qdrant axon-tei axon-chrome 2>/dev/null \
-    || docker compose --env-file "$ENV_FILE" -f docker-compose.yaml ps axon-qdrant axon-tei axon-chrome)
+    axon-tei axon-chrome 2>/dev/null \
+    || docker compose --env-file "$ENV_FILE" -f docker-compose.yaml ps axon-tei axon-chrome)
 fi
 
 # ── Git Hooks ──────────────────────────────────────────────────────────────────
