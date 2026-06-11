@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::ingest::progress::PhaseReporter;
+use crate::ingest::sessions::watch::validate::{SessionProvider, ValidatedSessionPath};
 use crate::vector::ops::{PreparedDoc, embed_prepared_docs};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::HashMap;
@@ -14,10 +15,12 @@ const PHASE_EMBEDDING: &str = "embedding_sessions";
 const SESSION_INGEST_MAX_BYTES_ENV: &str = "AXON_SESSION_INGEST_MAX_BYTES";
 const DEFAULT_SESSION_INGEST_MAX_BYTES: u64 = 20 * 1024 * 1024;
 
+pub mod checkpoint;
 mod claude;
 mod codex;
 mod gemini;
 mod prepared;
+pub mod watch;
 
 #[cfg(test)]
 pub(crate) use prepared::MAX_PREPARED_SESSION_DOCS;
@@ -191,6 +194,50 @@ pub async fn prepare_sessions_request(
     Ok(request)
 }
 
+pub async fn collect_prepared_session_file_doc(
+    cfg: &Config,
+    path: &Path,
+) -> Result<Option<PreparedSessionDoc>, Box<dyn Error>> {
+    let roots = watch::validate::SessionWatchRoots::from_config(cfg)?;
+    let validated = watch::validate::validate_session_file_path(&roots, path)?;
+    let doc = collect_session_file_doc(cfg, &validated)
+        .await?
+        .map(prepared_session_doc_from_session_doc)
+        .transpose()
+        .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    Ok(doc)
+}
+
+pub(crate) async fn collect_session_file_doc(
+    cfg: &Config,
+    validated: &ValidatedSessionPath,
+) -> Result<Option<SessionDoc>, Box<dyn Error>> {
+    match validated.provider {
+        SessionProvider::Claude => {
+            claude::collect_claude_file_doc(cfg, validated.canonical.clone())
+                .await
+                .map_err(|err| -> Box<dyn Error> { err.into() })
+        }
+        SessionProvider::Codex => codex::collect_codex_file_doc(cfg, validated.canonical.clone())
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.into() }),
+        SessionProvider::Gemini => {
+            gemini::collect_gemini_file_doc(cfg, validated.canonical.clone())
+                .await
+                .map_err(|err| -> Box<dyn Error> { err.into() })
+        }
+    }
+}
+
+pub(crate) fn has_supported_session_extension(provider: SessionProvider, path: &Path) -> bool {
+    match provider {
+        SessionProvider::Claude | SessionProvider::Codex => {
+            path.extension().is_some_and(|ext| ext == "jsonl")
+        }
+        SessionProvider::Gemini => path.extension().is_some_and(|ext| ext == "json"),
+    }
+}
+
 /// Scan local session exports and split them into validated batches, each within
 /// the per-request limits of `/v1/ingest/sessions/prepared`, so large histories
 /// can be uploaded as several jobs instead of failing the doc-count cap. Returns
@@ -219,7 +266,7 @@ pub async fn prepare_sessions_request_batches(
         .collect()
 }
 
-fn prepared_session_doc_from_session_doc(
+pub(crate) fn prepared_session_doc_from_session_doc(
     session_doc: SessionDoc,
 ) -> Result<PreparedSessionDoc, String> {
     let platform = match session_doc.doc.source_type.as_str() {
@@ -275,6 +322,20 @@ fn prepared_session_doc_from_session_doc(
 
 /// Groups collected docs by collection and calls `embed_prepared_docs` once per collection.
 async fn embed_all_session_docs(cfg: &Config, docs: Vec<SessionDoc>) -> usize {
+    match embed_session_docs(cfg, docs, false).await {
+        Ok(total) => total,
+        Err(error) => {
+            log_warn(&format!("sessions embed failed: {error}"));
+            0
+        }
+    }
+}
+
+async fn embed_session_docs(
+    cfg: &Config,
+    docs: Vec<SessionDoc>,
+    strict: bool,
+) -> Result<usize, Box<dyn Error>> {
     let mut by_collection: HashMap<String, Vec<PreparedDoc>> = HashMap::new();
     for sd in docs {
         by_collection.entry(sd.collection).or_default().push(sd.doc);
@@ -282,6 +343,7 @@ async fn embed_all_session_docs(cfg: &Config, docs: Vec<SessionDoc>) -> usize {
 
     let mut total = 0;
     for (collection, prepared) in by_collection {
+        let doc_count = prepared.len();
         let mut session_cfg = cfg.clone();
         session_cfg.collection = collection;
 
@@ -289,21 +351,36 @@ async fn embed_all_session_docs(cfg: &Config, docs: Vec<SessionDoc>) -> usize {
             Ok(summary) => {
                 total += summary.chunks_embedded;
                 if summary.docs_failed > 0 {
-                    log_warn(&format!(
+                    let message = format!(
                         "sessions embed partial failure collection={} docs_failed={} docs_embedded={}",
                         session_cfg.collection, summary.docs_failed, summary.docs_embedded
-                    ));
+                    );
+                    if strict {
+                        return Err(message.into());
+                    }
+                    log_warn(&message);
+                }
+                if strict && doc_count > 0 && summary.chunks_embedded == 0 {
+                    return Err(format!(
+                        "sessions embed produced zero chunks for nonempty collection={}",
+                        session_cfg.collection
+                    )
+                    .into());
                 }
             }
             Err(e) => {
-                log_warn(&format!(
+                let message = format!(
                     "sessions embed failed collection={} error={e}",
                     session_cfg.collection
-                ));
+                );
+                if strict {
+                    return Err(message.into());
+                }
+                log_warn(&message);
             }
         }
     }
-    total
+    Ok(total)
 }
 
 pub async fn ingest_prepared_sessions(
@@ -316,7 +393,7 @@ pub async fn ingest_prepared_sessions(
     let docs = request
         .into_session_docs(cfg)
         .map_err(|err| -> Box<dyn Error> { err.into() })?;
-    let total_chunks = embed_all_session_docs(cfg, docs).await;
+    let total_chunks = embed_session_docs(cfg, docs, true).await?;
     log_done(&format!(
         "command=ingest source=prepared_sessions total_chunk_count={total_chunks}"
     ));

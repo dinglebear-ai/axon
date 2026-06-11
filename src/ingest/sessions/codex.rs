@@ -1,6 +1,5 @@
 use super::{
-    IngestResult, SessionDoc, SessionMeta, flatten_session_result, matches_project_filter,
-    resolve_collection,
+    IngestResult, SessionDoc, flatten_session_result, matches_project_filter, resolve_collection,
 };
 use crate::core::config::Config;
 use crate::vector::ops::{PreparedDoc, chunk_text};
@@ -14,6 +13,7 @@ use std::time::{Duration, SystemTime};
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+#[derive(Debug)]
 pub(crate) struct ParsedCodexSession {
     pub(crate) text: String,
     pub(crate) turn_count: u32,
@@ -41,7 +41,8 @@ pub(super) async fn collect_codex_docs(
     pb.enable_steady_tick(Duration::from_millis(100));
 
     let mut docs: Vec<SessionDoc> = Vec::new();
-    // Track (dir, depth, project_name): depth 1 = direct children of root (project dirs).
+    // Track (dir, depth, project_hint): older Codex exports used project dirs,
+    // newer exports use date trees and carry the workspace in session metadata.
     let mut dir_entries: Vec<(PathBuf, usize, String)> = vec![(root, 0, String::new())];
     let mut futures = FuturesUnordered::new();
     let max_text_bytes = super::session_ingest_max_bytes_for_config(cfg);
@@ -52,9 +53,6 @@ pub(super) async fn collect_codex_docs(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("");
-            if !matches_project_filter(cfg, dir_name) {
-                continue;
-            }
             dir_name.to_string()
         } else {
             project_name
@@ -73,15 +71,10 @@ pub(super) async fn collect_codex_docs(
             let meta = fs::metadata(&path).await?;
             let mtime = meta.modified()?;
 
-            let collection = resolve_collection(cfg, "codex");
-            let session_meta = SessionMeta {
-                agent: "codex",
-                project_name: current_project.clone(),
-                project_path: None,
-                gh_repo: None,
-            };
+            let cfg = cfg.clone();
+            let project_hint = current_project.clone();
             futures.push(tokio::spawn(async move {
-                parse_codex_file(path, collection, mtime, session_meta, max_text_bytes).await
+                parse_codex_file(path, &cfg, mtime, project_hint, max_text_bytes).await
             }));
 
             if futures.len() >= 64
@@ -103,6 +96,23 @@ pub(super) async fn collect_codex_docs(
     Ok(docs)
 }
 
+pub(super) async fn collect_codex_file_doc(
+    cfg: &Config,
+    path: PathBuf,
+) -> IngestResult<Option<SessionDoc>> {
+    let meta = fs::metadata(&path).await?;
+    let mtime = meta.modified()?;
+    let project_hint = codex_project_name_from_path(&path);
+    parse_codex_file(
+        path,
+        cfg,
+        mtime,
+        project_hint,
+        super::session_ingest_max_bytes_for_config(cfg),
+    )
+    .await
+}
+
 /// Stream a Codex JSONL session file line-by-line, accumulating extracted text up to
 /// `max_text_bytes`. Avoids loading the entire file into memory.
 async fn parse_codex_file_streamed(
@@ -119,10 +129,23 @@ async fn parse_codex_file_streamed(
     let mut has_tool_use = false;
     let mut tools_used: HashSet<String> = HashSet::new();
     let mut workspace_path: Option<String> = None;
+    let mut malformed_lines = 0_u32;
 
     while let Some(line) = lines.next_line().await? {
-        let Ok(val) = serde_json::from_str::<Value>(&line) else {
+        if line.trim().is_empty() {
             continue;
+        }
+        let val = match serde_json::from_str::<Value>(&line) {
+            Ok(val) => val,
+            Err(error) => {
+                malformed_lines += 1;
+                tracing::debug!(
+                    path = %path.display(),
+                    detail = %error,
+                    "skipping malformed Codex session JSONL line"
+                );
+                continue;
+            }
         };
 
         if val["type"] == "session_meta" {
@@ -180,6 +203,12 @@ async fn parse_codex_file_streamed(
     let mut tools_list: Vec<String> = tools_used.into_iter().collect();
     tools_list.sort();
 
+    if session_text.trim().is_empty() && malformed_lines > 0 {
+        return Err(anyhow::anyhow!(
+            "codex session JSONL parse failed: {malformed_lines} malformed line(s)"
+        ));
+    }
+
     Ok(ParsedCodexSession {
         text: session_text,
         turn_count,
@@ -192,12 +221,16 @@ async fn parse_codex_file_streamed(
 
 async fn parse_codex_file(
     path: PathBuf,
-    collection: String,
+    cfg: &Config,
     mtime: SystemTime,
-    session_meta: SessionMeta,
+    project_hint: String,
     max_text_bytes: usize,
 ) -> IngestResult<Option<SessionDoc>> {
     let parsed = parse_codex_file_streamed(&path, max_text_bytes).await?;
+    let project_name = codex_project_name(parsed.workspace_path.as_deref(), &project_hint);
+    if !matches_project_filter(cfg, &project_name) {
+        return Ok(None);
+    }
     if parsed.text.trim().is_empty() {
         return Ok(None);
     }
@@ -216,8 +249,8 @@ async fn parse_codex_file(
         .map(str::to_string);
     let mtime_chrono: chrono::DateTime<chrono::Utc> = mtime.into();
     let extra = serde_json::json!({
-        "agent": session_meta.agent,
-        "project_name": session_meta.project_name,
+        "agent": "codex",
+        "project_name": project_name,
         "session_id": session_id,
         "session_date": mtime_chrono.to_rfc3339(),
         "turn_count": parsed.turn_count,
@@ -236,9 +269,26 @@ async fn parse_codex_file(
     );
     Ok(Some(SessionDoc {
         doc,
-        collection,
+        collection: resolve_collection(cfg, &project_name),
         raw_text: parsed.text,
     }))
+}
+
+fn codex_project_name(workspace_path: Option<&str>, project_hint: &str) -> String {
+    workspace_path
+        .and_then(|path| Path::new(path).file_name())
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| project_hint.to_string())
+}
+
+fn codex_project_name_from_path(path: &Path) -> String {
+    path.parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .to_string()
 }
 
 /// Extract session text and metadata from Codex JSONL (pure, no I/O). Used in tests.

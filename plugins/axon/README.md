@@ -23,6 +23,18 @@ To provision the stack for the first time, run `/axon-deploy` (or `axon setup` /
 
 No systemd unit is created. Docker Compose is the only production deployment target. The `.mcp.json` connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
 
+### Session Memory and Auto-Ingest
+
+The SessionStart hook is recall-only and prints best-effort `axon memory context` for the current git project. It does not scan or ingest transcript files during session startup.
+
+For automatic transcript capture, install the host-local watcher:
+
+```bash
+axon setup session-watch-service install
+```
+
+The service runs `axon sessions watch --no-initial-scan --json` and reuses the existing prepared-session ingest path.
+
 ## Commands
 
 | Command | Purpose |

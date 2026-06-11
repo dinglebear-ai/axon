@@ -49,6 +49,28 @@ pub(super) async fn collect_gemini_docs(
     Ok(docs)
 }
 
+pub(super) async fn collect_gemini_file_doc(
+    cfg: &Config,
+    path: PathBuf,
+) -> IngestResult<Option<SessionDoc>> {
+    let gemini_root = super::expand_home("~/.gemini");
+    let projects_map = load_gemini_projects(&gemini_root).await;
+    let project_dir = gemini_project_dir_for_file(&path)
+        .ok_or_else(|| anyhow::anyhow!("gemini session file is outside a project chats dir"))?;
+    let dir_name = project_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown");
+    let project_name = resolve_project_name(&project_dir, dir_name, &projects_map).await;
+    if !matches_project_filter(cfg, &project_name) {
+        return Ok(None);
+    }
+    let meta = fs::metadata(&path).await?;
+    let mtime = meta.modified()?;
+    let collection = resolve_collection(cfg, &project_name);
+    process_gemini_file(path, collection, mtime, Some(project_name)).await
+}
+
 type GeminiFutures = FuturesUnordered<tokio::task::JoinHandle<IngestResult<Option<SessionDoc>>>>;
 
 async fn enqueue_gemini_dir(
@@ -88,7 +110,7 @@ async fn enqueue_gemini_dir(
         if !fs::try_exists(&chats_dir).await.unwrap_or(false) {
             continue;
         }
-        enqueue_gemini_chat_files(chats_dir, collection, futures, docs).await?;
+        enqueue_gemini_chat_files(chats_dir, collection, project_name, futures, docs).await?;
     }
     Ok(())
 }
@@ -113,6 +135,7 @@ async fn resolve_project_name(
 async fn enqueue_gemini_chat_files(
     chats_dir: PathBuf,
     collection: String,
+    project_name: String,
     futures: &mut GeminiFutures,
     docs: &mut Vec<SessionDoc>,
 ) -> IngestResult<()> {
@@ -135,8 +158,9 @@ async fn enqueue_gemini_chat_files(
         };
 
         let coll_clone = collection.clone();
+        let project_name = project_name.clone();
         futures.push(tokio::spawn(async move {
-            process_gemini_file(chat_path, coll_clone, mtime).await
+            process_gemini_file(chat_path, coll_clone, mtime, Some(project_name)).await
         }));
 
         if futures.len() >= 32
@@ -172,6 +196,7 @@ async fn process_gemini_file(
     path: PathBuf,
     collection: String,
     mtime: SystemTime,
+    project_name: Option<String>,
 ) -> IngestResult<Option<SessionDoc>> {
     let content = super::read_session_file_limited(&path).await?;
     let session_text = parse_gemini_json(&content)?;
@@ -194,6 +219,7 @@ async fn process_gemini_file(
     let mtime_chrono: chrono::DateTime<chrono::Utc> = mtime.into();
     let extra = serde_json::json!({
         "agent": "gemini",
+        "project_name": project_name,
         "session_id": session_id,
         "session_date": mtime_chrono.to_rfc3339(),
     });
@@ -210,6 +236,14 @@ async fn process_gemini_file(
         collection,
         raw_text: session_text,
     }))
+}
+
+fn gemini_project_dir_for_file(path: &Path) -> Option<PathBuf> {
+    let chats_dir = path.parent()?;
+    if chats_dir.file_name().and_then(|name| name.to_str()) != Some("chats") {
+        return None;
+    }
+    chats_dir.parent().map(Path::to_path_buf)
 }
 
 /// Parse Gemini chat JSON into session text (pure, no I/O).

@@ -76,6 +76,8 @@ stats
 status
 summarize
 suggest
+vertical_scrape:capabilities
+vertical_scrape:list
 EOF
 )"
 
@@ -107,6 +109,7 @@ stats
 status
 summarize
 suggest
+vertical_scrape
 EOF
 )"
 

@@ -32,7 +32,6 @@ impl AxonMcpServer {
                     "summarize": ["summarize"],
                     "research": ["research"],
                     "ask": ["ask"],
-                    "summarize": ["summarize"],
                     "evaluate": ["evaluate"],
                     "suggest": ["suggest"],
                     "screenshot": ["screenshot"],
@@ -41,6 +40,7 @@ impl AxonMcpServer {
                     "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "ingest": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
+                    "memory": ["remember", "list", "search", "show", "link", "supersede", "context"],
                     "query": ["query"],
                     "retrieve": ["retrieve"],
                     "search": ["search"],
@@ -51,6 +51,7 @@ impl AxonMcpServer {
                     "stats": ["stats"],
                     "diff": ["diff"],
                     "brand": ["brand"],
+                    "vertical_scrape": ["list", "capabilities"],
                     "elicit_demo": []
                 },
                 "resources": [

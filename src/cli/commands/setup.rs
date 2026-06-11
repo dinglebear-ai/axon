@@ -3,6 +3,7 @@ use crate::core::config::Config;
 use crate::core::ui::{accent, muted, primary, print_aurora_table, symbol_for_status};
 use crate::services::setup::{
     self, ComposeAction, LocalSetupInitOptions, LocalSetupMode, LocalSetupStatus,
+    SessionWatchServiceReport,
 };
 use serde_json::json;
 use std::error::Error;
@@ -16,6 +17,7 @@ const USAGE_LINES: &[&str] = &[
     "axon preflight",
     "axon smoke",
     "axon compose up|down|restart|rebuild",
+    "axon setup session-watch-service install|check|remove|status",
     "axon setup plugin-hook",
 ];
 
@@ -29,6 +31,10 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         _ => {}
     }
 
+    if let Some(action) = cfg.setup_session_watch_action {
+        return run_session_watch_service_setup_command(cfg, action).await;
+    }
+
     match cfg.positional.first().map(String::as_str) {
         None => run_setup_wizard(cfg).await,
         Some("plugin-hook" | "hook") => run_plugin_hook_setup_command(cfg).await,
@@ -40,6 +46,18 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         Some("targets") => run_targets_command(cfg),
         _ => print_usage(cfg),
     }
+}
+
+async fn run_session_watch_service_setup_command(
+    cfg: &Config,
+    action: setup::SessionWatchServiceAction,
+) -> Result<(), Box<dyn Error>> {
+    let report = setup::run_session_watch_service_setup(action).await?;
+    print_session_watch_service_report(cfg, &report)?;
+    if report.has_errors {
+        return Err(format!("session watch service {} failed", action.as_str()).into());
+    }
+    Ok(())
 }
 
 /// Full setup wizard: init env/compose → start stack → install self to ~/.local/bin.
@@ -215,6 +233,27 @@ fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn print_session_watch_service_report(
+    cfg: &Config,
+    report: &SessionWatchServiceReport,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!(
+        "{} {}",
+        primary("Session Watch Service"),
+        muted(report.action.as_str())
+    );
+    println!("{} {}", muted("unit:"), report.unit_path.display());
+    println!("{} {}", muted("env:"), report.env_path.display());
+    println!("{} {}", muted("binary:"), report.axon_bin.display());
+    print_setup_phases(&report.phases);
+    Ok(())
+}
+
 async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
     // The env-var mapping is applied early (before parse_args) by
     // `apply_plugin_options()` in `run()`. Re-applying here is harmless and
@@ -343,7 +382,14 @@ fn print_local_setup_report(
         }
     );
     println!();
-    for phase in &report.phases {
+    print_setup_phases(&report.phases);
+    println!();
+    println!("{}", muted("next diagnostic: axon doctor"));
+    Ok(())
+}
+
+fn print_setup_phases(phases: &[setup::LocalSetupPhase]) {
+    for phase in phases {
         let slug = match phase.status {
             LocalSetupStatus::Ok => "completed",
             LocalSetupStatus::Warn => "warn",
@@ -357,9 +403,6 @@ fn print_local_setup_report(
             muted(&format!("{}ms  {}", phase.elapsed_ms, phase.detail))
         );
     }
-    println!();
-    println!("{}", muted("next diagnostic: axon doctor"));
-    Ok(())
 }
 
 #[cfg(test)]
