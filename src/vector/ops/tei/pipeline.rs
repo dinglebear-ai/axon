@@ -290,7 +290,7 @@ fn rebuild_points_as_named(
                 .filter_map(|v| v.as_f64().map(|f| f as f32))
                 .collect();
             let chunk = payload["chunk_text"].as_str().unwrap_or_default();
-            let sv = super::super::sparse::compute_sparse_vector(chunk);
+            let sv = super::super::sparse::compute_sparse_vector_for_indexing(chunk);
             Ok(serde_json::json!({
                 "id": id,
                 "vector": {

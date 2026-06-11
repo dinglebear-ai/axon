@@ -112,6 +112,19 @@ pub fn term_to_index(term: &str) -> u32 {
 const MAX_TERMS_PER_VECTOR: usize = 65_536;
 
 pub fn compute_sparse_vector(text: &str) -> SparseVector {
+    compute_sparse_vector_inner(text, true)
+}
+
+/// Compute a sparse vector for document indexing.
+///
+/// Empty sparse vectors are expected for tiny DOM fragments such as punctuation
+/// separators. Query-time callers use `compute_sparse_vector()` so operators
+/// still see visible dense-only fallback warnings for user/search inputs.
+pub(crate) fn compute_sparse_vector_for_indexing(text: &str) -> SparseVector {
+    compute_sparse_vector_inner(text, false)
+}
+
+fn compute_sparse_vector_inner(text: &str, warn_on_empty: bool) -> SparseVector {
     // Pre-allocate for typical chunk sizes (~150 unique terms) to avoid 3-4 resizes.
     let estimated_capacity = if text.len() > 200 { 128 } else { 16 };
     let mut bucket_tf: HashMap<u32, u32> = HashMap::with_capacity(estimated_capacity);
@@ -161,29 +174,31 @@ pub fn compute_sparse_vector(text: &str) -> SparseVector {
         // when the query is non-ASCII, all-stopwords, or every term is < 3
         // chars). Includes a coarse character profile so operators can spot
         // patterns. (bd axon_rust-d71.9 / H5)
-        let mut ascii_alnum = 0usize;
-        let mut non_ascii = 0usize;
-        let mut whitespace = 0usize;
-        let mut other = 0usize;
-        for c in text.chars() {
-            if c.is_ascii_alphanumeric() {
-                ascii_alnum += 1;
-            } else if !c.is_ascii() {
-                non_ascii += 1;
-            } else if c.is_whitespace() {
-                whitespace += 1;
-            } else {
-                other += 1;
+        if warn_on_empty {
+            let mut ascii_alnum = 0usize;
+            let mut non_ascii = 0usize;
+            let mut whitespace = 0usize;
+            let mut other = 0usize;
+            for c in text.chars() {
+                if c.is_ascii_alphanumeric() {
+                    ascii_alnum += 1;
+                } else if !c.is_ascii() {
+                    non_ascii += 1;
+                } else if c.is_whitespace() {
+                    whitespace += 1;
+                } else {
+                    other += 1;
+                }
             }
+            tracing::warn!(
+                len = text.len(),
+                ascii_alnum,
+                non_ascii,
+                whitespace,
+                other,
+                "compute_sparse_vector: no indexable terms — hybrid search will use dense-only"
+            );
         }
-        tracing::warn!(
-            len = text.len(),
-            ascii_alnum,
-            non_ascii,
-            whitespace,
-            other,
-            "compute_sparse_vector: no indexable terms — hybrid search will use dense-only"
-        );
         return SparseVector::default();
     }
     let mut indices = Vec::with_capacity(bucket_tf.len());
