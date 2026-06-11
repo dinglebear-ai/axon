@@ -58,6 +58,13 @@ ingest:recover
 ingest:start
 ingest:status
 map
+memory:remember
+memory:list
+memory:search
+memory:show
+memory:link
+memory:supersede
+memory:context
 query
 research
 retrieve
@@ -88,6 +95,7 @@ extract
 help
 ingest
 map
+memory
 query
 research
 retrieve
@@ -326,6 +334,18 @@ run_suite() {
     run_json_case "${prefix}_screenshot" '.ok == true and .action == "screenshot" and ((.data.data.path | type == "string") or (.data.path | type == "string"))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   fi
   run_json_case "${prefix}_elicit_demo" '.ok == true and .action == "elicit_demo" and (.data.action | type == "string")' call_tool action:elicit_demo
+  run_json_case "${prefix}_memory_remember" '.ok == true and .action == "memory" and (.data.memory.id | type == "string")' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke memory content lives in Qdrant","project":"axon"}'
+  local memory_id
+  memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_remember.log" '.data.memory.id')"
+  run_json_case "${prefix}_memory_replacement" '.ok == true and .action == "memory" and (.data.memory.id | type == "string")' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke replacement memory content lives in Qdrant","project":"axon"}'
+  local replacement_memory_id
+  replacement_memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_replacement.log" '.data.memory.id')"
+  run_json_case "${prefix}_memory_show" '.ok == true and .action == "memory" and ((.data.memory == null) or (.data.memory.id | type == "string"))' call_tool action:memory subaction:show id:"$memory_id"
+  run_json_case "${prefix}_memory_link" '.ok == true and .action == "memory" and .subaction == "link" and (.data.edge.id | type == "string") and .data.edge.edge_type == "relates_to"' call_tool action:memory subaction:link source_id:"$replacement_memory_id" target_id:"$memory_id"
+  run_json_case "${prefix}_memory_supersede" '.ok == true and .action == "memory" and .subaction == "supersede" and (.data.edge.id | type == "string") and .data.edge.edge_type == "supersedes"' call_tool action:memory subaction:supersede source_id:"$replacement_memory_id" target_id:"$memory_id"
+  run_json_case "${prefix}_memory_list" '.ok == true and .action == "memory" and .subaction == "list" and (.data.memories | type == "array")' call_tool action:memory subaction:list project:axon status:active limit:3
+  run_json_case "${prefix}_memory_search" '.ok == true and .action == "memory" and (.data.memories | type == "array")' call_tool action:memory subaction:search query:'mcporter smoke memory' project:axon limit:3
+  run_json_case "${prefix}_memory_context" '.ok == true and .action == "memory" and .subaction == "context" and (.data.context.context | type == "string") and (.data.context.context | contains("trust=\"evidence_only\""))' call_tool action:memory subaction:context query:'mcporter smoke memory' project:axon limit:3 token_budget:1000
 
   echo "== $mode path-mode response ==" | tee -a "$SUMMARY"
   # Artifact-first response mode still persists large payloads to disk and returns

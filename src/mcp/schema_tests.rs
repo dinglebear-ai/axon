@@ -46,6 +46,114 @@ fn parse_query_action_no_fields() {
 }
 
 #[test]
+fn parse_memory_remember_action_minimal() {
+    let raw = obj(json!({
+        "action": "memory",
+        "subaction": "remember",
+        "body": "Memory content lives in Qdrant; SQLite holds the graph.",
+        "project": "axon"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "memory remember should parse");
+    if let Ok(AxonRequest::Memory(req)) = result {
+        assert!(matches!(req.subaction, Some(MemorySubaction::Remember)));
+        assert_eq!(
+            req.body.as_deref(),
+            Some("Memory content lives in Qdrant; SQLite holds the graph.")
+        );
+        assert_eq!(req.project.as_deref(), Some("axon"));
+    } else {
+        panic!("expected Memory variant");
+    }
+}
+
+#[test]
+fn parse_memory_list_action() {
+    let raw = obj(json!({
+        "action": "memory",
+        "subaction": "list",
+        "project": "axon",
+        "repo": "jmagar/axon",
+        "file": "src/services/memory.rs",
+        "memory_type": "decision",
+        "status": "superseded",
+        "limit": 20
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "memory list should parse");
+    if let Ok(AxonRequest::Memory(req)) = result {
+        assert!(matches!(req.subaction, Some(MemorySubaction::List)));
+        assert_eq!(req.project.as_deref(), Some("axon"));
+        assert_eq!(req.status.as_deref(), Some("superseded"));
+        assert_eq!(req.limit, Some(20));
+    } else {
+        panic!("expected Memory variant");
+    }
+}
+
+#[test]
+fn parse_memory_link_action() {
+    let raw = obj(json!({
+        "action": "memory",
+        "subaction": "link",
+        "source_id": "source-memory",
+        "target_id": "target-memory",
+        "edge_type": "relates_to"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "memory link should parse");
+    if let Ok(AxonRequest::Memory(req)) = result {
+        assert!(matches!(req.subaction, Some(MemorySubaction::Link)));
+        assert_eq!(req.source_id.as_deref(), Some("source-memory"));
+        assert_eq!(req.target_id.as_deref(), Some("target-memory"));
+    } else {
+        panic!("expected Memory variant");
+    }
+}
+
+#[test]
+fn parse_memory_supersede_action() {
+    let raw = obj(json!({
+        "action": "memory",
+        "subaction": "supersede",
+        "source_id": "replacement-memory",
+        "target_id": "old-memory"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "memory supersede should parse");
+    if let Ok(AxonRequest::Memory(req)) = result {
+        assert!(matches!(req.subaction, Some(MemorySubaction::Supersede)));
+        assert_eq!(req.source_id.as_deref(), Some("replacement-memory"));
+        assert_eq!(req.target_id.as_deref(), Some("old-memory"));
+    } else {
+        panic!("expected Memory variant");
+    }
+}
+
+#[test]
+fn parse_memory_context_action() {
+    let raw = obj(json!({
+        "action": "memory",
+        "subaction": "context",
+        "project": "axon",
+        "repo": "jmagar/axon",
+        "file": "src/services/memory.rs",
+        "query": "memory storage architecture",
+        "limit": 8,
+        "token_budget": 2000
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "memory context should parse");
+    if let Ok(AxonRequest::Memory(req)) = result {
+        assert!(matches!(req.subaction, Some(MemorySubaction::Context)));
+        assert_eq!(req.project.as_deref(), Some("axon"));
+        assert_eq!(req.token_budget, Some(2000));
+    } else {
+        panic!("expected Memory variant");
+    }
+}
+
+#[test]
 fn parse_sources_action_with_domain() {
     let raw = obj(json!({
         "action": "sources",

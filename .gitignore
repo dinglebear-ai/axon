@@ -18,6 +18,7 @@ WEBCLAW_PATTERNS_TO_BORROW.md
 Aurora Design System.zip
 incoming/
 # ── Claude Code / AI tooling ────────────────────────────────────────────────
+.claude/scheduled_tasks.lock
 .claude/settings.local.json
 .claude/worktrees/
 .omc/
@@ -35,6 +36,8 @@ incoming/
 .full-review-archive-*
 .bivvy
 
+# ── Plugin build artifacts ──────────────────────────────────────────────────
+plugins/axon/bin/
 
 # ── IDE / editor ─────────────────────────────────────────────────────────────
 .vscode/

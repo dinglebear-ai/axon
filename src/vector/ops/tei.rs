@@ -153,7 +153,7 @@ impl StructuredPayload {
 ///
 /// - `Named`: emits `"vector": {"dense": [...], "bm42": {"indices": [...], "values": [...]}}`
 /// - `Unnamed`: emits `"vector": [...]` (flat dense vector)
-pub(super) fn build_point(
+pub(crate) fn build_point(
     point_id: uuid::Uuid,
     vecv: Vec<f32>,
     chunk: &str,

@@ -122,6 +122,7 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
         ("POST", "/v1/map"),
         ("POST", "/v1/search"),
         ("POST", "/v1/research"),
+        ("POST", "/v1/memory"),
         ("POST", "/v1/crawl"),
         ("GET", crawl_job.as_str()),
         ("POST", crawl_cancel.as_str()),
@@ -244,6 +245,7 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
         "/v1/ingest",
         "/v1/watch",
         "/v1/watch/{id}/run",
+        "/v1/memory",
     ] {
         assert!(
             paths.contains_key(path),
@@ -290,6 +292,7 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
         ("POST", "/v1/ingest/cleanup"),
         ("DELETE", "/v1/ingest"),
         ("POST", "/v1/ingest/recover"),
+        ("POST", "/v1/memory"),
     ];
 
     for (method, path) in routes {
@@ -329,6 +332,34 @@ async fn loopback_dev_allows_non_destructive_write_routes_without_auth() {
 
     stop(shutdown, handle).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+#[serial]
+async fn v1_memory_route_dispatches_validation_errors_without_live_qdrant() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/memory"))
+        .bearer_auth("secret")
+        .json(&serde_json::json!({ "subaction": "search" }))
+        .send()
+        .await
+        .expect("memory request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("memory error body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["kind"], "bad_request");
+    assert!(
+        body["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("query is required")),
+        "{body}"
+    );
 }
 
 #[tokio::test]

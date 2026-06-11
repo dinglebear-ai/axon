@@ -3,8 +3,9 @@ use crate::core::config::Config;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
 use crate::mcp::schema::{
     AskRequest, BrandRequest, CrawlRequest, CrawlSubaction, DedupeRequest, DiffRequest,
-    ElicitDemoRequest, EndpointsRequest, EvaluateRequest, MigrateRequest, QueryRequest,
-    ResearchRequest, ScreenshotRequest, StatusRequest, SuggestRequest,
+    ElicitDemoRequest, EndpointsRequest, EvaluateRequest, MemoryRequest, MemorySubaction,
+    MigrateRequest, QueryRequest, ResearchRequest, ScreenshotRequest, StatusRequest,
+    SuggestRequest,
 };
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::types::ServiceJob;
@@ -226,6 +227,29 @@ fn req_query() -> AxonRequest {
     })
 }
 
+fn req_memory(subaction: MemorySubaction) -> AxonRequest {
+    AxonRequest::Memory(MemoryRequest {
+        subaction: Some(subaction),
+        id: None,
+        source_id: Some("source".into()),
+        target_id: Some("target".into()),
+        edge_type: None,
+        memory_type: None,
+        title: None,
+        body: Some("Remembered fact".into()),
+        query: Some("Remembered".into()),
+        project: Some("axon".into()),
+        repo: None,
+        file: None,
+        status: None,
+        confidence: None,
+        limit: None,
+        depth: None,
+        token_budget: None,
+        response_mode: None,
+    })
+}
+
 fn req_endpoints() -> AxonRequest {
     AxonRequest::Endpoints(EndpointsRequest {
         url: Some("https://example.com".into()),
@@ -328,6 +352,38 @@ fn required_scope_elicit_demo_is_write() {
 fn required_scope_read_only_ops_are_read() {
     // Regression: query and similar read-only ops must stay at axon:read.
     assert_eq!(required_scope(&req_query()), Some("axon:read"));
+}
+
+#[test]
+fn required_scope_memory_subactions_are_read_write() {
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Remember)),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::List)),
+        Some("axon:read")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Search)),
+        Some("axon:read")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Show)),
+        Some("axon:read")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Link)),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Supersede)),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Context)),
+        Some("axon:read")
+    );
 }
 #[test]
 fn required_scope_uses_secure_defaults_and_promotes_llm_actions() {

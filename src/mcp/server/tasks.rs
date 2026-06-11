@@ -398,6 +398,7 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Extract(req) => ("extract", format!("{:?}", req.subaction)),
         AxonRequest::Embed(req) => ("embed", format!("{:?}", req.subaction)),
         AxonRequest::Ingest(req) => ("ingest", format!("{:?}", req.subaction)),
+        AxonRequest::Memory(req) => ("memory", format!("{:?}", req.subaction)),
         AxonRequest::Status(_) => ("status", "None".to_string()),
         AxonRequest::Help(_) => ("help", "None".to_string()),
         AxonRequest::Query(_) => ("query", "None".to_string()),

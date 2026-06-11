@@ -29,6 +29,7 @@ fn top_level_help_commands_come_from_clap_surface() {
         "status",
         "dedupe",
         "ingest",
+        "memory",
         "sessions",
         "sync",
         "screenshot",

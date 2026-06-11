@@ -35,6 +35,30 @@ pub struct QdrantPayload {
     pub symbol_kind: Option<String>,
     #[serde(default)]
     pub symbol_extraction_status: Option<String>,
+    #[serde(default, rename = "type")]
+    pub memory_type: Option<String>,
+    #[serde(default, rename = "title")]
+    pub memory_title: Option<String>,
+    #[serde(default, rename = "body")]
+    pub memory_body: Option<String>,
+    #[serde(default, rename = "project")]
+    pub memory_project: Option<String>,
+    #[serde(default, rename = "repo")]
+    pub memory_repo: Option<String>,
+    #[serde(default, rename = "file")]
+    pub memory_file: Option<String>,
+    #[serde(default, rename = "confidence")]
+    pub memory_confidence: Option<f64>,
+    #[serde(default, rename = "status")]
+    pub memory_status: Option<String>,
+    #[serde(default, rename = "created_at")]
+    pub memory_created_at: Option<i64>,
+    #[serde(default, rename = "updated_at")]
+    pub memory_updated_at: Option<i64>,
+    #[serde(default, rename = "last_seen_at")]
+    pub memory_last_seen_at: Option<i64>,
+    #[serde(default, rename = "access_count")]
+    pub memory_access_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

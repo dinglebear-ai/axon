@@ -19,7 +19,7 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
         .expect("tools/list inputSchema publishes properties.action.enum");
 
     for action in [
-        "crawl", "scrape", "retrieve", "ask", "query", "embed", "ingest", "status",
+        "crawl", "scrape", "retrieve", "ask", "query", "embed", "ingest", "status", "memory",
     ] {
         assert!(
             action_enum
@@ -94,7 +94,7 @@ fn flattened_fields_annotate_applicable_actions() {
         .pointer("/properties/query/x-axon-actions")
         .and_then(serde_json::Value::as_array)
         .expect("lifted `query` field lists applicable actions");
-    for action in ["query", "search"] {
+    for action in ["query", "search", "memory"] {
         assert!(
             query_actions
                 .iter()
@@ -157,6 +157,13 @@ fn axon_tool_input_schema_documents_subaction_families() {
         ("embed", "cancel"),
         ("ingest", "recover"),
         ("vertical_scrape", "capabilities"),
+        ("memory", "remember"),
+        ("memory", "list"),
+        ("memory", "search"),
+        ("memory", "show"),
+        ("memory", "link"),
+        ("memory", "supersede"),
+        ("memory", "context"),
     ] {
         let values = subactions
             .get(family)

@@ -10,6 +10,8 @@ mod handlers_crawl_extract;
 mod handlers_elicit;
 #[path = "server/handlers_embed_ingest.rs"]
 mod handlers_embed_ingest;
+#[path = "server/handlers_memory.rs"]
+mod handlers_memory;
 #[path = "server/handlers_query.rs"]
 mod handlers_query;
 #[path = "server/handlers_system.rs"]
@@ -142,7 +144,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, memory, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff.",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]
@@ -175,6 +177,7 @@ impl AxonMcpServer {
             AxonRequest::Extract(req) => self.handle_extract(req).await?,
             AxonRequest::Embed(req) => self.handle_embed(req).await?,
             AxonRequest::Ingest(req) => self.handle_ingest(req).await?,
+            AxonRequest::Memory(req) => self.handle_memory(req).await?,
             AxonRequest::Query(req) => self.handle_query(req).await?,
             AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
             AxonRequest::Search(req) => self.handle_search(req).await?,

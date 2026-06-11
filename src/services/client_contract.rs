@@ -4,6 +4,12 @@ use serde::{Deserialize, Serialize};
 #[path = "client_contract/contracts.rs"]
 mod contracts;
 pub use contracts::{RestRouteContract, rest_route_contracts};
+#[path = "client_contract/memory.rs"]
+mod memory;
+pub use memory::{RestMemoryEdgeType, RestMemoryNodeType, RestMemoryRequest, RestMemorySubaction};
+#[path = "client_contract/sessions.rs"]
+mod sessions;
+pub use sessions::RestSessionsIngestOptions;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -269,15 +275,6 @@ pub struct RestIngestRequest {
     pub sessions: Option<RestSessionsIngestOptions>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RestSessionsIngestOptions {
-    pub claude: Option<bool>,
-    pub codex: Option<bool>,
-    pub gemini: Option<bool>,
-    pub project: Option<String>,
-}
-
 impl From<RestIngestSourceType> for crate::mcp::schema::IngestSourceType {
     fn from(value: RestIngestSourceType) -> Self {
         match value {
@@ -300,17 +297,6 @@ impl From<RestIngestRequest> for crate::mcp::schema::IngestRequest {
             include_source: req.include_source,
             sessions: req.sessions.map(Into::into),
             ..Default::default()
-        }
-    }
-}
-
-impl From<RestSessionsIngestOptions> for crate::mcp::schema::SessionsIngestOptions {
-    fn from(value: RestSessionsIngestOptions) -> Self {
-        Self {
-            claude: value.claude,
-            codex: value.codex,
-            gemini: value.gemini,
-            project: value.project,
         }
     }
 }

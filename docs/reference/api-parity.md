@@ -1,5 +1,5 @@
 # HTTP API Parity Inventory
-Last Modified: 2026-06-01
+Last Modified: 2026-06-11
 
 This inventory tracks parity across the three Axon control surfaces:
 
@@ -47,6 +47,7 @@ Status meanings:
 | `extract` | `services::extract::{extract_start_with_context,extract_status,extract_list,extract_cancel,extract_cleanup,extract_clear,extract_recover}` | `extract.start`, `extract.status`, `extract.cancel`, `extract.list`, `extract.cleanup`, `extract.clear`, `extract.recover` | `POST /v1/extract`, `GET /v1/extract`, `GET /v1/extract/{id}`, `POST /v1/extract/{id}/cancel`, `POST /v1/extract/cleanup`, `DELETE /v1/extract`, `POST /v1/extract/recover` = Implemented | REST accepts canonical DTOs; the public schema only advertises `auto` until the async service has mode parity. |
 | `ingest` | `services::ingest::{ingest_start_with_context,ingest_status,ingest_list,ingest_cancel,ingest_cleanup,ingest_clear,ingest_recover}` | `ingest.start`, `ingest.status`, `ingest.cancel`, `ingest.list`, `ingest.cleanup`, `ingest.clear`, `ingest.recover` | `POST /v1/ingest`, `GET /v1/ingest`, `GET /v1/ingest/{id}`, `POST /v1/ingest/{id}/cancel`, `POST /v1/ingest/cleanup`, `DELETE /v1/ingest`, `POST /v1/ingest/recover` = Implemented | Uses canonical `target` field for Git, Reddit, YouTube, and sessions. CLI-only `ingest worker` is local process control. |
 | `map` | `services::map::discover` | `map` | `POST /v1/map` = Implemented | Uses typed body with url, limit, and offset. |
+| `memory` | `services::memory::{dispatch,remember,list,search,show,link,supersede,context}` | `memory.remember`, `memory.list`, `memory.search`, `memory.show`, `memory.link`, `memory.supersede`, `memory.context` | `POST /v1/memory` = Implemented | Single direct REST endpoint accepts the memory subaction envelope and uses write scope because some subactions mutate persistent memory. |
 | `migrate` | `services::migrate::migrate` | no dedicated action | Deferred | One-time collection migration is intentionally not exposed remotely; `POST /v1/migrate` returns 404. |
 | `query` | `services::query::query` | `query` | `POST /v1/query` = Implemented | Uses canonical request DTO and typed query service result. |
 | `refresh` | `services::refresh::{plan_refresh,execute_refresh}` | no dedicated action | Missing | Re-enqueues crawl/ingest jobs for indexed origins; CLI-only, gated behind an interactive confirmation. |
@@ -104,6 +105,7 @@ POST /v1/diff
 POST /v1/screenshot
 POST /v1/search
 POST /v1/research
+POST /v1/memory
 POST /v1/crawl
 GET /v1/crawl
 GET /v1/crawl/{id}

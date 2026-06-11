@@ -81,6 +81,8 @@ pub(super) enum CliCommand {
     Refresh(RefreshArgs),
     /// Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube)
     Ingest(IngestArgs),
+    /// Persistent agent memory: remember, list, search, show, link, supersede, or context memories
+    Memory(MemoryArgs),
     /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
     Sessions(SessionsArgs),
     /// Capture a full-page screenshot of one or more URLs
@@ -252,6 +254,90 @@ pub(super) struct RefreshArgs {
     /// Omit to refresh every indexed origin.
     #[arg(value_name = "FILTER")]
     pub(super) filter: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct MemoryArgs {
+    #[command(subcommand)]
+    pub(super) action: MemoryCliSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum MemoryCliSubcommand {
+    /// Store a memory in the dedicated memory collection
+    Remember {
+        #[arg(value_name = "BODY")]
+        body: Vec<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long = "type")]
+        memory_type: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        repo: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        confidence: Option<f64>,
+    },
+    /// List memory metadata without semantic search
+    List {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        repo: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long = "type")]
+        memory_type: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Search active memories
+    Search {
+        #[arg(value_name = "QUERY")]
+        query: Vec<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        repo: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Show one memory by id
+    Show { id: String },
+    /// Link two memories in the SQLite graph
+    Link {
+        source_id: String,
+        target_id: String,
+        #[arg(long = "type")]
+        edge_type: Option<String>,
+    },
+    /// Mark an old memory as superseded by a replacement memory
+    Supersede {
+        replacement_id: String,
+        old_id: String,
+    },
+    /// Build an inline, defanged context block from memories
+    Context {
+        #[arg(long)]
+        query: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        repo: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        token_budget: Option<usize>,
+    },
 }
 
 #[derive(Debug, Args)]

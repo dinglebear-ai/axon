@@ -102,6 +102,7 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_DATA_DIR` | trusted-bootstrap | both | — | no | advanced.rs |
 | `AXON_SQLITE_PATH` | trusted-bootstrap | both | — | no | advanced.rs |
 | `AXON_COLLECTION` | trusted-bootstrap | host-only | — | no | advanced.rs |
+| `AXON_MEMORY_COLLECTION` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_BIN` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_CHROME_DIAGNOSTICS_DIR` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_EXCLUDE_PATH_PREFIX` | trusted-bootstrap | host-only | — | no | advanced.rs |

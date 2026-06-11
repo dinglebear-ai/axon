@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Documented the `memory.remember`, `memory.search`, `memory.show`, `memory.link`, `memory.supersede`, and `memory.context` agent-memory actions in the `using-axon` skill.
+- Added a defensive SessionStart hook that recalls compact `memory.context` for the current git project when Axon memory is available.
+
 ## [1.5.4] - 2026-05-06
 
 ### Added

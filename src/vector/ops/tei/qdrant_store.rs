@@ -14,7 +14,7 @@ mod payload_indexes;
 mod tests;
 mod upsert;
 use payload_indexes::ensure_payload_indexes;
-pub(super) use upsert::qdrant_upsert;
+pub(crate) use upsert::qdrant_upsert;
 
 /// Describes how a Qdrant collection's vectors are configured.
 ///
@@ -326,7 +326,7 @@ fn memory_settings() -> (bool, bool) {
 /// | Does not exist | Create with named `dense` + `bm42` sparse | `Named` |
 /// | Exists, named `dense` | Ensure sparse; PATCH sparse/memory if needed | `Named` |
 /// | Exists, unnamed dense | Log warning; leave unchanged | `Unnamed` |
-pub(super) async fn ensure_collection(
+pub(crate) async fn ensure_collection(
     cfg: &Config,
     dim: usize,
 ) -> Result<VectorMode, Box<dyn Error>> {

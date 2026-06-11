@@ -164,6 +164,12 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         cost: "write",
     },
     McpActionSpec {
+        name: "memory",
+        scope: ActionScope::Write,
+        description: "Remember, search, and show persistent agent memory",
+        cost: "write",
+    },
+    McpActionSpec {
         name: "scrape",
         scope: ActionScope::Write,
         description: "Scrape one page to markdown, HTML, raw HTML, JSON, or LLM text",

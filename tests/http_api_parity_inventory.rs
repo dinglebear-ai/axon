@@ -33,6 +33,7 @@ fn parity_doc_covers_every_cli_command_kind() {
         "status",
         "dedupe",
         "ingest",
+        "memory",
         "sessions",
         "research",
         "screenshot",

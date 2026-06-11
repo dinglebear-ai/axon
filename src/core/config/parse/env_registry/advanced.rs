@@ -173,6 +173,14 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_MEMORY_COLLECTION",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "AXON_EXCLUDE_PATH_PREFIX",
         TrustedOperatorBootstrap,
         HostOnly,

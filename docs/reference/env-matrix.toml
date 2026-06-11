@@ -983,6 +983,18 @@ compatibility = "advanced"
 reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
 
 [[env]]
+key = "AXON_MEMORY_COLLECTION"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Dedicated memory Qdrant collection override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
 key = "AXON_DOMAINS_DETAILED"
 classification = "keep-env"
 runtime_placement = "both"

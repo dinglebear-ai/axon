@@ -33,6 +33,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "train",
             "summarize",
             "suggest",
+            "memory",
             "sources",
             "domains",
             "stats",

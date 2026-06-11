@@ -1,5 +1,5 @@
 # Axon CLI (Rust + Spider.rs)
-Last Modified: 2026-05-16
+Last Modified: 2026-06-11
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
@@ -49,6 +49,7 @@ MCP docs:
 | `search <query>` | Web search (SearXNG when `AXON_SEARXNG_URL` set, else Tavily), auto-queues crawl jobs for results | No |
 | `research <query>` | Web research with LLM synthesis. Backend: SearXNG when `AXON_SEARXNG_URL` set, else Tavily. Synthesizes over **full-page content** of the top sources (`AXON_RESEARCH_FULL_CONTENT=false` for snippet-only/fast), then auto-queues bounded crawl/index jobs for result URLs. | No |
 | `embed [input]` | Embed file/dir/URL into Qdrant | Yes (default) |
+| `memory <sub>` | Persistent agent memory: `remember`, `search`, `show`, `link`, `supersede`, `context` backed by Qdrant content + SQLite metadata/edges | No |
 | `query <text>` | Semantic vector search | No |
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
 | `ask <question>` | RAG: search + LLM answer. | No |
