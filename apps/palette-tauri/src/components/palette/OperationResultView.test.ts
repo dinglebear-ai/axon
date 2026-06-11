@@ -38,7 +38,7 @@ describe("OperationResultView routing", () => {
     }
   });
 
-  it("removes empty markdown bullets without changing fenced code", () => {
+  it("removes empty markdown bullets and dash-only fenced blocks", () => {
     const markdown = [
       "- Real item",
       "-",
@@ -48,8 +48,12 @@ describe("OperationResultView routing", () => {
       "```txt",
       "-",
       "```",
+      "",
+      "```rust",
+      "let ok = true;",
+      "```",
     ].join("\n");
 
-    expect(sanitizeReaderMarkdown(markdown)).toBe(["- Real item", "", "```txt", "-", "```"].join("\n"));
+    expect(sanitizeReaderMarkdown(markdown)).toBe(["- Real item", "```rust", "let ok = true;", "```"].join("\n"));
   });
 });

@@ -42,7 +42,7 @@ export function OperationResultFixture() {
             url: "https://docs.rs/serde",
             title: "Serde docs",
             markdown:
-              "# Serde\n\nSerde is a framework for serializing and deserializing Rust data structures efficiently and generically.\n\n- Derive support\n- JSON and other formats\n- Zero-copy options\n-\n-\n\n```rust\n#[derive(Serialize, Deserialize)]\nstruct User {\n    id: u64,\n    name: String,\n}\n```\n\n```txt\n-\n```",
+              '# Serde\n\nSerde is a framework for serializing and deserializing Rust data structures efficiently and generically.\n\n- Derive support\n- JSON and other formats\n- Zero-copy options\n-\n-\n\n```rust\n#[derive(Debug, Serialize, Deserialize)]\npub struct User {\n    id: u64,\n    name: String,\n}\n\nimpl User {\n    pub fn label(&self) -> String {\n        format!("user:{}:{}", self.id, self.name)\n    }\n}\n```\n\n```txt\n-\n```',
           },
         },
       },

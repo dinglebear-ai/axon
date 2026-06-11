@@ -62,6 +62,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body[data-fixture] {
+  min-width: 0;
+  overflow: auto;
+}
+
 body::before {
   content: "";
   position: fixed;
@@ -2666,10 +2671,12 @@ textarea {
 .operation-reader {
   max-height: min(48vh, 560px);
   overflow: auto;
-  padding: 14px 16px;
+  padding: 13px 14px;
   color: var(--aurora-text-primary);
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--aurora-control-surface) 84%, transparent), var(--aurora-page-bg)),
+    var(--aurora-page-bg);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 72%, transparent);
   border-radius: 10px;
   font-size: var(--aurora-type-body-sm);
   line-height: 1.58;
@@ -2706,32 +2713,50 @@ textarea {
   margin: 12px 0;
   padding: 0;
   overflow: hidden;
-  background: color-mix(in srgb, var(--aurora-page-bg) 90%, #02070b);
+  background: #030b10;
   border: 0;
-  border-radius: 8px;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-border-default) 42%, transparent);
+  border-radius: 7px;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--aurora-border-default) 34%, transparent),
+    0 8px 18px color-mix(in srgb, black 16%, transparent);
 }
 
 .operation-reader [data-streamdown="code-block-header"] {
-  height: 30px;
-  padding: 0 12px;
+  height: 28px;
+  padding: 0 10px;
   color: var(--aurora-text-muted);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 46%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 34%, transparent);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 35%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 26%, transparent);
   font-family: var(--aurora-font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
 .operation-reader [data-streamdown="code-block-actions"] {
-  right: 10px;
+  right: 7px;
+  gap: 2px;
   color: var(--aurora-text-muted);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 86%, transparent);
-  border-color: color-mix(in srgb, var(--aurora-border-default) 52%, transparent);
-  border-radius: 6px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 5px;
+}
+
+.operation-reader [data-streamdown="code-block-actions"] button {
+  width: 24px;
+  height: 24px;
+  color: var(--aurora-text-muted);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 56%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 38%, transparent);
+  border-radius: 5px;
+}
+
+.operation-reader [data-streamdown="code-block-actions"] button:hover {
+  color: var(--aurora-accent-strong);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 12%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 32%, transparent);
 }
 
 .operation-reader [data-streamdown="code-block-body"] {
-  padding: 10px 0 10px 12px;
+  padding: 9px 0 9px 10px;
   color: var(--aurora-text-primary);
   background: transparent;
   border: 0;
@@ -2751,6 +2776,14 @@ textarea {
   border-radius: 0;
   font-family: inherit;
   font-size: inherit;
+}
+
+.operation-reader [data-streamdown="code-block-body"] span[style*="--sdm-c"] {
+  color: var(--sdm-c) !important;
+}
+
+.operation-reader [data-streamdown="code-block-body"] span[style*="--sdm-tbg"] {
+  background: var(--sdm-tbg);
 }
 
 .operation-reader [data-streamdown="code-block-body"] span::before {
@@ -2864,7 +2897,7 @@ textarea {
 
 .operation-fixture {
   min-height: 100vh;
-  padding: 28px;
+  padding: clamp(18px, 3vw, 28px);
   color: var(--aurora-text-primary);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--aurora-panel) 88%, #000 12%), var(--aurora-bg)),
@@ -2896,7 +2929,7 @@ textarea {
   display: grid;
   max-width: 1180px;
   margin: 0 auto;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -2915,6 +2948,27 @@ textarea {
 
 .operation-fixture-case .output-panel {
   height: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 820px) {
+  .operation-fixture-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .operation-fixture-case .output-panel {
+    min-height: 430px;
+  }
+
+  .operation-fixture-case .output-header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .operation-fixture-case .output-tools {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }
 
 .status-summary {
