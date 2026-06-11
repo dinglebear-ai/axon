@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.1] - 2026-06-11
+
+### Fixed
+
+- **Palette operation results** — removed redundant source-only rows from scrape
+  output, filtered empty markdown bullets, and moved document metadata into the
+  result header so scraped content starts cleanly.
+- **Palette code blocks** — replaced the bordered purple code-block treatment
+  with syntax-highlighted Shiki rendering and quieter operation-reader styling.
+
 ## [5.9.0] - 2026-06-10
 
 ### Added
