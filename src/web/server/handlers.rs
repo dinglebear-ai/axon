@@ -22,6 +22,8 @@ pub mod discovery;
 pub mod exploration;
 #[path = "handlers/jobs.rs"]
 pub mod jobs;
+#[path = "handlers/memory.rs"]
+pub mod memory;
 #[path = "handlers/rag.rs"]
 pub mod rag;
 #[path = "handlers/rest.rs"]

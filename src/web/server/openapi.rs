@@ -34,6 +34,7 @@ use super::{handlers, openapi_jobs};
         handlers::exploration::screenshot,
         handlers::exploration::search,
         handlers::exploration::research,
+        handlers::memory::memory,
         handlers::async_jobs::start_crawl,
         handlers::async_jobs::start_embed,
         handlers::async_jobs::start_extract,
@@ -85,6 +86,10 @@ use super::{handlers, openapi_jobs};
         crate::services::client_contract::RestBrandRequest,
         crate::services::client_contract::RestDiffRequest,
         crate::services::client_contract::RestScreenshotRequest,
+        crate::services::client_contract::RestMemoryRequest,
+        crate::services::client_contract::RestMemorySubaction,
+        crate::services::client_contract::RestMemoryNodeType,
+        crate::services::client_contract::RestMemoryEdgeType,
         crate::services::types::BrandResult,
         crate::services::types::BrandColor,
         crate::services::types::ColorUsage,
@@ -121,7 +126,8 @@ use super::{handlers, openapi_jobs};
         (name = "exploration", description = "Scrape, summarize, map, search, and research endpoints"),
         (name = "jobs", description = "Async crawl, embed, extract, and ingest job endpoints"),
         (name = "admin", description = "Administrative mutation endpoints"),
-        (name = "watch", description = "Scheduled watch definitions and runs")
+        (name = "watch", description = "Scheduled watch definitions and runs"),
+        (name = "memory", description = "Persistent agent memory endpoints")
     )
 )]
 struct ApiDoc;

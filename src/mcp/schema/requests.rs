@@ -139,6 +139,58 @@ pub enum IngestSubaction {
     Recover,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryRequest {
+    pub subaction: Option<MemorySubaction>,
+    pub id: Option<String>,
+    pub source_id: Option<String>,
+    pub target_id: Option<String>,
+    pub edge_type: Option<MemoryEdgeType>,
+    pub memory_type: Option<MemoryNodeType>,
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub query: Option<String>,
+    pub project: Option<String>,
+    pub repo: Option<String>,
+    pub file: Option<String>,
+    pub status: Option<String>,
+    pub confidence: Option<f64>,
+    pub limit: Option<usize>,
+    pub depth: Option<usize>,
+    pub token_budget: Option<usize>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemorySubaction {
+    Remember,
+    List,
+    Search,
+    Show,
+    Link,
+    Supersede,
+    Context,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryNodeType {
+    Decision,
+    Fact,
+    Preference,
+    Task,
+    Bug,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryEdgeType {
+    RelatesTo,
+    Supersedes,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IngestSourceType {

@@ -16,6 +16,7 @@ pub mod extract;
 pub mod ingest;
 pub mod jobs;
 pub mod map;
+pub mod memory;
 pub mod migrate;
 pub mod query;
 pub mod refresh;

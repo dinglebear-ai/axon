@@ -1,9 +1,9 @@
 use super::client_contract::{
     ClientCrawlRequest, ClientExtractMode, ClientExtractRequest, ClientRoutePreference,
-    RestCrawlRequest, RestExtractRequest, RestIngestRequest,
+    RestCrawlRequest, RestExtractRequest, RestIngestRequest, RestMemoryRequest,
 };
 use crate::core::config::RenderMode;
-use crate::mcp::schema::IngestRequest;
+use crate::mcp::schema::{IngestRequest, MemoryRequest, MemorySubaction};
 
 #[test]
 fn extract_request_defaults_to_auto_mode() {
@@ -64,6 +64,25 @@ fn rest_ingest_request_carries_sessions_options_to_mcp_request() {
     assert_eq!(sessions.codex, Some(false));
     assert_eq!(sessions.gemini, Some(true));
     assert_eq!(sessions.project.as_deref(), Some("axon_rust"));
+}
+
+#[test]
+fn rest_memory_request_carries_list_status_filter_to_mcp_request() {
+    let req: RestMemoryRequest = serde_json::from_value(serde_json::json!({
+        "subaction": "list",
+        "project": "axon",
+        "repo": "jmagar/axon",
+        "status": "superseded",
+        "limit": 25
+    }))
+    .expect("deserialize REST memory list request");
+
+    let mcp_req = MemoryRequest::from(req);
+    assert!(matches!(mcp_req.subaction, Some(MemorySubaction::List)));
+    assert_eq!(mcp_req.project.as_deref(), Some("axon"));
+    assert_eq!(mcp_req.repo.as_deref(), Some("jmagar/axon"));
+    assert_eq!(mcp_req.status.as_deref(), Some("superseded"));
+    assert_eq!(mcp_req.limit, Some(25));
 }
 
 #[test]

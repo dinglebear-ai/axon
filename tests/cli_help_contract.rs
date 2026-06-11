@@ -73,6 +73,24 @@ fn ingest_help_describes_target_argument() {
 }
 
 #[test]
+fn memory_list_help_exposes_browse_filters() {
+    let stdout = run_help(&["memory", "list", "--help"]);
+    for expected in [
+        "--project",
+        "--repo",
+        "--file",
+        "--type",
+        "--status",
+        "--limit",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "expected memory list help to include {expected}, got:\n{stdout}"
+        );
+    }
+}
+
+#[test]
 fn top_level_help_describes_http_mcp_runtime() {
     let stdout = run_help(&["--help"]);
     assert!(
@@ -324,6 +342,7 @@ fn all_command_help_filters_inherited_global_noise() {
         "status",
         "dedupe",
         "ingest",
+        "memory",
         "sessions",
         "screenshot",
         "completions",

@@ -6,8 +6,8 @@
 
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
-    IngestArgs, MonitorSubcommand, PaletteArgs, ServeArgs, ServeSubcommand, SessionsArgs,
-    SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
+    IngestArgs, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ServeArgs, ServeSubcommand,
+    SessionsArgs, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -270,6 +270,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.positional = args.filter.into_iter().collect();
         }
         CliCommand::Ingest(args) => apply_ingest(&mut out, args),
+        CliCommand::Memory(args) => apply_memory(&mut out, args.action),
         CliCommand::Sessions(args) => apply_sessions(&mut out, args),
         CliCommand::Screenshot(args) => {
             out.command = CommandKind::Screenshot;
@@ -334,6 +335,106 @@ fn apply_monitor(out: &mut DispatchOutput, action: MonitorSubcommand) {
                 positional.push(state_file);
             }
             out.positional = positional;
+        }
+    }
+}
+
+fn apply_memory(out: &mut DispatchOutput, action: MemoryCliSubcommand) {
+    out.command = CommandKind::Memory;
+    match action {
+        MemoryCliSubcommand::Remember {
+            body,
+            title,
+            memory_type,
+            project,
+            repo,
+            file,
+            confidence,
+        } => {
+            out.positional = vec!["remember".to_string(), body.join(" ")];
+            push_opt(&mut out.positional, "--title", title);
+            push_opt(&mut out.positional, "--type", memory_type);
+            push_opt(&mut out.positional, "--project", project);
+            push_opt(&mut out.positional, "--repo", repo);
+            push_opt(&mut out.positional, "--file", file);
+            if let Some(confidence) = confidence {
+                out.positional.push("--confidence".to_string());
+                out.positional.push(confidence.to_string());
+            }
+        }
+        MemoryCliSubcommand::List {
+            project,
+            repo,
+            file,
+            memory_type,
+            status,
+            limit,
+        } => {
+            out.positional = vec!["list".to_string()];
+            push_opt(&mut out.positional, "--project", project);
+            push_opt(&mut out.positional, "--repo", repo);
+            push_opt(&mut out.positional, "--file", file);
+            push_opt(&mut out.positional, "--type", memory_type);
+            push_opt(&mut out.positional, "--status", status);
+            if let Some(limit) = limit {
+                out.positional.push("--limit".to_string());
+                out.positional.push(limit.to_string());
+            }
+        }
+        MemoryCliSubcommand::Search {
+            query,
+            project,
+            repo,
+            file,
+            limit,
+        } => {
+            out.positional = vec!["search".to_string(), query.join(" ")];
+            push_opt(&mut out.positional, "--project", project);
+            push_opt(&mut out.positional, "--repo", repo);
+            push_opt(&mut out.positional, "--file", file);
+            if let Some(limit) = limit {
+                out.positional.push("--limit".to_string());
+                out.positional.push(limit.to_string());
+            }
+        }
+        MemoryCliSubcommand::Show { id } => {
+            out.positional = vec!["show".to_string(), id];
+        }
+        MemoryCliSubcommand::Link {
+            source_id,
+            target_id,
+            edge_type,
+        } => {
+            out.positional = vec!["link".to_string(), source_id, target_id];
+            push_opt(&mut out.positional, "--type", edge_type);
+        }
+        MemoryCliSubcommand::Supersede {
+            replacement_id,
+            old_id,
+        } => {
+            out.positional = vec!["supersede".to_string(), replacement_id, old_id];
+        }
+        MemoryCliSubcommand::Context {
+            query,
+            project,
+            repo,
+            file,
+            limit,
+            token_budget,
+        } => {
+            out.positional = vec!["context".to_string()];
+            push_opt(&mut out.positional, "--query", query);
+            push_opt(&mut out.positional, "--project", project);
+            push_opt(&mut out.positional, "--repo", repo);
+            push_opt(&mut out.positional, "--file", file);
+            if let Some(limit) = limit {
+                out.positional.push("--limit".to_string());
+                out.positional.push(limit.to_string());
+            }
+            if let Some(token_budget) = token_budget {
+                out.positional.push("--token-budget".to_string());
+                out.positional.push(token_budget.to_string());
+            }
         }
     }
 }

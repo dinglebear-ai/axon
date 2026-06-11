@@ -97,6 +97,7 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
         )
         .route("/v1/search", post(handlers::exploration::search))
         .route("/v1/research", post(handlers::exploration::research))
+        .route("/v1/memory", post(handlers::memory::memory))
         .route(
             "/v1/research/stream",
             post(handlers::exploration::research_stream),
@@ -256,6 +257,9 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
         && (path == "/v1/dedupe" || path == "/v1/watch" || path.starts_with("/v1/watch/"))
     {
+        return true;
+    }
+    if *method == Method::POST && path == "/v1/memory" {
         return true;
     }
 

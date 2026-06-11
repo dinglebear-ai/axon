@@ -13,6 +13,62 @@
     "version": "5.9.0"
   },
   "paths": {
+    "/v1/artifacts/{path}": {
+      "get": {
+        "tags": [
+          "artifacts"
+        ],
+        "summary": "Serve an artifact file from the configured output directory.",
+        "description": "The `*path` wildcard is validated structurally and via canonicalization\nbefore any file I/O. Returns:\n- `400` for structurally unsafe paths (absolute, `..`, etc.)\n- `403` when the resolved path escapes the output root or is a symlink\n- `404` when the file does not exist or is not a regular file",
+        "operationId": "serve_artifact",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "Relative path within the output directory",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File bytes with inferred content-type"
+          },
+          "400": {
+            "description": "Structurally unsafe path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Path escapes the output root",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/ask": {
       "post": {
         "tags": [
@@ -1526,6 +1582,54 @@
           },
           "502": {
             "description": "Upstream crawl service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memory": {
+      "post": {
+        "tags": [
+          "memory"
+        ],
+        "operationId": "memory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Persistent memory result",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream vector or embedding service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -3371,6 +3475,159 @@
         },
         "additionalProperties": false
       },
+      "RestMemoryEdgeType": {
+        "type": "string",
+        "enum": [
+          "relates_to",
+          "supersedes"
+        ]
+      },
+      "RestMemoryNodeType": {
+        "type": "string",
+        "enum": [
+          "decision",
+          "fact",
+          "preference",
+          "task",
+          "bug"
+        ]
+      },
+      "RestMemoryRequest": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "edge_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RestMemoryEdgeType"
+              }
+            ]
+          },
+          "file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "memory_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RestMemoryNodeType"
+              }
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subaction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RestMemorySubaction"
+              }
+            ]
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_budget": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RestMemorySubaction": {
+        "type": "string",
+        "enum": [
+          "remember",
+          "list",
+          "search",
+          "show",
+          "link",
+          "supersede",
+          "context"
+        ]
+      },
       "RestQueryRequest": {
         "type": "object",
         "required": [
@@ -3873,6 +4130,10 @@
     {
       "name": "watch",
       "description": "Scheduled watch definitions and runs"
+    },
+    {
+      "name": "memory",
+      "description": "Persistent agent memory endpoints"
     }
   ]
 }

@@ -1,7 +1,7 @@
 ---
 name: using-axon
 description: >-
-  Self-hosted RAG engine and web toolkit. Use it to: answer questions indexed docs/code might cover (ask — a large corpus is already indexed; try ask BEFORE web-searching or giving up); search the web (search, auto-indexes results); semantic-search the index (query); scrape/fetch a page (scrape); crawl a docs site or pages you just used (crawl); map a site's URLs (map); extract structured data (extract); discover API endpoints (endpoints); extract brand identity — colors/logo/fonts/voice (brand); summarize a page (summarize); quick multi-source research (research); retrieve a URL's full indexed content (retrieve); embed local files/dirs (embed); ingest GitHub/GitLab/Gitea/Git repos, Reddit, YouTube, and Claude/Codex/Gemini sessions (ingest). Also triggers on axon, RAG, Qdrant, SearXNG, Tavily, hybrid/vector search.
+  Self-hosted RAG engine, web toolkit, and persistent agent memory. Use it to: remember durable project facts/preferences/decisions (memory.remember); recall/search agent memory (memory.search/show); answer questions indexed docs/code might cover (ask — a large corpus is already indexed; try ask BEFORE web-searching or giving up); search the web (search, auto-indexes results); semantic-search the index (query); scrape/fetch a page (scrape); crawl a docs site or pages you just used (crawl); map a site's URLs (map); extract structured data (extract); discover API endpoints (endpoints); extract brand identity — colors/logo/fonts/voice (brand); summarize a page (summarize); quick multi-source research (research); retrieve a URL's full indexed content (retrieve); embed local files/dirs (embed); ingest GitHub/GitLab/Gitea/Git repos, Reddit, YouTube, and Claude/Codex/Gemini sessions (ingest). Also triggers on axon, RAG, Qdrant, SearXNG, Tavily, hybrid/vector search, remember, recall, memory.
 allowed-tools: mcp__plugin_axon_axon__axon
 ---
 
@@ -35,6 +35,8 @@ axon already has a large corpus indexed, and **every operation makes it smarter*
 | Full indexed content of a specific URL | `retrieve` |
 | Embed local files / directories | `embed` |
 | Index a GitHub/GitLab/Gitea/Git repo, Reddit, YouTube, or AI sessions | `ingest` |
+| Remember a durable project fact, decision, or preference | `memory.remember` |
+| Recall previously stored agent memory | `memory.context` at task start, or `memory.search` then `memory.show` when targeted lookup is better |
 
 **`ask` is the highest-leverage habit.** A huge amount is already indexed, so many multi-turn fumbles would have been a single `ask` call. Whenever a question *could* be covered by docs or code that's been indexed, try `ask` before web-searching or giving up. **And after you crawl/scrape/ingest something to solve a task, you've made the index richer — prefer `ask`/`query` next time over re-fetching.**
 
@@ -82,6 +84,37 @@ Once per session, confirm the live action map and that services are healthy:
 `help` returns the full action/subaction map and current defaults — authoritative when names look wrong. `doctor` pings Qdrant, the embedding service (TEI), Chrome, and the Gemini headless LLM backend. It does **not** probe the web-search backend.
 
 CLI equivalents: `axon doctor`. (No CLI `help` for the action map — use the MCP one.)
+
+## Persistent agent memory
+
+Use Axon memory for durable project-level facts, preferences, decisions, bugs, and task notes that should be semantically recalled later. This is distinct from bead issue notes and from Memos: Axon memory is optimized for agent recall through Qdrant.
+
+Minimal remember call:
+
+```json
+{ "action": "memory", "subaction": "remember", "body": "Memory content lives in Qdrant; SQLite holds graph metadata.", "project": "axon" }
+```
+
+Recall:
+
+```json
+{ "action": "memory", "subaction": "context", "project": "axon", "query": "memory storage architecture" }
+{ "action": "memory", "subaction": "search", "query": "where is memory stored", "project": "axon" }
+{ "action": "memory", "subaction": "show", "id": "<memory-id>" }
+```
+
+Use `memory.context` at task start when project memory could help. It returns inline, defanged XML-wrapped content with `trust="evidence_only"` and supports `limit` plus `token_budget`.
+
+Graph maintenance:
+
+```json
+{ "action": "memory", "subaction": "link", "source_id": "<memory-id>", "target_id": "<memory-id>", "edge_type": "relates_to" }
+{ "action": "memory", "subaction": "supersede", "source_id": "<replacement-memory-id>", "target_id": "<old-memory-id>" }
+```
+
+`supersede` hides the old memory from future `memory.search` results and records the replacement trail in SQLite.
+
+CLI equivalents: `axon memory remember "..." --project axon`, `axon memory context --project axon --query "..."`, `axon memory search "..." --project axon`, `axon memory show <memory-id>`, `axon memory link <source-id> <target-id>`, `axon memory supersede <replacement-id> <old-id>`.
 
 ## Discovery
 

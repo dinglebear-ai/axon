@@ -225,6 +225,24 @@ Discover all URLs at a domain without scraping content.
 { "action": "map", "url": "https://example.com" }
 ```
 
+### memory
+
+Persistent agent memory backed by the dedicated Qdrant memory collection plus SQLite metadata.
+
+```json
+{ "action": "memory", "subaction": "remember", "body": "Memory content lives in Qdrant.", "project": "axon" }
+```
+
+| Subaction | Required fields | Description |
+|-----------|-----------------|-------------|
+| `remember` | `body` | Redacts secret-like tokens, embeds title/body into Qdrant, and upserts the SQLite metadata mirror. |
+| `list` | -- | Browses SQLite metadata without a text query or Qdrant round-trip. Defaults to `status: "active"` and supports optional `project`, `repo`, `file`, `memory_type`, `status`, and `limit`. Returned memory bodies are omitted/null. |
+| `search` | `query` | Searches active memories with optional `project`, `repo`, and `file` filters. |
+| `show` | `id` | Returns one memory by deterministic server-generated id. |
+| `link` | `source_id`, `target_id` | Creates or refreshes an idempotent SQLite graph edge. `edge_type` defaults to `relates_to`; `supersedes` is also supported. |
+| `supersede` | `source_id`, `target_id` | Marks `target_id` superseded in SQLite and Qdrant, then inserts a `supersedes` edge from replacement `source_id` to old `target_id`. |
+| `context` | -- | Builds an inline `<retrieved_content trust="evidence_only">` context block from optional `project`, `repo`, `file`, and `query` seeds plus one-hop graph neighbors. Supports `limit` and `token_budget`. |
+
 ### screenshot
 
 Capture a page screenshot via headless Chrome.

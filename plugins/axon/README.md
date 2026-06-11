@@ -12,7 +12,12 @@ claude plugin install <path>
 
 The plugin manifest declares a minimal `userConfig` block. Claude Code prompts for the shared Axon server URL, bearer token, optional Tavily/GitHub/Reddit credentials, and optional OAuth settings. Qdrant, TEI, Chrome, Qwen3 embedding, and LLM backend settings are configured by the shared Docker setup path, not by plugin prompts.
 
-There is no SessionStart hook. The plugin has no session-start side-effects — it does not probe the stack, install binaries, or modify `~/.axon/` on startup.
+The plugin includes two narrow Claude hooks:
+
+- `SessionStart` runs best-effort local setup, then recalls compact `axon memory context` for the current git project when Axon memory is available.
+- `ConfigChange` runs the same local setup helper after user settings change.
+
+The hooks are intentionally non-blocking. They do not deploy Docker services; stack provisioning stays explicit.
 
 To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
 

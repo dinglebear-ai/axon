@@ -224,6 +224,28 @@ export type components = {
             "offset"?: number | null;
             "url": string;
         };
+        "RestMemoryEdgeType": "relates_to" | "supersedes";
+        "RestMemoryNodeType": "decision" | "fact" | "preference" | "task" | "bug";
+        "RestMemoryRequest": {
+            "body"?: string | null;
+            "confidence"?: number | null;
+            "depth"?: number | null;
+            "edge_type"?: null | components['schemas']['RestMemoryEdgeType'];
+            "file"?: string | null;
+            "id"?: string | null;
+            "limit"?: number | null;
+            "memory_type"?: null | components['schemas']['RestMemoryNodeType'];
+            "project"?: string | null;
+            "query"?: string | null;
+            "repo"?: string | null;
+            "source_id"?: string | null;
+            "status"?: string | null;
+            "subaction"?: null | components['schemas']['RestMemorySubaction'];
+            "target_id"?: string | null;
+            "title"?: string | null;
+            "token_budget"?: number | null;
+        };
+        "RestMemorySubaction": "remember" | "list" | "search" | "show" | "link" | "supersede" | "context";
         "RestQueryRequest": {
             "collection"?: string | null;
             "limit"?: number | null;

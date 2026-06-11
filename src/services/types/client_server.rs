@@ -186,6 +186,7 @@ pub fn supported_routes() -> Vec<String> {
         "POST /v1/screenshot",
         "POST /v1/search",
         "POST /v1/research",
+        "POST /v1/memory",
         "POST /v1/crawl",
         "GET /v1/crawl",
         "GET /v1/crawl/{id}",

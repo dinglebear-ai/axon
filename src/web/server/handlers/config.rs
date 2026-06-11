@@ -207,7 +207,7 @@ pub async fn panel_command(
             let action_json = serde_json::to_value(&action).unwrap_or_else(
                 |err| serde_json::json!({ "serialization_error": err.to_string() }),
             );
-            match action_api::dispatch_action(&state.service_context, action).await {
+            match action_api::dispatch_action(&state.service_context, *action).await {
                 Ok(result) => Json(PanelCommandResponse {
                     command: command.to_string(),
                     action: action_json,
@@ -229,7 +229,7 @@ pub async fn panel_command(
 }
 
 enum ParsedPanelCommand {
-    Action(AxonRequest),
+    Action(Box<AxonRequest>),
     Ask { query: String },
 }
 
@@ -239,34 +239,38 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
         .map(|(verb, rest)| (verb.trim().to_ascii_lowercase(), rest.trim()))
         .unwrap_or_else(|| (command.trim().to_ascii_lowercase(), ""));
     match verb.as_str() {
-        "status" => Ok(ParsedPanelCommand::Action(AxonRequest::Status(
+        "status" => Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Status(
             StatusRequest {
                 subaction: None,
                 response_mode: Some(ResponseMode::Inline),
             },
-        ))),
+        )))),
         "scrape" => {
             let url = required_arg(rest, "scrape requires a URL")?;
-            Ok(ParsedPanelCommand::Action(AxonRequest::Scrape(ScrapeRequest {
-                url: Some(normalize_url(url)),
-                render_mode: None,
-                format: None,
-                embed: None,
-                response_mode: Some(ResponseMode::Inline),
-                root_selector: None,
-                exclude_selector: None,
-                cursor: None,
-                token_budget: None,
-            })))
+            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Scrape(
+                ScrapeRequest {
+                    url: Some(normalize_url(url)),
+                    render_mode: None,
+                    format: None,
+                    embed: None,
+                    response_mode: Some(ResponseMode::Inline),
+                    root_selector: None,
+                    exclude_selector: None,
+                    cursor: None,
+                    token_budget: None,
+                },
+            ))))
         }
         "crawl" => {
             let url = required_arg(rest, "crawl requires a URL")?;
-            Ok(ParsedPanelCommand::Action(AxonRequest::Crawl(CrawlRequest {
-                subaction: Some(CrawlSubaction::Start),
-                urls: Some(vec![normalize_url(url)]),
-                response_mode: Some(ResponseMode::Inline),
-                ..Default::default()
-            })))
+            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Crawl(
+                CrawlRequest {
+                    subaction: Some(CrawlSubaction::Start),
+                    urls: Some(vec![normalize_url(url)]),
+                    response_mode: Some(ResponseMode::Inline),
+                    ..Default::default()
+                },
+            ))))
         }
         "ask" => {
             let query = required_arg(rest, "ask requires a question")?;
@@ -276,7 +280,7 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
         }
         "extract" => {
             let (prompt, url) = parse_extract_args(rest)?;
-            Ok(ParsedPanelCommand::Action(AxonRequest::Extract(
+            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Extract(
                 ExtractRequest {
                     subaction: Some(ExtractSubaction::Start),
                     urls: Some(vec![normalize_url(url)]),
@@ -284,11 +288,11 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                     response_mode: Some(ResponseMode::Inline),
                     ..Default::default()
                 },
-            )))
+            ))))
         }
         "screenshot" => {
             let url = required_arg(rest, "screenshot requires a URL")?;
-            Ok(ParsedPanelCommand::Action(AxonRequest::Screenshot(
+            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Screenshot(
                 ScreenshotRequest {
                     url: Some(normalize_url(url)),
                     full_page: Some(true),
@@ -296,7 +300,7 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                     output: None,
                     response_mode: Some(ResponseMode::Inline),
                 },
-            )))
+            ))))
         }
         _ => Err("supported commands: status, scrape <url>, crawl <url>, ask <question>, extract <prompt> from <url>, screenshot <url>".to_string()),
     }
@@ -368,7 +372,7 @@ pub async fn panel_artifact(
     if !authorized(&state, &headers) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
-    if rel_path.contains("..") || rel_path.starts_with("/") || rel_path.contains(' ') {
+    if rel_path.contains("..") || rel_path.starts_with("/") || rel_path.contains('\0') {
         return (StatusCode::BAD_REQUEST, "invalid artifact path").into_response();
     }
     let artifact_path = cfg.output_dir.join(&rel_path);

@@ -22,8 +22,8 @@ pub(crate) fn collect_unique_urls(url: Option<String>, urls: Option<Vec<String>>
 }
 
 use crate::mcp::schema::{
-    AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction, SetupMode,
-    WatchSubaction,
+    AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction,
+    MemorySubaction, SetupMode, WatchSubaction,
 };
 use crate::services::context::ServiceContext;
 use crate::services::system;
@@ -44,6 +44,7 @@ pub async fn dispatch_action(
         AxonRequest::Extract(req) => commands::dispatch_extract(service_context, req).await,
         AxonRequest::Embed(req) => commands::dispatch_embed(service_context, req).await,
         AxonRequest::Ingest(req) => commands::dispatch_ingest(service_context, req).await,
+        AxonRequest::Memory(req) => crate::services::memory::dispatch(service_context, req).await,
         AxonRequest::Endpoints(req) => commands::dispatch_endpoints(service_context, req).await,
         AxonRequest::Scrape(req) => commands::dispatch_scrape(service_context, req).await,
         AxonRequest::Summarize(req) => commands::dispatch_summarize(service_context, req).await,
@@ -76,6 +77,15 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         AxonRequest::Ingest(req) => match req.subaction.unwrap_or(IngestSubaction::Start) {
             IngestSubaction::Status | IngestSubaction::List => Some("axon:read"),
             _ => Some("axon:write"),
+        },
+        AxonRequest::Memory(req) => match req.subaction.unwrap_or(MemorySubaction::Remember) {
+            MemorySubaction::Remember | MemorySubaction::Link | MemorySubaction::Supersede => {
+                Some("axon:write")
+            }
+            MemorySubaction::List
+            | MemorySubaction::Search
+            | MemorySubaction::Show
+            | MemorySubaction::Context => Some("axon:read"),
         },
         // Read-only ops: pure data reads, no external process, no side-effects.
         AxonRequest::Query(_)
@@ -144,6 +154,7 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Extract(_) => "extract",
         AxonRequest::Embed(_) => "embed",
         AxonRequest::Ingest(_) => "ingest",
+        AxonRequest::Memory(_) => "memory",
         AxonRequest::Query(_) => "query",
         AxonRequest::Retrieve(_) => "retrieve",
         AxonRequest::Search(_) => "search",
