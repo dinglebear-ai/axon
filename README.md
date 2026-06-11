@@ -18,7 +18,7 @@ Supported production runtime:
   configured, falling back to Tavily (`TAVILY_API_KEY`) otherwise.
 - Local NVIDIA RTX 4070 target with NVIDIA Container Toolkit.
 - CLI and MCP run all actions in-process; deploy the `axon serve` container only when you need HTTP API access.
-- One shared config home: `~/.axon/.env`, `~/.axon/config.toml`, `~/.axon/jobs.db`, `~/.axon/output`, `~/.axon/logs`, `~/.axon/artifacts`, `~/.axon/screenshots`, `~/.axon/qdrant`, and `~/.axon/tei`.
+- One shared config home: `~/.axon/.env`, `~/.axon/config.toml`, `~/.axon/jobs.db`, `~/.axon/output`, `~/.axon/logs`, `~/.axon/artifacts`, `~/.axon/screenshots`, and `~/.axon/tei`. Qdrant storage lives on the host running Qdrant; dookie points at tootie by default.
 
 Not supported in the production path:
 
@@ -142,7 +142,7 @@ The production compose file starts:
 | Service | Purpose | Host bind |
 | --- | --- | --- |
 | `axon` | HTTP server, web panel, MCP HTTP, action API, in-process workers | `127.0.0.1:8001` |
-| `axon-qdrant` | vector storage | `127.0.0.1:53333`, `127.0.0.1:53334` |
+| `axon-qdrant` | vector storage, optional local service; production points at tootie by default | `127.0.0.1:53333`, `127.0.0.1:53334` |
 | `axon-tei` | Qwen3 embeddings through TEI | `127.0.0.1:52000` |
 | `axon-chrome` | browser rendering and CDP proxy | `127.0.0.1:6000`, `127.0.0.1:9222`, `127.0.0.1:9223` |
 
@@ -378,7 +378,7 @@ Important paths:
 - `~/.axon/artifacts`
 - `~/.axon/output`
 - `~/.axon/tei`
-- `~/.axon/qdrant`
+- `~/.axon/qdrant` on the host running Qdrant, normally tootie
 
 Common failures:
 

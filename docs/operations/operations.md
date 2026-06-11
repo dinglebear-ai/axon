@@ -38,7 +38,7 @@ Manual equivalent:
 mkdir -m 700 -p ~/.axon
 cp .env.example ~/.axon/.env            # then edit
 chmod 600 ~/.axon/.env
-mkdir -p "${AXON_DATA_DIR:-$HOME/.axon}"/{qdrant,output,tei,artifacts,logs}
+mkdir -p "${AXON_DATA_DIR:-$HOME/.axon}"/{output,tei,artifacts,logs}
 just services-up
 ```
 
@@ -47,7 +47,7 @@ Required values in `~/.axon/.env`:
 | Var | Purpose |
 |-----|---------|
 | `AXON_DATA_DIR` | Host root for SQLite, Qdrant volume, TEI cache, output; default `~/.axon` |
-| `QDRANT_URL` | Default: `http://127.0.0.1:53333` |
+| `QDRANT_URL` | Default: `http://100.120.242.29:53333` (tootie) |
 | `TEI_URL` | Default: `http://127.0.0.1:52000` |
 | `AXON_HEADLESS_GEMINI_CMD` | Gemini CLI command — required for `ask`/`evaluate`/`research`/`debug`/`suggest`/extract fallback |
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override |
@@ -58,13 +58,17 @@ Required values in `~/.axon/.env`:
 
 ## Start services
 
-Infrastructure (Qdrant + TEI + Chrome) only:
+Infrastructure (TEI + Chrome locally; Qdrant remote on tootie by default):
 
 ```bash
 just services-up
 # equivalent to:
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
 ```
+
+Use `just qdrant-up` only when you intentionally want an optional local Qdrant
+container, and set `AXON_QDRANT_URL=http://axon-qdrant:6333` for the Axon
+container in that mode.
 
 Foreground dev loop (builds binary, starts infra, runs `axon mcp` in-process):
 
@@ -285,7 +289,8 @@ restart from `pending`.
 
 ## Backup and restore — Qdrant
 
-Qdrant data is persisted at the host bind mount declared in `docker-compose.prod.yaml`:
+Qdrant data is persisted at the host bind mount declared in `docker-compose.prod.yaml`
+on the host running Qdrant, normally tootie:
 
 ```bash
 ${AXON_HOME:-$HOME/.axon}/qdrant
@@ -303,9 +308,9 @@ curl -s -X POST "${QDRANT_URL}/collections/${AXON_COLLECTION:-axon}/snapshots"
 curl -s "${QDRANT_URL}/collections/${AXON_COLLECTION:-axon}/snapshots"
 
 # Download (path returned by the create call lives under /qdrant/snapshots)
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml \
-    exec axon-qdrant ls /qdrant/snapshots
-docker cp axon-qdrant:/qdrant/snapshots/<file> ./backup/
+ssh tootie 'docker exec axon-qdrant ls /qdrant/snapshots'
+ssh tootie 'docker cp axon-qdrant:/qdrant/snapshots/<file> /tmp/<file>'
+scp tootie:/tmp/<file> ./backup/
 ```
 
 Restore: copy the snapshot back into the container and POST to
@@ -317,9 +322,10 @@ Restore: copy the snapshot back into the container and POST to
 Stop Qdrant, then archive the bind mount:
 
 ```bash
-just services-down
-tar -czf qdrant-backup.tgz -C "${AXON_HOME:-$HOME/.axon}" qdrant/
-just services-up
+ssh tootie 'docker stop axon-qdrant'
+ssh tootie 'tar -czf /tmp/qdrant-backup.tgz -C "${AXON_HOME:-$HOME/.axon}" qdrant/'
+scp tootie:/tmp/qdrant-backup.tgz ./backup/
+ssh tootie 'docker start axon-qdrant'
 ```
 
 This is faster for one-shot full backups and includes index state.
@@ -353,7 +359,9 @@ RUST_LOG=info,axon::jobs=debug just dev
 ### Container logs
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml logs -f axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml logs -f axon-tei axon-chrome
+# Qdrant logs live on tootie:
+ssh tootie 'docker logs -f axon-qdrant'
 ```
 
 Container logs are JSON-formatted, capped at 10 MB × 3 files (see
@@ -471,7 +479,7 @@ The `to` collection is created if missing; re-running is idempotent.
 |---|---|---|
 | `axon doctor` shows `tei.ok=false` | TEI container down or model still loading | `docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps`; wait for healthcheck (`start_period: 20s`); check `docker logs axon-tei` for CUDA OOM |
 | `tei` returns `503` mid-run | Model overload / CUDA pressure | Reduce `TEI_MAX_BATCH_TOKENS` / `TEI_MAX_CONCURRENT_REQUESTS` in `~/.axon/.env`; lower `--batch-concurrency`; TEI client auto-retries on 429/5xx (see CLAUDE.md "TEI retries") |
-| `qdrant connection refused` | Qdrant not started or `QDRANT_URL` wrong | `just services-up`; verify `curl ${QDRANT_URL}/readyz` |
+| `qdrant connection refused` | Qdrant not started on tootie or `QDRANT_URL` wrong | Verify `curl ${QDRANT_URL}/readyz`; use `just qdrant-up` only for an intentional local fallback |
 | `queue cap exceeded` on submit | `AXON_MAX_PENDING_*` reached | Run `axon <kind> list` to inspect; `axon <kind> cleanup` removes terminal rows; raise the cap or set to `0` |
 | Jobs sit `pending` forever | No `axon mcp` / `axon serve` process running | Start `just dev` or pass `--wait true` |
 | Job stuck `running` past 10 min | Worker hang | Heartbeat watchdog will mark `failed` automatically; or run `axon <kind> recover` |
@@ -500,7 +508,7 @@ just stop
 just services-down
 ```
 
-Volumes (`${AXON_HOME:-$HOME/.axon}/{qdrant,tei,...}`) are bind-mounted on the host and persist across restarts. Keep `AXON_HOME` aligned with `AXON_DATA_DIR` unless relocating the whole Axon appdata tree.
+Volumes (`${AXON_HOME:-$HOME/.axon}/{qdrant,tei,...}`) are bind-mounted on the host that runs each service and persist across restarts. Keep `AXON_HOME` aligned with `AXON_DATA_DIR` unless relocating the whole Axon appdata tree; with remote Qdrant, the qdrant volume is on tootie.
 
 ---
 
@@ -602,7 +610,7 @@ cp ~/.axon/backups/sqlite/jobs-20260101-0200.db ~/.axon/jobs.db
 
 | Path | Purpose |
 |------|---------|
-| `docker-compose.prod.yaml` | Infra services (qdrant, tei, chrome) |
+| `docker-compose.prod.yaml` | Axon, local TEI/Chrome services, and optional local Qdrant service |
 | `Justfile` | `services-up`, `services-down`, `stop`, `dev` |
 | `scripts/axon` | Wrapper that auto-sources `~/.axon/.env` and runs `cargo run --bin axon` |
 | `scripts/dev-setup.sh` | First-run bootstrap |

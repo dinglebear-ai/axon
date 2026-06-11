@@ -60,7 +60,7 @@ It is idempotent — safe to re-run. What it does:
 7. Runs `npm ci` for `apps/web` using `apps/web/package-lock.json`.
 8. Creates `~/.axon/.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
 9. **Prompts for `AXON_HOME`** (default `~/.axon`, flat layout — no nested `axon/` subdir), derives `AXON_DATA_DIR="$AXON_HOME"`, and pre-creates all container volume directories under it.
-10. Starts production infrastructure (`docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome`).
+10. Starts production infrastructure (`docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome`). Qdrant is expected at `AXON_QDRANT_URL`/`QDRANT_URL`, defaulting to tootie.
 11. Installs git hooks via `scripts/install-git-hooks.sh`.
 
 **Optional flags:**
@@ -79,7 +79,7 @@ Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and 
 ### Required for all features
 
 - `AXON_DATA_DIR` — root for all persistent volume data
-- `QDRANT_URL` — Qdrant vector store URL
+- `QDRANT_URL` — Qdrant vector store URL. On dookie this normally points to tootie: `http://100.120.242.29:53333`.
 - `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.prod.yaml`)
 - Gemini CLI auth plus `AXON_HEADLESS_GEMINI_CMD` for the default LLM synthesis
   path, or `AXON_LLM_BACKEND=openai-compat` plus `AXON_OPENAI_BASE_URL` and
@@ -148,16 +148,24 @@ docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml build
 
 1. Start the stack:
 
-**Infrastructure only** (Qdrant, TEI, Chrome in Docker; `axon serve` run locally):
+**Infrastructure only** (TEI and Chrome local in Docker, Qdrant remote on tootie; `axon serve` run locally):
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
 ```
 
 To run the `axon` service through Compose, start the full stack:
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
+```
+
+To run Qdrant locally for test data instead, set
+`AXON_QDRANT_URL=http://axon-qdrant:6333` for the Axon container and start the
+optional Qdrant profile:
+
+```bash
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml --profile local-qdrant up -d axon-qdrant
 ```
 
 The Compose `axon` service publishes MCP HTTP via `${AXON_MCP_HTTP_PUBLISH:-8001}:8001`.
@@ -167,10 +175,10 @@ The default value `8001` is a bare port, which Docker binds on **all interfaces*
 loopback, and ensure `AXON_MCP_HTTP_TOKEN` is set (or OAuth mode enabled)
 whenever the port is exposed beyond loopback.
 
-**Local dev mode** (infra in Docker, Axon server run locally):
+**Local dev mode** (TEI/Chrome in Docker, Qdrant on tootie, Axon server run locally):
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
 
 # Start the local Axon HTTP server:
 cargo run --bin axon -- serve
@@ -202,12 +210,13 @@ docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps
 Workers run in-process locally — output is in the terminal directly. For infra logs:
 
 ```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml logs --tail=200 axon-qdrant axon-tei axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml logs --tail=200 axon-tei axon-chrome
+ssh tootie 'docker logs --tail=200 axon-qdrant'
 ```
 
 ## Validation Checklist
 
-- All infra containers report healthy (qdrant, tei, chrome).
+- TEI and Chrome containers report healthy, and Qdrant `/readyz` is reachable at `QDRANT_URL`.
 - `doctor` passes critical services.
 - At least one sync command succeeds (`scrape`).
 - At least one async command enqueues and reaches terminal state.

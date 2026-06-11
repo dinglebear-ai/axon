@@ -3,8 +3,10 @@ name: axon
 # Local development stack.
 #
 # Uses the production service definitions for infra, but runs axon in a newer
-# dev runtime with the local debug target directory bind-mounted. Normal Rust
-# code changes only need `cargo build --bin axon` plus an axon service restart.
+# dev runtime with the local debug target directory bind-mounted. Qdrant is
+# remote on tootie by default; start the optional axon-qdrant service only when
+# you intentionally want a local vector store. Normal Rust code changes only
+# need `cargo build --bin axon` plus an axon service restart.
 #
 #   ./scripts/axon doctor
 #   docker compose up -d axon

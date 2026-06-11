@@ -1,6 +1,9 @@
 name: axon
 
-# Full axon stack: axon (HTTP), qdrant, tei, chrome.
+# Full axon stack: axon (HTTP), tei, chrome, plus an optional qdrant service.
+# Production on dookie uses Qdrant on tootie by default to keep the large vector
+# working set off the dev box. Override AXON_QDRANT_URL to point elsewhere, or
+# start the optional axon-qdrant service explicitly when running all infra local.
 #   docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
 # ~/.axon is the canonical host appdata root. Override AXON_HOME only when
 # relocating the full Axon appdata tree to another absolute path.
@@ -47,11 +50,11 @@ services:
       # ENV, so we must re-override here.
       AXON_HOME: /home/axon/.axon
       AXON_DATA_DIR: /home/axon/.axon
-      # Pin service URLs to container-internal DNS so the axon container always
-      # reaches its siblings regardless of what host-side URLs are in ~/.axon/.env.
-      # Without these overrides the container would inherit whatever loopback or
-      # external addresses the host ~/.axon/.env uses and fail to connect.
-      QDRANT_URL: http://axon-qdrant:6333
+      # Pin service URLs so the axon container does not inherit host-loopback
+      # values from ~/.axon/.env. Qdrant defaults to tootie's Tailscale IP to
+      # keep the memory-heavy vector store off dookie; use AXON_QDRANT_URL to
+      # override, e.g. http://axon-qdrant:6333 for an all-local compose stack.
+      QDRANT_URL: ${AXON_QDRANT_URL:-http://100.120.242.29:53333}
       TEI_URL: http://axon-tei:80
       AXON_CHROME_REMOTE_URL: http://axon-chrome:6000
       # AXON_SERVER_URL is a client-side switch. The shared ~/.axon/.env may
@@ -86,8 +89,6 @@ services:
       - "${AXON_MCP_HTTP_PUBLISH:-8001}:8001"
     command: ["serve"]
     depends_on:
-      axon-qdrant:
-        condition: service_healthy
       axon-tei:
         condition: service_healthy
       axon-chrome:
@@ -103,6 +104,7 @@ services:
     <<: *common-service
     image: qdrant/qdrant:v1.13.1
     container_name: axon-qdrant
+    profiles: ["local-qdrant"]
     # Shield the vector DB from the kernel's *global* OOM killer: under host
     # memory pressure (concurrent cargo builds + optimizer churn) qdrant is the
     # largest RSS on the box and got picked twice in 10 minutes (dmesg
