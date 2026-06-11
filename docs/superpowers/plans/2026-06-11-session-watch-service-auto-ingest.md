@@ -4,7 +4,7 @@
 
 **Goal:** Build host-local automatic AI session ingestion with `axon sessions watch` and `axon setup session-watch-service`, reusing existing prepared-session ingest and `/v1/ingest/sessions/prepared`.
 
-**Architecture:** Keep SessionStart recall and auto-capture separate: the existing plugin hook only calls `axon memory context`, while the new watcher is a long-running host-local process. The watcher watches Claude, Codex, and Gemini transcript roots with Cortex-style debounce/settle/retry/overflow behavior, converts stable files to existing prepared-session docs, and either ingests locally or uploads to the existing prepared-session REST endpoint when `AXON_SERVER_URL` is set. A setup command installs a user systemd service that runs `axon sessions watch --no-initial-scan --json` and performs one initial `axon sessions --json` ingest before enabling the service.
+**Architecture:** Keep SessionStart recall and auto-capture separate: the existing plugin hook only calls `axon memory context`, while the new watcher is a long-running host-local process. The watcher watches Claude, Codex, and Gemini transcript roots with Cortex-style debounce/settle/retry/overflow behavior, validates stable files against canonical provider roots, converts them to existing prepared-session docs, and ingests batches through the existing prepared-session service path. V0 is local-first; remote upload is allowed only behind an explicit opt-in flag/config plus authenticated `POST /v1/ingest/sessions/prepared` client behavior. A setup command installs a user systemd service named `session-watch-service` that runs `axon sessions watch --no-initial-scan --json` and performs one initial `axon sessions --wait true --json` ingest before enabling the service.
 
 **Tech Stack:** Rust 2024, Tokio, clap, notify, SQLite via Axon job DB style, existing Axon session parsers, existing prepared-session DTOs, Axon REST client/server paths, user systemd.
 
@@ -14,13 +14,30 @@
 
 This plan covers one independently testable subsystem: automatic session capture. It includes the watcher command, checkpoint/status storage, setup service, docs, and validation. It does not alter persistent memory recall semantics, and it does not make SessionStart scan or ingest session files.
 
+## Engineering Review Amendments
+
+These requirements come from the Lavra engineering review and supersede any older snippet below that appears looser:
+
+- **Typed command state only:** do not pack `sessions watch` or `setup session-watch-service` arguments into `Config.positional` beyond existing job-subcommand compatibility. Add typed config fields, e.g. `cfg.sessions_watch: Option<SessionWatchOptions>` and `cfg.setup_session_watch_action: Option<SessionWatchServiceAction>`, populated directly from clap.
+- **ServiceContext boundary:** `run_sessions` already receives `&ServiceContext`; the watcher must use that context instead of constructing job backends ad hoc. Checkpoint functions should accept `&sqlx::SqlitePool`, obtained from the existing SQLite runtime, and must never open/run migrations per file.
+- **Path validation first:** provider detection must use canonical provider roots plus `strip_prefix`, not raw string `contains()`. Reject symlink roots, skip symlink children, reject paths outside Claude/Codex/Gemini roots unless an explicit future allow-root option is added, and keep SessionStart recall-only.
+- **Redacted observability:** JSON/systemd logs and checkpoint errors must not print raw absolute paths or unredacted parser/HTTP errors by default. Emit provider, basename, path hash, event/status code, and redacted detail. Add `--verbose-paths` only if local debugging needs raw paths.
+- **Cheap checkpoints:** compare cheap metadata first (`path_hash`, `size`, `mtime`) and stream a content hash only when metadata changed. Store redacted path identity, failure counts, and retry timing; do not store raw secrets or raw auth-bearing error text.
+- **Batch processing:** process stable files in bounded batches per tick. Parse with a small semaphore, submit one prepared-session request per batch, and record per-file success/error after the batch outcome. Add `--max-batch-docs`, `--max-processing-concurrency`, and `--rescan-cooldown-ms`.
+- **Real remote upload or no remote upload:** do not treat `AXON_SERVER_URL` as local enqueue. If remote upload ships in v0, it must be explicit (`--upload-to-server` or config), require HTTPS except loopback, send bearer auth from `AXON_MCP_HTTP_TOKEN`/config, use request size bounds and timeouts, and test the actual HTTP POST. Otherwise defer it and keep v0 local-only.
+- **Installer must fail honestly:** `install` must fail if initial `axon sessions --wait true --json`, `systemctl --user daemon-reload`, or `systemctl --user enable --now session-watch-service.service` fails, unless a named ignore flag is deliberately added.
+- **No placeholder smoke:** `smoke-watch` must prove ingestion via checkpoint and/or Qdrant evidence, or be deferred/renamed to a probe writer. It must never return a hard-coded `ingested=false` as a successful smoke.
+- **Monolith guard:** before final validation, check new Rust modules for the repo monolith policy and split large watcher code into sibling files such as `watch/targets.rs`, `watch/queue.rs`, `watch/process.rs`, and `watch/loop.rs` with the existing no-`mod.rs` convention.
+
 ## File Structure
 
-- Create `src/ingest/sessions/watch.rs`: watcher options, watch target discovery, non-recursive directory registration, pending file queue, debounce/settle logic, event handling, rescan trigger, graceful shutdown wiring, and process loop.
+- Create `src/ingest/sessions/watch.rs`: public watcher facade, typed options, and module exports only if implementation grows large.
+- Create `src/ingest/sessions/watch/targets.rs`, `src/ingest/sessions/watch/queue.rs`, `src/ingest/sessions/watch/process.rs`, and `src/ingest/sessions/watch/loop.rs` as needed to keep watcher code below the monolith limit while following the repo's no-`mod.rs` convention.
 - Create `src/ingest/sessions/watch_tests.rs`: unit tests for target selection, pending queue coalescing, debounce, settle, retry, overflow, delete handling, and supported-file filtering.
 - Create `src/ingest/sessions/checkpoint.rs`: SQLite checkpoint functions for source path metadata, errors, duplicate suppression, and status summaries. V0 uses this for skip/status/error visibility, not append-offset ingestion.
 - Create `src/ingest/sessions/checkpoint_tests.rs`: SQLite-backed checkpoint tests with temp DB.
 - Create `src/jobs/migrations/0010_create_session_watch_tables.sql`: checkpoint and watch error tables.
+- Create `src/ingest/sessions/watch/validate.rs`: canonical provider-root validation, redacted path display, and path hash helpers.
 - Modify `Cargo.toml`: add `notify`.
 - Modify `src/ingest/sessions.rs`: export watcher/checkpoint modules and add single-file prepared-session collection helpers that reuse provider parsers.
 - Modify `src/ingest/sessions/claude.rs`: expose a file-level collection function for one Claude `.jsonl` file.
@@ -28,7 +45,8 @@ This plan covers one independently testable subsystem: automatic session capture
 - Modify `src/ingest/sessions/gemini.rs`: expose a file-level collection function for one Gemini `.json` file.
 - Modify `src/cli/commands/sessions.rs`: dispatch `sessions watch` before normal full-history session ingest.
 - Modify `src/core/config/cli.rs`: add `SessionsSubcommand::Watch` with watcher flags and `SetupSubcommand::SessionWatchService`.
-- Modify `src/core/config/parse/build_config/command_dispatch.rs`: map `sessions watch` and setup service arguments into `Config`.
+- Modify `src/core/config/parse/build_config/command_dispatch.rs`: map `sessions watch` and setup service arguments into typed `Config` fields; do not serialize these new typed commands through positional vectors.
+- Modify `src/services/runtime.rs`: expose the SQLite pool from the active `ServiceJobRuntime` through a narrow accessor for watcher checkpoint/status use.
 - Modify `src/core/config/types/enums.rs`: keep command kind as `Sessions`; no new top-level command kind.
 - Modify `src/services/setup.rs`: export session-watch setup service.
 - Create `src/services/setup/session_watch_service.rs`: install/check/remove/status implementation and systemd unit rendering.
@@ -46,7 +64,9 @@ This plan covers one independently testable subsystem: automatic session capture
 **Files:**
 - Modify: `Cargo.toml`
 - Modify: `src/core/config/cli.rs`
+- Modify: `src/core/config/types/config.rs`
 - Modify: `src/core/config/parse/build_config/command_dispatch.rs`
+- Modify: `src/services/runtime.rs`
 - Modify: `src/cli/commands/sessions.rs`
 - Test: `tests/cli_help_contract.rs`
 
@@ -68,7 +88,12 @@ fn sessions_watch_help_exposes_debounce_settle_and_initial_scan_flags() {
     assert!(stdout.contains("--debounce-ms"));
     assert!(stdout.contains("--settle-ms"));
     assert!(stdout.contains("--max-retries"));
+    assert!(stdout.contains("--max-batch-docs"));
+    assert!(stdout.contains("--max-processing-concurrency"));
+    assert!(stdout.contains("--rescan-cooldown-ms"));
     assert!(stdout.contains("--no-initial-scan"));
+    assert!(stdout.contains("--upload-to-server"));
+    assert!(stdout.contains("--verbose-paths"));
     assert!(stdout.contains("--json"));
 }
 
@@ -133,6 +158,14 @@ pub(super) struct SessionsArgs {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum SessionsSubcommand {
+    Status { job_id: String },
+    Cancel { job_id: String },
+    Errors { job_id: String },
+    List,
+    Cleanup,
+    Clear,
+    Worker,
+    Recover,
     /// Watch local AI session exports and ingest stable changes.
     Watch(SessionsWatchArgs),
 }
@@ -151,9 +184,24 @@ pub(super) struct SessionsWatchArgs {
     /// Retry parse, upload, or storage failures this many times before recording an error.
     #[arg(long = "max-retries", default_value_t = 5)]
     pub(super) max_retries: u8,
+    /// Maximum prepared session docs to submit in one batch.
+    #[arg(long = "max-batch-docs", default_value_t = 50)]
+    pub(super) max_batch_docs: usize,
+    /// Maximum files parsed concurrently while preparing a batch.
+    #[arg(long = "max-processing-concurrency", default_value_t = 2)]
+    pub(super) max_processing_concurrency: usize,
+    /// Minimum cooldown before another overflow/root rescan can run.
+    #[arg(long = "rescan-cooldown-ms", default_value_t = 5000)]
+    pub(super) rescan_cooldown_ms: u64,
     /// Skip the startup full scan. The setup service uses this after its one-time initial ingest.
     #[arg(long = "no-initial-scan")]
     pub(super) no_initial_scan: bool,
+    /// Explicitly upload prepared docs to AXON_SERVER_URL instead of local ingest.
+    #[arg(long = "upload-to-server")]
+    pub(super) upload_to_server: bool,
+    /// Include raw local paths in JSON/log output. Default output is redacted.
+    #[arg(long = "verbose-paths")]
+    pub(super) verbose_paths: bool,
     /// Emit newline-delimited JSON events suitable for systemd logs.
     #[arg(long)]
     pub(super) json: bool,
@@ -189,30 +237,44 @@ pub(super) enum SessionWatchServiceSubcommand {
 }
 ```
 
-- [ ] **Step 6: Map parsed args into config positional dispatch**
+- [ ] **Step 6: Map parsed args into typed config fields**
 
-In `src/core/config/parse/build_config/command_dispatch.rs`, import `SessionsSubcommand` and `SessionWatchServiceSubcommand`. In the `CliCommand::Sessions(args)` arm, add:
+In `src/core/config/types/config.rs`, add typed fields for the new command surfaces instead of serializing watch/setup options into `Config.positional`:
+
+```rust
+pub sessions_watch: Option<crate::ingest::sessions::watch::SessionWatchOptions>,
+pub sessions_action: Option<crate::ingest::sessions::watch::SessionsRuntimeAction>,
+pub setup_session_watch_action: Option<crate::services::setup::SessionWatchServiceAction>,
+```
+
+In `src/core/config/parse/build_config/command_dispatch.rs`, import `SessionsSubcommand` and `SessionWatchServiceSubcommand`. Preserve the existing job-subcommand behavior for `sessions status/list/cancel/errors/cleanup/clear/worker/recover`; only `sessions watch` should populate `out.sessions_watch`:
 
 ```rust
 CliCommand::Sessions(args) => {
     out.command = CommandKind::Sessions;
-    if let Some(SessionsSubcommand::Watch(watch)) = args.action {
-        out.positional = vec![
-            "watch".to_string(),
-            watch.path
-                .map(|path| path.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            watch.debounce_ms.to_string(),
-            watch.settle_ms.to_string(),
-            watch.max_retries.to_string(),
-            (!watch.no_initial_scan).to_string(),
-            watch.json.to_string(),
-        ];
-    } else {
-        out.sessions_claude = args.claude;
-        out.sessions_codex = args.codex;
-        out.sessions_gemini = args.gemini;
-        out.sessions_project = args.project;
+    match args.action {
+        Some(SessionsSubcommand::Watch(watch)) => {
+            out.sessions_watch = Some(SessionWatchOptions {
+                path: watch.path,
+                debounce: Duration::from_millis(watch.debounce_ms),
+                settle: Duration::from_millis(watch.settle_ms),
+                max_retries: watch.max_retries,
+                max_batch_docs: watch.max_batch_docs,
+                max_processing_concurrency: watch.max_processing_concurrency,
+                rescan_cooldown: Duration::from_millis(watch.rescan_cooldown_ms),
+                initial_scan: !watch.no_initial_scan,
+                upload_to_server: watch.upload_to_server,
+                verbose_paths: watch.verbose_paths,
+                json: watch.json,
+            });
+        }
+        Some(job) => out.positional = sessions_job_positionals(job),
+        None => {
+            out.sessions_claude = args.claude;
+            out.sessions_codex = args.codex;
+            out.sessions_gemini = args.gemini;
+            out.sessions_project = args.project;
+        }
     }
 }
 ```
@@ -222,16 +284,12 @@ In the `CliCommand::Setup(args)` arm, add this mapping for the new setup action:
 ```rust
 Some(SetupSubcommand::SessionWatchService { action }) => {
     out.command = CommandKind::Setup;
-    out.positional = vec![
-        "session-watch-service".to_string(),
-        match action {
-            SessionWatchServiceSubcommand::Install => "install",
-            SessionWatchServiceSubcommand::Check => "check",
-            SessionWatchServiceSubcommand::Remove => "remove",
-            SessionWatchServiceSubcommand::Status => "status",
-        }
-        .to_string(),
-    ];
+    out.setup_session_watch_action = Some(match action {
+        SessionWatchServiceSubcommand::Install => SessionWatchServiceAction::Install,
+        SessionWatchServiceSubcommand::Check => SessionWatchServiceAction::Check,
+        SessionWatchServiceSubcommand::Remove => SessionWatchServiceAction::Remove,
+        SessionWatchServiceSubcommand::Status => SessionWatchServiceAction::Status,
+    });
 }
 ```
 
@@ -241,49 +299,13 @@ In `src/cli/commands/sessions.rs`, before job-subcommand handling, add:
 
 ```rust
 use crate::ingest::sessions::watch::{SessionWatchOptions, run_session_watch};
-use std::path::PathBuf;
-use std::time::Duration;
 ```
 
-At the start of `run_sessions`, add:
+At the start of `run_sessions`, add a typed dispatch that uses the existing `ServiceContext`:
 
 ```rust
-if cfg.positional.first().is_some_and(|value| value == "watch") {
-    let options = SessionWatchOptions {
-        path: cfg
-            .positional
-            .get(1)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from),
-        debounce: Duration::from_millis(
-            cfg.positional
-                .get(2)
-                .and_then(|value| value.parse().ok())
-                .unwrap_or(750),
-        ),
-        settle: Duration::from_millis(
-            cfg.positional
-                .get(3)
-                .and_then(|value| value.parse().ok())
-                .unwrap_or(500),
-        ),
-        max_retries: cfg
-            .positional
-            .get(4)
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(5),
-        initial_scan: cfg
-            .positional
-            .get(5)
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(true),
-        json: cfg
-            .positional
-            .get(6)
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(false),
-    };
-    return run_session_watch(cfg, options)
+if let Some(options) = cfg.sessions_watch.clone() {
+    return run_session_watch(cfg, service_context, options)
         .await
         .map_err(|err| -> Box<dyn Error> { err.into() });
 }
@@ -295,6 +317,7 @@ Create `src/ingest/sessions/watch.rs`:
 
 ```rust
 use crate::core::config::Config;
+use crate::services::context::ServiceContext;
 use anyhow::Result;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -305,11 +328,20 @@ pub struct SessionWatchOptions {
     pub debounce: Duration,
     pub settle: Duration,
     pub max_retries: u8,
+    pub max_batch_docs: usize,
+    pub max_processing_concurrency: usize,
+    pub rescan_cooldown: Duration,
     pub initial_scan: bool,
+    pub upload_to_server: bool,
+    pub verbose_paths: bool,
     pub json: bool,
 }
 
-pub async fn run_session_watch(_cfg: &Config, _options: SessionWatchOptions) -> Result<()> {
+pub async fn run_session_watch(
+    _cfg: &Config,
+    _service_context: &ServiceContext,
+    _options: SessionWatchOptions,
+) -> Result<()> {
     anyhow::bail!("sessions watch is wired but the watcher implementation is not complete")
 }
 ```
@@ -346,9 +378,95 @@ git commit -m "feat: add session watch command surface"
 - Modify: `src/ingest/sessions/claude.rs`
 - Modify: `src/ingest/sessions/codex.rs`
 - Modify: `src/ingest/sessions/gemini.rs`
+- Create: `src/ingest/sessions/watch/validate.rs`
 - Test: `src/ingest/sessions_tests.rs`
 
-- [ ] **Step 1: Write failing tests for single-file prepared docs**
+- [ ] **Step 1: Write failing tests for canonical session path validation**
+
+Before adding file-level parser helpers, add tests for the security boundary:
+
+```rust
+#[test]
+fn validates_codex_file_only_under_canonical_codex_root() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let good = home.join(".codex/sessions/2026/06/11/session.jsonl");
+    std::fs::create_dir_all(good.parent().unwrap()).unwrap();
+    std::fs::write(&good, "{}\n").unwrap();
+
+    let roots = SessionWatchRoots::for_home(home);
+    let validated = validate_session_file_path(&roots, &good).unwrap();
+    assert_eq!(validated.provider, SessionProvider::Codex);
+    assert_eq!(validated.basename, "session.jsonl");
+    assert!(!validated.redacted_display.contains(home.to_string_lossy().as_ref()));
+}
+
+#[test]
+fn rejects_substring_match_outside_provider_roots() {
+    let temp = tempfile::tempdir().unwrap();
+    let fake = temp.path().join("tmp/.codex/sessions/session.jsonl");
+    std::fs::create_dir_all(fake.parent().unwrap()).unwrap();
+    std::fs::write(&fake, "{}\n").unwrap();
+    let roots = SessionWatchRoots::for_home(temp.path().join("home"));
+    assert!(validate_session_file_path(&roots, &fake).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn rejects_symlinked_watch_file() {
+    use std::os::unix::fs::symlink;
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let real = home.join("outside/session.jsonl");
+    std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+    std::fs::write(&real, "{}\n").unwrap();
+    let link = home.join(".codex/sessions/link.jsonl");
+    std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+    symlink(&real, &link).unwrap();
+    let roots = SessionWatchRoots::for_home(home);
+    assert!(validate_session_file_path(&roots, &link).is_err());
+}
+```
+
+- [ ] **Step 2: Implement canonical session path validator**
+
+Create `src/ingest/sessions/watch/validate.rs` with these core types:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum SessionProvider {
+    Claude,
+    Codex,
+    Gemini,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionWatchRoots {
+    pub claude_projects: PathBuf,
+    pub codex_sessions: PathBuf,
+    pub gemini_history: PathBuf,
+    pub gemini_tmp: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValidatedSessionPath {
+    pub canonical: PathBuf,
+    pub provider: SessionProvider,
+    pub relative: PathBuf,
+    pub basename: String,
+    pub redacted_display: String,
+    pub path_hash: String,
+}
+```
+
+Implementation requirements:
+- Canonicalize configured provider roots once at watcher startup.
+- Reject symlinked explicit `--path` roots/files and skip symlink children.
+- Classify providers using `canonical.strip_prefix(root)`, never `path.to_string_lossy().contains(...)`.
+- Allow `.claude`, `.codex`, and `.gemini` only as provider root components; reject nested secret-looking path components such as `.env`, `secrets`, `token`, `key`, and `credentials`.
+- Redacted output defaults to `provider:basename:path_hash_prefix`; raw paths are only emitted when `--verbose-paths` is set.
+
+- [ ] **Step 3: Write failing tests for single-file prepared docs**
 
 Add to `src/ingest/sessions_tests.rs`:
 
@@ -435,7 +553,7 @@ async fn collect_prepared_session_file_doc_rejects_unsupported_file() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 4: Run tests to verify they fail**
 
 Run:
 
@@ -445,7 +563,7 @@ cargo test --lib collect_prepared_session_file_doc -- --nocapture
 
 Expected: fail because `collect_prepared_session_file_doc` does not exist.
 
-- [ ] **Step 3: Expose file-level provider helpers**
+- [ ] **Step 5: Expose file-level provider helpers**
 
 In `src/ingest/sessions/claude.rs`, add:
 
@@ -536,16 +654,18 @@ pub(super) async fn collect_gemini_file_doc(
 }
 ```
 
-- [ ] **Step 4: Add prepared single-file collection function**
+- [ ] **Step 6: Add prepared single-file collection function**
 
-In `src/ingest/sessions.rs`, add:
+In `src/ingest/sessions.rs`, add a validator-backed single-file collection function. Do not use raw path substring matching.
 
 ```rust
 pub async fn collect_prepared_session_file_doc(
     cfg: &Config,
     path: &Path,
 ) -> Result<Option<PreparedSessionDoc>, Box<dyn Error>> {
-    let doc = collect_session_file_doc(cfg, path)
+    let roots = crate::ingest::sessions::watch::validate::SessionWatchRoots::from_config(cfg)?;
+    let validated = crate::ingest::sessions::watch::validate::validate_session_file_path(&roots, path)?;
+    let doc = collect_session_file_doc(cfg, &validated)
         .await?
         .map(prepared_session_doc_from_session_doc)
         .transpose()
@@ -555,42 +675,32 @@ pub async fn collect_prepared_session_file_doc(
 
 pub(crate) async fn collect_session_file_doc(
     cfg: &Config,
-    path: &Path,
+    validated: &ValidatedSessionPath,
 ) -> Result<Option<SessionDoc>, Box<dyn Error>> {
-    let path = path.to_path_buf();
-    let path_text = path.to_string_lossy();
-    let is_jsonl = path.extension().is_some_and(|ext| ext == "jsonl");
-    let is_json = path.extension().is_some_and(|ext| ext == "json");
-
-    if is_jsonl && path_text.contains("/.claude/projects/") {
-        return claude::collect_claude_file_doc(cfg, path)
+    match validated.provider {
+        SessionProvider::Claude => claude::collect_claude_file_doc(cfg, validated.canonical.clone())
             .await
-            .map_err(|err| -> Box<dyn Error> { err.into() });
-    }
-    if is_jsonl && path_text.contains("/.codex/sessions/") {
-        return codex::collect_codex_file_doc(cfg, path)
+            .map_err(|err| -> Box<dyn Error> { err.into() }),
+        SessionProvider::Codex => codex::collect_codex_file_doc(cfg, validated.canonical.clone())
             .await
-            .map_err(|err| -> Box<dyn Error> { err.into() });
-    }
-    if is_json && (path_text.contains("/.gemini/history/") || path_text.contains("/.gemini/tmp/")) {
-        return gemini::collect_gemini_file_doc(cfg, path)
+            .map_err(|err| -> Box<dyn Error> { err.into() }),
+        SessionProvider::Gemini => gemini::collect_gemini_file_doc(cfg, validated.canonical.clone())
             .await
-            .map_err(|err| -> Box<dyn Error> { err.into() });
+            .map_err(|err| -> Box<dyn Error> { err.into() }),
     }
-
-    Err(format!("unsupported session file: {}", path.display()).into())
 }
 
-pub(crate) fn is_supported_session_file(path: &Path) -> bool {
-    let path_text = path.to_string_lossy();
-    (path.extension().is_some_and(|ext| ext == "jsonl")
-        && (path_text.contains("/.claude/projects/") || path_text.contains("/.codex/sessions/")))
-        || (path.extension().is_some_and(|ext| ext == "json")
-            && (path_text.contains("/.gemini/history/") || path_text.contains("/.gemini/tmp/")))
+pub(crate) fn has_supported_session_extension(provider: SessionProvider, path: &Path) -> bool {
+    match provider {
+        SessionProvider::Claude | SessionProvider::Codex => {
+            path.extension().is_some_and(|ext| ext == "jsonl")
+        }
+        SessionProvider::Gemini => path.extension().is_some_and(|ext| ext == "json"),
+    }
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 7: Run tests to verify they pass**
 
 Run:
 
@@ -601,7 +711,7 @@ cargo test --lib collect_prepared_session_file_doc -- --nocapture
 
 Expected: all three tests pass.
 
-- [ ] **Step 6: Commit single-file preparation**
+- [ ] **Step 8: Commit single-file preparation**
 
 ```bash
 git add src/ingest/sessions.rs src/ingest/sessions/claude.rs src/ingest/sessions/codex.rs src/ingest/sessions/gemini.rs src/ingest/sessions_tests.rs
@@ -622,14 +732,18 @@ Create `src/jobs/migrations/0010_create_session_watch_tables.sql`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS axon_session_watch_checkpoints (
-    path TEXT PRIMARY KEY NOT NULL,
+    path_hash TEXT PRIMARY KEY NOT NULL,
     provider TEXT NOT NULL,
+    basename TEXT NOT NULL,
+    redacted_display TEXT NOT NULL,
     file_size INTEGER NOT NULL,
     file_mtime_ms INTEGER NOT NULL,
-    content_hash TEXT NOT NULL,
-    last_offset INTEGER NOT NULL DEFAULT 0,
+    content_hash TEXT,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
     last_indexed_at TEXT,
-    last_error TEXT,
+    last_error_code TEXT,
+    last_error_redacted TEXT,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
@@ -637,19 +751,21 @@ CREATE INDEX IF NOT EXISTS idx_axon_session_watch_checkpoints_provider
     ON axon_session_watch_checkpoints(provider);
 
 CREATE INDEX IF NOT EXISTS idx_axon_session_watch_checkpoints_error
-    ON axon_session_watch_checkpoints(last_error)
-    WHERE last_error IS NOT NULL;
+    ON axon_session_watch_checkpoints(last_error_code)
+    WHERE last_error_code IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS axon_session_watch_errors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    path TEXT NOT NULL,
-    provider TEXT,
-    error TEXT NOT NULL,
+    path_hash TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    basename TEXT NOT NULL,
+    error_code TEXT NOT NULL,
+    error_redacted TEXT NOT NULL,
     occurred_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_axon_session_watch_errors_path
-    ON axon_session_watch_errors(path);
+    ON axon_session_watch_errors(path_hash);
 ```
 
 - [ ] **Step 2: Write failing checkpoint tests**
@@ -658,41 +774,47 @@ Create `src/ingest/sessions/checkpoint_tests.rs`:
 
 ```rust
 use super::*;
-use crate::jobs::backend::SqliteJobBackend;
+use crate::jobs::store::open_sqlite_pool;
 
 #[tokio::test]
 async fn checkpoint_skips_unchanged_file_and_records_success() {
     let temp = tempfile::tempdir().unwrap();
     let db_path = temp.path().join("jobs.db");
-    let backend = SqliteJobBackend::open(&db_path).await.unwrap();
-    let path = temp.path().join("session.jsonl");
+    let pool = open_sqlite_pool(&db_path.to_string_lossy()).await.unwrap();
+    let path = temp.path().join(".codex/sessions/session.jsonl");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, "first").unwrap();
 
-    let meta = SessionFileMetadata::from_path(&path, "codex").unwrap();
-    assert!(!checkpoint_matches(&backend, &meta).await.unwrap());
-    record_success(&backend, &meta, 5).await.unwrap();
-    assert!(checkpoint_matches(&backend, &meta).await.unwrap());
+    let validated = test_validated_codex_path(&path);
+    let meta = SessionFileMetadata::from_validated_path(&validated).unwrap();
+    assert!(!checkpoint_metadata_matches(&pool, &meta).await.unwrap());
+    let hash = stream_content_hash(&validated.canonical).await.unwrap();
+    record_success(&pool, &meta, Some(&hash)).await.unwrap();
+    assert!(checkpoint_metadata_matches(&pool, &meta).await.unwrap());
 
     std::fs::write(&path, "second").unwrap();
-    let changed = SessionFileMetadata::from_path(&path, "codex").unwrap();
-    assert!(!checkpoint_matches(&backend, &changed).await.unwrap());
+    let changed = SessionFileMetadata::from_validated_path(&validated).unwrap();
+    assert!(!checkpoint_metadata_matches(&pool, &changed).await.unwrap());
 }
 
 #[tokio::test]
 async fn checkpoint_records_and_lists_errors() {
     let temp = tempfile::tempdir().unwrap();
     let db_path = temp.path().join("jobs.db");
-    let backend = SqliteJobBackend::open(&db_path).await.unwrap();
-    let path = temp.path().join("bad.jsonl");
+    let pool = open_sqlite_pool(&db_path.to_string_lossy()).await.unwrap();
+    let path = temp.path().join(".claude/projects/-tmp-axon/bad.jsonl");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, "{bad").unwrap();
-    let meta = SessionFileMetadata::from_path(&path, "claude").unwrap();
+    let validated = test_validated_claude_path(&path);
+    let meta = SessionFileMetadata::from_validated_path(&validated).unwrap();
 
-    record_error(&backend, &meta, "parse failed").await.unwrap();
-    let errors = list_recent_errors(&backend, 10).await.unwrap();
+    record_error(&pool, &meta, "parse_failed", "parse failed: [REDACTED]").await.unwrap();
+    let errors = list_recent_errors(&pool, 10).await.unwrap();
     assert_eq!(errors.len(), 1);
-    assert_eq!(errors[0].path, path.to_string_lossy());
-    assert_eq!(errors[0].provider, Some("claude".to_string()));
-    assert_eq!(errors[0].error, "parse failed");
+    assert_eq!(errors[0].path_hash, meta.path_hash);
+    assert_eq!(errors[0].provider, "claude");
+    assert_eq!(errors[0].error_code, "parse_failed");
+    assert!(!errors[0].error_redacted.contains("Bearer "));
 }
 ```
 
@@ -711,32 +833,36 @@ Expected: fail because `checkpoint` module and symbols are missing.
 Create `src/ingest/sessions/checkpoint.rs`:
 
 ```rust
-use crate::jobs::backend::SqliteJobBackend;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
+use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionFileMetadata {
-    pub path: PathBuf,
+    pub canonical: PathBuf,
+    pub path_hash: String,
     pub provider: String,
+    pub basename: String,
+    pub redacted_display: String,
     pub file_size: u64,
     pub file_mtime_ms: i64,
-    pub content_hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionWatchError {
-    pub path: String,
-    pub provider: Option<String>,
-    pub error: String,
+    pub path_hash: String,
+    pub provider: String,
+    pub basename: String,
+    pub error_code: String,
+    pub error_redacted: String,
     pub occurred_at: String,
 }
 
 impl SessionFileMetadata {
-    pub fn from_path(path: &Path, provider: &str) -> Result<Self> {
-        let metadata = std::fs::metadata(path)?;
+    pub fn from_validated_path(path: &ValidatedSessionPath) -> Result<Self> {
+        let metadata = std::fs::metadata(&path.canonical)?;
         let file_size = metadata.len();
         let file_mtime_ms = metadata
             .modified()
@@ -744,136 +870,156 @@ impl SessionFileMetadata {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        let bytes = std::fs::read(path)?;
-        let content_hash = format!("{:x}", Sha256::digest(&bytes));
         Ok(Self {
-            path: path.to_path_buf(),
-            provider: provider.to_string(),
+            canonical: path.canonical.clone(),
+            path_hash: path.path_hash.clone(),
+            provider: path.provider.as_str().to_string(),
+            basename: path.basename.clone(),
+            redacted_display: path.redacted_display.clone(),
             file_size,
             file_mtime_ms,
-            content_hash,
         })
     }
 }
 
-pub async fn checkpoint_matches(
-    backend: &SqliteJobBackend,
+pub async fn checkpoint_metadata_matches(
+    pool: &SqlitePool,
     meta: &SessionFileMetadata,
 ) -> Result<bool> {
     let row = sqlx::query!(
         r#"
-        SELECT file_size, file_mtime_ms, content_hash, last_error
+        SELECT file_size, file_mtime_ms, last_error_code
         FROM axon_session_watch_checkpoints
-        WHERE path = ?
+        WHERE path_hash = ?
         "#,
-        meta.path.to_string_lossy()
+        meta.path_hash
     )
-    .fetch_optional(backend.pool())
+    .fetch_optional(pool)
     .await?;
     Ok(row.is_some_and(|row| {
         row.file_size == meta.file_size as i64
             && row.file_mtime_ms == meta.file_mtime_ms
-            && row.content_hash == meta.content_hash
-            && row.last_error.is_none()
+            && row.last_error_code.is_none()
     }))
 }
 
+pub async fn stream_content_hash(path: &Path) -> Result<String> {
+    // Stream rather than `std::fs::read` so large transcripts do not spike RSS.
+}
+
 pub async fn record_success(
-    backend: &SqliteJobBackend,
+    pool: &SqlitePool,
     meta: &SessionFileMetadata,
-    last_offset: u64,
+    content_hash: Option<&str>,
 ) -> Result<()> {
+    // Keep this write in one short transaction; do not open a new pool here.
     sqlx::query!(
         r#"
         INSERT INTO axon_session_watch_checkpoints
-            (path, provider, file_size, file_mtime_ms, content_hash, last_offset, last_indexed_at, last_error, updated_at)
+            (path_hash, provider, basename, redacted_display, file_size, file_mtime_ms, content_hash, failure_count, next_attempt_at, last_indexed_at, last_error_code, last_error_redacted, updated_at)
         VALUES
-            (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-        ON CONFLICT(path) DO UPDATE SET
+            (?, ?, ?, ?, ?, ?, ?, 0, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        ON CONFLICT(path_hash) DO UPDATE SET
             provider = excluded.provider,
+            basename = excluded.basename,
+            redacted_display = excluded.redacted_display,
             file_size = excluded.file_size,
             file_mtime_ms = excluded.file_mtime_ms,
             content_hash = excluded.content_hash,
-            last_offset = excluded.last_offset,
+            failure_count = 0,
+            next_attempt_at = NULL,
             last_indexed_at = excluded.last_indexed_at,
-            last_error = NULL,
+            last_error_code = NULL,
+            last_error_redacted = NULL,
             updated_at = excluded.updated_at
         "#,
-        meta.path.to_string_lossy(),
+        meta.path_hash,
         meta.provider,
+        meta.basename,
+        meta.redacted_display,
         meta.file_size as i64,
         meta.file_mtime_ms,
-        meta.content_hash,
-        last_offset as i64
+        content_hash
     )
-    .execute(backend.pool())
+    .execute(pool)
     .await?;
     Ok(())
 }
 
 pub async fn record_error(
-    backend: &SqliteJobBackend,
+    pool: &SqlitePool,
     meta: &SessionFileMetadata,
-    error: &str,
+    error_code: &str,
+    error_redacted: &str,
 ) -> Result<()> {
+    // Redact before this boundary; never persist raw auth headers or transcript snippets.
     sqlx::query!(
         r#"
-        INSERT INTO axon_session_watch_errors (path, provider, error)
-        VALUES (?, ?, ?)
+        INSERT INTO axon_session_watch_errors (path_hash, provider, basename, error_code, error_redacted)
+        VALUES (?, ?, ?, ?, ?)
         "#,
-        meta.path.to_string_lossy(),
+        meta.path_hash,
         meta.provider,
-        error
+        meta.basename,
+        error_code,
+        error_redacted
     )
-    .execute(backend.pool())
+    .execute(pool)
     .await?;
     sqlx::query!(
         r#"
         INSERT INTO axon_session_watch_checkpoints
-            (path, provider, file_size, file_mtime_ms, content_hash, last_error, updated_at)
+            (path_hash, provider, basename, redacted_display, file_size, file_mtime_ms, last_error_code, last_error_redacted, failure_count, updated_at)
         VALUES
-            (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-        ON CONFLICT(path) DO UPDATE SET
+            (?, ?, ?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        ON CONFLICT(path_hash) DO UPDATE SET
             provider = excluded.provider,
+            basename = excluded.basename,
+            redacted_display = excluded.redacted_display,
             file_size = excluded.file_size,
             file_mtime_ms = excluded.file_mtime_ms,
-            content_hash = excluded.content_hash,
-            last_error = excluded.last_error,
+            last_error_code = excluded.last_error_code,
+            last_error_redacted = excluded.last_error_redacted,
+            failure_count = failure_count + 1,
             updated_at = excluded.updated_at
         "#,
-        meta.path.to_string_lossy(),
+        meta.path_hash,
         meta.provider,
+        meta.basename,
+        meta.redacted_display,
         meta.file_size as i64,
         meta.file_mtime_ms,
-        meta.content_hash,
-        error
+        error_code,
+        error_redacted
     )
-    .execute(backend.pool())
+    .execute(pool)
     .await?;
     Ok(())
 }
 
 pub async fn list_recent_errors(
-    backend: &SqliteJobBackend,
+    pool: &SqlitePool,
     limit: i64,
 ) -> Result<Vec<SessionWatchError>> {
     let rows = sqlx::query!(
         r#"
-        SELECT path, provider, error, occurred_at
+        SELECT path_hash, provider, basename, error_code, error_redacted, occurred_at
         FROM axon_session_watch_errors
         ORDER BY id DESC
         LIMIT ?
         "#,
         limit
     )
-    .fetch_all(backend.pool())
+    .fetch_all(pool)
     .await?;
     Ok(rows
         .into_iter()
         .map(|row| SessionWatchError {
-            path: row.path,
+            path_hash: row.path_hash,
             provider: row.provider,
-            error: row.error,
+            basename: row.basename,
+            error_code: row.error_code,
+            error_redacted: row.error_redacted,
             occurred_at: row.occurred_at,
         })
         .collect())
@@ -1174,12 +1320,15 @@ fn event_path_allowed_missing_ok(path: &std::path::Path, targets: &[WatchTarget]
 
 pub(crate) fn handle_remove_path(
     path: &std::path::Path,
+    roots: &SessionWatchRoots,
     targets: &[WatchTarget],
     pending: &mut PendingFiles,
     _overflow_rescan: &std::sync::atomic::AtomicBool,
     prune_missing: &std::sync::atomic::AtomicBool,
 ) {
-    if super::is_supported_session_file(path) && event_path_allowed_missing_ok(path, targets) {
+    if validate_event_path_missing_ok(roots, path).is_some()
+        && event_path_allowed_missing_ok(path, targets)
+    {
         pending.remove(path);
         prune_missing.store(true, std::sync::atomic::Ordering::Relaxed);
     }
@@ -1228,7 +1377,7 @@ Add to `src/ingest/sessions/watch_tests.rs`:
 async fn process_stable_file_skips_unchanged_checkpoint() {
     let temp = tempfile::tempdir().unwrap();
     let db_path = temp.path().join("jobs.db");
-    let backend = crate::jobs::backend::SqliteJobBackend::open(&db_path).await.unwrap();
+    let pool = crate::jobs::store::open_sqlite_pool(&db_path.to_string_lossy()).await.unwrap();
     let root = temp.path().join(".codex/sessions");
     std::fs::create_dir_all(&root).unwrap();
     let path = root.join("session.jsonl");
@@ -1245,13 +1394,14 @@ async fn process_stable_file_skips_unchanged_checkpoint() {
             + "\n",
     )
     .unwrap();
-    let meta = crate::ingest::sessions::checkpoint::SessionFileMetadata::from_path(&path, "codex").unwrap();
-    crate::ingest::sessions::checkpoint::record_success(&backend, &meta, meta.file_size)
+    let validated = test_validated_codex_path(&path);
+    let meta = crate::ingest::sessions::checkpoint::SessionFileMetadata::from_validated_path(&validated).unwrap();
+    crate::ingest::sessions::checkpoint::record_success(&pool, &meta, None)
         .await
         .unwrap();
 
     let cfg = crate::core::config::Config::default();
-    let outcome = process_session_file_for_watch(&cfg, &backend, &path, false)
+    let outcome = process_session_file_for_watch(&cfg, &pool, &validated, WatchOutputMode::quiet())
         .await
         .unwrap();
 
@@ -1262,14 +1412,15 @@ async fn process_stable_file_skips_unchanged_checkpoint() {
 async fn process_stable_file_records_parse_error_without_panic() {
     let temp = tempfile::tempdir().unwrap();
     let db_path = temp.path().join("jobs.db");
-    let backend = crate::jobs::backend::SqliteJobBackend::open(&db_path).await.unwrap();
+    let pool = crate::jobs::store::open_sqlite_pool(&db_path.to_string_lossy()).await.unwrap();
     let root = temp.path().join(".claude/projects/-tmp-axon");
     std::fs::create_dir_all(&root).unwrap();
     let path = root.join("bad.jsonl");
     std::fs::write(&path, "{not-json\n").unwrap();
 
     let cfg = crate::core::config::Config::default();
-    let outcome = process_session_file_for_watch(&cfg, &backend, &path, false)
+    let validated = test_validated_claude_path(&path);
+    let outcome = process_session_file_for_watch(&cfg, &pool, &validated, WatchOutputMode::quiet())
         .await
         .unwrap();
 
@@ -1302,117 +1453,114 @@ pub(crate) enum ProcessOutcome {
 }
 ```
 
-- [ ] **Step 4: Add provider detection**
+- [ ] **Step 4: Use canonical provider validation**
 
-In `src/ingest/sessions/watch.rs`, add:
+Do not add a raw string `provider_for_path()` helper. Every processing path must receive a `ValidatedSessionPath` from `watch::validate`, so provider classification, path hash, basename, redacted display, symlink policy, and supported extension checks are centralized.
 
 ```rust
-fn provider_for_path(path: &std::path::Path) -> Option<&'static str> {
-    let raw = path.to_string_lossy();
-    if raw.contains("/.claude/projects/") && path.extension().is_some_and(|ext| ext == "jsonl") {
-        Some("claude")
-    } else if raw.contains("/.codex/sessions/") && path.extension().is_some_and(|ext| ext == "jsonl") {
-        Some("codex")
-    } else if (raw.contains("/.gemini/history/") || raw.contains("/.gemini/tmp/"))
-        && path.extension().is_some_and(|ext| ext == "json")
-    {
-        Some("gemini")
-    } else {
-        None
-    }
+fn validate_event_path(roots: &SessionWatchRoots, path: &Path) -> Option<ValidatedSessionPath> {
+    validate_session_file_path(roots, path)
+        .map_err(|err| tracing::debug!(error = %err, "ignored unsupported session watch path"))
+        .ok()
 }
 ```
 
-- [ ] **Step 5: Add prepared ingest process function**
+- [ ] **Step 5: Add prepared ingest process functions**
 
-In `src/ingest/sessions/watch.rs`, add:
+In `src/ingest/sessions/watch.rs`, add a single-file processor and a batch processor. Use the shared SQLite pool from `ServiceContext`; do not create a new backend or run migrations here.
 
 ```rust
 pub(crate) async fn process_session_file_for_watch(
     cfg: &Config,
-    backend: &crate::jobs::backend::SqliteJobBackend,
-    path: &std::path::Path,
-    json: bool,
+    pool: &sqlx::SqlitePool,
+    validated: &ValidatedSessionPath,
+    output: WatchOutputMode,
 ) -> Result<ProcessOutcome> {
-    let Some(provider) = provider_for_path(path) else {
-        return Ok(ProcessOutcome::TerminalFailure(format!(
-            "unsupported session file: {}",
-            path.display()
-        )));
-    };
-    let meta = crate::ingest::sessions::checkpoint::SessionFileMetadata::from_path(path, provider)?;
-    if crate::ingest::sessions::checkpoint::checkpoint_matches(backend, &meta).await? {
-        emit_watch_json(json, "skipped_unchanged", path, None);
+    let meta = crate::ingest::sessions::checkpoint::SessionFileMetadata::from_validated_path(validated)?;
+    if crate::ingest::sessions::checkpoint::checkpoint_metadata_matches(pool, &meta).await? {
+        emit_watch_json(output, "skipped_unchanged", validated, None);
         return Ok(ProcessOutcome::SkippedUnchanged);
     }
 
-    let Some(doc) = super::collect_prepared_session_file_doc(cfg, path).await? else {
-        crate::ingest::sessions::checkpoint::record_success(backend, &meta, meta.file_size).await?;
-        emit_watch_json(json, "no_content", path, None);
+    let Some(doc) = super::collect_prepared_session_file_doc(cfg, &validated.canonical).await? else {
+        crate::ingest::sessions::checkpoint::record_success(pool, &meta, None).await?;
+        emit_watch_json(output, "no_content", validated, None);
         return Ok(ProcessOutcome::NoContent);
     };
 
-    let request = crate::ingest::sessions::IngestSessionsPreparedRequest {
-        docs: vec![doc],
-        project: cfg.sessions_project.clone(),
-        collection: (cfg.collection != "axon").then(|| cfg.collection.clone()),
-    };
-
-    let outcome = ingest_prepared_request_for_watch(cfg, request).await;
-    match outcome {
-        Ok(label) => {
-            crate::ingest::sessions::checkpoint::record_success(backend, &meta, meta.file_size).await?;
-            emit_watch_json(json, "ingested", path, Some(&label));
-            Ok(ProcessOutcome::Ingested { chunks_or_job: label })
-        }
-        Err(error) => {
-            let detail = error.to_string();
-            crate::ingest::sessions::checkpoint::record_error(backend, &meta, &detail).await?;
-            Ok(ProcessOutcome::RetryableFailure(detail))
-        }
-    }
+    Ok(ProcessOutcome::Prepared { meta, doc })
 }
 
+pub(crate) async fn process_session_batch_for_watch(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    pool: &sqlx::SqlitePool,
+    paths: Vec<ValidatedSessionPath>,
+    options: &SessionWatchOptions,
+) -> Result<Vec<ProcessOutcome>> {
+    // Parse with a small semaphore, batch docs up to options.max_batch_docs,
+    // submit one prepared request per batch, then record each file success/error.
+}
+```
+
+The ingest submitter must have two explicit branches:
+
+```rust
 async fn ingest_prepared_request_for_watch(
     cfg: &Config,
+    service_context: &ServiceContext,
     request: crate::ingest::sessions::IngestSessionsPreparedRequest,
+    options: &SessionWatchOptions,
 ) -> Result<String> {
-    if std::env::var_os("AXON_SERVER_URL").is_some() {
-        let service_context = crate::services::context::ServiceContext::new(cfg.clone()).await?;
-        let outcome = crate::services::ingest::ingest_sessions_prepared_start_with_context(
-            cfg,
-            request,
-            &service_context,
-        )
-        .await
-        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
-        return Ok(outcome.result.job_id.unwrap_or_else(|| "prepared-session-job".to_string()));
+    if options.upload_to_server {
+        return upload_prepared_sessions_to_server(cfg, request).await;
     }
 
-    let result = crate::services::ingest::ingest_sessions_prepared_with_progress(
+    let outcome = crate::services::ingest::ingest_sessions_prepared_start_with_context(
         cfg,
         request,
-        None,
-        None,
+        service_context,
     )
     .await
     .map_err(|err| anyhow::anyhow!(err.to_string()))?;
-    Ok(result
-        .payload
-        .get("chunks")
-        .and_then(serde_json::Value::as_u64)
-        .map(|chunks| chunks.to_string())
-        .unwrap_or_else(|| "0".to_string()))
+    Ok(outcome.result.job_id.unwrap_or_else(|| "prepared-session-job".to_string()))
 }
+```
 
-fn emit_watch_json(json: bool, stage: &str, path: &std::path::Path, detail: Option<&str>) {
-    if json {
+`upload_prepared_sessions_to_server` requirements:
+- Read `AXON_SERVER_URL` only when `--upload-to-server`/typed config opt-in is true.
+- Reject non-HTTPS URLs unless host is loopback.
+- Send bearer auth from `AXON_MCP_HTTP_TOKEN` (or the config-backed equivalent) without logging the token.
+- Use bounded request body size, timeout, and error-body truncation/redaction.
+- Test with an HTTP mock that asserts `POST /v1/ingest/sessions/prepared` is called.
+
+After a batch submit:
+
+```rust
+match batch_submit {
+        Ok(label) => {
+            crate::ingest::sessions::checkpoint::record_success(pool, &meta, content_hash.as_deref()).await?;
+            emit_watch_json(output, "ingested", validated, Some(&label));
+            Ok(ProcessOutcome::Ingested { chunks_or_job: label })
+        }
+        Err(error) => {
+            let (code, redacted) = classify_and_redact_watch_error(&error);
+            crate::ingest::sessions::checkpoint::record_error(pool, &meta, &code, &redacted).await?;
+            Ok(ProcessOutcome::RetryableFailure(code))
+        }
+    }
+
+fn emit_watch_json(output: WatchOutputMode, stage: &str, path: &ValidatedSessionPath, detail: Option<&str>) {
+    if output.json {
         println!(
             "{}",
             serde_json::json!({
                 "stage": stage,
-                "path": path,
-                "detail": detail,
+                "provider": path.provider,
+                "path_hash": path.path_hash,
+                "basename": path.basename,
+                "path": output.verbose_paths.then(|| path.canonical.display().to_string()),
+                "detail": detail.map(redact_watch_detail),
             })
         );
     }
@@ -1643,13 +1791,20 @@ fn collect_watch_dirs_inner(
 Replace the stub `run_session_watch` in `src/ingest/sessions/watch.rs` with:
 
 ```rust
-pub async fn run_session_watch(cfg: &Config, options: SessionWatchOptions) -> Result<()> {
+pub async fn run_session_watch(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    options: SessionWatchOptions,
+) -> Result<()> {
     let targets = watch_targets(&options)?;
     if targets.is_empty() {
         anyhow::bail!("no AI session roots exist to watch");
     }
 
-    let backend = crate::jobs::backend::SqliteJobBackend::open(&cfg.sqlite_path).await?;
+    let pool = service_context
+        .jobs
+        .sqlite_pool()
+        .ok_or_else(|| anyhow::anyhow!("session watch requires the SQLite job runtime"))?;
     let overflow_rescan = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let prune_missing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let (tx, mut rx) = tokio::sync::mpsc::channel::<notify::Result<notify::Event>>(WATCH_EVENT_BUFFER);
@@ -1674,7 +1829,7 @@ pub async fn run_session_watch(cfg: &Config, options: SessionWatchOptions) -> Re
     }
 
     if options.initial_scan {
-        run_initial_rescan(cfg, &backend, &targets, options.json).await;
+        run_initial_rescan(cfg, service_context, pool, &targets, &options).await;
     }
 
     let tick_duration = options
@@ -1693,12 +1848,12 @@ pub async fn run_session_watch(cfg: &Config, options: SessionWatchOptions) -> Re
             }
             _ = tick.tick() => {
                 if prune_missing.swap(false, std::sync::atomic::Ordering::Relaxed) {
-                    prune_missing_checkpoints(&backend, options.json).await;
+                    mark_missing_checkpoints(pool, options.json).await;
                 }
                 if overflow_rescan.swap(false, std::sync::atomic::Ordering::Relaxed) {
-                    run_initial_rescan(cfg, &backend, &targets, options.json).await;
+                    run_initial_rescan_with_cooldown(cfg, service_context, pool, &targets, &options).await;
                 }
-                process_pending(cfg, &backend, &options, &mut pending).await;
+                process_pending(cfg, service_context, pool, &options, &mut pending).await;
             }
             _ = shutdown_signal() => {
                 tracing::info!("session watcher stopping");
@@ -1736,6 +1891,7 @@ fn watch_directory_tree(
 
 fn handle_event(
     event: notify::Result<notify::Event>,
+    roots: &SessionWatchRoots,
     targets: &[WatchTarget],
     pending: &mut PendingFiles,
     overflow_rescan: &std::sync::atomic::AtomicBool,
@@ -1756,7 +1912,7 @@ fn handle_event(
                         && targets.iter().all(|target| target.allowed_file().is_none())
                     {
                         new_dirs.push(path);
-                    } else if super::is_supported_session_file(&path)
+                    } else if validate_event_path(roots, &path).is_some()
                         && event_path_allowed(&path, targets)
                         && !pending.push(path, now)
                     {
@@ -1766,7 +1922,7 @@ fn handle_event(
                 }
             } else if event.kind.is_remove() {
                 for path in event.paths {
-                    handle_remove_path(&path, targets, pending, overflow_rescan, prune_missing);
+                    handle_remove_path(&path, roots, targets, pending, overflow_rescan, prune_missing);
                 }
             }
         }
@@ -1782,31 +1938,41 @@ fn event_path_allowed(path: &std::path::Path, targets: &[WatchTarget]) -> bool {
 
 async fn run_initial_rescan(
     cfg: &Config,
-    backend: &crate::jobs::backend::SqliteJobBackend,
+    service_context: &ServiceContext,
+    pool: &sqlx::SqlitePool,
     targets: &[WatchTarget],
-    json: bool,
+    options: &SessionWatchOptions,
 ) {
     for target in targets {
         let root = target.root().to_path_buf();
-        let files = collect_supported_files(&root);
-        for path in files {
-            let _ = process_session_file_for_watch(cfg, backend, &path, json).await;
+        let files = collect_validated_files(&options.roots, &root);
+        for batch in files.chunks(options.max_batch_docs) {
+            let _ = process_session_batch_for_watch(
+                cfg,
+                service_context,
+                pool,
+                batch.to_vec(),
+                options,
+            )
+            .await;
         }
     }
 }
 
-fn collect_supported_files(root: &std::path::Path) -> Vec<PathBuf> {
+fn collect_validated_files(roots: &SessionWatchRoots, root: &std::path::Path) -> Vec<ValidatedSessionPath> {
     let mut files = Vec::new();
     if root.is_file() {
-        if super::is_supported_session_file(root) {
-            files.push(root.to_path_buf());
+        if let Some(validated) = validate_event_path(roots, root) {
+            files.push(validated);
         }
         return files;
     }
     for entry in walkdir::WalkDir::new(root).follow_links(false).into_iter().flatten() {
         let path = entry.path();
-        if entry.file_type().is_file() && super::is_supported_session_file(path) {
-            files.push(path.to_path_buf());
+        if entry.file_type().is_file()
+            && let Some(validated) = validate_event_path(roots, path)
+        {
+            files.push(validated);
         }
     }
     files.sort();
@@ -1898,10 +2064,17 @@ fn session_watch_service_unit_runs_sessions_watch_no_initial_scan() {
     );
     assert!(unit.contains("Description=axon real-time local AI session watch"));
     assert!(unit.contains("ExecStart=/home/j/.local/bin/axon sessions watch --no-initial-scan --json"));
+    assert!(unit.contains("session-watch-service"));
+    assert!(!unit.contains("axon-session-watch.service"));
     assert!(unit.contains("BindReadOnlyPaths=-/home/j/.claude/projects -/home/j/.codex/sessions -/home/j/.gemini/history -/home/j/.gemini/tmp"));
     assert!(unit.contains("ReadWritePaths=/home/j/.axon /home/j/.local/state/axon"));
     assert!(!unit.contains("cortex"));
 }
+
+// Also add unit tests around pure helpers for the install command sequence:
+// - initial ingest command is `axon sessions --wait true --json`
+// - service operations use `session-watch-service.service`
+// - install propagates failures from initial ingest, daemon-reload, and enable --now
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1950,7 +2123,8 @@ async fn install_session_watch_service() -> io::Result<crate::services::setup::L
     let state_dir = home.join(".local/state/axon");
     let systemd_dir = home.join(".config/systemd/user");
     let env_path = config_dir.join("session-watch.env");
-    let service_path = systemd_dir.join("axon-session-watch.service");
+    let service_name = "session-watch-service.service";
+    let service_path = systemd_dir.join(service_name);
 
     std::fs::create_dir_all(&config_dir)?;
     std::fs::create_dir_all(&state_dir)?;
@@ -1961,10 +2135,10 @@ async fn install_session_watch_service() -> io::Result<crate::services::setup::L
         session_watch_service_unit(&axon_bin, &env_path, &db_path, &state_dir, &home),
     )?;
 
-    let _ = std::process::Command::new(&axon_bin).args(["sessions", "--json"]).status();
-    let _ = systemctl_user(&["daemon-reload"]);
-    let _ = systemctl_user(&["reset-failed", "axon-session-watch.service"]);
-    let _ = systemctl_user(&["enable", "--now", "axon-session-watch.service"]);
+    run_checked_command(std::process::Command::new(&axon_bin).args(["sessions", "--wait", "true", "--json"]))?;
+    run_checked_systemctl_user(&["daemon-reload"])?;
+    let _ = systemctl_user(&["reset-failed", service_name]);
+    run_checked_systemctl_user(&["enable", "--now", service_name])?;
 
     Ok(local_setup_report("session-watch-service-install"))
 }
@@ -1975,21 +2149,21 @@ async fn check_session_watch_service() -> io::Result<crate::services::setup::Loc
 
 async fn remove_session_watch_service() -> io::Result<crate::services::setup::LocalSetupReport> {
     let home = user_home_dir()?;
-    let _ = systemctl_user(&["disable", "--now", "axon-session-watch.service"]);
+    let _ = systemctl_user(&["disable", "--now", "session-watch-service.service"]);
     let _ = std::fs::remove_file(home.join(".config/axon/session-watch.env"));
-    let _ = std::fs::remove_file(home.join(".config/systemd/user/axon-session-watch.service"));
-    let _ = systemctl_user(&["daemon-reload"]);
+    let _ = std::fs::remove_file(home.join(".config/systemd/user/session-watch-service.service"));
+    run_checked_systemctl_user(&["daemon-reload"])?;
     Ok(local_setup_report("session-watch-service-remove"))
 }
 
 async fn status_session_watch_service() -> io::Result<crate::services::setup::LocalSetupReport> {
-    let _ = systemctl_user(&["status", "--no-pager", "axon-session-watch.service"]);
+    run_checked_systemctl_user(&["status", "--no-pager", "session-watch-service.service"])?;
     Ok(local_setup_report("session-watch-service-status"))
 }
 
 pub(crate) fn session_watch_env_file(db_path: &Path) -> String {
     format!(
-        "AXON_SQLITE_PATH={}\nRUST_LOG=warn\n",
+        "AXON_SQLITE_PATH={}\nRUST_LOG=warn\n# Runtime env is loaded from ~/.axon/.env by the axon wrapper/binary config loader when present.\n",
         setup_path_value(db_path).expect("validated Axon jobs DB path")
     )
 }
@@ -2077,22 +2251,16 @@ pub use session_watch_service::{SessionWatchServiceAction, run_session_watch_ser
 
 - [ ] **Step 5: Dispatch setup command**
 
-In the setup command dispatch path used by `src/lib.rs`, add the positional handling:
+In the setup command dispatch path used by `src/lib.rs` or the existing setup command handler, dispatch from the typed config field:
 
 ```rust
-CommandKind::Setup if cfg.positional.first().is_some_and(|value| value == "session-watch-service") => {
-    let action = match cfg.positional.get(1).map(String::as_str) {
-        Some("install") => crate::services::setup::SessionWatchServiceAction::Install,
-        Some("check") => crate::services::setup::SessionWatchServiceAction::Check,
-        Some("remove") => crate::services::setup::SessionWatchServiceAction::Remove,
-        Some("status") => crate::services::setup::SessionWatchServiceAction::Status,
-        other => return Err(format!("unknown session-watch-service action: {other:?}").into()),
-    };
+CommandKind::Setup if cfg.setup_session_watch_action.is_some() => {
+    let action = cfg.setup_session_watch_action.expect("checked above");
     let report = crate::services::setup::run_session_watch_service_setup(action).await?;
     if cfg.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        println!("session-watch-service {}", cfg.positional[1]);
+        println!("session-watch-service {}", action.as_str());
     }
     Ok(())
 }
@@ -2174,16 +2342,16 @@ In `src/core/config/cli.rs`, extend `SessionsSubcommand`:
     },
 ```
 
-- [ ] **Step 4: Map status and smoke positional dispatch**
+- [ ] **Step 4: Map status and smoke into typed config**
 
-In `src/core/config/parse/build_config/command_dispatch.rs`, extend the `CliCommand::Sessions(args)` mapping:
+In `src/core/config/parse/build_config/command_dispatch.rs`, extend the typed `CliCommand::Sessions(args)` mapping. Do not serialize these to `out.positional`; `positional` stays reserved for the existing job subcommands until they are also migrated:
 
 ```rust
 Some(SessionsSubcommand::WatchStatus { limit }) => {
-    out.positional = vec!["watch-status".to_string(), limit.to_string()];
+    out.sessions_action = Some(SessionsRuntimeAction::WatchStatus { limit });
 }
 Some(SessionsSubcommand::SmokeWatch { timeout_secs }) => {
-    out.positional = vec!["smoke-watch".to_string(), timeout_secs.to_string()];
+    out.sessions_action = Some(SessionsRuntimeAction::SmokeWatch { timeout_secs });
 }
 ```
 
@@ -2199,21 +2367,18 @@ pub struct SessionWatchStatus {
     pub recent_errors: Vec<SessionWatchError>,
 }
 
-pub async fn watch_status(
-    backend: &SqliteJobBackend,
-    limit: i64,
-) -> Result<SessionWatchStatus> {
+pub async fn watch_status(pool: &sqlx::SqlitePool, limit: i64) -> Result<SessionWatchStatus> {
     let checkpoint_count = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM axon_session_watch_checkpoints"
     )
-    .fetch_one(backend.pool())
+    .fetch_one(pool)
     .await?
     .unwrap_or(0);
     let error_count = sqlx::query_scalar!("SELECT COUNT(*) FROM axon_session_watch_errors")
-        .fetch_one(backend.pool())
+        .fetch_one(pool)
         .await?
         .unwrap_or(0);
-    let recent_errors = list_recent_errors(backend, limit).await?;
+    let recent_errors = list_recent_errors(pool, limit).await?;
     Ok(SessionWatchStatus {
         checkpoint_count,
         error_count,
@@ -2227,14 +2392,12 @@ pub async fn watch_status(
 In `src/cli/commands/sessions.rs`, before `sessions watch` dispatch, add:
 
 ```rust
-if cfg.positional.first().is_some_and(|value| value == "watch-status") {
-    let limit = cfg
-        .positional
-        .get(1)
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(20);
-    let backend = crate::jobs::backend::SqliteJobBackend::open(&cfg.sqlite_path).await?;
-    let status = crate::ingest::sessions::checkpoint::watch_status(&backend, limit).await?;
+if let Some(SessionsSubcommand::WatchStatus { limit }) = cfg.sessions_action {
+    let pool = service_context
+        .jobs
+        .sqlite_pool()
+        .ok_or("watch-status requires the SQLite job runtime")?;
+    let status = crate::ingest::sessions::checkpoint::watch_status(pool, limit as i64).await?;
     if cfg.json {
         println!("{}", serde_json::to_string_pretty(&status)?);
     } else {
@@ -2252,13 +2415,8 @@ if cfg.positional.first().is_some_and(|value| value == "watch-status") {
 In `src/cli/commands/sessions.rs`, add:
 
 ```rust
-if cfg.positional.first().is_some_and(|value| value == "smoke-watch") {
-    let timeout_secs = cfg
-        .positional
-        .get(1)
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(30);
-    let report = crate::ingest::sessions::watch::smoke_watch(cfg, timeout_secs).await?;
+if let Some(SessionsRuntimeAction::SmokeWatch { timeout_secs }) = cfg.sessions_action {
+    let report = crate::ingest::sessions::watch::smoke_watch(cfg, service_context, timeout_secs).await?;
     if cfg.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -2276,9 +2434,14 @@ pub struct SessionWatchSmokeReport {
     pub transcript_path: PathBuf,
     pub probe_text: String,
     pub ingested: bool,
+    pub evidence: String,
 }
 
-pub async fn smoke_watch(_cfg: &Config, timeout_secs: u64) -> Result<SessionWatchSmokeReport> {
+pub async fn smoke_watch(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    timeout_secs: u64,
+) -> Result<SessionWatchSmokeReport> {
     let root = super::expand_home("~/.codex/sessions/axon-smoke-watch");
     std::fs::create_dir_all(&root)?;
     let probe_text = format!("axon-session-watch-smoke-{}", std::process::id());
@@ -2295,16 +2458,32 @@ pub async fn smoke_watch(_cfg: &Config, timeout_secs: u64) -> Result<SessionWatc
         .to_string()
             + "\n",
     )?;
-    tokio::time::sleep(Duration::from_secs(timeout_secs.min(30))).await;
+    let pool = service_context
+        .jobs
+        .sqlite_pool()
+        .ok_or_else(|| anyhow::anyhow!("smoke-watch requires the SQLite job runtime"))?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs.min(60));
+    let mut ingested = false;
+    while tokio::time::Instant::now() < deadline {
+        if checkpoint_success_exists_for_probe(pool, &transcript_path).await? {
+            ingested = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    if !ingested {
+        anyhow::bail!("session watch smoke probe was not ingested before timeout; verify session-watch-service is running");
+    }
     Ok(SessionWatchSmokeReport {
         transcript_path,
         probe_text,
-        ingested: false,
+        ingested,
+        evidence: "checkpoint_success".to_string(),
     })
 }
 ```
 
-This smoke command writes a valid probe and waits; final ingestion verification can be strengthened later by querying Qdrant once a stable query helper is available.
+This smoke command writes a valid probe and waits for concrete checkpoint evidence. If that is too much for v0, remove `smoke-watch` from this task and final validation instead of shipping a placeholder.
 
 - [ ] **Step 8: Run status and smoke help tests**
 
@@ -2371,7 +2550,7 @@ Default watched roots:
 
 The watcher uses non-recursive directory watches and registers newly-created directories as they appear. File events are debounced, then a file is ingested only after size and mtime stay unchanged for the settle window. Overflow or backend rescan signals trigger a full root rescan. Parse/upload/storage failures are retried up to `--max-retries` and recorded in the session watch checkpoint tables.
 
-When `AXON_SERVER_URL` is set, the watcher still parses and redacts local files on the client, then uploads prepared docs to `POST /v1/ingest/sessions/prepared`. It never asks the server to scan server-local transcript roots.
+When `--upload-to-server` is explicitly enabled and `AXON_SERVER_URL` is set, the watcher still parses and redacts local files on the client, then uploads prepared docs to `POST /v1/ingest/sessions/prepared` with bearer auth and request timeouts. It never asks the server to scan server-local transcript roots. Without that opt-in, v0 uses the local prepared-session service path.
 ```
 
 - [ ] **Step 3: Update setup command docs**
@@ -2398,7 +2577,7 @@ The install action writes:
 | Path | Purpose |
 |------|---------|
 | `~/.config/axon/session-watch.env` | Private environment file for the watcher process. |
-| `~/.config/systemd/user/axon-session-watch.service` | User systemd unit. |
+| `~/.config/systemd/user/session-watch-service.service` | User systemd unit. |
 
 The service runs:
 
@@ -2406,7 +2585,7 @@ The service runs:
 axon sessions watch --no-initial-scan --json
 ```
 
-Install performs one initial `axon sessions --json` ingest before enabling the service. The systemd service is host-local and reads the user's transcript roots directly; it is not Docker-owned. The command is named `session-watch-service`; Axon does not use Cortex's setup command name.
+Install performs one initial `axon sessions --wait true --json` ingest before enabling the service. The systemd service is host-local and reads the user's transcript roots directly; it is not Docker-owned. The command and unit are named `session-watch-service`; Axon does not use Cortex's setup command name.
 ```
 
 - [ ] **Step 4: Update ingest guide**
@@ -2576,7 +2755,7 @@ Spec coverage:
 - Tests cover parser helpers, watcher mechanics, checkpoints, setup rendering, CLI help, docs grep, and final validation.
 
 Placeholder scan:
-- The plan contains no deferred-work markers and no instruction that asks an engineer to invent unspecified tests.
+- Explicit deferral markers are intentional: append-offset ingestion, delete pruning, and remote upload can be deferred if v0 keeps the local-first contract and does not ship placeholders.
 - All code-changing steps include concrete snippets or exact signatures.
 
 Type consistency:
