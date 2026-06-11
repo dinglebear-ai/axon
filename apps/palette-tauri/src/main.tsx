@@ -6,7 +6,12 @@ import { OperationResultFixture } from "./components/palette/OperationResultFixt
 import "./fonts.css";
 import "./styles.css";
 
-const Root = new URLSearchParams(window.location.search).get("fixture") === "operation-results" ? OperationResultFixture : App;
+const fixture = new URLSearchParams(window.location.search).get("fixture");
+const Root = fixture === "operation-results" ? OperationResultFixture : App;
+
+if (fixture) {
+  document.body.dataset.fixture = fixture;
+}
 
 createRoot(document.getElementById("app")!).render(
   <React.StrictMode>

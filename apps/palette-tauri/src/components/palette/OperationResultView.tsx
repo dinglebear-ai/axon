@@ -689,19 +689,39 @@ export function sanitizeReaderMarkdown(value: string | undefined): string | unde
   if (!value) return value;
 
   let inFence = false;
+  let fenceStart = -1;
   const lines = value.split(/\r?\n/);
-  const kept = lines.filter((line) => {
+  const kept: string[] = [];
+
+  for (const line of lines) {
     if (/^\s*(```|~~~)/.test(line)) {
+      if (!inFence) {
+        fenceStart = kept.length;
+        kept.push(line);
+        inFence = true;
+        continue;
+      }
+
+      kept.push(line);
+      const body = kept.slice(fenceStart + 1, -1);
+      if (body.length === 0 || body.every(isEmptyBulletLine)) {
+        kept.splice(fenceStart);
+      }
       inFence = !inFence;
-      return true;
+      fenceStart = -1;
+      continue;
     }
 
-    if (inFence) return true;
+    if (inFence || !isEmptyBulletLine(line)) {
+      kept.push(line);
+    }
+  }
 
-    return !/^\s*(?:[-+*]\s*|[•‣◦]\s*)$/.test(line);
-  });
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 
-  return kept.join("\n").trim();
+function isEmptyBulletLine(line: string): boolean {
+  return /^\s*$/.test(line) || /^\s*(?:[-+*]\s*|[•‣◦]\s*)$/.test(line);
 }
 
 function imagePreviewSrc(path: string | undefined): string | undefined {
