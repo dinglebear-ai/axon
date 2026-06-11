@@ -162,7 +162,7 @@ pub(crate) fn build_point(
 ) -> serde_json::Value {
     match mode {
         VectorMode::Named => {
-            let sv = sparse::compute_sparse_vector(chunk);
+            let sv = sparse::compute_sparse_vector_for_indexing(chunk);
             serde_json::json!({
                 "id": point_id.to_string(),
                 "vector": {

@@ -14,6 +14,28 @@ fn compute_sparse_vector_whitespace_only_returns_empty() {
 }
 
 #[test]
+fn compute_sparse_vector_for_indexing_matches_public_vector_shape() {
+    let query_sv = compute_sparse_vector("hello world rust programming");
+    let indexing_sv = compute_sparse_vector_for_indexing("hello world rust programming");
+    let mut query_pairs: Vec<_> = query_sv.indices.into_iter().zip(query_sv.values).collect();
+    let mut indexing_pairs: Vec<_> = indexing_sv
+        .indices
+        .into_iter()
+        .zip(indexing_sv.values)
+        .collect();
+    query_pairs.sort_by_key(|(idx, _)| *idx);
+    indexing_pairs.sort_by_key(|(idx, _)| *idx);
+    assert_eq!(query_pairs, indexing_pairs);
+}
+
+#[test]
+fn compute_sparse_vector_for_indexing_empty_text_returns_empty() {
+    let sv = compute_sparse_vector_for_indexing("::");
+    assert!(sv.indices.is_empty());
+    assert!(sv.values.is_empty());
+}
+
+#[test]
 fn compute_sparse_vector_indices_and_values_same_length() {
     let sv = compute_sparse_vector("hello world rust programming");
     assert_eq!(sv.indices.len(), sv.values.len());

@@ -8,7 +8,7 @@ use crate::core::config::Config;
 use crate::core::http::http_client;
 use crate::core::logging::{log_info, log_warn};
 use crate::services::types::MigrateResult;
-use crate::vector::ops::sparse::compute_sparse_vector;
+use crate::vector::ops::sparse::compute_sparse_vector_for_indexing;
 use crate::vector::ops::tei::qdrant_store::clear_collection_mode_cache;
 use reqwest::StatusCode;
 use std::error::Error;
@@ -314,7 +314,7 @@ fn transform_point(point: &serde_json::Value) -> Result<serde_json::Value, Box<d
     let chunk_text = point["payload"]["chunk_text"]
         .as_str()
         .unwrap_or_else(|| point["payload"]["text"].as_str().unwrap_or(""));
-    let sparse = compute_sparse_vector(chunk_text);
+    let sparse = compute_sparse_vector_for_indexing(chunk_text);
 
     Ok(serde_json::json!({
         "id": id,
