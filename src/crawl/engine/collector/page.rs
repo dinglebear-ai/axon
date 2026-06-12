@@ -22,6 +22,8 @@ pub struct CollectorConfig {
     pub min_chars: usize,
     pub drop_thin: bool,
     pub exclude_path_prefix: Vec<String>,
+    pub include_subdomains: bool,
+    pub start_host: Option<String>,
     pub scope: Option<MapScope>,
     pub progress_tx: Option<Sender<CrawlSummary>>,
     pub previous_manifest: Arc<HashMap<String, ManifestEntry>>,

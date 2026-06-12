@@ -17,7 +17,10 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use super::thin_refetch::{RefetchResult, THIN_REFETCH_CONCURRENCY, write_refetch_results};
-use super::{CrawlDiagnostic, CrawlSummary, PageEvent, canonicalize_url_for_dedupe};
+use super::{
+    CrawlDiagnostic, CrawlSummary, PageEvent, canonicalize_url_for_dedupe, is_excluded_url_path,
+    is_junk_discovered_url, normalize_map_candidate_url,
+};
 use crate::core::logging::log_warn;
 
 /// Extract the host of a URL for the rate-limit banner; empty string on parse failure.
@@ -26,6 +29,52 @@ fn host_of(url: &str) -> String {
         .ok()
         .and_then(|parsed| parsed.host_str().map(str::to_string))
         .unwrap_or_default()
+}
+
+fn canonicalize_discovered_link(
+    raw: &str,
+    page_url: &str,
+    col: &CollectorConfig,
+) -> Option<String> {
+    if is_junk_discovered_url(raw) || spider::utils::media_asset::is_media_asset_url(raw) {
+        return None;
+    }
+
+    let base = url::Url::parse(page_url).ok()?;
+    let resolved = base.join(raw).ok()?;
+    let host = resolved.host_str()?;
+    if !discovered_host_in_scope(host, base.host_str()?, col) {
+        return None;
+    }
+
+    let resolved = resolved.as_str();
+    if spider::utils::media_asset::is_media_asset_url(resolved) {
+        return None;
+    }
+    if is_excluded_url_path(resolved, &col.exclude_path_prefix) {
+        return None;
+    }
+
+    match col.scope.as_ref() {
+        Some(scope) => normalize_map_candidate_url(resolved, scope, false),
+        None => canonicalize_url_for_dedupe(resolved),
+    }
+}
+
+fn discovered_host_in_scope(host: &str, page_host: &str, col: &CollectorConfig) -> bool {
+    if let Some(scope) = col.scope.as_ref() {
+        return host.eq_ignore_ascii_case(&scope.host);
+    }
+
+    let root = col.start_host.as_deref().unwrap_or(page_host);
+    if host.eq_ignore_ascii_case(root) {
+        return true;
+    }
+    col.include_subdomains
+        && host
+            .to_ascii_lowercase()
+            .strip_suffix(&root.to_ascii_lowercase())
+            .is_some_and(|rest| rest.ends_with('.'))
 }
 
 /// Apply the outcome of `process_page()`: update summary counters, spawn Chrome
@@ -215,16 +264,11 @@ async fn process_received_page(
     };
     // Accumulate same-host discovered links into the cumulative backlog. Relative
     // links (no host) resolve same-site, so they count too.
-    let page_host = host_of(&url);
     let mut link_count: Option<u32> = None;
     if let Some(links) = page.page_links.as_ref() {
         link_count = Some(links.len() as u32);
         for link in links.iter() {
-            let raw = link.as_ref();
-            let link_host = host_of(raw);
-            if (link_host.is_empty() || link_host == page_host)
-                && let Some(canon) = canonicalize_url_for_dedupe(raw)
-            {
+            if let Some(canon) = canonicalize_discovered_link(link.as_ref(), &url, col) {
                 discovered.insert(canon);
             }
         }
@@ -299,6 +343,8 @@ mod tests {
             min_chars: 10,
             drop_thin: false,
             exclude_path_prefix: Vec::new(),
+            include_subdomains: false,
+            start_host: None,
             scope,
             progress_tx: None,
             previous_manifest: Arc::new(HashMap::new()),
@@ -365,5 +411,73 @@ mod tests {
         );
         assert_eq!(summary.pages_seen, 1);
         assert!(urls.contains("https://example.github.io/project/docs"));
+    }
+
+    #[test]
+    fn canonicalize_discovered_link_resolves_relative_links_against_page_url() {
+        let col = test_collector_config(None);
+
+        assert_eq!(
+            canonicalize_discovered_link(
+                "/docs/en/api/messages/",
+                "https://platform.claude.com/docs/en/home",
+                &col,
+            )
+            .as_deref(),
+            Some("https://platform.claude.com/docs/en/api/messages")
+        );
+    }
+
+    #[test]
+    fn canonicalize_discovered_link_rejects_cross_host_links() {
+        let col = test_collector_config(None);
+
+        assert_eq!(
+            canonicalize_discovered_link(
+                "https://example.com/docs/en/api/messages/",
+                "https://platform.claude.com/docs/en/home",
+                &col,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn canonicalize_discovered_link_rejects_media_assets_and_junk() {
+        let col = test_collector_config(None);
+
+        assert_eq!(
+            canonicalize_discovered_link(
+                "/assets/logo.png",
+                "https://platform.claude.com/docs/en/home",
+                &col,
+            ),
+            None
+        );
+        assert_eq!(
+            canonicalize_discovered_link(
+                "/$%7BshareBaseUrl%7D/s/$%7BshareId%7D",
+                "https://platform.claude.com/docs/en/home",
+                &col,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn canonicalize_discovered_link_counts_subdomain_when_enabled() {
+        let mut col = test_collector_config(None);
+        col.include_subdomains = true;
+        col.start_host = Some("example.com".to_string());
+
+        assert_eq!(
+            canonicalize_discovered_link(
+                "https://docs.example.com/guide/",
+                "https://example.com/docs/en/home",
+                &col,
+            )
+            .as_deref(),
+            Some("https://docs.example.com/guide")
+        );
     }
 }

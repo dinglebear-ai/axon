@@ -194,11 +194,11 @@ function depthText(snap: CrawlSnapshot): string {
 }
 
 function thirdCell(snap: CrawlSnapshot): { label: string; value: string } {
-  // Honest two-phase: docs written during the crawl, embedded docs afterwards.
+  // Honest two-phase: markdown files saved during the crawl, embedded docs afterwards.
   if (snap.phase === "embedding" || snap.phase === "done") {
     return { label: "EMBEDDED", value: fmt(snap.embedded || snap.docs) };
   }
-  return { label: "DOCS", value: fmt(snap.docs) };
+  return { label: "SAVED", value: fmt(snap.docs) };
 }
 
 function statusPill(snap: CrawlSnapshot): { label: string; tone: "ok" | "warn" | "error" | "neutral" | "info" } {

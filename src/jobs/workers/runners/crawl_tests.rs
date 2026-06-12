@@ -17,6 +17,13 @@ fn make_summary() -> CrawlSummary {
         elapsed_ms: 1234,
         ..CrawlSummary::default()
     };
+    summary.push_event(crate::crawl::engine::PageEvent {
+        t: 42,
+        url: "https://example.com/docs".to_string(),
+        status: 200,
+        links: Some(3),
+    });
+    summary.note_rate_limited("example.com", 250);
     summary.push_diagnostic(
         CrawlDiagnostic::new("http_fetch", "http_status", "skipped page with HTTP 500")
             .with_url("https://example.com/broken")
@@ -73,6 +80,7 @@ fn crawl_result_json_uses_canonical_keys() {
         obj.get("pages_discovered").and_then(|v| v.as_u64()),
         Some(9)
     );
+    assert_eq!(obj.get("queued").and_then(|v| v.as_u64()), Some(2));
     assert_eq!(obj.get("thin_md").and_then(|v| v.as_u64()), Some(2));
     assert_eq!(obj.get("error_pages").and_then(|v| v.as_u64()), Some(1));
     assert_eq!(
@@ -91,6 +99,16 @@ fn crawl_result_json_uses_canonical_keys() {
     );
     assert_eq!(
         obj.get("diagnostics")
+            .and_then(|v| v.as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        obj.get("events").and_then(|v| v.as_array()).map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        obj.get("rate_limited")
             .and_then(|v| v.as_array())
             .map(Vec::len),
         Some(1)
@@ -152,12 +170,15 @@ fn crawl_result_json_required_keys() {
         "pages_crawled",
         "md_created",
         "pages_discovered",
+        "queued",
         "thin_md",
         "error_pages",
         "waf_blocked_pages",
         "diagnostic_count",
         "diagnostic_counts",
         "diagnostics",
+        "events",
+        "rate_limited",
         "elapsed_ms",
         "embed_job_id",
     ] {

@@ -445,6 +445,8 @@ fn build_crawl_result_json(
         "diagnostic_count": summary.diagnostics.len(),
         "diagnostic_counts": diagnostic_counts_json(summary),
         "diagnostics": &summary.diagnostics,
+        "events": &summary.recent_events,
+        "rate_limited": &summary.rate_limited,
         "elapsed_ms": summary.elapsed_ms,
         "embed_job_id": embed_job_id,
     });

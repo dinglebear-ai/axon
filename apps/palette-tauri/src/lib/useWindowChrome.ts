@@ -38,7 +38,7 @@ export function resolvePaletteWindowSize(
   if (jobExpanded) {
     return {
       width: Math.min(1280, screen.width - 120),
-      height: Math.min(620, screen.height - 120),
+      height: Math.min(470, screen.height - 120),
     };
   }
   if (showResultsLayout) {

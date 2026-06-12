@@ -9,6 +9,8 @@ fn test_collector_config(scope: Option<MapScope>) -> CollectorConfig {
         min_chars: 10,
         drop_thin: false,
         exclude_path_prefix: Vec::new(),
+        include_subdomains: false,
+        start_host: None,
         scope,
         progress_tx: None,
         previous_manifest: Arc::new(HashMap::new()),

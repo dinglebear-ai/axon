@@ -200,9 +200,10 @@ export function summarizeCrawl(
   const errorCount = num(result.error_pages);
   const embedJobId = str(result.embed_job_id);
 
-  // Queued: real value comes from the Tier-2 event stream (`queued`). Until that
-  // lands, fall back to pages_discovered (which is 0 on most crawls).
-  const queued = Math.max(num(result.queued ?? result.pages_discovered), 0);
+  // `queued` is the backend's live frontier count. Older/alternate payloads may
+  // only expose `pages_discovered`, which is a total discovered count, so subtract
+  // fetched pages instead of displaying the total as pending work.
+  const queued = deriveQueued(result, fetched);
 
   const events = parseEvents(result.events);
   const rateLimited = parseRateLimited(result.rate_limited);
@@ -220,6 +221,7 @@ export function summarizeCrawl(
   let chunks = 0;
   let embedStatus: string | null = null;
   let embedUpdatedAtMs: number | null = null;
+  let embedErrorText: string | null = null;
   const embedJob = jobFromPayload(embedPayload);
   if (embedJob) {
     const embedResult = asRecord(embedJob.result_json) ?? {};
@@ -227,12 +229,17 @@ export function summarizeCrawl(
     chunks = num(embedResult.chunks_embedded);
     embedStatus = str(embedJob.status);
     embedUpdatedAtMs = parseTimestamp(embedJob.updated_at);
+    embedErrorText = str(embedJob.error_text);
   }
 
   // After the crawl finishes, the embed job is the active phase until it reaches
   // a terminal state. A crawl that produced no docs (no embed job) is just done.
   if (phase === "done" && embedJobId) {
-    if (embedStatus === "completed" || embedStatus === "failed" || embedStatus === "canceled") {
+    if (embedStatus === "failed") {
+      phase = "failed";
+    } else if (embedStatus === "canceled") {
+      phase = "canceled";
+    } else if (embedStatus === "completed") {
       phase = "done";
     } else {
       phase = "embedding";
@@ -278,13 +285,25 @@ export function summarizeCrawl(
     events,
     rateLimited,
     errorCount,
-    errorText: str(job.error_text),
+    errorText: phase === "failed" || phase === "canceled" ? (embedErrorText ?? str(job.error_text)) : str(job.error_text),
     embedJobId,
     // During embedding, liveness comes from the embed job's heartbeat, not the
     // (now-frozen) crawl row.
     updatedAtMs: phase === "embedding" && embedUpdatedAtMs != null ? embedUpdatedAtMs : parseTimestamp(job.updated_at),
     startedAtMs: parseTimestamp(job.started_at),
   };
+}
+
+function deriveQueued(result: JsonRecord, fetched: number): number {
+  const direct = optNum(result.queued ?? result.pending_pages ?? result.frontier_pending ?? result.frontier_count);
+  if (direct != null) return Math.max(direct, 0);
+
+  const discovered = optNum(
+    result.pages_discovered ?? result.discovered_pages ?? result.urls_discovered ?? result.total_discovered,
+  );
+  if (discovered != null) return Math.max(discovered - fetched, 0);
+
+  return 0;
 }
 
 /** Max path depth below the seed across recent crawled URLs (seed = depth 1). */
