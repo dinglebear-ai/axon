@@ -1,3 +1,6 @@
+// @ts-expect-error Vitest runs this file in Node; the app tsconfig intentionally omits Node globals.
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { hasStructuredOperationView, sanitizeReaderMarkdown } from "./OperationResultView";
@@ -77,5 +80,14 @@ describe("OperationResultView routing", () => {
         "```",
       ].join("\n"),
     );
+  });
+
+  it("lets scraped document readers use the full output panel height", () => {
+    const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
+
+    expect(styles).toContain(".operation-reader-view");
+    expect(styles).toContain(".operation-reader-section");
+    expect(styles).toContain("max-height: none");
+    expect(styles).not.toContain("max-height: min(48vh, 560px)");
   });
 });

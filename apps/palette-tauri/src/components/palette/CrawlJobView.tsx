@@ -30,7 +30,7 @@ export function CrawlJobView({
   const pct = Math.round(snapshot.percent);
 
   return (
-    <section className="output-panel">
+    <section className="output-panel output-job-panel">
       <div className="output-state output-job output-tone-warn">
         <header className="output-header">
           <span className="output-op-tile" aria-hidden="true">

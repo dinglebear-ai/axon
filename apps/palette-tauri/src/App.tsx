@@ -168,6 +168,7 @@ export default function App() {
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
   const jobMinimized = run.kind === "job" && run.minimized;
+  const jobExpanded = run.kind === "job" && !run.minimized;
   const showOutput = run.kind !== "idle" && !jobMinimized;
   // Once an action mode is picked, the input collects that action's argument —
   // the palette should NOT keep listing other actions. Stay compact (just the
@@ -184,6 +185,7 @@ export default function App() {
   }, [parsed.search, modeAction]);
 
   useWindowChrome({
+    jobExpanded,
     jobMinimized,
     settingsOpen,
     historyOpen,
@@ -290,7 +292,7 @@ export default function App() {
   }
 
   return (
-    <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}`}>
+    <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${jobExpanded ? " palette-shell-job" : ""}`}>
 
       <section
         className="command-bar"

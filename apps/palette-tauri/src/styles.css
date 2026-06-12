@@ -142,6 +142,11 @@ textarea {
   max-height: 568px;
 }
 
+.palette-shell-job {
+  height: min(70vh, 620px);
+  max-height: 620px;
+}
+
 .tauri-runtime .palette-shell-results {
   width: 100vw;
   height: 100vh;
@@ -1218,6 +1223,10 @@ textarea {
   background: var(--aurora-page-bg);
 }
 
+.output-job-panel {
+  flex: 0 1 auto;
+}
+
 .history-panel {
   display: flex;
   min-width: 0;
@@ -1380,7 +1389,7 @@ textarea {
 .running-body {
   display: flex;
   min-height: 0;
-  flex: 1;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 14px;
   padding: 14px 8px 8px;
@@ -1481,7 +1490,7 @@ textarea {
 
 .running-log {
   min-height: 142px;
-  max-height: 190px;
+  max-height: min(26vh, 210px);
   margin: 0;
   overflow: auto;
   padding: 12px 14px;
@@ -1497,7 +1506,7 @@ textarea {
 .running-actions {
   display: flex;
   gap: 10px;
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .running-actions button {
@@ -2854,8 +2863,19 @@ textarea {
   line-height: 1.56;
 }
 
+.operation-reader-view {
+  overflow: hidden;
+}
+
+.operation-reader-section {
+  flex: 1;
+  min-height: 0;
+}
+
 .operation-reader {
-  max-height: min(48vh, 560px);
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
   padding: 13px 14px;
   color: var(--aurora-text-primary);
