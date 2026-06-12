@@ -1,4 +1,7 @@
-use super::{MAX_SSE_LINE_BYTES, drain_sse_lines, parse_sse_data_line as parse_data_line};
+use super::{
+    MAX_SSE_LINE_BYTES, done_answer_from_value, drain_sse_lines,
+    parse_sse_data_line as parse_data_line,
+};
 
 #[test]
 fn parse_sse_data_line() {
@@ -89,5 +92,20 @@ fn parse_sse_data_line_handles_no_space_after_colon() {
     assert_eq!(
         parse_data_line("data:{\"type\":\"delta\"}"),
         Some("{\"type\":\"delta\"}".to_string())
+    );
+}
+
+#[test]
+fn done_answer_reads_stream_result_payload() {
+    let value = serde_json::json!({
+        "type": "done",
+        "result": {
+            "answer": "normalized answer\n\n## Sources\n- [S1] https://docs.example.com"
+        }
+    });
+
+    assert_eq!(
+        done_answer_from_value(&value).as_deref(),
+        Some("normalized answer\n\n## Sources\n- [S1] https://docs.example.com")
     );
 }

@@ -195,10 +195,7 @@ fn handle_palette_sse_line(
             Ok(false)
         }
         Some("done") => {
-            let answer = value
-                .get("answer")
-                .and_then(|answer| answer.as_str())
-                .map(str::to_string);
+            let answer = done_answer_from_value(&value);
             window
                 .emit(
                     "palette://stream",
@@ -233,6 +230,19 @@ fn handle_palette_sse_line(
         }
         None => Ok(false),
     }
+}
+
+fn done_answer_from_value(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("answer")
+        .and_then(|answer| answer.as_str())
+        .or_else(|| {
+            value
+                .get("result")
+                .and_then(|result| result.get("answer"))
+                .and_then(|answer| answer.as_str())
+        })
+        .map(str::to_string)
 }
 
 #[cfg(test)]
