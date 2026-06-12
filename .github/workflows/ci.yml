@@ -924,6 +924,8 @@ jobs:
             echo "QDRANT_URL=http://axon-qdrant:6333"
             echo "TEI_URL=http://localhost:52000"
             echo "AXON_GIT_SHA=$(git rev-parse HEAD)"
+            echo "QDRANT_HTTP_PORT=55333"
+            echo "QDRANT_GRPC_PORT=55334"
             echo "TEI_HTTP_PORT=52000"
             echo "TEI_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5"
             echo "HF_TOKEN="
@@ -949,7 +951,7 @@ jobs:
       - name: Wait for Qdrant and TEI
         run: |
           for _ in {1..90}; do
-            if curl -fsS http://127.0.0.1:53333/healthz >/dev/null 2>&1 && \
+            if curl -fsS http://127.0.0.1:55333/healthz >/dev/null 2>&1 && \
                curl -fsS http://127.0.0.1:52000/health >/dev/null 2>&1; then
               exit 0
             fi
@@ -962,7 +964,7 @@ jobs:
         env:
           AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
-          QDRANT_URL: http://127.0.0.1:53333
+          QDRANT_URL: http://127.0.0.1:55333
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
           AXON_EMBED_STRICT_PREDELETE: "false"
@@ -972,7 +974,7 @@ jobs:
         env:
           AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
-          QDRANT_URL: http://127.0.0.1:53333
+          QDRANT_URL: http://127.0.0.1:55333
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
         run: |
@@ -992,7 +994,7 @@ jobs:
         env:
           AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
-          QDRANT_URL: http://127.0.0.1:53333
+          QDRANT_URL: http://127.0.0.1:55333
         run: ./scripts/test-mcp-tools-mcporter.sh
 
       - name: Upload mcporter logs

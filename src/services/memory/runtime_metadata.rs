@@ -24,14 +24,16 @@ pub(super) fn detect_runtime_memory_metadata() -> RuntimeMemoryMetadata {
     let workspace = workspace_path
         .as_ref()
         .and_then(|path| canonicalize_lossy(path).as_deref().and_then(path_to_string));
-    let project = workspace_path
-        .as_ref()
-        .and_then(|path| path.file_name())
-        .and_then(|name| name.to_str())
-        .map(str::to_string);
     let repo = git_output(&cwd_path, ["remote", "get-url", "origin"])
         .as_deref()
         .and_then(remote_to_repo_slug);
+    let project = repo.as_deref().and_then(repo_slug_to_project).or_else(|| {
+        workspace_path
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .map(str::to_string)
+    });
     let git_branch = git_output(&cwd_path, ["rev-parse", "--abbrev-ref", "HEAD"])
         .filter(|branch| branch != "HEAD");
     let git_commit = git_output(&cwd_path, ["rev-parse", "HEAD"]);
@@ -79,6 +81,14 @@ fn remote_to_repo_slug(remote: &str) -> Option<String> {
         return None;
     }
     Some(format!("{owner}/{repo}"))
+}
+
+fn repo_slug_to_project(repo: &str) -> Option<String> {
+    repo.rsplit('/')
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn canonicalize_lossy(path: &Path) -> Option<PathBuf> {

@@ -255,12 +255,18 @@ fn services_up_starts_only_infrastructure_services() {
 
     assert!(
         justfile.contains("up -d axon-tei axon-chrome"),
-        "just services-up should keep its infrastructure-only contract"
+        "just services-up should keep its infrastructure-only default contract"
     );
     assert!(
         justfile.contains("stop axon-tei axon-chrome")
             && justfile.contains("rm -f axon-tei axon-chrome"),
-        "just services-down should stop only infrastructure services"
+        "just services-down should stop only default infrastructure services"
+    );
+    assert!(
+        justfile.contains("--profile local-qdrant up -d axon-qdrant")
+            && justfile.contains("--profile local-qdrant stop axon-qdrant")
+            && justfile.contains("--profile local-qdrant rm -f axon-qdrant"),
+        "local Qdrant should stay opt-in through the local-qdrant profile"
     );
     assert!(
         justfile.contains("qdrant-up:")
@@ -415,6 +421,7 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_MCP_ALLOWED_ORIGINS",
         // Vector stack
         "QDRANT_URL",
+        "AXON_QDRANT_URL",
         "TEI_URL",
         "TEI_HTTP_PORT",
         "TEI_EMBEDDING_MODEL",

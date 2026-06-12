@@ -23,6 +23,30 @@ compatibility = "canonical"
 reason = "Compose-only Qdrant endpoint override used to point the container at a remote or explicitly local Qdrant."
 
 [[env]]
+key = "QDRANT_HTTP_PORT"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only host port for the optional local Qdrant HTTP endpoint."
+
+[[env]]
+key = "QDRANT_GRPC_PORT"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only host port for the optional local Qdrant gRPC endpoint."
+
+[[env]]
 key = "TEI_URL"
 classification = "keep-env"
 runtime_placement = "both"
