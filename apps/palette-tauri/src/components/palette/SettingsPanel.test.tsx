@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { SettingsPanel } from "./SettingsPanel";
+import { connectionFeedback, SettingsPanel } from "./SettingsPanel";
 import type { PaletteConfig } from "@/lib/axonClient";
 
 describe("SettingsPanel", () => {
@@ -54,5 +54,19 @@ describe("SettingsPanel", () => {
     // This test relies only on the source file being importable without error,
     // so it complements rather than replaces a full render test.
     expect(SettingsPanel.name).toBe("SettingsPanel");
+  });
+
+  it("describes persisted connection test feedback", () => {
+    expect(connectionFeedback({ status: "connected", checkedAt: 1, detail: "Doctor checks passed" })).toEqual({
+      tone: "success",
+      label: "Connected",
+      detail: "Doctor checks passed",
+    });
+
+    expect(connectionFeedback({ status: "error", checkedAt: 1, detail: "HTTP 401" })).toEqual({
+      tone: "error",
+      label: "Connection failed",
+      detail: "HTTP 401",
+    });
   });
 });

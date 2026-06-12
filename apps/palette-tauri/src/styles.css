@@ -584,7 +584,7 @@ textarea {
 
 .settings-health {
   gap: 7px;
-  color: var(--aurora-success);
+  color: var(--aurora-text-muted);
   font-family: var(--aurora-font-mono);
   font-size: 11px;
 }
@@ -593,8 +593,36 @@ textarea {
   width: 6px;
   height: 6px;
   border-radius: 999px;
+  background: var(--aurora-neutral);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--aurora-neutral) 60%, transparent);
+}
+
+.settings-health[data-status="checking"] {
+  color: var(--aurora-info-foreground);
+}
+
+.settings-health[data-status="checking"] > span {
+  background: var(--aurora-info);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--aurora-info) 68%, transparent);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.settings-health[data-status="connected"] {
+  color: var(--aurora-success-foreground);
+}
+
+.settings-health[data-status="connected"] > span {
   background: var(--aurora-success);
-  box-shadow: 0 0 6px var(--aurora-success);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--aurora-success) 68%, transparent);
+}
+
+.settings-health[data-status="error"] {
+  color: var(--aurora-error-foreground);
+}
+
+.settings-health[data-status="error"] > span {
+  background: var(--aurora-error);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--aurora-error) 68%, transparent);
 }
 
 .settings-tabs {
@@ -940,6 +968,80 @@ textarea {
 .settings-footer-meta {
   color: var(--aurora-text-muted);
   font-size: 10.5px;
+}
+
+.settings-connection-result {
+  display: inline-flex;
+  min-width: 0;
+  max-width: min(460px, 45vw);
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  color: var(--aurora-neutral-foreground);
+  background: var(--aurora-neutral-surface);
+  border: 1px solid var(--aurora-neutral-border);
+  border-radius: 8px;
+}
+
+.settings-connection-result > span:first-child {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--aurora-neutral);
+}
+
+.settings-connection-result > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.settings-connection-result strong {
+  color: var(--aurora-text-primary);
+  font-size: 11.5px;
+  line-height: 1.15;
+}
+
+.settings-connection-result span span {
+  overflow: hidden;
+  color: var(--aurora-text-muted);
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-connection-result[data-status="checking"] {
+  color: var(--aurora-info-foreground);
+  background: var(--aurora-info-surface);
+  border-color: var(--aurora-info-border);
+}
+
+.settings-connection-result[data-status="checking"] > span:first-child {
+  background: var(--aurora-info);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.settings-connection-result[data-status="success"] {
+  color: var(--aurora-success-foreground);
+  background: var(--aurora-success-surface);
+  border-color: var(--aurora-success-border);
+}
+
+.settings-connection-result[data-status="success"] > span:first-child {
+  background: var(--aurora-success);
+}
+
+.settings-connection-result[data-status="error"] {
+  color: var(--aurora-error-foreground);
+  background: var(--aurora-error-surface);
+  border-color: var(--aurora-error-border);
+}
+
+.settings-connection-result[data-status="error"] > span:first-child {
+  background: var(--aurora-error);
 }
 
 .settings-error {
