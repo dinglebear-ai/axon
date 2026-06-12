@@ -1570,7 +1570,7 @@ textarea {
   font-size: 10.5px;
 }
 
-.ask-message p {
+.ask-message > p {
   margin: 0;
   padding: 10px 12px;
   color: var(--aurora-text-primary);
@@ -1581,7 +1581,7 @@ textarea {
   line-height: 1.58;
 }
 
-.ask-message-user p {
+.ask-message-user > p {
   background: color-mix(in srgb, var(--aurora-accent-primary) 10%, var(--aurora-control-surface));
   border-color: color-mix(in srgb, var(--aurora-accent-primary) 24%, transparent);
 }
