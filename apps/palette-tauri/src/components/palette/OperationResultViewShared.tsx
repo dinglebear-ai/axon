@@ -1,4 +1,3 @@
-import { Link2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { arrField, isRecord, numField, strField } from "@/lib/payload";
@@ -55,7 +54,7 @@ export function UrlListView({ title, payload, keys }: { title: string; payload: 
   const count = numField(payload, "count") ?? numField(payload, "total") ?? urls.length;
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero icon={<Link2 size={16} />} title={title} tone="info" metrics={[["Total", count]]} />
+      <ResultSummary metrics={[["Total", count], ["View", title]]} />
       {urls.length === 0 ? (
         <EmptyResult kind={title.toLowerCase().includes("indexed") ? "sources" : "urls"} />
       ) : (
@@ -113,6 +112,19 @@ export function GenericResultView({ payload, embedded }: { payload: Record<strin
     </section>
   );
   return embedded ? body : <div className="output-body operation-view aurora-scrollbar">{body}</div>;
+}
+
+export function ResultSummary({ metrics }: { metrics: Array<[string, string | number]> }) {
+  return (
+    <section className="operation-summary-strip" aria-label="Result summary">
+      {metrics.map(([label, value]) => (
+        <span key={label}>
+          <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
+          {label}
+        </span>
+      ))}
+    </section>
+  );
 }
 
 export function ResultHero({

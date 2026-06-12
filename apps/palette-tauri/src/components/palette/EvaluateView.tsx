@@ -1,6 +1,5 @@
 import { Streamdown } from "streamdown";
 
-import { ConversationThread } from "@/components/palette/AskConversation";
 import { arrField, strField, unwrapPayload } from "@/lib/payload";
 import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
 
@@ -16,14 +15,29 @@ export function EvaluateView({ payload }: { payload: unknown }) {
 
   return (
     <div className="output-body evaluate-view aurora-scrollbar">
+      {query ? (
+        <div className="ask-prompt-strip evaluate-prompt">
+          <span>Question</span>
+          <p>{query}</p>
+        </div>
+      ) : null}
+
       <div className="evaluate-columns">
         <div className="evaluate-column">
           <div className="evaluate-column-head evaluate-head-baseline">Without RAG · baseline</div>
-          <ConversationThread prompt={query} answer={baseline} assistantLabel="LLM" />
+          <div className="ask-answer ask-answer-reader evaluate-answer">
+            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
+              {baseline}
+            </Streamdown>
+          </div>
         </div>
         <div className="evaluate-column">
           <div className="evaluate-column-head evaluate-head-rag">With RAG · {sources.length} source{sources.length === 1 ? "" : "s"}</div>
-          <ConversationThread prompt={query} answer={rag} assistantLabel="Axon" />
+          <div className="ask-answer ask-answer-reader evaluate-answer">
+            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
+              {rag}
+            </Streamdown>
+          </div>
         </div>
       </div>
 
@@ -41,13 +55,11 @@ export function EvaluateView({ payload }: { payload: unknown }) {
       {sources.length > 0 && (
         <section className="evaluate-sources">
           <h3 className="stats-heading">Sources</h3>
-          <ul>
+          <div className="evaluate-source-list">
             {sources.slice(0, 12).map((url) => (
-              <li key={url}>
-                <a href={url} target="_blank" rel="noopener noreferrer">{url}</a>
-              </li>
+              <a key={url} href={url} target="_blank" rel="noopener noreferrer">{url}</a>
             ))}
-          </ul>
+          </div>
         </section>
       )}
     </div>

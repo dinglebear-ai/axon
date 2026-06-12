@@ -1,12 +1,9 @@
 import {
   AlertTriangle,
-  ArrowRight,
   CheckCircle2,
   Clock3,
   FileImage,
   FileText,
-  Globe2,
-  Palette,
   ServerCog,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
@@ -19,6 +16,7 @@ import {
   JobRows,
   ResultRows,
   ResultHero,
+  ResultSummary,
   StatusDot,
   Swatch,
   UrlListView,
@@ -140,15 +138,7 @@ function SearchResultView({
 
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero
-        icon={<Globe2 size={16} />}
-        title={title}
-        tone={includeSummary ? "rose" : "info"}
-        metrics={[
-          ["Results", rows.length],
-          ["Queued crawls", jobs.length],
-        ]}
-      />
+      <ResultSummary metrics={[["Results", rows.length], ["Queued crawls", jobs.length], ["View", title]]} />
       {includeSummary && summary ? (
         <section className="operation-section">
           <h3 className="stats-heading">Summary</h3>
@@ -177,15 +167,7 @@ function RankedResultView({
   const rows = arrField(payload, rowsKey);
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero
-        icon={<ServerCog size={16} />}
-        title={title}
-        tone="neutral"
-        metrics={[
-          ["Matches", rows.length],
-          ["Collection", strField(payload, "collection") ?? "axon"],
-        ]}
-      />
+      <ResultSummary metrics={[["Matches", rows.length], ["Collection", strField(payload, "collection") ?? "axon"], ["View", title]]} />
       <ResultRows rows={rows} preferSnippet />
     </div>
   );
@@ -230,7 +212,7 @@ function SuggestionView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "suggestions");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero icon={<ArrowRight size={16} />} title="Suggested URLs" tone="violet" metrics={[["Suggestions", rows.length]]} />
+      <ResultSummary metrics={[["Suggestions", rows.length], ["View", "Suggested URLs"]]} />
       <ResultRows rows={rows} />
     </div>
   );
@@ -240,7 +222,7 @@ function DomainView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "domains");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero icon={<Globe2 size={16} />} title="Indexed domains" tone="neutral" metrics={[["Domains", rows.length]]} />
+      <ResultSummary metrics={[["Domains", rows.length], ["View", "Indexed domains"]]} />
       <section className="operation-section">
         <div className="operation-table">
           {rows.slice(0, LIST_LIMIT).map((row, index) => {
@@ -354,7 +336,7 @@ function EndpointView({ payload }: { payload: Record<string, unknown> }) {
   const rows = firstArray(payload, ["endpoints", "candidates", "urls"]);
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero icon={<ServerCog size={16} />} title="Endpoint discovery" tone="violet" metrics={[["Candidates", numField(payload, "total") ?? rows.length]]} />
+      <ResultSummary metrics={[["Candidates", numField(payload, "total") ?? rows.length], ["View", "Endpoint discovery"]]} />
       <ResultRows rows={rows.map((item) => (typeof item === "string" ? { url: item, title: item } : item))} />
     </div>
   );
@@ -366,7 +348,7 @@ function BrandView({ payload }: { payload: Record<string, unknown> }) {
   const assets = firstArray(payload, ["logos", "assets"]);
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero icon={<Palette size={16} />} title={strField(payload, "name") ?? "Brand identity"} tone="rose" metrics={[["Colors", colors.length], ["Fonts", fonts.length]]} />
+      <ResultSummary metrics={[["Colors", colors.length], ["Fonts", fonts.length], ["View", strField(payload, "name") ?? "Brand identity"]]} />
       {colors.length > 0 ? (
         <section className="operation-section">
           <h3 className="stats-heading">Colors</h3>
@@ -463,7 +445,7 @@ function WatchListView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "watches");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero icon={<Clock3 size={16} />} title="Watch schedules" tone="neutral" metrics={[["Watches", rows.length]]} />
+      <ResultSummary metrics={[["Watches", rows.length], ["View", "Watch schedules"]]} />
       {rows.length > 0 ? <ResultRows rows={rows} /> : <EmptyResult kind="watches" />}
     </div>
   );
