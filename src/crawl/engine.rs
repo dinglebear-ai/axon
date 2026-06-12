@@ -40,11 +40,12 @@ pub(crate) use sitemap::append_candidate_backfill;
 pub use sitemap::{BackfillStats, append_sitemap_backfill};
 pub(crate) use sitemap::{SitemapDiscovery, discover_sitemap_urls};
 pub(crate) use thin_refetch::chrome_refetch_thin_pages;
-pub(crate) use url_utils::{
-    MapScope, canonicalize_url_for_dedupe, is_excluded_url_path, normalize_map_candidate_url,
-};
 #[cfg(test)]
-pub(crate) use url_utils::{is_junk_discovered_url, regex_escape};
+pub(crate) use url_utils::regex_escape;
+pub(crate) use url_utils::{
+    MapScope, canonicalize_url_for_dedupe, is_excluded_url_path, is_junk_discovered_url,
+    normalize_map_candidate_url,
+};
 pub use waf::{WafDiagnostics, build_waf_diagnostics};
 
 pub const MAX_CRAWL_DIAGNOSTICS: usize = 100;
@@ -63,6 +64,12 @@ pub(crate) fn crawl_subscribe_buffer_size(cfg: &Config) -> usize {
     };
 
     desired.clamp(min, max)
+}
+
+fn start_host(start_url: &str) -> Option<String> {
+    url::Url::parse(start_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -278,6 +285,7 @@ pub async fn run_crawl_once(
     let min_chars = cfg.min_markdown_chars;
     let drop_thin = cfg.drop_thin_markdown;
     let exclude_path_prefix = cfg.exclude_path_prefix.clone();
+    let start_host = start_host(start_url);
     let crawl_start = Instant::now();
 
     // Enable inline Chrome re-rendering when the *config* requests AutoSwitch,
@@ -301,6 +309,8 @@ pub async fn run_crawl_once(
             min_chars,
             drop_thin,
             exclude_path_prefix,
+            include_subdomains: cfg.include_subdomains,
+            start_host,
             scope: None,
             progress_tx,
             previous_manifest: Arc::clone(&previous_manifest),
@@ -410,6 +420,7 @@ pub async fn run_sitemap_only(
     let rx = website.subscribe(subscribe_buf);
     let manifest_path = output_dir.join("manifest.jsonl");
     let markdown_dir = output_dir.join("markdown");
+    let start_host = start_host(start_url);
     let crawl_start = Instant::now();
 
     let join = tokio::spawn(collect_crawl_pages(
@@ -420,6 +431,8 @@ pub async fn run_sitemap_only(
             min_chars: cfg.min_markdown_chars,
             drop_thin: cfg.drop_thin_markdown,
             exclude_path_prefix: cfg.exclude_path_prefix.clone(),
+            include_subdomains: cfg.include_subdomains,
+            start_host,
             scope: None,
             progress_tx: None,
             previous_manifest: Arc::clone(&previous_manifest),

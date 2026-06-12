@@ -56,6 +56,62 @@ describe("summarizeCrawl", () => {
     expect(snap.etaText).toMatch(/min left$/);
   });
 
+  it("derives queued from total pages_discovered when direct queued is absent", () => {
+    const snap = summarizeCrawl(
+      {
+        job: {
+          status: "running",
+          result_json: {
+            pages_crawled: 758,
+            pages_discovered: 820,
+            md_created: 2,
+          },
+        },
+      },
+      { jobId: "job-1", url, elapsedSec: 24 },
+    );
+
+    expect(snap.fetched).toBe(758);
+    expect(snap.queued).toBe(62);
+    expect(Math.round(snap.percent)).toBe(92);
+  });
+
+  it("prefers backend queued over derived discovered totals", () => {
+    const snap = summarizeCrawl(
+      {
+        job: {
+          status: "running",
+          result_json: {
+            pages_crawled: 758,
+            pages_discovered: 820,
+            queued: 140,
+          },
+        },
+      },
+      { jobId: "job-1", url },
+    );
+
+    expect(snap.queued).toBe(140);
+  });
+
+  it("uses only the canonical md_created saved markdown field", () => {
+    const snap = summarizeCrawl(
+      {
+        job: {
+          status: "running",
+          result_json: {
+            pages_crawled: 12,
+            markdown_files: 9,
+            queued: 3,
+          },
+        },
+      },
+      { jobId: "job-1", url },
+    );
+
+    expect(snap.docs).toBe(0);
+  });
+
   it("maps pending status before any progress", () => {
     const snap = summarizeCrawl({ job: { status: "pending" } }, { jobId: "j", url });
     expect(snap.phase).toBe("pending");
@@ -82,6 +138,23 @@ describe("summarizeCrawl", () => {
     expect(snap.phase).toBe("done");
     expect(snap.percent).toBe(100);
     expect(snap.embedded).toBe(40);
+  });
+
+  it("surfaces embed failure as a failed crawl snapshot", () => {
+    const crawl = { job: { status: "completed", result_json: { pages_crawled: 40, md_created: 40, embed_job_id: "e1" } } };
+    const embed = { job: { status: "failed", error_text: "TEI unavailable", result_json: { docs_embedded: 12 } } };
+    const snap = summarizeCrawl(crawl, { jobId: "j", url }, embed);
+    expect(snap.phase).toBe("failed");
+    expect(snap.errorText).toBe("TEI unavailable");
+    expect(snap.percent).toBe(100);
+  });
+
+  it("surfaces embed cancellation as a canceled crawl snapshot", () => {
+    const crawl = { job: { status: "completed", result_json: { pages_crawled: 40, md_created: 40, embed_job_id: "e1" } } };
+    const embed = { job: { status: "canceled", error_text: "canceled by user", result_json: { docs_embedded: 12 } } };
+    const snap = summarizeCrawl(crawl, { jobId: "j", url }, embed);
+    expect(snap.phase).toBe("canceled");
+    expect(snap.errorText).toBe("canceled by user");
   });
 
   it("parses per-page events and rate-limit hosts from the event stream", () => {

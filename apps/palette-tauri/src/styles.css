@@ -143,8 +143,8 @@ textarea {
 }
 
 .palette-shell-job {
-  height: min(70vh, 620px);
-  max-height: 620px;
+  height: min(62vh, 470px);
+  max-height: 470px;
 }
 
 .tauri-runtime .palette-shell-results {
@@ -1404,16 +1404,16 @@ textarea {
 
 .running-stat {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   min-width: 0;
   gap: 5px;
-  min-height: 23px;
-  padding: 2px 8px;
+  min-height: 25px;
+  padding: 0 8px;
   color: var(--aurora-text-muted);
   background: color-mix(in srgb, var(--aurora-panel-strong) 54%, transparent);
   border: 1px solid color-mix(in srgb, var(--aurora-border-default) 42%, transparent);
   border-radius: 7px;
-  line-height: 1;
+  line-height: 1.1;
 }
 
 .running-stat span {
@@ -1430,6 +1430,7 @@ textarea {
   font-size: 12px;
   font-weight: 760;
   letter-spacing: 0;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1493,8 +1494,8 @@ textarea {
 }
 
 .running-log {
-  min-height: 190px;
-  max-height: min(36vh, 330px);
+  min-height: 158px;
+  max-height: min(30vh, 240px);
   margin: 0;
   overflow: auto;
   padding: 8px 10px;
