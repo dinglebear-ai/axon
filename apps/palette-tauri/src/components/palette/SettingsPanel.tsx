@@ -21,7 +21,7 @@ import {
 import { useState } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
-import { createAxonClient, executeAction, type PaletteConfig } from "@/lib/axonClient";
+import { createAxonClient, executeAction, type PaletteConfig, type PaletteResult } from "@/lib/axonClient";
 import { ACTIONS } from "@/lib/actions";
 import {
   CONFIG_COUNT,
@@ -32,6 +32,7 @@ import {
   ENV_DEFAULTS,
   ENV_GROUPS,
 } from "@/lib/configModel";
+import { isRecord, strField, unwrapPayload } from "@/lib/payload";
 
 type SettingValue = string | number | boolean | string[];
 type SettingsTab = "connection" | "env" | "config";
@@ -64,7 +65,26 @@ const iconMap: Record<string, LucideIcon> = {
   zap: Zap,
 };
 
-type ConnectionStatus = "unknown" | "connected" | "error" | "checking";
+export type ConnectionStatus = "unknown" | "connected" | "error" | "checking";
+
+export interface ConnectionTestState {
+  checkedAt?: number;
+  detail?: string;
+  status: ConnectionStatus;
+}
+
+export function connectionFeedback(state: ConnectionTestState): { detail: string; label: string; tone: "neutral" | "success" | "error" | "checking" } {
+  switch (state.status) {
+    case "checking":
+      return { tone: "checking", label: "Checking", detail: state.detail ?? "Testing the configured Axon server..." };
+    case "connected":
+      return { tone: "success", label: "Connected", detail: state.detail ?? "Doctor endpoint responded successfully." };
+    case "error":
+      return { tone: "error", label: "Connection failed", detail: state.detail ?? "Axon did not return a successful doctor response." };
+    default:
+      return { tone: "neutral", label: "Not tested", detail: "Run a connection test before saving." };
+  }
+}
 
 export function SettingsPanel({
   configError,
@@ -75,35 +95,34 @@ export function SettingsPanel({
   onSave,
 }: SettingsPanelProps) {
   const [tab, setTab] = useState<SettingsTab>("connection");
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("unknown");
+  const [connectionTest, setConnectionTest] = useState<ConnectionTestState>({ status: "unknown" });
   const envValues = { ...ENV_DEFAULTS, ...(draftConfig.envValues ?? {}) } as Record<string, SettingValue>;
   const configValues = { ...CONFIG_DEFAULTS, ...(draftConfig.configValues ?? {}) } as Record<string, SettingValue>;
+  const connectionState = connectionFeedback(connectionTest);
 
   const testConnection = async () => {
-    setConnectionStatus("checking");
+    setConnectionTest({ status: "checking", detail: `Testing ${draftConfig.serverUrl || "server"}...` });
     try {
       const doctorAction = ACTIONS.find((a) => a.subcommand === "doctor");
       if (!doctorAction) {
-        setConnectionStatus("error");
+        setConnectionTest({ status: "error", checkedAt: Date.now(), detail: "Doctor action is not registered in the palette." });
         return;
       }
       const result = await executeAction(createAxonClient(draftConfig), doctorAction, "", draftConfig);
-      setConnectionStatus(result.ok ? "connected" : "error");
-    } catch {
-      setConnectionStatus("error");
+      setConnectionTest({
+        status: result.ok ? "connected" : "error",
+        checkedAt: Date.now(),
+        detail: connectionDetailFromResult(result),
+      });
+    } catch (error) {
+      setConnectionTest({ status: "error", checkedAt: Date.now(), detail: messageFromUnknown(error) });
     }
   };
 
-  const connectionLabel =
-    connectionStatus === "checking"
-      ? "checking…"
-      : connectionStatus === "connected"
-        ? "connected"
-        : connectionStatus === "error"
-          ? "connection failed"
-          : "not tested";
-
   const updateConfig = <Key extends keyof PaletteConfig>(key: Key, value: PaletteConfig[Key]) => {
+    if (key === "serverUrl" || key === "token" || key === "collection") {
+      setConnectionTest({ status: "unknown" });
+    }
     onChange({ ...draftConfig, [key]: value });
   };
   const updateEnv = (key: string, value: SettingValue) => {
@@ -117,9 +136,9 @@ export function SettingsPanel({
     <section className="settings-panel settings-panel-mock">
       <header className="settings-topline">
         <span className="settings-eyebrow">Settings</span>
-        <span className="settings-health" data-status={connectionStatus}>
+        <span className="settings-health" data-status={connectionTest.status}>
           <span aria-hidden="true" />
-          {connectionLabel}
+          {connectionState.label.toLowerCase()}
         </span>
       </header>
 
@@ -218,15 +237,25 @@ export function SettingsPanel({
           size="sm"
           variant="neutral"
           onClick={() => void testConnection()}
-          disabled={connectionStatus === "checking"}
+          disabled={connectionTest.status === "checking"}
           aria-label="Test Axon server connection"
         >
           <Activity size={14} />
-          {connectionStatus === "checking" ? "Checking…" : "Test connection"}
+          {connectionTest.status === "checking" ? "Checking…" : "Test connection"}
         </Button>
-        <span className="settings-footer-meta">
-          {tab === "env" ? `${ENV_COUNT} env vars` : tab === "config" ? `${CONFIG_COUNT} config knobs` : "precedence: CLI > env > config.toml > defaults"}
-        </span>
+        {connectionTest.status === "unknown" ? (
+          <span className="settings-footer-meta">
+            {tab === "env" ? `${ENV_COUNT} env vars` : tab === "config" ? `${CONFIG_COUNT} config knobs` : "precedence: CLI > env > config.toml > defaults"}
+          </span>
+        ) : (
+          <span className="settings-connection-result" data-status={connectionState.tone} aria-live="polite">
+            <span aria-hidden="true" />
+            <span>
+              <strong>{connectionState.label}</strong>
+              <span>{connectionState.detail}</span>
+            </span>
+          </span>
+        )}
         {configError && <span className="settings-error">{configError}</span>}
         <div className="settings-footer-actions">
           <Button size="sm" variant="neutral" onClick={onClose}>
@@ -239,6 +268,18 @@ export function SettingsPanel({
       </footer>
     </section>
   );
+}
+
+function connectionDetailFromResult(result: PaletteResult): string {
+  const payload = unwrapPayload(result.payload);
+  const detail = isRecord(payload) ? (strField(payload, "message") ?? strField(payload, "error") ?? strField(payload, "detail")) : undefined;
+  if (detail) return detail;
+  if (result.ok) return `${result.method} ${result.path} responded with HTTP ${result.status}.`;
+  return `HTTP ${result.status || "local"} from ${result.method} ${result.path}.`;
+}
+
+function messageFromUnknown(error: unknown): string {
+  return error instanceof Error ? error.message : "Connection test failed before Axon returned a response.";
 }
 
 function sectionName(section: string): string {
