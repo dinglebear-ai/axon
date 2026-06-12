@@ -1837,8 +1837,8 @@ textarea {
   min-height: 18px;
   padding: 1px 6px;
   color: var(--aurora-text-muted);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 66%, transparent);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 56%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 38%, transparent);
   border-radius: 5px;
   font-size: 10.5px;
   line-height: 1;
@@ -1858,7 +1858,7 @@ textarea {
   place-items: center;
   color: var(--aurora-accent-strong);
   background: color-mix(in srgb, var(--aurora-accent-primary) 13%, var(--aurora-control-surface));
-  border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 24%, transparent);
   border-radius: 10px;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 6%, transparent);
 }
@@ -2153,8 +2153,8 @@ textarea {
   align-items: center;
   justify-content: center;
   color: var(--aurora-text-muted);
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-control-surface) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 42%, transparent);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -2163,8 +2163,8 @@ textarea {
 .output-tools .output-tool-active,
 .output-tools .output-tool-copied {
   color: var(--aurora-accent-strong);
-  background: color-mix(in srgb, var(--aurora-accent-primary) 11%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--aurora-accent-primary) 28%, transparent);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 9%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 22%, transparent);
 }
 
 .output-tools button[data-tooltip]::after {
@@ -2298,9 +2298,12 @@ textarea {
   overflow: auto;
   padding: 13px 15px;
   color: var(--aurora-text-primary);
-  background: var(--aurora-page-bg);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 12px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--aurora-control-surface) 46%, transparent), transparent 34%),
+    var(--aurora-page-bg);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 46%, transparent);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 3%, transparent);
 }
 
 .output-code {
@@ -2365,8 +2368,8 @@ textarea {
 .output-markdown :where(code) {
   padding: 1px 4px;
   color: var(--aurora-code-function);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 82%, transparent);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 42%, transparent);
   border-radius: 5px;
   font-family: var(--aurora-font-mono);
   font-size: 0.92em;
@@ -2375,8 +2378,8 @@ textarea {
 .output-markdown :where(pre) {
   overflow: auto;
   padding: 12px;
-  background: var(--aurora-page-bg);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-page-bg) 88%, black);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 24%, transparent);
   border-radius: 8px;
 }
 
@@ -2483,10 +2486,12 @@ textarea {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 12px;
-  box-shadow: var(--aurora-highlight-medium);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--aurora-control-surface) 78%, transparent), var(--aurora-page-bg)),
+    var(--aurora-page-bg);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 38%, transparent);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 4%, transparent);
 }
 
 .operation-hero-info {
@@ -2581,8 +2586,8 @@ textarea {
   min-height: 22px;
   padding: 2px 7px;
   color: var(--aurora-text-muted);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 72%, transparent);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 54%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 36%, transparent);
   border-radius: 7px;
   font-size: 11px;
   line-height: 1.2;
@@ -2608,9 +2613,9 @@ textarea {
   gap: 10px;
   min-width: 0;
   padding: 10px;
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--aurora-control-surface) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 36%, transparent);
+  border-radius: 8px;
 }
 
 .operation-row-index {
@@ -2619,8 +2624,8 @@ textarea {
   height: 24px;
   place-items: center;
   color: var(--aurora-text-muted);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 70%, transparent);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 32%, transparent);
   border-radius: 7px;
   font-family: var(--aurora-font-mono);
   font-size: 11px;
@@ -2745,9 +2750,9 @@ textarea {
   gap: 4px;
   padding: 9px 10px;
   color: var(--aurora-text-primary);
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--aurora-control-surface) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 36%, transparent);
+  border-radius: 8px;
   text-decoration: none;
 }
 
@@ -2777,8 +2782,8 @@ textarea {
 .operation-table,
 .operation-detail-card {
   overflow: hidden;
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-control-surface) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 36%, transparent);
   border-radius: 8px;
 }
 
@@ -2788,7 +2793,7 @@ textarea {
   grid-template-columns: minmax(120px, 0.55fr) minmax(0, 1fr);
   gap: 12px;
   padding: 9px 11px;
-  border-bottom: 1px solid var(--aurora-border-default);
+  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 32%, transparent);
 }
 
 .operation-table-row:last-child,
@@ -2828,9 +2833,9 @@ textarea {
   gap: 2px 8px;
   min-width: 150px;
   padding: 8px;
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--aurora-control-surface) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 36%, transparent);
+  border-radius: 8px;
 }
 
 .operation-swatch > span {
@@ -2937,39 +2942,51 @@ textarea {
   text-decoration: none;
 }
 
+.output-markdown :where(code[data-streamdown="inline-code"]),
+.ask-answer :where(code[data-streamdown="inline-code"]),
+.operation-markdown :where(code[data-streamdown="inline-code"]),
 .operation-reader :where(code[data-streamdown="inline-code"]) {
   padding: 1px 4px;
   color: var(--aurora-accent-strong);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 74%, transparent);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 42%, transparent);
   border-radius: 5px;
   font-family: var(--aurora-font-mono);
   font-size: 0.92em;
 }
 
+.output-markdown [data-streamdown="code-block"],
+.ask-answer [data-streamdown="code-block"],
+.operation-markdown [data-streamdown="code-block"],
 .operation-reader [data-streamdown="code-block"] {
   gap: 0;
   margin: 12px 0;
   padding: 0;
   overflow: hidden;
-  background: #030b10;
+  background: color-mix(in srgb, var(--aurora-page-bg) 88%, black);
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--aurora-border-default) 34%, transparent),
-    0 8px 18px color-mix(in srgb, black 16%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--aurora-border-default) 24%, transparent),
+    0 8px 18px color-mix(in srgb, black 12%, transparent);
 }
 
+.output-markdown [data-streamdown="code-block-header"],
+.ask-answer [data-streamdown="code-block-header"],
+.operation-markdown [data-streamdown="code-block-header"],
 .operation-reader [data-streamdown="code-block-header"] {
   height: 28px;
   padding: 0 10px;
   color: var(--aurora-text-muted);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 35%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 26%, transparent);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 26%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 16%, transparent);
   font-family: var(--aurora-font-mono);
   font-size: 10.5px;
 }
 
+.output-markdown [data-streamdown="code-block-actions"],
+.ask-answer [data-streamdown="code-block-actions"],
+.operation-markdown [data-streamdown="code-block-actions"],
 .operation-reader [data-streamdown="code-block-actions"] {
   right: 7px;
   gap: 2px;
@@ -2979,22 +2996,31 @@ textarea {
   border-radius: 5px;
 }
 
+.output-markdown [data-streamdown="code-block-actions"] button,
+.ask-answer [data-streamdown="code-block-actions"] button,
+.operation-markdown [data-streamdown="code-block-actions"] button,
 .operation-reader [data-streamdown="code-block-actions"] button {
   position: relative;
   width: 24px;
   height: 24px;
   color: var(--aurora-text-muted);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 56%, transparent);
-  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 38%, transparent);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 42%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 24%, transparent);
   border-radius: 5px;
 }
 
+.output-markdown [data-streamdown="code-block-actions"] button:hover,
+.ask-answer [data-streamdown="code-block-actions"] button:hover,
+.operation-markdown [data-streamdown="code-block-actions"] button:hover,
 .operation-reader [data-streamdown="code-block-actions"] button:hover {
   color: var(--aurora-accent-strong);
-  background: color-mix(in srgb, var(--aurora-accent-primary) 12%, var(--aurora-panel-strong));
-  border-color: color-mix(in srgb, var(--aurora-accent-primary) 32%, transparent);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 10%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 24%, transparent);
 }
 
+.output-markdown [data-streamdown="code-block-actions"] button[title]::after,
+.ask-answer [data-streamdown="code-block-actions"] button[title]::after,
+.operation-markdown [data-streamdown="code-block-actions"] button[title]::after,
 .operation-reader [data-streamdown="code-block-actions"] button[title]::after {
   position: absolute;
   right: 50%;
@@ -3017,14 +3043,23 @@ textarea {
   font-size: 10.5px;
 }
 
+.output-markdown [data-streamdown="code-block-actions"] button[title]:hover::after,
+.output-markdown [data-streamdown="code-block-actions"] button[title]:focus-visible::after,
+.ask-answer [data-streamdown="code-block-actions"] button[title]:hover::after,
+.ask-answer [data-streamdown="code-block-actions"] button[title]:focus-visible::after,
+.operation-markdown [data-streamdown="code-block-actions"] button[title]:hover::after,
+.operation-markdown [data-streamdown="code-block-actions"] button[title]:focus-visible::after,
 .operation-reader [data-streamdown="code-block-actions"] button[title]:hover::after,
 .operation-reader [data-streamdown="code-block-actions"] button[title]:focus-visible::after {
   opacity: 1;
   transform: translate(50%, 0);
 }
 
+.output-markdown [data-streamdown="code-block-body"],
+.ask-answer [data-streamdown="code-block-body"],
+.operation-markdown [data-streamdown="code-block-body"],
 .operation-reader [data-streamdown="code-block-body"] {
-  padding: 9px 0 9px 10px;
+  padding: 10px 0 10px 10px;
   color: var(--aurora-text-primary);
   background: transparent;
   border: 0;
@@ -3034,6 +3069,12 @@ textarea {
   line-height: 1.58;
 }
 
+.output-markdown [data-streamdown="code-block-body"] pre,
+.output-markdown [data-streamdown="code-block-body"] code,
+.ask-answer [data-streamdown="code-block-body"] pre,
+.ask-answer [data-streamdown="code-block-body"] code,
+.operation-markdown [data-streamdown="code-block-body"] pre,
+.operation-markdown [data-streamdown="code-block-body"] code,
 .operation-reader [data-streamdown="code-block-body"] pre,
 .operation-reader [data-streamdown="code-block-body"] code {
   margin: 0;
@@ -3046,14 +3087,23 @@ textarea {
   font-size: inherit;
 }
 
+.output-markdown [data-streamdown="code-block-body"] span[style*="--sdm-c"],
+.ask-answer [data-streamdown="code-block-body"] span[style*="--sdm-c"],
+.operation-markdown [data-streamdown="code-block-body"] span[style*="--sdm-c"],
 .operation-reader [data-streamdown="code-block-body"] span[style*="--sdm-c"] {
   color: var(--sdm-c) !important;
 }
 
+.output-markdown [data-streamdown="code-block-body"] span[style*="--sdm-tbg"],
+.ask-answer [data-streamdown="code-block-body"] span[style*="--sdm-tbg"],
+.operation-markdown [data-streamdown="code-block-body"] span[style*="--sdm-tbg"],
 .operation-reader [data-streamdown="code-block-body"] span[style*="--sdm-tbg"] {
   background: var(--sdm-tbg);
 }
 
+.output-markdown [data-streamdown="code-block-body"] span::before,
+.ask-answer [data-streamdown="code-block-body"] span::before,
+.operation-markdown [data-streamdown="code-block-body"] span::before,
 .operation-reader [data-streamdown="code-block-body"] span::before {
   color: color-mix(in srgb, var(--aurora-text-muted) 52%, transparent);
 }

@@ -47,6 +47,16 @@ pub struct QdrantPayload {
     pub memory_repo: Option<String>,
     #[serde(default, rename = "file")]
     pub memory_file: Option<String>,
+    #[serde(default, rename = "workspace")]
+    pub memory_workspace: Option<String>,
+    #[serde(default, rename = "git_branch")]
+    pub memory_git_branch: Option<String>,
+    #[serde(default, rename = "git_commit")]
+    pub memory_git_commit: Option<String>,
+    #[serde(default, rename = "git_dirty")]
+    pub memory_git_dirty: Option<bool>,
+    #[serde(default, rename = "cwd")]
+    pub memory_cwd: Option<String>,
     #[serde(default, rename = "confidence")]
     pub memory_confidence: Option<f64>,
     #[serde(default, rename = "status")]

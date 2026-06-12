@@ -51,6 +51,18 @@ fn normalize_remember_rejects_caller_supplied_id() {
     assert!(err.to_string().contains("server-generated"));
 }
 
+#[test]
+fn normalize_remember_autofills_project_and_repo_from_git_checkout() {
+    let mut req = remember_req("Repo-scoped fact");
+    req.project = None;
+    req.repo = None;
+
+    let memory = normalize_remember(req).expect("normalize");
+
+    assert_eq!(memory.project.as_deref(), Some("axon"));
+    assert_eq!(memory.repo.as_deref(), Some("jmagar/axon"));
+}
+
 #[tokio::test]
 async fn upsert_node_is_idempotent_and_uses_ms_timestamps() {
     let pool = open_sqlite_pool(":memory:").await.expect("pool");
@@ -64,6 +76,11 @@ async fn upsert_node_is_idempotent_and_uses_ms_timestamps() {
         .expect("node");
 
     assert_eq!(item.id, memory.id.to_string());
+    assert_eq!(item.workspace, memory.workspace);
+    assert_eq!(item.git_branch, memory.git_branch);
+    assert_eq!(item.git_commit, memory.git_commit);
+    assert_eq!(item.git_dirty, memory.git_dirty);
+    assert_eq!(item.cwd, memory.cwd);
     assert_eq!(item.created_at, 1_000);
     assert_eq!(item.updated_at, 2_000);
     assert_eq!(item.last_seen_at, 2_000);
@@ -231,6 +248,11 @@ fn format_context_defangs_and_budget_truncates() {
         project: Some("axon".to_string()),
         repo: None,
         file: None,
+        workspace: None,
+        git_branch: None,
+        git_commit: None,
+        git_dirty: None,
+        cwd: None,
         confidence: 1.0,
         status: "active".to_string(),
         created_at: 1,
@@ -269,6 +291,11 @@ fn format_context_clips_first_large_entry_without_breaking_xml_shape() {
             project: Some("axon".to_string()),
             repo: Some("jmagar/axon".to_string()),
             file: None,
+            workspace: None,
+            git_branch: None,
+            git_commit: None,
+            git_dirty: None,
+            cwd: None,
             confidence: 1.0,
             status: "active".to_string(),
             created_at: 1,

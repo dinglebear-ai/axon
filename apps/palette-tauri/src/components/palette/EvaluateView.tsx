@@ -2,6 +2,7 @@ import { Streamdown } from "streamdown";
 
 import { ConversationThread } from "@/components/palette/AskConversation";
 import { arrField, strField, unwrapPayload } from "@/lib/payload";
+import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
 
 // Side-by-side comparison of the same question answered without retrieval
 // (baseline) vs. with RAG context injected, plus the judge's analysis.
@@ -30,7 +31,9 @@ export function EvaluateView({ payload }: { payload: unknown }) {
         <section className="evaluate-verdict">
           <h3 className="stats-heading">Judge analysis</h3>
           <div className="ask-answer">
-            <Streamdown>{analysis}</Streamdown>
+            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
+              {analysis}
+            </Streamdown>
           </div>
         </section>
       )}
