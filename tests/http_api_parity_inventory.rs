@@ -1,5 +1,5 @@
 use axon::services::client_contract::rest_route_contracts;
-use axon::services::types::supported_routes;
+use axon::services::types::{RestRouteAuth, rest_route_inventory, supported_routes};
 use std::collections::BTreeSet;
 
 const DOC: &str = include_str!("../docs/reference/api-parity.md");
@@ -61,6 +61,18 @@ fn parity_doc_lists_all_advertised_http_routes() {
             "docs/reference/api-parity.md does not mention advertised HTTP route `{route}`"
         );
     }
+}
+
+#[test]
+fn parity_doc_matches_capabilities_auth_contract() {
+    let capabilities = DOC
+        .lines()
+        .find(|line| line.starts_with("| `GET /v1/capabilities` |"))
+        .expect("capabilities row");
+    assert!(
+        capabilities.contains("axon:read or axon:write"),
+        "{capabilities}"
+    );
 }
 
 #[test]
@@ -155,6 +167,163 @@ fn rest_route_contracts_match_openapi_request_schemas() {
             actual, expected,
             "OpenAPI schema {} drifted from canonical REST route contract for {} {}",
             contract.schema_name, contract.method, contract.path
+        );
+    }
+}
+
+#[test]
+fn route_inventory_openapi_operations_are_registered() {
+    let openapi = axon::web::openapi_document();
+    let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
+    let paths = openapi_json
+        .get("paths")
+        .and_then(serde_json::Value::as_object)
+        .expect("OpenAPI paths");
+
+    for route in rest_route_inventory().iter().filter(|route| route.openapi) {
+        let path_item = paths
+            .get(route.path)
+            .unwrap_or_else(|| panic!("OpenAPI is missing route {}", route.display()));
+        let method = route.method.to_ascii_lowercase();
+        assert!(
+            path_item.get(&method).is_some(),
+            "OpenAPI path {} is missing method {}",
+            route.path,
+            route.method
+        );
+    }
+}
+
+#[test]
+fn openapi_security_schemes_and_operation_security_match_inventory() {
+    let openapi = axon::web::openapi_document();
+    let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
+    let schemes = openapi_json
+        .pointer("/components/securitySchemes")
+        .and_then(serde_json::Value::as_object)
+        .expect("OpenAPI security schemes");
+    assert_eq!(schemes["bearerAuth"]["type"], "http");
+    assert_eq!(schemes["bearerAuth"]["scheme"], "bearer");
+    assert_eq!(schemes["oauth2"]["type"], "oauth2");
+
+    let paths = openapi_json
+        .get("paths")
+        .and_then(serde_json::Value::as_object)
+        .expect("OpenAPI paths");
+    for route in rest_route_inventory().iter().filter(|route| route.openapi) {
+        let operation = paths
+            .get(route.path)
+            .and_then(|path_item| path_item.get(route.method.to_ascii_lowercase()))
+            .unwrap_or_else(|| panic!("OpenAPI operation missing for {}", route.display()));
+        match route.auth {
+            RestRouteAuth::Public => assert!(
+                operation.get("security").is_none(),
+                "public operation {} must not require auth",
+                route.display()
+            ),
+            RestRouteAuth::Read | RestRouteAuth::Write => {
+                let security = operation
+                    .get("security")
+                    .and_then(serde_json::Value::as_array)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "protected operation {} must declare security",
+                            route.display()
+                        )
+                    });
+                assert!(
+                    security
+                        .iter()
+                        .any(|entry| entry.get("bearerAuth").is_some()),
+                    "{} must allow bearer auth",
+                    route.display()
+                );
+                for expected_scope in ["axon:read", "axon:write"] {
+                    assert!(
+                        security.iter().any(|entry| {
+                            entry
+                                .get("oauth2")
+                                .and_then(serde_json::Value::as_array)
+                                .is_some_and(|scopes| {
+                                    scopes
+                                        .iter()
+                                        .any(|scope| scope.as_str() == Some(expected_scope))
+                                })
+                        }),
+                        "{} must allow OAuth scope {expected_scope}",
+                        route.display()
+                    );
+                }
+                for status in ["401", "403"] {
+                    let response = operation
+                        .pointer(&format!(
+                            "/responses/{status}/content/application~1json/schema/$ref"
+                        ))
+                        .and_then(serde_json::Value::as_str);
+                    assert_eq!(
+                        response,
+                        Some("#/components/schemas/ErrorBody"),
+                        "{} must document JSON ErrorBody auth response {status}",
+                        route.display()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn openapi_artifact_route_accepts_slash_containing_path_as_query_param() {
+    let openapi = axon::web::openapi_document();
+    let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
+    let paths = openapi_json
+        .get("paths")
+        .and_then(serde_json::Value::as_object)
+        .expect("OpenAPI paths");
+
+    assert!(
+        paths.contains_key("/v1/artifacts"),
+        "OpenAPI should advertise the slash-preserving query route"
+    );
+    assert!(
+        !paths.contains_key("/v1/artifacts/{path}"),
+        "OpenAPI must not imply artifact paths are a single segment"
+    );
+    let parameters = paths["/v1/artifacts"]["get"]["parameters"]
+        .as_array()
+        .expect("artifact parameters");
+    let path = parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "path")
+        .expect("path query parameter");
+    assert_eq!(path["in"], "query");
+    assert_eq!(path["required"], true);
+}
+
+#[test]
+fn openapi_error_body_kind_uses_error_kind_enum_schema() {
+    let openapi = axon::web::openapi_document();
+    let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
+    assert_eq!(
+        openapi_json.pointer("/components/schemas/ErrorBody/properties/kind/$ref"),
+        Some(&serde_json::json!("#/components/schemas/ErrorKind"))
+    );
+    let error_kind = openapi_json
+        .pointer("/components/schemas/ErrorKind/enum")
+        .and_then(serde_json::Value::as_array)
+        .expect("ErrorKind enum");
+    for kind in [
+        "bad_request",
+        "unauthorized",
+        "forbidden",
+        "not_found",
+        "upstream_unavailable",
+        "timeout",
+        "vertical_rate_limited",
+    ] {
+        assert!(
+            error_kind.iter().any(|value| value.as_str() == Some(kind)),
+            "ErrorKind enum should include {kind}"
         );
     }
 }

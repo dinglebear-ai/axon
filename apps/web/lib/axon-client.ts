@@ -1,4 +1,4 @@
-import type { components } from './generated/axon-api';
+import type { components, operations, paths } from './generated/axon-api';
 
 type FetchLike = typeof fetch;
 
@@ -19,6 +19,9 @@ export type AxonClientOptions = {
 };
 
 type Schemas = components['schemas'];
+export type AxonApiPaths = paths;
+export type AxonApiOperations = operations;
+export type ArtifactRouteQuery = paths['/v1/artifacts']['get']['parameters']['query'];
 type ErrorBodySchema = Schemas['ErrorBody'];
 type RestQueryRequestSchema = Schemas['RestQueryRequest'];
 type RestRetrieveRequestSchema = Schemas['RestRetrieveRequest'];
@@ -198,6 +201,10 @@ export class AxonClient {
 
   runWatch(id: string): Promise<unknown> {
     return this.post(`/v1/watch/${encodeURIComponent(id)}/run`);
+  }
+
+  artifactUrl(path: ArtifactRouteQuery['path']): string {
+    return this.url('/v1/artifacts', { path });
   }
 
   openApi(): Promise<unknown> {

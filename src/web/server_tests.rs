@@ -5,6 +5,7 @@
 use super::HttpError;
 use super::test_support::{EnvGuard, spawn_ask_test_server, spawn_full_test_server, stop};
 use crate::mcp::auth::AuthPolicy;
+use crate::services::types::{RestRouteAuth, rest_route_inventory};
 use axum::http::StatusCode;
 use serial_test::serial;
 use std::error::Error;
@@ -95,65 +96,13 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
     let (base, shutdown, handle) =
         spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
     let client = reqwest::Client::new();
-    let job_id = Uuid::nil();
-    let crawl_job = format!("/v1/crawl/{job_id}");
-    let crawl_cancel = format!("/v1/crawl/{job_id}/cancel");
-    let embed_job = format!("/v1/embed/{job_id}");
-    let embed_cancel = format!("/v1/embed/{job_id}/cancel");
-    let extract_job = format!("/v1/extract/{job_id}");
-    let extract_cancel = format!("/v1/extract/{job_id}/cancel");
-    let ingest_job = format!("/v1/ingest/{job_id}");
-    let ingest_cancel = format!("/v1/ingest/{job_id}/cancel");
-    let watch_run = format!("/v1/watch/{job_id}/run");
-    let routes = [
-        ("GET", "/v1/capabilities"),
-        ("GET", "/v1/sources"),
-        ("GET", "/v1/domains"),
-        ("GET", "/v1/stats"),
-        ("GET", "/v1/status"),
-        ("GET", "/v1/doctor"),
-        ("POST", "/v1/ask"),
-        ("POST", "/v1/ask/stream"),
-        ("POST", "/v1/query"),
-        ("POST", "/v1/retrieve"),
-        ("POST", "/v1/evaluate"),
-        ("POST", "/v1/suggest"),
-        ("POST", "/v1/scrape"),
-        ("POST", "/v1/map"),
-        ("POST", "/v1/search"),
-        ("POST", "/v1/research"),
-        ("POST", "/v1/memory"),
-        ("POST", "/v1/crawl"),
-        ("GET", crawl_job.as_str()),
-        ("POST", crawl_cancel.as_str()),
-        ("POST", "/v1/crawl/cleanup"),
-        ("DELETE", "/v1/crawl"),
-        ("POST", "/v1/crawl/recover"),
-        ("POST", "/v1/embed"),
-        ("GET", embed_job.as_str()),
-        ("POST", embed_cancel.as_str()),
-        ("POST", "/v1/embed/cleanup"),
-        ("DELETE", "/v1/embed"),
-        ("POST", "/v1/embed/recover"),
-        ("POST", "/v1/extract"),
-        ("GET", extract_job.as_str()),
-        ("POST", extract_cancel.as_str()),
-        ("POST", "/v1/extract/cleanup"),
-        ("DELETE", "/v1/extract"),
-        ("POST", "/v1/extract/recover"),
-        ("POST", "/v1/ingest"),
-        ("GET", ingest_job.as_str()),
-        ("POST", ingest_cancel.as_str()),
-        ("POST", "/v1/ingest/cleanup"),
-        ("DELETE", "/v1/ingest"),
-        ("POST", "/v1/ingest/recover"),
-        ("POST", "/v1/dedupe"),
-        ("GET", "/v1/watch"),
-        ("POST", "/v1/watch"),
-        ("POST", watch_run.as_str()),
-    ];
+    let routes = rest_route_inventory()
+        .iter()
+        .filter(|route| route.auth != RestRouteAuth::Public);
 
-    for (method, path) in routes {
+    for route in routes {
+        let method = route.method;
+        let path = route_to_test_path(route.path);
         let response = match method {
             "DELETE" => client.delete(format!("{base}{path}")).send().await,
             "GET" => client.get(format!("{base}{path}")).send().await,
@@ -172,9 +121,19 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
             StatusCode::UNAUTHORIZED,
             "{method} {path} should reject missing auth"
         );
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|err| panic!("{method} {path} returned non-JSON auth error: {err}"));
+        assert_eq!(body["kind"], "unauthorized", "{method} {path}");
     }
 
     stop(shutdown, handle).await;
+}
+
+fn route_to_test_path(path: &str) -> String {
+    path.replace("{id}", &Uuid::nil().to_string())
+        .replace("{path}", "missing.txt")
 }
 
 #[tokio::test]
@@ -231,6 +190,26 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
 
     assert_eq!(spec.status(), StatusCode::OK);
     assert_eq!(ui.status(), StatusCode::OK);
+    assert_eq!(
+        ui.headers()
+            .get("x-content-type-options")
+            .and_then(|value| value.to_str().ok()),
+        Some("nosniff")
+    );
+    assert_eq!(
+        ui.headers()
+            .get("referrer-policy")
+            .and_then(|value| value.to_str().ok()),
+        Some("no-referrer")
+    );
+    assert_eq!(
+        ui.headers()
+            .get("x-frame-options")
+            .and_then(|value| value.to_str().ok()),
+        Some("DENY")
+    );
+    assert!(ui.headers().contains_key("content-security-policy"));
+    assert!(ui.headers().contains_key("permissions-policy"));
 
     let spec_json: serde_json::Value = spec.json().await.expect("openapi json");
     let paths = spec_json["paths"].as_object().expect("openapi paths");

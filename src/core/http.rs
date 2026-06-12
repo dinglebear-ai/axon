@@ -29,7 +29,7 @@ pub(crate) use client::internal_service_http_client;
 pub use client::{build_client, fetch_html, http_client};
 pub use conditional::{Probe, conditional_probe};
 pub use error::HttpError;
-pub use headers::parse_custom_headers;
+pub use headers::{parse_custom_headers, validate_custom_header_policy};
 pub use normalize::normalize_url;
 #[cfg(test)]
 pub(crate) use ssrf::LoopbackGuard;

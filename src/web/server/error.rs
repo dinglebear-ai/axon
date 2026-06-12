@@ -10,14 +10,116 @@ use std::error::Error;
 #[derive(Debug, Clone)]
 pub(crate) struct HttpError {
     status: StatusCode,
-    kind: &'static str,
+    kind: ErrorKind,
     message: String,
     diagnostics: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ErrorKind {
+    BadGateway,
+    BadRequest,
+    ChallengeDetected,
+    Forbidden,
+    Internal,
+    InvalidPath,
+    LadderExhausted,
+    NotFound,
+    OutputDirError,
+    PathError,
+    PathEscape,
+    PayloadTooLarge,
+    RateLimited,
+    ReadError,
+    StructuredDataMalformed,
+    SymlinkNotAllowed,
+    Timeout,
+    Unauthorized,
+    UnsupportedMediaType,
+    UpstreamUnavailable,
+    VerticalAuthInvalid,
+    VerticalAuthMissing,
+    VerticalBlockedAntibot,
+    VerticalRateLimited,
+    VerticalTargetNotFound,
+    VerticalTargetUnavailable,
+    VerticalUnsupportedUrl,
+}
+
+impl ErrorKind {
+    #[cfg(test)]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::BadGateway => "bad_gateway",
+            Self::BadRequest => "bad_request",
+            Self::ChallengeDetected => "challenge_detected",
+            Self::Forbidden => "forbidden",
+            Self::Internal => "internal",
+            Self::InvalidPath => "invalid_path",
+            Self::LadderExhausted => "ladder_exhausted",
+            Self::NotFound => "not_found",
+            Self::OutputDirError => "output_dir_error",
+            Self::PathError => "path_error",
+            Self::PathEscape => "path_escape",
+            Self::PayloadTooLarge => "payload_too_large",
+            Self::RateLimited => "rate_limited",
+            Self::ReadError => "read_error",
+            Self::StructuredDataMalformed => "structured_data_malformed",
+            Self::SymlinkNotAllowed => "symlink_not_allowed",
+            Self::Timeout => "timeout",
+            Self::Unauthorized => "unauthorized",
+            Self::UnsupportedMediaType => "unsupported_media_type",
+            Self::UpstreamUnavailable => "upstream_unavailable",
+            Self::VerticalAuthInvalid => "vertical_auth_invalid",
+            Self::VerticalAuthMissing => "vertical_auth_missing",
+            Self::VerticalBlockedAntibot => "vertical_blocked_antibot",
+            Self::VerticalRateLimited => "vertical_rate_limited",
+            Self::VerticalTargetNotFound => "vertical_target_not_found",
+            Self::VerticalTargetUnavailable => "vertical_target_unavailable",
+            Self::VerticalUnsupportedUrl => "vertical_unsupported_url",
+        }
+    }
+}
+
+impl From<&'static str> for ErrorKind {
+    fn from(kind: &'static str) -> Self {
+        match kind {
+            "bad_gateway" => Self::BadGateway,
+            "bad_request" => Self::BadRequest,
+            "challenge_detected" => Self::ChallengeDetected,
+            "forbidden" => Self::Forbidden,
+            "internal" => Self::Internal,
+            "invalid_path" => Self::InvalidPath,
+            "ladder_exhausted" => Self::LadderExhausted,
+            "not_found" => Self::NotFound,
+            "output_dir_error" => Self::OutputDirError,
+            "path_error" => Self::PathError,
+            "path_escape" => Self::PathEscape,
+            "payload_too_large" => Self::PayloadTooLarge,
+            "rate_limited" => Self::RateLimited,
+            "read_error" => Self::ReadError,
+            "structured_data_malformed" => Self::StructuredDataMalformed,
+            "symlink_not_allowed" => Self::SymlinkNotAllowed,
+            "timeout" => Self::Timeout,
+            "unauthorized" => Self::Unauthorized,
+            "unsupported_media_type" => Self::UnsupportedMediaType,
+            "upstream_unavailable" => Self::UpstreamUnavailable,
+            "vertical_auth_invalid" => Self::VerticalAuthInvalid,
+            "vertical_auth_missing" => Self::VerticalAuthMissing,
+            "vertical_blocked_antibot" => Self::VerticalBlockedAntibot,
+            "vertical_rate_limited" => Self::VerticalRateLimited,
+            "vertical_target_not_found" => Self::VerticalTargetNotFound,
+            "vertical_target_unavailable" => Self::VerticalTargetUnavailable,
+            "vertical_unsupported_url" => Self::VerticalUnsupportedUrl,
+            _ => Self::Internal,
+        }
+    }
+}
+
 #[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct ErrorBody {
-    kind: String,
+    kind: ErrorKind,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Object)]
@@ -25,10 +127,14 @@ pub(crate) struct ErrorBody {
 }
 
 impl HttpError {
-    pub(crate) fn new(status: StatusCode, kind: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        status: StatusCode,
+        kind: impl Into<ErrorKind>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             status,
-            kind,
+            kind: kind.into(),
             message: message.into(),
             diagnostics: None,
         }
@@ -49,7 +155,7 @@ impl HttpError {
 
     #[cfg(test)]
     pub(crate) fn kind(&self) -> &'static str {
-        self.kind
+        self.kind.as_str()
     }
 
     #[cfg(test)]
@@ -84,7 +190,7 @@ impl HttpError {
         log_handler_error(status, kind, err);
         Self {
             status,
-            kind,
+            kind: kind.into(),
             message: response_message(status, err),
             diagnostics,
         }
@@ -102,7 +208,7 @@ impl IntoResponse for HttpError {
         (
             self.status,
             Json(ErrorBody {
-                kind: self.kind.to_string(),
+                kind: self.kind,
                 message: self.message,
                 diagnostics: self.diagnostics,
             }),

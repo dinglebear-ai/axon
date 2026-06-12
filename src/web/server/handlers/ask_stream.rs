@@ -10,16 +10,39 @@ use axum::{
         sse::{Event, Sse},
     },
 };
-use futures_util::stream;
+use futures_util::Stream;
 use serde::Serialize;
 use std::{
     convert::Infallible,
+    pin::Pin,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    task::{Context, Poll},
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinHandle};
+
+const SSE_EVENT_BUFFER: usize = 32;
+
+struct AbortOnDropStream {
+    rx: mpsc::Receiver<Result<Event, Infallible>>,
+    handle: JoinHandle<()>,
+}
+
+impl Stream for AbortOnDropStream {
+    type Item = Result<Event, Infallible>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.rx).poll_recv(cx)
+    }
+}
+
+impl Drop for AbortOnDropStream {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -78,14 +101,14 @@ pub async fn v1_ask_stream(
             .into_response();
     }
 
-    let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(SSE_EVENT_BUFFER);
     let disconnected = Arc::new(AtomicBool::new(false));
     let mut req_cfg = (*cfg).clone();
     super::ask::apply_ask_overrides(&mut req_cfg, &req);
     req_cfg.ask_stream = true;
     req_cfg.json_output = false;
 
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         if tx
             .send(Ok(sse_json(
                 "meta",
@@ -93,8 +116,10 @@ pub async fn v1_ask_stream(
                     phase: "retrieving",
                 },
             )))
+            .await
             .is_err()
         {
+            disconnected.store(true, Ordering::Relaxed);
             return;
         }
 
@@ -109,6 +134,7 @@ pub async fn v1_ask_stream(
                 if let ServiceEvent::SynthesisDelta { text } = event
                     && delta_tx
                         .send(Ok(sse_json("delta", &AskStreamEvent::Delta { text })))
+                        .await
                         .is_err()
                 {
                     delta_disconnected.store(true, Ordering::Relaxed);
@@ -134,6 +160,7 @@ pub async fn v1_ask_stream(
                             result: Box::new(result),
                         },
                     )))
+                    .await
                     .is_err()
                 {
                     disconnected.store(true, Ordering::Relaxed);
@@ -142,6 +169,7 @@ pub async fn v1_ask_stream(
             Err(message) => {
                 if tx
                     .send(Ok(sse_json("error", &AskStreamEvent::Error { message })))
+                    .await
                     .is_err()
                 {
                     disconnected.store(true, Ordering::Relaxed);
@@ -150,10 +178,21 @@ pub async fn v1_ask_stream(
         }
     });
 
-    let event_stream = stream::unfold(rx, |mut rx| async {
-        rx.recv().await.map(|event| (event, rx))
-    });
+    let event_stream = AbortOnDropStream { rx, handle };
     Sse::new(event_stream).into_response()
+}
+
+#[cfg(test)]
+pub(super) fn sse_event_buffer_for_tests() -> usize {
+    SSE_EVENT_BUFFER
+}
+
+#[cfg(test)]
+pub(super) fn bounded_stream_for_tests(
+    rx: mpsc::Receiver<Result<Event, Infallible>>,
+    handle: JoinHandle<()>,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    AbortOnDropStream { rx, handle }
 }
 
 #[cfg(test)]

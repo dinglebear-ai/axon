@@ -432,7 +432,7 @@ Apps use `relative_path` to construct a safe URL: `/v1/artifacts/<relative_path>
 
 - App flows must never display raw absolute server paths (`/home/axon/.axon/...`) as primary output.
 - App flows must never stop at a job ID without polling to a terminal state when `status_url` is present.
-- Automation API endpoints (`POST /v1/crawl`, `GET /v1/crawl/{id}`, `GET /v1/artifacts/{path}`) must remain available unchanged.
+- Automation API endpoints (`POST /v1/crawl`, `GET /v1/crawl/{id}`, canonical `GET /v1/artifacts?path=...`) must remain available. The legacy slash-capturing artifact path remains a runtime compatibility alias.
 
 ### Coverage
 

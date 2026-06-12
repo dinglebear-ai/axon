@@ -97,6 +97,7 @@ pub(crate) async fn start_crawl(
     if req.urls.is_empty() {
         return Err(HttpError::bad_request("urls cannot be empty"));
     }
+    validate_forwarded_headers(&req.headers)?;
     validate_ssrf_urls(&req.urls)?;
     let cfg = cfg.apply_overrides(&ConfigOverrides {
         max_pages: req.max_pages,
@@ -197,6 +198,7 @@ pub(crate) async fn start_extract(
     if req.urls.is_empty() {
         return Err(HttpError::bad_request("urls cannot be empty"));
     }
+    validate_forwarded_headers(&req.headers)?;
     if !matches!(
         req.mode.unwrap_or(RestExtractMode::Auto),
         RestExtractMode::Auto
@@ -298,4 +300,8 @@ fn ingest_source(
 ) -> Result<services::ingest::IngestSource, HttpError> {
     let req = crate::mcp::schema::IngestRequest::from(req);
     services::ingest::source_from_mcp_request(&req, cfg).map_err(HttpError::bad_request)
+}
+
+fn validate_forwarded_headers(headers: &[String]) -> Result<(), HttpError> {
+    crate::core::http::validate_custom_header_policy(headers).map_err(HttpError::bad_request)
 }

@@ -12,6 +12,12 @@ pub fn parse_custom_headers(raw_headers: &[String]) -> reqwest::header::HeaderMa
             log_warn("skipping malformed header (no ': ' separator)");
             continue;
         };
+        if is_rejected_forwarded_header(k) {
+            log_warn(&format!(
+                "skipping header {k:?}: hop-by-hop and internal forwarding headers are not allowed"
+            ));
+            continue;
+        }
         match (
             reqwest::header::HeaderName::from_bytes(k.as_bytes()),
             reqwest::header::HeaderValue::from_str(v),
@@ -28,6 +34,45 @@ pub fn parse_custom_headers(raw_headers: &[String]) -> reqwest::header::HeaderMa
         }
     }
     map
+}
+
+pub fn validate_custom_header_policy(raw_headers: &[String]) -> Result<(), String> {
+    for raw in raw_headers {
+        let Some((name, _value)) = raw.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        if is_rejected_forwarded_header(name) {
+            return Err(format!(
+                "header {name:?} is not allowed; hop-by-hop and internal forwarding headers cannot be forwarded"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_rejected_forwarded_header(name: &str) -> bool {
+    let name = name.trim().to_ascii_lowercase();
+    if name.starts_with("x-forwarded-") {
+        return true;
+    }
+    matches!(
+        name.as_str(),
+        "connection"
+            | "keep-alive"
+            | "proxy-connection"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+            | "host"
+            | "content-length"
+            | "forwarded"
+            | "via"
+            | "x-real-ip"
+    )
 }
 #[cfg(test)]
 #[path = "headers_tests.rs"]

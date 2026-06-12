@@ -19,7 +19,7 @@ use super::super::error::HttpError;
 use super::rag::required_text;
 
 #[path = "exploration_stream.rs"]
-mod exploration_stream;
+pub(crate) mod exploration_stream;
 pub(crate) use exploration_stream::{research_stream, summarize_stream};
 
 pub(super) type WebState = (super::super::state::AppState, Arc<Config>);
@@ -87,7 +87,7 @@ pub(crate) async fn summarize(
     Json(req): Json<SummarizeRequest>,
 ) -> Result<Json<services::types::SummarizeResult>, HttpError> {
     let urls = summarize_request_urls(&req)?;
-    let cfg = summarize_config(&cfg, &req);
+    let cfg = summarize_config(&cfg, &req)?;
     services::summarize::summarize(&cfg, &urls, None)
         .await
         .map(Json)
@@ -340,6 +340,7 @@ fn request_urls(req: &ScrapeRequest) -> Result<Vec<String>, HttpError> {
 }
 
 fn scrape_config(cfg: &Config, req: &ScrapeRequest) -> Result<Config, HttpError> {
+    validate_forwarded_headers(&req.headers)?;
     let cfg = cfg.apply_overrides(&ConfigOverrides {
         render_mode: req.render_mode,
         format: req.format,
@@ -374,8 +375,9 @@ pub(super) fn summarize_request_urls(req: &SummarizeRequest) -> Result<Vec<Strin
     Ok(urls)
 }
 
-pub(super) fn summarize_config(cfg: &Config, req: &SummarizeRequest) -> Config {
-    cfg.apply_overrides(&ConfigOverrides {
+pub(super) fn summarize_config(cfg: &Config, req: &SummarizeRequest) -> Result<Config, HttpError> {
+    validate_forwarded_headers(&req.headers)?;
+    Ok(cfg.apply_overrides(&ConfigOverrides {
         render_mode: req.render_mode,
         root_selector: req.root_selector.clone(),
         exclude_selector: req.exclude_selector.clone(),
@@ -385,7 +387,11 @@ pub(super) fn summarize_config(cfg: &Config, req: &SummarizeRequest) -> Config {
             Some(req.headers.clone())
         },
         ..ConfigOverrides::default()
-    })
+    }))
+}
+
+fn validate_forwarded_headers(headers: &[String]) -> Result<(), HttpError> {
+    crate::core::http::validate_custom_header_policy(headers).map_err(HttpError::bad_request)
 }
 
 fn map_options(limit: Option<usize>, offset: Option<usize>) -> MapOptions {

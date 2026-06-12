@@ -1,4 +1,5 @@
 use crate::mcp::schema::AxonRequest;
+use crate::services::types::supported_routes;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -68,7 +69,7 @@ impl ClientActionError {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 pub struct ServerInfo {
     pub version: String,
     pub schema_version: String,
@@ -153,74 +154,6 @@ pub fn supported_actions() -> Vec<String> {
         "ingest.cleanup",
         "ingest.clear",
         "ingest.recover",
-    ]
-    .into_iter()
-    .map(ToString::to_string)
-    .collect()
-}
-
-pub fn supported_routes() -> Vec<String> {
-    [
-        "GET /healthz",
-        "GET /readyz",
-        "GET /v1/capabilities",
-        "GET /v1/sources",
-        "GET /v1/domains",
-        "GET /v1/stats",
-        "GET /v1/status",
-        "GET /v1/doctor",
-        "POST /v1/ask",
-        "POST /v1/ask/stream",
-        "POST /v1/chat",
-        "POST /v1/chat/stream",
-        "POST /v1/query",
-        "POST /v1/retrieve",
-        "POST /v1/evaluate",
-        "POST /v1/suggest",
-        "POST /v1/scrape",
-        "POST /v1/summarize",
-        "POST /v1/map",
-        "POST /v1/endpoints",
-        "POST /v1/brand",
-        "POST /v1/diff",
-        "POST /v1/screenshot",
-        "POST /v1/search",
-        "POST /v1/research",
-        "POST /v1/memory",
-        "POST /v1/crawl",
-        "GET /v1/crawl",
-        "GET /v1/crawl/{id}",
-        "POST /v1/crawl/{id}/cancel",
-        "POST /v1/crawl/cleanup",
-        "DELETE /v1/crawl",
-        "POST /v1/crawl/recover",
-        "POST /v1/embed",
-        "GET /v1/embed",
-        "GET /v1/embed/{id}",
-        "POST /v1/embed/{id}/cancel",
-        "POST /v1/embed/cleanup",
-        "DELETE /v1/embed",
-        "POST /v1/embed/recover",
-        "POST /v1/extract",
-        "GET /v1/extract",
-        "GET /v1/extract/{id}",
-        "POST /v1/extract/{id}/cancel",
-        "POST /v1/extract/cleanup",
-        "DELETE /v1/extract",
-        "POST /v1/extract/recover",
-        "POST /v1/ingest",
-        "POST /v1/ingest/sessions/prepared",
-        "GET /v1/ingest",
-        "GET /v1/ingest/{id}",
-        "POST /v1/ingest/{id}/cancel",
-        "POST /v1/ingest/cleanup",
-        "DELETE /v1/ingest",
-        "POST /v1/ingest/recover",
-        "POST /v1/dedupe",
-        "GET /v1/watch",
-        "POST /v1/watch",
-        "POST /v1/watch/{id}/run",
-        "GET /api-docs/openapi.json",
     ]
     .into_iter()
     .map(ToString::to_string)

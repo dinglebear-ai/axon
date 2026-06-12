@@ -77,6 +77,7 @@ pub(super) fn validate_collection_name(name: &str) -> Result<(), String> {
 
 /// Validate `--header "K: V"` entries before they reach the request layer.
 pub(super) fn validate_custom_headers(headers: Vec<String>) -> Result<Vec<String>, String> {
+    crate::core::http::validate_custom_header_policy(&headers)?;
     for h in &headers {
         let Some((name, value)) = h.split_once(':') else {
             return Err(format!("--header missing ':' separator: {h:?}"));

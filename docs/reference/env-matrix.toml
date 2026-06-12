@@ -11,6 +11,18 @@ compatibility = "canonical"
 reason = "Qdrant endpoint URL. URLs stay in env/CLI, not TOML."
 
 [[env]]
+key = "AXON_QDRANT_URL"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["env-template", "compose-env-file", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only Qdrant endpoint override used to point the container at a remote or explicitly local Qdrant."
+
+[[env]]
 key = "TEI_URL"
 classification = "keep-env"
 runtime_placement = "both"

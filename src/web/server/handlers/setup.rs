@@ -1,3 +1,4 @@
+use super::super::HttpError;
 use super::super::state::AppState;
 use super::super::utils::authorized;
 use crate::core::config::Config;
@@ -15,7 +16,8 @@ pub async fn setup_targets(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     match setup::list_ssh_targets() {
         Ok(targets) => Json(targets).into_response(),

@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::core::llm;
+use crate::core::llm::{self, CompletionRequest, CompletionResponse};
 use crate::services::client_contract::RestChatRequest;
 use axum::{
     Extension, Json,
@@ -8,16 +8,48 @@ use axum::{
         sse::{Event, Sse},
     },
 };
-use futures_util::stream;
+use futures_util::Stream;
 use serde::Serialize;
 use std::{
     convert::Infallible,
+    error::Error as StdError,
+    future::Future,
+    pin::Pin,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    task::{Context, Poll},
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinHandle};
+
+const SSE_EVENT_BUFFER: usize = 32;
+
+type CompletionError = Box<dyn StdError + Send + Sync>;
+type DeltaHandler = Box<dyn FnMut(&str) -> Result<(), CompletionError> + Send>;
+type CompletionFuture =
+    Pin<Box<dyn Future<Output = Result<CompletionResponse, CompletionError>> + Send>>;
+type CompleteStreamingFn =
+    Box<dyn FnOnce(CompletionRequest, DeltaHandler) -> CompletionFuture + Send>;
+
+struct AbortOnDropStream {
+    rx: mpsc::Receiver<Result<Event, Infallible>>,
+    handle: JoinHandle<()>,
+}
+
+impl Stream for AbortOnDropStream {
+    type Item = Result<Event, Infallible>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.rx).poll_recv(cx)
+    }
+}
+
+impl Drop for AbortOnDropStream {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -58,43 +90,58 @@ pub async fn v1_chat_stream(
         return err.into_response();
     }
 
-    let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
-    let disconnected = Arc::new(AtomicBool::new(false));
-    let req_cfg = (*cfg).clone();
+    let complete_streaming: CompleteStreamingFn =
+        Box::new(|request, on_delta| Box::pin(llm::complete_streaming(request, on_delta)));
+    v1_chat_stream_response((*cfg).clone(), req, complete_streaming)
+}
 
-    tokio::spawn(async move {
+fn v1_chat_stream_response(
+    req_cfg: Config,
+    req: RestChatRequest,
+    complete_streaming: CompleteStreamingFn,
+) -> Response {
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(SSE_EVENT_BUFFER);
+    let disconnected = Arc::new(AtomicBool::new(false));
+
+    let handle = tokio::spawn(async move {
         if tx
             .send(Ok(sse_json(
                 "meta",
                 &ChatStreamEvent::Meta { phase: "chatting" },
             )))
+            .await
             .is_err()
         {
+            disconnected.store(true, Ordering::Relaxed);
             return;
         }
 
         let delta_disconnected = Arc::clone(&disconnected);
         let delta_tx = tx.clone();
         let request = super::chat::completion_request(&req_cfg, &req.message, true);
-        let result = llm::complete_streaming(request, move |text| {
+        let on_delta: DeltaHandler = Box::new(move |text| {
             if delta_disconnected.load(Ordering::Relaxed) {
                 return Ok(());
             }
-            if delta_tx
-                .send(Ok(sse_json(
-                    "delta",
-                    &ChatStreamEvent::Delta {
-                        text: text.to_string(),
-                    },
-                )))
-                .is_err()
-            {
-                delta_disconnected.store(true, Ordering::Relaxed);
+            match delta_tx.try_send(Ok(sse_json(
+                "delta",
+                &ChatStreamEvent::Delta {
+                    text: text.to_string(),
+                },
+            ))) {
+                Ok(()) => {}
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    return Err("stream backpressure exceeded".into());
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    delta_disconnected.store(true, Ordering::Relaxed);
+                }
             }
             Ok(())
-        })
-        .await
-        .map_err(|err| err.to_string());
+        });
+        let result = complete_streaming(request, on_delta)
+            .await
+            .map_err(|err| err.to_string());
 
         if disconnected.load(Ordering::Relaxed) {
             return;
@@ -109,6 +156,7 @@ pub async fn v1_chat_stream(
                             answer: completion.text,
                         },
                     )))
+                    .await
                     .is_err()
                 {
                     disconnected.store(true, Ordering::Relaxed);
@@ -117,6 +165,7 @@ pub async fn v1_chat_stream(
             Err(message) => {
                 if tx
                     .send(Ok(sse_json("error", &ChatStreamEvent::Error { message })))
+                    .await
                     .is_err()
                 {
                     disconnected.store(true, Ordering::Relaxed);
@@ -125,16 +174,36 @@ pub async fn v1_chat_stream(
         }
     });
 
-    let event_stream = stream::unfold(rx, |mut rx| async {
-        rx.recv().await.map(|event| (event, rx))
-    });
+    let event_stream = AbortOnDropStream { rx, handle };
     Sse::new(event_stream).into_response()
+}
+
+#[cfg(test)]
+pub(super) fn sse_event_buffer_for_tests() -> usize {
+    SSE_EVENT_BUFFER
+}
+
+#[cfg(test)]
+pub(super) fn bounded_stream_for_tests(
+    rx: mpsc::Receiver<Result<Event, Infallible>>,
+    handle: JoinHandle<()>,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    AbortOnDropStream { rx, handle }
 }
 
 #[cfg(test)]
 pub(super) async fn v1_chat_stream_test_response(body: serde_json::Value) -> Response {
     let req = serde_json::from_value::<RestChatRequest>(body).expect("valid chat request");
     v1_chat_stream(Extension(Arc::new(Config::default())), Json(req)).await
+}
+
+#[cfg(test)]
+pub(super) async fn v1_chat_stream_test_response_with_completion(
+    body: serde_json::Value,
+    complete_streaming: CompleteStreamingFn,
+) -> Response {
+    let req = serde_json::from_value::<RestChatRequest>(body).expect("valid chat request");
+    v1_chat_stream_response(Config::default(), req, complete_streaming)
 }
 
 #[cfg(test)]

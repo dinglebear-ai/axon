@@ -1,4 +1,4 @@
-use super::server::{AppState, authorized};
+use super::server::{AppState, HttpError, authorized};
 use axum::{
     Json,
     extract::State,
@@ -40,7 +40,8 @@ pub(super) async fn stack_status(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
 
     let home =
