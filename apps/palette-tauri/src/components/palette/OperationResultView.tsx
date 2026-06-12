@@ -10,14 +10,14 @@ import {
   Palette,
   ServerCog,
 } from "lucide-react";
-import { code } from "@streamdown/code";
 import type { ReactNode } from "react";
 import { Streamdown, type ThemeInput } from "streamdown";
 
+import { limitedCode } from "@/lib/limitedStreamdownCode";
 import { arrField, boolField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
 
 const LIST_LIMIT = 18;
-const STREAMDOWN_PLUGINS = { code };
+const STREAMDOWN_PLUGINS = { code: limitedCode };
 const CODE_THEMES: [ThemeInput, ThemeInput] = ["one-dark-pro", "one-dark-pro"];
 
 interface OperationResultViewProps {
@@ -693,7 +693,10 @@ export function sanitizeReaderMarkdown(value: string | undefined): string | unde
   const lines = value.split(/\r?\n/);
   const kept: string[] = [];
 
-  for (const line of lines) {
+  for (const rawLine of lines) {
+    const cleanedLine = inFence ? rawLine : cleanupScrapeArtifactLine(rawLine);
+    if (cleanedLine === undefined) continue;
+    const line = cleanedLine;
     if (/^\s*(```|~~~)/.test(line)) {
       if (!inFence) {
         fenceStart = kept.length;
@@ -718,6 +721,21 @@ export function sanitizeReaderMarkdown(value: string | undefined): string | unde
   }
 
   return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function cleanupScrapeArtifactLine(line: string): string | undefined {
+  const cleaned = line
+    .replace(/Skip to main content/gi, "")
+    .replace(/Debugging\.{0,3}/gi, "")
+    .replace(/\s*\(opens in new tab\)/gi, "")
+    .replace(/\)(?=[A-Z][A-Za-z])/g, ") ")
+    .replace(/([a-z0-9])(?=(?:Developer docs|Onboarding|Triage issues|Refactor code)\b)/g, "$1 ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trimEnd();
+
+  const normalized = cleaned.trim();
+  if (/^(?:debugging|skip to main content)$/i.test(normalized)) return undefined;
+  return cleaned;
 }
 
 function isEmptyBulletLine(line: string): boolean {
@@ -821,6 +839,8 @@ function toneForStatus(status: string | undefined): Tone {
     case "pending":
     case "running":
     case "accepted":
+    case "warn":
+    case "warning":
       return "warn";
     case "error":
     case "failed":
