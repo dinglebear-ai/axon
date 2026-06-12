@@ -66,6 +66,127 @@ export function OperationResultFixture() {
       },
     },
     {
+      title: "Search Results",
+      action: actionFor("search"),
+      run: {
+        kind: "success",
+        title: "Search completed",
+        subtitle: "rust qdrant hybrid search",
+        text: "3 results",
+        outputKind: "markdown",
+        result: {
+          ok: true,
+          status: 200,
+          method: "POST",
+          path: "/v1/search",
+          payload: {
+            results: [
+              {
+                title: "Qdrant hybrid search",
+                url: "https://qdrant.tech/documentation/concepts/hybrid-queries/",
+                snippet: "Hybrid queries combine sparse and dense vectors with reciprocal rank fusion.",
+                rank: 1,
+              },
+              {
+                title: "Rust async traits",
+                url: "https://doc.rust-lang.org/book/",
+                snippet: "Patterns for async runtimes, typed service layers, and predictable error handling.",
+                rank: 2,
+              },
+            ],
+            crawl_jobs: [{ id: "018f3d8a-64b0-7c51-9a84-f3a39b5a5f18", status: "queued", url: "https://qdrant.tech/documentation/" }],
+          },
+        },
+      },
+    },
+    {
+      title: "Query Matches",
+      action: actionFor("query"),
+      run: {
+        kind: "success",
+        title: "Query completed",
+        subtitle: "collection axon",
+        text: "2 matches",
+        outputKind: "markdown",
+        result: {
+          ok: true,
+          status: 200,
+          method: "POST",
+          path: "/v1/query",
+          payload: {
+            collection: "axon",
+            results: [
+              {
+                title: "src/vector/ops/qdrant/search.rs",
+                url: "file:///home/jmagar/workspace/axon/src/vector/ops/qdrant/search.rs",
+                content: "RRF merges dense and sparse matches while preserving payload metadata.",
+                score: 0.9124,
+                rank: 1,
+              },
+              {
+                title: "docs/reference/vector.md",
+                url: "file:///home/jmagar/workspace/axon/docs/reference/vector.md",
+                content: "Named dense vectors and BM42 sparse vectors are queried together when available.",
+                score: 0.8731,
+                rank: 2,
+              },
+            ],
+          },
+        },
+      },
+    },
+    {
+      title: "Doctor Degraded",
+      action: actionFor("doctor"),
+      run: {
+        kind: "success",
+        title: "Doctor completed",
+        subtitle: "Qdrant, TEI, Chrome",
+        text: "degraded",
+        outputKind: "markdown",
+        result: {
+          ok: true,
+          status: 200,
+          method: "GET",
+          path: "/v1/doctor",
+          payload: {
+            degraded: true,
+            checks: [
+              { name: "Qdrant", status: "ok", message: "Collection axon is reachable." },
+              { name: "TEI", status: "warn", message: "Embedding endpoint answered slowly, retry budget still available." },
+              { name: "Chrome", status: "ok", message: "CDP management endpoint is healthy." },
+            ],
+          },
+        },
+      },
+    },
+    {
+      title: "Long Error Body",
+      action: actionFor("scrape"),
+      run: {
+        kind: "error",
+        title: "Scrape failed",
+        subtitle: "https://example.com/very-long-error",
+        text:
+          "The upstream page returned a long proxy error while Axon was trying to scrape it. The palette should keep this readable, preserve the route metadata, and avoid letting the message stretch the entire panel sideways.",
+        outputKind: "code",
+        result: {
+          ok: false,
+          status: 502,
+          method: "POST",
+          path: "/v1/scrape",
+          payload: {
+            kind: "upstream_error",
+            url: "https://example.com/very-long-error",
+            request_id: "req_01jz5p1f4x0fh8a6z9nk2kx7qa",
+            message:
+              "The upstream page returned a long proxy error while Axon was trying to scrape it. The palette should keep this readable, preserve the route metadata, and avoid letting the message stretch the entire panel sideways.",
+            hint: "Retry later or run the scrape through Chrome render mode.",
+          },
+        },
+      },
+    },
+    {
       title: "Screenshot Preview",
       action: actionFor("screenshot"),
       run: {

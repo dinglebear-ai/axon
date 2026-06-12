@@ -56,4 +56,26 @@ describe("OperationResultView routing", () => {
 
     expect(sanitizeReaderMarkdown(markdown)).toBe(["- Real item", "```rust", "let ok = true;", "```"].join("\n"));
   });
+
+  it("cleans common scrape chrome without touching fenced code", () => {
+    const markdown = [
+      "Claude Code by Anthropic | AI Coding Agent, Terminal, IDESkip to main content Debugging...",
+      "Slack curl -fsSL https://claude.ai/install.sh | bash Or read the documentation Try Claude Code (opens in new tab)Developer docs (opens in new tab)",
+      "",
+      "```bash",
+      "echo 'Skip to main content should stay in code'",
+      "```",
+      "-",
+    ].join("\n");
+
+    expect(sanitizeReaderMarkdown(markdown)).toBe(
+      [
+        "Claude Code by Anthropic | AI Coding Agent, Terminal, IDE",
+        "Slack curl -fsSL https://claude.ai/install.sh | bash Or read the documentation Try Claude Code Developer docs",
+        "```bash",
+        "echo 'Skip to main content should stay in code'",
+        "```",
+      ].join("\n"),
+    );
+  });
 });

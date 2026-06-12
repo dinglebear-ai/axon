@@ -6,6 +6,7 @@ import {
   Boxes,
   Braces,
   Camera,
+  Check,
   Copy,
   Database,
   ExternalLink,
@@ -75,47 +76,62 @@ export function OutputPanel({
   return (
     <section className="output-panel">
       <div className={`output-state output-${run.kind} output-tone-${active?.tone ?? "neutral"}`}>
-        <header className="output-header">
+        <header className={headerSummary ? "output-header output-header-summary" : "output-header"}>
           <span className="output-op-tile" aria-hidden="true">
             <Icon size={19} strokeWidth={1.65} />
           </span>
           <div className="output-meta-info">
-            <span className="output-title">{copied ? "Copied" : (headerSummary?.title ?? outputTitle(run))}</span>
+            <span className="output-title-line">
+              <span className="output-title">{headerSummary?.title ?? outputTitle(run)}</span>
+              {headerSummary ? (
+                <span className="output-summary-chips" aria-label="Result summary">
+                  {headerSummary.metrics.map(([label, value]) => (
+                    <span key={label}>
+                      <strong>{value}</strong>
+                      {label}
+                    </span>
+                  ))}
+                </span>
+              ) : null}
+            </span>
             <span className="output-subtitle">{outputSubtitle(run, active)}</span>
-            {headerSummary ? (
-              <span className="output-summary-chips" aria-label="Result summary">
-                {headerSummary.metrics.map(([label, value]) => (
-                  <span key={label}>
-                    <strong>{value}</strong>
-                    {label}
-                  </span>
-                ))}
-              </span>
-            ) : null}
           </div>
           <span className={`output-status output-status-${status.tone}`}>{status.label}</span>
           <span className="output-tools">
             {run.kind === "running" || run.kind === "streaming" ? (
               <>
-                <button type="button" onClick={onHistory} title="History" aria-label="Open history">
+                <button type="button" onClick={onHistory} title="History" aria-label="Open history" data-tooltip="History">
                   <History size={13} />
                 </button>
-                <button type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output">
+                <button type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output" data-tooltip="Collapse">
                   <X size={13} />
                 </button>
               </>
             ) : (
               <>
                 {"text" in run && (
-                  <button type="button" onClick={() => onCopy(run.text)} title="Copy" aria-label="Copy output">
-                  <Copy size={13} />
+                  <button
+                    type="button"
+                    className={copied ? "output-tool-copied" : undefined}
+                    onClick={() => onCopy(run.text)}
+                    title={copied ? "Copied" : "Copy"}
+                    aria-label={copied ? "Copied output" : "Copy output"}
+                    data-tooltip={copied ? "Copied" : "Copy"}
+                  >
+                    {copied ? <Check size={13} /> : <Copy size={13} />}
                   </button>
                 )}
-                <button type="button" onClick={onRetry} title="Re-run" aria-label="Re-run">
+                <button type="button" onClick={onRetry} title="Re-run" aria-label="Re-run" data-tooltip="Re-run">
                   <RotateCw size={13} />
                 </button>
                 {outputUrl && (
-                  <button type="button" onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")} title="Open source" aria-label="Open source">
+                  <button
+                    type="button"
+                    onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")}
+                    title="Open source"
+                    aria-label="Open source"
+                    data-tooltip="Open source"
+                  >
                     <ExternalLink size={13} />
                   </button>
                 )}
@@ -125,13 +141,14 @@ export function OutputPanel({
                   onClick={onTogglePin}
                   title={pinned ? "Unpin" : "Pin"}
                   aria-label={pinned ? "Unpin output" : "Pin output"}
+                  data-tooltip={pinned ? "Unpin" : "Pin"}
                 >
                   <Pin size={13} />
                 </button>
-                <button type="button" onClick={onHistory} title="History" aria-label="Open history">
+                <button type="button" onClick={onHistory} title="History" aria-label="Open history" data-tooltip="History">
                   <History size={13} />
                 </button>
-                <button type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output">
+                <button type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output" data-tooltip="Collapse">
                   <X size={13} />
                 </button>
               </>

@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
-    "@streamdown/code": "^1.1.1",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/api": "^2.10.0",
     "class-variance-authority": "^0.7.1",
@@ -25,6 +24,7 @@
     "openapi-fetch": "^0.17.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "shiki": "3.23.0",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18"
