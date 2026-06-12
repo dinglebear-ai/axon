@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Layers,
   Map,
+  MoreHorizontal,
   Pin,
   PackageOpen,
   RotateCw,
@@ -122,33 +123,31 @@ export function OutputPanel({
                     {copied ? <Check size={13} /> : <Copy size={13} />}
                   </button>
                 )}
-                <button type="button" onClick={onRetry} title="Re-run" aria-label="Re-run" data-tooltip="Re-run">
-                  <RotateCw size={13} />
-                </button>
-                {outputUrl && (
-                  <button
-                    type="button"
-                    onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")}
-                    title="Open source"
-                    aria-label="Open source"
-                    data-tooltip="Open source"
-                  >
-                    <ExternalLink size={13} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className={pinned ? "output-tool-active" : undefined}
-                  onClick={onTogglePin}
-                  title={pinned ? "Unpin" : "Pin"}
-                  aria-label={pinned ? "Unpin output" : "Pin output"}
-                  data-tooltip={pinned ? "Unpin" : "Pin"}
-                >
-                  <Pin size={13} />
-                </button>
-                <button type="button" onClick={onHistory} title="History" aria-label="Open history" data-tooltip="History">
-                  <History size={13} />
-                </button>
+                <details className="output-tool-menu">
+                  <summary title="More actions" aria-label="More actions" data-tooltip="More">
+                    <MoreHorizontal size={13} />
+                  </summary>
+                  <div>
+                    <button type="button" onClick={onRetry}>
+                      <RotateCw size={13} />
+                      <span>Re-run</span>
+                    </button>
+                    {outputUrl && (
+                      <button type="button" onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")}>
+                        <ExternalLink size={13} />
+                        <span>Open source</span>
+                      </button>
+                    )}
+                    <button type="button" className={pinned ? "output-tool-active" : undefined} onClick={onTogglePin}>
+                      <Pin size={13} />
+                      <span>{pinned ? "Unpin" : "Pin"}</span>
+                    </button>
+                    <button type="button" onClick={onHistory}>
+                      <History size={13} />
+                      <span>History</span>
+                    </button>
+                  </div>
+                </details>
                 <button type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output" data-tooltip="Collapse">
                   <X size={13} />
                 </button>

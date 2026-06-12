@@ -10,12 +10,36 @@ export function ConversationThread({
   answer,
   assistantLabel = "Axon",
   waiting = "Waiting for response...",
+  reader = false,
 }: {
   prompt?: string;
   answer: string;
   assistantLabel?: string;
   waiting?: string;
+  reader?: boolean;
 }) {
+  if (reader) {
+    return (
+      <div className="ask-thread ask-thread-reader aurora-scrollbar">
+        {prompt ? (
+          <div className="ask-prompt-strip">
+            <span>Question</span>
+            <p>{prompt}</p>
+          </div>
+        ) : null}
+        <div className="ask-answer ask-answer-reader">
+          {answer ? (
+            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
+              {answer}
+            </Streamdown>
+          ) : (
+            <span className="ask-waiting">{waiting}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ask-thread aurora-scrollbar">
       {prompt ? (
@@ -56,7 +80,7 @@ export function AskConversation({
   const canSend = draft.trim().length > 0 && !pending;
   return (
     <div className="ask-body">
-      <ConversationThread prompt={prompt} answer={answer} />
+      <ConversationThread prompt={prompt} answer={answer} reader={!pending} />
       <form
         className="ask-compose"
         onSubmit={(event) => {

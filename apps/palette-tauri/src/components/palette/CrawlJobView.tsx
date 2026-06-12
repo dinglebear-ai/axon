@@ -52,11 +52,11 @@ export function CrawlJobView({
         </header>
 
         <div className="running-body">
-          <div className="running-cells">
-            <Cell label="FETCHED" value={fmt(snapshot.fetched)} accent />
-            <Cell label="QUEUED" value={fmt(snapshot.queued)} />
-            <Cell label={third.label} value={third.value} />
-            <Cell label="DEPTH" value={depth} />
+          <div className="running-stat-strip" aria-label="Crawl progress stats">
+            <Stat label="Fetched" value={fmt(snapshot.fetched)} accent />
+            <Stat label="Queued" value={fmt(snapshot.queued)} />
+            <Stat label={titleCase(third.label)} value={third.value} />
+            <Stat label="Depth" value={depth} />
           </div>
 
           <div>
@@ -108,13 +108,17 @@ export function CrawlJobView({
   );
 }
 
-function Cell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className={accent ? "running-cell running-cell-accent" : "running-cell"}>
+    <span className={accent ? "running-stat running-stat-accent" : "running-stat"}>
       <span>{label}</span>
       <strong>{value}</strong>
-    </div>
+    </span>
   );
+}
+
+function titleCase(value: string): string {
+  return value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function CrawlLog({
