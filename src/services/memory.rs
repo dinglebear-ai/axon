@@ -18,12 +18,14 @@ use crate::vector::ops::tei::qdrant_store::{ensure_collection, qdrant_upsert};
 use crate::vector::ops::tei::{EmbedInput, build_point, tei_embed_typed};
 
 mod context_format;
+mod runtime_metadata;
 mod store;
 #[cfg(test)]
 mod tests;
 mod vector_store;
 
 use context_format::format_memory_context;
+use runtime_metadata::detect_runtime_memory_metadata;
 use store::{
     bump_access, context_seed_nodes, link_nodes, list_nodes, node_by_id, node_by_id_optional,
     supersede_node, upsert_node,
@@ -47,6 +49,11 @@ pub struct MemoryItem {
     pub project: Option<String>,
     pub repo: Option<String>,
     pub file: Option<String>,
+    pub workspace: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_commit: Option<String>,
+    pub git_dirty: Option<bool>,
+    pub cwd: Option<String>,
     pub confidence: f64,
     pub status: String,
     pub created_at: i64,
@@ -85,6 +92,11 @@ struct NormalizedMemory {
     project: Option<String>,
     repo: Option<String>,
     file: Option<String>,
+    workspace: Option<String>,
+    git_branch: Option<String>,
+    git_commit: Option<String>,
+    git_dirty: Option<bool>,
+    cwd: Option<String>,
     confidence: f64,
 }
 
@@ -166,6 +178,11 @@ pub async fn remember(ctx: &ServiceContext, req: MemoryRequest) -> Result<Memory
         "project": memory.project,
         "repo": memory.repo,
         "file": memory.file,
+        "workspace": memory.workspace,
+        "git_branch": memory.git_branch,
+        "git_commit": memory.git_commit,
+        "git_dirty": memory.git_dirty,
+        "cwd": memory.cwd,
         "confidence": memory.confidence,
         "status": "active",
         "source": "manual",
@@ -229,6 +246,11 @@ pub async fn search(ctx: &ServiceContext, req: MemoryRequest) -> Result<Vec<Memo
             project: payload.memory_project,
             repo: payload.memory_repo,
             file: payload.memory_file,
+            workspace: payload.memory_workspace,
+            git_branch: payload.memory_git_branch,
+            git_commit: payload.memory_git_commit,
+            git_dirty: payload.memory_git_dirty,
+            cwd: payload.memory_cwd,
             confidence: payload.memory_confidence.unwrap_or(1.0),
             status: payload
                 .memory_status
@@ -349,8 +371,9 @@ fn normalize_remember(req: MemoryRequest) -> Result<NormalizedMemory> {
     if !(0.0..=1.0).contains(&confidence) {
         bail!("confidence must be between 0.0 and 1.0");
     }
-    let project = clean_opt(req.project);
-    let repo = clean_opt(req.repo);
+    let runtime = detect_runtime_memory_metadata();
+    let project = clean_opt(req.project).or(runtime.project);
+    let repo = clean_opt(req.repo).or(runtime.repo);
     let file = clean_opt(req.file);
     let id = memory_id(
         &memory_type,
@@ -367,6 +390,11 @@ fn normalize_remember(req: MemoryRequest) -> Result<NormalizedMemory> {
         project,
         repo,
         file,
+        workspace: runtime.workspace,
+        git_branch: runtime.git_branch,
+        git_commit: runtime.git_commit,
+        git_dirty: runtime.git_dirty,
+        cwd: runtime.cwd,
         confidence,
     })
 }

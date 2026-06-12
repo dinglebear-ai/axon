@@ -39,6 +39,7 @@ import { Spinner } from "@/components/ui/aurora/spinner";
 import type { PaletteAction } from "@/lib/actions";
 import { arrField, numField, strField, unwrapPayload } from "@/lib/payload";
 import type { RunState } from "@/lib/runState";
+import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
 
 interface OutputPanelProps {
   active?: PaletteAction;
@@ -175,7 +176,9 @@ export function OutputPanel({
         ) : "text" in run ? (
           outputKind === "markdown" ? (
             <div className="output-body output-markdown">
-              <Streamdown>{run.text}</Streamdown>
+              <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
+                {run.text}
+              </Streamdown>
             </div>
           ) : (
             <pre className="output-body output-code">

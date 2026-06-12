@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Streamdown } from "streamdown";
 
+import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
+
 // A read-only question→answer pair rendered with the ask bubble styling. Reused
 // by the live ask view and the side-by-side evaluate view.
 export function ConversationThread({
@@ -25,7 +27,13 @@ export function ConversationThread({
       <div className="ask-message ask-message-assistant">
         <span>{assistantLabel}</span>
         <div className="ask-answer">
-          {answer ? <Streamdown>{answer}</Streamdown> : <span className="ask-waiting">{waiting}</span>}
+          {answer ? (
+            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
+              {answer}
+            </Streamdown>
+          ) : (
+            <span className="ask-waiting">{waiting}</span>
+          )}
         </div>
       </div>
     </div>

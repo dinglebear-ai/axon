@@ -13,6 +13,11 @@ struct MemoryNodeRow {
     project: Option<String>,
     repo: Option<String>,
     file: Option<String>,
+    workspace: Option<String>,
+    git_branch: Option<String>,
+    git_commit: Option<String>,
+    git_dirty: Option<bool>,
+    cwd: Option<String>,
     status: String,
     confidence: f64,
     created_at: i64,
@@ -54,6 +59,11 @@ impl From<MemoryNodeRow> for MemoryItem {
             project: row.project,
             repo: row.repo,
             file: row.file,
+            workspace: row.workspace,
+            git_branch: row.git_branch,
+            git_commit: row.git_commit,
+            git_dirty: row.git_dirty,
+            cwd: row.cwd,
             confidence: row.confidence,
             status: row.status,
             created_at: row.created_at,
@@ -75,15 +85,21 @@ pub(super) async fn upsert_node(
     let result = sqlx::query(
         r#"
         INSERT INTO axon_memory_nodes
-            (id, type, title, project, repo, file_path, status, confidence, source,
+            (id, type, title, project, repo, file_path, workspace, git_branch,
+             git_commit, git_dirty, cwd, status, confidence, source,
              access_count, created_at, updated_at, last_seen_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'active', ?, 'manual', 0, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 'manual', 0, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             type=excluded.type,
             title=excluded.title,
             project=excluded.project,
             repo=excluded.repo,
             file_path=excluded.file_path,
+            workspace=excluded.workspace,
+            git_branch=excluded.git_branch,
+            git_commit=excluded.git_commit,
+            git_dirty=excluded.git_dirty,
+            cwd=excluded.cwd,
             status='active',
             confidence=excluded.confidence,
             updated_at=excluded.updated_at,
@@ -96,6 +112,11 @@ pub(super) async fn upsert_node(
     .bind(&memory.project)
     .bind(&memory.repo)
     .bind(&memory.file)
+    .bind(&memory.workspace)
+    .bind(&memory.git_branch)
+    .bind(&memory.git_commit)
+    .bind(memory.git_dirty)
+    .bind(&memory.cwd)
     .bind(memory.confidence)
     .bind(now)
     .bind(now)
@@ -124,7 +145,8 @@ pub(super) async fn node_by_id_optional(pool: &SqlitePool, id: &str) -> Result<O
     let row = sqlx::query_as::<_, MemoryNodeRow>(
         r#"
         SELECT id, type AS memory_type, title, project, repo, file_path AS file,
-               status, confidence, created_at, updated_at, last_seen_at, access_count
+               workspace, git_branch, git_commit, git_dirty, cwd, status, confidence,
+               created_at, updated_at, last_seen_at, access_count
         FROM axon_memory_nodes
         WHERE id = ?
         "#,
@@ -149,7 +171,8 @@ pub(super) async fn list_nodes(
     let rows = sqlx::query_as::<_, MemoryNodeRow>(
         r#"
         SELECT id, type AS memory_type, title, project, repo, file_path AS file,
-               status, confidence, created_at, updated_at, last_seen_at, access_count
+               workspace, git_branch, git_commit, git_dirty, cwd, status, confidence,
+               created_at, updated_at, last_seen_at, access_count
         FROM axon_memory_nodes
         WHERE status = ?
           AND (? IS NULL OR project = ?)
@@ -202,7 +225,8 @@ pub(super) async fn context_seed_nodes(
         let rows = sqlx::query_as::<_, MemoryNodeRow>(
             r#"
             SELECT id, type AS memory_type, title, project, repo, file_path AS file,
-                   status, confidence, created_at, updated_at, last_seen_at, access_count
+                   workspace, git_branch, git_commit, git_dirty, cwd, status, confidence,
+                   created_at, updated_at, last_seen_at, access_count
             FROM axon_memory_nodes
             WHERE status = 'active'
               AND (? IS NULL OR project = ?)
@@ -240,7 +264,8 @@ pub(super) async fn context_seed_nodes(
         let rows = sqlx::query_as::<_, MemoryNodeRow>(
             r#"
             SELECT n.id, n.type AS memory_type, n.title, n.project, n.repo, n.file_path AS file,
-                   n.status, n.confidence, n.created_at, n.updated_at, n.last_seen_at, n.access_count
+                   n.workspace, n.git_branch, n.git_commit, n.git_dirty, n.cwd, n.status,
+                   n.confidence, n.created_at, n.updated_at, n.last_seen_at, n.access_count
             FROM axon_memory_edges e
             JOIN axon_memory_nodes n
               ON n.id = CASE
