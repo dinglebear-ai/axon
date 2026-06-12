@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { invoke } from "@/lib/invoke";
 
 interface WindowChromeArgs {
+  jobExpanded: boolean;
   jobMinimized: boolean;
   settingsOpen: boolean;
   historyOpen: boolean;
@@ -12,11 +13,52 @@ interface WindowChromeArgs {
   shownTick: number;
 }
 
+interface PaletteScreen {
+  width: number;
+  height: number;
+}
+
+type BrowseHeight = () => number;
+
+export function resolvePaletteWindowSize(
+  {
+    jobExpanded,
+    jobMinimized,
+    settingsOpen,
+    historyOpen,
+    showResultsLayout,
+    showContent,
+  }: Omit<WindowChromeArgs, "shownTick">,
+  screen: PaletteScreen,
+  browseHeight: BrowseHeight,
+): { width: number; height: number } {
+  if (jobMinimized) return { width: 680, height: 96 };
+  if (settingsOpen) return { width: 800, height: 560 };
+  if (historyOpen) return { width: 760, height: 520 };
+  if (jobExpanded) {
+    return {
+      width: Math.min(1280, screen.width - 120),
+      height: Math.min(620, screen.height - 120),
+    };
+  }
+  if (showResultsLayout) {
+    return {
+      // Operation responses get a roomy, screen-relative window so long
+      // answers are easy to review (still resizable + double-click maximize).
+      width: Math.min(1280, screen.width - 120),
+      height: Math.min(860, screen.height - 120),
+    };
+  }
+  if (showContent) return { width: 760, height: Math.min(browseHeight(), screen.height - 80) };
+  return { width: 680, height: 56 };
+}
+
 // Owns the native window's size/visibility behavior for the palette: it resizes
 // the borderless window to fit the current view, and suppresses hide-on-blur
 // while a result/settings/history view is open so the window doesn't vanish when
 // the user drags to resize it or clicks another window to review a response.
 export function useWindowChrome({
+  jobExpanded,
   jobMinimized,
   settingsOpen,
   historyOpen,
@@ -50,22 +92,19 @@ export function useWindowChrome({
       const LIST_CAP = 338;
       return BROWSE_CHROME + Math.min(viewport.scrollHeight, LIST_CAP);
     };
-    const size = jobMinimized
-      ? { width: 680, height: 96 }
-      : settingsOpen
-      ? { width: 800, height: 560 }
-      : historyOpen
-      ? { width: 760, height: 520 }
-      : showResultsLayout
-      ? {
-          // Operation responses get a roomy, screen-relative window so long
-          // answers are easy to review (still resizable + double-click maximize).
-          width: Math.min(1280, window.screen.availWidth - 120),
-          height: Math.min(860, window.screen.availHeight - 120),
-        }
-      : showContent
-        ? { width: 760, height: Math.min(browseHeight(), window.screen.availHeight - 80) }
-        : { width: 680, height: 56 };
+    const size = resolvePaletteWindowSize(
+      {
+        jobExpanded,
+        jobMinimized,
+        settingsOpen,
+        historyOpen,
+        showResultsLayout,
+        showContent,
+        filteredLength,
+      },
+      { width: window.screen.availWidth, height: window.screen.availHeight },
+      browseHeight,
+    );
     // `show_palette` hard-sets the window to 680×56 on every show and bumps
     // `shownTick`. If React state is still a results view, the dedup below would
     // otherwise see the unchanged stale size and skip — leaving the window stuck
@@ -85,7 +124,7 @@ export function useWindowChrome({
     }
     lastSizeRef.current = size;
     void invoke("resize_palette", size);
-  }, [jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filteredLength, shownTick]);
+  }, [jobExpanded, jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filteredLength, shownTick]);
 
   // Launcher states (compact/browse/mode) keep click-away-to-dismiss; while a
   // result/settings/history view is open we keep the window up so resizing it

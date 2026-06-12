@@ -190,9 +190,9 @@ function ReadingView({
   const chunks = firstArray(payload, ["chunks", "documents", "results"]);
 
   return (
-    <div className="output-body operation-view aurora-scrollbar">
+    <div className="output-body operation-view operation-reader-view aurora-scrollbar">
       {readerMarkdown ? (
-        <section className="operation-section">
+        <section className="operation-section operation-reader-section">
           <div className="operation-reader">
             <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={CODE_THEMES}>
               {readerMarkdown}
