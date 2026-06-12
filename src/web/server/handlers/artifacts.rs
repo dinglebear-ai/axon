@@ -1,4 +1,5 @@
-//! Artifact file serving — `GET /v1/artifacts/{*path}`
+//! Artifact file serving — canonical `GET /v1/artifacts?path=...`, plus the
+//! legacy `GET /v1/artifacts/{*path}` compatibility route.
 //!
 //! Serves files from `cfg.output_dir` with content-type inference.
 //! Path traversal and symlink escapes are rejected before any I/O.
@@ -6,10 +7,11 @@
 use crate::web::server::error::HttpError;
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
+use serde::Deserialize;
 use std::{path::Path as FsPath, sync::Arc};
 
 /// `(AppState, Arc<Config>)` state shape used by all exploration/artifact handlers.
@@ -20,16 +22,16 @@ type WebState = (
 
 /// Serve an artifact file from the configured output directory.
 ///
-/// The `*path` wildcard is validated structurally and via canonicalization
+/// The `path` query parameter is validated structurally and via canonicalization
 /// before any file I/O. Returns:
 /// - `400` for structurally unsafe paths (absolute, `..`, etc.)
 /// - `403` when the resolved path escapes the output root or is a symlink
 /// - `404` when the file does not exist or is not a regular file
 #[utoipa::path(
     get,
-    path = "/v1/artifacts/{path}",
+    path = "/v1/artifacts",
     params(
-        ("path" = String, Path, description = "Relative path within the output directory")
+        ("path" = String, Query, description = "Slash-preserving relative path within the output directory, e.g. `jobs/abc/output.md`")
     ),
     responses(
         (status = 200, description = "File bytes with inferred content-type"),
@@ -42,9 +44,28 @@ type WebState = (
     ),
     tag = "artifacts"
 )]
-pub(crate) async fn serve_artifact(
+pub(crate) async fn serve_artifact_query(
+    State((_state, cfg)): State<WebState>,
+    Query(query): Query<ArtifactQuery>,
+) -> Result<Response, HttpError> {
+    serve_artifact_from_path(&cfg, query.path).await
+}
+
+pub(crate) async fn serve_artifact_path(
     State((_state, cfg)): State<WebState>,
     Path(raw_path): Path<String>,
+) -> Result<Response, HttpError> {
+    serve_artifact_from_path(&cfg, raw_path).await
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ArtifactQuery {
+    path: String,
+}
+
+async fn serve_artifact_from_path(
+    cfg: &crate::core::config::Config,
+    raw_path: String,
 ) -> Result<Response, HttpError> {
     if is_structurally_unsafe(&raw_path) {
         return Err(HttpError::new(

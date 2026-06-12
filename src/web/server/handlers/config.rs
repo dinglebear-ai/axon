@@ -1,3 +1,4 @@
+use super::super::HttpError;
 use super::super::state::AppState;
 use super::super::types::{
     ConfigResponse, EnvConfigResponse, OpsResponse, PanelCommandRequest, PanelCommandResponse,
@@ -27,7 +28,8 @@ pub async fn get_config(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     match setup::config_store::read_config() {
         Ok(raw_toml) => Json(ConfigResponse {
@@ -46,7 +48,8 @@ pub async fn save_config(
     Json(req): Json<SaveConfigRequest>,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     match setup::config_store::write_config(&req.raw_toml) {
         Ok(()) => (
@@ -70,7 +73,8 @@ pub async fn get_env_config(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     let Some(path) = config_service::resolve_env_path() else {
         return (
@@ -96,7 +100,8 @@ pub async fn save_env_config(
     Json(req): Json<SaveEnvConfigRequest>,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     let Some(path) = config_service::resolve_env_path() else {
         return (
@@ -132,7 +137,8 @@ pub async fn ops(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     Json(OpsResponse {
         qdrant_url: cfg.qdrant_url.clone(),
@@ -148,7 +154,8 @@ pub async fn panel_status(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     match system::full_status(&state.service_context).await {
         Ok(status) => Json(PanelStatusResponse {
@@ -166,7 +173,8 @@ pub async fn panel_doctor(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     match system::doctor(&cfg).await {
         Ok(result) => Json(PanelDoctorResponse {
@@ -183,7 +191,8 @@ pub async fn panel_command(
     Json(req): Json<PanelCommandRequest>,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     let command = req.command.trim();
     if command.is_empty() {
@@ -370,7 +379,8 @@ pub async fn panel_artifact(
     Path(rel_path): Path<String>,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     if rel_path.contains("..") || rel_path.starts_with("/") || rel_path.contains('\0') {
         return (StatusCode::BAD_REQUEST, "invalid artifact path").into_response();

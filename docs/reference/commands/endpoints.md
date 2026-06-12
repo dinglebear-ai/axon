@@ -29,6 +29,11 @@ axon endpoints https://example.com --probe-rpc --probe-rpc-subdomains --json
 | `--probe-rpc` | `false` | Probe discovered endpoints for JSON-RPC 2.0 / MCP / ACP protocol support. |
 | `--probe-rpc-subdomains` | `false` | Also probe `mcp.<apex>` subdomain candidates for MCP/JSON-RPC. No-op without `--probe-rpc`. |
 
+The REST route `POST /v1/endpoints` accepts matching JSON fields:
+`include_bundles`, `first_party_only`, `unique_only`, `max_scripts`,
+`max_scan_bytes`, `verify`, `capture_network`, `probe_rpc`, and
+`probe_rpc_subdomains`.
+
 ## Layers
 
 Layer 1 is static discovery. Axon fetches the target page through the
@@ -53,6 +58,10 @@ endpoints for JSON-RPC 2.0 / MCP / ACP protocol support and annotates each probe
 endpoint with an `rpc_probe` result. With `--probe-rpc-subdomains` it also probes
 synthesized `mcp.<apex>` subdomain candidates (reported under `mcp_candidates`);
 that flag is a no-op without `--probe-rpc`.
+
+`--probe-rpc` / `probe_rpc` is active probing. It sends unauthenticated
+fingerprint requests to discovered HTTP endpoints and should be enabled only
+when that network activity is acceptable for the target.
 
 ## Output
 

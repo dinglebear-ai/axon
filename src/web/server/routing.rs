@@ -14,7 +14,7 @@ use axum::{
     Extension, Json, Router,
     body::Body,
     extract::DefaultBodyLimit,
-    http::{Method, Request, StatusCode},
+    http::{HeaderValue, Method, Request, StatusCode, header},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -55,6 +55,7 @@ pub(super) fn router(
         .merge(panel_routes())
         .merge(rest_routes)
         .fallback(super::super::static_assets::serve_static)
+        .layer(middleware::from_fn(security_headers))
         .with_state((state, Arc::clone(&cfg)))
 }
 
@@ -71,8 +72,12 @@ fn read_routes() -> Router<ServeState> {
         .route("/v1/retrieve", post(handlers::rag::retrieve))
         .route("/v1/map", post(handlers::exploration::map))
         .route(
+            "/v1/artifacts",
+            get(handlers::artifacts::serve_artifact_query),
+        )
+        .route(
             "/v1/artifacts/{*path}",
-            get(handlers::artifacts::serve_artifact),
+            get(handlers::artifacts::serve_artifact_path),
         )
 }
 
@@ -171,7 +176,16 @@ fn panel_routes() -> Router<ServeState> {
         .route("/api/panel/artifact/{*path}", get(handlers::panel_artifact))
 }
 
-async fn v1_capabilities() -> Json<ServerInfo> {
+#[utoipa::path(
+    get,
+    path = "/v1/capabilities",
+    responses(
+        (status = 200, description = "Server capability metadata", body = ServerInfo),
+        (status = 401, description = "Missing or invalid auth", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "discovery"
+)]
+pub(super) async fn v1_capabilities() -> Json<ServerInfo> {
     Json(ServerInfo::rest_capabilities())
 }
 
@@ -237,6 +251,21 @@ where
     router
         .route_layer(layer)
         .route_layer(middleware::from_fn(normalize_api_key_header))
+        .route_layer(middleware::from_fn(jsonize_auth_error))
+}
+
+async fn jsonize_auth_error(request: Request<Body>, next: middleware::Next) -> Response {
+    let response = next.run(request).await;
+    let status = response.status();
+    if status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN {
+        return response;
+    }
+    let kind = if status == StatusCode::UNAUTHORIZED {
+        "unauthorized"
+    } else {
+        "forbidden"
+    };
+    HttpError::new(status, kind, kind).into_response()
 }
 
 async fn block_loopback_destructive_request(
@@ -244,11 +273,12 @@ async fn block_loopback_destructive_request(
     next: middleware::Next,
 ) -> Response {
     if is_loopback_destructive_request(request.method(), request.uri().path()) {
-        return (
+        return HttpError::new(
             StatusCode::UNAUTHORIZED,
+            "unauthorized",
             "destructive REST route requires configured auth",
         )
-            .into_response();
+        .into_response();
     }
     next.run(request).await
 }
@@ -308,15 +338,42 @@ async fn require_scope(
     next: middleware::Next,
 ) -> Response {
     let Some(Extension(auth)) = auth else {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     };
     let allowed = scope_satisfies(&auth.scopes, required_scope);
     if !allowed {
-        return (
+        return HttpError::new(
             StatusCode::FORBIDDEN,
+            "forbidden",
             format!("requires scope: {required_scope}"),
         )
-            .into_response();
+        .into_response();
     }
     next.run(request).await
+}
+
+async fn security_headers(request: Request<Body>, next: middleware::Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'",
+        ),
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(
+        header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+    response
 }

@@ -25,7 +25,8 @@ pub(super) async fn first_run_crawl(
     Json(req): Json<FirstCrawlRequest>,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     let url = req.url.trim();
     let url = match validate_first_run_url(url) {
@@ -68,7 +69,8 @@ pub(super) async fn first_run_ask(
     Json(req): Json<FirstAskRequest>,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
     }
     let query = req.query.trim();
     let query = match validate_first_run_query(query) {

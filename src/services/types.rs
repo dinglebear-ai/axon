@@ -8,9 +8,11 @@
 pub mod client_server;
 mod contracts;
 mod endpoints;
+mod route_inventory;
 mod service;
 
 pub use client_server::*;
 pub use contracts::*;
 pub use endpoints::*;
+pub use route_inventory::*;
 pub use service::*;

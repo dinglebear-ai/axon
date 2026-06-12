@@ -61,6 +61,27 @@ axon endpoints https://example.com --probe-rpc
 axon endpoints https://example.com --verify --capture-network --probe-rpc --json
 ```
 
+REST parity: `POST /v1/endpoints` accepts the same active-probing controls in
+JSON form:
+
+```json
+{
+  "url": "https://example.com",
+  "include_bundles": true,
+  "first_party_only": false,
+  "unique_only": true,
+  "verify": true,
+  "capture_network": false,
+  "probe_rpc": true,
+  "probe_rpc_subdomains": false
+}
+```
+
+`probe_rpc` is active probing, not passive parsing. It sends unauthenticated
+protocol-fingerprint requests to discovered HTTP endpoints; combine it with
+`probe_rpc_subdomains` only when probing synthesized `mcp.<apex>` candidates is
+acceptable for the target.
+
 ---
 
 ## 3. Pipeline

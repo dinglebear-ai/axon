@@ -36,6 +36,7 @@ Generated: 2026-05-15 from source-derived inventory.
 | Key | Class | Placement | TOML dest | Secret | Source |
 |-----|-------|-----------|-----------|--------|--------|
 | `QDRANT_URL` | keep-env | both | — | no | runtime.rs |
+| `AXON_QDRANT_URL` | compose-env | compose-interpolation | — | no | runtime.rs |
 | `TEI_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CHROME_REMOTE_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_MCP_PUBLIC_URL` | keep-env | both | — | no | runtime.rs |

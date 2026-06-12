@@ -5,6 +5,14 @@ use super::{EnvKeySpec, spec};
 
 pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
     spec("QDRANT_URL", KeepEnv, Both, None, Canonical, false),
+    spec(
+        "AXON_QDRANT_URL",
+        ComposeEnv,
+        ComposeInterpolation,
+        None,
+        Canonical,
+        false,
+    ),
     spec("TEI_URL", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_CHROME_REMOTE_URL",

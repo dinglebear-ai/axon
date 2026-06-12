@@ -1,8 +1,18 @@
+use crate::services::types::{RestRouteAuth, rest_route_inventory};
 use utoipa::OpenApi;
+use utoipa::openapi::security::{
+    AuthorizationCode, Flow, HttpAuthScheme, HttpBuilder, OAuth2, Scopes, SecurityRequirement,
+    SecurityScheme,
+};
+use utoipa::openapi::{
+    Content, Ref, RefOr,
+    path::Operation,
+    response::{Response, Responses},
+};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_swagger_ui::SwaggerUi;
 
-use super::{handlers, openapi_jobs};
+use super::{handlers, openapi_jobs, routing};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -12,6 +22,7 @@ use super::{handlers, openapi_jobs};
         description = "Dedicated REST routes for Axon discovery, RAG, crawl, ingest, and watch workflows."
     ),
     paths(
+        routing::v1_capabilities,
         handlers::discovery::sources,
         handlers::discovery::domains,
         handlers::discovery::stats,
@@ -27,6 +38,7 @@ use super::{handlers, openapi_jobs};
         handlers::rag::suggest,
         handlers::exploration::scrape,
         handlers::exploration::summarize,
+        handlers::exploration::exploration_stream::summarize_stream,
         handlers::exploration::map,
         handlers::exploration::endpoints,
         handlers::exploration::brand,
@@ -34,6 +46,7 @@ use super::{handlers, openapi_jobs};
         handlers::exploration::screenshot,
         handlers::exploration::search,
         handlers::exploration::research,
+        handlers::exploration::exploration_stream::research_stream,
         handlers::memory::memory,
         handlers::async_jobs::start_crawl,
         handlers::async_jobs::start_embed,
@@ -68,12 +81,14 @@ use super::{handlers, openapi_jobs};
         handlers::admin::list_watch,
         handlers::admin::create_watch,
         handlers::admin::run_watch,
-        handlers::artifacts::serve_artifact
+        handlers::artifacts::serve_artifact_query
     ),
     components(schemas(
         crate::services::client_contract::RestAskRequest,
         crate::services::client_contract::RestChatRequest,
         crate::services::client_contract::RestChatResponse,
+        crate::services::types::ServerInfo,
+        super::error::ErrorKind,
         super::error::ErrorBody,
         crate::services::client_contract::RestQueryRequest,
         crate::services::client_contract::RestRetrieveRequest,
@@ -133,7 +148,84 @@ use super::{handlers, openapi_jobs};
 struct ApiDoc;
 
 pub fn openapi_document() -> utoipa::openapi::OpenApi {
-    ApiDoc::openapi()
+    let mut document = ApiDoc::openapi();
+    apply_security_metadata(&mut document);
+    document
+}
+
+fn apply_security_metadata(document: &mut utoipa::openapi::OpenApi) {
+    let components = document.components.get_or_insert_with(Default::default);
+    components.add_security_scheme(
+        "bearerAuth",
+        SecurityScheme::Http(
+            HttpBuilder::new()
+                .scheme(HttpAuthScheme::Bearer)
+                .bearer_format("JWT or static token")
+                .build(),
+        ),
+    );
+    components.add_security_scheme(
+        "oauth2",
+        SecurityScheme::OAuth2(OAuth2::new([Flow::AuthorizationCode(
+            AuthorizationCode::new(
+                "/authorize",
+                "/token",
+                Scopes::from_iter([
+                    ("axon:read", "Authenticated Axon REST access"),
+                    ("axon:write", "Authenticated Axon REST access"),
+                ]),
+            ),
+        )])),
+    );
+
+    for route in rest_route_inventory()
+        .iter()
+        .filter(|route| route.openapi && route.auth != RestRouteAuth::Public)
+    {
+        let Some(operation) = operation_mut(document, route.path, route.method) else {
+            continue;
+        };
+        operation.security = Some(vec![
+            SecurityRequirement::new("bearerAuth", Vec::<&str>::new()),
+            SecurityRequirement::new("oauth2", ["axon:read"]),
+            SecurityRequirement::new("oauth2", ["axon:write"]),
+        ]);
+        add_auth_error_responses(&mut operation.responses);
+    }
+}
+
+fn add_auth_error_responses(responses: &mut Responses) {
+    responses
+        .responses
+        .entry("401".to_string())
+        .or_insert_with(|| auth_error_response("Missing or invalid authentication"));
+    responses
+        .responses
+        .entry("403".to_string())
+        .or_insert_with(|| auth_error_response("Authenticated token lacks Axon access"));
+}
+
+fn auth_error_response(description: &'static str) -> RefOr<Response> {
+    let mut response = Response::new(description);
+    response.content.insert(
+        "application/json".to_string(),
+        Content::new(Some(Ref::from_schema_name("ErrorBody"))),
+    );
+    RefOr::T(response)
+}
+
+fn operation_mut<'a>(
+    document: &'a mut utoipa::openapi::OpenApi,
+    path: &str,
+    method: &str,
+) -> Option<&'a mut Operation> {
+    let path_item = document.paths.paths.get_mut(path)?;
+    match method {
+        "GET" => path_item.get.as_mut(),
+        "POST" => path_item.post.as_mut(),
+        "DELETE" => path_item.delete.as_mut(),
+        _ => None,
+    }
 }
 
 pub(super) fn docs_router<S>() -> axum::Router<S>

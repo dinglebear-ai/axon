@@ -24,7 +24,7 @@ Status meanings:
 | `GET /healthz` | process health | none | Panel/server health, not CLI/MCP parity. |
 | `GET /readyz` | readiness | none | Panel/server readiness, not CLI/MCP parity. |
 | `GET /api-docs/openapi.json` | OpenAPI contract | none | Source for generated TypeScript client types. |
-| `GET /v1/capabilities` | client/server capability metadata | none | Advertises `supported_routes` for direct REST. |
+| `GET /v1/capabilities` | client/server capability metadata | axon:read or axon:write | Advertises `supported_routes` for direct REST. |
 | `POST /v1/actions` | removed legacy action envelope | none | Always returns 404 with direct REST migration text. |
 | `/api/panel/*` | web panel operations | panel token / local policy | Panel-only, excluded from parity accounting unless promoted to `/v1`. |
 
@@ -82,29 +82,34 @@ Status meanings:
 ```text
 GET /healthz
 GET /readyz
+GET /api-docs/openapi.json
+GET /docs
 GET /v1/capabilities
 GET /v1/sources
 GET /v1/domains
 GET /v1/stats
 GET /v1/status
 GET /v1/doctor
-POST /v1/ask
-POST /v1/ask/stream
-POST /v1/chat
-POST /v1/chat/stream
 POST /v1/query
 POST /v1/retrieve
-POST /v1/evaluate
-POST /v1/suggest
-POST /v1/scrape
-POST /v1/summarize
 POST /v1/map
+GET /v1/artifacts
 POST /v1/endpoints
 POST /v1/brand
 POST /v1/diff
 POST /v1/screenshot
+POST /v1/ask
+POST /v1/ask/stream
+POST /v1/chat
+POST /v1/chat/stream
+POST /v1/evaluate
+POST /v1/suggest
+POST /v1/scrape
+POST /v1/summarize
+POST /v1/summarize/stream
 POST /v1/search
 POST /v1/research
+POST /v1/research/stream
 POST /v1/memory
 POST /v1/crawl
 GET /v1/crawl
@@ -139,7 +144,6 @@ POST /v1/dedupe
 GET /v1/watch
 POST /v1/watch
 POST /v1/watch/{id}/run
-GET /api-docs/openapi.json
 ```
 
 `supported_actions` and action-envelope `required_request_fields` remain in
@@ -155,6 +159,13 @@ The same document can be exported without starting a server:
 cargo run --bin axon-openapi > apps/web/openapi/axon.json
 ```
 
+Fast API-only local check:
+
+```bash
+cargo test --test http_api_parity_inventory -- --nocapture
+npm --prefix apps/web run openapi:check
+```
+
 The web client generates TypeScript declarations from that contract:
 
 ```bash
@@ -167,10 +178,10 @@ Generated files:
 - `apps/web/openapi/axon.json`
 - `apps/web/lib/generated/axon-api.ts`
 
-`apps/web/lib/axon-client.ts` imports generated component schemas for request
-and response DTO aliases. The wrapper still owns fetch/auth/error ergonomics,
-but request shape drift now comes from OpenAPI generation instead of manual
-hand-carved DTOs.
+`apps/web/lib/axon-client.ts` imports generated component schemas plus `paths`
+and `operations` maps for request, response, parameter, and auth metadata. The
+wrapper still owns fetch/auth/error ergonomics, but request and route-shape
+drift now comes from OpenAPI generation instead of manual hand-carved DTOs.
 
 ## MCP-Only or MCP-First Surfaces
 
