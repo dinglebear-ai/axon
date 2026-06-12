@@ -13,6 +13,22 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Canonical,
         false,
     ),
+    spec(
+        "QDRANT_HTTP_PORT",
+        ComposeEnv,
+        ComposeInterpolation,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
+        "QDRANT_GRPC_PORT",
+        ComposeEnv,
+        ComposeInterpolation,
+        None,
+        Canonical,
+        false,
+    ),
     spec("TEI_URL", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_CHROME_REMOTE_URL",

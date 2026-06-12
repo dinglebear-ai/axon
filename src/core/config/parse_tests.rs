@@ -1,6 +1,7 @@
 use super::build_config::tests::ENV_LOCK;
 use super::docker::is_docker_service_host;
 use crate::core::config::types::{CommandKind, McpTransport};
+use crate::crawl::engine::crawl_subscribe_buffer_size;
 use clap::Parser;
 use std::env;
 
@@ -36,6 +37,31 @@ fn parse_watch_create_with_every_and_type() {
             "300".to_string(),
         ]
     );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_max_profile_flows_to_crawl_subscribe_buffer() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--performance-profile",
+        "max",
+        "--max-pages",
+        "100000",
+        "crawl",
+        "https://example.com",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("crawl config should parse");
+
+    assert_eq!(cfg.crawl_broadcast_buffer_min, 16_384);
+    assert_eq!(cfg.crawl_broadcast_buffer_max, 65_536);
+    assert_eq!(crawl_subscribe_buffer_size(&cfg), 65_536);
 }
 
 #[test]
