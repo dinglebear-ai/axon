@@ -7,7 +7,7 @@ pub mod chunk;
 mod extract;
 mod postprocess;
 
-pub use chunk::{CodeChunk, Symbol, SymbolKind};
+pub use chunk::{ChunkSource, CodeChunk, Symbol, SymbolKind};
 use extract::{Extractor, extract_symbols, find_symbol_for_chunk, language_for_extension};
 use postprocess::{
     attach_leading_comments, dedupe_exact_ranges, inject_declaration_headers,
@@ -79,6 +79,7 @@ pub fn chunk_code_chunks(content: &str, file_extension: &str) -> Option<Vec<Code
                 kind: sym.kind,
                 name: sym.name.clone(),
             }),
+            source: ChunkSource::TreeSitter,
         });
     }
 

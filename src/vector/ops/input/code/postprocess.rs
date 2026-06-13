@@ -22,7 +22,9 @@ pub(super) fn attach_leading_comments(
             if chunk.text.trim_start().starts_with(prefix.trim_start()) {
                 return chunk;
             }
-            chunk.text = format!("{prefix}{}", chunk.text);
+            let body_budget = MAX_CODE_CHUNK_CHARS.saturating_sub(prefix.len());
+            let body = take_chars(&chunk.text, body_budget);
+            chunk.text = format!("{prefix}{body}");
             chunk.start_line = start_line;
             chunk
         })
@@ -179,7 +181,9 @@ fn ensure_symbol_headers(mut chunks: Vec<CodeChunk>) -> Vec<CodeChunk> {
             .trim_start()
             .starts_with(header.trim_end_matches('\n'))
         {
-            chunk.text = format!("{header}{}", chunk.text);
+            let body_budget = MAX_CODE_CHUNK_CHARS.saturating_sub(header.len());
+            let body = take_chars(&chunk.text, body_budget);
+            chunk.text = format!("{header}{body}");
         }
     }
     chunks

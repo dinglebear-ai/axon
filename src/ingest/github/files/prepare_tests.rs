@@ -146,10 +146,10 @@ fn text_chunks_byte_ranges_point_at_true_positions_with_repeated_content() {
 }
 
 #[test]
-fn prose_file_uses_prose_chunking_method() {
+fn markdown_file_uses_markdown_chunking_method() {
     let text = format!("# Title\n\n{}", "prose body line\n".repeat(60));
     let chunks = chunk_file(&text, "md");
     assert!(!chunks.is_empty());
     assert!(chunks.iter().all(|chunk| chunk.symbol.is_none()));
-    assert_eq!(chunking_method("md", &chunks[0]), "prose");
+    assert_eq!(chunking_method("md", &chunks[0]), "markdown");
 }

@@ -15,8 +15,8 @@ use crate::ingest::github::{is_indexable_doc_path, is_indexable_source_path};
 use crate::vector::ops::input::classify::path_extension;
 use crate::vector::ops::input::select;
 use crate::vector::ops::input::{
-    chunk_text_with_offsets,
-    code::{CodeChunk, chunk_code_chunks},
+    chunk_markdown_with_offsets, chunk_text_with_offsets,
+    code::{ChunkSource, CodeChunk, chunk_code_chunks},
 };
 
 /// Which files a directory walk should yield.
@@ -114,27 +114,43 @@ fn include_file(path: &Path, root: &Path, policy: SelectionPolicy) -> bool {
 /// grammar exists for `ext`, otherwise prose chunks adapted to `CodeChunk`.
 /// CPU-bound — callers embedding many files should wrap in `spawn_blocking`.
 pub fn chunk_file(content: &str, ext: &str) -> Vec<CodeChunk> {
+    if matches!(ext, "md" | "mdx" | "rst") {
+        return markdown_chunks(content);
+    }
     match chunk_code_chunks(content, ext) {
         Some(chunks) if !chunks.is_empty() => chunks,
         _ => text_chunks(content),
     }
 }
 
-/// Report the chunking method for one chunk: `"tree_sitter"` when a tree-sitter
-/// grammar exists for `ext` OR the chunk carries a symbol. Note: returns
-/// `"tree_sitter"` even for grammar-supported files where no symbols were
-/// extracted (tree-sitter ran but found nothing); returns `"prose"` only when
-/// no grammar exists and the chunk has no symbol.
-///
-/// Simplified to use only `chunk.symbol` as the signal, eliminating false
-/// positives where prose fallback chunks on grammar-supported extensions were
-/// incorrectly labeled `"tree_sitter"`.
+/// Report the chunking method for one chunk.
 pub fn chunking_method(_ext: &str, chunk: &CodeChunk) -> &'static str {
-    if chunk.symbol.is_some() {
-        "tree_sitter"
-    } else {
-        "prose"
-    }
+    chunk.source.as_str()
+}
+
+fn markdown_chunks(text: &str) -> Vec<CodeChunk> {
+    chunk_markdown_with_offsets(text)
+        .into_iter()
+        .map(|(byte_start, byte_end, chunk)| {
+            let line_start = line_for_byte(text, byte_start);
+            let line_end = if byte_end > byte_start {
+                line_for_byte(text, byte_end - 1)
+            } else {
+                line_start
+            };
+            CodeChunk {
+                text: chunk,
+                byte_start,
+                byte_end,
+                start_line: line_start,
+                end_line: line_end,
+                declaration_start_line: line_start,
+                declaration_end_line: line_end,
+                symbol: None,
+                source: ChunkSource::Markdown,
+            }
+        })
+        .collect()
 }
 
 fn text_chunks(text: &str) -> Vec<CodeChunk> {
@@ -159,6 +175,7 @@ fn text_chunks(text: &str) -> Vec<CodeChunk> {
                 declaration_start_line: line_start,
                 declaration_end_line: line_end,
                 symbol: None,
+                source: ChunkSource::Prose,
             }
         })
         .collect()

@@ -13,6 +13,23 @@ pub enum SymbolKind {
     Other,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ChunkSource {
+    TreeSitter,
+    Markdown,
+    Prose,
+}
+
+impl ChunkSource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TreeSitter => "tree_sitter",
+            Self::Markdown => "markdown",
+            Self::Prose => "prose",
+        }
+    }
+}
+
 impl SymbolKind {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -106,6 +123,7 @@ pub struct CodeChunk {
     pub declaration_start_line: u32,
     pub declaration_end_line: u32,
     pub symbol: Option<Symbol>,
+    pub source: ChunkSource,
 }
 
 impl CodeChunk {

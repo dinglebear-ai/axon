@@ -33,7 +33,7 @@ fn test_project() -> GitLabProject {
 
 #[test]
 fn gitlab_file_chunk_payload_sets_code_and_symbol_fields() {
-    use crate::vector::ops::input::code::{CodeChunk, Symbol, SymbolKind};
+    use crate::vector::ops::input::code::{ChunkSource, CodeChunk, Symbol, SymbolKind};
     let target = test_target();
     let project = test_project();
     let chunk = CodeChunk {
@@ -48,6 +48,7 @@ fn gitlab_file_chunk_payload_sets_code_and_symbol_fields() {
             kind: SymbolKind::Function,
             name: Some("x".into()),
         }),
+        source: ChunkSource::TreeSitter,
     };
     let payload = gitlab_file_chunk_payload(
         &target,

@@ -1,6 +1,6 @@
 use super::super::embed::gitlab_file_chunk_payload;
 use crate::ingest::gitlab::types::{GitLabProject, GitLabTarget};
-use crate::vector::ops::input::code::{CodeChunk, Symbol, SymbolKind};
+use crate::vector::ops::input::code::{ChunkSource, CodeChunk, Symbol, SymbolKind};
 
 fn make_target(namespace_path: &str) -> GitLabTarget {
     let project = namespace_path
@@ -50,6 +50,7 @@ fn make_chunk() -> CodeChunk {
             kind: SymbolKind::Function,
             name: Some("x".into()),
         }),
+        source: ChunkSource::TreeSitter,
     }
 }
 
