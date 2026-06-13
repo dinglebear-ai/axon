@@ -1,7 +1,7 @@
 # axon memory
-Last Modified: 2026-06-11
+Last Modified: 2026-06-13
 
-Persistent agent memory. Content and embeddings are stored in the dedicated Qdrant memory collection (`axon_memory` by default, or `AXON_MEMORY_COLLECTION`), while SQLite stores the metadata/graph mirror.
+Persistent agent memory. Content and embeddings are stored in the dedicated Qdrant memory collection (`axon_memory` by default, or `AXON_MEMORY_COLLECTION`), while SQLite stores the metadata/graph mirror. New memories are normalized through `SourceDocument::new_memory(...)` before embedding, so the Qdrant point uses the same deterministic UUID as SQLite and carries the shared planner fields (`chunk_content_kind`, `chunk_locator`, `source_range`).
 
 ## Commands
 

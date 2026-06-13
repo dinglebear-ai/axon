@@ -1,5 +1,5 @@
 # src/ingest — Source Ingestion Handlers
-Last Modified: 2026-06-09
+Last Modified: 2026-06-13
 
 Ingests external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube, AI sessions) into Qdrant.
 
@@ -53,28 +53,31 @@ ingest/
   - Nested namespaces: `https://gitlab.com/group/subgroup/project/-/issues/1` (the `/-/…` suffix is stripped)
   - `.git` suffix is stripped; path segments after the `-` marker are discarded
   - Must have ≥2 path segments (host + at minimum `group/project`) — rejects bare group URLs
-- **5 sequential phases** run by `ingest_gitlab()`, each independently error-tolerant:
+- **5 sequential phases** run by `ingest_gitlab()`:
   1. **metadata** — repo description, visibility, stars, forks
   2. **files** — `git clone --depth=1` subprocess; reuses `is_indexable_doc_path` and `is_indexable_source_path` from `src/ingest/github`; token injected as `Authorization: Basic base64("oauth2:<token>")`; requires `git` in PATH
   3. **issues** — paginated REST via `/projects/:id/issues`, sorted by `updated_at desc`; skipped if `issues_enabled == false`
   4. **merge_requests** — paginated REST via `/projects/:id/merge_requests`, sorted by `updated_at desc`; skipped if `merge_requests_enabled == false`
   5. **wiki** — fetched with `with_content=1` via `/projects/:id/wikis`; skipped if `wiki_enabled == false`
-- **403/404 graceful degradation:** `is_missing_or_forbidden()` returns `Ok(0)` for any phase that 403s or 404s — private features just silently produce no chunks
+- **Graceful missing-feature handling:** disabled features are skipped, and `is_missing_or_forbidden()` returns `Ok(0)` for 403/404 API phases where the feature is absent or inaccessible. Embedding failures inside phases still propagate through the ingest result.
 - **Pagination:** `fetch_paginated()` in `client.rs` follows `x-next-page` response header, `per_page=100`; respects `max_items` cap (reuses `cfg.github_max_issues` / `cfg.github_max_prs`)
 - **Payload schema:** `source_type = "gitlab"`. Every chunk carries `provider`, `host`, `namespace_path`, `project`, `content_kind` (`"repo_metadata"` / `"file"` / `"issue"` / `"merge_request"` / `"wiki"`), `default_branch`, `visibility`, `last_activity_at`, plus a `gitlab` nested object with type-specific fields
 - **File planning** — `gitlab/files.rs` builds `SourceDocument::try_new_file(SourceOrigin::GitFile, ...)` values with provider metadata. The shared source-doc planner owns `chunk_file`/line metadata and emits one file-level `PreparedDoc` with per-chunk `chunk_extra`.
+- **Failure semantics** — file/metadata/issue/MR/wiki embed summaries call `require_success(...)`; any `docs_failed > 0` becomes a failed ingest instead of a quiet partial success.
 
 ### Gitea/Forgejo (`gitea.rs`)
 - Uses the Gitea-compatible REST API for repository metadata, issues, and pull requests.
 - `GITEA_TOKEN` is optional for public repositories and is sent as `Authorization: token <token>` when present.
 - Known public hosts (`gitea.com`, `codeberg.org`) auto-classify from URL; self-hosted instances should use `gitea:<host>/<owner>/<repo>` or `forgejo:<host>/<owner>/<repo>`.
 - File ingest delegates to `ingest_git_repository` in `generic_git.rs`, which now builds `SourceDocument` values and lets the source-doc planner attach tree-sitter/prose chunk metadata. Preserves `source_type = "gitea"` and `provider = "gitea"` in Qdrant payloads.
+- Metadata/issues/PR batches use `prepare_plain_text_source()` and fail on embed `docs_failed`.
 
 ### Generic Git (`generic_git.rs`)
 - Explicit-only target form: `git:https://host/path/repo.git`.
 - HTTPS-only by design; SSH and local filesystem paths are rejected.
 - Indexes repository docs by default and source files when source inclusion is enabled. It does not call provider APIs, so it does not ingest issues, PRs, wiki pages, releases, or repository metadata beyond clone-derived file metadata.
 - File ingest builds one `SourceDocument` per file with canonical git/code doc metadata. The source-doc planner performs tree-sitter/prose chunking and emits one file-level `PreparedDoc` with per-chunk `code_*`/`symbol_*` metadata.
+- Embedding calls `require_success("generic git embed")`; any failed prepared document fails the ingest.
 
 ### GitHub (`github/`)
 - Uses `git clone --depth=1` subprocess for source files and wiki clone; `octocrab` for issues/PRs pagination
@@ -84,6 +87,7 @@ ingest/
 - `wiki.rs` runs `git clone --depth=1` as a subprocess — requires `git` in PATH/container. Non-zero exit = no wiki = `Ok(0)` (not an error)
 - **Metadata**: `github/meta.rs` builds canonical `git_*` and `code_*` payload fields via `GitHubPayloadParams` and `build_github_payload()`. GitHub no longer emits `gh_*` duplicates in payload schema v7. Includes repo-level (`git_repo_*`), file-level (`code_file_*`, `code_line_*`, `code_chunking_method`), symbol-level (`symbol_*`), and issue/PR-level (`git_number`, `git_state`, `git_author`, labels, merge/draft fields) metadata.
 - **File classification**: `classify_file_type()` in `src/vector/ops/input/classify.rs` tags each file as `test`/`config`/`doc`/`source` — stored in `code_file_type`
+- **Failure semantics**: repo metadata, issues, PRs, wiki pages, and file batches all fail on `docs_failed`. The top-level GitHub tally returns an error if any subtask fails instead of counting that subtask as zero.
 
 ### Reddit (`reddit.rs` + `reddit/`)
 - Reddit OAuth2 **client credentials** flow (app-only, no user login)
@@ -91,15 +95,16 @@ ingest/
 - Fetches subreddit posts + recursive comments; depth configurable via `--depth`
 - Rate limit: 100 req/min authenticated; uses `reqwest` directly (not spider)
 - **Metadata**: `reddit/meta.rs` builds `reddit_*` fields (author, score, num_comments, upvote_ratio, subreddit, domain, is_video, distinguished, gilded, flair) merged into every post's Qdrant payload via `PreparedDoc.extra`
+- Post/comment batches use `prepare_plain_text_source()` and fail the ingest on any embed `docs_failed`.
 
 ### YouTube (`youtube.rs` + `youtube/`)
 - Invokes `yt-dlp` as a **subprocess** (not a library) — `yt-dlp` must be installed and on `$PATH`
 - **Single video** (`ingest_youtube`): downloads `.vtt` + `.info.json` → `parse_vtt_to_text()` → embed transcript + description with full metadata payload
-- **Playlist / channel** (`ingest_youtube_playlist`): `--flat-playlist` enumeration (capped at 500 videos via `MAX_PLAYLIST_VIDEOS`) → sequential `for` loop of per-video `ingest_youtube` calls → progress reported after each video; failed videos are logged as warnings and skipped (job continues)
+- **Playlist / channel** (`ingest_youtube_playlist`): `--flat-playlist` enumeration (capped at 500 videos via `MAX_PLAYLIST_VIDEOS`) → sequential `for` loop of per-video `ingest_youtube` calls → progress reported after each video; failed videos now return an error after retries instead of being skipped
 - `is_playlist_or_channel_url()` detects `@handle`, `/c/`, `/channel/`, `/user/`, `?list=` — routes to playlist pipeline automatically
 - `extract_video_id()` handles full URLs, short URLs (`youtu.be/`), path patterns, and bare IDs
 - **Resume**: `completed_urls` in `result_json` JSONB lets a restarted job skip already-done videos
-- **429 retry**: 3 attempts with 10s → 20s → 40s backoff per video; non-429 errors skip the video
+- **429 retry**: 3 attempts with 10s → 20s → 40s backoff per video; non-429 errors fail the current video and therefore the playlist job
 - **Metadata**: `YoutubeVideoMeta` (in `youtube/meta.rs`) captures title, channel, channel_url, uploader_id, upload_date, duration, view_count, like_count, tags, categories — merged into every chunk's Qdrant payload via `PreparedDoc.extra`
 - No API key needed; yt-dlp handles auth for publicly accessible videos
 
@@ -129,6 +134,12 @@ All ingest unit tests run without live services (pure logic: parsing, classifica
 
 All ingest sources use the unified `embed_prepared_docs` pipeline via planner-created `PreparedDoc` values. Ingest builders produce `SourceDocument` values or call source-doc helpers. Only the source-doc planner calls `chunk_file`, `chunk_markdown`, or `chunk_text`. `PreparedDoc` is post-chunk and embed-ready.
 
+`SourceDocument` is the normalized pre-chunk boundary:
+- `SourceOrigin::GitFile` / `LocalFile` may use file chunking and symbol extraction.
+- `SourceOrigin::CrawlManifest`, `ScrapeResult`, `PlainIngest`, and `Memory` are prose/markdown/atomic inputs and must not invoke file chunking directly.
+- Planner-owned payload keys (`content_kind`, `chunk_content_kind`, `chunk_locator`, `source_range`, `chunking_fallback`, `code_chunk_source`) are stripped from caller-supplied `extra` and regenerated by the planner.
+- `PreparedDoc` fields are intentionally scoped to `crate::vector::ops`; external callers use constructors/accessors instead of struct literals.
+
 ### Canonical Pattern
 
 ```rust
@@ -155,6 +166,7 @@ let source = SourceDocument::try_new_file(
 )?;
 let doc = prepare_source_document(source).await?;
 let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
+summary.require_success("new ingest source embed")?;
 ```
 
 ### Pipeline behavior
@@ -162,13 +174,15 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 2. Per-doc TEI embedding with auto-split on 413 and retry on 429/503
 3. **Upsert-first** — deterministic UUID v5 point IDs overwrite existing chunks
 4. **Stale-tail cleanup** — orphan chunks with `chunk_index >= new_count` deleted after upsert
-5. Individual doc failures are logged and skipped (reported via `EmbedSummary.docs_failed`)
+5. Individual doc failures are counted in `EmbedSummary.docs_failed`; ingest/scrape callers should call `require_success(...)` unless they intentionally support partial ingestion
+6. Post-upsert maintenance failures (stale-tail or local legacy fragment cleanup) are returned as errors
 
 ### Chunking
 - Ingest builders must not chunk before planning. Build `SourceDocument` or use `prepare_plain_text_source`.
 - `SourceOrigin::GitFile` and `SourceOrigin::LocalFile` are the only origins that may use file chunking.
 - Crawl manifests and scrape results always use markdown/plain-text planning, even when a URL ends in `.rs`.
 - Provider metadata (`git_*`, `code_*`, `reddit_*`, `yt_*`, session fields) is passed as doc-level `extra`; planner-owned normalized fields (`chunk_content_kind`, `chunk_locator`, `source_range`, `chunking_fallback`, `code_chunk_source`) are generated by the planner only.
+- Memory uses `SourceDocument::new_memory(...)` with a stable point ID so the memory record and Qdrant chunk identity stay aligned.
 
 ## ingest_jobs Schema
 `axon_ingest_jobs` differs from other job tables:
@@ -180,9 +194,9 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 
 | Gap | Status |
 |-----|--------|
-| YouTube age-restricted / private videos | `yt-dlp` exits non-zero; error is a per-video skip warning in playlist mode, job failure in single-video mode. No friendly message. |
+| YouTube age-restricted / private videos | `yt-dlp` exits non-zero; after retry, the current video fails and playlist ingestion stops. No friendly message. |
 | YouTube manual captions | Only `--write-auto-sub` is passed; `--write-subs` (manual captions) is not requested. Videos with manual but no auto-generated captions will fail. |
-| GitHub file stream resilience | `flush_batch` errors are logged and counted (not propagated via `?`). A single TEI/Qdrant failure discards that batch and continues with remaining files. Batch timeout: 120s. |
+| GitHub file stream resilience | `flush_batch` errors and `docs_failed` are counted and returned through the file-ingest stats; top-level GitHub ingest fails if any file batch failed. Batch timeout: 120s. |
 | Ingest job hang detection | Per-job heartbeat (30s touch, `src/jobs/workers/heartbeat.rs`) + periodic watchdog (60s sweep, `src/jobs/workers.rs`) reclaim jobs whose `updated_at` exceeds `watchdog_stale_timeout_secs + watchdog_confirm_secs` (default 360s). Reclaimed rows are reset to `pending` (not `failed`). |
 
 ## yt-dlp Requirement

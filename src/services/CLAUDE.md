@@ -1,5 +1,5 @@
 # src/services — Typed Service Layer
-Last Modified: 2026-06-07
+Last Modified: 2026-06-13
 
 The contract boundary between all entry points (CLI commands, MCP handlers, web routes) and the underlying business logic crates (`vector`, `jobs`, `crawl`, `ingest`). Every external caller goes through a service function — no entry point calls `src/vector/ops/*` directly.
 
@@ -153,6 +153,31 @@ When adding a new typed result, put it in the matching domain module under
 `src/services/types/service/` (for example `query.rs`, `content.rs`,
 `system.rs`, or `lifecycle.rs`) and re-export it from `types/service.rs`.
 Create a new small domain module when no existing module owns the contract.
+
+## Indexing Service Semantics
+
+The service layer is responsible for deciding whether an embedding summary can
+be partial or must be all-or-error. The low-level vector pipeline reports
+`EmbedSummary { docs_embedded, docs_failed, chunks_embedded }`; services that
+expose user-facing indexing should call `require_success(...)` unless partial
+success is explicitly part of that service's contract.
+
+Current contracts:
+- `scrape::scrape_batch_with_optional_embed()` preserves in-memory scrape and
+  vertical-extractor metadata by converting each `ScrapeResult` into a
+  `SourceDocument::try_new_web_markdown(...)`, then fails the whole batch if any
+  scrape embed document fails.
+- REST sync post handlers use the same scrape service behavior, so `/v1/scrape`
+  does not report success while silently dropping embedded docs.
+- `memory::remember()` uses `SourceDocument::new_memory(...)` with the memory
+  UUID as the stable Qdrant point ID. If the SQLite write fails after Qdrant
+  upsert, the service attempts to delete the Qdrant memory URL to avoid
+  split-brain. `memory::supersede()` similarly rolls the Qdrant status back to
+  `active` if SQLite edge creation fails.
+
+Do not bypass these service functions from CLI/MCP/REST adapters. If a new
+indexing surface needs a different partial-failure policy, document it in that
+service and cover it with a sidecar test.
 
 ## ServiceEvent — Async Progress Channel
 

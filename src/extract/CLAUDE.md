@@ -54,7 +54,7 @@ pub struct ScrapedDoc {
 }
 ```
 
-`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 7`, see `src/vector/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on next crawl.
+`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 8`, see `src/vector/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on next crawl.
 
 ## auto_dispatch Flag
 

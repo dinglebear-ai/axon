@@ -1,13 +1,16 @@
-# Re-index Guide: Schema v3-v7 Payload Upgrade
+# Re-index Guide: Schema v3-v8 Payload Upgrade
 
-This guide explains what changed in Qdrant payload schema versions 3 through 7, who needs to
+This guide explains what changed in Qdrant payload schema versions 3 through 8, who needs to
 re-index existing points, and how to do it efficiently and safely.
 
-The current schema version is **7** (`PAYLOAD_SCHEMA_VERSION = 7` in
+The current schema version is **8** (`PAYLOAD_SCHEMA_VERSION = 8` in
 `src/vector/ops/qdrant/utils.rs`). Every point written by `axon` today carries
-`payload_schema_version = 7`. Versions 3 and 4 were introduced on 2026-05-21, v5 added
+`payload_schema_version = 8`. Versions 3 and 4 were introduced on 2026-05-21, v5 added
 origin tracking, v6 added code-symbol metadata for GitHub file chunks, and v7 is the
 clean-break git/code payload schema (provider-neutral `git_*`/`code_*` fields, no `gh_*`).
+Schema v8 adds normalized source-doc planner metadata (`chunk_content_kind`,
+`chunk_locator`, `source_range`, `chunking_fallback`, and `code_chunk_source`) and routes
+memory records through the same pre-chunk planning boundary.
 
 ---
 
@@ -135,6 +138,25 @@ v7 still rank and display correctly — but they retain the old `gh_*` keys unti
 Re-ingest GitHub repositories to gain the canonical `code_*` keys and drop the `gh_*`
 duplicates; no other source type changes at v7.
 
+## What Changed in Schema v8
+
+Schema v8 records the output of the normalized source-doc planner on every newly embedded
+chunk:
+
+| Field | Indexed | Notes |
+|-------|---------|-------|
+| `chunk_content_kind` | yes | `"code"`, `"markdown"`, or `"plain_text"` for the actual chunk. |
+| `chunk_locator` | no | Stable locator such as `src/lib.rs#L10-L34` or `<url>#chunk-2048`. |
+| `source_range` | no | JSON object with line and byte start/end offsets. |
+| `chunking_fallback` | no | Present when markdown planning fell back to safe plain-text chunking. |
+| `code_chunk_source` | no | File planner method: `"tree_sitter"`, `"markdown"`, or `"prose"`. |
+
+This is an enrichment-only change for most retrieval. Re-index sources when you want
+locator/range metadata in retrieved chunks, want to filter by `chunk_content_kind`, or want
+local/git file chunks to reflect the current one-file-`PreparedDoc` planner shape. Memory
+records written at v8 use `source_type = "memory"` and an explicit stable point ID matching
+the SQLite memory UUID.
+
 ---
 
 ## Who Needs to Re-index
@@ -148,7 +170,9 @@ You specifically benefit from re-indexing if you:
   `git_content_kind`, `git_file_language`, `git_author`, `git_state`, or `git_owner`.
 - Use `axon refresh` and want older sources to be discoverable via `seed_url`.
 - Query GitHub code and want to filter by `symbol_kind` or inspect `symbol_name` /
-  `chunking_method` in retrieved chunks.
+  `code_chunking_method` in retrieved chunks.
+- Need normalized chunk locators/ranges (`chunk_locator`, `source_range`) or want to filter
+  mixed collections by `chunk_content_kind`.
 - Query vertical extractor points (npm, PyPI, Crates.io, HuggingFace, etc.) and want to
   filter by package or model metadata fields.
 - Run any query that would return mixed results and you want to scope to a specific
@@ -272,8 +296,9 @@ axon ingest r/rust --wait true
 axon ingest https://www.reddit.com/r/rust/comments/abc123/post_title/ --wait true
 ```
 
-Reddit ingest writes flat `reddit_*` fields. These haven't changed between v2 and v3, but
-re-ingesting is the only way to get `payload_schema_version = 3` stamped on those points.
+Reddit ingest writes flat `reddit_*` fields. These fields are unchanged by v8, but
+re-ingesting is the only way to get the current `payload_schema_version` and normalized
+chunk metadata stamped on those points.
 
 ### YouTube videos, playlists, and channels
 
@@ -282,8 +307,8 @@ axon ingest https://www.youtube.com/watch?v=VIDEO_ID --wait true
 axon ingest https://www.youtube.com/channel/CHANNEL_ID --wait true
 ```
 
-YouTube ingest writes flat `yt_*` fields. Same situation as Reddit — unchanged fields,
-but re-ingest updates the schema version stamp.
+YouTube ingest writes flat `yt_*` fields. Same situation as Reddit: source-specific fields
+are unchanged, but re-ingest updates the schema version stamp and normalized chunk metadata.
 
 ### AI session exports
 
@@ -292,8 +317,9 @@ axon sessions --wait true
 ```
 
 Sessions are re-indexed from the export files in your configured sessions directory.
-Session points (`claude_session`, `codex_session`, `sessions`) have no v3-specific fields,
-so re-indexing these is low priority.
+Session points (`claude_session`, `codex_session`, `sessions`) have no git-specific fields,
+so re-indexing these is low priority unless you want current schema stamps and planner
+chunk metadata.
 
 ---
 
@@ -307,8 +333,8 @@ background operation. Focus on the highest-value sources first.
 | **Highest** | GitHub / GitLab repos you actively query by content kind, file language, or author | `git_content_kind`, `git_file_language`, `git_state` filters require v3; GitHub repo facets (`gh_stars`, `gh_forks`, `gh_language`, `gh_topics`, `gh_is_fork`, `gh_is_archived`, `gh_file_type`) require v4 |
 | **High** | npm / PyPI / Crates.io / HuggingFace verticals | Package metadata filters (`pkg_name`, `pkg_language`, `hf_task`) require v3 |
 | **Medium** | Reddit / Hacker News ingest | Per-community faceting; fields unchanged but version stamp is wrong |
-| **Low** | Generic crawl/embed points | No new filterable fields; re-crawl only if content has changed |
-| **Skip** | AI session exports | No v3-specific fields; version stamp only |
+| **Low** | Generic crawl/embed points | Re-crawl only if content has changed or you need v8 chunk locator/range metadata |
+| **Low** | AI session exports | No git-specific fields; re-run only for current schema stamps and planner metadata |
 
 Run re-indexing with `--wait false` (the default) to enqueue jobs in the background and
 continue working:
@@ -324,9 +350,11 @@ axon status  # monitor job queue
 
 ## Upsert Semantics: No Orphan Cleanup Needed
 
-Point IDs in axon are **deterministic UUID v5** hashes derived from `url` and
-`chunk_index`. Re-ingesting the same source always produces the same point IDs — Qdrant's
-upsert operation overwrites the old payload in place.
+Point IDs in axon are deterministic. Most sources use UUID v5 hashes derived from `url`
+and `chunk_index`; stable record sources may provide explicit point IDs, and memory uses the
+memory UUID directly. Re-ingesting the same source produces the same point IDs when source
+URLs/chunk indexes or explicit IDs are stable, so Qdrant upsert overwrites the old payload in
+place.
 
 This means:
 
@@ -374,8 +402,8 @@ axon ingest https://github.com/org/repo-2
 # 3. Monitor progress
 axon status
 
-# 4. Verify v3 points are appearing
-axon sources --by-schema-version   # v3 count should grow
+# 4. Verify current-schema points are appearing
+axon sources --by-schema-version   # v8 count should grow
 
 # 5. Optionally clean up near-duplicates after crawl re-indexing
 axon dedupe

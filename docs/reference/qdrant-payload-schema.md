@@ -1,7 +1,7 @@
 # Qdrant Payload Schema Contract
 
 Status: active
-Last updated: 2026-06-08
+Last updated: 2026-06-13
 
 This document is the authoritative reference for fields stored in Qdrant point payloads.
 Code must conform to this contract; if the code diverges, update the code and this document
@@ -15,7 +15,7 @@ Every point in every collection carries these fields, regardless of source.
 
 | Field | Qdrant type | Indexed | Notes |
 |-------|-------------|---------|-------|
-| `url` | keyword | yes | Canonical source URL. Point ID = UUID v5(`NAMESPACE_URL`, `"<url>:<chunk_index>"` bytes). |
+| `url` | keyword | yes | Canonical source URL. Default point ID = UUID v5(`NAMESPACE_URL`, `"<url>:<chunk_index>"` bytes). Some stable record sources, such as memory, provide explicit point IDs. |
 | `domain` | keyword | yes | Hostname only (`github.com`, `reddit.com`). |
 | `seed_url` | keyword | yes | Origin that started this chunk's acquisition: the crawl start URL (crawl path) or ingest target (ingest path), distinct from the per-page `url`. Falls back to the doc's own `url` for direct `embed`/`scrape`. Faceted by `axon refresh`. Added in schema v5; absent on older points. |
 | `source_type` | keyword | yes | See Source Types below. |
@@ -23,7 +23,7 @@ Every point in every collection carries these fields, regardless of source.
 | `chunk_index` | integer | yes | 0-based position within the document. |
 | `chunk_text` | raw string | no | The stored text chunk. Never truncated. |
 | `scraped_at` | datetime | yes | RFC3339 timestamp at embed time. |
-| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `7`. |
+| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `8`. |
 
 ### Conditional Universal Fields
 
@@ -37,6 +37,11 @@ Present only when the condition is met. Absence is intentional — do not write 
 | `structured_type` | raw string | no | Schema.org type when `structured_kind` is present (`"Article"`, `"Product"`, …). |
 | `structured_id` | raw string | no | Schema.org `@id` when present. |
 | `structured_blob` | raw JSON | no | Full raw structured-data JSON object. Not indexed; use `structured_kind` for filtering. |
+| `chunk_content_kind` | keyword | yes | Planner classification for this chunk: `"code"`, `"markdown"`, or `"plain_text"`. Added in schema v8. |
+| `chunk_locator` | raw string | no | Stable locator for the chunk within the source, e.g. `src/lib.rs#L10-L34` or `<url>#chunk-2048`. Added in schema v8. |
+| `source_range` | raw JSON | no | Object with `line_start`, `line_end`, `byte_start`, and `byte_end` for the chunk. Added in schema v8. |
+| `chunking_fallback` | keyword | no | Present when the source-doc planner used a safe fallback such as plain-text markdown handling. Added in schema v8. |
+| `code_chunk_source` | keyword | no | File planner source for chunk metadata: `"tree_sitter"`, `"markdown"`, or `"prose"`. Added in schema v8. |
 
 ---
 
@@ -58,6 +63,7 @@ The `source_type` field identifies the ingestion path. Values are stable and mus
 | `"sessions"` | AI session export ingest — Gemini | `sessions/gemini.rs` writes this directly |
 | `"claude_session"` | Claude session export | `sessions/claude.rs` |
 | `"codex_session"` | Codex session export | `sessions/codex.rs` |
+| `"memory"` | Persistent agent memory | `services::memory::remember()` writes atomic memory documents into the dedicated memory collection. |
 
 ---
 
@@ -170,6 +176,37 @@ YouTube ingest embeds two `PreparedDoc`s per video: one for the VTT transcript
 
 ---
 
+## Memory Fields
+
+Persistent memory uses `source_type = "memory"` and stores content in the dedicated
+memory collection (`axon_memory` by default, or `AXON_MEMORY_COLLECTION`). SQLite remains
+the metadata/graph mirror. Memory documents are atomic: one memory record becomes one
+Qdrant chunk with the same deterministic UUID used by SQLite, and the source-doc planner
+adds `chunk_content_kind = "plain_text"`, `chunk_locator = "memory://<id>#chunk-0"`, and
+`source_range`.
+
+| Field | Type | Indexed | Notes |
+|-------|------|---------|-------|
+| `type` | string | no | Memory node type: `fact`, `decision`, etc. |
+| `title` | string | no | Memory title, derived from the body when omitted. |
+| `body` | string | no | Redacted memory body. |
+| `project` | string | no | Project scope when known. |
+| `repo` | string | no | Repository scope when known. |
+| `file` | string | no | File scope when supplied. |
+| `workspace` | string | no | Runtime workspace path when detected. |
+| `git_branch` | string | no | Runtime git branch when detected. |
+| `git_commit` | string | no | Runtime git commit when detected. |
+| `git_dirty` | bool | no | Runtime dirty-worktree flag when detected. |
+| `cwd` | string | no | Runtime current working directory when detected. |
+| `confidence` | float | no | Caller-supplied confidence, default `1.0`. |
+| `status` | string | no | `active` or `superseded`. Search excludes superseded memories. |
+| `created_at` | integer | no | Unix timestamp mirrored from SQLite metadata. |
+| `updated_at` | integer | no | Unix timestamp mirrored from SQLite metadata. |
+| `last_seen_at` | integer | no | Unix timestamp used by recall/list flows. |
+| `access_count` | integer | no | Recall access count. |
+
+---
+
 ## Vertical Extractor Fields
 
 Points produced by vertical extractors carry `extractor_name` plus a set of extractor-specific
@@ -207,8 +244,9 @@ flat fields. The full per-extractor schema is defined in
 | 3 | 2026-05-21 | Added canonical git_* provider fields (git_host, git_owner, git_repo, git_content_kind, etc.) and vertical extractor extra payload fields. |
 | 4 | 2026-05-21 | Promoted gh_stars, gh_forks, gh_language, gh_topics, gh_is_fork, gh_is_archived, gh_file_type, gh_line_start, gh_line_end from git_meta blob to indexed top-level fields. Removed these keys from git_meta. |
 | 5 | 2026-05-16 | Added indexed top-level `seed_url` origin tracking for `axon refresh`. |
-| 6 | 2026-06-08 | Added code chunk `symbol_name`/`symbol_kind` metadata, `symbol_extraction_status`, and restored `chunking_method` writes for GitHub file chunks. |
+| 6 | 2026-06-08 | Added code chunk `symbol_name`/`symbol_kind` metadata, `symbol_extraction_status`, and restored `code_chunking_method` writes for GitHub file chunks. |
 | 7 | 2026-06-08 | Clean-break git/code schema: replaced new `gh_*` writes with canonical `git_*`, `code_*`, and symbol fields. |
+| 8 | 2026-06-13 | Added normalized source-doc planner fields: `chunk_content_kind`, `chunk_locator`, `source_range`, `chunking_fallback`, and `code_chunk_source`; documented atomic `memory` source documents. |
 
 Points without `payload_schema_version` are treated as version 1. Retrieval applies no version
 filter by default — all points are queryable. Use
@@ -241,8 +279,9 @@ Quantization: scalar int8, quantile 0.99, always_ram = false.
 
 Points are upserted in batches of `AXON_QDRANT_UPSERT_BATCH_SIZE` (default 256, max 4096)
 using `PUT /collections/{name}/points?wait=true`. Each batch retries up to 3 times with
-exponential backoff (500ms, 1s, 2s). Point IDs are deterministic — upserting the same
-`(url, chunk_index)` overwrites the existing point.
+exponential backoff (500ms, 1s, 2s). Point IDs are deterministic. Most sources derive IDs
+from `(url, chunk_index)`, while stable record sources may provide explicit IDs; memory uses
+the memory UUID directly. Upserting the same point ID overwrites the existing point.
 
 ### Stale-tail cleanup
 

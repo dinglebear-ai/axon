@@ -414,8 +414,12 @@ Implemented in `src/jobs/ops/enqueue.rs`.
 
 ## Reindex a Qdrant collection
 
-When the embedding model, chunk strategy, or payload schema changes you must
-rebuild from source.
+When the embedding model, chunk strategy, source-doc planner, or payload schema
+changes you must rebuild from source. The normalized source-doc planner owns
+file/code/markdown/plain-text chunking and emits schema-versioned payload fields
+such as `chunk_content_kind`, `chunk_locator`, `source_range`,
+`chunking_fallback`, and `code_chunk_source`; old chunks will not gain those
+fields until the source is re-embedded or re-ingested.
 
 ```bash
 # 1. Rename the live collection (or pick a new name)
@@ -434,8 +438,10 @@ For document-level surgery (single URL):
 ./scripts/axon embed https://example.com/page --wait true   # re-embeds the URL
 ```
 
-Embedding the same URL again replaces existing points for that URL before
-upsert.
+Embedding the same URL again uses deterministic point IDs and upserts first,
+then deletes stale tail chunks whose old `chunk_index` is beyond the new chunk
+count. Cleanup failures now fail the embedding operation so partial replacement
+does not look successful.
 
 ---
 

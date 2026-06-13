@@ -1,12 +1,12 @@
 # Sessions Ingest
-Last Modified: 2026-06-11
+Last Modified: 2026-06-13
 
 Version: 1.0.0
 Last Updated: 01:26:53 | 02/25/2026 EST
 
 > CLI reference (flags, subcommands, examples): [`docs/reference/commands/sessions.md`](../../reference/commands/sessions.md)
 
-Ingests exported AI conversation files (Claude, Codex, Gemini) into Qdrant. Session ingest scans local history paths, redacts secret-like tokens, builds `PreparedDoc` values, and embeds them through the shared TEI/Qdrant pipeline.
+Ingests exported AI conversation files (Claude, Codex, Gemini) into Qdrant. Session ingest scans local history paths, redacts secret-like tokens, normalizes each session chunk through the source-doc planner, and embeds planner-created `PreparedDoc` values through the shared TEI/Qdrant pipeline.
 
 ## Supported Formats
 
@@ -32,8 +32,8 @@ Each session file is bounded by `AXON_SESSION_INGEST_MAX_BYTES` (default: 20 MiB
 
 1. Discovers all session files under each provider's scan path
 2. Dispatches to the matching parser based on path/provider
-3. Parser extracts message turns and formats them as text chunks
-4. Chunks embedded via `embed_prepared_docs()` → TEI → Qdrant
+3. Parser extracts message turns and formats each session document as redacted plain text
+4. Session text is normalized with the shared source-doc helpers, then embedded via `embed_prepared_docs()` → TEI → Qdrant
 
 Sessions defaults to **async queued execution** when `--wait false` (default): it enqueues an ingest job and returns a job ID.
 

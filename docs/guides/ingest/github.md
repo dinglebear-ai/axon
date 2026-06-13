@@ -1,5 +1,5 @@
 # GitHub Ingest
-Last Modified: 2026-05-03
+Last Modified: 2026-06-13
 
 > CLI reference (flags, subcommands, examples): [`docs/reference/commands/ingest.md`](../../reference/commands/ingest.md)
 
@@ -32,7 +32,7 @@ Source code files are chunked via **tree-sitter AST-aware splitting** when a gra
 
 Files in unsupported languages fall back to standard 2000-char prose chunking with 200-char overlap.
 
-Implementation: `chunk_code()` in `src/vector/ops/input/code.rs`, used to pre-chunk code files before passing to `embed_prepared_docs()` via `PreparedDoc`.
+Implementation: GitHub file ingest builds one `SourceDocument::try_new_file(SourceOrigin::GitFile, ...)` per file. The shared source-doc planner calls `chunk_file()` / tree-sitter internally, then emits one file-level `PreparedDoc` with per-chunk `chunk_extra` for TEI/Qdrant. Ingest callers should not pre-chunk files or build one `PreparedDoc` per code symbol.
 
 ### File Classification
 
@@ -78,7 +78,7 @@ The argument accepts:
 3. Clones the repository with `git clone --depth=1 --branch <default_branch> --single-branch`
 4. Walks the local clone and filters files through `is_indexable_doc_path()` (always) and `is_indexable_source_path()` (unless `--no-source`)
 5. Reads file contents from disk in bounded parallel batches
-6. Code files are chunked via `chunk_code()` (tree-sitter AST when available, prose fallback); doc files use `chunk_text()`. Chunks are embedded through `embed_prepared_docs()` in batches
+6. File content is normalized as `SourceDocument` values; the source-doc planner chooses tree-sitter code chunking, markdown chunking, or prose fallback and embeds planner-created `PreparedDoc` batches through `embed_prepared_docs()`
 7. Fetches issues (all states) and PRs (all states) via octocrab with automatic pagination
 8. Clones the wiki separately via `git clone --depth=1` and walks `.md`/`.rst`/`.txt` files when GitHub reports a wiki exists
 9. All chunk types carry canonical `git_*`/`code_*` metadata payload via `build_github_payload()` in `src/ingest/github/meta.rs`
@@ -107,7 +107,7 @@ The current threshold is fixed and conservative: any failed embed batch makes th
 
 ## Qdrant Metadata Fields
 
-GitHub chunks carry canonical `git_*`, `code_*`, and `symbol_*` payload fields built by `build_github_payload()` in `src/ingest/github/meta.rs` via the `GitHubPayloadParams` struct. Schema v7 is a clean break: new GitHub ingest no longer emits `gh_*` duplicate fields.
+GitHub chunks carry canonical `git_*`, `code_*`, and `symbol_*` payload fields built by `build_github_payload()` in `src/ingest/github/meta.rs` via the `GitHubPayloadParams` struct. Schema v7 is a clean break: new GitHub ingest no longer emits `gh_*` duplicate fields. Schema v8 adds planner-owned normalized chunk fields such as `chunk_content_kind`, `chunk_locator`, `source_range`, `chunking_fallback`, and `code_chunk_source`.
 
 ### Repository-level fields (all chunk types)
 
@@ -141,6 +141,11 @@ GitHub chunks carry canonical `git_*`, `code_*`, and `symbol_*` payload fields b
 | `symbol_name` | `string` | Declaration name for code chunks when known, e.g. `"Response::parse"` |
 | `symbol_kind` | `string` | Declaration kind for code chunks when known, e.g. `"function"` or `"method"` |
 | `symbol_extraction_status` | `string` | File-level symbol extraction status: `"ok"`, `"unsupported"`, `"skipped_large"`, `"none_found"`, or `"prose"` |
+| `chunk_content_kind` | `string` | Planner classification for the individual chunk: `"code"`, `"markdown"`, or `"plain_text"` |
+| `chunk_locator` | `string` | Stable chunk locator, usually `path#Lstart-Lend` for file chunks |
+| `source_range` | `object` | Line and byte range for the chunk within the source document |
+| `chunking_fallback` | `string` | Present when the planner used a safe fallback path |
+| `code_chunk_source` | `string` | Planner source for code metadata: `"tree_sitter"`, `"markdown"`, or `"prose"` |
 
 ### Issue/PR fields
 
