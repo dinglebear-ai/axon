@@ -88,7 +88,7 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
         name: "search",
         scope: ActionScope::Read,
-        description: "Run Tavily web search and optionally queue crawls for results",
+        description: "Run SearXNG/Tavily web search and optionally queue crawls for results",
         cost: "moderate",
     },
     McpActionSpec {

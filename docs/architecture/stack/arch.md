@@ -155,7 +155,7 @@ and the first-party HTTP API.
 | Embedded assets | TypeScript build output | Setup/config panel |
 | Axum routes | Rust | Panel state, login, config, setup, and ops APIs |
 | MCP route | rmcp + Axum | Streamable HTTP MCP endpoint |
-| Client/server routes | Axum | Direct `/v1` REST routes for server-mode CLI commands |
+| Client/server routes | Axum | Direct `/v1` REST routes for external API clients |
 
 The removed Next.js dashboard, command WebSocket bridge, shell WebSocket, and
 download routes are historical surfaces only.
@@ -175,7 +175,7 @@ first-party REST routes share the HTTP auth boundary controlled by
 | `/` and `/api/panel/*` | 8001 | Embedded setup/config panel |
 | `/mcp` | 8001 | MCP streamable HTTP |
 | `/v1/ask` | 8001 | Ask endpoint |
-| `/v1/capabilities`, direct `/v1` routes | 8001 | CLI client/server mode |
+| `/v1/capabilities`, direct `/v1` routes | 8001 | External REST clients and web panel |
 
 Jobs are stored in SQLite and drained by in-process workers when the service
 context is worker-enabled.

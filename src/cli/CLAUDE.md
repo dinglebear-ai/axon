@@ -30,11 +30,11 @@ cli/
     ├── migrate.rs                # Collection migration entry (unnamed → named-mode upgrade)
     ├── probe.rs                  # HTTP probing utilities used by doctor command
     ├── query.rs                  # Semantic/vector query command
-    ├── research.rs               # Tavily AI research + LLM synthesis
+    ├── research.rs               # SearXNG/Tavily research + LLM synthesis
     ├── retrieve.rs               # Retrieve stored document chunks
     ├── scrape.rs                 # Scrape URLs to markdown/html/json
     ├── screenshot.rs             # Screenshot entry: URL loop, Chrome requirement check
-    ├── search.rs                 # Web search via Tavily API
+    ├── search.rs                 # Web search via SearXNG/Tavily
     ├── serve.rs                  # unified Axum HTTP server entry point
     ├── services_migration_tests.rs # Migration tests for the services-layer refactor
     ├── sessions.rs               # Ingest AI session exports (Claude/Codex/Gemini)

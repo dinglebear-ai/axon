@@ -166,7 +166,14 @@ RUNTIME_ENV_VARS: list = [
     "QDRANT_URL",
     "TEI_URL",
     ("AXON_HEADLESS_GEMINI_CMD", "path to Gemini CLI (default: `gemini`)"),
-    ("AXON_HEADLESS_GEMINI_MODEL", "Gemini model override (optional)"),
+    (
+        "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
+        "preferred Gemini synthesis model override (optional)",
+    ),
+    (
+        "AXON_HEADLESS_GEMINI_MODEL",
+        "legacy alias for AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
+    ),
     "TAVILY_API_KEY",
 ]
 

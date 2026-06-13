@@ -109,7 +109,7 @@ LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fa
 
 - `AXON_HEADLESS_GEMINI_CMD` selects the Gemini CLI command.
 - `AXON_HEADLESS_GEMINI_HOME` selects the source HOME for Gemini auth copying.
-- `AXON_HEADLESS_GEMINI_MODEL` controls the Gemini model override.
+- `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` controls the Gemini synthesis model override; `AXON_HEADLESS_GEMINI_MODEL` remains a legacy alias.
 - `AXON_LLM_COMPLETION_CONCURRENCY` caps concurrent completions.
 - `AXON_LLM_COMPLETION_TIMEOUT_SECS` caps each completion request.
 

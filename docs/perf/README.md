@@ -8,7 +8,6 @@ end-to-end on the Gemini headless synthesis path.
 Prereqs:
 - `axon` binary built (`just build` or `cargo build --release --bin axon`)
 - Infra services up: `rtk just services-up` (qdrant, tei, chrome)
-- For warm mode: `axon serve` running and `AXON_SERVER_URL` set
 - `jq`, `bash 4+`
 
 Run:
@@ -56,12 +55,14 @@ content-bearing keys (`query`, `prompt`, `answer`, `chunk_text`, `url`,
 `source`) and strings longer than 100 characters before writing a successful
 result.
 
-## Cold Vs Warm
+## Cold Vs Warm Labels
 
-- **cold**: `axon ask` runs with `--local`, forcing in-process startup each invocation.
-- **warm**: assumes `axon serve` is already running and reuses it through `AXON_SERVER_URL`.
+- **cold** and **warm** are compatibility labels kept by `scripts/bench-ask.sh`.
+- Both labels run `axon ask` in-process now; generic CLI forwarding through
+  `AXON_SERVER_URL` and `--local` were removed in 5.0.0.
 
-Do not average them. Report cold and warm side-by-side.
+Do not compare old cold/warm artifacts against new in-process runs without
+calling out the runtime change.
 
 ## Artifacts And `.gitignore`
 

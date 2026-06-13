@@ -90,15 +90,15 @@ SH
     echo "self-test expected gemini-flash API key to be preserved and redacted in config metadata" >&2
     exit 1
   }
-  jq -e '.profiles[] | select(.profile=="gemini-flash") | .label == "cli-api-bad-model" and .env_overrides.AXON_OPENAI_MODEL == "../bad/model"' "$out/run.json" >/dev/null || {
+  jq -e '.profiles[] | select(.profile=="gemini-flash") | .label == "cli-api-bad-model" and .env_overrides.AXON_SYNTHESIS_OPENAI_MODEL == "../bad/model"' "$out/run.json" >/dev/null || {
     echo "self-test expected dynamic model labels to be slugified while preserving model metadata" >&2
     exit 1
   }
-  jq -e '.profiles[] | select(.profile=="gpt-5.4-mini") | .env_overrides.AXON_OPENAI_API_KEY == "***" and .env_overrides.AXON_OPENAI_MODEL == "gpt-5.4-mini"' "$out/run.json" >/dev/null || {
+  jq -e '.profiles[] | select(.profile=="gpt-5.4-mini") | .env_overrides.AXON_OPENAI_API_KEY == "***" and .env_overrides.AXON_SYNTHESIS_OPENAI_MODEL == "gpt-5.4-mini"' "$out/run.json" >/dev/null || {
     echo "self-test expected gpt-5.4-mini cli-api config metadata" >&2
     exit 1
   }
-  jq -e '.profiles[] | select(.profile=="gemini-3.1-flash-lite") | .env_overrides.AXON_OPENAI_API_KEY == "***" and .env_overrides.AXON_OPENAI_MODEL == "gemini-3.1-flash-lite"' "$out/run.json" >/dev/null || {
+  jq -e '.profiles[] | select(.profile=="gemini-3.1-flash-lite") | .env_overrides.AXON_OPENAI_API_KEY == "***" and .env_overrides.AXON_SYNTHESIS_OPENAI_MODEL == "gemini-3.1-flash-lite"' "$out/run.json" >/dev/null || {
     echo "self-test expected gemini-3.1-flash-lite cli-api config metadata" >&2
     exit 1
   }

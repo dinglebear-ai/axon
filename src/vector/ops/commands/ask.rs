@@ -35,7 +35,11 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
                 .openai_model
                 .as_deref()
                 .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| anyhow::anyhow!("AXON_OPENAI_MODEL is required for ask"))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "AXON_SYNTHESIS_OPENAI_MODEL is required for ask (legacy alias: AXON_OPENAI_MODEL)"
+                    )
+                })?;
             Ok(())
         }
     }

@@ -73,7 +73,7 @@ write_override_env() {
   if [[ -f "$BASE_ENV_FILE" && "$profile" == "current" ]]; then
     cp "$BASE_ENV_FILE" "$env_file"
   elif [[ -f "$BASE_ENV_FILE" ]]; then
-    grep -vE '^(AXON_LLM_BACKEND|AXON_OPENAI_BASE_URL|AXON_OPENAI_MODEL|AXON_OPENAI_API_KEY|AXON_ASK_|AXON_LLM_COMPLETION_)=' "$BASE_ENV_FILE" >"$env_file" || true
+    grep -vE '^(AXON_LLM_BACKEND|AXON_OPENAI_BASE_URL|AXON_SYNTHESIS_OPENAI_MODEL|AXON_OPENAI_MODEL|AXON_OPENAI_API_KEY|AXON_ASK_|AXON_LLM_COMPLETION_)=' "$BASE_ENV_FILE" >"$env_file" || true
   else
     : >"$env_file"
   fi
@@ -87,28 +87,28 @@ write_override_env() {
     gemini-flash)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
       append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}"
-      append_env_override "$env_file" AXON_OPENAI_MODEL "${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}"
+      append_env_override "$env_file" AXON_SYNTHESIS_OPENAI_MODEL "${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}"
       copy_env_key_from_base "$env_file" AXON_OPENAI_API_KEY
       append_env_override "$env_file" AXON_LLM_COMPLETION_CONCURRENCY "1"
       ;;
     gpt-5.4-mini)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
       append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}"
-      append_env_override "$env_file" AXON_OPENAI_MODEL "${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}"
+      append_env_override "$env_file" AXON_SYNTHESIS_OPENAI_MODEL "${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}"
       copy_env_key_from_base "$env_file" AXON_OPENAI_API_KEY
       append_env_override "$env_file" AXON_LLM_COMPLETION_CONCURRENCY "1"
       ;;
     gemini-3.1-flash-lite)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
       append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}"
-      append_env_override "$env_file" AXON_OPENAI_MODEL "${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}"
+      append_env_override "$env_file" AXON_SYNTHESIS_OPENAI_MODEL "${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}"
       copy_env_key_from_base "$env_file" AXON_OPENAI_API_KEY
       append_env_override "$env_file" AXON_LLM_COMPLETION_CONCURRENCY "1"
       ;;
     gemma-local)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
       append_env_override "$env_file" AXON_OPENAI_BASE_URL "${GEMMA_OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}"
-      append_env_override "$env_file" AXON_OPENAI_MODEL "${GEMMA_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}"
+      append_env_override "$env_file" AXON_SYNTHESIS_OPENAI_MODEL "${GEMMA_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}"
       append_env_override "$env_file" AXON_OPENAI_API_KEY ""
       append_env_override "$env_file" AXON_LLM_COMPLETION_CONCURRENCY "1"
       append_env_override "$env_file" AXON_ASK_MAX_CONTEXT_CHARS "${GEMMA_CONTEXT_CHARS:-128000}"
@@ -135,7 +135,7 @@ cli_api_overrides_json() {
     '{
       AXON_LLM_BACKEND: $backend,
       AXON_OPENAI_BASE_URL: $base_url,
-      AXON_OPENAI_MODEL: $model,
+      AXON_SYNTHESIS_OPENAI_MODEL: $model,
       AXON_OPENAI_API_KEY: "***",
       AXON_LLM_COMPLETION_CONCURRENCY: $concurrency
     }'
@@ -171,7 +171,7 @@ env_overrides_json() {
         '{
           AXON_LLM_BACKEND: $backend,
           AXON_OPENAI_BASE_URL: $base_url,
-          AXON_OPENAI_MODEL: $model,
+          AXON_SYNTHESIS_OPENAI_MODEL: $model,
           AXON_OPENAI_API_KEY: $api_key_redacted,
           AXON_LLM_COMPLETION_CONCURRENCY: $concurrency,
           AXON_ASK_MAX_CONTEXT_CHARS: $context,
@@ -288,10 +288,12 @@ selected_model_from_config() {
   backend="$(config_env_value "$config_json" AXON_LLM_BACKEND)"
   case "$backend" in
     openai-compat)
-      model="$(config_env_value "$config_json" AXON_OPENAI_MODEL)"
+      model="$(config_env_value "$config_json" AXON_SYNTHESIS_OPENAI_MODEL)"
+      [[ -n "$model" ]] || model="$(config_env_value "$config_json" AXON_OPENAI_MODEL)"
       ;;
     gemini-headless|gemini|headless|"")
-      model="$(config_env_value "$config_json" AXON_HEADLESS_GEMINI_MODEL)"
+      model="$(config_env_value "$config_json" AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL)"
+      [[ -n "$model" ]] || model="$(config_env_value "$config_json" AXON_HEADLESS_GEMINI_MODEL)"
       ;;
     *)
       model=""

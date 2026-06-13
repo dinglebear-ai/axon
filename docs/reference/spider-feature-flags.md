@@ -4,7 +4,7 @@
 > [`docs/reference/cargo-features.md`](cargo-features.md) — that file also covers runtime env-var gates.
 
 **Total feature entries tracked in this inventory: 79 (includes `basic` meta-feature)**
-**Flags enabled in axon_rust: 19 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
+**Flags enabled in Axon: 19 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
 
 ---
 
@@ -81,7 +81,7 @@ Used in two files for HTML→Markdown content transformation:
 
 ## Full Flag Inventory (all 79, includes `basic` meta-feature)
 
-`✅` = enabled in axon_rust · `—` = not used
+`✅` = enabled in Axon · `—` = not used
 
 ### Core (25)
 

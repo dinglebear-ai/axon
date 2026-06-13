@@ -1,7 +1,7 @@
 use crate::core::config::Config;
 use std::error::Error;
 
-// Re-export for tests only — canonical implementation lives in crates/crawl/screenshot.rs.
+// Re-export for tests only — canonical implementation lives in src/crawl/screenshot.rs.
 // Services/MCP import from there directly; only test modules in this subtree use the re-export.
 #[cfg(test)]
 pub(crate) use crate::crawl::screenshot::url_to_screenshot_filename;

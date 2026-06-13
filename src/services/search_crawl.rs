@@ -12,7 +12,7 @@ use std::error::Error;
 
 /// Typed result returned by [`search_and_crawl`].
 ///
-/// Contains Tavily search results plus the outcome of auto-enqueueing
+/// Contains search results plus the outcome of auto-enqueueing
 /// one bounded crawl job per result URL.
 pub struct SearchAndCrawlResult {
     pub results: Vec<Value>,
@@ -46,7 +46,7 @@ pub enum SearchCrawlRejectionKind {
     WaitFailed,
 }
 
-/// Run a Tavily search and enqueue one bounded crawl job per result URL.
+/// Run a SearXNG/Tavily search and enqueue one bounded crawl job per result URL.
 ///
 /// This is the canonical entry point for both the CLI and MCP search action.
 /// Callers receive a typed result and decide their own UX (error on zero jobs,
@@ -79,7 +79,7 @@ pub(crate) struct CrawlOutput {
 
 fn crawl_config(cfg: &Config) -> Config {
     // SECURITY: clear headers so auth meant for the search caller is never
-    // replayed against URLs returned by Tavily.
+    // replayed against URLs returned by the configured search backend.
     let mut c = cfg.clone();
     // Search auto-indexing must kick off every accepted result URL before any
     // optional wait phase. Waiting inside crawl_start_with_context would make

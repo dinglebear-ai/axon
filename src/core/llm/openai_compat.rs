@@ -64,7 +64,9 @@ async fn send_chat_completion(
         .or(req.backend.openai_model.as_deref())
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or("AXON_OPENAI_MODEL is required when AXON_LLM_BACKEND=openai-compat")?;
+        .ok_or(
+            "AXON_SYNTHESIS_OPENAI_MODEL is required when AXON_LLM_BACKEND=openai-compat (legacy alias: AXON_OPENAI_MODEL)",
+        )?;
 
     let mut messages = Vec::new();
     if let Some(system) = req

@@ -12,7 +12,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 /// Pre-resolve the Chrome CDP WebSocket URL, mirroring the logic in
-/// `crates/crawl/engine/runtime.rs::resolve_cdp_ws_url`.
+/// `src/crawl/engine/runtime.rs::resolve_cdp_ws_url`.
 ///
 /// - Already a `ws://`/`wss://` URL → return as-is (no extra round-trip).
 /// - Inside Docker (`/.dockerenv` exists) → return the raw management URL;

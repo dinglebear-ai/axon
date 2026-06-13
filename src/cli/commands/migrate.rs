@@ -1,5 +1,5 @@
 //! CLI thin wrapper for `axon migrate` — delegates all business logic to the
-//! services layer (`crates/services/migrate.rs`).
+//! services layer (`src/services/migrate.rs`).
 
 use crate::core::config::Config;
 use crate::core::ui::{accent, muted};

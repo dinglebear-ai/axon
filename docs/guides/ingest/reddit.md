@@ -4,7 +4,7 @@ Last Modified: 2026-03-09
 Version: 1.0.0
 Last Updated: 01:26:53 | 02/25/2026 EST
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/commands/ingest.md`](../../reference/commands/ingest.md)
+> CLI reference (flags, subcommands, examples): [`docs/reference/actions/ingest.md`](../../reference/actions/ingest.md)
 
 Ingests subreddit posts and comment threads into Qdrant via the Reddit OAuth2 API (client credentials flow — no user login required).
 

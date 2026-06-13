@@ -1,7 +1,7 @@
 # GitHub Ingest
 Last Modified: 2026-06-13
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/commands/ingest.md`](../../reference/commands/ingest.md)
+> CLI reference (flags, subcommands, examples): [`docs/reference/actions/ingest.md`](../../reference/actions/ingest.md)
 
 Ingests a GitHub repository — source code, documentation, issues, pull requests, and wiki pages — into Qdrant via a hybrid approach: shallow `git clone` for repository files, octocrab for metadata/issues/PRs, and a separate shallow `git clone` for wiki pages.
 

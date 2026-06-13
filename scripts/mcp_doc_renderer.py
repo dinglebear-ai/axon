@@ -257,7 +257,7 @@ def _emit_direct_actions(
     if "search" in direct_actions:
         emit()
         emit(
-            "Note: MCP `search` is side-effect-free and returns Tavily results only. The CLI `axon search` command additionally queues one-page crawl jobs for returned URLs so terminal searches are auto-indexed; MCP callers that want indexing should call `crawl` explicitly for selected URLs."
+            "Note: MCP `search` uses the same SearXNG-first/Tavily-fallback search-and-crawl service as the CLI and REST route. It queues one-page crawl jobs for returned URLs so terminal and agent searches are auto-indexed."
         )
     emit()
 

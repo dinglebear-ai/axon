@@ -334,7 +334,7 @@ pub struct Config {
     /// Optional API key for OpenAI-compatible endpoints. Env: `AXON_OPENAI_API_KEY`.
     pub openai_api_key: String,
 
-    /// Model name for OpenAI-compatible chat completions. Env: `AXON_OPENAI_MODEL`.
+    /// Model name for OpenAI-compatible synthesis completions. Env: `AXON_SYNTHESIS_OPENAI_MODEL` or legacy `AXON_OPENAI_MODEL`.
     pub openai_model: String,
 
     /// Model name for OpenAI-compatible direct chat. Env: `AXON_CHAT_OPENAI_MODEL`.

@@ -1,7 +1,7 @@
 # src/web — HTTP Server (`axon serve`)
 Last Modified: 2026-05-23
 
-Axum-based HTTP server that backs `axon serve`. Hosts the Aurora-styled control panel, the `/v1/*` REST surface, OpenAPI docs, and the first-run setup flow. Shares the same `ServiceContext` as the CLI and MCP server — every route is a thin adapter over `crates/services`.
+Axum-based HTTP server that backs `axon serve`. Hosts the Aurora-styled control panel, the `/v1/*` REST surface, OpenAPI docs, and the first-run setup flow. Shares the same `ServiceContext` as the CLI and MCP server — every route is a thin adapter over `src/services`.
 
 ## Module Layout
 

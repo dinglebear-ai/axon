@@ -190,7 +190,7 @@ host-local output paths.
 ### Docs Integration (Always)
 
 1. Add command/feature doc when user-facing:
-- `docs/reference/commands/<feature>.md`
+- `docs/reference/actions/<feature>.md`
 
 2. Update indexes/references:
 - `docs/README.md`

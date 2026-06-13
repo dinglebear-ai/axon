@@ -18,7 +18,7 @@ docs/
 │   ├── context-injection.md  #   context-injection mechanics
 │   └── ingest/               #   ingest pipeline + per-source deep-dives
 ├── reference/                # Factual reference
-│   ├── commands/             #   CLI reference — one file per command
+│   ├── actions/              #   action reference — one file per CLI/API/MCP action
 │   ├── mcp/                  #   MCP overview, tool-schema, transport, connect, deploy, env, tools, patterns
 │   ├── http-api.md           #   HTTP API surface
 │   ├── api-parity.md         #   CLI/MCP/HTTP action parity
@@ -63,15 +63,16 @@ docs/
 
 ---
 
-## The Split: commands/ vs ingest/
+## The Split: actions/ vs ingest/
 
-These two directories cover different readers and different questions. `docs/reference/commands/` is the CLI reference for every command. `docs/guides/ingest/` is only for the ingest pipeline and real source deep-dives (`ingest`, `GitHub`, `reddit`, `sessions`, `YouTube`).
+These two directories cover different readers and different questions. `docs/reference/actions/` is the reference for every action across CLI, REST, and MCP surfaces. `docs/guides/ingest/` is only for the ingest pipeline and real source deep-dives (`ingest`, `GitHub`, `reddit`, `sessions`, `YouTube`).
 
-### `docs/reference/commands/` — "How do I use this command?"
+### `docs/reference/actions/` — "How do I invoke this action?"
 
-The CLI reference. Written for someone at a terminal who needs to know what flags exist, what subcommands are available, and how to run common tasks.
+The action reference. Written for someone who needs to know how the same operation maps across the terminal, direct `/v1` REST routes, and the MCP `axon` tool.
 
 **Belongs here:**
+- Generated `Surfaces` block from `scripts/generate_action_docs.py`
 - Synopsis / usage line
 - Arguments table
 - All flags and their defaults (including command-specific flags)
@@ -84,7 +85,7 @@ The CLI reference. Written for someone at a terminal who needs to know what flag
 - Step-by-step pipeline internals ("first it calls X, then Y…")
 - Troubleshooting sections for ingest sources (→ ingest/)
 - Known limitations tables for ingest sources (→ ingest/)
-- Implementation details (function names, data structures)
+- Deep implementation details beyond the generated service entry point (function internals, data structures)
 
 ### `docs/guides/ingest/` — "How does this work / how do I set it up?"
 
@@ -100,32 +101,32 @@ The implementation and operations reference for the ingest pipeline and supporte
 - Developer guide (e.g. "Adding a new session format")
 
 **Does not belong here:**
-- CLI flags table (→ commands/)
-- Job subcommand reference (→ commands/)
-- Usage examples with `axon <cmd> <args>` (→ commands/)
-- Async behavior / `--wait` explanation (→ commands/)
+- CLI flags table (→ actions/)
+- Job subcommand reference (→ actions/)
+- Usage examples with `axon <cmd> <args>` (→ actions/)
+- Async behavior / `--wait` explanation (→ actions/)
 
 ### Cross-Linking Rule
 
-Only commands with real ingest deep-dives link to `docs/guides/ingest/`:
+Only actions with real ingest deep-dives link to `docs/guides/ingest/`:
 ```markdown
 > For implementation details and troubleshooting see [`docs/guides/ingest/<name>.md`](../ingest/<name>.md).
 ```
 
-Every `ingest/` file opens with a back-link to its `commands/` counterpart:
+Every `ingest/` file opens with a back-link to its `actions/` counterpart:
 ```markdown
-> CLI reference (flags, subcommands, examples): [`docs/reference/commands/<name>.md`](../commands/<name>.md)
+> CLI reference (flags, subcommands, examples): [`docs/reference/actions/<name>.md`](../actions/<name>.md)
 ```
 
-Do not create tiny command stubs in `docs/guides/ingest/` for commands such as `ask`, `doctor`, `domains`, `embed`, `evaluate`, `query`, `retrieve`, `setup`, `sources`, `stats`, or `suggest`. Keep their operational notes in `docs/reference/commands/<name>.md` unless they grow into a true deep-dive.
+Do not create tiny action stubs in `docs/guides/ingest/` for actions such as `ask`, `doctor`, `domains`, `embed`, `evaluate`, `query`, `retrieve`, `setup`, `sources`, `stats`, or `suggest`. Keep their operational notes in `docs/reference/actions/<name>.md` unless they grow into a true deep-dive.
 
 ---
 
 ## Other Directories
 
-### `docs/reference/commands/` — all commands
+### `docs/reference/actions/` — all actions
 
-Each command gets one file. For commands that don't have a paired ingest doc (e.g. `ask.md`, `search.md`, `research.md`), use the same structure: synopsis → flags → subcommands → examples → notes.
+Each action gets one file. For actions that don't have a paired ingest doc (e.g. `ask.md`, `search.md`, `research.md`), use the same structure: generated surfaces → synopsis → flags → subcommands → examples → notes.
 
 ### `docs/plans/`
 
@@ -147,8 +148,8 @@ The SQLite schema is auto-created by migrations under `src/jobs/migrations/` plu
 
 ## Writing New Docs
 
-- **New command?** → Add `docs/reference/commands/<name>.md` following the template above.
-- **New ingest source?** → Add both `docs/reference/commands/<name>.md` and `docs/guides/ingest/<name>.md` with cross-links.
+- **New action?** → Add `docs/reference/actions/<name>.md`, update `docs/reference/api-parity.md`, then run `python3 scripts/generate_action_docs.py`.
+- **New ingest source?** → Add both `docs/reference/actions/<name>.md` and `docs/guides/ingest/<name>.md` with cross-links.
 - **Implementation plan?** → `docs/plans/<feature>.md`.
 - **Session summary?** → `docs/sessions/YYYY-MM-DD-HH-MM-<description>.md` via `save-to-md`.
 

@@ -50,7 +50,7 @@ Required values in `~/.axon/.env`:
 | `QDRANT_URL` | Default: `http://100.120.242.29:53333` (tootie) |
 | `TEI_URL` | Default: `http://127.0.0.1:52000` |
 | `AXON_HEADLESS_GEMINI_CMD` | Gemini CLI command — required for `ask`/`evaluate`/`research`/`debug`/`suggest`/extract fallback |
-| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override |
+| `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | Optional Gemini synthesis model override; `AXON_HEADLESS_GEMINI_MODEL` remains a legacy alias |
 | `TAVILY_API_KEY` | Tavily fallback for `search` and `research` when `AXON_SEARXNG_URL` is unset |
 | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Required for Reddit ingest |
 
@@ -110,40 +110,26 @@ and recent jobs (top 10).
 
 ## Submit work
 
-### Host CLI against a running server
+The bundled CLI runs commands in-process against the configured Qdrant, TEI,
+Chrome, and SQLite paths. Generic CLI client-to-server forwarding was removed
+in 5.0.0, so `AXON_SERVER_URL`, `AXON_LOCAL_MODE`, `--local`, and
+`AXON_SERVER_INSECURE` are not part of normal command execution.
 
-For Docker Compose operation, keep `axon serve` as the authoritative
-process and point host CLI calls at it:
+For remote operation, run `axon serve` and use the first-party `/v1` REST routes
+or MCP-over-HTTP directly. That server process owns its own `AXON_DATA_DIR`
+(default `~/.axon`) and job database.
 
-```bash
-AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
-AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
-AXON_SERVER_URL=http://127.0.0.1:8001 axon crawl https://docs.rs/spider
-```
-
-In server mode, stateful commands run on the server and the server owns
-SQLite job rows, markdown output, screenshots, and artifacts under its
-`AXON_DATA_DIR` (default `~/.axon`). The CLI displays server-owned artifact
-handles and root-relative paths; it does not make host-local markdown the
-source of truth. Use `--local` or `AXON_LOCAL_MODE=1` only when you explicitly
-want in-process host execution.
-
-If the server is exposed beyond loopback, configure `AXON_MCP_HTTP_TOKEN` on
-both server and client and publish through HTTPS. The CLI refuses to attach
-that bearer token over plaintext HTTP to non-loopback hosts unless
-`AXON_SERVER_INSECURE=1` is set intentionally.
-
-To diagnose stale client/server drift:
+To diagnose stale runtime drift:
 
 ```bash
 which -a axon
 axon --version
 ss -ltnp '( sport = :8001 )'
-AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
+curl -H "x-api-key: $AXON_MCP_HTTP_TOKEN" http://127.0.0.1:8001/v1/status
 ```
 
-If the binary or schema is stale, rebuild and restart the canonical server on
-port `8001` before retrying the host CLI.
+If the binary or schema is stale, rebuild and restart the server on port
+`8001` before retrying HTTP/MCP clients.
 
 Synchronous (block until done):
 

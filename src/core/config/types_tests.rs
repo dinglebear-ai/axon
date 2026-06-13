@@ -230,7 +230,7 @@ fn test_config_debug_includes_sessions_fields() {
 
 // --- Performance profile range tests ---
 
-/// Replicates the computation from `crates/core/config/parse/performance.rs`
+/// Replicates the computation from `src/core/config/parse/performance.rs`
 /// so we can test all four profiles without depending on the private module.
 /// Returns (crawl_concurrency, backfill_concurrency, timeout_ms, retries, backoff_ms).
 fn profile_defaults(profile: PerformanceProfile) -> (usize, usize, u64, usize, u64) {
