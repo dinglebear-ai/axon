@@ -18,7 +18,7 @@ of the main axon `v*` releases.
 |--------|----------|
 | **Trigger** | Push a tag `android-v<versionName>` (e.g. `android-v1.1`). |
 | **Version guard** | Validates the pushed tag matches `versionName` in `apps/android/app/build.gradle.kts` before building — a release can never ship an APK the tag disagrees with. |
-| **Build** | JDK 17 (temurin), Node/pnpm for Aurora token generation, Gradle + Android SDK, then `apps/android/gradlew -p apps/android :app:assembleRelease`. |
+| **Build** | JDK 17 (temurin), Node/pnpm plus Aurora dependencies for token generation, Gradle + Android SDK, then `apps/android/gradlew -p apps/android :app:assembleRelease`. |
 | **Sign** | zipalign + `apksigner` using release-keystore secrets, then verifies. Falls back to a clearly named `*-unsigned.apk` when secrets are absent. |
 | **Publish** | Uploads APK + SHA256 as a run artifact and, on real tag pushes, creates a GitHub Release with `make_latest: false` (keeps the repo's latest-release badge tracking axon `v*` tags). |
 | **Dry-run** | `workflow_dispatch` runs the same build and uploads the artifact **without** creating a Release. |
