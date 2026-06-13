@@ -88,6 +88,37 @@ fn apply_extra_applies_all_non_reserved_keys() {
 }
 
 #[test]
+fn apply_extra_allows_planner_chunk_fields_but_blocks_system_fields() {
+    let mut payload = serde_json::json!({
+        "url": "https://example.com/original",
+        "chunk_text": "original"
+    });
+    let extra = serde_json::json!({
+        "url": "https://evil.example/override",
+        "chunk_text": "evil",
+        "chunk_content_kind": "code",
+        "chunk_locator": "src/lib.rs#L1-L2",
+        "source_range": {"line_start": 1, "line_end": 2}
+    });
+
+    super::apply_extra(&mut payload, &extra);
+
+    assert_eq!(payload["url"], "https://example.com/original");
+    assert_eq!(payload["chunk_text"], "original");
+    assert_eq!(payload["chunk_content_kind"], "code");
+    assert_eq!(payload["chunk_locator"], "src/lib.rs#L1-L2");
+    assert_eq!(payload["source_range"]["line_start"], 1);
+}
+
+#[test]
+fn payload_schema_version_covers_source_document_fields() {
+    const _: () = assert!(
+        crate::vector::ops::qdrant::PAYLOAD_SCHEMA_VERSION >= 8,
+        "SourceDocument normalized fields require a schema bump"
+    );
+}
+
+#[test]
 fn apply_extra_all_reserved_keys_constant_is_non_empty() {
     use crate::vector::ops::tei::pipeline::RESERVED_PAYLOAD_KEYS;
     // Sanity: the constant must include the critical system keys.
@@ -175,4 +206,337 @@ fn chunk_override_wins_over_doc_level_extra() {
     assert_eq!(payload["code_line_start"], 42);
     // doc-level keys not overridden by the chunk survive.
     assert_eq!(payload["code_file_path"], "src/lib.rs");
+}
+
+fn pipeline_test_doc(url: &str, chunks: Vec<&str>, local_cleanup: bool) -> super::PreparedDoc {
+    super::PreparedDoc {
+        url: url.to_string(),
+        domain: "example.com".to_string(),
+        chunks: chunks.into_iter().map(str::to_string).collect(),
+        source_type: "test".to_string(),
+        content_type: "text",
+        title: Some("Test".to_string()),
+        extra: None,
+        extractor_name: None,
+        structured: None,
+        chunk_extra: Vec::new(),
+        local_legacy_fragment_url: local_cleanup.then(|| url.to_string()),
+        chunk_point_ids: Vec::new(),
+    }
+}
+
+fn pipeline_test_doc_with_point_ids(
+    url: &str,
+    chunks: Vec<&str>,
+    point_ids: Vec<uuid::Uuid>,
+) -> super::PreparedDoc {
+    let mut doc = pipeline_test_doc(url, chunks, false);
+    doc.chunk_point_ids = point_ids;
+    doc
+}
+
+fn unnamed_collection_body(dim: usize) -> serde_json::Value {
+    serde_json::json!({
+        "result": {
+            "config": {
+                "params": {
+                    "vectors": {"size": dim}
+                }
+            },
+            "payload_schema": {}
+        }
+    })
+}
+
+#[tokio::test]
+async fn run_embed_pipeline_does_not_delete_stale_tail_when_upsert_fails() {
+    use crate::core::config::Config;
+    use httpmock::prelude::*;
+
+    let tei = MockServer::start_async().await;
+    let qdrant = MockServer::start_async().await;
+    let collection = format!("pipeline_fail_{}", uuid::Uuid::new_v4().simple());
+
+    tei.mock_async(|when, then| {
+        when.method(POST).path("/embed");
+        then.status(200)
+            .json_body(serde_json::json!([[0.1, 0.2], [0.2, 0.3]]));
+    })
+    .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(GET).path(format!("/collections/{collection}"));
+            then.status(200).json_body(unnamed_collection_body(2));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/index"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/points"));
+            then.status(500).body("upsert failed");
+        })
+        .await;
+    let delete = qdrant
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(format!("/collections/{collection}/points/delete"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.collection = collection;
+    cfg.tei_url = tei.base_url();
+    cfg.qdrant_url = qdrant.base_url();
+    cfg.embed_doc_timeout_secs = 30;
+
+    let result = super::run_embed_pipeline(
+        &cfg,
+        vec![pipeline_test_doc(
+            "https://example.com/doc",
+            vec!["one", "two"],
+            false,
+        )],
+        None,
+    )
+    .await;
+
+    assert!(result.is_err(), "upsert failure should fail the pipeline");
+    assert_eq!(
+        delete.calls_async().await,
+        0,
+        "cleanup delete must not run when upsert fails"
+    );
+}
+
+#[tokio::test]
+async fn run_embed_pipeline_deletes_stale_tail_and_local_fragments_after_successful_upsert() {
+    use crate::core::config::Config;
+    use httpmock::prelude::*;
+
+    let tei = MockServer::start_async().await;
+    let qdrant = MockServer::start_async().await;
+    let collection = format!("pipeline_success_{}", uuid::Uuid::new_v4().simple());
+    let file_url = "file:///tmp/project/src/lib.rs";
+
+    tei.mock_async(|when, then| {
+        when.method(POST).path("/embed");
+        then.status(200)
+            .json_body(serde_json::json!([[0.1, 0.2], [0.2, 0.3]]));
+    })
+    .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(GET).path(format!("/collections/{collection}"));
+            then.status(200).json_body(unnamed_collection_body(2));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/index"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/points"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(format!("/collections/{collection}/points/scroll"));
+            then.status(200).json_body(serde_json::json!({
+                "result": {
+                    "points": [
+                        {"payload": {"url": format!("{file_url}#L1-L2")}}
+                    ],
+                    "next_page_offset": null
+                }
+            }));
+        })
+        .await;
+    let delete = qdrant
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(format!("/collections/{collection}/points/delete"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.collection = collection;
+    cfg.tei_url = tei.base_url();
+    cfg.qdrant_url = qdrant.base_url();
+    cfg.embed_doc_timeout_secs = 30;
+
+    let summary = super::run_embed_pipeline(
+        &cfg,
+        vec![pipeline_test_doc(file_url, vec!["one", "two"], true)],
+        None,
+    )
+    .await
+    .expect("pipeline should succeed");
+
+    assert_eq!(summary.chunks_embedded, 2);
+    assert_eq!(
+        delete.calls_async().await,
+        2,
+        "stale-tail and local-fragment cleanup should both delete after upsert"
+    );
+}
+
+#[tokio::test]
+async fn run_embed_pipeline_deletes_stale_tail_for_single_chunk_replacement() {
+    use crate::core::config::Config;
+    use httpmock::prelude::*;
+
+    let tei = MockServer::start_async().await;
+    let qdrant = MockServer::start_async().await;
+    let collection = format!("pipeline_single_{}", uuid::Uuid::new_v4().simple());
+
+    tei.mock_async(|when, then| {
+        when.method(POST).path("/embed");
+        then.status(200).json_body(serde_json::json!([[0.1, 0.2]]));
+    })
+    .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(GET).path(format!("/collections/{collection}"));
+            then.status(200).json_body(unnamed_collection_body(2));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/index"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/points"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    let delete = qdrant
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(format!("/collections/{collection}/points/delete"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.collection = collection;
+    cfg.tei_url = tei.base_url();
+    cfg.qdrant_url = qdrant.base_url();
+    cfg.embed_doc_timeout_secs = 30;
+
+    let summary = super::run_embed_pipeline(
+        &cfg,
+        vec![pipeline_test_doc(
+            "https://example.com/doc",
+            vec!["one"],
+            false,
+        )],
+        None,
+    )
+    .await
+    .expect("pipeline should succeed");
+
+    assert_eq!(summary.chunks_embedded, 1);
+    assert_eq!(
+        delete.calls_async().await,
+        1,
+        "single-chunk replacements must delete stale chunk_index >= 1"
+    );
+}
+
+#[tokio::test]
+async fn run_embed_pipeline_uses_explicit_chunk_point_id() {
+    use crate::core::config::Config;
+    use httpmock::prelude::*;
+
+    let tei = MockServer::start_async().await;
+    let qdrant = MockServer::start_async().await;
+    let collection = format!("pipeline_point_id_{}", uuid::Uuid::new_v4().simple());
+    let point_id = uuid::Uuid::new_v4();
+
+    tei.mock_async(|when, then| {
+        when.method(POST).path("/embed");
+        then.status(200).json_body(serde_json::json!([[0.1, 0.2]]));
+    })
+    .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(GET).path(format!("/collections/{collection}"));
+            then.status(200).json_body(unnamed_collection_body(2));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/index"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    let upsert = qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/points"))
+                .body_matches(regex::Regex::new(&point_id.to_string()).unwrap());
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(format!("/collections/{collection}/points/delete"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.collection = collection;
+    cfg.tei_url = tei.base_url();
+    cfg.qdrant_url = qdrant.base_url();
+    cfg.embed_doc_timeout_secs = 30;
+
+    let summary = super::run_embed_pipeline(
+        &cfg,
+        vec![pipeline_test_doc_with_point_ids(
+            "memory://record",
+            vec!["one"],
+            vec![point_id],
+        )],
+        None,
+    )
+    .await
+    .expect("pipeline should succeed");
+
+    assert_eq!(summary.chunks_embedded, 1);
+    assert_eq!(upsert.calls_async().await, 1);
 }

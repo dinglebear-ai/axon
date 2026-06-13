@@ -9,8 +9,7 @@ use crate::ingest::git_payload::{
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
-use crate::vector::ops::input::code::CodeChunk;
-use crate::vector::ops::{PreparedDoc, chunk_text};
+use crate::vector::ops::{PreparedDoc, prepare_plain_text_source};
 
 use super::client::fetch_paginated;
 use super::types::{
@@ -27,16 +26,13 @@ use crate::ingest::git_files::embed_docs;
 pub(crate) fn gitlab_payload(
     target: &GitLabTarget,
     project: &GitLabProject,
-    content_kind: &'static str,
+    kind: ContentKind,
     kind_extra: serde_json::Value,
 ) -> serde_json::Value {
     let owner: Option<String> = {
         let path = &target.namespace_path;
         path.rfind('/').map(|i| path[..i].to_string())
     };
-    // Canonical content_kind: GitLab uses "merge_request"; from_wire normalises.
-    let kind = ContentKind::from_wire(content_kind);
-
     // GitLab uses "iid" as the item number field (Q-H4: shared decoder)
     let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) =
         extract_git_item_fields(&kind_extra, "iid");
@@ -118,14 +114,10 @@ pub(crate) async fn embed_metadata(
         return Ok(0);
     }
     let content = format!("# {}\n\n{}", project.path_with_namespace, parts.join("\n"));
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
-        return Ok(0);
-    }
     let extra = gitlab_payload(
         target,
         project,
-        "repo_metadata",
+        ContentKind::RepoMetadata,
         serde_json::json!({
             "name": project.name,
             "stars": project.star_count,
@@ -136,18 +128,18 @@ pub(crate) async fn embed_metadata(
             "wiki_enabled": project.wiki_enabled,
         }),
     );
-    embed_docs(
-        cfg,
-        vec![PreparedDoc::ingest(
-            project.web_url.clone(),
-            target.host.clone(),
-            chunks,
-            "gitlab",
-            Some(project.path_with_namespace.clone()),
-            Some(extra),
-        )],
-    )
-    .await
+    let doc = prepare_plain_text_source(
+        project.web_url.clone(),
+        target.host.clone(),
+        content,
+        "gitlab",
+        Some(project.path_with_namespace.clone()),
+        Some(extra),
+    );
+    if doc.is_empty() {
+        return Ok(0);
+    }
+    embed_docs(cfg, vec![doc]).await
 }
 
 fn author_name(author: &Option<GitLabUser>) -> Option<String> {
@@ -183,7 +175,10 @@ pub(crate) async fn embed_issues(
     };
     let docs = issues
         .into_iter()
-        .filter_map(|issue| issue_doc(target, project, issue))
+        .map(|issue| issue_doc(target, project, issue))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect();
     embed_docs(cfg, docs).await
 }
@@ -192,7 +187,7 @@ fn issue_doc(
     target: &GitLabTarget,
     project: &GitLabProject,
     issue: GitLabIssue,
-) -> Option<PreparedDoc> {
+) -> Result<Option<PreparedDoc>> {
     let body = issue.description.as_deref().unwrap_or("");
     let labels = issue.labels.unwrap_or_default();
     let label_text = if labels.is_empty() {
@@ -204,10 +199,6 @@ fn issue_doc(
         "# Issue #{}: {}\n\n{}{}",
         issue.iid, issue.title, body, label_text
     );
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
-        return None;
-    }
     let url = issue
         .web_url
         .clone()
@@ -215,7 +206,7 @@ fn issue_doc(
     let extra = gitlab_payload(
         target,
         project,
-        "issue",
+        ContentKind::Issue,
         serde_json::json!({
             "iid": issue.iid,
             "state": issue.state,
@@ -226,14 +217,15 @@ fn issue_doc(
             "comment_count": issue.user_notes_count,
         }),
     );
-    Some(PreparedDoc::ingest(
+    let doc = prepare_plain_text_source(
         url,
         target.host.clone(),
-        chunks,
+        content,
         "gitlab",
         Some(format!("Issue #{}: {}", issue.iid, issue.title)),
         Some(extra),
-    ))
+    );
+    Ok((!doc.is_empty()).then_some(doc))
 }
 
 pub(crate) async fn embed_merge_requests(
@@ -263,7 +255,10 @@ pub(crate) async fn embed_merge_requests(
     };
     let docs = mrs
         .into_iter()
-        .filter_map(|mr| merge_request_doc(target, project, mr))
+        .map(|mr| merge_request_doc(target, project, mr))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect();
     embed_docs(cfg, docs).await
 }
@@ -272,13 +267,9 @@ fn merge_request_doc(
     target: &GitLabTarget,
     project: &GitLabProject,
     mr: GitLabMergeRequest,
-) -> Option<PreparedDoc> {
+) -> Result<Option<PreparedDoc>> {
     let body = mr.description.as_deref().unwrap_or("");
     let content = format!("# MR !{}: {}\n\n{}", mr.iid, mr.title, body);
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
-        return None;
-    }
     let url = mr
         .web_url
         .clone()
@@ -287,7 +278,7 @@ fn merge_request_doc(
     let extra = gitlab_payload(
         target,
         project,
-        "merge_request",
+        ContentKind::Pr,
         serde_json::json!({
             "iid": mr.iid,
             "state": mr.state,
@@ -300,14 +291,15 @@ fn merge_request_doc(
             "is_draft": mr.draft,
         }),
     );
-    Some(PreparedDoc::ingest(
+    let doc = prepare_plain_text_source(
         url,
         target.host.clone(),
-        chunks,
+        content,
         "gitlab",
         Some(format!("MR !{}: {}", mr.iid, mr.title)),
         Some(extra),
-    ))
+    );
+    Ok((!doc.is_empty()).then_some(doc))
 }
 
 pub(crate) async fn embed_wiki(
@@ -333,7 +325,10 @@ pub(crate) async fn embed_wiki(
     };
     let docs = pages
         .into_iter()
-        .filter_map(|page| wiki_doc(target, project, page))
+        .map(|page| wiki_doc(target, project, page))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect();
     embed_docs(cfg, docs).await
 }
@@ -348,76 +343,27 @@ fn wiki_doc(
     target: &GitLabTarget,
     project: &GitLabProject,
     page: GitLabWikiPage,
-) -> Option<PreparedDoc> {
-    let content = page.content?;
-    let chunks = chunk_text(&format!("# {}\n\n{}", page.title, content));
-    if chunks.is_empty() {
-        return None;
-    }
+) -> Result<Option<PreparedDoc>> {
+    let Some(content) = page.content else {
+        return Ok(None);
+    };
     let extra = gitlab_payload(
         target,
         project,
-        "wiki",
+        ContentKind::Wiki,
         serde_json::json!({
             "slug": page.slug,
             "format": page.format,
             "encoding": page.encoding,
         }),
     );
-    Some(PreparedDoc::ingest(
+    let doc = prepare_plain_text_source(
         format!("{}/-/wikis/{}", target.web_url, page.slug),
         target.host.clone(),
-        chunks,
+        format!("# {}\n\n{}", page.title, content),
         "gitlab",
         Some(format!("Wiki: {}", page.title)),
         Some(extra),
-    ))
+    );
+    Ok((!doc.is_empty()).then_some(doc))
 }
-
-/// Build a canonical per-chunk GitLab file payload with code + symbol metadata.
-///
-/// Produces the same `git_*`/`code_*`/`symbol_*` fields as GitHub file chunks
-/// so cross-provider Qdrant filters work uniformly.
-pub(crate) fn gitlab_file_chunk_payload(
-    target: &GitLabTarget,
-    project: &GitLabProject,
-    rel: &str,
-    branch: &str,
-    chunk: &CodeChunk,
-    chunking_method: &str,
-    symbol_status: &str,
-) -> serde_json::Value {
-    let owner: Option<String> = {
-        let path = &target.namespace_path;
-        path.rfind('/').map(|i| path[..i].to_string())
-    };
-    build_git_payload(&GitPayload {
-        provider: "gitlab".to_string(),
-        host: target.host.clone(),
-        owner,
-        repo: target.project.clone(),
-        content_kind: ContentKind::File,
-        branch: Some(branch.to_string()),
-        file_path: Some(rel.to_string()),
-        file_language: Some(language_name(path_extension(rel)).to_string()),
-        file_type: Some(classify_file_type(rel).to_string()),
-        file_is_test: Some(is_test_path(rel)),
-        line_start: Some(chunk.start_line),
-        line_end: Some(chunk.end_line),
-        chunking_method: Some(chunking_method.to_string()),
-        symbol_name: chunk.symbol_name().map(str::to_string),
-        symbol_kind: chunk.symbol_kind_str().map(str::to_string),
-        symbol_extraction_status: Some(symbol_status.to_string()),
-        meta: Some(serde_json::json!({
-            "namespace_path": target.namespace_path,
-            "visibility": project.visibility,
-            "last_activity_at": project.last_activity_at,
-            "default_branch": project.default_branch,
-        })),
-        ..GitPayload::default()
-    })
-}
-
-#[cfg(test)]
-#[path = "embed_tests.rs"]
-mod tests;

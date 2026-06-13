@@ -6,14 +6,11 @@ use anyhow::Result;
 use crate::core::config::Config;
 use crate::core::logging::log_warn;
 use crate::ingest::subprocess::MAX_INGEST_FILE_BYTES;
-use crate::vector::ops::PreparedDoc;
-use crate::vector::ops::file_ingest::{
-    SelectionPolicy, chunk_file, chunking_method, collect_files,
-};
+use crate::vector::ops::file_ingest::{SelectionPolicy, collect_files};
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
-use crate::vector::ops::input::code::code_symbol_extraction_status;
+use crate::vector::ops::{PreparedDoc, SourceDocument, SourceOrigin, prepare_source_document};
 
 use super::super::GitHubCommonFields;
 use super::super::meta::{GitHubPayloadParams, build_github_payload};
@@ -33,6 +30,13 @@ pub(super) struct FileEmbedCtx {
     pub repo_description: Option<String>,
     pub pushed_at: Option<String>,
     pub is_private: Option<bool>,
+}
+
+#[derive(Debug)]
+pub(super) enum FileEmbedRead {
+    Prepared(Vec<PreparedDoc>),
+    SkippedCleanupBlocking,
+    Empty,
 }
 
 /// Recursively walk `root` and return indexable file paths relative to `root`.
@@ -69,7 +73,7 @@ pub(super) async fn collect_indexable_files(
 pub(super) async fn read_file_embed_docs(
     ctx: &FileEmbedCtx,
     path: &str,
-) -> Result<Vec<PreparedDoc>, String> {
+) -> Result<FileEmbedRead, String> {
     let full_path = ctx.repo_root.join(path);
 
     match tokio::fs::metadata(&full_path).await {
@@ -78,7 +82,7 @@ pub(super) async fn read_file_embed_docs(
                 "command=ingest_github skip_large_file path={path} size_bytes={}",
                 meta.len()
             ));
-            return Ok(Vec::new());
+            return Ok(FileEmbedRead::SkippedCleanupBlocking);
         }
         Err(e) => {
             log_warn(&format!(
@@ -107,25 +111,14 @@ pub(super) async fn read_file_embed_docs(
         Ok(t) => t,
         Err(_) => {
             log_warn(&format!("command=ingest_github skip_non_utf8 path={path}"));
-            return Ok(Vec::new());
+            return Ok(FileEmbedRead::SkippedCleanupBlocking);
         }
     };
     if text.trim().is_empty() {
-        return Ok(Vec::new());
+        return Ok(FileEmbedRead::Empty);
     }
 
     let ext = file_extension(path);
-    let ext_for_chunk = ext.clone();
-    let (chunks, text) = tokio::task::spawn_blocking(move || {
-        let chunks = chunk_file(&text, &ext_for_chunk);
-        (chunks, text)
-    })
-    .await
-    .map_err(|e| format!("chunk_file panicked: {e}"))?;
-    if chunks.is_empty() {
-        return Ok(Vec::new());
-    }
-
     let base_url = format!(
         "https://github.com/{}/{}/blob/{}/{}",
         ctx.owner, ctx.name, ctx.default_branch, path
@@ -135,42 +128,6 @@ pub(super) async fn read_file_embed_docs(
     let ftype = classify_file_type(path).to_string();
     let is_test = is_test_path(path);
     let file_size = text.len();
-    let symbol_status = code_symbol_extraction_status(&text, &ext, &chunks);
-    if matches!(symbol_status, "skipped_large" | "none_found") {
-        log_warn(&format!(
-            "command=ingest_github symbol_extraction_status path={path} ext={ext} status={symbol_status}"
-        ));
-    }
-
-    // Use the overall file line range (first chunk start → last chunk end).
-    let file_line_start = chunks.first().map(|c| c.start_line);
-    let file_line_end = chunks.last().map(|c| c.end_line);
-    let chunk_method = match chunks.first() {
-        Some(c) => chunking_method(&ext, c),
-        None => return Ok(Vec::new()),
-    };
-
-    // Per-chunk payload overrides (P-H1): the file's chunks share one PreparedDoc
-    // for TEI batching, but each chunk keeps its own symbol_* and code_line_*
-    // metadata. The embed pipeline merges these over the file-level `extra`, so
-    // the ranking symbol-boost still fires per chunk despite the per-file grouping.
-    let chunk_extra: Vec<serde_json::Value> = chunks
-        .iter()
-        .map(|c| {
-            let mut obj = serde_json::Map::new();
-            obj.insert("code_line_start".into(), c.start_line.into());
-            obj.insert("code_line_end".into(), c.end_line.into());
-            if let Some(name) = c.symbol_name() {
-                obj.insert("symbol_name".into(), name.into());
-            }
-            if let Some(kind) = c.symbol_kind_str() {
-                obj.insert("symbol_kind".into(), kind.into());
-            }
-            serde_json::Value::Object(obj)
-        })
-        .collect();
-
-    let chunk_texts: Vec<String> = chunks.into_iter().map(|c| c.text).collect();
 
     let extra = build_github_payload(&GitHubPayloadParams {
         repo: ctx.name.clone(),
@@ -186,25 +143,30 @@ pub(super) async fn read_file_embed_docs(
         file_type: Some(ftype.clone()),
         is_test: Some(is_test),
         file_size_bytes: Some(file_size),
-        line_start: file_line_start,
-        line_end: file_line_end,
-        chunking_method: Some(chunk_method.to_string()),
+        line_start: None,
+        line_end: None,
+        chunking_method: None,
         symbol_name: None, // file-level doc; per-chunk symbols not tracked at this level
         symbol_kind: None,
-        symbol_extraction_status: Some(symbol_status.to_string()),
+        symbol_extraction_status: None,
         ..Default::default()
     });
 
-    let mut doc = PreparedDoc::ingest(
+    let source_doc = SourceDocument::try_new_file(
+        SourceOrigin::GitFile,
         base_url,
-        "github.com".to_string(),
-        chunk_texts,
+        path.to_string(),
+        ext,
+        text,
         "github",
         Some(path.to_string()),
         Some(extra),
-    );
-    doc.chunk_extra = chunk_extra;
-    Ok(vec![doc])
+    )
+    .map_err(|err| format!("invalid source document for {path}: {err}"))?;
+    let doc = prepare_source_document(source_doc)
+        .await
+        .map_err(|err| format!("prepare source document failed for {path}: {err}"))?;
+    Ok(FileEmbedRead::Prepared(vec![doc]))
 }
 
 pub(super) fn build_file_embed_ctx(

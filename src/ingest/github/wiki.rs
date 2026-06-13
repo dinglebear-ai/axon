@@ -5,10 +5,12 @@ use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{
     MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
 };
-use crate::vector::ops::input::chunk_markdown;
-use crate::vector::ops::{PreparedDoc, embed_prepared_docs};
+use crate::vector::ops::{
+    PreparedDoc, SourceDocument, embed_prepared_docs, prepare_source_document,
+};
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
+use url::Url;
 
 use super::GitHubCommonFields;
 use super::meta::{GitHubPayloadParams, build_github_payload};
@@ -93,10 +95,7 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
         }
 
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Home");
-        let wiki_url = format!(
-            "https://github.com/{}/{}/wiki/{stem}",
-            common.owner, common.name
-        );
+        let wiki_url = github_wiki_page_url(&common.owner, &common.name, stem)?;
         let title = stem.replace(['-', '_'], " ");
 
         let extra = build_github_payload(&GitHubPayloadParams {
@@ -110,20 +109,44 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
             ..Default::default()
         });
 
-        let chunks = chunk_markdown(&content);
-        if !chunks.is_empty() {
-            docs.push(PreparedDoc::ingest(
-                wiki_url,
-                "github.com".to_string(),
-                chunks,
-                "github",
-                Some(title),
-                Some(extra),
-            ));
+        let source_doc = match SourceDocument::try_new_web_markdown(
+            wiki_url.clone(),
+            content,
+            "github",
+            Some(title),
+            Some(extra),
+            None,
+            None,
+        ) {
+            Ok(doc) => doc,
+            Err(err) => {
+                log_warn(&format!(
+                    "command=ingest_github wiki_invalid_source_doc url={wiki_url} err={err}"
+                ));
+                continue;
+            }
+        };
+        match prepare_source_document(source_doc).await {
+            Ok(doc) if !doc.is_empty() => docs.push(doc),
+            Ok(_) => {}
+            Err(err) => log_warn(&format!(
+                "command=ingest_github wiki_prepare_source_doc_failed url={wiki_url} err={err}"
+            )),
         }
     }
 
     Ok(docs)
+}
+
+fn github_wiki_page_url(owner: &str, repo: &str, stem: &str) -> Result<String> {
+    let mut url = Url::parse("https://github.com/")?;
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("github base URL cannot be a base"))?;
+        segments.push(owner).push(repo).push("wiki").push(stem);
+    }
+    Ok(url.to_string())
 }
 
 /// Ingest wiki pages from a GitHub repository by cloning the wiki git repo.
@@ -208,6 +231,26 @@ pub async fn ingest_wiki(
         .await;
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .require_success("github wiki embed")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn github_wiki_page_url_percent_encodes_page_segment() {
+        let url = match github_wiki_page_url("openai", "model-context-protocol", "Getting Started")
+        {
+            Ok(url) => url,
+            Err(err) => panic!("wiki URL should build: {err}"),
+        };
+        assert_eq!(
+            url,
+            "https://github.com/openai/model-context-protocol/wiki/Getting%20Started"
+        );
+    }
 }

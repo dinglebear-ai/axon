@@ -8,14 +8,23 @@
 use anyhow::{Result, anyhow};
 
 use crate::core::config::Config;
-use crate::vector::ops::{PreparedDoc, embed_prepared_docs};
+use crate::vector::ops::{EmbedSummary, PreparedDoc, embed_prepared_docs};
 
 /// Thin wrapper around `embed_prepared_docs` used by all git ingest embed
 /// helpers — avoids duplicating the `map_err` / `.chunks_embedded` extraction
 /// in every provider embed module (Q-M7).
 pub(crate) async fn embed_docs(cfg: &Config, docs: Vec<PreparedDoc>) -> Result<usize> {
+    Ok(embed_doc_summary(cfg, docs).await?.chunks_embedded)
+}
+
+pub(crate) async fn embed_doc_summary(
+    cfg: &Config,
+    docs: Vec<PreparedDoc>,
+) -> Result<EmbedSummary> {
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow!("{e}"))?
+        .require_success("git file embed")
         .map_err(|e| anyhow!("{e}"))?;
-    Ok(summary.chunks_embedded)
+    Ok(summary)
 }

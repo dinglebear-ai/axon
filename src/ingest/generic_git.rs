@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
@@ -11,15 +12,13 @@ use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{
     MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
 };
-use crate::vector::ops::PreparedDoc;
 use crate::vector::ops::embed_prepared_docs;
-use crate::vector::ops::file_ingest::{
-    SelectionPolicy, chunk_file, chunking_method, collect_files,
-};
+use crate::vector::ops::file_ingest::{SelectionPolicy, collect_files};
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
-use crate::vector::ops::input::code::code_symbol_extraction_status;
+use crate::vector::ops::qdrant::qdrant_delete_repo_file_fragments;
+use crate::vector::ops::{PreparedDoc, SourceDocument, SourceOrigin, prepare_source_document};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericGitTarget {
@@ -131,9 +130,13 @@ pub(crate) async fn ingest_git_repository(
         .map_err(|e| anyhow!("{e}"))?;
     let total = files.len();
     let mut docs = Vec::new();
+    let mut skipped_files = 0usize;
     for (index, file) in files.into_iter().enumerate() {
         let mut file_docs =
             file_docs(tmp.path(), &target, &branch, file, source_type, provider).await?;
+        if file_docs.is_empty() {
+            skipped_files += 1;
+        }
         docs.append(&mut file_docs);
         if (index + 1) % 25 == 0 || index + 1 == total {
             reporter
@@ -141,9 +144,34 @@ pub(crate) async fn ingest_git_repository(
                 .await;
         }
     }
+    let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url().to_string()).collect();
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow!("{e}"))?
+        .require_success("generic git embed")
         .map_err(|e| anyhow!("{e}"))?;
+    if include_source && skipped_files == 0 && summary.docs_failed == 0 {
+        if let Err(err) = qdrant_delete_repo_file_fragments(
+            cfg,
+            provider,
+            &target.host,
+            None,
+            &target.name,
+            &current_urls,
+        )
+        .await
+        {
+            log_warn(&format!(
+                "command=ingest_git legacy_fragment_cleanup_failed target={} err={err}",
+                target.clone_url
+            ));
+        }
+    } else {
+        log_warn(&format!(
+            "command=ingest_git legacy_fragment_cleanup_skipped include_source={include_source} skipped_files={skipped_files} docs_failed={}",
+            summary.docs_failed
+        ));
+    }
     reporter
         .report(serde_json::json!({
             "phase": "completed",
@@ -212,61 +240,45 @@ pub(crate) async fn file_docs(
         return Ok(Vec::new());
     }
     let ext = path_extension(&rel).to_ascii_lowercase();
-    // Move content + ext into spawn_blocking; return both so
-    // code_symbol_extraction_status can run after on the calling thread.
-    let (code_chunks, content, ext) = tokio::task::spawn_blocking({
-        let content = content.clone();
-        let ext = ext.clone();
-        move || {
-            let chunks = chunk_file(&content, &ext);
-            (chunks, content, ext)
-        }
-    })
-    .await
-    .map_err(|e| anyhow!("chunk_file panicked for {rel}: {e}"))?;
-    if code_chunks.is_empty() {
-        return Ok(Vec::new());
-    }
-    let symbol_status = code_symbol_extraction_status(&content, &ext, &code_chunks);
     let lang = language_name(&ext).to_string();
     let ftype = classify_file_type(&rel).to_string();
     let is_test = is_test_path(&rel);
-    let mut docs = Vec::with_capacity(code_chunks.len());
-    for (idx, chunk) in code_chunks.into_iter().enumerate() {
-        let method = chunking_method(&ext, &chunk);
-        let extra = build_git_payload(&GitPayload {
-            provider: provider.to_string(),
-            host: target.host.clone(),
-            owner: None,
-            repo: target.name.clone(),
-            content_kind: ContentKind::File,
-            branch: Some(branch.to_string()),
-            file_path: Some(rel.clone()),
-            file_language: Some(lang.clone()),
-            file_type: Some(ftype.clone()),
-            file_is_test: Some(is_test),
-            line_start: Some(chunk.start_line),
-            line_end: Some(chunk.end_line),
-            chunking_method: Some(method.to_string()),
-            symbol_name: chunk.symbol_name().map(str::to_string),
-            symbol_kind: chunk.symbol_kind_str().map(str::to_string),
-            symbol_extraction_status: Some(symbol_status.to_string()),
-            meta: Some(serde_json::json!({ "clone_url": target.clone_url })),
-            ..GitPayload::default()
-        });
-        docs.push(PreparedDoc::ingest(
-            format!(
-                "{}#{}:{}#L{}-L{}#{}",
-                target.web_url, branch, rel, chunk.start_line, chunk.end_line, idx
-            ),
-            target.host.clone(),
-            vec![chunk.text],
-            source_type,
-            Some(rel.clone()),
-            Some(extra),
-        ));
-    }
-    Ok(docs)
+    let extra = build_git_payload(&GitPayload {
+        provider: provider.to_string(),
+        host: target.host.clone(),
+        owner: None,
+        repo: target.name.clone(),
+        content_kind: ContentKind::File,
+        branch: Some(branch.to_string()),
+        file_path: Some(rel.clone()),
+        file_language: Some(lang),
+        file_type: Some(ftype),
+        file_is_test: Some(is_test),
+        line_start: None,
+        line_end: None,
+        chunking_method: None,
+        symbol_name: None,
+        symbol_kind: None,
+        symbol_extraction_status: None,
+        meta: Some(serde_json::json!({ "clone_url": target.clone_url })),
+        ..GitPayload::default()
+    });
+    let url = format!("{}#{}:{}", target.web_url, branch, rel);
+    let source_doc = SourceDocument::try_new_file(
+        SourceOrigin::GitFile,
+        url,
+        rel.clone(),
+        ext,
+        content,
+        source_type,
+        Some(rel.clone()),
+        Some(extra),
+    )
+    .map_err(|err| anyhow!("invalid source document for {rel}: {err}"))?;
+    let doc = prepare_source_document(source_doc)
+        .await
+        .map_err(|err| anyhow!("prepare source document failed for {rel}: {err}"))?;
+    Ok(vec![doc])
 }
 
 #[cfg(test)]

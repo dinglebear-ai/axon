@@ -264,9 +264,9 @@ fn prepared_session_doc_converts_to_prepared_doc_without_extra_override() {
 
     let prepared = doc.to_prepared_doc().expect("valid prepared doc");
 
-    assert_eq!(prepared.source_type, "codex_session");
-    assert_eq!(prepared.content_type, "text");
-    let extra = prepared.extra.expect("extra metadata");
+    assert_eq!(prepared.source_type(), "codex_session");
+    assert_eq!(prepared.content_type(), "text");
+    let extra = prepared.extra().cloned().expect("extra metadata");
     assert_eq!(extra["agent"], "codex");
     assert_eq!(
         extra["session_file"],

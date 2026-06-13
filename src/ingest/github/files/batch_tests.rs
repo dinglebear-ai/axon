@@ -6,11 +6,13 @@ fn failed_batch_accounting_counts_batches_docs_and_chunks() {
 
     stats.record_failed_batch(2, 3, 7);
     stats.record_failed_batch(1, 2, 5);
+    stats.record_cleanup_blocking_skip();
 
     assert_eq!(stats.failed_batches, 2);
     assert_eq!(stats.failed_files, 3);
     assert_eq!(stats.failed_docs, 5);
     assert_eq!(stats.failed_chunks, 12);
+    assert_eq!(stats.cleanup_blocking_skips, 1);
     assert!(stats.has_failures());
 }
 
@@ -36,4 +38,10 @@ async fn stale_cleanup_skips_partial_and_failed_runs() {
     cleanup_stale_repo_file_urls(&ctx, &stats, true, &HashSet::new())
         .await
         .expect("failed run cleanup skip succeeds");
+
+    let mut stats = GitHubFileEmbedStats::default();
+    stats.record_cleanup_blocking_skip();
+    cleanup_stale_repo_file_urls(&ctx, &stats, true, &HashSet::new())
+        .await
+        .expect("cleanup-blocking skipped file cleanup skip succeeds");
 }

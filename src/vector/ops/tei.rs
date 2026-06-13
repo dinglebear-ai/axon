@@ -28,6 +28,19 @@ pub struct EmbedSummary {
     pub chunks_embedded: usize,
 }
 
+impl EmbedSummary {
+    pub fn require_success(self, context: &str) -> Result<Self, String> {
+        if self.docs_failed > 0 {
+            let total = self.docs_embedded + self.docs_failed;
+            return Err(format!(
+                "{context}: embedding failed for {}/{} document(s)",
+                self.docs_failed, total
+            ));
+        }
+        Ok(self)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct EmbedProgress {
     pub docs_total: usize,
@@ -37,27 +50,27 @@ pub struct EmbedProgress {
 
 #[derive(Debug)]
 pub(crate) struct PreparedDoc {
-    pub(crate) url: String,
-    pub(crate) domain: String,
-    pub(crate) chunks: Vec<String>,
+    pub(in crate::vector::ops) url: String,
+    pub(in crate::vector::ops) domain: String,
+    pub(in crate::vector::ops) chunks: Vec<String>,
     /// "embed" for crawl path, "github"/"reddit"/"youtube"/"sessions" for ingest.
-    pub(crate) source_type: String,
+    pub(in crate::vector::ops) source_type: String,
     /// "markdown" for crawl path, "text" for ingest sources.
-    pub(crate) content_type: &'static str,
-    pub(crate) title: Option<String>,
+    pub(in crate::vector::ops) content_type: &'static str,
+    pub(in crate::vector::ops) title: Option<String>,
     /// Source-specific metadata fields (gh_*, reddit_*, yt_*).
-    pub(crate) extra: Option<serde_json::Value>,
+    pub(in crate::vector::ops) extra: Option<serde_json::Value>,
     /// Optional vertical-extractor identifier (e.g. `"docs"`, `"github-issue"`).
     /// `None` for generic scrape/embed paths — leave absent from payload rather
     /// than writing a placeholder. See bead `axon_rust-lu6a`.
-    pub(crate) extractor_name: Option<String>,
+    pub(in crate::vector::ops) extractor_name: Option<String>,
     /// Optional structured-data attached at page level (JSON-LD / __NEXT_DATA__ /
     /// SvelteKit). `None` for paths that don't run the structured pass. When set,
     /// these payload fields land on every chunk so retrieval can filter by
     /// `structured_kind` / `structured_type` and dedup by `structured_id`.
     /// The full payload lives in `structured_blob` (capped to
     /// `cfg.structured_data_max_bytes` by the caller). See bead `axon_rust-xvu9`.
-    pub(crate) structured: Option<StructuredPayload>,
+    pub(in crate::vector::ops) structured: Option<StructuredPayload>,
     /// Optional per-chunk payload overrides, positionally parallel to `chunks`.
     /// When `chunk_extra[i]` is present, its object keys are merged into chunk
     /// `i`'s Qdrant payload on top of the doc-level `extra` (chunk keys win,
@@ -65,35 +78,112 @@ pub(crate) struct PreparedDoc {
     /// ingest uses this to attach per-chunk `symbol_*` / `code_line_*` metadata
     /// while still grouping a file's chunks into a single `PreparedDoc` (P-H1),
     /// so the symbol-boost retrieval signal survives the per-file batching.
-    pub(crate) chunk_extra: Vec<serde_json::Value>,
+    pub(in crate::vector::ops) chunk_extra: Vec<serde_json::Value>,
+    /// Post-upsert maintenance marker for local file embeds that used to create
+    /// one URL per line fragment (`file://...#Lx-Ly`). When present, the pipeline
+    /// deletes only those legacy fragment URLs after the replacement file URL has
+    /// been durably upserted.
+    pub(in crate::vector::ops) local_legacy_fragment_url: Option<String>,
+    /// Optional per-chunk point IDs for sources that already have stable record
+    /// identities. Normal document chunks leave this empty and use URL/index IDs.
+    pub(in crate::vector::ops) chunk_point_ids: Vec<uuid::Uuid>,
 }
 
 impl PreparedDoc {
-    /// Constructor for ingest-source documents (github/gitlab/gitea/generic-git/
-    /// reddit/youtube/sessions). Fills the ingest-path invariants: `content_type`
-    /// is always `"text"`, and ingest sources carry no vertical extractor or
-    /// page-level structured payload. Crawl/embed paths build the struct literally
-    /// because they vary `content_type`/`extractor_name`/`structured`.
-    pub(crate) fn ingest(
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn from_planned_chunks(
         url: String,
         domain: String,
         chunks: Vec<String>,
         source_type: impl Into<String>,
+        content_type: &'static str,
         title: Option<String>,
         extra: Option<serde_json::Value>,
+        extractor_name: Option<String>,
+        structured: Option<StructuredPayload>,
+        chunk_extra: Vec<serde_json::Value>,
     ) -> Self {
         Self {
             url,
             domain,
             chunks,
             source_type: source_type.into(),
-            content_type: "text",
+            content_type,
             title,
             extra,
-            extractor_name: None,
-            structured: None,
-            chunk_extra: Vec::new(),
+            extractor_name,
+            structured,
+            chunk_extra,
+            local_legacy_fragment_url: None,
+            chunk_point_ids: Vec::new(),
         }
+    }
+
+    pub(super) fn with_local_legacy_fragment_cleanup(mut self) -> Self {
+        self.local_legacy_fragment_url = Some(self.url.clone());
+        self
+    }
+
+    pub(super) fn with_chunk_point_ids(mut self, point_ids: Vec<uuid::Uuid>) -> Self {
+        self.chunk_point_ids = point_ids;
+        self
+    }
+
+    pub(crate) fn url(&self) -> &str {
+        &self.url
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn domain(&self) -> &str {
+        &self.domain
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn source_type(&self) -> &str {
+        &self.source_type
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn content_type(&self) -> &'static str {
+        self.content_type
+    }
+
+    pub(crate) fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn extra(&self) -> Option<&serde_json::Value> {
+        self.extra.as_ref()
+    }
+
+    pub(crate) fn chunks(&self) -> &[String] {
+        &self.chunks
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn chunk_extra(&self) -> &[serde_json::Value] {
+        &self.chunk_extra
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn extractor_name(&self) -> Option<&str> {
+        self.extractor_name.as_deref()
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn structured(&self) -> Option<&StructuredPayload> {
+        self.structured.as_ref()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.chunks.is_empty()
+    }
+
+    pub(crate) fn into_session_fields(
+        self,
+    ) -> (String, String, Option<String>, Option<serde_json::Value>) {
+        (self.url, self.source_type, self.title, self.extra)
     }
 }
 

@@ -7,15 +7,18 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::core::config::{Config, ConfigOverrides};
+use crate::core::logging::log_warn;
 use crate::ingest::sessions::redact_session_text;
 use crate::jobs::store::now_ms;
 use crate::mcp::schema::{MemoryEdgeType, MemoryNodeType, MemoryRequest, MemorySubaction};
 use crate::services::context::ServiceContext;
 use crate::services::types::ClientActionError;
-use crate::vector::ops::qdrant::{qdrant_hybrid_search, qdrant_named_dense_search};
+use crate::vector::ops::qdrant::{
+    qdrant_delete_by_url_filter, qdrant_hybrid_search, qdrant_named_dense_search,
+};
 use crate::vector::ops::sparse::compute_sparse_vector;
-use crate::vector::ops::tei::qdrant_store::{ensure_collection, qdrant_upsert};
-use crate::vector::ops::tei::{EmbedInput, build_point, tei_embed_typed};
+use crate::vector::ops::tei::{EmbedInput, embed_prepared_docs, tei_embed_typed};
+use crate::vector::ops::{SourceDocument, prepare_source_document};
 
 mod context_format;
 mod runtime_metadata;
@@ -159,17 +162,8 @@ pub async fn remember(ctx: &ServiceContext, req: MemoryRequest) -> Result<Memory
     let memory = normalize_remember(req)?;
     let cfg = memory_config(ctx.cfg());
     let text = format!("{}\n\n{}", memory.title, memory.body);
-    let embeddings = tei_embed_typed(&cfg, &[EmbedInput::document(text.clone())])
-        .await
-        .map_err(|e| anyhow!(e.to_string()))?;
-    let dense = embeddings
-        .into_iter()
-        .next()
-        .context("TEI returned no embedding for memory")?;
-    let mode = ensure_collection(&cfg, dense.len())
-        .await
-        .map_err(|e| anyhow!(e.to_string()))?;
     let now = now_ms();
+    let url = format!("memory://{}", memory.id);
     let payload = json!({
         "memory": true,
         "type": memory.memory_type,
@@ -190,15 +184,32 @@ pub async fn remember(ctx: &ServiceContext, req: MemoryRequest) -> Result<Memory
         "updated_at": now,
         "last_seen_at": now,
         "access_count": 0,
-        "url": format!("memory://{}", memory.id),
-        "chunk_text": text,
         "text": text,
     });
-    let point = build_point(memory.id, dense, &text, payload, mode);
-    qdrant_upsert(&cfg, &[point])
+    let source = SourceDocument::new_memory(
+        url.clone(),
+        text,
+        Some(memory.title.clone()),
+        Some(payload),
+        memory.id,
+    );
+    let doc = prepare_source_document(source)
+        .await
+        .map_err(|err| anyhow!("prepare memory source failed: {err}"))?;
+    let summary = embed_prepared_docs(&cfg, vec![doc], None)
         .await
         .map_err(|e| anyhow!(e.to_string()))?;
-    upsert_node(&pool, &memory, now).await?;
+    if summary.docs_failed > 0 {
+        bail!("memory embed failed");
+    }
+    if let Err(err) = upsert_node(&pool, &memory, now).await {
+        if let Err(cleanup_err) = qdrant_delete_by_url_filter(&cfg, &url).await {
+            log_warn(&format!(
+                "memory qdrant cleanup failed after sqlite write error url={url} err={cleanup_err}"
+            ));
+        }
+        return Err(err);
+    }
     let mut item = node_by_id(&pool, &memory.id.to_string()).await?;
     item.body = Some(memory.body);
     Ok(item)
@@ -299,9 +310,21 @@ pub async fn supersede(ctx: &ServiceContext, req: MemoryRequest) -> Result<Memor
         bail!("memory not found: {superseded_id}");
     }
     let now = now_ms();
-    update_qdrant_memory_status(&memory_config(ctx.cfg()), superseded_id, "superseded", now)
-        .await?;
-    supersede_node(&pool, replacement_id, superseded_id, now).await
+    let cfg = memory_config(ctx.cfg());
+    update_qdrant_memory_status(&cfg, superseded_id, "superseded", now).await?;
+    match supersede_node(&pool, replacement_id, superseded_id, now).await {
+        Ok(edge) => Ok(edge),
+        Err(err) => {
+            if let Err(cleanup_err) =
+                update_qdrant_memory_status(&cfg, superseded_id, "active", now).await
+            {
+                log_warn(&format!(
+                    "memory qdrant supersede rollback failed id={superseded_id} err={cleanup_err}"
+                ));
+            }
+            Err(err)
+        }
+    }
 }
 
 pub async fn context(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryContext> {
