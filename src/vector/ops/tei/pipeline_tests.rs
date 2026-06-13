@@ -88,6 +88,37 @@ fn apply_extra_applies_all_non_reserved_keys() {
 }
 
 #[test]
+fn apply_extra_allows_planner_chunk_fields_but_blocks_system_fields() {
+    let mut payload = serde_json::json!({
+        "url": "https://example.com/original",
+        "chunk_text": "original"
+    });
+    let extra = serde_json::json!({
+        "url": "https://evil.example/override",
+        "chunk_text": "evil",
+        "content_kind": "code",
+        "chunk_locator": "src/lib.rs#L1-L2",
+        "source_range": {"line_start": 1, "line_end": 2}
+    });
+
+    super::apply_extra(&mut payload, &extra);
+
+    assert_eq!(payload["url"], "https://example.com/original");
+    assert_eq!(payload["chunk_text"], "original");
+    assert_eq!(payload["content_kind"], "code");
+    assert_eq!(payload["chunk_locator"], "src/lib.rs#L1-L2");
+    assert_eq!(payload["source_range"]["line_start"], 1);
+}
+
+#[test]
+fn payload_schema_version_covers_source_document_fields() {
+    const _: () = assert!(
+        crate::vector::ops::qdrant::PAYLOAD_SCHEMA_VERSION >= 8,
+        "SourceDocument normalized fields require a schema bump"
+    );
+}
+
+#[test]
 fn apply_extra_all_reserved_keys_constant_is_non_empty() {
     use crate::vector::ops::tei::pipeline::RESERVED_PAYLOAD_KEYS;
     // Sanity: the constant must include the critical system keys.

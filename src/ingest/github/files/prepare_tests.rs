@@ -1,4 +1,5 @@
 use super::*;
+use crate::vector::ops::file_ingest::{chunk_file, chunking_method};
 
 fn test_ctx(repo_root: PathBuf) -> FileEmbedCtx {
     FileEmbedCtx {
@@ -44,14 +45,25 @@ async fn read_file_embed_docs_writes_symbol_payload_contract() {
     let extra = doc.extra.as_ref().expect("github payload");
     assert_eq!(extra["provider"], "github");
     assert_eq!(extra["git_content_kind"], "file");
-    assert_eq!(extra["code_chunking_method"], "tree_sitter");
-    assert_eq!(extra["symbol_extraction_status"], "ok");
+    assert_eq!(extra["code_file_path"], "src/lib.rs");
+    assert_eq!(extra["code_language"], "rust");
+    assert!(extra.get("code_is_test").is_some());
+    assert!(extra.get("symbol_extraction_status").is_some());
+    assert_eq!(doc.chunks.len(), doc.chunk_extra.len());
 
     let method_chunk = doc
         .chunk_extra
         .iter()
         .find(|ce| ce.get("symbol_name").and_then(|v| v.as_str()) == Some("Response::parse"))
         .expect("chunk with method symbol payload");
+    assert_eq!(method_chunk["content_kind"], "code");
+    assert!(
+        method_chunk["chunk_locator"]
+            .as_str()
+            .unwrap()
+            .contains("src/lib.rs#L")
+    );
+    assert_eq!(method_chunk["code_chunking_method"], "tree_sitter");
     assert_eq!(method_chunk["symbol_name"], "Response::parse");
     assert_eq!(method_chunk["symbol_kind"], "method");
     assert!(

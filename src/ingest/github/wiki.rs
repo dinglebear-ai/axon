@@ -5,8 +5,9 @@ use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{
     MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
 };
-use crate::vector::ops::input::chunk_markdown;
-use crate::vector::ops::{PreparedDoc, embed_prepared_docs};
+use crate::vector::ops::{
+    PreparedDoc, SourceDocument, embed_prepared_docs, prepare_source_document,
+};
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 
@@ -110,16 +111,29 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
             ..Default::default()
         });
 
-        let chunks = chunk_markdown(&content);
-        if !chunks.is_empty() {
-            docs.push(PreparedDoc::ingest(
-                wiki_url,
-                "github.com".to_string(),
-                chunks,
-                "github",
-                Some(title),
-                Some(extra),
-            ));
+        let source_doc = match SourceDocument::try_new_web_markdown(
+            wiki_url.clone(),
+            content,
+            "github",
+            Some(title),
+            Some(extra),
+            None,
+            None,
+        ) {
+            Ok(doc) => doc,
+            Err(err) => {
+                log_warn(&format!(
+                    "command=ingest_github wiki_invalid_source_doc url={wiki_url} err={err}"
+                ));
+                continue;
+            }
+        };
+        match prepare_source_document(source_doc).await {
+            Ok(doc) if !doc.chunks.is_empty() => docs.push(doc),
+            Ok(_) => {}
+            Err(err) => log_warn(&format!(
+                "command=ingest_github wiki_prepare_source_doc_failed url={wiki_url} err={err}"
+            )),
         }
     }
 

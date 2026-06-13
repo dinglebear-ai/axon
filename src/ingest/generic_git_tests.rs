@@ -14,13 +14,23 @@ async fn generic_file_docs_chunk_rust_as_code_with_symbols() {
     let docs = file_docs(root, &target, "main", root.join("lib.rs"), "git", "git")
         .await
         .unwrap();
-    assert!(!docs.is_empty());
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0].chunks.len(), docs[0].chunk_extra.len());
     let extra = docs[0].extra.as_ref().unwrap();
-    assert_eq!(extra["code_chunking_method"], "tree_sitter");
     assert_eq!(extra["code_file_type"], "source");
+    assert_eq!(extra["code_file_path"], "lib.rs");
     assert!(
-        docs.iter()
-            .any(|d| d.extra.as_ref().unwrap()["symbol_kind"] == "function"),
+        docs[0]
+            .chunk_extra
+            .iter()
+            .any(|extra| extra["code_chunking_method"] == "tree_sitter"),
+        "expected at least one tree-sitter chunk"
+    );
+    assert!(
+        docs[0]
+            .chunk_extra
+            .iter()
+            .any(|extra| extra["symbol_kind"] == "function"),
         "expected at least one function-symbol chunk"
     );
 }

@@ -9,8 +9,9 @@ use crate::ingest::git_payload::{
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
+#[cfg(test)]
 use crate::vector::ops::input::code::CodeChunk;
-use crate::vector::ops::{PreparedDoc, chunk_text};
+use crate::vector::ops::{PreparedDoc, prepare_plain_text_source};
 
 use super::client::fetch_paginated;
 use super::types::{
@@ -118,10 +119,6 @@ pub(crate) async fn embed_metadata(
         return Ok(0);
     }
     let content = format!("# {}\n\n{}", project.path_with_namespace, parts.join("\n"));
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
-        return Ok(0);
-    }
     let extra = gitlab_payload(
         target,
         project,
@@ -136,18 +133,19 @@ pub(crate) async fn embed_metadata(
             "wiki_enabled": project.wiki_enabled,
         }),
     );
-    embed_docs(
-        cfg,
-        vec![PreparedDoc::ingest(
-            project.web_url.clone(),
-            target.host.clone(),
-            chunks,
-            "gitlab",
-            Some(project.path_with_namespace.clone()),
-            Some(extra),
-        )],
+    let doc = prepare_plain_text_source(
+        project.web_url.clone(),
+        target.host.clone(),
+        content,
+        "gitlab",
+        Some(project.path_with_namespace.clone()),
+        Some(extra),
     )
-    .await
+    .map_err(|err| anyhow::anyhow!("prepare gitlab metadata source failed: {err}"))?;
+    if doc.chunks.is_empty() {
+        return Ok(0);
+    }
+    embed_docs(cfg, vec![doc]).await
 }
 
 fn author_name(author: &Option<GitLabUser>) -> Option<String> {
@@ -204,10 +202,6 @@ fn issue_doc(
         "# Issue #{}: {}\n\n{}{}",
         issue.iid, issue.title, body, label_text
     );
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
-        return None;
-    }
     let url = issue
         .web_url
         .clone()
@@ -226,14 +220,16 @@ fn issue_doc(
             "comment_count": issue.user_notes_count,
         }),
     );
-    Some(PreparedDoc::ingest(
+    let doc = prepare_plain_text_source(
         url,
         target.host.clone(),
-        chunks,
+        content,
         "gitlab",
         Some(format!("Issue #{}: {}", issue.iid, issue.title)),
         Some(extra),
-    ))
+    )
+    .ok()?;
+    (!doc.chunks.is_empty()).then_some(doc)
 }
 
 pub(crate) async fn embed_merge_requests(
@@ -275,10 +271,6 @@ fn merge_request_doc(
 ) -> Option<PreparedDoc> {
     let body = mr.description.as_deref().unwrap_or("");
     let content = format!("# MR !{}: {}\n\n{}", mr.iid, mr.title, body);
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
-        return None;
-    }
     let url = mr
         .web_url
         .clone()
@@ -300,14 +292,16 @@ fn merge_request_doc(
             "is_draft": mr.draft,
         }),
     );
-    Some(PreparedDoc::ingest(
+    let doc = prepare_plain_text_source(
         url,
         target.host.clone(),
-        chunks,
+        content,
         "gitlab",
         Some(format!("MR !{}: {}", mr.iid, mr.title)),
         Some(extra),
-    ))
+    )
+    .ok()?;
+    (!doc.chunks.is_empty()).then_some(doc)
 }
 
 pub(crate) async fn embed_wiki(
@@ -350,10 +344,6 @@ fn wiki_doc(
     page: GitLabWikiPage,
 ) -> Option<PreparedDoc> {
     let content = page.content?;
-    let chunks = chunk_text(&format!("# {}\n\n{}", page.title, content));
-    if chunks.is_empty() {
-        return None;
-    }
     let extra = gitlab_payload(
         target,
         project,
@@ -364,20 +354,23 @@ fn wiki_doc(
             "encoding": page.encoding,
         }),
     );
-    Some(PreparedDoc::ingest(
+    let doc = prepare_plain_text_source(
         format!("{}/-/wikis/{}", target.web_url, page.slug),
         target.host.clone(),
-        chunks,
+        format!("# {}\n\n{}", page.title, content),
         "gitlab",
         Some(format!("Wiki: {}", page.title)),
         Some(extra),
-    ))
+    )
+    .ok()?;
+    (!doc.chunks.is_empty()).then_some(doc)
 }
 
 /// Build a canonical per-chunk GitLab file payload with code + symbol metadata.
 ///
 /// Produces the same `git_*`/`code_*`/`symbol_*` fields as GitHub file chunks
 /// so cross-provider Qdrant filters work uniformly.
+#[cfg(test)]
 pub(crate) fn gitlab_file_chunk_payload(
     target: &GitLabTarget,
     project: &GitLabProject,

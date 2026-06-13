@@ -1,8 +1,7 @@
 use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::ingest::progress::PhaseReporter;
-use crate::vector::ops::input::chunk_markdown;
-use crate::vector::ops::{PreparedDoc, embed_prepared_docs};
+use crate::vector::ops::{SourceDocument, embed_prepared_docs, prepare_source_document};
 use anyhow::Result;
 use octocrab::Octocrab;
 
@@ -222,19 +221,22 @@ async fn embed_repo_metadata(
         is_archived: repo.archived,
         ..Default::default()
     });
-    let chunks = chunk_markdown(&content);
-    if chunks.is_empty() {
-        return Ok(0);
-    }
-    let domain = "github.com".to_string();
-    let doc = PreparedDoc::ingest(
+    let source_doc = SourceDocument::try_new_web_markdown(
         url,
-        domain,
-        chunks,
+        content,
         "github",
         Some(owner_name.to_string()),
         Some(extra),
-    );
+        None,
+        None,
+    )
+    .map_err(|err| anyhow::anyhow!("invalid github metadata source document: {err}"))?;
+    let doc = prepare_source_document(source_doc)
+        .await
+        .map_err(|err| anyhow::anyhow!("prepare github metadata source failed: {err}"))?;
+    if doc.chunks.is_empty() {
+        return Ok(0);
+    }
     let summary = embed_prepared_docs(cfg, vec![doc], None)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;

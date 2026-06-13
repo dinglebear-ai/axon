@@ -69,30 +69,30 @@ pub(crate) struct PreparedDoc {
 }
 
 impl PreparedDoc {
-    /// Constructor for ingest-source documents (github/gitlab/gitea/generic-git/
-    /// reddit/youtube/sessions). Fills the ingest-path invariants: `content_type`
-    /// is always `"text"`, and ingest sources carry no vertical extractor or
-    /// page-level structured payload. Crawl/embed paths build the struct literally
-    /// because they vary `content_type`/`extractor_name`/`structured`.
-    pub(crate) fn ingest(
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn from_planned_chunks(
         url: String,
         domain: String,
         chunks: Vec<String>,
         source_type: impl Into<String>,
+        content_type: &'static str,
         title: Option<String>,
         extra: Option<serde_json::Value>,
+        extractor_name: Option<String>,
+        structured: Option<StructuredPayload>,
+        chunk_extra: Vec<serde_json::Value>,
     ) -> Self {
         Self {
             url,
             domain,
             chunks,
             source_type: source_type.into(),
-            content_type: "text",
+            content_type,
             title,
             extra,
-            extractor_name: None,
-            structured: None,
-            chunk_extra: Vec::new(),
+            extractor_name,
+            structured,
+            chunk_extra,
         }
     }
 }
