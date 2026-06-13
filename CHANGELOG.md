@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.2] - 2026-06-13
+
+### Added
+
+- **Ask quality smoke** — added `scripts/smoke-ask-quality` to verify live ask
+  quality against the configured Axon stack, including full-doc context count,
+  citation validation, and final source ordering.
+- **Indexed token statistics** — `axon stats --json` now reports sampled
+  average chunk/doc token estimates from indexed Qdrant payloads.
+
+### Changed
+
+- **Ask synthesis context** — high-context Gemini/Claude/GPT/Codex-family
+  models now receive at least four selected full documents, and selected full
+  documents are prioritized ahead of loose chunks in the final context order.
+- **Ask citation validation** — ask JSON now includes structured
+  `citation_validation` metadata, canonical URL variants are deduped before
+  counting citations, and one non-streaming repair retry runs when the first
+  answer fails citation validation.
+- **Gemini headless backend** — Axon now resolves the real Gemini CLI behind
+  mise shims, uses argument transport for small prompts and stdin for large RAG
+  prompts, and preserves process stderr/status when stdin write failures occur.
+
 ## [5.9.1] - 2026-06-11
 
 ### Fixed

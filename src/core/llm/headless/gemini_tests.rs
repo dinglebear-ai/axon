@@ -8,7 +8,7 @@ fn gemini_headless_command_uses_yolo_for_skill_activation() {
     ))
     .unwrap();
     let joined = spec.args.join(" ");
-    assert_eq!(spec.prompt_transport, PromptTransport::Stdin);
+    assert_eq!(spec.prompt_transport, PromptTransport::Argument);
     assert!(joined.contains("--approval-mode yolo"));
     assert!(spec.args.windows(2).any(|w| w == ["--extensions", ""]));
     assert!(joined.contains("--model gemini-3.1-flash-lite-preview"));
@@ -25,6 +25,20 @@ fn gemini_headless_command_honors_model_override() {
         spec.args
             .windows(2)
             .any(|w| w == ["--model", "gemini-3.1-pro-preview"])
+    );
+}
+
+#[test]
+fn gemini_headless_uses_stdin_for_large_prompts() {
+    let spec = build_command(&HeadlessCommandRequest::new(None, None)).unwrap();
+    assert_eq!(
+        effective_prompt_transport(&spec, "small prompt"),
+        PromptTransport::Argument
+    );
+    let large_prompt = "x".repeat(PROMPT_ARG_MAX_BYTES + 1);
+    assert_eq!(
+        effective_prompt_transport(&spec, &large_prompt),
+        PromptTransport::Stdin
     );
 }
 

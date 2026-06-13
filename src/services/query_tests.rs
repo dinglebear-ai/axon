@@ -130,6 +130,7 @@ fn map_ask_payload_typed() {
     let result = map_ask_payload(payload).unwrap();
     assert_eq!(result.query, "what is axon?");
     assert_eq!(result.answer, "A crawler.");
+    assert!(result.citation_validation.is_none());
     assert!(result.diagnostics.is_none());
     assert!(result.explain.is_none());
     assert_eq!(result.timing_ms.total, 6);
@@ -140,6 +141,7 @@ fn ask_result_serializes_absent_explain_as_null() {
     let result = AskResult {
         query: "what is axon?".to_string(),
         answer: "A crawler.".to_string(),
+        citation_validation: None,
         session: None,
         warnings: Vec::new(),
         diagnostics: None,
@@ -315,8 +317,42 @@ fn ask_explain_context_omits_rendered_context_by_default() {
 
     let parsed: AskExplainContext = serde_json::from_value(value).unwrap();
     assert!(parsed.rendered_context.is_none());
+    assert!(parsed.full_doc_fetch_errors.is_empty());
     let serialized = serde_json::to_value(parsed).unwrap();
     assert!(serialized.get("rendered_context").is_none());
+    assert!(serialized.get("full_doc_fetch_errors").is_none());
+}
+
+#[test]
+fn ask_explain_context_preserves_full_doc_fetch_errors() {
+    let value = serde_json::json!({
+        "planned_full_doc_urls": ["https://docs.example.com/missing"],
+        "full_doc_fetch_errors": [{
+            "url": "https://docs.example.com/missing",
+            "error": "qdrant timeout"
+        }],
+        "full_doc_fetch_skipped": false,
+        "full_doc_fetch_skip_reason": "disabled",
+        "full_doc_fetch_mode": "cosine",
+        "final_source_order": [],
+        "context_char_budget": 120000,
+        "context_chars_used": 42,
+        "context_bytes_budget": 120000,
+        "context_bytes_used": 42,
+        "truncated_by_budget": false
+    });
+
+    let parsed: AskExplainContext = serde_json::from_value(value).unwrap();
+    assert_eq!(parsed.full_doc_fetch_errors.len(), 1);
+    assert_eq!(
+        parsed.full_doc_fetch_errors[0].url,
+        "https://docs.example.com/missing"
+    );
+    let serialized = serde_json::to_value(parsed).unwrap();
+    assert_eq!(
+        serialized["full_doc_fetch_errors"][0]["error"],
+        "qdrant timeout"
+    );
 }
 
 #[test]
@@ -380,6 +416,10 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
             "context_chars": 3000,
             "full_doc_fetch_skipped": true,
             "full_doc_fetch_skip_reason": "low_complexity",
+            "full_doc_fetch_errors": [{
+                "url": "https://docs.example.com/missing",
+                "error": "qdrant timeout"
+            }],
             "detected_complexity": "simple",
             "resolved_full_docs": 2,
             "full_docs_source": "adaptive",
@@ -407,6 +447,7 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
     let diagnostics = result.diagnostics.expect("diagnostics should deserialize");
     assert!(diagnostics.full_doc_fetch_skipped);
     assert_eq!(diagnostics.full_doc_fetch_skip_reason, "low_complexity");
+    assert_eq!(diagnostics.full_doc_fetch_errors.len(), 1);
     assert_eq!(diagnostics.detected_complexity, "simple");
     assert_eq!(diagnostics.resolved_full_docs, 2);
     assert_eq!(diagnostics.full_docs_source, "adaptive");

@@ -730,16 +730,20 @@ jobs:
             config
             vendor
             .cargo
+            .config/nextest.toml
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
       - uses: Swatinem/rust-cache@v2
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
-      - name: cargo test
-        run: cargo test --workspace --locked --features test-helpers -- --skip worker_e2e --quiet
+      - name: cargo nextest
+        run: cargo nextest run --workspace --locked --features test-helpers -E 'not test(/worker_e2e/)'
 
       - name: cargo test ignored cli infra tests
         run: cargo test --locked cli_ --features test-helpers -- --ignored --quiet
@@ -748,7 +752,7 @@ jobs:
         run: cargo test --locked --features test-helpers -- github_integration_ --ignored --quiet
 
       - name: ask quality regression fixtures
-        run: ./scripts/test-ask-quality-regressions.sh
+        run: ./scripts/test-ask-quality-regressions.sh --verify-only
 
   test-infra:
     name: test-infra
@@ -854,6 +858,7 @@ jobs:
   mcp-smoke:
     name: mcp-smoke
     runs-on: ubuntu-latest
+    needs: [release]
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
@@ -873,12 +878,6 @@ jobs:
             .cargo
       - name: Fetch MCP doc fixture for smoke test
         run: mkdir -p docs && git show HEAD:docs/reference/mcp/overview.md > docs/reference/mcp/overview.md
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.94.0
-
-      - uses: Swatinem/rust-cache@v2
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -918,8 +917,12 @@ jobs:
         run: |
           mkdir -p apps/web/out
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
-      - name: Build axon binary (release)
-        run: cargo build --release --locked --bin axon
+      - uses: actions/download-artifact@v5
+        with:
+          name: axon-release-linux-smoke
+          path: target/release
+      - name: Prepare release binary
+        run: chmod +x ./target/release/axon
 
       - name: Write CI mcporter config
         run: |
@@ -1051,30 +1054,26 @@ jobs:
         run: npm --prefix apps/web run build
       - name: cargo build release axon
         run: cargo build --release --locked --bin axon
+      - name: Upload release smoke binary
+        uses: actions/upload-artifact@v5
+        with:
+          name: axon-release-linux-smoke
+          path: target/release/axon
+          if-no-files-found: error
 
   release-smoke:
     name: release-smoke
     runs-on: ubuntu-latest
     needs: [release]
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v5
         with:
-          toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - name: Install web panel dependencies
-        run: npm ci --prefix apps/web
-      - name: Build web panel assets
-        run: npm --prefix apps/web run build
-      - name: build release binary for smoke test
-        run: cargo build --release --locked --bin axon
+          name: axon-release-linux-smoke
+          path: target/release
       - name: smoke test release binary help output
-        run: ./target/release/axon --help
+        run: |
+          chmod +x ./target/release/axon
+          ./target/release/axon --help
 
   production-gate:
     name: production-gate

@@ -193,6 +193,8 @@ pub struct AskExplainContextRendered {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AskExplainContext {
     pub planned_full_doc_urls: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub full_doc_fetch_errors: Vec<AskExplainFullDocFetchError>,
     pub full_doc_fetch_skipped: bool,
     pub full_doc_fetch_skip_reason: AskExplainFullDocFetchSkipReason,
     pub full_doc_fetch_mode: AskExplainFullDocFetchMode,
@@ -213,6 +215,12 @@ pub struct AskExplainContext {
     )]
     pub rendered_context: Option<AskExplainContextRendered>,
     pub truncated_by_budget: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainFullDocFetchError {
+    pub url: String,
+    pub error: String,
 }
 
 #[derive(serde::Deserialize)]

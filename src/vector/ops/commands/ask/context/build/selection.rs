@@ -1,5 +1,8 @@
+use super::route_score::{
+    dominant_retrieval_hosts, final_path_entity_match, full_doc_entity_tokens,
+    full_doc_selection_score, full_doc_source_key, host_from_url, token_matches_path_token,
+};
 use crate::vector::ops::ranking;
-use spider::url::Url;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy)]
@@ -103,7 +106,9 @@ fn url_already_selected_except(
     candidate_idx: usize,
 ) -> bool {
     selected.iter().enumerate().any(|(selected_at, &idx)| {
-        Some(selected_at) != exclude_selected_at && reranked[idx].url == reranked[candidate_idx].url
+        Some(selected_at) != exclude_selected_at
+            && full_doc_source_key(&reranked[idx].url)
+                == full_doc_source_key(&reranked[candidate_idx].url)
     })
 }
 
@@ -139,19 +144,24 @@ fn full_doc_candidate_indices(
     query_tokens: &[String],
 ) -> Vec<usize> {
     let dominant_hosts = dominant_retrieval_hosts(reranked);
+    let entity_tokens = full_doc_entity_tokens(query_tokens);
     let mut scored = reranked
         .iter()
         .enumerate()
         .map(|(idx, candidate)| {
+            let final_path_match = final_path_entity_match(&candidate.url, &entity_tokens);
             (
                 idx,
                 is_dominant_host(&candidate.url, &candidate.path, &dominant_hosts),
+                final_path_match
+                    .as_ref()
+                    .is_some_and(|entity_match| entity_match.all_match),
                 full_doc_selection_score(candidate, query_tokens, &dominant_hosts),
             )
         })
         .collect::<Vec<_>>();
     scored.sort_by(
-        |(idx_a, dominant_a, score_a), (idx_b, dominant_b, score_b)| {
+        |(idx_a, dominant_a, exact_a, score_a), (idx_b, dominant_b, exact_b, score_b)| {
             dominant_b
                 .cmp(dominant_a)
                 .then_with(|| {
@@ -159,10 +169,11 @@ fn full_doc_candidate_indices(
                         .partial_cmp(score_a)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 })
+                .then_with(|| exact_b.cmp(exact_a))
                 .then_with(|| idx_a.cmp(idx_b))
         },
     );
-    scored.into_iter().map(|(idx, _, _)| idx).collect()
+    scored.into_iter().map(|(idx, _, _, _)| idx).collect()
 }
 
 fn is_dominant_host(url: &str, path: &str, dominant_hosts: &HashSet<String>) -> bool {
@@ -174,66 +185,6 @@ fn is_dominant_host(url: &str, path: &str, dominant_hosts: &HashSet<String>) -> 
     }
     dominant_hosts.is_empty()
         || host_from_url(url).is_some_and(|host| dominant_hosts.contains(&host))
-}
-
-pub(super) fn full_doc_selection_score(
-    candidate: &ranking::AskCandidate,
-    query_tokens: &[String],
-    dominant_hosts: &HashSet<String>,
-) -> f64 {
-    let query_tokens = full_doc_entity_tokens(query_tokens);
-    if query_tokens.is_empty() {
-        return candidate.rerank_score;
-    }
-
-    let url_matches = query_tokens
-        .iter()
-        .filter(|token| token_matches_path_token(token, &candidate.url_tokens))
-        .count();
-    let chunk_matches = query_tokens
-        .iter()
-        .filter(|token| token_matches_path_token(token, &candidate.chunk_tokens))
-        .count();
-    let coverage = url_matches as f64 / query_tokens.len() as f64;
-
-    // Full-doc fetch is a canonical-source selection step, not just another
-    // chunk-ranking step. Favor pages whose path/title-like URL tokens match
-    // the query entities, then use body-token coverage as a smaller tiebreaker.
-    candidate.rerank_score
-        + (url_matches as f64 * 0.55).min(1.65)
-        + (chunk_matches as f64 * 0.03).min(0.18)
-        + dominant_host_adjustment(&candidate.url, &candidate.path, dominant_hosts)
-        + if coverage >= 0.25 { 0.18 } else { 0.0 }
-}
-
-pub(super) fn dominant_retrieval_hosts(reranked: &[ranking::AskCandidate]) -> HashSet<String> {
-    let mut counts = std::collections::HashMap::<String, usize>::new();
-    for candidate in reranked.iter().take(50) {
-        if let Some(host) = host_from_url(&candidate.url) {
-            *counts.entry(host).or_insert(0) += 1;
-        }
-    }
-
-    counts
-        .into_iter()
-        .filter_map(|(host, count)| (count >= 5).then_some(host))
-        .collect()
-}
-
-fn dominant_host_adjustment(url: &str, path: &str, dominant_hosts: &HashSet<String>) -> f64 {
-    // Mirror copies are demoted, not boosted: they must not win the canonical
-    // full-doc slot just because their host dominates the (mirror-heavy) index.
-    if super::super::dedup::is_mirror_shaped(url, path) {
-        return -0.35;
-    }
-    if dominant_hosts.is_empty() {
-        return 0.0;
-    }
-    if host_from_url(url).is_some_and(|host| dominant_hosts.contains(&host)) {
-        1.0
-    } else {
-        -0.35
-    }
 }
 
 fn include_preferred_top_chunk_docs(
@@ -366,52 +317,6 @@ fn can_replace_full_doc_index(
     !url_already_selected_except(reranked, selected, Some(replace_at), candidate_idx)
         && domain_count_for_selected_except(reranked, selected, Some(replace_at), candidate_idx)
             < policy.max_docs_per_domain.max(1)
-}
-
-fn host_from_url(url: &str) -> Option<String> {
-    Url::parse(url)
-        .ok()
-        .and_then(|parsed| parsed.host_str().map(|host| host.to_ascii_lowercase()))
-}
-
-fn full_doc_entity_tokens(query_tokens: &[String]) -> Vec<&str> {
-    query_tokens
-        .iter()
-        .map(String::as_str)
-        .filter(|token| !is_broad_full_doc_token(token))
-        .collect()
-}
-
-fn is_broad_full_doc_token(token: &str) -> bool {
-    matches!(
-        token,
-        // Product/navigation words tend to appear in many URLs and should not
-        // decide which document deserves full-doc expansion.
-        "claude"
-            | "code"
-            | "docs"
-            | "doc"
-            | "documentation"
-            | "guide"
-            | "guides"
-            | "setup"
-            | "using"
-            | "use"
-    )
-}
-
-fn token_matches_path_token(query_token: &str, candidate_tokens: &HashSet<String>) -> bool {
-    if candidate_tokens.contains(query_token) {
-        return true;
-    }
-    singular_variant(query_token).is_some_and(|singular| candidate_tokens.contains(singular))
-        || candidate_tokens
-            .iter()
-            .any(|candidate_token| singular_variant(candidate_token) == Some(query_token))
-}
-
-fn singular_variant(token: &str) -> Option<&str> {
-    token.strip_suffix('s').filter(|variant| variant.len() >= 3)
 }
 
 pub fn planned_full_doc_urls(

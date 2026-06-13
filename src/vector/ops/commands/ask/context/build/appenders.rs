@@ -120,6 +120,7 @@ pub fn append_top_chunks_to_context(
 /// Initial maximum chunks per fetched full-doc before fallback attempts try
 /// smaller windows/excerpts to keep later docs from disappearing on budget.
 const FULL_DOC_RENDER_TOP_K: usize = 24;
+const FULL_DOC_CONTEXT_TIER_BOOST: f64 = 10.0;
 
 #[allow(clippy::too_many_arguments)]
 pub fn append_full_docs_to_context(
@@ -147,7 +148,7 @@ pub fn append_full_docs_to_context(
         ) else {
             continue;
         };
-        let score = url_to_score.get(&url).copied().unwrap_or(0.0);
+        let score = url_to_score.get(&url).copied().unwrap_or(0.0) + FULL_DOC_CONTEXT_TIER_BOOST;
         if !push_context_entry(
             context_entries,
             context_char_count,

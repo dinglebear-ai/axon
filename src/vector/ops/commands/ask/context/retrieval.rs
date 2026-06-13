@@ -217,12 +217,13 @@ pub(super) async fn retrieve_ask_candidates(
         reranked.len().min(ask_tuning.ask_chunk_limit),
     ));
     let top_select_started = std::time::Instant::now();
-    let (top_chunk_indices, top_full_doc_indices) = super::build::select_context_indices(
+    let (top_chunk_indices, top_full_doc_indices) = select_retrieval_context_indices(
+        cfg,
+        ask_tuning.ask_full_docs,
+        ask_tuning.ask_chunk_limit,
+        &query_forms,
         &reranked,
         query_tokens,
-        ask_tuning.ask_chunk_limit,
-        ask_tuning.ask_full_docs,
-        super::build::SelectionPolicy::default(),
     );
     timing.record(AskTimingSlot::TopSelect, top_select_started);
 
@@ -241,6 +242,29 @@ pub(super) async fn retrieve_ask_candidates(
         candidate_traces,
         warnings,
     }))
+}
+
+fn select_retrieval_context_indices(
+    cfg: &Config,
+    ask_full_docs: usize,
+    ask_chunk_limit: usize,
+    query_forms: &super::query_rewrite::AskQueryForms,
+    reranked: &[ranking::AskCandidate],
+    query_tokens: &[String],
+) -> (Vec<usize>, Vec<usize>) {
+    let (resolved_full_docs, _) = super::resolve_ask_full_docs_for_model(
+        ask_full_docs,
+        cfg.ask_full_docs_explicit,
+        query_forms.complexity_hint,
+        super::high_context_synthesis_model(cfg),
+    );
+    super::build::select_context_indices(
+        reranked,
+        query_tokens,
+        ask_chunk_limit,
+        resolved_full_docs,
+        super::build::SelectionPolicy::default(),
+    )
 }
 
 struct BuiltRetrievalCandidates {

@@ -13,6 +13,18 @@ use std::sync::Arc;
 /// `Vec<QdrantPoint>`.
 pub type FetchedDoc = (usize, String, Arc<Vec<qdrant::QdrantPoint>>);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FullDocFetchError {
+    pub url: String,
+    pub error: String,
+}
+
+#[derive(Debug, Default)]
+pub struct FetchedDocsResult {
+    pub docs: Vec<FetchedDoc>,
+    pub errors: Vec<FullDocFetchError>,
+}
+
 pub async fn fetch_full_docs(
     cfg: &Config,
     reranked: &[crate::vector::ops::ranking::AskCandidate],
@@ -21,10 +33,11 @@ pub async fn fetch_full_docs(
     max_context_chars: usize,
     doc_chunk_limit: usize,
     doc_fetch_concurrency: usize,
-) -> Result<Vec<FetchedDoc>> {
+) -> Result<FetchedDocsResult> {
     let mut fetched_docs = Vec::new();
+    let mut errors = Vec::new();
     if context_char_count >= max_context_chars {
-        return Ok(fetched_docs);
+        return Ok(FetchedDocsResult::default());
     }
 
     // Fast path: when the doc cache is not in use (CLI one-shots, serve mode
@@ -50,15 +63,16 @@ pub async fn fetch_full_docs(
                 {
                     let url = reranked[doc_idx].url.clone();
                     if points.is_empty() {
-                        log_warn(&format!(
-                            "ask: no points found for full document {url}; continuing with remaining context"
-                        ));
+                        record_empty_doc_fetch(&mut errors, url);
                     } else {
                         fetched_docs.push((order, url, Arc::new(points)));
                     }
                 }
                 fetched_docs.sort_by_key(|(order, _, _)| *order);
-                return Ok(fetched_docs);
+                return Ok(FetchedDocsResult {
+                    docs: fetched_docs,
+                    errors,
+                });
             }
             Err(e) => {
                 log_warn(&format!(
@@ -128,11 +142,28 @@ pub async fn fetch_full_docs(
                 log_warn(&format!(
                     "ask: failed to retrieve full document for {url}; continuing with remaining context: {err}"
                 ));
+                errors.push(FullDocFetchError {
+                    url,
+                    error: err.to_string(),
+                });
             }
         }
     }
     fetched_docs.sort_by_key(|(order, _, _)| *order);
-    Ok(fetched_docs)
+    Ok(FetchedDocsResult {
+        docs: fetched_docs,
+        errors,
+    })
+}
+
+fn record_empty_doc_fetch(errors: &mut Vec<FullDocFetchError>, url: String) {
+    log_warn(&format!(
+        "ask: no points found for full document {url}; continuing with remaining context"
+    ));
+    errors.push(FullDocFetchError {
+        url,
+        error: "no points found for full document".to_string(),
+    });
 }
 
 pub fn ask_doc_cache(cfg: &Config) -> Arc<DocCache> {

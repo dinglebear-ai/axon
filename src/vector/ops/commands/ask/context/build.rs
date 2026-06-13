@@ -3,6 +3,7 @@ mod diagnostics;
 mod fetchers;
 mod finalize;
 mod logging;
+mod route_score;
 mod selection;
 mod supplemental;
 mod trace;
@@ -23,10 +24,10 @@ pub(super) use fetchers::ask_doc_cache;
 pub(super) use fetchers::fetch_full_docs;
 use finalize::{FinalizeContextInputs, FinalizedAskContext, finalize_built_context};
 use logging::{ContextCompleteLog, ContextStartLog, log_context_complete, log_context_start};
+use route_score::{dominant_retrieval_hosts, full_doc_selection_score};
 #[cfg(test)]
 pub(super) use selection::collect_supplemental_candidate_indices;
 pub(super) use selection::{SelectionPolicy, planned_full_doc_urls, select_context_indices};
-use selection::{dominant_retrieval_hosts, full_doc_selection_score};
 use supplemental::maybe_inject_supplemental;
 pub(super) use trace::{CandidateSelectionMetadata, candidate_selection_key};
 pub(super) use trace::{
@@ -51,6 +52,7 @@ pub(super) struct BuiltAskContext {
     /// Static reason string from the skip gate; useful for diagnostics even
     /// when the gate did not fire ("disabled", "insufficient_urls", etc.).
     pub(super) full_doc_fetch_skip_reason: &'static str,
+    pub(super) full_doc_fetch_errors: Vec<fetchers::FullDocFetchError>,
     #[allow(dead_code)]
     pub(super) explain_context: AskExplainContext,
     #[allow(dead_code)]
@@ -78,21 +80,16 @@ pub(super) async fn build_context_from_candidates(
     let skip_decision = should_skip_full_doc_fetch(cfg, reranked, is_rrf);
     let planned_full_doc_urls_set =
         planned_full_doc_urls(reranked, top_full_doc_indices, skip_decision.skip);
-    log_context_start(ContextStartLog {
-        reranked_len: reranked.len(),
-        top_chunks_len: top_chunk_indices.len(),
-        top_full_docs_len: top_full_doc_indices.len(),
-        max_context_chars,
-        doc_chunk_limit,
-        doc_fetch_concurrency,
-        skip_full_docs: skip_decision.skip,
-        skip_reason: skip_decision.reason,
-    });
+    let context_counts = (
+        reranked.len(),
+        top_chunk_indices.len(),
+        top_full_doc_indices.len(),
+    );
+    let context_limits = (max_context_chars, doc_chunk_limit, doc_fetch_concurrency);
+    log_context_build_start(context_counts, context_limits, skip_decision);
     let mut inserted_full_doc_urls: HashSet<String> = HashSet::new();
 
-    // Full documents are inserted BEFORE top chunks so authoritative complete
-    // pages get budget priority over individual chunks. (bd axon_rust-5map)
-    let (full_docs_selected, next_source_idx) = append_full_docs_phase(
+    let (full_docs_selected, next_source_idx, full_doc_fetch_errors) = append_full_docs_phase(
         FullDocsPhaseInputs {
             cfg,
             reranked,
@@ -156,6 +153,7 @@ pub(super) async fn build_context_from_candidates(
         top_full_doc_indices,
         selected_top_chunk_indices: &selected_top_chunk_indices,
         planned_full_doc_urls_set: &planned_full_doc_urls_set,
+        full_doc_fetch_errors: &full_doc_fetch_errors,
         inserted_full_doc_urls: &inserted_full_doc_urls,
         supplemental: &supplemental,
         supplemental_count,
@@ -182,10 +180,30 @@ pub(super) async fn build_context_from_candidates(
         full_docs_selected,
         supplemental_count,
         skip_decision,
+        full_doc_fetch_errors,
     }))
 }
 
 type FetchedFullDocs = Vec<fetchers::FetchedDoc>;
+
+fn log_context_build_start(
+    counts: (usize, usize, usize),
+    limits: (usize, usize, usize),
+    skip_decision: SkipDecision,
+) {
+    let (reranked_len, top_chunks_len, top_full_docs_len) = counts;
+    let (max_context_chars, doc_chunk_limit, doc_fetch_concurrency) = limits;
+    log_context_start(ContextStartLog {
+        reranked_len,
+        top_chunks_len,
+        top_full_docs_len,
+        max_context_chars,
+        doc_chunk_limit,
+        doc_fetch_concurrency,
+        skip_full_docs: skip_decision.skip,
+        skip_reason: skip_decision.reason,
+    });
+}
 
 struct FullDocsPhaseInputs<'a> {
     cfg: &'a Config,
@@ -208,7 +226,7 @@ async fn append_full_docs_phase(
     context_char_count: &mut usize,
     inserted_full_doc_urls: &mut HashSet<String>,
     source_idx: usize,
-) -> Result<(usize, usize)> {
+) -> Result<(usize, usize, Vec<fetchers::FullDocFetchError>)> {
     let fetched_docs = fetch_full_docs_for_context(FetchFullDocsInputs {
         cfg: inputs.cfg,
         reranked: inputs.reranked,
@@ -222,11 +240,12 @@ async fn append_full_docs_phase(
         timing: inputs.timing,
     })
     .await?;
-    Ok(append_planned_full_docs(
+    let errors = fetched_docs.errors.clone();
+    let (full_docs_selected, next_source_idx) = append_planned_full_docs(
         AppendPlannedFullDocsInputs {
             reranked: inputs.reranked,
             top_full_doc_indices: inputs.top_full_doc_indices,
-            fetched_docs,
+            fetched_docs: fetched_docs.docs,
             query_tokens: inputs.query_tokens,
             separator: inputs.separator,
             max_context_chars: inputs.max_context_chars,
@@ -235,7 +254,8 @@ async fn append_full_docs_phase(
         context_char_count,
         inserted_full_doc_urls,
         source_idx,
-    ))
+    );
+    Ok((full_docs_selected, next_source_idx, errors))
 }
 
 struct AppendTopChunksInputs<'a> {
@@ -322,7 +342,9 @@ struct FetchFullDocsInputs<'a> {
     timing: &'a mut AskTiming,
 }
 
-async fn fetch_full_docs_for_context(inputs: FetchFullDocsInputs<'_>) -> Result<FetchedFullDocs> {
+async fn fetch_full_docs_for_context(
+    inputs: FetchFullDocsInputs<'_>,
+) -> Result<fetchers::FetchedDocsResult> {
     let full_doc_fetch_started = std::time::Instant::now();
     let fetched_docs = if inputs.skip_decision.skip {
         log_info(&format!(
@@ -330,7 +352,7 @@ async fn fetch_full_docs_for_context(inputs: FetchFullDocsInputs<'_>) -> Result<
             inputs.skip_decision.reason,
             if inputs.is_rrf { "rrf" } else { "cosine" }
         ));
-        Vec::new()
+        fetchers::FetchedDocsResult::default()
     } else {
         fetch_full_docs(
             inputs.cfg,
@@ -346,7 +368,7 @@ async fn fetch_full_docs_for_context(inputs: FetchFullDocsInputs<'_>) -> Result<
     log_info(&format!(
         "ask full-doc fetch complete planned={} fetched={} elapsed_ms={}",
         inputs.top_full_doc_indices.len(),
-        fetched_docs.len(),
+        fetched_docs.docs.len(),
         full_doc_fetch_started.elapsed().as_millis(),
     ));
     inputs
@@ -361,6 +383,7 @@ struct ToBuiltContextInputs {
     full_docs_selected: usize,
     supplemental_count: usize,
     skip_decision: SkipDecision,
+    full_doc_fetch_errors: Vec<fetchers::FullDocFetchError>,
 }
 
 fn to_built_ask_context(inputs: ToBuiltContextInputs) -> BuiltAskContext {
@@ -373,6 +396,7 @@ fn to_built_ask_context(inputs: ToBuiltContextInputs) -> BuiltAskContext {
         diagnostic_sources: inputs.finalized.diagnostic_sources,
         full_doc_fetch_skipped: inputs.skip_decision.skip,
         full_doc_fetch_skip_reason: inputs.skip_decision.reason,
+        full_doc_fetch_errors: inputs.full_doc_fetch_errors,
         explain_context: inputs.finalized.explain_context,
         selection_decisions: inputs.finalized.selection_decisions,
     }

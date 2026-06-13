@@ -1,4 +1,7 @@
-use super::normalize::{extract_cited_source_ids, normalize_ask_answer, parse_context_source_map};
+use super::normalize::{
+    extract_cited_source_ids, normalize_ask_answer, parse_context_source_map,
+    summarize_citation_validation,
+};
 use super::validate_ask_llm_config;
 use crate::core::config::Config;
 use crate::core::llm::LlmBackendKind;
@@ -34,6 +37,24 @@ fn normalize_ask_answer_dedupes_sources_by_url() {
     assert!(normalized.contains("Use this flow [S1][S1]."));
     assert!(normalized.contains("- [S1] https://same.dev/docs"));
     assert!(!normalized.contains("- [S9] https://same.dev/docs"));
+}
+
+#[test]
+fn normalize_ask_answer_dedupes_canonical_url_variants() {
+    let context = "Sources:\n## Source Document [S1]: https://code.claude.com/docs/en/plugins.md\n\n---\n\n## Top Chunk [S2]: https://code.claude.com/docs/en/plugins\n\n---\n\n## Source Document [S3]: https://code.claude.com/docs/en/plugin-marketplaces.md";
+    let raw = "Create the manifest and skill file [S1][S2], then publish or share via marketplaces when needed [S3].";
+    let normalized = normalize_ask_answer(
+        &cfg(),
+        "how do I create a Claude Code plugin?",
+        raw,
+        context,
+    );
+    assert!(
+        normalized.contains("Create the manifest and skill file [S1][S1], then publish or share via marketplaces when needed [S2].")
+    );
+    assert!(normalized.contains("- [S1] https://code.claude.com/docs/en/plugins.md"));
+    assert!(normalized.contains("- [S2] https://code.claude.com/docs/en/plugin-marketplaces.md"));
+    assert!(!normalized.contains("- [S3]"));
 }
 
 #[test]
@@ -112,6 +133,34 @@ fn non_trivial_answer_requires_minimum_citation_count() {
 }
 
 #[test]
+fn summarize_citation_validation_reports_valid_sources() {
+    let answer = "Do the thing [S1][S2].\n\n## Sources\n- [S1] https://docs.example.com/a\n- [S2] https://docs.example.com/b";
+
+    let summary = summarize_citation_validation(answer);
+
+    assert!(summary.valid);
+    assert!(summary.issues.is_empty());
+    assert_eq!(summary.canonical_citation_count, 2);
+}
+
+#[test]
+fn summarize_citation_validation_reports_failure_reasons() {
+    let answer = "Do the thing.\n\n## Citation Validation Failed\n- Answer contained no source citations.\n- Non-trivial answer requires at least 2 unique citations; found 0.\n\n## Retrieved Sources\n- [S1] https://docs.example.com/a";
+
+    let summary = summarize_citation_validation(answer);
+
+    assert!(!summary.valid);
+    assert_eq!(
+        summary.issues,
+        vec![
+            "Answer contained no source citations.".to_string(),
+            "Non-trivial answer requires at least 2 unique citations; found 0.".to_string(),
+        ]
+    );
+    assert_eq!(summary.canonical_citation_count, 1);
+}
+
+#[test]
 fn validate_ask_llm_config_accepts_default_gemini_config() {
     let cfg = Config::test_default();
 
@@ -169,6 +218,7 @@ fn ask_result_omits_empty_warnings_when_serialized() {
     let result = AskResult {
         query: "what is axon?".to_string(),
         answer: "A crawler.".to_string(),
+        citation_validation: None,
         session: None,
         warnings: Vec::new(),
         diagnostics: None,
