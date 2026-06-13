@@ -13,6 +13,7 @@ use support::{LineIndex, domain_for_origin, domain_from_web_url, file_locator, l
 
 const PLANNER_OWNED_PAYLOAD_KEYS: &[&str] = &[
     "content_kind",
+    "chunk_content_kind",
     "chunk_locator",
     "source_range",
     "chunking_fallback",
@@ -50,6 +51,33 @@ pub(crate) struct SourceDocument {
 }
 
 impl SourceDocument {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        origin: SourceOrigin,
+        url: String,
+        domain: String,
+        text: String,
+        source_type: impl Into<String>,
+        title: Option<String>,
+        extra: Option<Value>,
+        extractor_name: Option<String>,
+        structured: Option<StructuredPayload>,
+        chunk_hint: SourceChunkHint,
+    ) -> Self {
+        Self {
+            origin,
+            url,
+            domain,
+            text,
+            source_type: source_type.into(),
+            title,
+            extra: sanitize_doc_extra(extra),
+            extractor_name,
+            structured,
+            chunk_hint,
+        }
+    }
+
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn url(&self) -> &str {
         &self.url
@@ -73,18 +101,18 @@ impl SourceDocument {
         structured: Option<StructuredPayload>,
     ) -> Result<Self, String> {
         let domain = domain_from_web_url(&url)?;
-        Ok(Self {
-            origin: SourceOrigin::ScrapeResult,
+        Ok(Self::new(
+            SourceOrigin::ScrapeResult,
             url,
             domain,
             text,
-            source_type: source_type.into(),
+            source_type,
             title,
-            extra: sanitize_doc_extra(extra),
+            extra,
             extractor_name,
             structured,
-            chunk_hint: SourceChunkHint::MarkdownOrPlainText,
-        })
+            SourceChunkHint::MarkdownOrPlainText,
+        ))
     }
 
     pub(crate) fn try_new_crawl_manifest(
@@ -94,18 +122,18 @@ impl SourceDocument {
         structured: Option<StructuredPayload>,
     ) -> Result<Self, String> {
         let domain = domain_from_web_url(&url)?;
-        Ok(Self {
-            origin: SourceOrigin::CrawlManifest,
+        Ok(Self::new(
+            SourceOrigin::CrawlManifest,
             url,
             domain,
             text,
-            source_type: "crawl".to_string(),
+            "crawl",
             title,
-            extra: None,
-            extractor_name: None,
+            None,
+            None,
             structured,
-            chunk_hint: SourceChunkHint::MarkdownOrPlainText,
-        })
+            SourceChunkHint::MarkdownOrPlainText,
+        ))
     }
 
     pub(crate) fn try_new_local_markdown(
@@ -116,18 +144,18 @@ impl SourceDocument {
         title: Option<String>,
         extra: Option<Value>,
     ) -> Result<Self, String> {
-        Ok(Self {
-            origin: SourceOrigin::LocalFile,
+        Ok(Self::new(
+            SourceOrigin::LocalFile,
             url,
             domain,
             text,
-            source_type: source_type.into(),
+            source_type,
             title,
-            extra: sanitize_doc_extra(extra),
-            extractor_name: None,
-            structured: None,
-            chunk_hint: SourceChunkHint::MarkdownOrPlainText,
-        })
+            extra,
+            None,
+            None,
+            SourceChunkHint::MarkdownOrPlainText,
+        ))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -145,18 +173,18 @@ impl SourceDocument {
             return Err("file chunking is only allowed for local and git file origins".to_string());
         }
         let domain = domain_for_origin(origin, &url);
-        Ok(Self {
+        Ok(Self::new(
             origin,
             url,
             domain,
             text,
-            source_type: source_type.into(),
+            source_type,
             title,
-            extra: sanitize_doc_extra(extra),
-            extractor_name: None,
-            structured: None,
-            chunk_hint: SourceChunkHint::File { path, extension },
-        })
+            extra,
+            None,
+            None,
+            SourceChunkHint::File { path, extension },
+        ))
     }
 
     pub(crate) fn try_new_plain_text(
@@ -167,18 +195,18 @@ impl SourceDocument {
         title: Option<String>,
         extra: Option<Value>,
     ) -> Result<Self, String> {
-        Ok(Self {
-            origin: SourceOrigin::PlainIngest,
+        Ok(Self::new(
+            SourceOrigin::PlainIngest,
             url,
             domain,
             text,
-            source_type: source_type.into(),
+            source_type,
             title,
-            extra: sanitize_doc_extra(extra),
-            extractor_name: None,
-            structured: None,
-            chunk_hint: SourceChunkHint::PlainText,
-        })
+            extra,
+            None,
+            None,
+            SourceChunkHint::PlainText,
+        ))
     }
 }
 
@@ -281,7 +309,7 @@ pub(crate) fn structured_payload_from_vertical_summary(
         .map(ToOwned::to_owned);
     Some(StructuredPayload {
         kind: "vertical",
-        schema_type: schema_type.or_else(|| Some(format!("{extractor_name}_structured"))),
+        schema_type: Some(schema_type.unwrap_or_else(|| format!("{extractor_name}_structured"))),
         schema_id,
         blob: value,
     })
@@ -329,10 +357,11 @@ async fn prepare_file_source(
             extra.insert("symbol_kind".into(), kind.into());
         }
         chunk_texts.push(chunk.text);
-        chunk_extra.push(Value::Object(extra));
+        chunk_extra.push(chunk_metadata(extra));
     }
+    let local_cleanup = doc.origin == SourceOrigin::LocalFile;
     let extra = ensure_file_doc_extra(doc.extra, &path, &ext, symbol_status);
-    Ok(PreparedDoc::from_planned_chunks(
+    let prepared = PreparedDoc::from_planned_chunks(
         doc.url,
         doc.domain,
         chunk_texts,
@@ -343,7 +372,12 @@ async fn prepare_file_source(
         doc.extractor_name,
         doc.structured,
         chunk_extra,
-    ))
+    );
+    Ok(if local_cleanup {
+        prepared.with_local_legacy_fragment_cleanup()
+    } else {
+        prepared
+    })
 }
 
 fn prepare_markdown_source(doc: SourceDocument) -> PreparedDoc {
@@ -369,7 +403,7 @@ fn prepare_markdown_source(doc: SourceDocument) -> PreparedDoc {
                     "plain_text_control_chars".into(),
                 );
             }
-            Some(Value::Object(extra))
+            Some(chunk_metadata(extra))
         })
         .collect();
     PreparedDoc::from_planned_chunks(
@@ -394,7 +428,7 @@ fn prepare_plain_source(doc: SourceDocument) -> PreparedDoc {
     for (byte_start, chunk) in chunks_with_offsets {
         let byte_end = byte_start + chunk.len();
         let (line_start, line_end) = line_index.line_range_for_bytes(byte_start, byte_end);
-        chunk_extra.push(Value::Object(base_chunk_metadata(
+        chunk_extra.push(chunk_metadata(base_chunk_metadata(
             "plain_text",
             &format!("{}#chunk-{}", doc.url, byte_start),
             line_start,
@@ -444,10 +478,14 @@ fn base_chunk_metadata(
     range.insert("byte_end".into(), byte_end.into());
 
     let mut extra = Map::new();
-    extra.insert("content_kind".into(), content_kind.into());
+    extra.insert("chunk_content_kind".into(), content_kind.into());
     extra.insert("chunk_locator".into(), locator.into());
     extra.insert("source_range".into(), Value::Object(range));
     extra
+}
+
+fn chunk_metadata(metadata: Map<String, Value>) -> Value {
+    Value::Object(metadata)
 }
 
 fn ensure_file_doc_extra(
@@ -460,17 +498,18 @@ fn ensure_file_doc_extra(
         Some(Value::Object(map)) => map,
         _ => Map::new(),
     };
-    map.entry("code_file_path")
-        .or_insert_with(|| path.to_string().into());
-    map.entry("code_language")
-        .or_insert_with(|| language_name(ext).into());
-    map.entry("code_file_type")
-        .or_insert_with(|| classify_file_type(path).into());
-    map.entry("code_is_test")
-        .or_insert_with(|| is_test_path(path).into());
-    map.entry("symbol_extraction_status")
-        .or_insert_with(|| symbol_status.into());
+    insert_missing_or_null(&mut map, "code_file_path", path.to_string().into());
+    insert_missing_or_null(&mut map, "code_language", language_name(ext).into());
+    insert_missing_or_null(&mut map, "code_file_type", classify_file_type(path).into());
+    insert_missing_or_null(&mut map, "code_is_test", is_test_path(path).into());
+    insert_missing_or_null(&mut map, "symbol_extraction_status", symbol_status.into());
     Some(Value::Object(map))
+}
+
+fn insert_missing_or_null(map: &mut Map<String, Value>, key: &str, value: Value) {
+    if !map.contains_key(key) || map.get(key).is_some_and(Value::is_null) {
+        map.insert(key.to_string(), value);
+    }
 }
 
 fn sanitize_doc_extra(extra: Option<Value>) -> Option<Value> {

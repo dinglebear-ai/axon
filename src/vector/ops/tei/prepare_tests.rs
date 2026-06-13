@@ -121,7 +121,7 @@ async fn dir_embed_tags_code_and_prose_distinctly() {
     );
     assert!(!rs.chunks.is_empty());
     assert_eq!(rs.chunks.len(), rs.chunk_extra.len());
-    assert_eq!(rs.chunk_extra[0]["content_kind"], "code");
+    assert_eq!(rs.chunk_extra[0]["chunk_content_kind"], "code");
     assert!(
         rs.chunk_extra[0]["chunk_locator"]
             .as_str()
@@ -170,7 +170,7 @@ async fn crawl_manifest_rs_url_stays_markdown_not_code() {
 
     assert_eq!(prepared.len(), 1);
     assert_eq!(prepared[0].content_type, "markdown");
-    assert_eq!(prepared[0].chunk_extra[0]["content_kind"], "markdown");
+    assert_eq!(prepared[0].chunk_extra[0]["chunk_content_kind"], "markdown");
     assert!(prepared[0].chunk_extra[0].get("code_line_start").is_none());
 }
 

@@ -65,6 +65,7 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
         follow_crawl_urls: vec![],
         extra: None,
         structured: None,
+        structured_for_embedding: None,
         extractor_name: None,
         title: None,
     })
@@ -231,7 +232,11 @@ fn vertical_doc_to_scrape_result(
         );
     }
     scrape_result.extra = Some(extra);
-    scrape_result.structured = doc.structured.and_then(public_structured_summary);
+    if let Some(structured) = doc.structured {
+        let redacted = redact_sensitive_structured_keys(structured);
+        scrape_result.structured_for_embedding = Some(redacted.clone());
+        scrape_result.structured = public_structured_summary(redacted);
+    }
     scrape_result.extractor_name = Some(doc.extractor_name.to_string());
     scrape_result.title = doc.title;
     Ok(scrape_result)
@@ -437,7 +442,11 @@ pub(crate) async fn scrape_result_to_prepared_doc(
     cfg: &Config,
     result: &ScrapeResult,
 ) -> Result<crate::vector::ops::PreparedDoc, Box<dyn Error>> {
-    let structured = result.structured.clone().and_then(|value| {
+    let structured_source = result
+        .structured_for_embedding
+        .clone()
+        .or_else(|| result.structured.clone());
+    let structured = structured_source.and_then(|value| {
         structured_payload_from_vertical_summary(
             result.extractor_name.as_deref().unwrap_or("vertical"),
             value,

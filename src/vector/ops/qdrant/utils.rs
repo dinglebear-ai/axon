@@ -31,7 +31,7 @@ pub fn qdrant_base(cfg: &Config) -> &str {
 ///     `chunking_method` writes for GitHub file chunks.
 /// v7: Clean-break git/code payload schema. New git-backed file chunks write
 ///     provider-neutral `git_*` and `code_*` fields instead of `gh_*` duplicates.
-/// v8: Added normalized pre-chunk planner fields: `content_kind`,
+/// v8: Added normalized pre-chunk planner fields: `chunk_content_kind`,
 ///     `chunk_locator`, `source_range`, `chunking_fallback`, and
 ///     `code_chunk_source`.
 pub const PAYLOAD_SCHEMA_VERSION: u32 = 8;

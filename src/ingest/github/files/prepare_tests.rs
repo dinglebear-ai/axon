@@ -56,7 +56,7 @@ async fn read_file_embed_docs_writes_symbol_payload_contract() {
         .iter()
         .find(|ce| ce.get("symbol_name").and_then(|v| v.as_str()) == Some("Response::parse"))
         .expect("chunk with method symbol payload");
-    assert_eq!(method_chunk["content_kind"], "code");
+    assert_eq!(method_chunk["chunk_content_kind"], "code");
     assert!(
         method_chunk["chunk_locator"]
             .as_str()

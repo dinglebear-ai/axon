@@ -66,6 +66,11 @@ pub(crate) struct PreparedDoc {
     /// while still grouping a file's chunks into a single `PreparedDoc` (P-H1),
     /// so the symbol-boost retrieval signal survives the per-file batching.
     pub(crate) chunk_extra: Vec<serde_json::Value>,
+    /// Post-upsert maintenance marker for local file embeds that used to create
+    /// one URL per line fragment (`file://...#Lx-Ly`). When present, the pipeline
+    /// deletes only those legacy fragment URLs after the replacement file URL has
+    /// been durably upserted.
+    pub(crate) local_legacy_fragment_url: Option<String>,
 }
 
 impl PreparedDoc {
@@ -93,7 +98,13 @@ impl PreparedDoc {
             extractor_name,
             structured,
             chunk_extra,
+            local_legacy_fragment_url: None,
         }
+    }
+
+    pub(super) fn with_local_legacy_fragment_cleanup(mut self) -> Self {
+        self.local_legacy_fragment_url = Some(self.url.clone());
+        self
     }
 }
 

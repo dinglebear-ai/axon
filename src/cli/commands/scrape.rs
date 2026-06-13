@@ -65,6 +65,7 @@ pub(crate) fn scrape_result_to_prepared_doc(
         extractor_name: result.extractor_name.clone(),
         structured: None,
         chunk_extra: Vec::new(),
+        local_legacy_fragment_url: None,
     }
 }
 

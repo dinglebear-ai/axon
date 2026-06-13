@@ -194,6 +194,7 @@ fn prepared_doc_with_ingest_metadata_compiles() {
         extractor_name: None,
         structured: None,
         chunk_extra: Vec::new(),
+        local_legacy_fragment_url: None,
     };
     assert_eq!(doc.source_type, "github");
     assert_eq!(doc.content_type, "text");

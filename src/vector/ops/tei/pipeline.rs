@@ -6,7 +6,8 @@ use super::{
 use crate::core::config::Config;
 use crate::core::logging::{log_debug, log_info, log_warn};
 use crate::vector::ops::qdrant::{
-    PAYLOAD_SCHEMA_VERSION, env_usize_clamped, qdrant_delete_stale_tail,
+    PAYLOAD_SCHEMA_VERSION, env_usize_clamped, qdrant_delete_local_file_fragments,
+    qdrant_delete_stale_tail,
 };
 use chrono::Utc;
 use futures_util::stream::{FuturesUnordered, StreamExt};
@@ -29,6 +30,7 @@ struct EmbeddedDoc {
     url: String,
     chunk_count: usize,
     points: Vec<serde_json::Value>,
+    local_legacy_fragment_url: Option<String>,
 }
 
 /// Qdrant payload fields owned by the pipeline that `doc.extra` must never overwrite.
@@ -157,6 +159,7 @@ async fn embed_prepared_doc(
     let dim = vectors[0].len();
     let chunk_count = doc.chunks.len();
     let url = doc.url.clone();
+    let local_legacy_fragment_url = doc.local_legacy_fragment_url.take();
     // Origin marker stamped on every chunk: the crawl start URL or ingest target
     // when the job runner set `cfg.seed_url`, otherwise the doc's own URL (direct
     // embed/scrape). `axon refresh` facets on this field to re-enqueue origins.
@@ -230,6 +233,7 @@ async fn embed_prepared_doc(
         url,
         chunk_count,
         points,
+        local_legacy_fragment_url,
     })
 }
 
@@ -314,6 +318,7 @@ async fn bootstrap_first_doc(
     doc_timeout_secs: u64,
     pending_points: &mut Vec<serde_json::Value>,
     stale_tail_queue: &mut Vec<(String, usize)>,
+    local_fragment_cleanup_queue: &mut Vec<String>,
 ) -> Result<(VectorMode, usize, usize), SendError> {
     match embed_prepared_doc_with_timeout(cfg, doc, doc_timeout_secs, VectorMode::Unnamed).await {
         Ok(EmbeddedDoc {
@@ -321,6 +326,7 @@ async fn bootstrap_first_doc(
             url,
             chunk_count,
             points,
+            local_legacy_fragment_url,
         }) => {
             let mode = qdrant_store::collection_init_or_cached(cfg, dim)
                 .await
@@ -336,6 +342,9 @@ async fn bootstrap_first_doc(
                 n
             };
             stale_tail_queue.push((url, chunk_count));
+            if let Some(url) = local_legacy_fragment_url {
+                local_fragment_cleanup_queue.push(url);
+            }
             Ok((mode, chunks, 0))
         }
         Err(e) => {
@@ -352,6 +361,7 @@ async fn flush_and_cleanup(
     cfg: &Config,
     points: &mut Vec<serde_json::Value>,
     stale_tail_queue: &mut Vec<(String, usize)>,
+    local_fragment_cleanup_queue: &mut Vec<String>,
 ) -> Result<(), SendError> {
     if points.is_empty() {
         return Ok(());
@@ -372,6 +382,13 @@ async fn flush_and_cleanup(
             ));
         }
     }
+    for file_url in local_fragment_cleanup_queue.drain(..) {
+        if let Err(e) = qdrant_delete_local_file_fragments(cfg, &file_url).await {
+            log_warn(&format!(
+                "embed local-fragment cleanup failed for {file_url}: {e}"
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -389,6 +406,7 @@ struct PipelineState {
     docs_completed: usize,
     pending_points: Vec<serde_json::Value>,
     stale_tail_queue: Vec<(String, usize)>,
+    local_fragment_cleanup_queue: Vec<String>,
 }
 
 /// Drive the concurrent doc-processing loop (Phase 2) after mode is known.
@@ -423,14 +441,23 @@ async fn drain_concurrent_docs<'a>(
                 url,
                 chunk_count,
                 mut points,
+                local_legacy_fragment_url,
                 ..
             }) => {
                 chunks_embedded += points.len();
                 state.pending_points.append(&mut points);
                 state.stale_tail_queue.push((url, chunk_count));
+                if let Some(url) = local_legacy_fragment_url {
+                    state.local_fragment_cleanup_queue.push(url);
+                }
                 if state.pending_points.len() >= params.flush_point_threshold {
-                    flush_and_cleanup(cfg, &mut state.pending_points, &mut state.stale_tail_queue)
-                        .await?;
+                    flush_and_cleanup(
+                        cfg,
+                        &mut state.pending_points,
+                        &mut state.stale_tail_queue,
+                        &mut state.local_fragment_cleanup_queue,
+                    )
+                    .await?;
                 }
             }
             Err(e) => {
@@ -498,6 +525,7 @@ pub(super) async fn run_embed_pipeline(
         docs_completed: 0,
         pending_points: Vec::new(),
         stale_tail_queue: Vec::new(),
+        local_fragment_cleanup_queue: Vec::new(),
     };
 
     // Phase 1: process first doc serially to learn dim + VectorMode.
@@ -515,6 +543,7 @@ pub(super) async fn run_embed_pipeline(
         doc_timeout_secs,
         &mut state.pending_points,
         &mut state.stale_tail_queue,
+        &mut state.local_fragment_cleanup_queue,
     )
     .await?;
     state.docs_completed = 1;
@@ -542,7 +571,13 @@ pub(super) async fn run_embed_pipeline(
     chunks_embedded += phase2_chunks;
     docs_failed += phase2_failed;
 
-    flush_and_cleanup(cfg, &mut state.pending_points, &mut state.stale_tail_queue).await?;
+    flush_and_cleanup(
+        cfg,
+        &mut state.pending_points,
+        &mut state.stale_tail_queue,
+        &mut state.local_fragment_cleanup_queue,
+    )
+    .await?;
 
     let elapsed_secs = pipeline_start.elapsed().as_secs();
     let docs_embedded = docs_total - docs_failed;

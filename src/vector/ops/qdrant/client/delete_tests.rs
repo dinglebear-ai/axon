@@ -25,6 +25,42 @@ fn repo_code_delete_body_is_scoped_to_one_repo_file_points() {
     })));
 }
 
+#[test]
+fn local_fragment_cleanup_is_scoped_to_local_embed_legacy_urls() {
+    let scroll = local_legacy_fragment_scroll_filter();
+    let must = scroll["must"].as_array().expect("must array");
+    assert_eq!(must.len(), 2);
+    assert!(
+        must.iter().all(|condition| condition["key"] != "url"),
+        "candidate scan must not depend on full-text URL matching; exact legacy prefix filtering happens in Rust"
+    );
+    assert!(must.contains(&serde_json::json!({
+        "key": "domain",
+        "match": {"value": "local"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_type",
+        "match": {"value": "embed"}
+    })));
+
+    let delete = local_legacy_fragment_delete_body(&["file:///tmp/a/src/lib.rs#L1-L2"]);
+    let delete_must = delete["filter"]["must"].as_array().expect("must array");
+    assert!(
+        delete_must
+            .iter()
+            .all(|condition| condition["key"] != "code_file_path"),
+        "cleanup must not match by non-unique path because that can delete git/provider points"
+    );
+    assert!(delete_must.contains(&serde_json::json!({
+        "key": "domain",
+        "match": {"value": "local"}
+    })));
+    assert!(delete_must.contains(&serde_json::json!({
+        "key": "source_type",
+        "match": {"value": "embed"}
+    })));
+}
+
 // T-H3: stale-tail filter shape tests ----------------------------------------
 
 #[test]

@@ -96,7 +96,7 @@ fn apply_extra_allows_planner_chunk_fields_but_blocks_system_fields() {
     let extra = serde_json::json!({
         "url": "https://evil.example/override",
         "chunk_text": "evil",
-        "content_kind": "code",
+        "chunk_content_kind": "code",
         "chunk_locator": "src/lib.rs#L1-L2",
         "source_range": {"line_start": 1, "line_end": 2}
     });
@@ -105,7 +105,7 @@ fn apply_extra_allows_planner_chunk_fields_but_blocks_system_fields() {
 
     assert_eq!(payload["url"], "https://example.com/original");
     assert_eq!(payload["chunk_text"], "original");
-    assert_eq!(payload["content_kind"], "code");
+    assert_eq!(payload["chunk_content_kind"], "code");
     assert_eq!(payload["chunk_locator"], "src/lib.rs#L1-L2");
     assert_eq!(payload["source_range"]["line_start"], 1);
 }
