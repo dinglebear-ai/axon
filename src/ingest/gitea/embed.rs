@@ -5,7 +5,7 @@ use crate::core::config::Config;
 use crate::ingest::git_payload::{
     ContentKind, GitPayload, build_git_payload, extract_git_item_fields,
 };
-use crate::vector::ops::{PreparedDoc, chunk_text};
+use crate::vector::ops::{PreparedDoc, prepare_plain_text_source};
 
 use super::GiteaTarget;
 use super::client::{
@@ -75,34 +75,31 @@ pub(crate) async fn embed_metadata(
         .full_name
         .clone()
         .unwrap_or_else(|| format!("{}/{}", target.owner, target.repo));
-    let chunks = chunk_text(&format!("# {title}\n\n{}", parts.join("\n")));
-    if chunks.is_empty() {
+    let doc = prepare_plain_text_source(
+        repo.html_url
+            .clone()
+            .unwrap_or_else(|| target.web_url.clone()),
+        target.host.clone(),
+        format!("# {title}\n\n{}", parts.join("\n")),
+        "gitea",
+        Some(title),
+        Some(payload(
+            target,
+            repo,
+            "repo_metadata",
+            serde_json::json!({
+                "private": repo.private,
+                "stars": repo.stars_count,
+                "forks": repo.forks_count,
+                "open_issues": repo.open_issues_count,
+            }),
+        )),
+    )
+    .map_err(|err| anyhow::anyhow!("prepare gitea metadata source failed: {err}"))?;
+    if doc.chunks.is_empty() {
         return Ok(0);
     }
-    embed_docs(
-        cfg,
-        vec![PreparedDoc::ingest(
-            repo.html_url
-                .clone()
-                .unwrap_or_else(|| target.web_url.clone()),
-            target.host.clone(),
-            chunks,
-            "gitea",
-            Some(title),
-            Some(payload(
-                target,
-                repo,
-                "repo_metadata",
-                serde_json::json!({
-                    "private": repo.private,
-                    "stars": repo.stars_count,
-                    "forks": repo.forks_count,
-                    "open_issues": repo.open_issues_count,
-                }),
-            )),
-        )],
-    )
-    .await
+    embed_docs(cfg, vec![doc]).await
 }
 
 pub(crate) fn author_name(user: &Option<GiteaUser>) -> Option<String> {
@@ -156,16 +153,13 @@ pub(crate) fn issue_doc(
         issue.body.as_deref().unwrap_or(""),
         label_text
     );
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
-        return None;
-    }
-    Some(PreparedDoc::ingest(
-        issue
-            .html_url
-            .unwrap_or_else(|| format!("{}/issues/{}", target.web_url, issue.number)),
+    let url = issue
+        .html_url
+        .unwrap_or_else(|| format!("{}/issues/{}", target.web_url, issue.number));
+    let doc = prepare_plain_text_source(
+        url,
         target.host.clone(),
-        chunks,
+        content,
         "gitea",
         Some(format!("Issue #{}: {}", issue.number, issue.title)),
         Some(payload(
@@ -182,7 +176,9 @@ pub(crate) fn issue_doc(
                 "comment_count": issue.comments,
             }),
         )),
-    ))
+    )
+    .ok()?;
+    (!doc.chunks.is_empty()).then_some(doc)
 }
 
 pub(crate) async fn embed_pulls(
@@ -217,15 +213,13 @@ pub(crate) fn pull_doc(
         pull.title,
         pull.body.as_deref().unwrap_or("")
     );
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
-        return None;
-    }
-    Some(PreparedDoc::ingest(
-        pull.html_url
-            .unwrap_or_else(|| format!("{}/pulls/{}", target.web_url, pull.number)),
+    let url = pull
+        .html_url
+        .unwrap_or_else(|| format!("{}/pulls/{}", target.web_url, pull.number));
+    let doc = prepare_plain_text_source(
+        url,
         target.host.clone(),
-        chunks,
+        content,
         "gitea",
         Some(format!("PR #{}: {}", pull.number, pull.title)),
         Some(payload(
@@ -243,5 +237,7 @@ pub(crate) fn pull_doc(
                 "merged": pull.merged,
             }),
         )),
-    ))
+    )
+    .ok()?;
+    (!doc.chunks.is_empty()).then_some(doc)
 }

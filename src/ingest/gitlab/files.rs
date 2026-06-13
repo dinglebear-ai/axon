@@ -1,21 +1,19 @@
-use std::path::Path;
-
 use anyhow::{Result, bail};
 use base64::Engine as _;
 
 use crate::core::config::Config;
 use crate::core::logging::log_warn;
 use crate::ingest::git_files::embed_docs;
+use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
 use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::MAX_INGEST_FILE_BYTES;
 use crate::ingest::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
-use crate::vector::ops::PreparedDoc;
-use crate::vector::ops::file_ingest::{
-    SelectionPolicy, chunk_file, chunking_method, collect_files,
+use crate::vector::ops::file_ingest::{SelectionPolicy, collect_files};
+use crate::vector::ops::input::classify::{
+    classify_file_type, is_test_path, language_name, path_extension,
 };
-use crate::vector::ops::input::code::code_symbol_extraction_status;
+use crate::vector::ops::{SourceDocument, SourceOrigin, prepare_source_document};
 
-use super::embed::gitlab_file_chunk_payload;
 use super::types::{GitLabProject, GitLabTarget};
 
 async fn clone_repo(
@@ -125,55 +123,34 @@ pub(crate) async fn embed_files(
                 continue;
             }
         };
-        let ext = Path::new(&rel)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        // Move content + ext into spawn_blocking; return content + ext so
-        // code_symbol_extraction_status can run after on the calling thread.
-        let (code_chunks, content, ext) = match tokio::task::spawn_blocking(move || {
-            let chunks = chunk_file(&content, &ext);
-            (chunks, content, ext)
-        })
-        .await
-        {
-            Ok(triple) => triple,
-            Err(e) => {
-                tracing::error!(
-                    namespace = %target.namespace_path,
-                    path = %rel,
-                    err = %e,
-                    "ingest_gitlab: chunk_file task panicked"
-                );
+        let ext = path_extension(&rel).to_ascii_lowercase();
+        let extra = gitlab_file_doc_extra(target, project, branch, &rel, &ext);
+        let source_doc = match SourceDocument::try_new_file(
+            SourceOrigin::GitFile,
+            format!("{}/-/blob/{}/{}", target.web_url, branch, rel),
+            rel.clone(),
+            ext,
+            content,
+            "gitlab",
+            Some(rel.clone()),
+            Some(extra),
+        ) {
+            Ok(doc) => doc,
+            Err(err) => {
+                log_warn(&format!(
+                    "command=ingest_gitlab invalid_source_doc path={rel} err={err}"
+                ));
                 continue;
             }
         };
-        if code_chunks.is_empty() {
-            continue;
-        }
-        let symbol_status = code_symbol_extraction_status(&content, &ext, &code_chunks);
-        for (idx, chunk) in code_chunks.into_iter().enumerate() {
-            let method = chunking_method(&ext, &chunk);
-            docs.push(PreparedDoc::ingest(
-                format!(
-                    "{}/-/blob/{}/{}#L{}-L{}#{}",
-                    target.web_url, branch, rel, chunk.start_line, chunk.end_line, idx
-                ),
-                target.host.clone(),
-                vec![chunk.text.clone()],
-                "gitlab",
-                Some(rel.clone()),
-                Some(gitlab_file_chunk_payload(
-                    target,
-                    project,
-                    &rel,
-                    branch,
-                    &chunk,
-                    method,
-                    symbol_status,
-                )),
-            ));
+        match prepare_source_document(source_doc).await {
+            Ok(doc) => docs.push(doc),
+            Err(err) => {
+                log_warn(&format!(
+                    "command=ingest_gitlab prepare_source_doc_failed path={rel} err={err}"
+                ));
+                continue;
+            }
         }
         if (index + 1) % 25 == 0 || index + 1 == total {
             reporter
@@ -191,6 +168,38 @@ pub(crate) async fn embed_files(
         }))
         .await;
     Ok(chunks)
+}
+
+fn gitlab_file_doc_extra(
+    target: &GitLabTarget,
+    project: &GitLabProject,
+    branch: &str,
+    rel: &str,
+    ext: &str,
+) -> serde_json::Value {
+    let owner = target
+        .namespace_path
+        .rfind('/')
+        .map(|idx| target.namespace_path[..idx].to_string());
+    build_git_payload(&GitPayload {
+        provider: "gitlab".to_string(),
+        host: target.host.clone(),
+        owner,
+        repo: target.project.clone(),
+        content_kind: ContentKind::File,
+        branch: Some(branch.to_string()),
+        file_path: Some(rel.to_string()),
+        file_language: Some(language_name(ext).to_string()),
+        file_type: Some(classify_file_type(rel).to_string()),
+        file_is_test: Some(is_test_path(rel)),
+        meta: Some(serde_json::json!({
+            "namespace_path": target.namespace_path,
+            "visibility": project.visibility,
+            "last_activity_at": project.last_activity_at,
+            "default_branch": project.default_branch,
+        })),
+        ..GitPayload::default()
+    })
 }
 
 #[cfg(test)]

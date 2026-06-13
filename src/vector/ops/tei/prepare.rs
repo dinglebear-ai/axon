@@ -8,13 +8,10 @@ use crate::core::http::{fetch_html, http_client};
 use crate::core::logging::log_warn;
 use crate::core::structured::extract_all;
 use crate::core::ui::{accent, symbol_for_status};
-use crate::vector::ops::file_ingest::{chunk_file, chunking_method};
-use crate::vector::ops::input;
-use crate::vector::ops::input::classify::{
-    classify_file_type, is_test_path, language_name, path_extension,
-};
-use crate::vector::ops::input::code::code_symbol_extraction_status;
+use crate::vector::ops::input::classify::path_extension;
 use crate::vector::ops::input::select;
+use crate::vector::ops::qdrant::qdrant_delete_local_file_fragments;
+use crate::vector::ops::{SourceDocument, SourceOrigin, prepare_source_document};
 use spider::url::Url;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -227,6 +224,7 @@ pub(super) async fn prepare_embed_docs(
         docs = vec![(input.to_string(), to_markdown(&html, None), None)];
     }
     let input_is_dir = Path::new(input).is_dir();
+    let input_path = Path::new(input);
     let mut prepared = Vec::new();
     // Count docs dropped for having no embeddable content so the skip is
     // attributable — without a trace, a directory of empty/whitespace files
@@ -241,23 +239,6 @@ pub(super) async fn prepare_embed_docs(
         if input_is_dir && url.starts_with("http") && is_excluded_url_path(&url, exclude_prefixes) {
             continue;
         }
-        // For local code files: emit one PreparedDoc per CodeChunk with
-        // canonical code_* / symbol_* extra payload (mirrors the ingest path).
-        // Crawl-manifest docs (http URL) and prose files stay on the existing
-        // select_chunks prose path below.
-        if !url.starts_with("http") && select::should_chunk_as_code(&url) {
-            match embed_code_file_docs(&url, raw, resolved_source_type).await {
-                Some(docs) => prepared.extend(docs),
-                None => skipped_empty += 1,
-            }
-            continue;
-        }
-        let (chunks, content_type) = select_chunks(&url, raw).await;
-        if chunks.is_empty() {
-            tracing::debug!(url = %url, "embed: skipping doc that chunked to nothing");
-            skipped_empty += 1;
-            continue;
-        }
         let domain = Url::parse(&url)
             .ok()
             .and_then(|u| u.host_str().map(|s| s.to_string()))
@@ -270,18 +251,64 @@ pub(super) async fn prepare_embed_docs(
             .as_ref()
             .and_then(structured_payload_from_blob)
             .or(remote_structured.clone());
-        prepared.push(PreparedDoc {
-            url,
-            domain,
-            chunks,
-            source_type: resolved_source_type.to_string(),
-            content_type,
-            title: None,
-            extra: None,
-            extractor_name: None,
-            structured,
-            chunk_extra: Vec::new(),
-        });
+        let source_doc = if url.starts_with("http://") || url.starts_with("https://") {
+            if manifest_structured.is_some() {
+                SourceDocument::try_new_crawl_manifest(url, raw, None, structured)
+            } else {
+                SourceDocument::try_new_web_markdown(
+                    url,
+                    raw,
+                    resolved_source_type,
+                    None,
+                    None,
+                    None,
+                    structured,
+                )
+            }
+        } else if input_path.exists() {
+            let locator_path = local_locator_path(input_path, &url, input_is_dir);
+            let ext = path_extension(&locator_path).to_ascii_lowercase();
+            if select::should_chunk_as_code(&url) {
+                if let Err(err) =
+                    qdrant_delete_local_file_fragments(cfg, &url, &locator_path).await
+                {
+                    log_warn(&format!(
+                        "command=embed local_fragment_cleanup_failed url={url} code_file_path={locator_path} err={err}"
+                    ));
+                }
+                SourceDocument::try_new_file(
+                    SourceOrigin::LocalFile,
+                    url,
+                    locator_path.clone(),
+                    ext,
+                    raw,
+                    resolved_source_type,
+                    Some(locator_path),
+                    None,
+                )
+            } else {
+                SourceDocument::try_new_local_markdown(
+                    url,
+                    "local".to_string(),
+                    raw,
+                    resolved_source_type,
+                    Some(locator_path),
+                    None,
+                )
+            }
+        } else {
+            SourceDocument::try_new_plain_text(url, domain, raw, resolved_source_type, None, None)
+        }
+        .map_err(|err| -> Box<dyn Error> { err.into() })?;
+        let doc = prepare_source_document(source_doc)
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.into() })?;
+        if doc.chunks.is_empty() {
+            tracing::debug!(url = %doc.url, "embed: skipping doc that chunked to nothing");
+            skipped_empty += 1;
+            continue;
+        }
+        prepared.push(doc);
     }
     if skipped_empty > 0 {
         log_warn(&format!(
@@ -291,123 +318,25 @@ pub(super) async fn prepare_embed_docs(
     Ok(prepared)
 }
 
-/// Chunk a local code file and build one `PreparedDoc` per `CodeChunk`, each
-/// carrying canonical `code_*`/`symbol_*` extra payload.
-///
-/// Returns `Some(docs)` on success (may be empty if all chunks are empty),
-/// or `None` when the file chunked to nothing (caller should count as skipped).
-async fn embed_code_file_docs(
-    url: &str,
-    raw: String,
-    source_type: &str,
-) -> Option<Vec<PreparedDoc>> {
-    let ext = path_extension(url).to_ascii_lowercase();
-    let raw_c = raw.clone();
-    let ext_c = ext.clone();
-    let code_chunks = match tokio::task::spawn_blocking(move || chunk_file(&raw_c, &ext_c)).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(url = %url, err = %e, "embed: chunk_file task panicked");
-            return None;
-        }
-    };
-    if code_chunks.is_empty() {
-        tracing::debug!(url = %url, "embed: local code file chunked to nothing");
-        return None;
-    }
-    let symbol_status = code_symbol_extraction_status(&raw, &ext, &code_chunks);
-    let domain = if url.starts_with("http://") || url.starts_with("https://") {
-        Url::parse(url)
+fn local_locator_path(input_path: &Path, url: &str, input_is_dir: bool) -> String {
+    let path = Path::new(url);
+    if input_is_dir {
+        path.strip_prefix(input_path)
             .ok()
-            .and_then(|u| u.host_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| "local".to_string())
+            .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+            .filter(|rel| !rel.is_empty())
+            .unwrap_or_else(|| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(url)
+                    .to_string()
+            })
     } else {
-        // Local file path — use parent directory name as domain identifier
-        Path::new(url)
-            .components()
-            .rev()
-            .nth(1) // parent dir
-            .and_then(|c| c.as_os_str().to_str())
-            .unwrap_or("local")
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(url)
             .to_string()
-    };
-    let mut docs = Vec::with_capacity(code_chunks.len());
-    for (idx, chunk) in code_chunks.into_iter().enumerate() {
-        let method = chunking_method(&ext, &chunk);
-        let extra = serde_json::json!({
-            "code_file_path": url,
-            "code_language": language_name(&ext),
-            "code_file_type": classify_file_type(url),
-            "code_is_test": is_test_path(url),
-            "code_line_start": chunk.start_line,
-            "code_line_end": chunk.end_line,
-            "code_chunking_method": method,
-            "symbol_name": chunk.symbol_name(),
-            "symbol_kind": chunk.symbol_kind_str(),
-            "symbol_extraction_status": symbol_status,
-        });
-        docs.push(PreparedDoc {
-            url: format!("{url}#L{}-L{}#{}", chunk.start_line, chunk.end_line, idx),
-            domain: domain.clone(),
-            chunks: vec![chunk.text],
-            source_type: source_type.to_string(),
-            content_type: "text",
-            title: Some(url.to_string()),
-            extra: Some(extra),
-            extractor_name: None,
-            structured: None,
-            chunk_extra: Vec::new(),
-        });
     }
-    Some(docs)
-}
-
-/// Choose a chunking strategy for one document and report its content type.
-///
-/// - **Code** (local source files with a tree-sitter grammar): AST-aware
-///   `chunk_code`, run on a blocking thread because tree-sitter parsing is
-///   CPU-bound and would otherwise stall the embed worker's tokio runtime.
-///   Falls back to `chunk_text` for grammars that fail. Tagged `"text"`.
-/// - **Prose with control chars**: `chunk_text` — `MarkdownSplitter` panics on
-///   embedded control characters, so this guard is preserved. Tagged `"markdown"`.
-/// - **Prose / docs** (default): `chunk_markdown`. Tagged `"markdown"`.
-///
-/// Code chunking applies only to local paths (`url` not `http`-prefixed) — crawl
-/// output and remote single-doc embeds carry an http `url` and stay on the prose
-/// path, so this is safe for the crawl-output reuse of this function.
-async fn select_chunks(url: &str, raw: String) -> (Vec<String>, &'static str) {
-    if !url.starts_with("http") && select::should_chunk_as_code(url) {
-        let ext = path_extension(url).to_ascii_lowercase();
-        // Match the JoinError explicitly: a tree-sitter panic inside
-        // spawn_blocking must not be silently collapsed to an empty Vec (which
-        // would drop the doc downstream without any trace). Log and drop
-        // deliberately, mirroring the skip-on-error file/dir paths above.
-        let chunks = match tokio::task::spawn_blocking(move || {
-            input::code::chunk_code(&raw, &ext).unwrap_or_else(|| input::chunk_text(&raw))
-        })
-        .await
-        {
-            Ok(chunks) => chunks,
-            Err(e) => {
-                log_warn(&format!(
-                    "command=embed code_chunk_join_error url={url} err={e}"
-                ));
-                Vec::new()
-            }
-        };
-        return (chunks, "text");
-    }
-    // Fall back to chunk_text for inputs containing control characters
-    // (e.g. binary or non-markdown data) — MarkdownSplitter can panic on them.
-    let chunks = if raw
-        .chars()
-        .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
-    {
-        input::chunk_text(&raw)
-    } else {
-        input::chunk_markdown(&raw)
-    };
-    (chunks, "markdown")
 }
 
 /// Reconstruct a `StructuredPayload` from the JSON blob stored in the crawl

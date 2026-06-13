@@ -12,7 +12,7 @@ use crate::core::config::{Config, RedditSort};
 use crate::core::content::url_to_domain;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::ingest::progress::PhaseReporter;
-use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::vector::ops::{PreparedDoc, embed_prepared_docs, prepare_plain_text_source};
 use std::error::Error;
 use std::sync::{
     Arc,
@@ -252,8 +252,16 @@ async fn build_post_doc(
     }
 
     let extra = meta::build_reddit_post_extra_payload(data);
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
+    let doc = prepare_plain_text_source(
+        post_url.clone(),
+        url_to_domain(&post_url),
+        content,
+        "reddit",
+        Some(title.to_string()),
+        Some(extra),
+    )
+    .map_err(|err| format!("prepare reddit source failed: {err}"))?;
+    if doc.chunks.is_empty() {
         return Ok(PostBuildResult {
             comment_fetch_attempted,
             comment_fetch_failed,
@@ -262,14 +270,7 @@ async fn build_post_doc(
     }
 
     Ok(PostBuildResult {
-        doc: Some(PreparedDoc::ingest(
-            post_url.clone(),
-            url_to_domain(&post_url),
-            chunks,
-            "reddit",
-            Some(title.to_string()),
-            Some(extra),
-        )),
+        doc: Some(doc),
         comment_fetch_attempted,
         comment_fetch_failed,
     })
@@ -325,8 +326,16 @@ async fn ingest_thread(
     }
 
     let extra = meta::build_reddit_post_extra_payload(post_data);
-    let chunks = chunk_text(&content);
-    if chunks.is_empty() {
+    let doc = prepare_plain_text_source(
+        canonical_url.clone(),
+        url_to_domain(&canonical_url),
+        content,
+        "reddit",
+        Some(title.to_string()),
+        Some(extra),
+    )
+    .map_err(|err| format!("prepare reddit thread source failed: {err}"))?;
+    if doc.chunks.is_empty() {
         return Ok(RedditIngestSummary {
             chunks_embedded: 0,
             stats: RedditIngestStats {
@@ -335,14 +344,6 @@ async fn ingest_thread(
             },
         });
     }
-    let doc = PreparedDoc::ingest(
-        canonical_url.clone(),
-        url_to_domain(&canonical_url),
-        chunks,
-        "reddit",
-        Some(title.to_string()),
-        Some(extra),
-    );
     let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
     Ok(RedditIngestSummary {
         chunks_embedded: summary.chunks_embedded,

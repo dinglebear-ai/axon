@@ -106,7 +106,6 @@ async fn dir_embed_tags_code_and_prose_distinctly() {
         .await
         .expect("prepare docs");
 
-    // lib.rs → per-chunk docs; url contains "lib.rs" with optional "#L..." suffix.
     let rs = prepared
         .iter()
         .find(|d| d.url.contains("lib.rs"))
@@ -120,19 +119,98 @@ async fn dir_embed_tags_code_and_prose_distinctly() {
         md.content_type, "markdown",
         "docs should be tagged markdown"
     );
-    // Each per-chunk doc carries exactly one chunk string.
-    assert_eq!(
-        rs.chunks.len(),
-        1,
-        "per-chunk doc must have exactly one chunk"
+    assert!(!rs.chunks.is_empty());
+    assert_eq!(rs.chunks.len(), rs.chunk_extra.len());
+    assert_eq!(rs.chunk_extra[0]["content_kind"], "code");
+    assert!(
+        rs.chunk_extra[0]["chunk_locator"]
+            .as_str()
+            .unwrap()
+            .contains("lib.rs#L")
     );
-    // Code chunks also carry code_* extra payload.
+    assert!(rs.chunk_extra[0]["code_line_start"].as_u64().is_some());
     let extra = rs
         .extra
         .as_ref()
-        .expect("code chunk must have extra payload");
-    assert!(extra.get("code_chunking_method").is_some());
+        .expect("code file must have extra payload");
     assert!(extra.get("code_file_type").is_some());
+}
+
+#[tokio::test]
+async fn crawl_manifest_rs_url_stays_markdown_not_code() {
+    let cfg = Config::default_minimal();
+    let temp_dir = TempDir::new().expect("tempdir");
+    let root = temp_dir.path();
+    let markdown_dir = root.join("markdown");
+    tokio::fs::create_dir_all(&markdown_dir)
+        .await
+        .expect("mkdir markdown");
+    let file = markdown_dir.join("lib.md");
+    tokio::fs::write(&file, "fn looks_like_code() {}\n")
+        .await
+        .expect("write file");
+    let canonical = std::fs::canonicalize(&file).expect("canonical");
+    tokio::fs::write(
+        root.join("manifest.jsonl"),
+        format!(
+            "{}\n",
+            serde_json::json!({
+                "url": "https://example.com/src/lib.rs",
+                "file_path": canonical.to_string_lossy(),
+                "changed": true
+            })
+        ),
+    )
+    .await
+    .expect("write manifest");
+
+    let prepared = prepare_embed_docs(&cfg, &markdown_dir.to_string_lossy(), &[], Some("crawl"))
+        .await
+        .expect("prepare docs");
+
+    assert_eq!(prepared.len(), 1);
+    assert_eq!(prepared[0].content_type, "markdown");
+    assert_eq!(prepared[0].chunk_extra[0]["content_kind"], "markdown");
+    assert!(prepared[0].chunk_extra[0].get("code_line_start").is_none());
+}
+
+#[tokio::test]
+async fn crawl_manifest_markdown_with_control_chars_does_not_panic() {
+    let cfg = Config::default_minimal();
+    let temp_dir = TempDir::new().expect("tempdir");
+    let root = temp_dir.path();
+    let markdown_dir = root.join("markdown");
+    tokio::fs::create_dir_all(&markdown_dir)
+        .await
+        .expect("mkdir markdown");
+    let file = markdown_dir.join("control.md");
+    tokio::fs::write(&file, "# Title\n\nbad\u{0008}content")
+        .await
+        .expect("write file");
+    let canonical = std::fs::canonicalize(&file).expect("canonical");
+    tokio::fs::write(
+        root.join("manifest.jsonl"),
+        format!(
+            "{}\n",
+            serde_json::json!({
+                "url": "https://example.com/control",
+                "file_path": canonical.to_string_lossy(),
+                "changed": true
+            })
+        ),
+    )
+    .await
+    .expect("write manifest");
+
+    let prepared = prepare_embed_docs(&cfg, &markdown_dir.to_string_lossy(), &[], Some("crawl"))
+        .await
+        .expect("prepare docs");
+
+    assert_eq!(prepared.len(), 1);
+    assert_eq!(
+        prepared[0].chunk_extra[0]["chunking_fallback"],
+        "plain_text_control_chars"
+    );
 }
 
 /// A single unreadable / non-UTF-8 file in the directory is skipped, not fatal —
@@ -400,44 +478,38 @@ async fn dir_embed_code_file_gets_symbol_payload() {
         .await
         .expect("prepare docs");
 
+    assert_eq!(prepared.len(), 1, "expected one file-level doc");
+    let doc = &prepared[0];
     assert!(
-        !prepared.is_empty(),
-        "expected at least one chunk from lib.rs"
+        doc.url.contains("lib.rs"),
+        "url should reference lib.rs: {}",
+        doc.url
     );
-    for doc in &prepared {
-        assert!(
-            doc.url.contains("lib.rs"),
-            "url should reference lib.rs: {}",
-            doc.url
-        );
-        assert_eq!(
-            doc.content_type, "text",
-            "code chunks must be tagged 'text'"
-        );
-        assert_eq!(
-            doc.chunks.len(),
-            1,
-            "per-chunk doc must hold exactly one chunk"
-        );
-        let extra = doc
-            .extra
-            .as_ref()
-            .expect("code chunk must have extra payload");
-        assert_eq!(
-            extra["code_chunking_method"], "tree_sitter",
-            "Rust file must use tree-sitter chunking"
-        );
-        assert_eq!(
-            extra["code_file_type"], "source",
-            "lib.rs should be classified as source"
-        );
-        assert!(extra.get("symbol_extraction_status").is_some());
-    }
+    assert_eq!(
+        doc.content_type, "text",
+        "code chunks must be tagged 'text'"
+    );
+    assert_eq!(doc.chunks.len(), doc.chunk_extra.len());
+    let extra = doc
+        .extra
+        .as_ref()
+        .expect("code file must have extra payload");
+    assert_eq!(
+        extra["code_file_type"], "source",
+        "lib.rs should be classified as source"
+    );
+    assert!(extra.get("symbol_extraction_status").is_some());
+    assert!(
+        doc.chunk_extra
+            .iter()
+            .any(|extra| extra["code_chunking_method"] == "tree_sitter"),
+        "Rust file must use tree-sitter chunking"
+    );
     // At least one chunk should carry a function symbol.
     assert!(
-        prepared
+        doc.chunk_extra
             .iter()
-            .any(|d| d.extra.as_ref().and_then(|e| e["symbol_kind"].as_str()) == Some("function")),
+            .any(|extra| extra["symbol_kind"].as_str() == Some("function")),
         "expected at least one function-symbol chunk"
     );
 }

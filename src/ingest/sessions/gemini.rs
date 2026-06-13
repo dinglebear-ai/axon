@@ -2,9 +2,8 @@ use super::{
     IngestResult, SessionDoc, flatten_session_result, matches_project_filter, resolve_collection,
 };
 use crate::core::config::Config;
-use crate::core::content::url_to_domain;
 use crate::core::logging::log_warn;
-use crate::vector::ops::{PreparedDoc, chunk_text};
+use crate::vector::ops::prepare_plain_text_source;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -203,10 +202,6 @@ async fn process_gemini_file(
     if session_text.trim().is_empty() {
         return Ok(None);
     }
-    let chunks = chunk_text(&session_text);
-    if chunks.is_empty() {
-        return Ok(None);
-    }
     let url = format!("file://{}", path.display());
     let title = path
         .file_name()
@@ -223,14 +218,18 @@ async fn process_gemini_file(
         "session_id": session_id,
         "session_date": mtime_chrono.to_rfc3339(),
     });
-    let doc = PreparedDoc::ingest(
+    let doc = prepare_plain_text_source(
         url.clone(),
-        url_to_domain(&url),
-        chunks,
+        "local".to_string(),
+        session_text.clone(),
         "gemini_session",
         title,
         Some(extra),
-    );
+    )
+    .map_err(|err| anyhow::anyhow!("prepare gemini session source failed: {err}"))?;
+    if doc.chunks.is_empty() {
+        return Ok(None);
+    }
     Ok(Some(SessionDoc {
         doc,
         collection,

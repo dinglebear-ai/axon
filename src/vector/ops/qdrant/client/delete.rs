@@ -220,6 +220,55 @@ pub async fn qdrant_delete_stale_repo_file_urls(
     Ok(stale.len())
 }
 
+pub async fn qdrant_delete_local_file_fragments(
+    cfg: &Config,
+    file_url: &str,
+    code_file_path: &str,
+) -> Result<usize> {
+    let indexed = scroll_url_set(
+        cfg,
+        serde_json::json!({
+            "must": [
+                {"key": "code_file_path", "match": {"value": code_file_path}}
+            ]
+        }),
+        None,
+    )
+    .await?;
+    let legacy_prefix = format!("{file_url}#L");
+    let stale: Vec<String> = indexed
+        .into_iter()
+        .filter(|url| url.starts_with(&legacy_prefix) || url != file_url)
+        .collect();
+    if stale.is_empty() {
+        return Ok(0);
+    }
+
+    let url_conditions: Vec<serde_json::Value> = stale
+        .iter()
+        .map(|url| serde_json::json!({"key": "url", "match": {"value": url}}))
+        .collect();
+    let client = internal_service_http_client()?;
+    let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
+    for batch in url_conditions.chunks(500) {
+        qdrant_delete_with_retry(
+            client,
+            &endpoint,
+            serde_json::json!({
+                "filter": {
+                    "must": [
+                        {"key": "code_file_path", "match": {"value": code_file_path}}
+                    ],
+                    "should": batch
+                }
+            }),
+            "qdrant_delete_local_file_fragments",
+        )
+        .await?;
+    }
+    Ok(stale.len())
+}
+
 /// Test helper: build the delete body that `qdrant_delete_stale_tail` would
 /// send for the given `url` and `new_chunk_count`. Used by `delete_tests.rs`
 /// to assert the filter shape without making live HTTP calls (T-H3).

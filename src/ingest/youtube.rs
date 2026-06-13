@@ -11,7 +11,7 @@ use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{
     MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
 };
-use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::vector::ops::{PreparedDoc, embed_prepared_docs, prepare_plain_text_source};
 use spider::url::Url;
 use std::error::Error;
 
@@ -317,16 +317,17 @@ pub async fn ingest_youtube(
 
         let mut docs: Vec<PreparedDoc> = Vec::new();
 
-        let transcript_chunks = chunk_text(&text);
-        if !transcript_chunks.is_empty() {
-            docs.push(PreparedDoc::ingest(
-                source_url.clone(),
-                url_to_domain(&source_url),
-                transcript_chunks,
-                "youtube",
-                Some(title.to_string()),
-                extra.clone(),
-            ));
+        let transcript_doc = prepare_plain_text_source(
+            source_url.clone(),
+            url_to_domain(&source_url),
+            text,
+            "youtube",
+            Some(title.to_string()),
+            extra.clone(),
+        )
+        .map_err(|err| format!("prepare youtube transcript source failed: {err}"))?;
+        if !transcript_doc.chunks.is_empty() {
+            docs.push(transcript_doc);
         }
 
         // Embed description as a separate document (often contains commands, links, timestamps)
@@ -334,16 +335,17 @@ pub async fn ingest_youtube(
             && !m.description.trim().is_empty()
         {
             let desc_url = format!("{source_url}?section=description");
-            let desc_chunks = chunk_text(&m.description);
-            if !desc_chunks.is_empty() {
-                docs.push(PreparedDoc::ingest(
-                    desc_url.clone(),
-                    url_to_domain(&desc_url),
-                    desc_chunks,
-                    "youtube",
-                    Some(format!("{} — description", m.title)),
-                    extra.clone(),
-                ));
+            let desc_doc = prepare_plain_text_source(
+                desc_url.clone(),
+                url_to_domain(&desc_url),
+                m.description.clone(),
+                "youtube",
+                Some(format!("{} — description", m.title)),
+                extra.clone(),
+            )
+            .map_err(|err| format!("prepare youtube description source failed: {err}"))?;
+            if !desc_doc.chunks.is_empty() {
+                docs.push(desc_doc);
             }
         }
 
