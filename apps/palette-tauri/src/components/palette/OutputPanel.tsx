@@ -167,7 +167,7 @@ export function OutputPanel({
         ) : run.kind === "success" && active?.subcommand === "status" ? (
           <StatusView payload={run.result.payload} />
         ) : run.kind === "success" && active && hasStructuredOperationView(active.subcommand) ? (
-          <OperationResultView payload={run.result.payload} subcommand={active.subcommand} />
+          <OperationResultView payload={run.result.payload} subcommand={active.subcommand} fallbackText={"text" in run ? run.text : ""} />
         ) : run.kind === "error" ? (
           <ErrorResultView result={run.result} text={run.text} />
         ) : "text" in run && conversationMode ? (

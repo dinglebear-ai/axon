@@ -317,6 +317,7 @@ textarea {
 
 .titlebar-button,
 .command-back,
+.command-help,
 .command-submit,
 .command-settings {
   display: inline-flex;
@@ -334,6 +335,7 @@ textarea {
 
 .titlebar-button:hover,
 .command-back:hover,
+.command-help:hover:not(:disabled),
 .command-settings:hover {
   color: var(--aurora-text-primary);
   background: var(--aurora-hover-bg);
@@ -369,6 +371,13 @@ textarea {
   background: var(--aurora-disabled-surface);
   border-color: var(--aurora-border-default);
   box-shadow: none;
+  cursor: default;
+}
+
+.command-help:disabled {
+  color: var(--aurora-disabled-text);
+  background: var(--aurora-disabled-surface);
+  border-color: var(--aurora-border-default);
   cursor: default;
 }
 
@@ -1095,6 +1104,7 @@ textarea {
   font-size: 13px;
 }
 
+.palette-shell-compact .command-help,
 .palette-shell-compact .command-submit,
 .palette-shell-compact .command-settings {
   color: var(--aurora-text-muted);
@@ -1103,6 +1113,7 @@ textarea {
   box-shadow: none;
 }
 
+.palette-shell-compact .command-help:hover:not(:disabled),
 .palette-shell-compact .command-submit:hover:not(:disabled),
 .palette-shell-compact .command-settings:hover {
   transform: none;
@@ -1112,6 +1123,7 @@ textarea {
   box-shadow: none;
 }
 
+.palette-shell-compact .command-help:disabled,
 .palette-shell-compact .command-submit:disabled {
   color: var(--aurora-text-muted);
   background: color-mix(in srgb, var(--aurora-control-surface) 62%, transparent);
@@ -1125,6 +1137,7 @@ textarea {
   height: 18px;
 }
 
+.palette-shell-compact .command-help svg,
 .palette-shell-compact .command-settings svg {
   width: 17px;
   height: 17px;
@@ -2205,18 +2218,29 @@ textarea {
 .action-row {
   position: relative;
   display: grid;
-  grid-template-columns: 37px minmax(0, 1fr) 74px;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
   width: 100%;
   min-height: 48px;
-  padding: 5px 9px;
   color: var(--aurora-text-primary);
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 10px;
+}
+
+.action-row-main {
+  display: grid;
+  grid-template-columns: 37px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 0 5px 9px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
   cursor: pointer;
+  align-items: center;
 }
 
 .action-row:hover,
@@ -2460,6 +2484,33 @@ textarea {
 .action-meta {
   min-width: 0;
   justify-content: flex-end;
+  padding: 5px 9px 5px 6px;
+}
+
+.action-help-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--aurora-text-muted);
+  background: color-mix(in srgb, var(--aurora-control-surface) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 62%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--aurora-font-mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.action-help-button:hover {
+  color: var(--aurora-accent-strong);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 9%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 28%, transparent);
+}
+
+.action-help-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--aurora-accent-primary) 60%, transparent);
+  outline-offset: 2px;
 }
 
 .action-meta kbd {
@@ -3813,6 +3864,103 @@ textarea {
   }
   .evaluate-columns {
     grid-template-columns: 1fr;
+  }
+}
+
+.help-result {
+  display: grid;
+  gap: 10px;
+  color: var(--aurora-text-primary);
+}
+
+.help-header,
+.help-section {
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--aurora-panel-strong) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 78%, transparent);
+  border-radius: 8px;
+}
+
+.help-catalog-section {
+  display: grid;
+  gap: 4px;
+  padding: 2px 0 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 52%, transparent);
+}
+
+.help-header h2,
+.help-section h3,
+.help-catalog-section h3 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.help-catalog-section h3 {
+  color: var(--aurora-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.help-header p {
+  margin: 8px 0 0;
+  color: var(--aurora-text-muted);
+}
+
+.help-route {
+  display: inline-flex;
+  max-width: 100%;
+  margin-bottom: 8px;
+  color: var(--aurora-accent-strong);
+  overflow-wrap: anywhere;
+  font-family: var(--aurora-font-mono);
+  font-size: 12px;
+}
+
+.help-section code,
+.help-catalog-item code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.help-section ul {
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+
+.help-section li {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+.help-aliases div,
+.help-catalog {
+  display: grid;
+  gap: 1px;
+}
+
+.help-aliases div {
+  grid-template-columns: repeat(auto-fit, minmax(72px, max-content));
+}
+
+.help-catalog-item {
+  display: grid;
+  grid-template-columns: minmax(92px, 150px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 4px 0;
+  color: var(--aurora-text-muted);
+}
+
+.help-warning {
+  color: var(--aurora-warn-foreground);
+}
+
+@media (max-width: 760px) {
+  .help-catalog-item {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
 

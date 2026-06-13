@@ -1,17 +1,73 @@
 export type ArgMode = "none" | "optionalSingle" | "single" | "split";
+type RemoteActionKind = "operation" | "job" | "admin" | "discovery";
+type ActionTone = "info" | "success" | "warn" | "neutral" | "rose" | "violet";
+type JobFamily = "crawl" | "embed" | "extract" | "ingest";
+type JobOperation = "list" | "status" | "cancel" | "cleanup" | "clear" | "recover";
 
-export interface PaletteAction {
+export type PaletteSubcommand =
+  | "help"
+  | "scrape"
+  | "crawl"
+  | "map"
+  | "summarize"
+  | "ask"
+  | "chat"
+  | "query"
+  | "retrieve"
+  | "suggest"
+  | "evaluate"
+  | "search"
+  | "research"
+  | "embed"
+  | "extract"
+  | "ingest"
+  | "status"
+  | "sources"
+  | "domains"
+  | "stats"
+  | "doctor"
+  | "endpoints"
+  | "brand"
+  | "diff"
+  | "screenshot"
+  | "dedupe"
+  | "watch-list"
+  | "watch-create"
+  | "watch-run"
+  | "ingest-sessions-prepared"
+  | `${JobFamily}-${JobOperation}`;
+
+interface PaletteActionBase {
   label: string;
-  subcommand: string;
-  kind?: "operation" | "job" | "admin" | "discovery";
+  subcommand: PaletteSubcommand;
   argMode: ArgMode;
   aliases: string[];
   description: string;
   example: string;
-  tone: "info" | "success" | "warn" | "neutral" | "rose" | "violet";
+  tone: ActionTone;
 }
 
+export interface LocalPaletteAction extends PaletteActionBase {
+  kind: "local";
+}
+
+export interface RemotePaletteAction extends PaletteActionBase {
+  kind: RemoteActionKind;
+}
+
+export type PaletteAction = LocalPaletteAction | RemotePaletteAction;
+
 export const ACTIONS: PaletteAction[] = [
+  {
+    label: "Help",
+    subcommand: "help",
+    kind: "local",
+    argMode: "optionalSingle",
+    aliases: ["help", "?", "--help", "-h"],
+    description: "Show command help, usage, current request params, and available options.",
+    example: "help scrape",
+    tone: "info",
+  },
   {
     label: "Scrape URL",
     subcommand: "scrape",
@@ -248,7 +304,7 @@ export const ACTIONS: PaletteAction[] = [
     kind: "operation",
     argMode: "split",
     aliases: ["screenshot", "capture", "shot", "png"],
-    description: "Render a URL in Chrome and capture a screenshot at a given viewport.",
+    description: "Render a URL in Chrome and capture a full-page screenshot using the default viewport.",
     example: "screenshot https://example.com",
     tone: "violet",
   },
@@ -256,9 +312,9 @@ export const ACTIONS: PaletteAction[] = [
     label: "Dedupe collection",
     subcommand: "dedupe",
     kind: "admin",
-    argMode: "optionalSingle",
+    argMode: "none",
     aliases: ["dedupe", "deduplicate", "clean-vectors"],
-    description: "Remove near-duplicate chunks from the selected collection.",
+    description: "Remove near-duplicate chunks from the collection selected in palette settings.",
     example: "dedupe",
     tone: "warn",
   },
@@ -308,7 +364,7 @@ export const ACTIONS: PaletteAction[] = [
   ...jobLifecycleActions("ingest"),
 ];
 
-function jobLifecycleActions(family: "crawl" | "embed" | "extract" | "ingest"): PaletteAction[] {
+function jobLifecycleActions(family: JobFamily): PaletteAction[] {
   const label = family[0].toUpperCase() + family.slice(1);
   return [
     {

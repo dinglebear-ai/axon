@@ -1,20 +1,14 @@
 import {
-  ArrowLeft,
-  ChevronDown,
   ChevronRight,
-  Search,
-  Send,
-  Settings,
   Workflow,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { actionIcon } from "@/components/palette/ActionIcon";
 import { ActionList } from "@/components/palette/ActionList";
-import { AxonMark } from "@/components/palette/AxonMark";
 import { CrawlJobView } from "@/components/palette/CrawlJobView";
 import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
 import { OutputPanel } from "@/components/palette/OutputPanel";
+import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
 import { PaletteFooter } from "@/components/palette/PaletteFooter";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
 import {
@@ -22,14 +16,14 @@ import {
   type PaletteAction,
   actionMatches,
 } from "@/lib/actions";
+import { buildHelpRun, helpAction } from "@/lib/actionHelp";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { type PaletteConfig, createAxonClient } from "@/lib/axonClient";
 import { outputKindFor } from "@/lib/format";
+import { runStateFromHistory } from "@/lib/historyRun";
 import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import {
   argumentFor,
-  argumentPlaceholder,
-  actionDisplayMeta,
   focusInput,
   hostLabel,
   looksLikeUrl,
@@ -61,10 +55,6 @@ export default function App() {
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
-  const [actionSwitcherOpen, setActionSwitcherOpen] = useState(false);
-  const [actionSwitcherQuery, setActionSwitcherQuery] = useState("");
-  const [actionSwitcherSelected, setActionSwitcherSelected] = useState(0);
-  const actionSwitcherRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
@@ -110,11 +100,7 @@ export default function App() {
       const modifier = event.metaKey || event.ctrlKey;
       if (event.key === "Escape") {
         event.preventDefault();
-        if (actionSwitcherOpen) {
-          setActionSwitcherOpen(false);
-          setActionSwitcherQuery("");
-          focusInput(true);
-        } else if (settingsOpen) {
+        if (settingsOpen) {
           setSettingsOpen(false);
         } else if (historyOpen) {
           setHistoryOpen(false);
@@ -145,18 +131,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actionSwitcherOpen, browseOpen, historyOpen, modeAction, query, run, settingsOpen]);
-
-  useEffect(() => {
-    if (!actionSwitcherOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (actionSwitcherRef.current?.contains(event.target as Node)) return;
-      setActionSwitcherOpen(false);
-      setActionSwitcherQuery("");
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [actionSwitcherOpen]);
+  }, [browseOpen, historyOpen, modeAction, query, run, settingsOpen]);
 
   useEffect(() => {
     if (!config) return;
@@ -184,54 +159,27 @@ export default function App() {
       parsed.search,
     ).slice(0, 12);
   }, [parsed.invoked, parsed.search]);
-  const switcherActions = useMemo(
-    () => sortActionsForDisplay(ACTIONS).filter((action) => action.subcommand !== modeAction?.subcommand),
-    [modeAction?.subcommand],
-  );
-  const visibleSwitcherActions = useMemo(() => {
-    const search = actionSwitcherQuery.trim();
-    if (!search) return switcherActions;
-    return sortActionsByRelevance(
-      switcherActions.filter((action) => actionMatches(action, search)),
-      search,
-    );
-  }, [actionSwitcherQuery, switcherActions]);
-  const selectedSwitcherAction =
-    visibleSwitcherActions[Math.min(actionSwitcherSelected, Math.max(visibleSwitcherActions.length - 1, 0))];
   const suggestedAction = filtered[Math.min(selected, Math.max(filtered.length - 1, 0))];
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
+  const canRunLocalAction = active?.kind === "local";
   const jobMinimized = run.kind === "job" && run.minimized;
   const jobExpanded = run.kind === "job" && !run.minimized;
   const showOutput = run.kind !== "idle" && !jobMinimized;
   // Once an action mode is picked, the input collects that action's argument —
   // the palette should NOT keep listing other actions. Stay compact (just the
   // command bar + mode pill) until the run produces output.
-  const enteringArgument = Boolean(modeAction) && !actionSwitcherOpen && !showOutput && !settingsOpen && !historyOpen;
+  const enteringArgument = Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen;
   const showContent =
-    settingsOpen || historyOpen || showOutput || actionSwitcherOpen || (!enteringArgument && (hasQuery || browseOpen));
+    settingsOpen || historyOpen || showOutput || (!enteringArgument && (hasQuery || browseOpen));
   const compact = !showContent;
   const showResultsLayout = showOutput || settingsOpen || historyOpen;
-  const showActionPanel = !actionSwitcherOpen && !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
+  const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
 
   useEffect(() => {
     setSelected(0);
   }, [parsed.search, modeAction]);
-
-  useEffect(() => {
-    if (!modeAction) setActionSwitcherOpen(false);
-  }, [modeAction]);
-
-  useEffect(() => {
-    setActionSwitcherSelected(0);
-  }, [actionSwitcherQuery, modeAction]);
-
-  useEffect(() => {
-    if (!actionSwitcherOpen) return;
-    const el = document.querySelector(".command-action-option-selected");
-    if (el instanceof HTMLElement) el.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [actionSwitcherOpen, actionSwitcherSelected, visibleSwitcherActions]);
 
   useWindowChrome({
     jobExpanded,
@@ -285,9 +233,31 @@ export default function App() {
     setSelected(0);
     setRun({ kind: "idle" });
     setBrowseOpen(false);
-    setActionSwitcherOpen(false);
-    setActionSwitcherQuery("");
     focusInput(true);
+  }
+
+  function showHelpFor(action?: PaletteAction, unknownTarget?: string) {
+    const cleanUnknownTarget = !action && unknownTarget?.trim() ? unknownTarget.trim() : undefined;
+    const helpRun = buildHelpRun(action, cleanUnknownTarget);
+    const localHelpAction = helpAction();
+    const historyItem: HistoryItem = {
+      action: localHelpAction,
+      target: action?.subcommand ?? cleanUnknownTarget ?? "catalog",
+      status: helpRun.result.status,
+      title: helpRun.title,
+      subtitle: helpRun.subtitle,
+      text: helpRun.text,
+      outputKind: "markdown",
+      result: helpRun.result,
+      when: "just now",
+    };
+    setModeAction(localHelpAction);
+    setQuery(action?.subcommand ?? cleanUnknownTarget ?? "");
+    setRun(helpRun);
+    setHistory((items) => [historyItem, ...items].slice(0, 18));
+    setHistoryOpen(false);
+    setSettingsOpen(false);
+    setBrowseOpen(false);
   }
 
   async function saveSettings() {
@@ -306,31 +276,6 @@ export default function App() {
   }
 
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (actionSwitcherOpen) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.key === "ArrowDown") {
-        setActionSwitcherSelected((idx) => Math.min(idx + 1, Math.max(visibleSwitcherActions.length - 1, 0)));
-      } else if (event.key === "ArrowUp") {
-        setActionSwitcherSelected((idx) => Math.max(idx - 1, 0));
-      } else if (event.key === "Home") {
-        setActionSwitcherSelected(0);
-      } else if (event.key === "End") {
-        setActionSwitcherSelected(Math.max(visibleSwitcherActions.length - 1, 0));
-      } else if (event.key === "Enter") {
-        if (selectedSwitcherAction) switchActionMode(selectedSwitcherAction);
-      } else if (event.key === "Escape") {
-        setActionSwitcherOpen(false);
-        setActionSwitcherQuery("");
-        focusInput(true);
-      } else if (event.key === "Backspace") {
-        setActionSwitcherQuery((value) => value.slice(0, -1));
-      } else if (event.key.length === 1 && !event.altKey && !event.ctrlKey && !event.metaKey) {
-        setActionSwitcherQuery((value) => `${value}${event.key}`);
-      }
-      return;
-    }
-
     if (event.key === "ArrowDown") {
       event.preventDefault();
       // Arrow-down is the keyboard affordance to browse all actions without
@@ -362,9 +307,9 @@ export default function App() {
   const endpointTone = configError ? "error" : "syncing";
   const showBackButton = settingsOpen || historyOpen || showOutput;
   const currentTarget = currentOutputTarget(run, active, query);
-  // In an action mode, the input's leading icon becomes that action's icon
-  // (replacing the search glyph) instead of showing a separate badge.
-  const ModeIcon = modeAction ? actionIcon(modeAction.subcommand) : null;
+  const commandRunning = run.kind === "running" || run.kind === "streaming";
+  const submitDisabled =
+    (!client && !canRunLocalAction) || !active || commandRunning || Boolean(validation);
 
   function goBackToBrowse() {
     setSettingsOpen(false);
@@ -379,134 +324,40 @@ export default function App() {
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${jobExpanded ? " palette-shell-job" : ""}`}>
 
-      <section
-        className="command-bar"
-        onDoubleClick={(event) => {
-          // Titlebar-style: double-clicking empty bar area toggles maximize, but
-          // not when the user double-clicks the input or a control.
-          if ((event.target as HTMLElement).closest("input, button, a")) return;
-          void invoke("toggle_maximize");
-        }}
-      >
-        {showBackButton && (
-          <button className="command-back" type="button" onClick={goBackToBrowse} aria-label="Back" title="Back">
-            <ArrowLeft size={17} />
-          </button>
-        )}
-        <button className="axon-brand" type="button" onClick={() => {
+      <PaletteCommandBar
+        active={active}
+        config={config}
+        endpointLabel={endpointLabel}
+        endpointTone={endpointTone}
+        hasQuery={hasQuery}
+        modeAction={modeAction}
+        query={query}
+        running={commandRunning}
+        settingsOpen={settingsOpen}
+        showBackButton={showBackButton}
+        submitDisabled={submitDisabled}
+        validation={validation}
+        onBack={goBackToBrowse}
+        onHelp={showHelpFor}
+        onInputKeyDown={onInputKeyDown}
+        onQueryChange={setQuery}
+        onReset={() => {
           setQuery("");
           setModeAction(null);
           setRun({ kind: "idle" });
           setHistoryOpen(false);
           setBrowseOpen(false);
-        }} title={`${config?.serverUrl ?? endpointLabel}${config?.collection ? ` · ${config.collection}` : ""}`} aria-label="Reset Axon palette">
-          <AxonMark size={24} />
-          <span className="axon-word">Axon</span>
-          <span className={`axon-status-dot axon-status-${endpointTone}`} />
-        </button>
-        <span className="axon-divider" aria-hidden="true" />
-        <div className="command-input-wrap" onClick={() => focusInput()}>
-          {modeAction && ModeIcon ? (
-            <div className="command-action-switcher" ref={actionSwitcherRef}>
-              <button
-                className={`command-action-trigger command-mode-icon-${modeAction.tone}`}
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setActionSwitcherOpen((open) => {
-                    const next = !open;
-                    if (next) {
-                      setActionSwitcherQuery("");
-                      setActionSwitcherSelected(0);
-                    }
-                    return next;
-                  });
-                }}
-                aria-haspopup="menu"
-                aria-expanded={actionSwitcherOpen}
-                aria-label={`Switch from ${modeAction.label}`}
-                title={`Switch from ${modeAction.label}`}
-              >
-                <ModeIcon size={15} strokeWidth={1.9} aria-hidden="true" />
-                <span>{actionDisplayMeta(modeAction).label}</span>
-                <ChevronDown size={13} strokeWidth={1.8} aria-hidden="true" />
-              </button>
-              {actionSwitcherOpen && (
-                <div className="command-action-menu" role="menu" aria-label="Switch action">
-                  {actionSwitcherQuery && (
-                    <div className="command-action-search" aria-live="polite">
-                      <span>Filter</span>
-                      <kbd>{actionSwitcherQuery}</kbd>
-                    </div>
-                  )}
-                  {visibleSwitcherActions.map((action, index) => {
-                    const Icon = actionIcon(action.subcommand);
-                    const meta = actionDisplayMeta(action);
-                    const selectedOption = index === actionSwitcherSelected;
-                    return (
-                      <button
-                        key={action.subcommand}
-                        className={`command-action-option command-action-option-${action.tone}${selectedOption ? " command-action-option-selected" : ""}`}
-                        type="button"
-                        role="menuitem"
-                        onMouseEnter={() => setActionSwitcherSelected(index)}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          switchActionMode(action);
-                        }}
-                      >
-                        <Icon size={15} strokeWidth={1.85} aria-hidden="true" />
-                        <span>
-                          <strong>{meta.label}</strong>
-                          <small>{meta.input} to {meta.output}</small>
-                        </span>
-                        <kbd>{action.subcommand}</kbd>
-                      </button>
-                    );
-                  })}
-                  {!visibleSwitcherActions.length && (
-                    <div className="command-action-empty">No matching actions</div>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <Search size={16} strokeWidth={1.65} aria-hidden="true" />
-          )}
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={onInputKeyDown}
-            placeholder={modeAction ? argumentPlaceholder(modeAction) : hasQuery ? active?.example ?? "Search commands" : "Search or run an operation — scrape, crawl, map, ask…"}
-            className="command-input"
-            aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
-          />
-        </div>
-        <button
-          className={active && !validation ? `command-submit command-submit-${active.tone}` : "command-submit"}
-          type="button"
-          onClick={() => active && void submit(active)}
-          disabled={!client || !active || run.kind === "running" || run.kind === "streaming" || Boolean(validation)}
-          aria-label="Run selected action"
-          title={validation || "Run selected action"}
-        >
-          <Send size={15} />
-        </button>
-        <button
-          className={settingsOpen ? "command-settings command-settings-active" : "command-settings"}
-          type="button"
-          onClick={() => setSettingsOpen((open) => {
-            const next = !open;
-            setHistoryOpen(false);
-            if (!next) setBrowseOpen(true);
-            return next;
-          })}
-          aria-label="Settings"
-          title="Settings"
-        >
-          <Settings size={15} />
-        </button>
-      </section>
+        }}
+        onSubmit={(action) => void submit(action)}
+        onSwitchAction={switchActionMode}
+        onToggleMaximize={() => void invoke("toggle_maximize")}
+        onToggleSettings={() => setSettingsOpen((open) => {
+          const next = !open;
+          setHistoryOpen(false);
+          if (!next) setBrowseOpen(true);
+          return next;
+        })}
+      />
 
       {jobMinimized && run.kind === "job" && (
         <button className="idle-tray" type="button" onClick={expandJob} title="Expand crawl job">
@@ -546,6 +397,7 @@ export default function App() {
             parsed={parsed}
             onSubmit={(action) => void submit(action)}
             onEnterMode={enterActionMode}
+            onHelp={showHelpFor}
           />
         )}
 
@@ -558,22 +410,9 @@ export default function App() {
               setSettingsOpen(false);
               setModeAction(item.action);
               setQuery(item.target);
-              if (item.text) {
-                const ok = item.status >= 200 && item.status < 300;
-                setRun({
-                  kind: ok ? "success" : "error",
-                  title: `${item.action.label} ${ok ? "completed" : "failed"}`,
-                  subtitle: item.target,
-                  text: item.text,
-                  outputKind: item.outputKind ?? outputKindFor(item.action.subcommand),
-                  result: {
-                    ok,
-                    status: item.status,
-                    path: item.action.subcommand,
-                    method: "POST",
-                    payload: null,
-                  },
-                });
+              const historyRun = runStateFromHistory(item);
+              if (historyRun) {
+                setRun(historyRun);
               } else if (item.running) {
                 setRun({
                   kind: "running",

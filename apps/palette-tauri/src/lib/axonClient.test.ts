@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ACTIONS, type PaletteAction } from "./actions";
+import { ACTIONS, type PaletteAction, type RemotePaletteAction } from "./actions";
 import { buildActionRequest, createAxonClient, executeAction, type PaletteConfig } from "./axonClient";
 import { invoke } from "./invoke";
 
@@ -26,6 +26,12 @@ function action(subcommand: string): PaletteAction {
   return found;
 }
 
+function remoteAction(subcommand: string): RemotePaletteAction {
+  const found = action(subcommand);
+  if (found.kind === "local") throw new Error(`${subcommand} is local`);
+  return found;
+}
+
 function lastRequestBody(): unknown {
   const invokeMock = vi.mocked(invoke);
   const call = invokeMock.mock.calls.at(-1);
@@ -35,7 +41,7 @@ function lastRequestBody(): unknown {
 }
 
 function executeTestAction(subcommand: string, arg: string) {
-  return executeAction(createAxonClient(config), action(subcommand), arg, config);
+  return executeAction(createAxonClient(config), remoteAction(subcommand), arg, config);
 }
 
 describe("executeAction", () => {
@@ -138,10 +144,18 @@ describe("executeAction", () => {
     });
   });
 
+  it("rejects local actions before request construction", () => {
+    const client = createAxonClient(config);
+    expect(() => buildActionRequest(client, action("help") as unknown as RemotePaletteAction, "scrape", config)).toThrow(
+      "Local action help cannot be sent to Axon REST",
+    );
+  });
+
   it("has REST request mappings for every palette action example", () => {
     const client = createAxonClient(config);
 
     for (const candidate of ACTIONS) {
+      if (candidate.kind === "local") continue;
       const arg = candidate.example.startsWith(candidate.subcommand)
         ? candidate.example.slice(candidate.subcommand.length).trim()
         : "";
@@ -230,7 +244,7 @@ describe("executeAction", () => {
       "watch-run",
     ]);
 
-    const actionSubcommands = ACTIONS.map((a) => a.subcommand);
+    const actionSubcommands = ACTIONS.filter((a) => a.kind !== "local").map((a) => a.subcommand);
     const unlisted = actionSubcommands.filter((s) => !RUST_ALLOWED_SUBCOMMANDS.has(s));
 
     expect(
