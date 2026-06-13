@@ -9,8 +9,6 @@ use crate::ingest::git_payload::{
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
-#[cfg(test)]
-use crate::vector::ops::input::code::CodeChunk;
 use crate::vector::ops::{PreparedDoc, prepare_plain_text_source};
 
 use super::client::fetch_paginated;
@@ -28,16 +26,13 @@ use crate::ingest::git_files::embed_docs;
 pub(crate) fn gitlab_payload(
     target: &GitLabTarget,
     project: &GitLabProject,
-    content_kind: &'static str,
+    kind: ContentKind,
     kind_extra: serde_json::Value,
 ) -> serde_json::Value {
     let owner: Option<String> = {
         let path = &target.namespace_path;
         path.rfind('/').map(|i| path[..i].to_string())
     };
-    // Canonical content_kind: GitLab uses "merge_request"; from_wire normalises.
-    let kind = ContentKind::from_wire(content_kind);
-
     // GitLab uses "iid" as the item number field (Q-H4: shared decoder)
     let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) =
         extract_git_item_fields(&kind_extra, "iid");
@@ -122,7 +117,7 @@ pub(crate) async fn embed_metadata(
     let extra = gitlab_payload(
         target,
         project,
-        "repo_metadata",
+        ContentKind::RepoMetadata,
         serde_json::json!({
             "name": project.name,
             "stars": project.star_count,
@@ -212,7 +207,7 @@ fn issue_doc(
     let extra = gitlab_payload(
         target,
         project,
-        "issue",
+        ContentKind::Issue,
         serde_json::json!({
             "iid": issue.iid,
             "state": issue.state,
@@ -285,7 +280,7 @@ fn merge_request_doc(
     let extra = gitlab_payload(
         target,
         project,
-        "merge_request",
+        ContentKind::Pr,
         serde_json::json!({
             "iid": mr.iid,
             "state": mr.state,
@@ -358,7 +353,7 @@ fn wiki_doc(
     let extra = gitlab_payload(
         target,
         project,
-        "wiki",
+        ContentKind::Wiki,
         serde_json::json!({
             "slug": page.slug,
             "format": page.format,
@@ -376,52 +371,3 @@ fn wiki_doc(
     .map_err(|err| anyhow::anyhow!("prepare gitlab wiki source failed: {err}"))?;
     Ok((!doc.chunks.is_empty()).then_some(doc))
 }
-
-/// Build a canonical per-chunk GitLab file payload with code + symbol metadata.
-///
-/// Produces the same `git_*`/`code_*`/`symbol_*` fields as GitHub file chunks
-/// so cross-provider Qdrant filters work uniformly.
-#[cfg(test)]
-pub(crate) fn gitlab_file_chunk_payload(
-    target: &GitLabTarget,
-    project: &GitLabProject,
-    rel: &str,
-    branch: &str,
-    chunk: &CodeChunk,
-    chunking_method: &str,
-    symbol_status: &str,
-) -> serde_json::Value {
-    let owner: Option<String> = {
-        let path = &target.namespace_path;
-        path.rfind('/').map(|i| path[..i].to_string())
-    };
-    build_git_payload(&GitPayload {
-        provider: "gitlab".to_string(),
-        host: target.host.clone(),
-        owner,
-        repo: target.project.clone(),
-        content_kind: ContentKind::File,
-        branch: Some(branch.to_string()),
-        file_path: Some(rel.to_string()),
-        file_language: Some(language_name(path_extension(rel)).to_string()),
-        file_type: Some(classify_file_type(rel).to_string()),
-        file_is_test: Some(is_test_path(rel)),
-        line_start: Some(chunk.start_line),
-        line_end: Some(chunk.end_line),
-        chunking_method: Some(chunking_method.to_string()),
-        symbol_name: chunk.symbol_name().map(str::to_string),
-        symbol_kind: chunk.symbol_kind_str().map(str::to_string),
-        symbol_extraction_status: Some(symbol_status.to_string()),
-        meta: Some(serde_json::json!({
-            "namespace_path": target.namespace_path,
-            "visibility": project.visibility,
-            "last_activity_at": project.last_activity_at,
-            "default_branch": project.default_branch,
-        })),
-        ..GitPayload::default()
-    })
-}
-
-#[cfg(test)]
-#[path = "embed_tests.rs"]
-mod tests;

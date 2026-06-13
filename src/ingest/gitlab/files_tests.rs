@@ -1,7 +1,5 @@
-use super::super::embed::gitlab_file_chunk_payload;
 use super::gitlab_file_doc_extra;
 use crate::ingest::gitlab::types::{GitLabProject, GitLabTarget};
-use crate::vector::ops::input::code::{ChunkSource, CodeChunk, Symbol, SymbolKind};
 use crate::vector::ops::{SourceDocument, SourceOrigin, prepare_source_document};
 
 fn make_target(namespace_path: &str) -> GitLabTarget {
@@ -39,38 +37,12 @@ fn make_project() -> GitLabProject {
     }
 }
 
-fn make_chunk() -> CodeChunk {
-    CodeChunk {
-        text: "fn x() {}".into(),
-        byte_start: 0,
-        byte_end: 9,
-        start_line: 1,
-        end_line: 1,
-        declaration_start_line: 1,
-        declaration_end_line: 1,
-        symbol: Some(Symbol {
-            kind: SymbolKind::Function,
-            name: Some("x".into()),
-        }),
-        source: ChunkSource::TreeSitter,
-    }
-}
-
 #[test]
 fn owner_derivation_single_segment_namespace_yields_none() {
     // Single segment: no '/' in namespace_path → owner should be None / absent
     let target = make_target("project");
     let project = make_project();
-    let chunk = make_chunk();
-    let payload = gitlab_file_chunk_payload(
-        &target,
-        &project,
-        "src/lib.rs",
-        "main",
-        &chunk,
-        "tree_sitter",
-        "ok",
-    );
+    let payload = gitlab_file_doc_extra(&target, &project, "main", "src/lib.rs", "rs");
     // git_owner should be absent or null when there is no namespace prefix
     assert!(
         payload
@@ -86,16 +58,7 @@ fn owner_derivation_three_segment_namespace() {
     // Three segments: group/subgroup/project → owner should be "group/subgroup"
     let target = make_target("group/subgroup/project");
     let project = make_project();
-    let chunk = make_chunk();
-    let payload = gitlab_file_chunk_payload(
-        &target,
-        &project,
-        "src/lib.rs",
-        "main",
-        &chunk,
-        "tree_sitter",
-        "ok",
-    );
+    let payload = gitlab_file_doc_extra(&target, &project, "main", "src/lib.rs", "rs");
     assert_eq!(
         payload["git_owner"], "group/subgroup",
         "three-segment namespace should produce owner = group/subgroup"
@@ -107,16 +70,7 @@ fn owner_derivation_two_segment_namespace() {
     // Two segments: group/project → owner should be "group"
     let target = make_target("group/project");
     let project = make_project();
-    let chunk = make_chunk();
-    let payload = gitlab_file_chunk_payload(
-        &target,
-        &project,
-        "src/lib.rs",
-        "main",
-        &chunk,
-        "tree_sitter",
-        "ok",
-    );
+    let payload = gitlab_file_doc_extra(&target, &project, "main", "src/lib.rs", "rs");
     assert_eq!(
         payload["git_owner"], "group",
         "two-segment namespace should produce owner = group"

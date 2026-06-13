@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::core::config::Config;
 use crate::core::logging::log_warn;
-use crate::ingest::git_files::embed_docs;
+use crate::ingest::git_files::embed_doc_summary;
 use crate::ingest::git_payload::{ContentKind, GitPayload, build_git_payload};
 use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::MAX_INGEST_FILE_BYTES;
@@ -91,8 +91,9 @@ pub(crate) async fn embed_files(
         skipped_files,
     } = prepare_file_docs(tmp.path(), files, target, project, branch, reporter).await?;
     let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url.clone()).collect();
-    let chunks = embed_docs(cfg, docs).await?;
-    if include_source && skipped_files == 0 {
+    let summary = embed_doc_summary(cfg, docs).await?;
+    let chunks = summary.chunks_embedded;
+    if include_source && skipped_files == 0 && summary.docs_failed == 0 {
         let owner = target
             .namespace_path
             .rfind('/')
@@ -114,7 +115,8 @@ pub(crate) async fn embed_files(
         }
     } else {
         log_warn(&format!(
-            "command=ingest_gitlab legacy_fragment_cleanup_skipped include_source={include_source} skipped_files={skipped_files}"
+            "command=ingest_gitlab legacy_fragment_cleanup_skipped include_source={include_source} skipped_files={skipped_files} docs_failed={}",
+            summary.docs_failed
         ));
     }
     reporter

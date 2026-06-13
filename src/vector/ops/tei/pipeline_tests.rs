@@ -389,3 +389,74 @@ async fn run_embed_pipeline_deletes_stale_tail_and_local_fragments_after_success
         "stale-tail and local-fragment cleanup should both delete after upsert"
     );
 }
+
+#[tokio::test]
+async fn run_embed_pipeline_deletes_stale_tail_for_single_chunk_replacement() {
+    use crate::core::config::Config;
+    use httpmock::prelude::*;
+
+    let tei = MockServer::start_async().await;
+    let qdrant = MockServer::start_async().await;
+    let collection = format!("pipeline_single_{}", uuid::Uuid::new_v4().simple());
+
+    tei.mock_async(|when, then| {
+        when.method(POST).path("/embed");
+        then.status(200).json_body(serde_json::json!([[0.1, 0.2]]));
+    })
+    .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(GET).path(format!("/collections/{collection}"));
+            then.status(200).json_body(unnamed_collection_body(2));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/index"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/points"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    let delete = qdrant
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(format!("/collections/{collection}/points/delete"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.collection = collection;
+    cfg.tei_url = tei.base_url();
+    cfg.qdrant_url = qdrant.base_url();
+    cfg.embed_doc_timeout_secs = 30;
+
+    let summary = super::run_embed_pipeline(
+        &cfg,
+        vec![pipeline_test_doc(
+            "https://example.com/doc",
+            vec!["one"],
+            false,
+        )],
+        None,
+    )
+    .await
+    .expect("pipeline should succeed");
+
+    assert_eq!(summary.chunks_embedded, 1);
+    assert_eq!(
+        delete.calls_async().await,
+        1,
+        "single-chunk replacements must delete stale chunk_index >= 1"
+    );
+}

@@ -17,8 +17,6 @@
 
 use serde_json::{Value, json};
 
-use crate::core::logging::log_warn;
-
 /// Canonical value for the `git_content_kind` payload field. One variant per
 /// kind so a typo can't silently degrade to `"file"` (the previous behavior of
 /// the GitHub builder's stringly-typed match).
@@ -42,27 +40,6 @@ impl ContentKind {
             Self::Release => "release",
             Self::Wiki => "wiki",
             Self::RepoMetadata => "repo_metadata",
-        }
-    }
-
-    /// Normalize a provider's wire string into a canonical kind. Accepts the
-    /// provider-specific aliases GitHub/GitLab use (`pull_request`,
-    /// `merge_request`). An unrecognized value is logged and falls back to
-    /// `File` so it is observable rather than silently mislabeled.
-    pub fn from_wire(value: &str) -> Self {
-        match value {
-            "file" => Self::File,
-            "issue" => Self::Issue,
-            "pr" | "pull_request" | "merge_request" => Self::Pr,
-            "release" => Self::Release,
-            "wiki" => Self::Wiki,
-            "repo_metadata" => Self::RepoMetadata,
-            other => {
-                log_warn(&format!(
-                    "git_payload: unknown content_kind {other:?}; defaulting to file"
-                ));
-                Self::File
-            }
         }
     }
 }
