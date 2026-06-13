@@ -14,8 +14,8 @@ pub mod scroll;
 
 // Re-exports for convenience (public API)
 pub use delete::{
-    qdrant_delete_points, qdrant_delete_stale_domain_urls, qdrant_delete_stale_repo_file_urls,
-    qdrant_delete_stale_tail,
+    qdrant_delete_local_file_fragments, qdrant_delete_points, qdrant_delete_repo_file_fragments,
+    qdrant_delete_stale_domain_urls, qdrant_delete_stale_repo_file_urls, qdrant_delete_stale_tail,
 };
 pub use facets::{qdrant_domain_facets, qdrant_facet, qdrant_facet_filtered, qdrant_url_facets};
 pub use retrieve::{
@@ -26,7 +26,6 @@ pub use scroll::{
     qdrant_urls_for_domain, qdrant_urls_for_domain_limited, qdrant_urls_for_domain_page,
 };
 
-#[cfg(test)]
 pub(crate) use delete::qdrant_delete_by_url_filter;
 #[cfg(test)]
 pub(crate) use scroll::qdrant_scroll_pages;

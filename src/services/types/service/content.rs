@@ -29,6 +29,13 @@ pub struct ScrapeResult {
     /// Curated per-extractor metadata (from `ScrapedDoc.extra`). None for generic scrapes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra: Option<serde_json::Value>,
+    /// Redacted and size-capped structured data summary from a vertical extractor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured: Option<serde_json::Value>,
+    /// Redacted structured data retained for embedding. This is intentionally
+    /// not part of the wire response; public `structured` remains size-capped.
+    #[serde(skip)]
+    pub(crate) structured_for_embedding: Option<serde_json::Value>,
     /// Vertical extractor name (from `ScrapedDoc.extractor_name`). None for generic scrapes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extractor_name: Option<String>,

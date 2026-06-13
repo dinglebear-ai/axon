@@ -14,14 +14,54 @@ async fn generic_file_docs_chunk_rust_as_code_with_symbols() {
     let docs = file_docs(root, &target, "main", root.join("lib.rs"), "git", "git")
         .await
         .unwrap();
-    assert!(!docs.is_empty());
-    let extra = docs[0].extra.as_ref().unwrap();
-    assert_eq!(extra["code_chunking_method"], "tree_sitter");
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0].chunks().len(), docs[0].chunk_extra().len());
+    let extra = docs[0].extra().unwrap();
     assert_eq!(extra["code_file_type"], "source");
+    assert_eq!(extra["code_file_path"], "lib.rs");
     assert!(
-        docs.iter()
-            .any(|d| d.extra.as_ref().unwrap()["symbol_kind"] == "function"),
+        docs[0]
+            .chunk_extra()
+            .iter()
+            .any(|extra| extra["code_chunking_method"] == "tree_sitter"),
+        "expected at least one tree-sitter chunk"
+    );
+    assert!(
+        docs[0]
+            .chunk_extra()
+            .iter()
+            .any(|extra| extra["symbol_kind"] == "function"),
         "expected at least one function-symbol chunk"
+    );
+}
+
+#[tokio::test]
+async fn generic_file_docs_mark_markdown_and_text_chunks_by_actual_chunker() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    std::fs::write(root.join("README.md"), "# Readme\n\ntext").unwrap();
+    std::fs::write(root.join("notes.txt"), "plain notes").unwrap();
+    let target = GenericGitTarget {
+        host: "example.com".into(),
+        name: "repo".into(),
+        clone_url: "https://example.com/r.git".into(),
+        web_url: "https://example.com/r".into(),
+    };
+
+    let md_docs = file_docs(root, &target, "main", root.join("README.md"), "git", "git")
+        .await
+        .unwrap();
+    let txt_docs = file_docs(root, &target, "main", root.join("notes.txt"), "git", "git")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        md_docs[0].chunk_extra()[0]["chunk_content_kind"],
+        "markdown"
+    );
+    assert_eq!(
+        txt_docs[0].chunk_extra()[0]["chunk_content_kind"],
+        "plain_text"
     );
 }
 
@@ -44,10 +84,6 @@ fn rejects_non_https_generic_git_target() {
 async fn file_docs_returns_empty_for_whitespace_only_file() {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
-    // Whitespace only — the prose chunker returns the raw whitespace text as one
-    // chunk, so `code_chunks` is non-empty and a PreparedDoc is emitted.
-    // Verify the path succeeds (no panic / error) and no chunk carries a
-    // tree-sitter symbol (whitespace has no extractable symbols).
     std::fs::write(root.join("empty.rs"), "   \n\n   \n").unwrap();
     let target = GenericGitTarget {
         host: "example.com".into(),
@@ -58,16 +94,10 @@ async fn file_docs_returns_empty_for_whitespace_only_file() {
     let docs = file_docs(root, &target, "main", root.join("empty.rs"), "git", "git")
         .await
         .unwrap();
-    // The prose chunker emits a chunk even for whitespace-only content, so the
-    // result is non-empty — but none of the docs should carry tree-sitter symbols.
-    for doc in &docs {
-        let extra = doc.extra.as_ref().unwrap();
-        assert_ne!(
-            extra.get("code_chunking_method").and_then(|v| v.as_str()),
-            Some("tree_sitter"),
-            "whitespace-only file should not produce tree-sitter symbol chunks"
-        );
-    }
+    assert!(
+        docs.is_empty(),
+        "whitespace-only files should produce no PreparedDocs"
+    );
 }
 
 #[tokio::test]

@@ -1,7 +1,7 @@
 use crate::core::config::Config;
 use crate::core::logging::log_info;
 use crate::ingest::progress::PhaseReporter;
-use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::vector::ops::{PreparedDoc, embed_prepared_docs, prepare_plain_text_source};
 use anyhow::Result;
 use octocrab::Octocrab;
 use octocrab::{models, params};
@@ -92,17 +92,16 @@ pub async fn ingest_issues(
                 ..Default::default()
             });
 
-            let chunks = chunk_text(&content);
-            if !chunks.is_empty() {
-                let domain = "github.com".to_string();
-                docs.push(PreparedDoc::ingest(
-                    url,
-                    domain,
-                    chunks,
-                    "github",
-                    Some(title),
-                    Some(extra),
-                ));
+            let doc = prepare_plain_text_source(
+                url,
+                "github.com".to_string(),
+                content,
+                "github",
+                Some(title),
+                Some(extra),
+            );
+            if !doc.is_empty() {
+                docs.push(doc);
             }
         }
 
@@ -125,6 +124,8 @@ pub async fn ingest_issues(
 
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .require_success("github issues embed")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }
@@ -203,17 +204,16 @@ pub async fn ingest_pull_requests(
                 ..Default::default()
             });
 
-            let chunks = chunk_text(&content);
-            if !chunks.is_empty() {
-                let domain = "github.com".to_string();
-                docs.push(PreparedDoc::ingest(
-                    url,
-                    domain,
-                    chunks,
-                    "github",
-                    Some(embed_title),
-                    Some(extra),
-                ));
+            let doc = prepare_plain_text_source(
+                url,
+                "github.com".to_string(),
+                content,
+                "github",
+                Some(embed_title),
+                Some(extra),
+            );
+            if !doc.is_empty() {
+                docs.push(doc);
             }
         }
 
@@ -239,6 +239,8 @@ pub async fn ingest_pull_requests(
 
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .require_success("github pulls embed")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }

@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::core::content::url_to_domain;
-use crate::vector::ops::{PreparedDoc, chunk_text};
+use crate::vector::ops::{PreparedDoc, prepare_plain_text_source};
 use serde::{Deserialize, Serialize};
 
 pub(crate) const MAX_PREPARED_SESSION_DOCS: usize = 256;
@@ -156,10 +156,10 @@ impl PreparedSessionDoc {
             serde_json::Value::String(self.session_file.clone()),
         );
 
-        Ok(PreparedDoc::ingest(
+        Ok(prepare_plain_text_source(
             self.url.clone(),
             url_to_domain(&self.url),
-            chunk_text(&self.text),
+            self.text.clone(),
             source_type,
             self.title.clone(),
             Some(serde_json::Value::Object(extra)),

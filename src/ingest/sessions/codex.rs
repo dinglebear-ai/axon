@@ -2,7 +2,7 @@ use super::{
     IngestResult, SessionDoc, flatten_session_result, matches_project_filter, resolve_collection,
 };
 use crate::core::config::Config;
-use crate::vector::ops::{PreparedDoc, chunk_text};
+use crate::vector::ops::prepare_plain_text_source;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -234,10 +234,6 @@ async fn parse_codex_file(
     if parsed.text.trim().is_empty() {
         return Ok(None);
     }
-    let chunks = chunk_text(&parsed.text);
-    if chunks.is_empty() {
-        return Ok(None);
-    }
     let url = format!("file://{}", path.display());
     let title = path
         .file_name()
@@ -259,14 +255,17 @@ async fn parse_codex_file(
         "tools_used": parsed.tools_used,
         "workspace_path": parsed.workspace_path,
     });
-    let doc = PreparedDoc::ingest(
-        url,
+    let doc = prepare_plain_text_source(
+        url.clone(),
         "local".to_string(),
-        chunks,
+        parsed.text.clone(),
         "codex_session",
         title,
         Some(extra),
     );
+    if doc.is_empty() {
+        return Ok(None);
+    }
     Ok(Some(SessionDoc {
         doc,
         collection: resolve_collection(cfg, &project_name),

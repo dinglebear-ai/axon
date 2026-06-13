@@ -130,3 +130,120 @@ fn extract_markdown_links_empty_markdown_returns_empty() {
     assert!(super::extract_markdown_links("").is_empty());
     assert!(super::extract_markdown_links("No links here at all.").is_empty());
 }
+
+#[test]
+fn vertical_doc_to_scrape_result_preserves_capped_structured_summary() {
+    let result = super::vertical_doc_to_scrape_result(crate::extract::ScrapedDoc {
+        url: "https://pypi.org/project/ruff/".to_string(),
+        markdown: "# ruff\n\nFast Python linter.".to_string(),
+        title: Some("ruff".to_string()),
+        extractor_name: "pypi",
+        extractor_version: 3,
+        structured: Some(serde_json::json!({
+            "name": "ruff",
+            "api_token": "secret-value-that-must-not-leak"
+        })),
+        follow_crawl_urls: vec!["https://docs.astral.sh/ruff/".to_string()],
+        extra: Some(serde_json::json!({"pkg_name": "ruff"})),
+    })
+    .expect("scrape result");
+
+    assert_eq!(result.extractor_name.as_deref(), Some("pypi"));
+    assert_eq!(result.extra.as_ref().unwrap()["extractor_version"], 3);
+    let structured = result.structured.as_ref().expect("structured summary");
+    assert_eq!(structured["name"], "ruff");
+    assert!(structured.get("api_token").is_none());
+    let embedding_structured = result
+        .structured_for_embedding
+        .as_ref()
+        .expect("embedding structured");
+    assert_eq!(embedding_structured["name"], "ruff");
+    assert!(embedding_structured.get("api_token").is_none());
+}
+
+#[test]
+fn vertical_structured_summary_drops_oversized_payload() {
+    let large = "x".repeat(crate::services::scrape::MAX_PUBLIC_STRUCTURED_BYTES + 1);
+    let result = super::vertical_doc_to_scrape_result(crate::extract::ScrapedDoc {
+        url: "https://example.com/large".to_string(),
+        markdown: "# Large".to_string(),
+        title: None,
+        extractor_name: "example",
+        extractor_version: 1,
+        structured: Some(serde_json::json!({"large": large})),
+        follow_crawl_urls: Vec::new(),
+        extra: None,
+    })
+    .expect("scrape result");
+
+    assert!(result.structured.is_none());
+    assert!(
+        result.structured_for_embedding.is_some(),
+        "large redacted structured payload should remain available for embedding"
+    );
+}
+
+#[tokio::test]
+async fn scrape_result_to_prepared_doc_preserves_vertical_embedding_payload() {
+    let cfg = Config {
+        structured_data_max_bytes: 4096,
+        ..Default::default()
+    };
+    let mut result = super::vertical_doc_to_scrape_result(crate::extract::ScrapedDoc {
+        url: "https://pypi.org/project/ruff/".to_string(),
+        markdown: "# ruff\n\nFast Python linter.".to_string(),
+        title: Some("ruff".to_string()),
+        extractor_name: "pypi",
+        extractor_version: 3,
+        structured: Some(serde_json::json!({
+            "name": "ruff",
+            "api_token": "secret-value-that-must-not-leak"
+        })),
+        follow_crawl_urls: Vec::new(),
+        extra: Some(serde_json::json!({"pkg_name": "ruff"})),
+    })
+    .expect("scrape result");
+    result.structured = None;
+
+    let prepared = super::scrape_result_to_prepared_doc(&cfg, &result)
+        .await
+        .expect("prepared doc");
+
+    assert_eq!(prepared.extractor_name(), Some("pypi"));
+    assert_eq!(prepared.extra().unwrap()["extractor_version"], 3);
+    assert_eq!(prepared.extra().unwrap()["pkg_name"], "ruff");
+    let structured = prepared.structured().expect("structured payload");
+    assert_eq!(structured.kind, "vertical");
+    assert_eq!(structured.schema_type.as_deref(), Some("pypi_structured"));
+    assert_eq!(structured.blob["name"], "ruff");
+    assert!(structured.blob.get("api_token").is_none());
+}
+
+#[tokio::test]
+async fn scrape_result_embedding_uses_markdown_not_public_output() {
+    let mut result = map_scrape_payload(serde_json::json!({
+        "url": "https://example.com/package",
+        "markdown": "# Package\n\nbody"
+    }))
+    .expect("scrape result");
+    result.output = "<article>Package</article>".to_string();
+    result.extractor_name = Some("example".to_string());
+
+    let prepared = super::scrape_result_to_prepared_doc(&Config::default(), &result)
+        .await
+        .expect("prepared");
+
+    assert_eq!(result.output, "<article>Package</article>");
+    assert!(
+        prepared
+            .chunks()
+            .iter()
+            .any(|chunk| chunk.contains("# Package"))
+    );
+    assert!(
+        !prepared
+            .chunks()
+            .iter()
+            .any(|chunk| chunk.contains("<article>"))
+    );
+}

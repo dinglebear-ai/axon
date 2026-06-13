@@ -5,10 +5,11 @@ use crate::crawl::scrape::{build_scrape_website, fetch_single_page, select_outpu
 use crate::extract::{VerticalContext, dispatch_by_url};
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::types::{ArtifactHandle, DocumentBackend, ScrapeResult};
-use crate::vector::ops::input::{chunk_markdown, chunk_text};
-use crate::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
+use crate::vector::ops::{
+    SourceDocument, embed_prepared_docs, prepare_source_document,
+    structured_payload_from_vertical_summary,
+};
 use futures_util::stream::{self, StreamExt};
-use spider::url::Url as SpiderUrl;
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
@@ -17,6 +18,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 pub const MAX_SCRAPE_BATCH_URLS: usize = 50;
+pub(crate) const MAX_PUBLIC_STRUCTURED_BYTES: usize = 16 * 1024;
 
 #[derive(Debug)]
 enum ScrapeBatchError {
@@ -62,6 +64,8 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
         backend: Some(DocumentBackend::LiveScrape),
         follow_crawl_urls: vec![],
         extra: None,
+        structured: None,
+        structured_for_embedding: None,
         extractor_name: None,
         title: None,
     })
@@ -220,10 +224,61 @@ fn vertical_doc_to_scrape_result(
     let mut scrape_result = map_scrape_payload(payload)?;
     scrape_result.backend = Some(DocumentBackend::LiveScrape);
     scrape_result.follow_crawl_urls = doc.follow_crawl_urls;
-    scrape_result.extra = doc.extra;
+    let mut extra = doc.extra.unwrap_or_else(|| serde_json::json!({}));
+    if let serde_json::Value::Object(map) = &mut extra {
+        map.insert(
+            "extractor_version".to_string(),
+            doc.extractor_version.into(),
+        );
+    }
+    scrape_result.extra = Some(extra);
+    if let Some(structured) = doc.structured {
+        let redacted = redact_sensitive_structured_keys(structured);
+        scrape_result.structured_for_embedding = Some(redacted.clone());
+        scrape_result.structured = capped_public_structured_summary(redacted);
+    }
     scrape_result.extractor_name = Some(doc.extractor_name.to_string());
     scrape_result.title = doc.title;
     Ok(scrape_result)
+}
+
+fn capped_public_structured_summary(value: serde_json::Value) -> Option<serde_json::Value> {
+    let bytes = serde_json::to_vec(&value).ok()?;
+    if bytes.len() > MAX_PUBLIC_STRUCTURED_BYTES {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn redact_sensitive_structured_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .filter_map(|(key, value)| {
+                    let lowered = key.to_ascii_lowercase();
+                    let sensitive = [
+                        "token",
+                        "secret",
+                        "password",
+                        "authorization",
+                        "cookie",
+                        "api_key",
+                    ]
+                    .iter()
+                    .any(|needle| lowered.contains(needle));
+                    (!sensitive).then(|| (key, redact_sensitive_structured_keys(value)))
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => serde_json::Value::Array(
+            items
+                .into_iter()
+                .map(redact_sensitive_structured_keys)
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 async fn generic_scrape(cfg: &Config, normalized: &str) -> Result<ScrapeResult, Box<dyn Error>> {
@@ -373,37 +428,46 @@ pub async fn scrape_batch_with_optional_embed(
 ) -> Result<Vec<ScrapeResult>, Box<dyn Error>> {
     let results = scrape_batch(cfg, urls, tx).await?;
     if cfg.embed {
-        let docs = results.iter().map(scrape_result_to_prepared_doc).collect();
-        embed_prepared_docs(cfg, docs, None).await?;
+        let mut docs = Vec::with_capacity(results.len());
+        for result in &results {
+            docs.push(scrape_result_to_prepared_doc(cfg, result).await?);
+        }
+        embed_prepared_docs(cfg, docs, None)
+            .await?
+            .require_success("scrape batch embed")
+            .map_err(|err| anyhow::anyhow!(err))?;
     }
     Ok(results)
 }
 
-pub(crate) fn scrape_result_to_prepared_doc(result: &ScrapeResult) -> PreparedDoc {
-    let domain = SpiderUrl::parse(&result.url)
-        .ok()
-        .and_then(|url| url.host_str().map(ToOwned::to_owned))
-        .unwrap_or_else(|| "unknown".to_string());
-    PreparedDoc {
-        url: result.url.clone(),
-        domain,
-        chunks: if result
-            .markdown
-            .chars()
-            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
-        {
-            chunk_text(&result.markdown)
-        } else {
-            chunk_markdown(&result.markdown)
-        },
-        source_type: "scrape".to_string(),
-        content_type: "markdown",
-        title: result.title.clone(),
-        extra: result.extra.clone(),
-        extractor_name: result.extractor_name.clone(),
-        structured: None,
-        chunk_extra: Vec::new(),
-    }
+pub(crate) async fn scrape_result_to_prepared_doc(
+    cfg: &Config,
+    result: &ScrapeResult,
+) -> anyhow::Result<crate::vector::ops::PreparedDoc> {
+    let structured_source = result
+        .structured_for_embedding
+        .clone()
+        .or_else(|| result.structured.clone());
+    let structured = structured_source.and_then(|value| {
+        structured_payload_from_vertical_summary(
+            result.extractor_name.as_deref().unwrap_or("vertical"),
+            value,
+            cfg.structured_data_max_bytes,
+        )
+    });
+    let source = SourceDocument::try_new_web_markdown(
+        result.url.clone(),
+        result.markdown.clone(),
+        "scrape",
+        result.title.clone(),
+        result.extra.clone(),
+        result.extractor_name.clone(),
+        structured,
+    )
+    .map_err(|err| anyhow::anyhow!(err))?;
+    prepare_source_document(source)
+        .await
+        .map_err(|err| anyhow::anyhow!(err))
 }
 
 #[cfg(test)]

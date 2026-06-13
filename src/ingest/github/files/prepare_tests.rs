@@ -1,4 +1,5 @@
 use super::*;
+use crate::vector::ops::file_ingest::{chunk_file, chunking_method};
 
 fn test_ctx(repo_root: PathBuf) -> FileEmbedCtx {
     FileEmbedCtx {
@@ -33,25 +34,40 @@ async fn read_file_embed_docs_writes_symbol_payload_contract() {
     .await
     .expect("write rust file");
 
-    let docs = read_file_embed_docs(&test_ctx(tmp.path().to_path_buf()), "src/lib.rs")
+    let docs = match read_file_embed_docs(&test_ctx(tmp.path().to_path_buf()), "src/lib.rs")
         .await
-        .expect("read docs");
+        .expect("read docs")
+    {
+        FileEmbedRead::Prepared(docs) => docs,
+        other => panic!("expected prepared docs, got {other:?}"),
+    };
 
     // P-H1: a file's chunks share one file-level PreparedDoc for TEI batching;
     // per-chunk symbol_* / code_line_* metadata lives in `chunk_extra`, merged
     // over `doc.extra` per chunk in the embed pipeline so the symbol-boost survives.
     let doc = docs.first().expect("one file-level doc");
-    let extra = doc.extra.as_ref().expect("github payload");
+    let extra = doc.extra().expect("github payload");
     assert_eq!(extra["provider"], "github");
     assert_eq!(extra["git_content_kind"], "file");
-    assert_eq!(extra["code_chunking_method"], "tree_sitter");
-    assert_eq!(extra["symbol_extraction_status"], "ok");
+    assert_eq!(extra["code_file_path"], "src/lib.rs");
+    assert_eq!(extra["code_language"], "rust");
+    assert!(extra.get("code_is_test").is_some());
+    assert!(extra.get("symbol_extraction_status").is_some());
+    assert_eq!(doc.chunks().len(), doc.chunk_extra().len());
 
     let method_chunk = doc
-        .chunk_extra
+        .chunk_extra()
         .iter()
         .find(|ce| ce.get("symbol_name").and_then(|v| v.as_str()) == Some("Response::parse"))
         .expect("chunk with method symbol payload");
+    assert_eq!(method_chunk["chunk_content_kind"], "code");
+    assert!(
+        method_chunk["chunk_locator"]
+            .as_str()
+            .unwrap()
+            .contains("src/lib.rs#L")
+    );
+    assert_eq!(method_chunk["code_chunking_method"], "tree_sitter");
     assert_eq!(method_chunk["symbol_name"], "Response::parse");
     assert_eq!(method_chunk["symbol_kind"], "method");
     assert!(
@@ -60,7 +76,7 @@ async fn read_file_embed_docs_writes_symbol_payload_contract() {
     );
 
     assert_eq!(
-        doc.url,
+        doc.url(),
         "https://github.com/owner/repo/blob/main/src/lib.rs"
     );
 }
@@ -82,10 +98,28 @@ async fn non_utf8_file_is_skipped_not_failed() {
     tokio::fs::write(tmp.path().join("blob.txt"), [0xff, 0xfe, 0x00, 0x42])
         .await
         .expect("write bytes");
-    let docs = read_file_embed_docs(&test_ctx(tmp.path().to_path_buf()), "blob.txt")
+    let result = read_file_embed_docs(&test_ctx(tmp.path().to_path_buf()), "blob.txt")
         .await
         .expect("non-utf8 file should skip, not error");
-    assert!(docs.is_empty());
+    assert!(
+        matches!(result, FileEmbedRead::SkippedCleanupBlocking),
+        "non-UTF-8 files must block stale cleanup because the current file was skipped"
+    );
+}
+
+#[tokio::test]
+async fn empty_file_is_successfully_absent_not_cleanup_blocking() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    tokio::fs::write(tmp.path().join("empty.rs"), " \n\t\n")
+        .await
+        .expect("write empty file");
+    let result = read_file_embed_docs(&test_ctx(tmp.path().to_path_buf()), "empty.rs")
+        .await
+        .expect("empty file should skip, not error");
+    assert!(
+        matches!(result, FileEmbedRead::Empty),
+        "empty current files are intentionally absent so stale cleanup may remove prior chunks"
+    );
 }
 
 #[test]

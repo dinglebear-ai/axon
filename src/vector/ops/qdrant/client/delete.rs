@@ -63,7 +63,6 @@ async fn qdrant_delete_with_retry(
 }
 
 /// Delete all Qdrant points matching `url` via payload filter.
-#[cfg(test)]
 pub(crate) async fn qdrant_delete_by_url_filter(cfg: &Config, url: &str) -> Result<()> {
     let client = internal_service_http_client()?;
     let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=true")?;
@@ -220,6 +219,112 @@ pub async fn qdrant_delete_stale_repo_file_urls(
     Ok(stale.len())
 }
 
+pub async fn qdrant_delete_local_file_fragments(cfg: &Config, file_url: &str) -> Result<usize> {
+    let legacy_prefix = format!("{file_url}#L");
+    let indexed = scroll_url_set(cfg, local_legacy_fragment_scroll_filter(), None).await?;
+    let stale: Vec<String> = indexed
+        .into_iter()
+        .filter(|url| url.starts_with(&legacy_prefix))
+        .collect();
+    if stale.is_empty() {
+        return Ok(0);
+    }
+
+    let client = internal_service_http_client()?;
+    let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
+    for batch in stale.chunks(500) {
+        let urls: Vec<&str> = batch.iter().map(String::as_str).collect();
+        qdrant_delete_with_retry(
+            client,
+            &endpoint,
+            local_legacy_fragment_delete_body(&urls),
+            "qdrant_delete_local_file_fragments",
+        )
+        .await?;
+    }
+    Ok(stale.len())
+}
+
+pub async fn qdrant_delete_repo_file_fragments(
+    cfg: &Config,
+    provider: &str,
+    host: &str,
+    owner: Option<&str>,
+    repo: &str,
+    current_urls: &HashSet<String>,
+) -> Result<usize> {
+    let indexed = scroll_url_set(
+        cfg,
+        repo_file_points_filter_with_host(provider, host, owner, repo),
+        None,
+    )
+    .await?;
+    let stale = legacy_repo_fragment_urls(indexed, current_urls);
+    if stale.is_empty() {
+        return Ok(0);
+    }
+
+    let url_conditions: Vec<serde_json::Value> = stale
+        .iter()
+        .map(|url| serde_json::json!({"key": "url", "match": {"value": url}}))
+        .collect();
+    let client = internal_service_http_client()?;
+    let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
+    for batch in url_conditions.chunks(500) {
+        qdrant_delete_with_retry(
+            client,
+            &endpoint,
+            serde_json::json!({
+                "filter": {
+                    "must": repo_file_points_filter_with_host(provider, host, owner, repo)["must"].clone(),
+                    "should": batch
+                }
+            }),
+            "qdrant_delete_repo_file_fragments",
+        )
+        .await?;
+    }
+    Ok(stale.len())
+}
+
+fn legacy_repo_fragment_urls(
+    indexed: impl IntoIterator<Item = String>,
+    current_urls: &HashSet<String>,
+) -> Vec<String> {
+    indexed
+        .into_iter()
+        .filter(|url| {
+            !current_urls.contains(url)
+                && current_urls
+                    .iter()
+                    .any(|current| url.starts_with(&format!("{current}#L")))
+        })
+        .collect()
+}
+
+fn local_legacy_fragment_scroll_filter() -> serde_json::Value {
+    serde_json::json!({
+        "must": [
+            {"key": "source_type", "match": {"value": "embed"}}
+        ]
+    })
+}
+
+fn local_legacy_fragment_delete_body(urls: &[&str]) -> serde_json::Value {
+    let should: Vec<serde_json::Value> = urls
+        .iter()
+        .map(|url| serde_json::json!({"key": "url", "match": {"value": url}}))
+        .collect();
+    serde_json::json!({
+        "filter": {
+            "must": [
+                {"key": "source_type", "match": {"value": "embed"}}
+            ],
+            "should": should
+        }
+    })
+}
+
 /// Test helper: build the delete body that `qdrant_delete_stale_tail` would
 /// send for the given `url` and `new_chunk_count`. Used by `delete_tests.rs`
 /// to assert the filter shape without making live HTTP calls (T-H3).
@@ -251,6 +356,24 @@ fn repo_file_points_filter(provider: &str, owner: &str, repo: &str) -> serde_jso
             {"key": "git_content_kind", "match": {"value": "file"}}
         ]
     })
+}
+
+fn repo_file_points_filter_with_host(
+    provider: &str,
+    host: &str,
+    owner: Option<&str>,
+    repo: &str,
+) -> serde_json::Value {
+    let mut must = vec![
+        serde_json::json!({"key": "provider", "match": {"value": provider}}),
+        serde_json::json!({"key": "git_host", "match": {"value": host}}),
+        serde_json::json!({"key": "git_repo", "match": {"value": repo}}),
+        serde_json::json!({"key": "git_content_kind", "match": {"value": "file"}}),
+    ];
+    if let Some(owner) = owner {
+        must.push(serde_json::json!({"key": "git_owner", "match": {"value": owner}}));
+    }
+    serde_json::json!({ "must": must })
 }
 
 pub async fn qdrant_delete_points(cfg: &Config, ids: &[String]) -> Result<usize> {

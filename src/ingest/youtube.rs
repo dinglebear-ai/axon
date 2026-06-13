@@ -11,7 +11,7 @@ use crate::ingest::progress::PhaseReporter;
 use crate::ingest::subprocess::{
     MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
 };
-use crate::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::vector::ops::{PreparedDoc, embed_prepared_docs, prepare_plain_text_source};
 use spider::url::Url;
 use std::error::Error;
 
@@ -281,9 +281,6 @@ pub async fn ingest_youtube(
         None => None,
     };
 
-    // Build source-specific extra payload once; merged into every chunk's Qdrant point
-    let extra = video_meta.as_ref().map(meta::build_youtube_extra_payload);
-
     let mut count = 0usize;
 
     for vtt_path in &vtt_files {
@@ -315,44 +312,23 @@ pub async fn ingest_youtube(
             .map(|m| m.title.as_str())
             .unwrap_or(vid_id);
 
-        let mut docs: Vec<PreparedDoc> = Vec::new();
-
-        let transcript_chunks = chunk_text(&text);
-        if !transcript_chunks.is_empty() {
-            docs.push(PreparedDoc::ingest(
-                source_url.clone(),
-                url_to_domain(&source_url),
-                transcript_chunks,
-                "youtube",
-                Some(title.to_string()),
-                extra.clone(),
-            ));
-        }
-
-        // Embed description as a separate document (often contains commands, links, timestamps)
-        if let Some(m) = &video_meta
-            && !m.description.trim().is_empty()
-        {
-            let desc_url = format!("{source_url}?section=description");
-            let desc_chunks = chunk_text(&m.description);
-            if !desc_chunks.is_empty() {
-                docs.push(PreparedDoc::ingest(
-                    desc_url.clone(),
-                    url_to_domain(&desc_url),
-                    desc_chunks,
-                    "youtube",
-                    Some(format!("{} — description", m.title)),
-                    extra.clone(),
-                ));
-            }
-        }
+        let docs = prepare_youtube_video_docs(source_url.clone(), title, text, video_meta.as_ref())
+            .map_err(|err| format!("prepare youtube docs failed: {err}"))?;
 
         reporter.report_phase(PHASE_EMBEDDING).await;
         match embed_prepared_docs(cfg, docs, None).await {
-            Ok(summary) => count += summary.chunks_embedded,
-            Err(e) => log_warn(&format!(
-                "command=ingest source=youtube embed_failed video={vid_id} err={e}"
-            )),
+            Ok(summary) => match summary.require_success("youtube embed") {
+                Ok(summary) => count += summary.chunks_embedded,
+                Err(err) => {
+                    return Err(err.into());
+                }
+            },
+            Err(e) => {
+                return Err(format!(
+                    "command=ingest source=youtube embed_failed video={vid_id} err={e}"
+                )
+                .into());
+            }
         }
     }
 
@@ -360,6 +336,47 @@ pub async fn ingest_youtube(
         "command=ingest source=youtube video_id={video_id} chunk_count={count}"
     ));
     Ok(count)
+}
+
+fn prepare_youtube_video_docs(
+    source_url: String,
+    title: &str,
+    transcript: String,
+    video_meta: Option<&meta::YoutubeVideoMeta>,
+) -> Result<Vec<PreparedDoc>, String> {
+    let extra = video_meta.map(meta::build_youtube_extra_payload);
+    let mut docs: Vec<PreparedDoc> = Vec::new();
+
+    let transcript_doc = prepare_plain_text_source(
+        source_url.clone(),
+        url_to_domain(&source_url),
+        transcript,
+        "youtube",
+        Some(title.to_string()),
+        extra.clone(),
+    );
+    if !transcript_doc.is_empty() {
+        docs.push(transcript_doc);
+    }
+
+    if let Some(m) = video_meta
+        && !m.description.trim().is_empty()
+    {
+        let desc_url = format!("{source_url}?section=description");
+        let desc_doc = prepare_plain_text_source(
+            desc_url.clone(),
+            url_to_domain(&desc_url),
+            m.description.clone(),
+            "youtube",
+            Some(format!("{} — description", m.title)),
+            extra.clone(),
+        );
+        if !desc_doc.is_empty() {
+            docs.push(desc_doc);
+        }
+    }
+
+    Ok(docs)
 }
 
 pub async fn ingest_youtube_target(
@@ -402,12 +419,7 @@ pub async fn ingest_youtube_playlist(
         .await;
 
     for (idx, video_url) in videos.iter().enumerate() {
-        match ingest_youtube(cfg, video_url, reporter).await {
-            Ok(chunks) => chunks_embedded += chunks,
-            Err(e) => log_warn(&format!(
-                "command=ingest source=youtube playlist video_failed url={video_url} err={e}"
-            )),
-        }
+        chunks_embedded += ingest_youtube(cfg, video_url, reporter).await?;
         reporter
             .report(serde_json::json!({
                 "phase": "embedding_playlist",

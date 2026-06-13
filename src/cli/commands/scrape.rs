@@ -8,10 +8,8 @@ use crate::core::http::validate_url;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_option, print_phase};
 use crate::services::scrape as scrape_service;
-use crate::vector::ops::input::{chunk_markdown, chunk_text};
 use crate::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
 use futures::stream::{self, StreamExt};
-use spider::url::Url as SpiderUrl;
 use std::error::Error;
 
 pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {
@@ -34,38 +32,6 @@ pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {
     print_option("retryBackoffMs", &cfg.retry_backoff_ms.to_string());
     print_option("indexing", if cfg.embed { "enabled" } else { "skipped" });
     println!();
-}
-
-/// Convert a `ScrapeResult` into a `PreparedDoc` for direct embedding.
-/// Preserves `extra`, `extractor_name`, and `title` from vertical extractors —
-/// these are discarded if we go through the disk-write path instead.
-pub(crate) fn scrape_result_to_prepared_doc(
-    result: &crate::services::types::ScrapeResult,
-) -> PreparedDoc {
-    let domain = SpiderUrl::parse(&result.url)
-        .ok()
-        .and_then(|u| u.host_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "unknown".to_string());
-    PreparedDoc {
-        url: result.url.clone(),
-        domain,
-        chunks: if result
-            .markdown
-            .chars()
-            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
-        {
-            chunk_text(&result.markdown)
-        } else {
-            chunk_markdown(&result.markdown)
-        },
-        source_type: "scrape".to_string(),
-        content_type: "markdown",
-        title: result.title.clone(),
-        extra: result.extra.clone(),
-        extractor_name: result.extractor_name.clone(),
-        structured: None,
-        chunk_extra: Vec::new(),
-    }
 }
 
 fn extractor_label(extractor: &str) -> &str {
@@ -314,6 +280,11 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.embed && !to_embed.is_empty() {
         embed_prepared_docs(cfg, to_embed, None)
             .await
+            .and_then(|summary| {
+                summary
+                    .require_success("scrape command embed")
+                    .map_err(|err| err.into())
+            })
             .map_err(|e| -> Box<dyn Error> { format!("embed failed: {e}").into() })?;
     }
 
@@ -362,7 +333,9 @@ async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<PreparedDoc>, Box<
     }
 
     if cfg.embed {
-        Ok(Some(scrape_result_to_prepared_doc(&result)))
+        Ok(Some(
+            scrape_service::scrape_result_to_prepared_doc(cfg, &result).await?,
+        ))
     } else {
         Ok(None)
     }

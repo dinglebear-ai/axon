@@ -89,7 +89,7 @@ async fn markdown_with_control_chars_falls_back_to_plain_text_chunking() {
 
     assert_eq!(prepared.content_type, "markdown");
     assert_eq!(prepared.chunk_extra.len(), prepared.chunks.len());
-    assert_eq!(prepared.chunk_extra[0]["content_kind"], "markdown");
+    assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "markdown");
     assert_eq!(prepared.chunk_extra[0]["chunking_fallback"], "plain_text_control_chars");
 }
 
@@ -106,7 +106,7 @@ async fn crawl_manifest_rs_url_does_not_use_code_chunking() {
     let prepared = prepare_source_document(source).await.expect("prepared doc");
 
     assert_eq!(prepared.content_type, "markdown");
-    assert_eq!(prepared.chunk_extra[0]["content_kind"], "markdown");
+    assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "markdown");
     assert!(prepared.chunk_extra[0].get("code_line_start").is_none());
 }
 
@@ -144,7 +144,7 @@ async fn file_source_attaches_existing_code_keys_and_new_locator_keys() {
         .iter()
         .find(|extra| extra.get("symbol_name").and_then(|v| v.as_str()) == Some("Parser::parse"))
         .expect("method symbol");
-    assert_eq!(chunk_extra["content_kind"], "code");
+    assert_eq!(chunk_extra["chunk_content_kind"], "code");
     assert!(chunk_extra["chunk_locator"].as_str().unwrap().contains("src/lib.rs#L"));
     assert!(chunk_extra["source_range"]["line_start"].as_u64().is_some());
     assert!(chunk_extra["code_line_start"].as_u64().is_some());
@@ -348,7 +348,7 @@ impl SourceDocument {
 
 ```rust
 const PLANNER_OWNED_PAYLOAD_KEYS: &[&str] = &[
-    "content_kind",
+    "chunk_content_kind",
     "chunk_locator",
     "source_range",
     "chunking_fallback",
@@ -379,7 +379,7 @@ Planner-created per-chunk metadata must include:
 
 ```json
 {
-  "content_kind": "code|markdown|plain_text",
+  "chunk_content_kind": "code|markdown|plain_text",
   "chunk_locator": "stable locator",
   "source_range": { "line_start": 1, "line_end": 3, "byte_start": 0, "byte_end": 120 }
 }
@@ -465,7 +465,7 @@ fn apply_extra_allows_planner_chunk_fields_but_blocks_system_fields() {
     let extra = serde_json::json!({
         "url": "https://evil.example/override",
         "chunk_text": "evil",
-        "content_kind": "code",
+        "chunk_content_kind": "code",
         "chunk_locator": "src/lib.rs#L1-L2",
         "source_range": {"line_start": 1, "line_end": 2}
     });
@@ -474,7 +474,7 @@ fn apply_extra_allows_planner_chunk_fields_but_blocks_system_fields() {
 
     assert_eq!(payload["url"], "https://example.com/original");
     assert_eq!(payload["chunk_text"], "original");
-    assert_eq!(payload["content_kind"], "code");
+    assert_eq!(payload["chunk_content_kind"], "code");
     assert_eq!(payload["chunk_locator"], "src/lib.rs#L1-L2");
     assert_eq!(payload["source_range"]["line_start"], 1);
 }
@@ -506,7 +506,7 @@ Do not add a new merge helper. Make `apply_extra` visible to the test module if 
 
 In `src/vector/ops/qdrant/utils.rs`, bump `PAYLOAD_SCHEMA_VERSION` from `7` to `8`. Update the adjacent doc-comment to list v8 fields:
 
-- `content_kind`
+- `chunk_content_kind`
 - `chunk_locator`
 - `source_range`
 - `chunking_fallback`
@@ -661,7 +661,7 @@ Update `dir_embed_tags_code_and_prose_distinctly` so `lib.rs` produces one file-
 assert_eq!(rs.content_type, "text");
 assert!(rs.chunks.len() >= 1);
 assert_eq!(rs.chunks.len(), rs.chunk_extra.len());
-assert_eq!(rs.chunk_extra[0]["content_kind"], "code");
+assert_eq!(rs.chunk_extra[0]["chunk_content_kind"], "code");
 assert!(rs.chunk_extra[0]["chunk_locator"].as_str().unwrap().contains("lib.rs#L"));
 assert!(rs.chunk_extra[0]["code_line_start"].as_u64().is_some());
 ```
@@ -672,7 +672,7 @@ Add a regression test:
 #[tokio::test]
 async fn crawl_manifest_rs_url_stays_markdown_not_code() {
     // manifest maps local markdown file to https://example.com/src/lib.rs
-    // expected: content_type markdown, content_kind markdown, no code_line_start
+    // expected: content_type markdown, chunk_content_kind markdown, no code_line_start
 }
 ```
 
@@ -757,12 +757,12 @@ assert_eq!(extra["code_file_path"], "src/lib.rs");
 assert_eq!(extra["code_language"], "rust");
 assert!(extra.get("code_is_test").is_some());
 assert_eq!(doc.chunks.len(), doc.chunk_extra.len());
-assert_eq!(doc.chunk_extra[0]["content_kind"], "code");
+assert_eq!(doc.chunk_extra[0]["chunk_content_kind"], "code");
 assert!(doc.chunk_extra[0]["chunk_locator"].as_str().unwrap().contains("src/lib.rs#L"));
 assert!(doc.chunk_extra[0]["code_line_start"].as_u64().is_some());
 ```
 
-Add a test for markdown file ingest (`README.md`) proving `content_kind=markdown`, `code_chunk_source=markdown`, and existing git payload keys remain.
+Add a test for markdown file ingest (`README.md`) proving `chunk_content_kind=markdown`, `code_chunk_source=markdown`, and existing git payload keys remain.
 
 - [ ] **Step 2: Run git file tests and confirm failure**
 
@@ -876,7 +876,7 @@ using `prepare_plain_text_source`. Keep the current reserved-extra filtering in 
 For Reddit, YouTube, GitHub issues, GitLab/Gitea metadata docs, and sessions, add or update tests to assert:
 
 - existing provider-specific keys survive
-- `content_kind=plain_text`
+- `chunk_content_kind=plain_text`
 - chunks and `chunk_extra` lengths match
 - no provider builder needs to become async only to call plain-text chunking
 
@@ -984,7 +984,7 @@ Only the source_doc planner calls chunk_file/chunk_markdown/chunk_text.
 PreparedDoc is post-chunk and embed-ready.
 ```
 
-In `src/vector/CLAUDE.md`, document payload schema v8 and optionality of `content_kind`, `chunk_locator`, and `source_range` on mixed collections.
+In `src/vector/CLAUDE.md`, document payload schema v8 and optionality of `chunk_content_kind`, `chunk_locator`, and `source_range` on mixed collections.
 
 - [ ] **Step 3: Run audit/doc-adjacent tests**
 

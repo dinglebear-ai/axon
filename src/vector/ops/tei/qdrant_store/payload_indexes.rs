@@ -32,6 +32,7 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "code_file_path",
     "code_language",
     "code_file_type",
+    "chunk_content_kind",
     "code_chunking_method",
     "symbol_kind",
     // Vertical extractor fields.
