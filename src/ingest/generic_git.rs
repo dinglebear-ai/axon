@@ -144,9 +144,11 @@ pub(crate) async fn ingest_git_repository(
                 .await;
         }
     }
-    let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url.clone()).collect();
+    let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url().to_string()).collect();
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow!("{e}"))?
+        .require_success("generic git embed")
         .map_err(|e| anyhow!("{e}"))?;
     if include_source && skipped_files == 0 && summary.docs_failed == 0 {
         if let Err(err) = qdrant_delete_repo_file_fragments(

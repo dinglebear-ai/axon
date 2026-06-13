@@ -135,9 +135,8 @@ pub(crate) async fn embed_metadata(
         "gitlab",
         Some(project.path_with_namespace.clone()),
         Some(extra),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare gitlab metadata source failed: {err}"))?;
-    if doc.chunks.is_empty() {
+    );
+    if doc.is_empty() {
         return Ok(0);
     }
     embed_docs(cfg, vec![doc]).await
@@ -225,9 +224,8 @@ fn issue_doc(
         "gitlab",
         Some(format!("Issue #{}: {}", issue.iid, issue.title)),
         Some(extra),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare gitlab issue source failed: {err}"))?;
-    Ok((!doc.chunks.is_empty()).then_some(doc))
+    );
+    Ok((!doc.is_empty()).then_some(doc))
 }
 
 pub(crate) async fn embed_merge_requests(
@@ -300,9 +298,8 @@ fn merge_request_doc(
         "gitlab",
         Some(format!("MR !{}: {}", mr.iid, mr.title)),
         Some(extra),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare gitlab merge request source failed: {err}"))?;
-    Ok((!doc.chunks.is_empty()).then_some(doc))
+    );
+    Ok((!doc.is_empty()).then_some(doc))
 }
 
 pub(crate) async fn embed_wiki(
@@ -367,7 +364,6 @@ fn wiki_doc(
         "gitlab",
         Some(format!("Wiki: {}", page.title)),
         Some(extra),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare gitlab wiki source failed: {err}"))?;
-    Ok((!doc.chunks.is_empty()).then_some(doc))
+    );
+    Ok((!doc.is_empty()).then_some(doc))
 }

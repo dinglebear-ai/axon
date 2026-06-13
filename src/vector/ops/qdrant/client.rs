@@ -26,7 +26,6 @@ pub use scroll::{
     qdrant_urls_for_domain, qdrant_urls_for_domain_limited, qdrant_urls_for_domain_page,
 };
 
-#[cfg(test)]
 pub(crate) use delete::qdrant_delete_by_url_filter;
 #[cfg(test)]
 pub(crate) use scroll::qdrant_scroll_pages;

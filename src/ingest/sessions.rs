@@ -269,18 +269,16 @@ pub async fn prepare_sessions_request_batches(
 pub(crate) fn prepared_session_doc_from_session_doc(
     session_doc: SessionDoc,
 ) -> Result<PreparedSessionDoc, String> {
-    let platform = match session_doc.doc.source_type.as_str() {
+    let text = session_doc.raw_text;
+    let (url, source_type, title, extra) = session_doc.doc.into_session_fields();
+    let platform = match source_type.as_str() {
         "claude_session" => "claude",
         "codex_session" => "codex",
         "gemini_session" => "gemini",
         other => return Err(format!("unsupported session source_type: {other}")),
     }
     .to_string();
-    let extra = session_doc
-        .doc
-        .extra
-        .clone()
-        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    let extra = extra.unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
     let session_project = extra
         .get("project_name")
         .and_then(|value| value.as_str())
@@ -297,19 +295,11 @@ pub(crate) fn prepared_session_doc_from_session_doc(
         .get("session_file")
         .and_then(|value| value.as_str())
         .map(str::to_string)
-        .unwrap_or_else(|| {
-            session_doc
-                .doc
-                .url
-                .strip_prefix("file://")
-                .unwrap_or(&session_doc.doc.url)
-                .to_string()
-        });
-    let text = session_doc.raw_text;
+        .unwrap_or_else(|| url.strip_prefix("file://").unwrap_or(&url).to_string());
 
     Ok(PreparedSessionDoc {
-        url: session_doc.doc.url,
-        title: session_doc.doc.title,
+        url,
+        title,
         text,
         session_platform: platform,
         session_project,
@@ -349,17 +339,20 @@ async fn embed_session_docs(
 
         match embed_prepared_docs(&session_cfg, prepared, None).await {
             Ok(summary) => {
-                total += summary.chunks_embedded;
                 if summary.docs_failed > 0 {
                     let message = format!(
                         "sessions embed partial failure collection={} docs_failed={} docs_embedded={}",
                         session_cfg.collection, summary.docs_failed, summary.docs_embedded
                     );
                     if strict {
-                        return Err(message.into());
+                        return Err(summary
+                            .require_success("sessions embed")
+                            .expect_err("docs_failed checked")
+                            .into());
                     }
                     log_warn(&message);
                 }
+                total += summary.chunks_embedded;
                 if strict && doc_count > 0 && summary.chunks_embedded == 0 {
                     return Err(format!(
                         "sessions embed produced zero chunks for nonempty collection={}",

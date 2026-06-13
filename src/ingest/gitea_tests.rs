@@ -75,10 +75,10 @@ fn gitea_issue_doc_uses_plain_text_source_metadata() {
     .expect("issue prep should not fail")
     .expect("issue doc");
 
-    assert_eq!(doc.source_type, "gitea");
-    assert_eq!(doc.content_type, "text");
-    assert_eq!(doc.extra.as_ref().unwrap()["git_content_kind"], "issue");
-    assert_eq!(doc.chunk_extra[0]["chunk_content_kind"], "plain_text");
+    assert_eq!(doc.source_type(), "gitea");
+    assert_eq!(doc.content_type(), "text");
+    assert_eq!(doc.extra().unwrap()["git_content_kind"], "issue");
+    assert_eq!(doc.chunk_extra()[0]["chunk_content_kind"], "plain_text");
 }
 
 #[test]
@@ -108,8 +108,8 @@ fn gitea_pull_doc_uses_plain_text_source_metadata() {
     .expect("pull prep should not fail")
     .expect("pull doc");
 
-    assert_eq!(doc.source_type, "gitea");
-    assert_eq!(doc.content_type, "text");
-    assert_eq!(doc.extra.as_ref().unwrap()["git_content_kind"], "pr");
-    assert_eq!(doc.chunk_extra[0]["chunk_content_kind"], "plain_text");
+    assert_eq!(doc.source_type(), "gitea");
+    assert_eq!(doc.content_type(), "text");
+    assert_eq!(doc.extra().unwrap()["git_content_kind"], "pr");
+    assert_eq!(doc.chunk_extra()[0]["chunk_content_kind"], "plain_text");
 }

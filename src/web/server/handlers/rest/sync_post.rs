@@ -45,6 +45,11 @@ fn embed_scrape_doc_sync(
                 vec![doc],
                 None,
             ))
+            .and_then(|summary| {
+                summary
+                    .require_success("sync scrape embed")
+                    .map_err(|err| err.into())
+            })
             .map(|_| ())
             .map_err(|err| err.to_string())
     })

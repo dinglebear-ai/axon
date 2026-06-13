@@ -51,7 +51,13 @@ async fn file_source_attaches_existing_code_keys_and_new_locator_keys() {
         "https://github.com/owner/repo/blob/main/src/lib.rs".to_string(),
         "src/lib.rs".to_string(),
         "rs".to_string(),
-        "pub struct Parser;\nimpl Parser { pub fn parse(&self) {} }\n".to_string(),
+        format!(
+            "struct Response;\n\nimpl Response {{\n    pub fn parse(&self) {{\n{}\n    }}\n}}\n",
+            (0..90)
+                .map(|i| format!("        let value_{i} = {i};"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
         "github",
         Some("src/lib.rs".to_string()),
         Some(serde_json::json!({
@@ -79,8 +85,8 @@ async fn file_source_attaches_existing_code_keys_and_new_locator_keys() {
     let chunk_extra = prepared
         .chunk_extra
         .iter()
-        .find(|extra| extra.get("symbol_name").and_then(|v| v.as_str()) == Some("Parser::parse"))
-        .unwrap_or_else(|| prepared.chunk_extra.first().expect("chunk metadata"));
+        .find(|extra| extra.get("symbol_name").and_then(|v| v.as_str()) == Some("Response::parse"))
+        .expect("missing chunk metadata for symbol 'Response::parse'");
     assert_eq!(chunk_extra["chunk_content_kind"], "code");
     assert!(
         chunk_extra["chunk_locator"]

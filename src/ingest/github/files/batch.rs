@@ -232,17 +232,17 @@ async fn cleanup_stale_repo_file_urls(
 
 fn unique_file_count(docs: &[PreparedDoc]) -> usize {
     docs.iter()
-        .filter_map(|doc| doc.title.as_deref())
+        .filter_map(|doc| doc.title())
         .collect::<HashSet<_>>()
         .len()
 }
 
 fn chunk_count(docs: &[PreparedDoc]) -> usize {
-    docs.iter().map(|doc| doc.chunks.len()).sum()
+    docs.iter().map(|doc| doc.chunks().len()).sum()
 }
 
 fn urls_for_docs(docs: &[PreparedDoc]) -> HashSet<String> {
-    docs.iter().map(|doc| doc.url.clone()).collect()
+    docs.iter().map(|doc| doc.url().to_string()).collect()
 }
 
 /// Send a batch of docs to the embed pipeline and clear the buffer.
@@ -275,7 +275,9 @@ async fn flush_batch(
         "github embed_batch_done batch_size={count} chunks={} docs_failed={} elapsed_ms={elapsed_ms}",
         summary.chunks_embedded, summary.docs_failed
     ));
-    Ok(summary)
+    summary
+        .require_success("github file batch embed")
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 #[cfg(test)]

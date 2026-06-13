@@ -98,20 +98,20 @@ async fn gitlab_file_production_path_preserves_file_and_symbol_metadata() {
     let doc = prepare_source_document(source).await.expect("prepared");
 
     assert_eq!(
-        doc.url,
+        doc.url(),
         "https://gitlab.com/group/project/-/blob/main/src/lib.rs"
     );
-    assert_eq!(doc.source_type, "gitlab");
-    assert_eq!(doc.content_type, "text");
-    assert_eq!(doc.extra.as_ref().unwrap()["git_owner"], "group");
-    assert_eq!(doc.extra.as_ref().unwrap()["git_content_kind"], "file");
-    assert_eq!(doc.extra.as_ref().unwrap()["code_file_path"], rel);
-    assert_eq!(doc.chunks.len(), doc.chunk_extra.len());
+    assert_eq!(doc.source_type(), "gitlab");
+    assert_eq!(doc.content_type(), "text");
+    assert_eq!(doc.extra().unwrap()["git_owner"], "group");
+    assert_eq!(doc.extra().unwrap()["git_content_kind"], "file");
+    assert_eq!(doc.extra().unwrap()["code_file_path"], rel);
+    assert_eq!(doc.chunks().len(), doc.chunk_extra().len());
     assert!(
-        doc.chunk_extra
+        doc.chunk_extra()
             .iter()
             .any(|extra| extra["symbol_kind"].as_str() == Some("function")),
         "expected function symbol metadata: {:?}",
-        doc.chunk_extra
+        doc.chunk_extra()
     );
 }

@@ -15,20 +15,20 @@ async fn generic_file_docs_chunk_rust_as_code_with_symbols() {
         .await
         .unwrap();
     assert_eq!(docs.len(), 1);
-    assert_eq!(docs[0].chunks.len(), docs[0].chunk_extra.len());
-    let extra = docs[0].extra.as_ref().unwrap();
+    assert_eq!(docs[0].chunks().len(), docs[0].chunk_extra().len());
+    let extra = docs[0].extra().unwrap();
     assert_eq!(extra["code_file_type"], "source");
     assert_eq!(extra["code_file_path"], "lib.rs");
     assert!(
         docs[0]
-            .chunk_extra
+            .chunk_extra()
             .iter()
             .any(|extra| extra["code_chunking_method"] == "tree_sitter"),
         "expected at least one tree-sitter chunk"
     );
     assert!(
         docs[0]
-            .chunk_extra
+            .chunk_extra()
             .iter()
             .any(|extra| extra["symbol_kind"] == "function"),
         "expected at least one function-symbol chunk"
@@ -55,9 +55,12 @@ async fn generic_file_docs_mark_markdown_and_text_chunks_by_actual_chunker() {
         .await
         .unwrap();
 
-    assert_eq!(md_docs[0].chunk_extra[0]["chunk_content_kind"], "markdown");
     assert_eq!(
-        txt_docs[0].chunk_extra[0]["chunk_content_kind"],
+        md_docs[0].chunk_extra()[0]["chunk_content_kind"],
+        "markdown"
+    );
+    assert_eq!(
+        txt_docs[0].chunk_extra()[0]["chunk_content_kind"],
         "plain_text"
     );
 }

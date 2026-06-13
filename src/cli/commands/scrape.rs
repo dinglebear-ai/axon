@@ -280,6 +280,11 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.embed && !to_embed.is_empty() {
         embed_prepared_docs(cfg, to_embed, None)
             .await
+            .and_then(|summary| {
+                summary
+                    .require_success("scrape command embed")
+                    .map_err(|err| err.into())
+            })
             .map_err(|e| -> Box<dyn Error> { format!("embed failed: {e}").into() })?;
     }
 

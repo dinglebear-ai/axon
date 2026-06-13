@@ -47,7 +47,7 @@ pub async fn embed_path_native_with_progress(
     let prepared =
         prepare::prepare_embed_docs(cfg, input, &cfg.exclude_path_prefix, source_type).await?;
     if prepared.is_empty() {
-        return prepare::emit_empty_embed(progress_tx);
+        return Err(format!("embed prepared zero documents for input '{input}'").into());
     }
     let summary = super::pipeline::run_embed_pipeline(cfg, prepared, progress_tx)
         .await

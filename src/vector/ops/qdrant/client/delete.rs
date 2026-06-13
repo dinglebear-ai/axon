@@ -63,7 +63,6 @@ async fn qdrant_delete_with_retry(
 }
 
 /// Delete all Qdrant points matching `url` via payload filter.
-#[cfg(test)]
 pub(crate) async fn qdrant_delete_by_url_filter(cfg: &Config, url: &str) -> Result<()> {
     let client = internal_service_http_client()?;
     let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=true")?;
@@ -231,25 +230,14 @@ pub async fn qdrant_delete_local_file_fragments(cfg: &Config, file_url: &str) ->
         return Ok(0);
     }
 
-    let url_conditions: Vec<serde_json::Value> = stale
-        .iter()
-        .map(|url| serde_json::json!({"key": "url", "match": {"value": url}}))
-        .collect();
     let client = internal_service_http_client()?;
     let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
-    for batch in url_conditions.chunks(500) {
+    for batch in stale.chunks(500) {
+        let urls: Vec<&str> = batch.iter().map(String::as_str).collect();
         qdrant_delete_with_retry(
             client,
             &endpoint,
-            serde_json::json!({
-                "filter": {
-                    "must": [
-                        {"key": "domain", "match": {"value": "local"}},
-                        {"key": "source_type", "match": {"value": "embed"}}
-                    ],
-                    "should": batch
-                }
-            }),
+            local_legacy_fragment_delete_body(&urls),
             "qdrant_delete_local_file_fragments",
         )
         .await?;
@@ -322,7 +310,6 @@ fn local_legacy_fragment_scroll_filter() -> serde_json::Value {
     })
 }
 
-#[cfg(test)]
 fn local_legacy_fragment_delete_body(urls: &[&str]) -> serde_json::Value {
     let should: Vec<serde_json::Value> = urls
         .iter()

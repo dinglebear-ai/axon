@@ -315,9 +315,8 @@ async fn parse_claude_file(
         "claude_session",
         title,
         Some(extra),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare claude session source failed: {err}"))?;
-    if doc.chunks.is_empty() {
+    );
+    if doc.is_empty() {
         return Ok(None);
     }
     Ok(Some(SessionDoc {
