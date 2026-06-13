@@ -81,10 +81,6 @@ fn rejects_non_https_generic_git_target() {
 async fn file_docs_returns_empty_for_whitespace_only_file() {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
-    // Whitespace only — the prose chunker returns the raw whitespace text as one
-    // chunk, so `code_chunks` is non-empty and a PreparedDoc is emitted.
-    // Verify the path succeeds (no panic / error) and no chunk carries a
-    // tree-sitter symbol (whitespace has no extractable symbols).
     std::fs::write(root.join("empty.rs"), "   \n\n   \n").unwrap();
     let target = GenericGitTarget {
         host: "example.com".into(),
@@ -95,16 +91,10 @@ async fn file_docs_returns_empty_for_whitespace_only_file() {
     let docs = file_docs(root, &target, "main", root.join("empty.rs"), "git", "git")
         .await
         .unwrap();
-    // The prose chunker emits a chunk even for whitespace-only content, so the
-    // result is non-empty — but none of the docs should carry tree-sitter symbols.
-    for doc in &docs {
-        let extra = doc.extra.as_ref().unwrap();
-        assert_ne!(
-            extra.get("code_chunking_method").and_then(|v| v.as_str()),
-            Some("tree_sitter"),
-            "whitespace-only file should not produce tree-sitter symbol chunks"
-        );
-    }
+    assert!(
+        docs.is_empty(),
+        "whitespace-only files should produce no PreparedDocs"
+    );
 }
 
 #[tokio::test]

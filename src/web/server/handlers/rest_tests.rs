@@ -57,6 +57,103 @@ fn scrape_body_accepts_embed_override() {
     assert_eq!(parsed.embed, Some(false));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial]
+async fn v1_scrape_embed_true_runs_service_preparation_and_upsert() {
+    use axum::Json;
+    use axum::extract::State;
+    use httpmock::prelude::*;
+
+    let _loopback = crate::core::http::LoopbackGuard::allow();
+    let page = MockServer::start_async().await;
+    let tei = MockServer::start_async().await;
+    let qdrant = MockServer::start_async().await;
+    let collection = format!("rest_scrape_{}", Uuid::new_v4().simple());
+
+    page.mock_async(|when, then| {
+        when.method(GET).path("/doc");
+        then.status(200).body(format!(
+            "<html><head><title>Doc</title></head><body><main><h1>Doc</h1><p>{}</p></main></body></html>",
+            "REST scrape embed regression content. ".repeat(40)
+        ));
+    })
+    .await;
+    tei.mock_async(|when, then| {
+        when.method(POST).path("/embed");
+        then.status(200).json_body(serde_json::json!([[0.1, 0.2]]));
+    })
+    .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(GET).path(format!("/collections/{collection}"));
+            then.status(200).json_body(serde_json::json!({
+                "result": {
+                    "config": {
+                        "params": {
+                            "vectors": {"size": 2}
+                        }
+                    },
+                    "payload_schema": {}
+                }
+            }));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/index"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    let upsert = qdrant
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("/collections/{collection}/points"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(format!("/collections/{collection}/points/delete"));
+            then.status(200)
+                .json_body(serde_json::json!({"result": true}));
+        })
+        .await;
+
+    let mut cfg = crate::core::config::Config::test_default();
+    cfg.collection = collection;
+    cfg.tei_url = tei.base_url();
+    cfg.qdrant_url = qdrant.base_url();
+    cfg.render_mode = crate::core::config::RenderMode::Http;
+    cfg.embed = false;
+    let cfg = Arc::new(cfg);
+    let cell = Arc::new(OnceCell::new());
+    let state = crate::web::server::handlers::rest::state::RestState::new(
+        cfg,
+        cell,
+        &AuthPolicy::LoopbackDev,
+    );
+
+    let response = crate::web::server::handlers::rest::sync_post::v1_scrape(
+        State(state),
+        Json(crate::web::server::handlers::rest::types::ScrapeBody {
+            url: format!("{}/doc", page.base_url()),
+            embed: Some(true),
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        upsert.calls_async().await,
+        1,
+        "REST scrape embed=true should prepare and upsert one scrape document"
+    );
+}
+
 #[test]
 fn async_lifecycle_routes_are_declared_for_extract() {
     let routes = crate::web::server::handlers::rest::documented_rest_paths_for_tests();

@@ -26,18 +26,80 @@ fn repo_code_delete_body_is_scoped_to_one_repo_file_points() {
 }
 
 #[test]
+fn repo_file_filter_with_host_omits_owner_when_absent() {
+    let body = repo_file_points_filter_with_host("git", "example.com", None, "repo");
+    let must = body["must"].as_array().expect("must array");
+    assert!(must.contains(&serde_json::json!({
+        "key": "provider",
+        "match": {"value": "git"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "git_host",
+        "match": {"value": "example.com"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "git_repo",
+        "match": {"value": "repo"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "git_content_kind",
+        "match": {"value": "file"}
+    })));
+    assert!(
+        must.iter().all(|condition| condition["key"] != "git_owner"),
+        "generic git targets without owners must not require git_owner"
+    );
+}
+
+#[test]
+fn repo_file_filter_with_host_scopes_subgroup_owner() {
+    let body = repo_file_points_filter_with_host(
+        "gitlab",
+        "gitlab.com",
+        Some("group/subgroup"),
+        "project",
+    );
+    let must = body["must"].as_array().expect("must array");
+    assert!(must.contains(&serde_json::json!({
+        "key": "git_owner",
+        "match": {"value": "group/subgroup"}
+    })));
+}
+
+#[test]
+fn repo_legacy_fragment_candidates_require_exact_current_url_prefix() {
+    let current = HashSet::from([
+        "https://gitlab.com/group/project/-/blob/main/src/lib.rs".to_string(),
+        "https://gitlab.com/group/project/-/blob/main/src/lib.rsx".to_string(),
+    ]);
+    let stale = legacy_repo_fragment_urls(
+        [
+            "https://gitlab.com/group/project/-/blob/main/src/lib.rs#L1-L2".to_string(),
+            "https://gitlab.com/group/project/-/blob/main/src/lib.rsx#L1-L2".to_string(),
+            "https://gitlab.com/group/project/-/blob/main/src/lib.rs-old#L1-L2".to_string(),
+            "https://gitlab.com/group/project/-/blob/main/src/main.rs#L1-L2".to_string(),
+            "https://gitlab.com/group/project/-/blob/main/src/lib.rs".to_string(),
+        ],
+        &current,
+    );
+    assert_eq!(
+        stale,
+        vec![
+            "https://gitlab.com/group/project/-/blob/main/src/lib.rs#L1-L2",
+            "https://gitlab.com/group/project/-/blob/main/src/lib.rsx#L1-L2",
+        ]
+    );
+}
+
+#[test]
 fn local_fragment_cleanup_is_scoped_to_local_embed_legacy_urls() {
     let scroll = local_legacy_fragment_scroll_filter();
     let must = scroll["must"].as_array().expect("must array");
-    assert_eq!(must.len(), 2);
+    assert_eq!(must.len(), 1);
     assert!(
         must.iter().all(|condition| condition["key"] != "url"),
         "candidate scan must not depend on full-text URL matching; exact legacy prefix filtering happens in Rust"
     );
-    assert!(must.contains(&serde_json::json!({
-        "key": "domain",
-        "match": {"value": "local"}
-    })));
     assert!(must.contains(&serde_json::json!({
         "key": "source_type",
         "match": {"value": "embed"}
@@ -51,10 +113,12 @@ fn local_fragment_cleanup_is_scoped_to_local_embed_legacy_urls() {
             .all(|condition| condition["key"] != "code_file_path"),
         "cleanup must not match by non-unique path because that can delete git/provider points"
     );
-    assert!(delete_must.contains(&serde_json::json!({
-        "key": "domain",
-        "match": {"value": "local"}
-    })));
+    assert!(
+        delete_must
+            .iter()
+            .all(|condition| condition["key"] != "domain"),
+        "legacy local code fragments used parent-directory domains, not always domain=local"
+    );
     assert!(delete_must.contains(&serde_json::json!({
         "key": "source_type",
         "match": {"value": "embed"}

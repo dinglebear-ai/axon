@@ -34,16 +34,6 @@ pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {
     println!();
 }
 
-/// Convert a `ScrapeResult` into a `PreparedDoc` for direct embedding.
-/// Preserves `extra`, `extractor_name`, and `title` from vertical extractors —
-/// these are discarded if we go through the disk-write path instead.
-pub(crate) async fn scrape_result_to_prepared_doc(
-    cfg: &Config,
-    result: &crate::services::types::ScrapeResult,
-) -> anyhow::Result<PreparedDoc> {
-    scrape_service::scrape_result_to_prepared_doc(cfg, result).await
-}
-
 fn extractor_label(extractor: &str) -> &str {
     match extractor {
         "crates_io" => "crates.io",
@@ -338,7 +328,9 @@ async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<PreparedDoc>, Box<
     }
 
     if cfg.embed {
-        Ok(Some(scrape_result_to_prepared_doc(cfg, &result).await?))
+        Ok(Some(
+            scrape_service::scrape_result_to_prepared_doc(cfg, &result).await?,
+        ))
     } else {
         Ok(None)
     }

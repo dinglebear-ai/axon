@@ -382,9 +382,9 @@ async fn flush_and_cleanup(
                 url,
                 new_chunk_count,
             } => {
-                // chunk_count == 1 means the stale-tail filter is `chunk_index >= 1`,
-                // which matches zero points by construction — skip the no-op DELETE. (P-H1)
-                if new_chunk_count <= 1 {
+                // chunk_count == 0 would delete the whole URL; successful docs
+                // should never reach here empty, but keep the guard explicit.
+                if new_chunk_count == 0 {
                     continue;
                 }
                 if let Err(e) = qdrant_delete_stale_tail(cfg, &url, new_chunk_count).await {

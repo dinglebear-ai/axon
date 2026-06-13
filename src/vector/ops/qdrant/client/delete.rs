@@ -271,15 +271,7 @@ pub async fn qdrant_delete_repo_file_fragments(
         None,
     )
     .await?;
-    let stale: Vec<String> = indexed
-        .into_iter()
-        .filter(|url| {
-            !current_urls.contains(url)
-                && current_urls
-                    .iter()
-                    .any(|current| url.starts_with(&format!("{current}#L")))
-        })
-        .collect();
+    let stale = legacy_repo_fragment_urls(indexed, current_urls);
     if stale.is_empty() {
         return Ok(0);
     }
@@ -307,10 +299,24 @@ pub async fn qdrant_delete_repo_file_fragments(
     Ok(stale.len())
 }
 
+fn legacy_repo_fragment_urls(
+    indexed: impl IntoIterator<Item = String>,
+    current_urls: &HashSet<String>,
+) -> Vec<String> {
+    indexed
+        .into_iter()
+        .filter(|url| {
+            !current_urls.contains(url)
+                && current_urls
+                    .iter()
+                    .any(|current| url.starts_with(&format!("{current}#L")))
+        })
+        .collect()
+}
+
 fn local_legacy_fragment_scroll_filter() -> serde_json::Value {
     serde_json::json!({
         "must": [
-            {"key": "domain", "match": {"value": "local"}},
             {"key": "source_type", "match": {"value": "embed"}}
         ]
     })
@@ -325,7 +331,6 @@ fn local_legacy_fragment_delete_body(urls: &[&str]) -> serde_json::Value {
     serde_json::json!({
         "filter": {
             "must": [
-                {"key": "domain", "match": {"value": "local"}},
                 {"key": "source_type", "match": {"value": "embed"}}
             ],
             "should": should

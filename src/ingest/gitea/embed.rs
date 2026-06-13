@@ -16,12 +16,12 @@ use crate::ingest::git_files::embed_docs;
 pub(crate) fn payload(
     target: &GiteaTarget,
     repo: &GiteaRepo,
-    kind: &'static str,
+    kind: ContentKind,
     kind_extra: serde_json::Value,
 ) -> serde_json::Value {
     // Gitea uses "number" as the item number field (Q-H4: shared decoder)
     let (state, number, author, labels, is_draft, merged_at, created_at, updated_at) =
-        if matches!(kind, "issue" | "pull_request") {
+        if matches!(kind, ContentKind::Issue | ContentKind::Pr) {
             extract_git_item_fields(&kind_extra, "number")
         } else {
             (None, None, None, None, None, None, None, None)
@@ -32,7 +32,7 @@ pub(crate) fn payload(
         host: target.host.clone(),
         owner: Some(target.owner.clone()),
         repo: target.repo.clone(),
-        content_kind: ContentKind::from_wire(kind),
+        content_kind: kind,
         branch: repo.default_branch.clone(),
         state,
         number,
@@ -86,7 +86,7 @@ pub(crate) async fn embed_metadata(
         Some(payload(
             target,
             repo,
-            "repo_metadata",
+            ContentKind::RepoMetadata,
             serde_json::json!({
                 "private": repo.private,
                 "stars": repo.stars_count,
@@ -168,7 +168,7 @@ pub(crate) fn issue_doc(
         Some(payload(
             target,
             repo,
-            "issue",
+            ContentKind::Issue,
             serde_json::json!({
                 "number": issue.number,
                 "state": issue.state,
@@ -231,7 +231,7 @@ pub(crate) fn pull_doc(
         Some(payload(
             target,
             repo,
-            "pull_request",
+            ContentKind::Pr,
             serde_json::json!({
                 "number": pull.number,
                 "state": pull.state,

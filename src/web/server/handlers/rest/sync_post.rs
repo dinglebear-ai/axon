@@ -223,7 +223,7 @@ pub(crate) async fn v1_scrape(
         Err(err) => return map_service_error(err.as_ref()),
     };
     let doc = if cfg.embed {
-        match crate::cli::commands::scrape::scrape_result_to_prepared_doc(&cfg, &result).await {
+        match scrape_svc::scrape_result_to_prepared_doc(&cfg, &result).await {
             Ok(doc) => Some(doc),
             Err(err) => {
                 return rest_error(StatusCode::BAD_GATEWAY, "upstream_error", err.to_string());

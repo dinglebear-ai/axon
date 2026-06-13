@@ -32,6 +32,13 @@ pub(super) struct FileEmbedCtx {
     pub is_private: Option<bool>,
 }
 
+#[derive(Debug)]
+pub(super) enum FileEmbedRead {
+    Prepared(Vec<PreparedDoc>),
+    SkippedCleanupBlocking,
+    Empty,
+}
+
 /// Recursively walk `root` and return indexable file paths relative to `root`.
 ///
 /// Thin wrapper over the shared `file_ingest::collect_files` engine so GitHub
@@ -66,7 +73,7 @@ pub(super) async fn collect_indexable_files(
 pub(super) async fn read_file_embed_docs(
     ctx: &FileEmbedCtx,
     path: &str,
-) -> Result<Vec<PreparedDoc>, String> {
+) -> Result<FileEmbedRead, String> {
     let full_path = ctx.repo_root.join(path);
 
     match tokio::fs::metadata(&full_path).await {
@@ -75,7 +82,7 @@ pub(super) async fn read_file_embed_docs(
                 "command=ingest_github skip_large_file path={path} size_bytes={}",
                 meta.len()
             ));
-            return Ok(Vec::new());
+            return Ok(FileEmbedRead::SkippedCleanupBlocking);
         }
         Err(e) => {
             log_warn(&format!(
@@ -104,11 +111,11 @@ pub(super) async fn read_file_embed_docs(
         Ok(t) => t,
         Err(_) => {
             log_warn(&format!("command=ingest_github skip_non_utf8 path={path}"));
-            return Ok(Vec::new());
+            return Ok(FileEmbedRead::SkippedCleanupBlocking);
         }
     };
     if text.trim().is_empty() {
-        return Ok(Vec::new());
+        return Ok(FileEmbedRead::Empty);
     }
 
     let ext = file_extension(path);
@@ -159,7 +166,7 @@ pub(super) async fn read_file_embed_docs(
     let doc = prepare_source_document(source_doc)
         .await
         .map_err(|err| format!("prepare source document failed for {path}: {err}"))?;
-    Ok(vec![doc])
+    Ok(FileEmbedRead::Prepared(vec![doc]))
 }
 
 pub(super) fn build_file_embed_ctx(

@@ -65,6 +65,7 @@ pub async fn embed_files(
             "files_total": files_total,
             "chunks_embedded": stats.chunks_embedded,
             "file_read_failures": stats.failed_file_reads,
+            "cleanup_blocking_skips": stats.cleanup_blocking_skips,
             "embed_batches_failed": stats.failed_batches,
             "embed_files_failed": stats.failed_files,
             "embed_docs_failed": stats.failed_docs,
@@ -74,8 +75,9 @@ pub async fn embed_files(
         .await;
 
     log_info(&format!(
-        "github files_embedded total={files_total} read_failed={} batches_failed={} files_failed={} docs_failed={} chunks_failed={} chunks={}",
+        "github files_embedded total={files_total} read_failed={} cleanup_blocking_skips={} batches_failed={} files_failed={} docs_failed={} chunks_failed={} chunks={}",
         stats.failed_file_reads,
+        stats.cleanup_blocking_skips,
         stats.failed_batches,
         stats.failed_files,
         stats.failed_docs,
