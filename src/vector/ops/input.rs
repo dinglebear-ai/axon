@@ -96,6 +96,17 @@ pub fn chunk_text_with_offsets(text: &str) -> Vec<(usize, String)> {
 /// Use this for all markdown content (web crawl, GitHub READMEs, wikis).
 /// Use `chunk_text()` for plain text (Reddit posts, YouTube transcripts).
 pub fn chunk_markdown(text: &str) -> Vec<String> {
+    chunk_markdown_with_offsets(text)
+        .into_iter()
+        .map(|(_, _, chunk)| chunk)
+        .collect()
+}
+
+/// Like [`chunk_markdown`], but each chunk carries the original source byte
+/// range used to produce it. The rendered chunk may include repeated heading
+/// context, so callers should use the returned byte range for line accounting.
+#[must_use]
+pub fn chunk_markdown_with_offsets(text: &str) -> Vec<(usize, usize, String)> {
     let config = ChunkConfig::new(500..MARKDOWN_CHUNK_MAX)
         .with_overlap(CHUNK_OVERLAP)
         .expect("CHUNK_OVERLAP < max chunk size");
@@ -103,9 +114,10 @@ pub fn chunk_markdown(text: &str) -> Vec<String> {
     MarkdownSplitter::new(config)
         .chunk_indices(text)
         .map(|(offset, chunk)| {
-            chunk_with_heading_context(chunk, active_headings(&headings, offset))
+            let rendered = chunk_with_heading_context(chunk, active_headings(&headings, offset));
+            (offset, offset + chunk.len(), rendered)
         })
-        .filter(|c| !c.trim().is_empty())
+        .filter(|(_, _, c)| !c.trim().is_empty())
         .collect()
 }
 

@@ -27,6 +27,10 @@ pub(super) enum Extractor {
     None,
     Rust,
     Go,
+    Python,
+    JavaScript,
+    TypeScript,
+    Bash,
 }
 
 pub(super) fn language_for_extension(ext: &str) -> Option<LanguageSpec> {
@@ -37,19 +41,19 @@ pub(super) fn language_for_extension(ext: &str) -> Option<LanguageSpec> {
         }),
         "py" => Some(LanguageSpec {
             grammar: tree_sitter_python::LANGUAGE,
-            extractor: Extractor::None,
+            extractor: Extractor::Python,
         }),
         "js" | "jsx" => Some(LanguageSpec {
             grammar: tree_sitter_javascript::LANGUAGE,
-            extractor: Extractor::None,
+            extractor: Extractor::JavaScript,
         }),
         "ts" => Some(LanguageSpec {
             grammar: tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
-            extractor: Extractor::None,
+            extractor: Extractor::TypeScript,
         }),
         "tsx" => Some(LanguageSpec {
             grammar: tree_sitter_typescript::LANGUAGE_TSX,
-            extractor: Extractor::None,
+            extractor: Extractor::TypeScript,
         }),
         "go" => Some(LanguageSpec {
             grammar: tree_sitter_go::LANGUAGE,
@@ -57,7 +61,7 @@ pub(super) fn language_for_extension(ext: &str) -> Option<LanguageSpec> {
         }),
         "sh" | "bash" => Some(LanguageSpec {
             grammar: tree_sitter_bash::LANGUAGE,
-            extractor: Extractor::None,
+            extractor: Extractor::Bash,
         }),
         _ => None,
     }
@@ -66,6 +70,14 @@ pub(super) fn language_for_extension(ext: &str) -> Option<LanguageSpec> {
 static RUST_LANGUAGE: LazyLock<Language> =
     LazyLock::new(|| Language::from(tree_sitter_rust::LANGUAGE));
 static GO_LANGUAGE: LazyLock<Language> = LazyLock::new(|| Language::from(tree_sitter_go::LANGUAGE));
+static PYTHON_LANGUAGE: LazyLock<Language> =
+    LazyLock::new(|| Language::from(tree_sitter_python::LANGUAGE));
+static JAVASCRIPT_LANGUAGE: LazyLock<Language> =
+    LazyLock::new(|| Language::from(tree_sitter_javascript::LANGUAGE));
+static TYPESCRIPT_LANGUAGE: LazyLock<Language> =
+    LazyLock::new(|| Language::from(tree_sitter_typescript::LANGUAGE_TYPESCRIPT));
+static BASH_LANGUAGE: LazyLock<Language> =
+    LazyLock::new(|| Language::from(tree_sitter_bash::LANGUAGE));
 
 thread_local! {
     static PARSER: RefCell<Parser> = RefCell::new(Parser::new());
@@ -75,6 +87,10 @@ pub(super) fn extract_symbols(content: &str, extractor: Extractor) -> Vec<Symbol
     let language = match extractor {
         Extractor::Rust => &*RUST_LANGUAGE,
         Extractor::Go => &*GO_LANGUAGE,
+        Extractor::Python => &*PYTHON_LANGUAGE,
+        Extractor::JavaScript => &*JAVASCRIPT_LANGUAGE,
+        Extractor::TypeScript => &*TYPESCRIPT_LANGUAGE,
+        Extractor::Bash => &*BASH_LANGUAGE,
         Extractor::None => return Vec::new(),
     };
     PARSER.with(|slot| {
@@ -128,6 +144,10 @@ fn symbol_from_node(node: Node<'_>, content: &str, extractor: Extractor) -> Opti
     match extractor {
         Extractor::Rust => rust_symbol_from_node(node, content),
         Extractor::Go => go_symbol_from_node(node, content),
+        Extractor::Python => python_symbol_from_node(node, content),
+        Extractor::JavaScript => js_ts_symbol_from_node(node, content),
+        Extractor::TypeScript => js_ts_symbol_from_node(node, content),
+        Extractor::Bash => bash_symbol_from_node(node, content),
         Extractor::None => None,
     }
 }
@@ -180,6 +200,57 @@ fn go_symbol_from_node(node: Node<'_>, content: &str) -> Option<SymbolInfo> {
     Some(symbol_info(node, name, kind))
 }
 
+fn python_symbol_from_node(node: Node<'_>, content: &str) -> Option<SymbolInfo> {
+    let kind = match node.kind() {
+        "function_definition" => {
+            if let Some(class_name) = python_class_ancestor_name(node, content) {
+                return Some(symbol_info(
+                    node,
+                    node_name(node, content).map(|name| format!("{class_name}::{name}")),
+                    SymbolKind::Method,
+                ));
+            }
+            SymbolKind::Function
+        }
+        "class_definition" => SymbolKind::Struct,
+        _ => return None,
+    };
+    Some(symbol_info(node, node_name(node, content), kind))
+}
+
+fn js_ts_symbol_from_node(node: Node<'_>, content: &str) -> Option<SymbolInfo> {
+    let kind = match node.kind() {
+        "function_declaration" | "generator_function_declaration" => SymbolKind::Function,
+        "class_declaration" => SymbolKind::Struct,
+        "interface_declaration" | "type_alias_declaration" => SymbolKind::Type,
+        "method_definition" | "method_signature" => {
+            return Some(symbol_info(
+                node,
+                node_name(node, content).map(|name| {
+                    match js_ts_class_ancestor_name(node, content) {
+                        Some(parent) => format!("{parent}::{name}"),
+                        None => name,
+                    }
+                }),
+                SymbolKind::Method,
+            ));
+        }
+        _ => return None,
+    };
+    Some(symbol_info(node, node_name(node, content), kind))
+}
+
+fn bash_symbol_from_node(node: Node<'_>, content: &str) -> Option<SymbolInfo> {
+    if node.kind() != "function_definition" {
+        return None;
+    }
+    Some(symbol_info(
+        node,
+        bash_function_name(node, content),
+        SymbolKind::Function,
+    ))
+}
+
 fn symbol_info(node: Node<'_>, name: Option<String>, kind: SymbolKind) -> SymbolInfo {
     SymbolInfo {
         byte_start: node.start_byte(),
@@ -207,6 +278,41 @@ fn has_impl_parent(mut node: Node<'_>) -> bool {
         node = parent;
     }
     false
+}
+
+fn python_class_ancestor_name(mut node: Node<'_>, content: &str) -> Option<String> {
+    while let Some(parent) = node.parent() {
+        if parent.kind() == "class_definition" {
+            return node_name(parent, content);
+        }
+        node = parent;
+    }
+    None
+}
+
+fn js_ts_class_ancestor_name(mut node: Node<'_>, content: &str) -> Option<String> {
+    while let Some(parent) = node.parent() {
+        if matches!(parent.kind(), "class_declaration" | "class") {
+            return node_name(parent, content);
+        }
+        node = parent;
+    }
+    None
+}
+
+fn bash_function_name(node: Node<'_>, content: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if matches!(child.kind(), "word" | "command_name")
+            && let Ok(name) = child.utf8_text(content.as_bytes())
+        {
+            let name = name.trim();
+            if !name.is_empty() && name != "function" {
+                return Some(name.to_string());
+            }
+        }
+    }
+    node_name(node, content)
 }
 
 fn rust_impl_type_name(mut node: Node<'_>, content: &str) -> Option<String> {

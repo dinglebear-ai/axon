@@ -147,6 +147,11 @@ fn chunk_large_function_forces_split() {
         body.len(),
         chunks.len()
     );
+    assert!(
+        chunks.iter().all(|chunk| chunk.len() <= 2000),
+        "large function chunks must stay within max size: {:?}",
+        chunks.iter().map(String::len).collect::<Vec<_>>()
+    );
 }
 
 // ── chunk_code: cross-language ────────────────────────────────────────
@@ -228,10 +233,7 @@ fn symbol_extraction_status_is_observable() {
 
     let py = "def hello():\n    pass\n";
     let py_chunks = chunk_code_chunks(py, "py").unwrap();
-    assert_eq!(
-        code_symbol_extraction_status(py, "py", &py_chunks),
-        "unsupported"
-    );
+    assert_eq!(code_symbol_extraction_status(py, "py", &py_chunks), "ok");
 
     let text_chunks = vec![CodeChunk {
         text: "hello".into(),
@@ -242,6 +244,7 @@ fn symbol_extraction_status_is_observable() {
         declaration_start_line: 1,
         declaration_end_line: 1,
         symbol: None,
+        source: ChunkSource::Prose,
     }];
     assert_eq!(
         code_symbol_extraction_status("hello", "txt", &text_chunks),
@@ -250,7 +253,7 @@ fn symbol_extraction_status_is_observable() {
 }
 
 #[test]
-fn chunk_typed_python_uses_code_splitter_without_symbol_metadata() {
+fn chunk_typed_python_uses_code_splitter_with_symbol_metadata() {
     let mut src = String::new();
     for i in 0..40 {
         src.push_str(&format!(
@@ -259,8 +262,40 @@ fn chunk_typed_python_uses_code_splitter_without_symbol_metadata() {
     }
     let chunks = chunk_code_chunks(&src, "py").unwrap();
     assert!(chunks.len() > 1, "Python should stay code-split");
-    assert!(chunks.iter().all(|chunk| chunk.symbol_name().is_none()));
-    assert!(chunks.iter().all(|chunk| chunk.symbol_kind().is_none()));
+    assert!(
+        chunks
+            .iter()
+            .any(|chunk| chunk.symbol_name() == Some("func_0")
+                && chunk.symbol_kind() == Some(SymbolKind::Function))
+    );
+}
+
+#[test]
+fn chunk_typed_typescript_function_has_symbol_metadata() {
+    let src = "export function greet(name: string): string {\n    return `hi ${name}`;\n}\n";
+    let chunks = chunk_code_chunks(src, "ts").unwrap();
+    assert!(chunks.iter().any(|chunk| {
+        chunk.symbol_name() == Some("greet") && chunk.symbol_kind() == Some(SymbolKind::Function)
+    }));
+}
+
+#[test]
+fn chunk_typed_javascript_class_has_symbol_metadata() {
+    let src = "class Bridge {\n  connect() {\n    return true;\n  }\n}\n";
+    let chunks = chunk_code_chunks(src, "js").unwrap();
+    assert!(chunks.iter().any(|chunk| {
+        chunk.symbol_name() == Some("Bridge") && chunk.symbol_kind() == Some(SymbolKind::Struct)
+    }));
+}
+
+#[test]
+fn chunk_typed_bash_function_has_symbol_metadata() {
+    let src = "start_server() {\n  echo starting\n}\n";
+    let chunks = chunk_code_chunks(src, "sh").unwrap();
+    assert!(chunks.iter().any(|chunk| {
+        chunk.symbol_name() == Some("start_server")
+            && chunk.symbol_kind() == Some(SymbolKind::Function)
+    }));
 }
 
 #[test]
@@ -403,4 +438,24 @@ fn oversized_multibyte_chunk_splits_without_panic() {
     let chunks = chunk_code_chunks(&src, "rs").unwrap();
     assert!(!chunks.is_empty());
     assert!(chunks.iter().all(|chunk| !chunk.text.is_empty()));
+}
+
+#[test]
+fn postprocessed_chunks_do_not_exceed_max_size() {
+    let docs = "/// documentation ".repeat(90);
+    let src = format!(
+        "{docs}\nfn documented() {{\n{}\n}}\n",
+        "    let value = 1;\n".repeat(150)
+    );
+
+    let chunks = chunk_code_chunks(&src, "rs").unwrap();
+
+    assert!(
+        chunks.iter().all(|chunk| chunk.text.len() <= 2000),
+        "postprocessing must not produce oversized chunks: {:?}",
+        chunks
+            .iter()
+            .map(|chunk| chunk.text.len())
+            .collect::<Vec<_>>()
+    );
 }

@@ -1,6 +1,6 @@
 use super::*;
-use crate::vector::ops::input::code::Symbol;
 use crate::vector::ops::input::code::chunk::CodeChunk;
+use crate::vector::ops::input::code::{ChunkSource, Symbol};
 
 fn chunk(text: &str, start: u32, end: u32, kind: SymbolKind) -> CodeChunk {
     CodeChunk {
@@ -15,6 +15,7 @@ fn chunk(text: &str, start: u32, end: u32, kind: SymbolKind) -> CodeChunk {
             kind,
             name: Some("x".to_string()),
         }),
+        source: ChunkSource::TreeSitter,
     }
 }
 
