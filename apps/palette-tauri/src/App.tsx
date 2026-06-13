@@ -1,12 +1,13 @@
 import {
   ArrowLeft,
+  ChevronDown,
   ChevronRight,
   Search,
   Send,
   Settings,
   Workflow,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { ActionList } from "@/components/palette/ActionList";
@@ -28,6 +29,7 @@ import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import {
   argumentFor,
   argumentPlaceholder,
+  actionDisplayMeta,
   focusInput,
   hostLabel,
   looksLikeUrl,
@@ -59,6 +61,10 @@ export default function App() {
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
+  const [actionSwitcherOpen, setActionSwitcherOpen] = useState(false);
+  const [actionSwitcherQuery, setActionSwitcherQuery] = useState("");
+  const [actionSwitcherSelected, setActionSwitcherSelected] = useState(0);
+  const actionSwitcherRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
@@ -104,7 +110,11 @@ export default function App() {
       const modifier = event.metaKey || event.ctrlKey;
       if (event.key === "Escape") {
         event.preventDefault();
-        if (settingsOpen) {
+        if (actionSwitcherOpen) {
+          setActionSwitcherOpen(false);
+          setActionSwitcherQuery("");
+          focusInput(true);
+        } else if (settingsOpen) {
           setSettingsOpen(false);
         } else if (historyOpen) {
           setHistoryOpen(false);
@@ -135,7 +145,18 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [browseOpen, historyOpen, modeAction, query, run, settingsOpen]);
+  }, [actionSwitcherOpen, browseOpen, historyOpen, modeAction, query, run, settingsOpen]);
+
+  useEffect(() => {
+    if (!actionSwitcherOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (actionSwitcherRef.current?.contains(event.target as Node)) return;
+      setActionSwitcherOpen(false);
+      setActionSwitcherQuery("");
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [actionSwitcherOpen]);
 
   useEffect(() => {
     if (!config) return;
@@ -163,6 +184,20 @@ export default function App() {
       parsed.search,
     ).slice(0, 12);
   }, [parsed.invoked, parsed.search]);
+  const switcherActions = useMemo(
+    () => sortActionsForDisplay(ACTIONS).filter((action) => action.subcommand !== modeAction?.subcommand),
+    [modeAction?.subcommand],
+  );
+  const visibleSwitcherActions = useMemo(() => {
+    const search = actionSwitcherQuery.trim();
+    if (!search) return switcherActions;
+    return sortActionsByRelevance(
+      switcherActions.filter((action) => actionMatches(action, search)),
+      search,
+    );
+  }, [actionSwitcherQuery, switcherActions]);
+  const selectedSwitcherAction =
+    visibleSwitcherActions[Math.min(actionSwitcherSelected, Math.max(visibleSwitcherActions.length - 1, 0))];
   const suggestedAction = filtered[Math.min(selected, Math.max(filtered.length - 1, 0))];
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
@@ -173,16 +208,30 @@ export default function App() {
   // Once an action mode is picked, the input collects that action's argument —
   // the palette should NOT keep listing other actions. Stay compact (just the
   // command bar + mode pill) until the run produces output.
-  const enteringArgument = Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen;
+  const enteringArgument = Boolean(modeAction) && !actionSwitcherOpen && !showOutput && !settingsOpen && !historyOpen;
   const showContent =
-    settingsOpen || historyOpen || showOutput || (!enteringArgument && (hasQuery || browseOpen));
+    settingsOpen || historyOpen || showOutput || actionSwitcherOpen || (!enteringArgument && (hasQuery || browseOpen));
   const compact = !showContent;
   const showResultsLayout = showOutput || settingsOpen || historyOpen;
-  const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
+  const showActionPanel = !actionSwitcherOpen && !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
 
   useEffect(() => {
     setSelected(0);
   }, [parsed.search, modeAction]);
+
+  useEffect(() => {
+    if (!modeAction) setActionSwitcherOpen(false);
+  }, [modeAction]);
+
+  useEffect(() => {
+    setActionSwitcherSelected(0);
+  }, [actionSwitcherQuery, modeAction]);
+
+  useEffect(() => {
+    if (!actionSwitcherOpen) return;
+    const el = document.querySelector(".command-action-option-selected");
+    if (el instanceof HTMLElement) el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [actionSwitcherOpen, actionSwitcherSelected, visibleSwitcherActions]);
 
   useWindowChrome({
     jobExpanded,
@@ -230,6 +279,17 @@ export default function App() {
     focusInput(true);
   }
 
+  function switchActionMode(action: PaletteAction) {
+    setModeAction(action);
+    if (action.argMode === "none") setQuery("");
+    setSelected(0);
+    setRun({ kind: "idle" });
+    setBrowseOpen(false);
+    setActionSwitcherOpen(false);
+    setActionSwitcherQuery("");
+    focusInput(true);
+  }
+
   async function saveSettings() {
     if (!draftConfig) return;
     try {
@@ -246,6 +306,31 @@ export default function App() {
   }
 
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (actionSwitcherOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "ArrowDown") {
+        setActionSwitcherSelected((idx) => Math.min(idx + 1, Math.max(visibleSwitcherActions.length - 1, 0)));
+      } else if (event.key === "ArrowUp") {
+        setActionSwitcherSelected((idx) => Math.max(idx - 1, 0));
+      } else if (event.key === "Home") {
+        setActionSwitcherSelected(0);
+      } else if (event.key === "End") {
+        setActionSwitcherSelected(Math.max(visibleSwitcherActions.length - 1, 0));
+      } else if (event.key === "Enter") {
+        if (selectedSwitcherAction) switchActionMode(selectedSwitcherAction);
+      } else if (event.key === "Escape") {
+        setActionSwitcherOpen(false);
+        setActionSwitcherQuery("");
+        focusInput(true);
+      } else if (event.key === "Backspace") {
+        setActionSwitcherQuery((value) => value.slice(0, -1));
+      } else if (event.key.length === 1 && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        setActionSwitcherQuery((value) => `${value}${event.key}`);
+      }
+      return;
+    }
+
     if (event.key === "ArrowDown") {
       event.preventDefault();
       // Arrow-down is the keyboard affordance to browse all actions without
@@ -322,19 +407,69 @@ export default function App() {
         <span className="axon-divider" aria-hidden="true" />
         <div className="command-input-wrap" onClick={() => focusInput()}>
           {modeAction && ModeIcon ? (
-            <button
-              className={`command-mode-icon command-mode-icon-${modeAction.tone}`}
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setModeAction(null);
-                focusInput(true);
-              }}
-              aria-label={`Clear ${modeAction.subcommand} mode`}
-              title={`${modeAction.label} mode — click to clear`}
-            >
-              <ModeIcon size={16} strokeWidth={1.9} aria-hidden="true" />
-            </button>
+            <div className="command-action-switcher" ref={actionSwitcherRef}>
+              <button
+                className={`command-action-trigger command-mode-icon-${modeAction.tone}`}
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setActionSwitcherOpen((open) => {
+                    const next = !open;
+                    if (next) {
+                      setActionSwitcherQuery("");
+                      setActionSwitcherSelected(0);
+                    }
+                    return next;
+                  });
+                }}
+                aria-haspopup="menu"
+                aria-expanded={actionSwitcherOpen}
+                aria-label={`Switch from ${modeAction.label}`}
+                title={`Switch from ${modeAction.label}`}
+              >
+                <ModeIcon size={15} strokeWidth={1.9} aria-hidden="true" />
+                <span>{actionDisplayMeta(modeAction).label}</span>
+                <ChevronDown size={13} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+              {actionSwitcherOpen && (
+                <div className="command-action-menu" role="menu" aria-label="Switch action">
+                  {actionSwitcherQuery && (
+                    <div className="command-action-search" aria-live="polite">
+                      <span>Filter</span>
+                      <kbd>{actionSwitcherQuery}</kbd>
+                    </div>
+                  )}
+                  {visibleSwitcherActions.map((action, index) => {
+                    const Icon = actionIcon(action.subcommand);
+                    const meta = actionDisplayMeta(action);
+                    const selectedOption = index === actionSwitcherSelected;
+                    return (
+                      <button
+                        key={action.subcommand}
+                        className={`command-action-option command-action-option-${action.tone}${selectedOption ? " command-action-option-selected" : ""}`}
+                        type="button"
+                        role="menuitem"
+                        onMouseEnter={() => setActionSwitcherSelected(index)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          switchActionMode(action);
+                        }}
+                      >
+                        <Icon size={15} strokeWidth={1.85} aria-hidden="true" />
+                        <span>
+                          <strong>{meta.label}</strong>
+                          <small>{meta.input} to {meta.output}</small>
+                        </span>
+                        <kbd>{action.subcommand}</kbd>
+                      </button>
+                    );
+                  })}
+                  {!visibleSwitcherActions.length && (
+                    <div className="command-action-empty">No matching actions</div>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
             <Search size={16} strokeWidth={1.65} aria-hidden="true" />
           )}
