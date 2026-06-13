@@ -221,6 +221,7 @@ fn pipeline_test_doc(url: &str, chunks: Vec<&str>, local_cleanup: bool) -> super
         structured: None,
         chunk_extra: Vec::new(),
         local_legacy_fragment_url: local_cleanup.then(|| url.to_string()),
+        chunk_point_ids: Vec::new(),
     }
 }
 
