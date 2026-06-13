@@ -252,6 +252,7 @@ fn toml_ask_context_knobs_win_over_defaults() {
 
     assert_eq!(cfg.ask_max_context_chars, 123456);
     assert_eq!(cfg.ask_full_docs, 7);
+    assert!(cfg.ask_full_docs_explicit);
     assert_eq!(cfg.ask_backfill_chunks, 3);
     assert_eq!(cfg.ask_doc_fetch_concurrency, 9);
     assert_eq!(cfg.ask_doc_chunk_limit, 111);
@@ -296,6 +297,7 @@ fn env_wins_over_toml_for_ask_context_knobs() {
 
     assert_eq!(cfg.ask_max_context_chars, 222222);
     assert_eq!(cfg.ask_full_docs, 8);
+    assert!(cfg.ask_full_docs_explicit);
     assert_eq!(cfg.ask_backfill_chunks, 4);
     assert_eq!(cfg.ask_doc_fetch_concurrency, 10);
     assert_eq!(cfg.ask_doc_chunk_limit, 222);

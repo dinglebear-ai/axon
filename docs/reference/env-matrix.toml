@@ -863,6 +863,42 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_ASK_QUALITY_MIN_CANONICAL_SOURCES"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side ask-quality smoke-test assertion threshold; not Axon runtime config."
+
+[[env]]
+key = "AXON_ASK_QUALITY_MIN_FULL_DOCS"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side ask-quality smoke-test assertion threshold; not Axon runtime config."
+
+[[env]]
+key = "AXON_ASK_QUALITY_QUERY"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side ask-quality smoke-test query override; not Axon runtime config."
+
+[[env]]
 key = "AXON_ASK_HYBRID_CANDIDATES"
 classification = "move-toml"
 runtime_placement = "not-runtime"

@@ -14,6 +14,8 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.ask_candidate_limit = candidate_limit;
     cfg.ask_chunk_limit = chunk_limit;
     cfg.ask_full_docs = resolve_clamped_usize("AXON_ASK_FULL_DOCS", toml.ask.full_docs, 6, 1, 20);
+    cfg.ask_full_docs_explicit =
+        std::env::var_os("AXON_ASK_FULL_DOCS").is_some() || toml.ask.full_docs.is_some();
     cfg.ask_backfill_chunks = resolve_clamped_usize(
         "AXON_ASK_BACKFILL_CHUNKS",
         toml.ask.backfill_chunks,

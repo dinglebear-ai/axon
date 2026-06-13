@@ -1,4 +1,5 @@
 mod home;
+mod stream;
 
 use super::common::{
     HeadlessCommandRequest, HeadlessCommandSpec, PromptTransport, append_bounded_tail,
@@ -6,16 +7,22 @@ use super::common::{
 };
 use super::env::apply_env_allowlist;
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
-use serde_json::Value;
 use std::error::Error as StdError;
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Duration;
+use stream::GeminiStreamState;
 use tempfile::TempDir;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
+use tokio::task::JoinHandle;
 
 const DEFAULT_GEMINI_MODEL: &str = "gemini-3.1-flash-lite-preview";
+const PROMPT_ARG_MAX_BYTES: usize = 64 * 1024;
+const STDIN_PROMPT_PREAMBLE: &str =
+    "Read the complete task and context from stdin, then answer only that task.";
 
 pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec, String> {
     let args = vec![
@@ -38,6 +45,10 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
         args,
         prompt_transport: PromptTransport::Stdin,
         output_mode: "stream-json",
+    };
+    let spec = HeadlessCommandSpec {
+        prompt_transport: PromptTransport::Argument,
+        ..spec
     };
     spec.validate()?;
     Ok(spec)
@@ -69,8 +80,9 @@ fn configured_command_spec(
 fn validate_command_spec(
     spec: &HeadlessCommandSpec,
 ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-    if spec.program.contains('/') || spec.program.contains('\\') {
-        let path = Path::new(&spec.program);
+    let program = resolve_headless_program(&spec.program).unwrap_or_else(|_| spec.program.clone());
+    if program.contains('/') || program.contains('\\') {
+        let path = Path::new(&program);
         let metadata = fs::symlink_metadata(path)
             .map_err(|err| format!("failed to inspect AXON_HEADLESS_GEMINI_CMD: {err}"))?;
         if metadata.file_type().is_symlink() {
@@ -103,16 +115,27 @@ where
     let cwd = tempfile::tempdir()
         .map_err(|err| format!("failed to create isolated Gemini cwd: {err}"))?;
 
-    let mut child = spawn_gemini_child(&spec, &gemini_home, cwd.path())?;
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or("failed to open Gemini headless stdin")?;
     let prompt = joined_prompt(req.system_prompt.as_deref(), &req.user_prompt);
-    let stdin_task = tokio::spawn(async move {
-        stdin.write_all(prompt.as_bytes()).await?;
-        stdin.shutdown().await
-    });
+    let effective_transport = effective_prompt_transport(&spec, &prompt);
+    let mut child = spawn_gemini_child(
+        &spec,
+        &gemini_home,
+        cwd.path(),
+        &prompt,
+        effective_transport,
+    )?;
+    let stdin_task = if effective_transport == PromptTransport::Stdin {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or("failed to open Gemini headless stdin")?;
+        Some(tokio::spawn(async move {
+            stdin.write_all(prompt.as_bytes()).await?;
+            stdin.shutdown().await
+        }))
+    } else {
+        None
+    };
 
     let stdout = child
         .stdout
@@ -145,9 +168,13 @@ where
         Ok(result) => result,
         Err(_) => {
             let cleanup = kill_and_wait(&mut child).await;
-            stdin_task.abort();
+            if let Some(stdin_task) = &stdin_task {
+                stdin_task.abort();
+            }
             stderr_task.abort();
-            let _ = stdin_task.await;
+            if let Some(stdin_task) = stdin_task {
+                let _ = stdin_task.await;
+            }
             let _ = stderr_task.await;
             return Err(format!(
                 "Gemini headless timed out after {} seconds; cleanup: {cleanup}",
@@ -158,39 +185,16 @@ where
     };
     if let Err(err) = stream_result {
         let cleanup = kill_and_wait(&mut child).await;
-        let _ = stdin_task.await;
+        if let Some(stdin_task) = stdin_task {
+            let _ = stdin_task.await;
+        }
         let _ = stderr_task.await;
         return Err(format!("{err}; cleanup: {cleanup}").into());
     }
 
-    stdin_task
-        .await
-        .map_err(|err| format!("failed to join Gemini stdin writer: {err}"))??;
-    let status = match tokio::time::timeout(timeout, child.wait()).await {
-        Ok(status) => status?,
-        Err(_) => {
-            let cleanup = kill_and_wait(&mut child).await;
-            stderr_task.abort();
-            let _ = stderr_task.await;
-            return Err(format!(
-                "Gemini headless timed out waiting for process exit after {} seconds; cleanup: {cleanup}",
-                timeout.as_secs(),
-            )
-            .into());
-        }
-    };
-    let stderr = match tokio::time::timeout(timeout, stderr_task).await {
-        Ok(joined) => {
-            joined.map_err(|err| format!("failed to join Gemini stderr reader: {err}"))??
-        }
-        Err(_) => {
-            return Err(format!(
-                "Gemini headless timed out reading stderr after {} seconds",
-                timeout.as_secs()
-            )
-            .into());
-        }
-    };
+    let stderr_task = await_stdin_writer(stdin_task, &mut child, stderr_task, timeout).await?;
+    let status = wait_for_gemini_status(&mut child, &stderr_task, timeout).await?;
+    let stderr = read_gemini_stderr(stderr_task, timeout).await?;
 
     if !status.success() {
         return Err(format!(
@@ -204,16 +208,110 @@ where
     Ok(CompletionResponse { text, usage: None })
 }
 
+async fn await_stdin_writer(
+    stdin_task: Option<JoinHandle<io::Result<()>>>,
+    child: &mut Child,
+    stderr_task: JoinHandle<io::Result<Vec<u8>>>,
+    timeout: Duration,
+) -> Result<JoinHandle<io::Result<Vec<u8>>>, Box<dyn StdError + Send + Sync>> {
+    let Some(stdin_task) = stdin_task else {
+        return Ok(stderr_task);
+    };
+    if let Err(err) = stdin_task
+        .await
+        .map_err(|err| format!("failed to join Gemini stdin writer: {err}"))?
+    {
+        let status_text = wait_status_text(child, timeout).await;
+        let stderr_text = read_stderr_text(stderr_task, timeout).await;
+        return Err(format!(
+            "Gemini headless stdin write failed: {err}; process {status_text}; stderr: {stderr_text}"
+        )
+        .into());
+    }
+    Ok(stderr_task)
+}
+
+async fn wait_for_gemini_status(
+    child: &mut Child,
+    stderr_task: &JoinHandle<io::Result<Vec<u8>>>,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus, Box<dyn StdError + Send + Sync>> {
+    match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(status) => Ok(status?),
+        Err(_) => {
+            let cleanup = kill_and_wait(child).await;
+            stderr_task.abort();
+            Err(format!(
+                "Gemini headless timed out waiting for process exit after {} seconds; cleanup: {cleanup}",
+                timeout.as_secs(),
+            )
+            .into())
+        }
+    }
+}
+
+async fn read_gemini_stderr(
+    stderr_task: JoinHandle<io::Result<Vec<u8>>>,
+    timeout: Duration,
+) -> Result<Vec<u8>, Box<dyn StdError + Send + Sync>> {
+    match tokio::time::timeout(timeout, stderr_task).await {
+        Ok(joined) => joined
+            .map_err(|err| format!("failed to join Gemini stderr reader: {err}"))?
+            .map_err(Into::into),
+        Err(_) => Err(format!(
+            "Gemini headless timed out reading stderr after {} seconds",
+            timeout.as_secs()
+        )
+        .into()),
+    }
+}
+
+async fn wait_status_text(child: &mut Child, timeout: Duration) -> String {
+    match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(status)) => status.to_string(),
+        Ok(Err(wait_err)) => format!("wait failed: {wait_err}"),
+        Err(_) => "timed out waiting for process exit".to_string(),
+    }
+}
+
+async fn read_stderr_text(
+    stderr_task: JoinHandle<io::Result<Vec<u8>>>,
+    timeout: Duration,
+) -> String {
+    match tokio::time::timeout(timeout, stderr_task).await {
+        Ok(Ok(Ok(stderr))) => redacted_stderr_tail(&stderr),
+        Ok(Ok(Err(read_err))) => format!("stderr read failed: {read_err}"),
+        Ok(Err(join_err)) => format!("stderr join failed: {join_err}"),
+        Err(_) => "timed out reading stderr".to_string(),
+    }
+}
+
 fn spawn_gemini_child(
     spec: &HeadlessCommandSpec,
     gemini_home: &TempDir,
     cwd: &Path,
+    prompt: &str,
+    effective_transport: PromptTransport,
 ) -> Result<Child, Box<dyn StdError + Send + Sync>> {
-    let mut command = Command::new(&spec.program);
+    let program = resolve_headless_program(&spec.program)?;
+    let mut command = Command::new(&program);
+    let mut args = spec.args.clone();
+    if let Some(idx) = args.iter().position(|arg| arg == "--prompt")
+        && let Some(value) = args.get_mut(idx + 1)
+    {
+        *value = match effective_transport {
+            PromptTransport::Argument => prompt.to_string(),
+            PromptTransport::Stdin => STDIN_PROMPT_PREAMBLE.to_string(),
+        }
+    }
     command
-        .args(&spec.args)
+        .args(&args)
         .current_dir(cwd)
-        .stdin(Stdio::piped())
+        .stdin(if effective_transport == PromptTransport::Stdin {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
@@ -228,6 +326,36 @@ fn spawn_gemini_child(
     command
         .spawn()
         .map_err(|err| format!("failed to spawn Gemini headless command: {err}").into())
+}
+
+fn resolve_headless_program(program: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
+    if program.contains('/') || program.contains('\\') || program != "gemini" {
+        return Ok(program.to_string());
+    }
+    match std::process::Command::new("mise")
+        .args(["which", "gemini"])
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                if let Ok(real_path) = fs::canonicalize(&path) {
+                    return Ok(real_path.display().to_string());
+                }
+                return Ok(path);
+            }
+        }
+        _ => {}
+    }
+    Ok(program.to_string())
+}
+
+fn effective_prompt_transport(spec: &HeadlessCommandSpec, prompt: &str) -> PromptTransport {
+    if spec.prompt_transport == PromptTransport::Argument && prompt.len() <= PROMPT_ARG_MAX_BYTES {
+        PromptTransport::Argument
+    } else {
+        PromptTransport::Stdin
+    }
 }
 
 pub async fn complete_text(
@@ -256,9 +384,7 @@ async fn kill_and_wait(child: &mut Child) -> String {
     }
 }
 
-async fn read_bounded_stderr(
-    stderr: tokio::process::ChildStderr,
-) -> Result<Vec<u8>, std::io::Error> {
+async fn read_bounded_stderr(stderr: tokio::process::ChildStderr) -> Result<Vec<u8>, io::Error> {
     let mut tail = Vec::new();
     let mut reader = BufReader::new(stderr);
     let mut chunk = [0u8; 1024];
@@ -271,155 +397,8 @@ async fn read_bounded_stderr(
     }
 }
 
-fn completion_timeout(config: &LlmBackendConfig) -> std::time::Duration {
-    std::time::Duration::from_secs(config.completion_timeout_secs.max(1))
-}
-
-#[derive(Default)]
-struct GeminiStreamState {
-    text: String,
-    result_text: Option<String>,
-    saw_success: bool,
-}
-
-impl GeminiStreamState {
-    fn handle_line<F>(
-        &mut self,
-        line: &str,
-        on_delta: &mut F,
-    ) -> Result<(), Box<dyn StdError + Send + Sync>>
-    where
-        F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
-    {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            return Ok(());
-        }
-        let value: Value = serde_json::from_str(trimmed)
-            .map_err(|err| format!("malformed Gemini stream JSON: {err}: {trimmed}"))?;
-        match value.get("type").and_then(Value::as_str) {
-            Some("tool_use") => {
-                // Permitted tool calls for synthesis mode:
-                // - "activate_skill": loads the axon-rag-synthesize skill (intentional)
-                // - "update_topic": Gemini 0.41.2+ internal session management (harmless)
-                // All other tool_use events indicate unexpected tool execution and are rejected.
-                // Field name changed from "name" to "tool_name" in Gemini CLI 0.41.2.
-                let tool_name = value
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .or_else(|| value.get("tool_name").and_then(Value::as_str));
-                let permitted = matches!(tool_name, Some("activate_skill") | Some("update_topic"));
-                if !permitted {
-                    return Err(format!(
-                        "Gemini headless emitted unexpected tool call '{}' in synthesis mode; raw event: {value}",
-                        tool_name.unwrap_or("unknown")
-                    )
-                    .into());
-                }
-            }
-            Some("tool_result") => {
-                // tool_result from activate_skill — skill content injected into context.
-                // No text to accumulate; continue to collect the model's final response.
-            }
-            Some("error") => {
-                return Err(format!("Gemini headless stream error: {value}").into());
-            }
-            Some("message") => {
-                if value.get("role").and_then(Value::as_str) == Some("assistant")
-                    && let Some(delta) = message_content(&value)
-                {
-                    self.push_delta(&delta, on_delta)?;
-                }
-            }
-            Some("result") => self.handle_result(&value)?,
-            _ if contains_tool_event(&value) => {
-                return Err("Gemini headless emitted a tool event in synthesis-only mode".into());
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    fn handle_result(&mut self, value: &Value) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        if value.get("status").and_then(Value::as_str) != Some("success") {
-            return Err(format!("Gemini headless returned unsuccessful result: {value}").into());
-        }
-        // Per-event whitelist (activate_skill, update_topic) is the primary defence.
-        // The stats tool_calls count is no longer used as a secondary gate — Gemini
-        // 0.41.2+ calls update_topic automatically, making the count unreliable.
-        if let Some(text) = value.get("response").and_then(Value::as_str)
-            && !text.trim().is_empty()
-        {
-            self.result_text = Some(text.to_string());
-        }
-        self.saw_success = true;
-        Ok(())
-    }
-
-    fn push_delta<F>(
-        &mut self,
-        delta: &str,
-        on_delta: &mut F,
-    ) -> Result<(), Box<dyn StdError + Send + Sync>>
-    where
-        F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
-    {
-        if delta.is_empty() {
-            return Ok(());
-        }
-        self.text.push_str(delta);
-        on_delta(delta)
-    }
-
-    fn finish(self) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        if !self.saw_success {
-            return Err("Gemini headless stream ended without a success result".into());
-        }
-        if !self.text.trim().is_empty() {
-            return Ok(self.text);
-        }
-        if let Some(result) = self.result_text
-            && !result.trim().is_empty()
-        {
-            return Ok(result);
-        }
-        Err("Gemini headless returned no answer text".into())
-    }
-}
-
-fn message_content(value: &Value) -> Option<String> {
-    if let Some(content) = value.get("content").and_then(Value::as_str) {
-        return Some(content.to_string());
-    }
-    if let Some(parts) = value.get("content").and_then(Value::as_array) {
-        let mut out = String::new();
-        for part in parts {
-            if let Some(text) = part.as_str() {
-                out.push_str(text);
-            } else if let Some(text) = part.get("text").and_then(Value::as_str) {
-                out.push_str(text);
-            }
-        }
-        return (!out.is_empty()).then_some(out);
-    }
-    None
-}
-
-fn contains_tool_event(value: &Value) -> bool {
-    match value {
-        Value::String(s) => matches!(s.as_str(), "tool_use" | "tool_result"),
-        Value::Array(items) => items.iter().any(contains_tool_event),
-        Value::Object(map) => map.iter().any(|(key, value)| {
-            key == "tool_use"
-                || key == "tool_result"
-                || (key == "type"
-                    && value
-                        .as_str()
-                        .is_some_and(|s| s == "tool_use" || s == "tool_result"))
-                || contains_tool_event(value)
-        }),
-        _ => false,
-    }
+fn completion_timeout(config: &LlmBackendConfig) -> Duration {
+    Duration::from_secs(config.completion_timeout_secs.max(1))
 }
 
 #[cfg(test)]

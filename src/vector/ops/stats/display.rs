@@ -58,6 +58,16 @@ fn print_vector_stats(stats: &serde_json::Value) {
     );
     println!(
         "  {} {}",
+        muted("Avg Chunk Tokens (est):"),
+        accent(&avg_stat_text(stats, "avg_chunk_tokens_estimate", ""))
+    );
+    println!(
+        "  {} {}",
+        muted("Avg Doc Tokens (est):"),
+        accent(&avg_stat_text(stats, "avg_doc_tokens_estimate", ""))
+    );
+    println!(
+        "  {} {}",
         muted("Dimension:"),
         fmt_count(&stats["dimension"])
     );

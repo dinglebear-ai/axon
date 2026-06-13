@@ -1,6 +1,14 @@
 use crate::core::config::Config;
 use crate::vector::ops::ranking;
+use spider::url::Url;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct CitationValidationSummary {
+    pub(crate) valid: bool,
+    pub(crate) issues: Vec<String>,
+    pub(crate) canonical_citation_count: usize,
+}
 
 pub(crate) fn strip_sources_section(answer: &str) -> String {
     let lower = answer.to_ascii_lowercase();
@@ -11,6 +19,52 @@ pub(crate) fn strip_sources_section(answer: &str) -> String {
         return answer[..idx].trim_end().to_string();
     }
     answer.trim_end().to_string()
+}
+
+pub(crate) fn summarize_citation_validation(answer: &str) -> CitationValidationSummary {
+    let issues = extract_validation_issues(answer);
+    let valid = issues.is_empty() && !answer.trim_start().starts_with("Insufficient evidence");
+    CitationValidationSummary {
+        valid,
+        issues,
+        canonical_citation_count: count_canonical_source_lines(answer),
+    }
+}
+
+fn extract_validation_issues(answer: &str) -> Vec<String> {
+    let Some(idx) = answer.find("## Citation Validation Failed") else {
+        if answer.trim_start().starts_with("Insufficient evidence") {
+            return vec!["Insufficient evidence in indexed sources.".to_string()];
+        }
+        return Vec::new();
+    };
+    answer[idx + "## Citation Validation Failed".len()..]
+        .lines()
+        .map(str::trim)
+        .take_while(|line| !line.starts_with("## "))
+        .filter_map(|line| line.strip_prefix("- ").map(str::trim))
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn count_canonical_source_lines(answer: &str) -> usize {
+    let mut in_sources = false;
+    let mut count = 0usize;
+    for line in answer.lines() {
+        let trimmed = line.trim_start();
+        if trimmed == "## Sources" || trimmed == "## Retrieved Sources" {
+            in_sources = true;
+            continue;
+        }
+        if in_sources && trimmed.starts_with("## ") {
+            break;
+        }
+        if in_sources && trimmed.starts_with("- [S") && trimmed.contains(']') {
+            count += 1;
+        }
+    }
+    count
 }
 
 pub(crate) fn extract_cited_source_ids(text: &str) -> BTreeSet<usize> {
@@ -151,6 +205,29 @@ fn indicates_insufficient_evidence(body: &str) -> bool {
         || lower.contains("no relevant information")
 }
 
+fn canonical_source_identity(source: &str) -> String {
+    let Ok(parsed) = Url::parse(source) else {
+        return strip_route_variant_suffix(source.trim_end_matches('/')).to_ascii_lowercase();
+    };
+    let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+    let mut path = parsed.path().trim_end_matches('/').to_ascii_lowercase();
+    if let Some(stripped) = path
+        .strip_suffix("/index.html")
+        .or_else(|| path.strip_suffix("/index"))
+    {
+        path = stripped.to_string();
+    }
+    path = strip_route_variant_suffix(&path).to_string();
+    format!("{host}{path}")
+}
+
+fn strip_route_variant_suffix(path: &str) -> &str {
+    path.strip_suffix(".md")
+        .or_else(|| path.strip_suffix(".mdx"))
+        .or_else(|| path.strip_suffix(".html"))
+        .unwrap_or(path)
+}
+
 fn is_non_trivial(query: &str, body: &str) -> bool {
     let query_tokens = ranking::tokenize_query(query);
     let body_words = body.split_whitespace().count();
@@ -179,7 +256,7 @@ fn format_insufficient_evidence(
             ids.iter()
                 .filter_map(|id| {
                     source_map.get(id).and_then(|source| {
-                        if seen_sources.insert(source.clone()) {
+                        if seen_sources.insert(canonical_source_identity(source)) {
                             Some(format!("- [S{id}] {source}"))
                         } else {
                             None
@@ -232,7 +309,7 @@ fn format_validation_failure(
             .iter()
             .filter_map(|id| {
                 source_map.get(id).and_then(|source| {
-                    if seen_sources.insert(source.clone()) {
+                    if seen_sources.insert(canonical_source_identity(source)) {
                         Some(format!("- [S{id}] {source}"))
                     } else {
                         None
@@ -244,7 +321,7 @@ fn format_validation_failure(
             .iter()
             .take(8)
             .filter_map(|(id, source)| {
-                if seen_sources.insert(source.clone()) {
+                if seen_sources.insert(canonical_source_identity(source)) {
                     Some(format!("- [S{id}] {source}"))
                 } else {
                     None
@@ -300,15 +377,16 @@ pub(crate) fn normalize_ask_answer(
         let Some(source) = source_map.get(id) else {
             continue;
         };
-        if let Some(display_id) = display_id_by_source.get(source) {
+        let source_identity = canonical_source_identity(source);
+        if let Some(display_id) = display_id_by_source.get(&source_identity) {
             display_id_by_original_id.insert(*id, *display_id);
             continue;
         }
-        if !seen_sources.insert(source.clone()) {
+        if !seen_sources.insert(source_identity.clone()) {
             continue;
         }
         let display_id = source_lines.len() + 1;
-        display_id_by_source.insert(source.clone(), display_id);
+        display_id_by_source.insert(source_identity, display_id);
         display_id_by_original_id.insert(*id, display_id);
         source_lines.push(format!("- [S{display_id}] {source}"));
     }

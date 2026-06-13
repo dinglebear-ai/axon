@@ -2,6 +2,9 @@ use crate::core::config::Config;
 use crate::jobs::store::open_sqlite_pool;
 use sqlx::SqlitePool;
 
+const ESTIMATED_CHARS_PER_CHUNK: f64 = 2000.0;
+const ESTIMATED_CHARS_PER_TOKEN: f64 = 4.0;
+
 #[derive(Default)]
 pub(super) struct JobMetrics {
     pub(super) crawl_count: Option<i64>,
@@ -14,6 +17,8 @@ pub(super) struct JobMetrics {
     pub(super) most_chunks: Option<serde_json::Value>,
     pub(super) total_chunks: Option<i64>,
     pub(super) total_docs: Option<i64>,
+    pub(super) avg_chunk_tokens_estimate: Option<f64>,
+    pub(super) avg_doc_tokens_estimate: Option<f64>,
     pub(super) base_urls_count: Option<i64>,
     pub(super) scrape_count: Option<i64>,
     pub(super) query_count: Option<i64>,
@@ -72,10 +77,28 @@ async fn collect_sqlite_metrics(pool: &SqlitePool) -> JobMetrics {
     let (total_docs, total_chunks) = embed_totals(pool).await;
     m.total_docs = total_docs;
     m.total_chunks = total_chunks;
+    m.avg_chunk_tokens_estimate = Some(estimated_avg_chunk_tokens());
+    m.avg_doc_tokens_estimate = estimated_avg_doc_tokens(total_docs, total_chunks);
     m.most_chunks = most_chunks_job(pool).await;
     m.longest_crawl = longest_crawl_job(pool).await;
 
     m
+}
+
+pub(super) fn estimated_avg_chunk_tokens() -> f64 {
+    ESTIMATED_CHARS_PER_CHUNK / ESTIMATED_CHARS_PER_TOKEN
+}
+
+pub(super) fn estimated_avg_doc_tokens(
+    total_docs: Option<i64>,
+    total_chunks: Option<i64>,
+) -> Option<f64> {
+    let docs = total_docs?;
+    if docs <= 0 {
+        return None;
+    }
+    let chunks = total_chunks?;
+    Some((chunks as f64 / docs as f64) * estimated_avg_chunk_tokens())
 }
 
 async fn count_completed(pool: &SqlitePool, table: &str) -> Option<i64> {
@@ -178,4 +201,21 @@ async fn longest_crawl_job(pool: &SqlitePool) -> Option<serde_json::Value> {
     let row: Option<(String, Option<f64>)> =
         sqlx::query_as(q).fetch_optional(pool).await.ok().flatten();
     row.and_then(|(id, secs)| secs.map(|s| serde_json::json!({"id": id, "seconds": s})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{estimated_avg_chunk_tokens, estimated_avg_doc_tokens};
+
+    #[test]
+    fn estimates_token_averages_from_chunk_and_doc_totals() {
+        assert_eq!(estimated_avg_chunk_tokens(), 500.0);
+        assert_eq!(estimated_avg_doc_tokens(Some(4), Some(40)), Some(5_000.0));
+    }
+
+    #[test]
+    fn token_average_is_absent_without_docs() {
+        assert_eq!(estimated_avg_doc_tokens(Some(0), Some(40)), None);
+        assert_eq!(estimated_avg_doc_tokens(None, Some(40)), None);
+    }
 }

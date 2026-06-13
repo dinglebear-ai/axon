@@ -1,6 +1,6 @@
 {
   "name": "@axon/admin-panel",
-  "version": "5.9.1",
+  "version": "5.9.2",
   "private": true,
   "scripts": {
     "build": "next build",

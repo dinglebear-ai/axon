@@ -298,6 +298,7 @@ fn ask_result_exposes_typed_answer() {
     let r = AskResult {
         query: "question".to_string(),
         answer: "42".to_string(),
+        citation_validation: None,
         session: None,
         warnings: Vec::new(),
         diagnostics: None,

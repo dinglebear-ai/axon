@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+AXON_BIN="${AXON_BIN:-./target/debug/axon}"
+QUERY="${AXON_ASK_QUALITY_QUERY:-how do you create a Claude Code plugin?}"
+MIN_FULL_DOCS="${AXON_ASK_QUALITY_MIN_FULL_DOCS:-4}"
+MIN_CANONICAL_SOURCES="${AXON_ASK_QUALITY_MIN_CANONICAL_SOURCES:-2}"
+
+if [[ ! -x "$AXON_BIN" ]]; then
+  echo "axon binary not found or not executable: $AXON_BIN" >&2
+  echo "Build it first, for example: cargo build --bin axon" >&2
+  exit 2
+fi
+
+explain_json="$(mktemp)"
+answer_json="$(mktemp)"
+trap 'rm -f "$explain_json" "$answer_json"' EXIT
+
+"$AXON_BIN" ask --explain --json "$QUERY" >"$explain_json"
+"$AXON_BIN" ask --no-stream --json "$QUERY" >"$answer_json"
+
+python - "$explain_json" "$answer_json" "$MIN_FULL_DOCS" "$MIN_CANONICAL_SOURCES" <<'PY'
+import json
+import sys
+
+explain_path, answer_path, min_full_docs_raw, min_sources_raw = sys.argv[1:]
+min_full_docs = int(min_full_docs_raw)
+min_sources = int(min_sources_raw)
+
+with open(explain_path, "r", encoding="utf-8") as fh:
+    explain = json.load(fh)
+with open(answer_path, "r", encoding="utf-8") as fh:
+    answer_payload = json.load(fh)
+
+validation = answer_payload.get("citation_validation") or {}
+answer = answer_payload.get("answer") or ""
+explain_context = ((explain.get("explain") or {}).get("context") or {})
+final_sources = explain_context.get("final_source_order") or []
+full_doc_source_count = sum(1 for source in final_sources if source.get("tier") == "full_doc")
+
+failures = []
+if full_doc_source_count < min_full_docs:
+    failures.append(
+        f"full_doc sources in explain context={full_doc_source_count} < {min_full_docs}"
+    )
+if validation.get("valid") is not True:
+    failures.append(f"citation_validation invalid: {validation.get('issues')}")
+if validation.get("canonical_citation_count", 0) < min_sources:
+    failures.append(
+        "canonical_citation_count="
+        f"{validation.get('canonical_citation_count')} < {min_sources}"
+    )
+if "Citation Validation Failed" in answer:
+    failures.append("answer contains Citation Validation Failed")
+if not final_sources or final_sources[0].get("tier") != "full_doc":
+    failures.append("first final context source is not a full_doc")
+
+if failures:
+    print("ask quality smoke FAILED", file=sys.stderr)
+    for failure in failures:
+        print(f"- {failure}", file=sys.stderr)
+    sys.exit(1)
+
+print("ask quality smoke passed")
+print(
+    "final_full_doc_sources="
+    f"{full_doc_source_count} "
+    "canonical_citation_count="
+    f"{validation.get('canonical_citation_count')} "
+    "first_context_tier="
+    f"{final_sources[0].get('tier') if final_sources else 'none'}"
+)
+PY

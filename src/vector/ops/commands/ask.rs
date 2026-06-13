@@ -1,7 +1,7 @@
 use crate::core::ask_explain::{CorpusHealthDiagnostic, CorpusHealthKind};
 use crate::core::config::Config;
 use crate::core::llm;
-use crate::core::logging::log_info;
+use crate::core::logging::{log_info, log_warn};
 
 mod context;
 mod normalize;
@@ -16,7 +16,7 @@ mod tests;
 pub(crate) mod timing;
 
 pub(crate) use context::{AskContext, build_ask_context};
-pub(crate) use normalize::normalize_ask_answer;
+pub(crate) use normalize::{normalize_ask_answer, summarize_citation_validation};
 pub(crate) use timing::{AskTiming, AskTimingSlot};
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
@@ -151,7 +151,7 @@ where
     }
     .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
 
-    let (answer_text, llm_total_ms) = match &llm {
+    let (answer_text, mut llm_total_ms) = match &llm {
         output::AskLlmCompletion::Streamed {
             answer,
             ttft_at,
@@ -177,13 +177,72 @@ where
     timing.set(AskTimingSlot::LlmTotal, llm_total_ms);
 
     let normalize_started = std::time::Instant::now();
-    let answer = normalize_ask_answer(cfg, query, answer_text, context);
+    let mut answer = normalize_ask_answer(cfg, query, answer_text, context);
+    let validation = summarize_citation_validation(&answer);
+    if !validation.valid {
+        let repair_started = std::time::Instant::now();
+        log_warn(&format!(
+            "ask citation validation failed; retrying once with repair prompt: {:?}",
+            validation.issues
+        ));
+        if let Some(repaired) =
+            retry_answer_for_citation_validation(cfg, query, context, &answer, &validation).await?
+        {
+            answer = repaired;
+            llm_total_ms += repair_started.elapsed().as_millis();
+            timing.set(AskTimingSlot::LlmTotal, llm_total_ms);
+        }
+    }
     timing.record(AskTimingSlot::Normalize, normalize_started);
     if cfg.ask_stream && !cfg.json_output && !cfg.ask_explain && answer.trim() != answer_text.trim()
     {
         print_normalized_stream_correction(&answer);
     }
     Ok((answer, llm_total_ms))
+}
+
+async fn retry_answer_for_citation_validation(
+    cfg: &Config,
+    query: &str,
+    context: &str,
+    invalid_answer: &str,
+    validation: &normalize::CitationValidationSummary,
+) -> anyhow::Result<Option<String>> {
+    let mut repair_cfg = cfg.clone();
+    repair_cfg.ask_stream = false;
+    repair_cfg.json_output = true;
+    let repair_query = format!(
+        "{query}\n\nYour previous answer failed Axon citation validation:\n{}\n\nRewrite the answer from scratch using the retrieved context. Cite at least two distinct source documents when the context provides them, and keep every factual claim grounded in [S#] citations.\n\nPrevious invalid answer:\n{}",
+        validation
+            .issues
+            .iter()
+            .map(|issue| format!("- {issue}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        invalid_answer.trim()
+    );
+    let repaired = output::ask_llm_answer(&repair_cfg, &repair_query, context)
+        .await
+        .map_err(|e| anyhow::anyhow!("citation repair retry failed: {e}"))?;
+    let repaired_answer_text = match repaired {
+        output::AskLlmCompletion::Streamed { answer, .. }
+        | output::AskLlmCompletion::Fallback { answer, .. } => answer,
+    };
+    let normalized = normalize_ask_answer(cfg, query, &repaired_answer_text, context);
+    let repaired_validation = summarize_citation_validation(&normalized);
+    if repaired_validation.valid {
+        log_info(&format!(
+            "ask citation repair succeeded canonical_citations={}",
+            repaired_validation.canonical_citation_count
+        ));
+        Ok(Some(normalized))
+    } else {
+        log_warn(&format!(
+            "ask citation repair still failed: {:?}",
+            repaired_validation.issues
+        ));
+        Ok(None)
+    }
 }
 
 /// Build the final JSON payload for a completed ask (non-explain path).
@@ -207,6 +266,7 @@ fn assemble_ask_payload(
     serde_json::json!({
         "query": query,
         "answer": answer,
+        "citation_validation": summarize_citation_validation(answer),
         "session": serde_json::Value::Null,
         "warnings": &ctx.warnings,
         "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, ctx),
@@ -279,6 +339,7 @@ fn build_diagnostics_json(enabled: bool, cfg: &Config, ctx: &AskContext) -> serd
         "corpus_health": &ctx.corpus_health,
         "full_doc_fetch_skipped": ctx.full_doc_fetch_skipped,
         "full_doc_fetch_skip_reason": ctx.full_doc_fetch_skip_reason,
+        "full_doc_fetch_errors": &ctx.full_doc_fetch_errors,
         "detected_complexity": ctx.detected_complexity,
         "resolved_full_docs": ctx.resolved_full_docs,
         "full_docs_source": ctx.full_docs_source,
@@ -344,6 +405,7 @@ fn history_only_ask_context(elapsed_ms: u128) -> AskContext {
         },
         full_doc_fetch_skipped: true,
         full_doc_fetch_skip_reason: "history_only",
+        full_doc_fetch_errors: Vec::new(),
         detected_complexity: "simple",
         resolved_full_docs: 0,
         full_docs_source: "history_only",

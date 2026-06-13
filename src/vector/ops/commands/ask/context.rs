@@ -25,6 +25,7 @@ const ASK_EXPLAIN_CANDIDATE_TRACE_LIMIT: usize = 50;
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum FullDocsSource {
     UserOverride,
+    UserOverrideMinimum,
     AdaptiveSimple,
     AdaptiveComplex,
 }
@@ -33,6 +34,7 @@ impl FullDocsSource {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             FullDocsSource::UserOverride => "user_override",
+            FullDocsSource::UserOverrideMinimum => "user_override_minimum",
             FullDocsSource::AdaptiveSimple => "adaptive_simple",
             FullDocsSource::AdaptiveComplex => "adaptive_complex",
         }
@@ -43,13 +45,29 @@ impl FullDocsSource {
 /// adaptive default driven by `QueryComplexity`. Extracted as a pure
 /// function so the decision logic is unit-testable without the
 /// retrieval / TEI / Qdrant stack. (bd axon_rust-721)
+#[cfg(test)]
 pub(crate) fn resolve_ask_full_docs(
     cfg_full_docs: usize,
     cfg_explicit: bool,
     complexity: QueryComplexity,
 ) -> (usize, FullDocsSource) {
+    resolve_ask_full_docs_for_model(cfg_full_docs, cfg_explicit, complexity, false)
+}
+
+pub(crate) fn resolve_ask_full_docs_for_model(
+    cfg_full_docs: usize,
+    cfg_explicit: bool,
+    complexity: QueryComplexity,
+    high_context_model: bool,
+) -> (usize, FullDocsSource) {
     if cfg_explicit {
-        (cfg_full_docs, FullDocsSource::UserOverride)
+        if high_context_model && cfg_full_docs < 4 {
+            (4, FullDocsSource::UserOverrideMinimum)
+        } else {
+            (cfg_full_docs, FullDocsSource::UserOverride)
+        }
+    } else if high_context_model {
+        (4, FullDocsSource::AdaptiveComplex)
     } else {
         let value = complexity.full_docs_default();
         let source = match complexity {
@@ -58,6 +76,24 @@ pub(crate) fn resolve_ask_full_docs(
         };
         (value, source)
     }
+}
+
+fn high_context_synthesis_model(cfg: &Config) -> bool {
+    use crate::core::llm::LlmBackendKind;
+
+    let headless_model = cfg.headless_gemini_model.to_ascii_lowercase();
+    let openai_model = cfg.openai_model.to_ascii_lowercase();
+    let model = match cfg.llm_backend {
+        LlmBackendKind::GeminiHeadless => headless_model.as_str(),
+        LlmBackendKind::OpenAiCompat => openai_model.as_str(),
+    };
+
+    matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
+        || model.contains("gemini")
+        || model.contains("codex")
+        || model.contains("claude")
+        || model.starts_with("gpt-")
+        || model.contains("/gpt-")
 }
 
 pub(crate) struct AskContext {
@@ -80,6 +116,7 @@ pub(crate) struct AskContext {
     pub full_doc_fetch_skipped: bool,
     /// Static reason string ("disabled", "ok_skip", "insufficient_urls", ...).
     pub full_doc_fetch_skip_reason: &'static str,
+    pub full_doc_fetch_errors: Vec<crate::core::ask_explain::AskExplainFullDocFetchError>,
     /// Coarse query-complexity signal feeding the adaptive resolver below.
     /// "simple" or "complex". (bd axon_rust-721)
     pub detected_complexity: &'static str,
@@ -108,10 +145,11 @@ pub(crate) async fn build_ask_context(
     // narrow the slice down here without re-running selection.
     // (bd axon_rust-721)
     let query_forms = build_query_forms(query);
-    let (resolved_full_docs, full_docs_source) = resolve_ask_full_docs(
+    let (resolved_full_docs, full_docs_source) = resolve_ask_full_docs_for_model(
         cfg.ask_full_docs,
         cfg.ask_full_docs_explicit,
         query_forms.complexity_hint,
+        high_context_synthesis_model(cfg),
     );
     let detected_complexity = match query_forms.complexity_hint {
         QueryComplexity::Simple => "simple",
@@ -141,6 +179,24 @@ pub(crate) async fn build_ask_context(
         context.len(),
     );
 
+    let full_doc_fetch_errors = built
+        .full_doc_fetch_errors
+        .iter()
+        .map(
+            |err| crate::core::ask_explain::AskExplainFullDocFetchError {
+                url: err.url.clone(),
+                error: err.error.clone(),
+            },
+        )
+        .collect::<Vec<_>>();
+    let mut warnings = retrieval.warnings;
+    if !full_doc_fetch_errors.is_empty() {
+        warnings.push(format!(
+            "full-doc context degraded: {} planned document(s) failed to fetch; see diagnostics/explain for URLs",
+            full_doc_fetch_errors.len()
+        ));
+    }
+
     Ok(AskContext {
         context,
         candidate_count: retrieval.candidate_count,
@@ -158,10 +214,11 @@ pub(crate) async fn build_ask_context(
         corpus_health,
         full_doc_fetch_skipped: built.full_doc_fetch_skipped,
         full_doc_fetch_skip_reason: built.full_doc_fetch_skip_reason,
+        full_doc_fetch_errors,
         detected_complexity,
         resolved_full_docs,
         full_docs_source: full_docs_source.as_str(),
-        warnings: retrieval.warnings,
+        warnings,
         explain: if cfg.ask_explain {
             build_explain_trace(
                 query,

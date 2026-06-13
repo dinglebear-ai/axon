@@ -28,6 +28,32 @@ pub async fn stats_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Er
     let payload_fields: Vec<String> = payload_schema.keys().cloned().collect();
     let payload_fields_count = payload_fields.len();
     let job_metrics = sqlite::collect_job_metrics(cfg).await;
+    let indexed_token_stats = match qdrant_fetch::sample_indexed_token_stats(cfg).await {
+        Ok(stats) => stats,
+        Err(e) => {
+            tracing::warn!(error = %e, "stats: failed to sample indexed token stats");
+            None
+        }
+    };
+    let avg_chunk_tokens_estimate = indexed_token_stats
+        .as_ref()
+        .map(|stats| stats.avg_chunk_tokens_estimate)
+        .or(job_metrics.avg_chunk_tokens_estimate);
+    let avg_doc_tokens_estimate = indexed_token_stats
+        .as_ref()
+        .map(|stats| stats.avg_doc_tokens_estimate)
+        .or(job_metrics.avg_doc_tokens_estimate);
+    let indexed_token_stats_json = indexed_token_stats.as_ref().map(|stats| {
+        serde_json::json!({
+            "sampled_points": stats.sampled_points,
+            "sampled_docs": stats.sampled_docs,
+            "sample_limit_points": stats.sample_limit_points,
+            "avg_chunk_chars": stats.avg_chunk_chars,
+            "avg_chunk_tokens_estimate": stats.avg_chunk_tokens_estimate,
+            "avg_doc_chars": stats.avg_doc_chars,
+            "avg_doc_tokens_estimate": stats.avg_doc_tokens_estimate,
+        })
+    });
 
     Ok(serde_json::json!({
         "collection": cfg.collection,
@@ -49,6 +75,9 @@ pub async fn stats_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Er
         "most_chunks": job_metrics.most_chunks,
         "total_chunks": job_metrics.total_chunks,
         "total_docs": job_metrics.total_docs,
+        "avg_chunk_tokens_estimate": avg_chunk_tokens_estimate,
+        "avg_doc_tokens_estimate": avg_doc_tokens_estimate,
+        "indexed_token_stats": indexed_token_stats_json,
         "base_urls_count": job_metrics.base_urls_count,
         "freshness": {
             "last_indexed_secs_ago": job_metrics.last_indexed_secs_ago,

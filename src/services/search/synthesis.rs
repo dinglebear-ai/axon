@@ -416,7 +416,7 @@ async fn synthesize(
         Err(e) => {
             log_warn(&format!("synthesis failed: {e}"));
             (
-                Some(fallback_summary(query, extractions)),
+                Some(fallback_summary(query, extractions, Some(e.as_ref()))),
                 SummarySource::Fallback,
                 TokenUsage::default(),
             )
@@ -449,8 +449,17 @@ fn parse_response(response: llm::CompletionResponse) -> (Option<String>, TokenUs
     (Some(summary), usage)
 }
 
-fn fallback_summary(query: &str, extractions: &[ResearchExtraction]) -> String {
-    let mut out = format!("Fallback summary for query '{query}':");
+fn fallback_summary(
+    query: &str,
+    extractions: &[ResearchExtraction],
+    synthesis_error: Option<&dyn Error>,
+) -> String {
+    let mut out = format!(
+        "Synthesis degraded: LLM synthesis failed, so this is a deterministic fallback summary for query '{query}'."
+    );
+    if let Some(err) = synthesis_error {
+        out.push_str(&format!(" Error: {err}"));
+    }
     for extraction in extractions.iter().take(FALLBACK_MAX_EXTRACTIONS) {
         let title = if extraction.title.is_empty() {
             "untitled"

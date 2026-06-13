@@ -8,7 +8,10 @@ use super::heuristics::{
 };
 use super::query_rewrite::{QueryComplexity, build_query_forms};
 use super::retrieval::{RerankParams, apply_mode_aware_rerank, is_rrf_mode};
-use super::{FullDocsSource, resolve_ask_full_docs};
+use super::{
+    FullDocsSource, high_context_synthesis_model, resolve_ask_full_docs,
+    resolve_ask_full_docs_for_model,
+};
 use crate::core::config::Config;
 use crate::services::types::{
     AskExplainContext, AskExplainFilterDecision, AskExplainFilterDecisionKind,
@@ -37,15 +40,16 @@ fn test_candidate(url: &str, rerank_score: f64) -> AskCandidate {
 }
 
 fn retrieved_candidate(url: &str, chunk: &str, score: f64) -> RetrievedCandidate {
+    let path = crate::vector::ops::ranking::extract_path_from_url(url);
     RetrievedCandidate {
         candidate: AskCandidate {
             score,
             url: url.to_string(),
-            path: url.to_string(),
+            path: path.clone(),
             chunk_text: chunk.to_string(),
-            url_tokens: crate::vector::ops::ranking::tokenize_path_set(url),
+            url_tokens: crate::vector::ops::ranking::tokenize_path_set(&path),
             chunk_tokens: crate::vector::ops::ranking::tokenize_text_set(chunk),
-            rerank_score: 0.0,
+            rerank_score: score,
         },
         chunk_index: Some(7),
         code: CodeSearchMetadata::default(),
@@ -79,6 +83,7 @@ fn explain_retrieval() -> AskExplainRetrieval {
 fn explain_context() -> AskExplainContext {
     AskExplainContext {
         planned_full_doc_urls: Vec::new(),
+        full_doc_fetch_errors: Vec::new(),
         full_doc_fetch_skipped: false,
         full_doc_fetch_skip_reason: AskExplainFullDocFetchSkipReason::Disabled,
         full_doc_fetch_mode: AskExplainFullDocFetchMode::Cosine,
@@ -486,6 +491,188 @@ fn full_doc_selection_prefers_url_entity_matches() {
 }
 
 #[test]
+fn full_doc_selection_prefers_exact_procedural_guide_over_adjacent_marketplace_doc() {
+    let candidates = vec![
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/plugin-marketplaces.md",
+            "create the marketplace catalog and install the plugin from a marketplace",
+            1.11,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/plugins.md",
+            "quickstart create your first plugin add a skill and test your plugin with plugin-dir",
+            0.90,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/plugins",
+            "plugin structure overview skills agents hooks mcp servers test your plugin locally",
+            0.80,
+        )
+        .candidate,
+    ];
+    let query_tokens =
+        crate::vector::ops::ranking::tokenize_query("how do i create a claude code plugin");
+
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &query_tokens, 3, 1, SelectionPolicy::default());
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        full_doc_urls,
+        vec!["https://code.claude.com/docs/en/plugins.md"],
+        "procedural creation queries should full-doc the exact guide, not an adjacent marketplace page"
+    );
+}
+
+#[test]
+fn full_doc_selection_keeps_retrieval_score_ahead_of_weak_exact_route_match() {
+    let candidates = vec![
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/create.md",
+            "create a generic resource from unrelated admin docs",
+            0.35,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/create-plugin-with-hooks.md",
+            "create your first plugin add hooks skills agents mcp servers and test your plugin locally",
+            1.85,
+        )
+        .candidate,
+    ];
+    let query_tokens =
+        crate::vector::ops::ranking::tokenize_query("how do i create a claude code plugin");
+
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &query_tokens, 2, 1, SelectionPolicy::default());
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        full_doc_urls,
+        vec!["https://code.claude.com/docs/en/create-plugin-with-hooks.md"],
+        "exact final-route matches should not bypass much stronger retrieval evidence"
+    );
+}
+
+#[test]
+fn full_doc_selection_uses_exact_final_route_match_as_bounded_score_signal() {
+    let candidates = vec![
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/plugin-marketplaces.md",
+            "create the marketplace catalog and install the plugin from a marketplace",
+            1.11,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/plugins.md",
+            "quickstart create your first plugin add a skill and test your plugin with plugin-dir",
+            0.90,
+        )
+        .candidate,
+    ];
+    let query_tokens =
+        crate::vector::ops::ranking::tokenize_query("how do i create a claude code plugin");
+
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &query_tokens, 2, 1, SelectionPolicy::default());
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        full_doc_urls,
+        vec!["https://code.claude.com/docs/en/plugins.md"],
+        "an exact final-route entity match should beat an adjacent route whose extra entity tokens describe a different task"
+    );
+}
+
+#[test]
+fn full_doc_selection_normalizes_common_docs_route_shapes() {
+    let cases = [
+        "https://code.claude.com/docs/en/plugins/",
+        "https://code.claude.com/docs/en/plugins/index.html",
+        "https://code.claude.com/docs/en/plugins/README.md",
+        "https://code.claude.com/docs/en/plugins.mdx",
+    ];
+
+    for canonical_url in cases {
+        let candidates = vec![
+            retrieved_candidate(
+                "https://code.claude.com/docs/en/plugin-marketplaces.md",
+                "create the marketplace catalog and install the plugin from a marketplace",
+                1.11,
+            )
+            .candidate,
+            retrieved_candidate(
+                canonical_url,
+                "quickstart create your first plugin add a skill and test your plugin with plugin-dir",
+                0.90,
+            )
+            .candidate,
+        ];
+        let query_tokens =
+            crate::vector::ops::ranking::tokenize_query("how do i create a claude code plugin");
+
+        let (_, full_doc_indices) =
+            select_context_indices(&candidates, &query_tokens, 2, 1, SelectionPolicy::default());
+        let full_doc_urls = full_doc_indices
+            .iter()
+            .map(|&idx| candidates[idx].url.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            full_doc_urls,
+            vec![canonical_url],
+            "expected route-shaped canonical guide to win: {canonical_url}"
+        );
+    }
+}
+
+#[test]
+fn full_doc_selection_does_not_over_penalize_descriptive_guide_slugs() {
+    let candidates = vec![
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/plugin-marketplaces.md",
+            "create the marketplace catalog and install the plugin from a marketplace",
+            1.11,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/create-claude-code-plugin-from-template-with-hooks-agents-mcp-v2.mdx",
+            "quickstart create your first plugin from a template add skills hooks agents mcp servers and test your plugin with plugin-dir",
+            0.90,
+        )
+        .candidate,
+    ];
+    let query_tokens =
+        crate::vector::ops::ranking::tokenize_query("how do i create a claude code plugin");
+
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &query_tokens, 2, 1, SelectionPolicy::default());
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        full_doc_urls,
+        vec![
+            "https://code.claude.com/docs/en/create-claude-code-plugin-from-template-with-hooks-agents-mcp-v2.mdx"
+        ],
+        "descriptive exact guide slugs should not lose to adjacent docs just because they have extra route tokens"
+    );
+}
+
+#[test]
 fn full_doc_selection_prefers_dominant_authoritative_host_over_external_summary() {
     let candidates = vec![
         retrieved_candidate(
@@ -596,6 +783,42 @@ fn selection_deduplicates_full_doc_urls() {
     assert_eq!(
         full_doc_urls,
         vec!["https://a.dev/docs/one", "https://b.dev/docs/two"]
+    );
+}
+
+#[test]
+fn selection_deduplicates_full_doc_canonical_url_variants() {
+    let candidates = vec![
+        test_candidate("https://code.claude.com/docs/en/plugins.md", 0.99),
+        test_candidate("https://code.claude.com/docs/en/plugins", 0.98),
+        test_candidate("https://code.claude.com/docs/en/plugins/", 0.97),
+        test_candidate(
+            "https://code.claude.com/docs/en/plugin-marketplaces.md",
+            0.90,
+        ),
+        test_candidate("https://docs.anthropic.com/claude-code", 0.80),
+    ];
+
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &[], 2, 4, SelectionPolicy::default());
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        full_doc_urls
+            .iter()
+            .filter(|url| url.contains("/plugins"))
+            .count(),
+        1,
+        "extensionless/.md/trailing-slash variants should not consume multiple full-doc slots: {full_doc_urls:?}"
+    );
+    assert!(
+        full_doc_urls
+            .iter()
+            .any(|url| url.contains("plugin-marketplaces")),
+        "deduped slot should admit another relevant doc: {full_doc_urls:?}"
     );
 }
 
@@ -942,6 +1165,33 @@ fn user_explicit_override_wins_over_adaptive() {
 }
 
 #[test]
+fn high_context_models_floor_full_docs_at_4() {
+    let (resolved, source) =
+        resolve_ask_full_docs_for_model(1, true, QueryComplexity::Complex, true);
+    assert_eq!(resolved, 4);
+    assert_eq!(source.as_str(), "user_override_minimum");
+}
+
+#[test]
+fn gpt_models_are_high_context_for_full_doc_selection() {
+    let cfg = Config {
+        llm_backend: crate::core::llm::LlmBackendKind::OpenAiCompat,
+        openai_model: "gpt-5.4-mini".to_string(),
+        ..Default::default()
+    };
+
+    assert!(high_context_synthesis_model(&cfg));
+}
+
+#[test]
+fn non_high_context_models_keep_explicit_low_override() {
+    let (resolved, source) =
+        resolve_ask_full_docs_for_model(1, true, QueryComplexity::Complex, false);
+    assert_eq!(resolved, 1);
+    assert_eq!(source.as_str(), "user_override");
+}
+
+#[test]
 fn complexity_hint_matches_use_dual_signal() {
     // Single-token / keyword-shaped queries: use_dual=false → Simple.
     let simple = build_query_forms("rust");
@@ -959,6 +1209,10 @@ fn complexity_hint_matches_use_dual_signal() {
 fn full_docs_source_strings_are_stable() {
     // The diagnostic surface is a public contract — guard against typos.
     assert_eq!(FullDocsSource::UserOverride.as_str(), "user_override");
+    assert_eq!(
+        FullDocsSource::UserOverrideMinimum.as_str(),
+        "user_override_minimum"
+    );
     assert_eq!(FullDocsSource::AdaptiveSimple.as_str(), "adaptive_simple");
     assert_eq!(FullDocsSource::AdaptiveComplex.as_str(), "adaptive_complex");
 }
