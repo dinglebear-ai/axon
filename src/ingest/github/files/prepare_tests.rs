@@ -46,17 +46,17 @@ async fn read_file_embed_docs_writes_symbol_payload_contract() {
     // per-chunk symbol_* / code_line_* metadata lives in `chunk_extra`, merged
     // over `doc.extra` per chunk in the embed pipeline so the symbol-boost survives.
     let doc = docs.first().expect("one file-level doc");
-    let extra = doc.extra.as_ref().expect("github payload");
+    let extra = doc.extra().expect("github payload");
     assert_eq!(extra["provider"], "github");
     assert_eq!(extra["git_content_kind"], "file");
     assert_eq!(extra["code_file_path"], "src/lib.rs");
     assert_eq!(extra["code_language"], "rust");
     assert!(extra.get("code_is_test").is_some());
     assert!(extra.get("symbol_extraction_status").is_some());
-    assert_eq!(doc.chunks.len(), doc.chunk_extra.len());
+    assert_eq!(doc.chunks().len(), doc.chunk_extra().len());
 
     let method_chunk = doc
-        .chunk_extra
+        .chunk_extra()
         .iter()
         .find(|ce| ce.get("symbol_name").and_then(|v| v.as_str()) == Some("Response::parse"))
         .expect("chunk with method symbol payload");
@@ -76,7 +76,7 @@ async fn read_file_embed_docs_writes_symbol_payload_contract() {
     );
 
     assert_eq!(
-        doc.url,
+        doc.url(),
         "https://github.com/owner/repo/blob/main/src/lib.rs"
     );
 }

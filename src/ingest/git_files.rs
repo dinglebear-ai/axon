@@ -23,6 +23,8 @@ pub(crate) async fn embed_doc_summary(
 ) -> Result<EmbedSummary> {
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow!("{e}"))?
+        .require_success("git file embed")
         .map_err(|e| anyhow!("{e}"))?;
     Ok(summary)
 }

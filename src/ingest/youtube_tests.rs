@@ -95,19 +95,16 @@ fn youtube_doc_preparation_preserves_transcript_and_description_metadata() {
     .expect("docs");
 
     assert_eq!(docs.len(), 2);
-    assert_eq!(docs[0].url, source_url);
-    assert_eq!(docs[0].source_type, "youtube");
-    assert_eq!(docs[0].content_type, "text");
+    assert_eq!(docs[0].url(), source_url);
+    assert_eq!(docs[0].source_type(), "youtube");
+    assert_eq!(docs[0].content_type(), "text");
+    assert_eq!(docs[0].extra().unwrap()["yt_video_id"], "abc123def45");
+    assert_eq!(docs[0].chunk_extra()[0]["chunk_content_kind"], "plain_text");
     assert_eq!(
-        docs[0].extra.as_ref().unwrap()["yt_video_id"],
-        "abc123def45"
-    );
-    assert_eq!(docs[0].chunk_extra[0]["chunk_content_kind"], "plain_text");
-    assert_eq!(
-        docs[1].url,
+        docs[1].url(),
         "https://www.youtube.com/watch?v=abc123def45?section=description"
     );
-    assert_eq!(docs[1].title.as_deref(), Some("Video title — description"));
-    assert_eq!(docs[1].extra.as_ref().unwrap()["yt_channel"], "Channel");
-    assert_eq!(docs[1].chunk_extra[0]["chunk_content_kind"], "plain_text");
+    assert_eq!(docs[1].title(), Some("Video title — description"));
+    assert_eq!(docs[1].extra().unwrap()["yt_channel"], "Channel");
+    assert_eq!(docs[1].chunk_extra()[0]["chunk_content_kind"], "plain_text");
 }

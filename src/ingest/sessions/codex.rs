@@ -262,9 +262,8 @@ async fn parse_codex_file(
         "codex_session",
         title,
         Some(extra),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare codex session source failed: {err}"))?;
-    if doc.chunks.is_empty() {
+    );
+    if doc.is_empty() {
         return Ok(None);
     }
     Ok(Some(SessionDoc {

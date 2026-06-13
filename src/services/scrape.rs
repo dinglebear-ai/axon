@@ -432,7 +432,10 @@ pub async fn scrape_batch_with_optional_embed(
         for result in &results {
             docs.push(scrape_result_to_prepared_doc(cfg, result).await?);
         }
-        embed_prepared_docs(cfg, docs, None).await?;
+        embed_prepared_docs(cfg, docs, None)
+            .await?
+            .require_success("scrape batch embed")
+            .map_err(|err| anyhow::anyhow!(err))?;
     }
     Ok(results)
 }

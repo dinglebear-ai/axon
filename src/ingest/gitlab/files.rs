@@ -90,7 +90,7 @@ pub(crate) async fn embed_files(
         docs,
         skipped_files,
     } = prepare_file_docs(tmp.path(), files, target, project, branch, reporter).await?;
-    let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url.clone()).collect();
+    let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url().to_string()).collect();
     let summary = embed_doc_summary(cfg, docs).await?;
     let chunks = summary.chunks_embedded;
     if include_source && skipped_files == 0 && summary.docs_failed == 0 {

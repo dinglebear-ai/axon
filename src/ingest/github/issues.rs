@@ -99,9 +99,8 @@ pub async fn ingest_issues(
                 "github",
                 Some(title),
                 Some(extra),
-            )
-            .map_err(|err| anyhow::anyhow!("prepare github issue source failed: {err}"))?;
-            if !doc.chunks.is_empty() {
+            );
+            if !doc.is_empty() {
                 docs.push(doc);
             }
         }
@@ -125,6 +124,8 @@ pub async fn ingest_issues(
 
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .require_success("github issues embed")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }
@@ -210,9 +211,8 @@ pub async fn ingest_pull_requests(
                 "github",
                 Some(embed_title),
                 Some(extra),
-            )
-            .map_err(|err| anyhow::anyhow!("prepare github pr source failed: {err}"))?;
-            if !doc.chunks.is_empty() {
+            );
+            if !doc.is_empty() {
                 docs.push(doc);
             }
         }
@@ -239,6 +239,8 @@ pub async fn ingest_pull_requests(
 
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .require_success("github pulls embed")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }

@@ -257,9 +257,9 @@ pub(crate) fn prepare_plain_text_source(
     source_type: impl Into<String>,
     title: Option<String>,
     extra: Option<Value>,
-) -> Result<PreparedDoc, String> {
+) -> PreparedDoc {
     let source = SourceDocument::new_plain_text(url, domain, text, source_type, title, extra);
-    Ok(prepare_plain_source(source))
+    prepare_plain_source(source)
 }
 
 pub(crate) fn structured_payload_from_vertical_summary(

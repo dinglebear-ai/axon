@@ -94,9 +94,8 @@ pub(crate) async fn embed_metadata(
                 "open_issues": repo.open_issues_count,
             }),
         )),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare gitea metadata source failed: {err}"))?;
-    if doc.chunks.is_empty() {
+    );
+    if doc.is_empty() {
         return Ok(0);
     }
     embed_docs(cfg, vec![doc]).await
@@ -179,9 +178,8 @@ pub(crate) fn issue_doc(
                 "comment_count": issue.comments,
             }),
         )),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare gitea issue source failed: {err}"))?;
-    Ok((!doc.chunks.is_empty()).then_some(doc))
+    );
+    Ok((!doc.is_empty()).then_some(doc))
 }
 
 pub(crate) async fn embed_pulls(
@@ -243,7 +241,6 @@ pub(crate) fn pull_doc(
                 "merged": pull.merged,
             }),
         )),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare gitea pull request source failed: {err}"))?;
-    Ok((!doc.chunks.is_empty()).then_some(doc))
+    );
+    Ok((!doc.is_empty()).then_some(doc))
 }

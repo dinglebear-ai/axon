@@ -146,7 +146,8 @@ async fn ingest_subreddit(
     drop(doc_tx);
     let total_count = drain_handle
         .await
-        .map_err(|e| format!("reddit drain task failed: {e}"))?;
+        .map_err(|e| format!("reddit drain task failed: {e}"))?
+        .map_err(|e| -> Box<dyn Error> { e.into() })?;
     Ok(RedditIngestSummary {
         chunks_embedded: total_count,
         stats: RedditIngestStats {
@@ -158,7 +159,12 @@ async fn ingest_subreddit(
     })
 }
 
-fn spawn_doc_drain(cfg: &Config) -> (mpsc::Sender<PreparedDoc>, tokio::task::JoinHandle<usize>) {
+fn spawn_doc_drain(
+    cfg: &Config,
+) -> (
+    mpsc::Sender<PreparedDoc>,
+    tokio::task::JoinHandle<Result<usize, String>>,
+) {
     let (doc_tx, mut doc_rx) = mpsc::channel::<PreparedDoc>(256);
     let drain_cfg = cfg.clone();
     let drain_handle = tokio::spawn(async move {
@@ -168,26 +174,25 @@ fn spawn_doc_drain(cfg: &Config) -> (mpsc::Sender<PreparedDoc>, tokio::task::Joi
         while let Some(doc) = doc_rx.recv().await {
             buffer.push(doc);
             if buffer.len() >= REDDIT_BATCH_FLUSH_SIZE {
-                total_chunks += flush_batch(&drain_cfg, &mut buffer).await;
+                total_chunks += flush_batch(&drain_cfg, &mut buffer).await?;
             }
         }
         if !buffer.is_empty() {
-            total_chunks += flush_batch(&drain_cfg, &mut buffer).await;
+            total_chunks += flush_batch(&drain_cfg, &mut buffer).await?;
         }
-        total_chunks
+        Ok(total_chunks)
     });
     (doc_tx, drain_handle)
 }
 
 /// Flush a buffer of PreparedDocs to the embed pipeline in one batch call.
-async fn flush_batch(cfg: &Config, buffer: &mut Vec<PreparedDoc>) -> usize {
+async fn flush_batch(cfg: &Config, buffer: &mut Vec<PreparedDoc>) -> Result<usize, String> {
     let batch = std::mem::take(buffer);
     match embed_prepared_docs(cfg, batch, None).await {
-        Ok(summary) => summary.chunks_embedded,
-        Err(e) => {
-            log_warn(&format!("command=ingest_reddit batch_embed_failed err={e}"));
-            0
-        }
+        Ok(summary) => summary
+            .require_success("reddit batch embed")
+            .map(|summary| summary.chunks_embedded),
+        Err(e) => Err(format!("command=ingest_reddit batch_embed_failed err={e}")),
     }
 }
 
@@ -259,9 +264,8 @@ async fn build_post_doc(
         "reddit",
         Some(title.to_string()),
         Some(extra),
-    )
-    .map_err(|err| format!("prepare reddit source failed: {err}"))?;
-    if doc.chunks.is_empty() {
+    );
+    if doc.is_empty() {
         return Ok(PostBuildResult {
             comment_fetch_attempted,
             comment_fetch_failed,
@@ -333,9 +337,8 @@ async fn ingest_thread(
         "reddit",
         Some(title.to_string()),
         Some(extra),
-    )
-    .map_err(|err| format!("prepare reddit thread source failed: {err}"))?;
-    if doc.chunks.is_empty() {
+    );
+    if doc.is_empty() {
         return Ok(RedditIngestSummary {
             chunks_embedded: 0,
             stats: RedditIngestStats {
@@ -344,7 +347,10 @@ async fn ingest_thread(
             },
         });
     }
-    let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
+    let summary = embed_prepared_docs(cfg, vec![doc], None)
+        .await?
+        .require_success("reddit thread embed")
+        .map_err(|err| -> Box<dyn Error> { err.into() })?;
     Ok(RedditIngestSummary {
         chunks_embedded: summary.chunks_embedded,
         stats: RedditIngestStats {
@@ -461,17 +467,30 @@ mod tests {
             }
         });
 
-        let built = build_post_doc(&cfg, "unused-token", &post, &RedditIngestOptions::default())
-            .await
-            .expect("post build");
-        let doc = built.doc.expect("doc");
+        let built = match build_post_doc(
+            &cfg,
+            "unused-token",
+            &post,
+            &RedditIngestOptions::default(),
+        )
+        .await
+        {
+            Ok(built) => built,
+            Err(err) => panic!("post build failed: {err}"),
+        };
+        let Some(doc) = built.doc else {
+            panic!("expected reddit post doc");
+        };
 
-        assert_eq!(doc.url, "https://www.reddit.com");
-        assert_eq!(doc.domain, "www.reddit.com");
-        assert_eq!(doc.source_type, "reddit");
-        assert_eq!(doc.content_type, "text");
-        assert_eq!(doc.extra.as_ref().unwrap()["reddit_subreddit"], "rust");
-        assert_eq!(doc.extra.as_ref().unwrap()["reddit_score"], 42);
-        assert_eq!(doc.chunk_extra[0]["chunk_content_kind"], "plain_text");
+        assert_eq!(doc.url(), "https://www.reddit.com");
+        assert_eq!(doc.domain(), "www.reddit.com");
+        assert_eq!(doc.source_type(), "reddit");
+        assert_eq!(doc.content_type(), "text");
+        let Some(extra) = doc.extra() else {
+            panic!("expected reddit extra payload");
+        };
+        assert_eq!(extra["reddit_subreddit"], "rust");
+        assert_eq!(extra["reddit_score"], 42);
+        assert_eq!(doc.chunk_extra()[0]["chunk_content_kind"], "plain_text");
     }
 }

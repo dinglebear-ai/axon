@@ -317,10 +317,18 @@ pub async fn ingest_youtube(
 
         reporter.report_phase(PHASE_EMBEDDING).await;
         match embed_prepared_docs(cfg, docs, None).await {
-            Ok(summary) => count += summary.chunks_embedded,
-            Err(e) => log_warn(&format!(
-                "command=ingest source=youtube embed_failed video={vid_id} err={e}"
-            )),
+            Ok(summary) => match summary.require_success("youtube embed") {
+                Ok(summary) => count += summary.chunks_embedded,
+                Err(err) => {
+                    return Err(err.into());
+                }
+            },
+            Err(e) => {
+                return Err(format!(
+                    "command=ingest source=youtube embed_failed video={vid_id} err={e}"
+                )
+                .into());
+            }
         }
     }
 
@@ -346,9 +354,8 @@ fn prepare_youtube_video_docs(
         "youtube",
         Some(title.to_string()),
         extra.clone(),
-    )
-    .map_err(|err| format!("prepare youtube transcript source failed: {err}"))?;
-    if !transcript_doc.chunks.is_empty() {
+    );
+    if !transcript_doc.is_empty() {
         docs.push(transcript_doc);
     }
 
@@ -363,9 +370,8 @@ fn prepare_youtube_video_docs(
             "youtube",
             Some(format!("{} — description", m.title)),
             extra.clone(),
-        )
-        .map_err(|err| format!("prepare youtube description source failed: {err}"))?;
-        if !desc_doc.chunks.is_empty() {
+        );
+        if !desc_doc.is_empty() {
             docs.push(desc_doc);
         }
     }
@@ -413,12 +419,7 @@ pub async fn ingest_youtube_playlist(
         .await;
 
     for (idx, video_url) in videos.iter().enumerate() {
-        match ingest_youtube(cfg, video_url, reporter).await {
-            Ok(chunks) => chunks_embedded += chunks,
-            Err(e) => log_warn(&format!(
-                "command=ingest source=youtube playlist video_failed url={video_url} err={e}"
-            )),
-        }
+        chunks_embedded += ingest_youtube(cfg, video_url, reporter).await?;
         reporter
             .report(serde_json::json!({
                 "phase": "embedding_playlist",

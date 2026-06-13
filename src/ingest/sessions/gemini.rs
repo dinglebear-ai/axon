@@ -225,9 +225,8 @@ async fn process_gemini_file(
         "gemini_session",
         title,
         Some(extra),
-    )
-    .map_err(|err| anyhow::anyhow!("prepare gemini session source failed: {err}"))?;
-    if doc.chunks.is_empty() {
+    );
+    if doc.is_empty() {
         return Ok(None);
     }
     Ok(Some(SessionDoc {

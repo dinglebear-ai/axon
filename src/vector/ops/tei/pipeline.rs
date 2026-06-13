@@ -391,14 +391,14 @@ async fn flush_and_cleanup(
                     continue;
                 }
                 if let Err(e) = qdrant_delete_stale_tail(cfg, &url, new_chunk_count).await {
-                    log_warn(&format!("embed stale-tail cleanup failed for {url}: {e}"));
+                    return Err(format!("embed stale-tail cleanup failed for {url}: {e}").into());
                 }
             }
             PostUpsertCleanup::LocalLegacyFragments { file_url } => {
                 if let Err(e) = qdrant_delete_local_file_fragments(cfg, &file_url).await {
-                    log_warn(&format!(
-                        "embed local-fragment cleanup failed for {file_url}: {e}"
-                    ));
+                    return Err(
+                        format!("embed local-fragment cleanup failed for {file_url}: {e}").into(),
+                    );
                 }
             }
         }

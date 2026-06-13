@@ -234,21 +234,24 @@ async fn embed_repo_metadata(
     let doc = prepare_source_document(source_doc)
         .await
         .map_err(|err| anyhow::anyhow!("prepare github metadata source failed: {err}"))?;
-    if doc.chunks.is_empty() {
+    if doc.is_empty() {
         return Ok(0);
     }
     let summary = embed_prepared_docs(cfg, vec![doc], None)
         .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .require_success("github metadata embed")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }
 
 // ── Main entry point ───────────────────────────────────────────────────────────
 
-fn tally_results(results: [(&str, Result<usize>); 5], repo: &str) -> (usize, usize, usize) {
+fn tally_results(results: [(&str, Result<usize>); 5], repo: &str) -> Result<(usize, usize, usize)> {
     let mut total = 0usize;
     let mut issues_count = 0usize;
     let mut prs_count = 0usize;
+    let mut failures = Vec::new();
     for (label, result) in results {
         match result {
             Ok(n) => {
@@ -262,12 +265,22 @@ fn tally_results(results: [(&str, Result<usize>); 5], repo: &str) -> (usize, usi
                 }
                 total += n;
             }
-            Err(e) => log_warn(&format!(
-                "command=ingest_github {label}_failed repo={repo} err={e}"
-            )),
+            Err(e) => {
+                log_warn(&format!(
+                    "command=ingest_github {label}_failed repo={repo} err={e}"
+                ));
+                failures.push(format!("{label}: {e}"));
+            }
         }
     }
-    (total, issues_count, prs_count)
+    if failures.is_empty() {
+        Ok((total, issues_count, prs_count))
+    } else {
+        Err(anyhow::anyhow!(
+            "github ingest had failed subtasks for {repo}: {}",
+            failures.join("; ")
+        ))
+    }
 }
 
 /// Run all five GitHub sub-tasks concurrently and report per-task progress.
@@ -433,7 +446,7 @@ pub async fn ingest_github(
             ("wiki", Err(anyhow::anyhow!("timed out"))),
         ]
     });
-    let (total, issues_count, prs_count) = tally_results(results, repo);
+    let (total, issues_count, prs_count) = tally_results(results, repo)?;
 
     reporter
         .report(serde_json::json!({

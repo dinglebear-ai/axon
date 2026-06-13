@@ -127,7 +127,7 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
             }
         };
         match prepare_source_document(source_doc).await {
-            Ok(doc) if !doc.chunks.is_empty() => docs.push(doc),
+            Ok(doc) if !doc.is_empty() => docs.push(doc),
             Ok(_) => {}
             Err(err) => log_warn(&format!(
                 "command=ingest_github wiki_prepare_source_doc_failed url={wiki_url} err={err}"
@@ -231,6 +231,8 @@ pub async fn ingest_wiki(
         .await;
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .require_success("github wiki embed")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }

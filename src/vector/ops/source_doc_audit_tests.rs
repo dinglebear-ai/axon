@@ -15,9 +15,19 @@ fn source_doc_audit_forbids_manual_chunking_in_adapters() {
         "use crate::vector::ops::{chunk_text",
         "use crate::vector::ops::{chunk_markdown",
         "use crate::vector::ops::{chunk_file",
+        "use crate::vector::ops::chunk_text",
+        "use crate::vector::ops::chunk_markdown",
+        "use crate::vector::ops::chunk_file",
+        "crate::vector::ops::chunk_text(",
+        "crate::vector::ops::chunk_markdown(",
+        "crate::vector::ops::chunk_file(",
+        "crate::vector::ops::input::chunk_text(",
+        "crate::vector::ops::input::chunk_markdown(",
+        "crate::vector::ops::file_ingest::chunk_file(",
         "PreparedDoc {",
         "PreparedDoc::ingest(",
         "PreparedDoc::from_planned_chunks(",
+        "crate::vector::ops::tei::PreparedDoc::from_planned_chunks(",
         "build_point(",
         "qdrant_upsert(",
     ];
@@ -27,9 +37,8 @@ fn source_doc_audit_forbids_manual_chunking_in_adapters() {
         if is_allowed(&file) {
             continue;
         }
-        let Ok(content) = fs::read_to_string(&file) else {
-            continue;
-        };
+        let content = fs::read_to_string(&file)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", file.display()));
         for needle in forbidden {
             if content.contains(needle) {
                 violations.push(format!("{} contains {needle}", file.display()));
