@@ -281,9 +281,6 @@ pub async fn ingest_youtube(
         None => None,
     };
 
-    // Build source-specific extra payload once; merged into every chunk's Qdrant point
-    let extra = video_meta.as_ref().map(meta::build_youtube_extra_payload);
-
     let mut count = 0usize;
 
     for vtt_path in &vtt_files {
@@ -315,39 +312,8 @@ pub async fn ingest_youtube(
             .map(|m| m.title.as_str())
             .unwrap_or(vid_id);
 
-        let mut docs: Vec<PreparedDoc> = Vec::new();
-
-        let transcript_doc = prepare_plain_text_source(
-            source_url.clone(),
-            url_to_domain(&source_url),
-            text,
-            "youtube",
-            Some(title.to_string()),
-            extra.clone(),
-        )
-        .map_err(|err| format!("prepare youtube transcript source failed: {err}"))?;
-        if !transcript_doc.chunks.is_empty() {
-            docs.push(transcript_doc);
-        }
-
-        // Embed description as a separate document (often contains commands, links, timestamps)
-        if let Some(m) = &video_meta
-            && !m.description.trim().is_empty()
-        {
-            let desc_url = format!("{source_url}?section=description");
-            let desc_doc = prepare_plain_text_source(
-                desc_url.clone(),
-                url_to_domain(&desc_url),
-                m.description.clone(),
-                "youtube",
-                Some(format!("{} — description", m.title)),
-                extra.clone(),
-            )
-            .map_err(|err| format!("prepare youtube description source failed: {err}"))?;
-            if !desc_doc.chunks.is_empty() {
-                docs.push(desc_doc);
-            }
-        }
+        let docs = prepare_youtube_video_docs(source_url.clone(), title, text, video_meta.as_ref())
+            .map_err(|err| format!("prepare youtube docs failed: {err}"))?;
 
         reporter.report_phase(PHASE_EMBEDDING).await;
         match embed_prepared_docs(cfg, docs, None).await {
@@ -362,6 +328,49 @@ pub async fn ingest_youtube(
         "command=ingest source=youtube video_id={video_id} chunk_count={count}"
     ));
     Ok(count)
+}
+
+fn prepare_youtube_video_docs(
+    source_url: String,
+    title: &str,
+    transcript: String,
+    video_meta: Option<&meta::YoutubeVideoMeta>,
+) -> Result<Vec<PreparedDoc>, String> {
+    let extra = video_meta.map(meta::build_youtube_extra_payload);
+    let mut docs: Vec<PreparedDoc> = Vec::new();
+
+    let transcript_doc = prepare_plain_text_source(
+        source_url.clone(),
+        url_to_domain(&source_url),
+        transcript,
+        "youtube",
+        Some(title.to_string()),
+        extra.clone(),
+    )
+    .map_err(|err| format!("prepare youtube transcript source failed: {err}"))?;
+    if !transcript_doc.chunks.is_empty() {
+        docs.push(transcript_doc);
+    }
+
+    if let Some(m) = video_meta
+        && !m.description.trim().is_empty()
+    {
+        let desc_url = format!("{source_url}?section=description");
+        let desc_doc = prepare_plain_text_source(
+            desc_url.clone(),
+            url_to_domain(&desc_url),
+            m.description.clone(),
+            "youtube",
+            Some(format!("{} — description", m.title)),
+            extra.clone(),
+        )
+        .map_err(|err| format!("prepare youtube description source failed: {err}"))?;
+        if !desc_doc.chunks.is_empty() {
+            docs.push(desc_doc);
+        }
+    }
+
+    Ok(docs)
 }
 
 pub async fn ingest_youtube_target(

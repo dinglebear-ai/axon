@@ -513,3 +513,33 @@ async fn dir_embed_code_file_gets_symbol_payload() {
         "expected at least one function-symbol chunk"
     );
 }
+
+#[tokio::test]
+async fn explicit_single_code_file_preserves_full_locator_path() {
+    let cfg = Config::default_minimal();
+    let temp_dir = TempDir::new().expect("tempdir");
+    let input_path = temp_dir.path().join("src").join("lib.rs");
+    tokio::fs::create_dir_all(input_path.parent().unwrap())
+        .await
+        .expect("mkdir src");
+    tokio::fs::write(&input_path, "fn explicit_file() {}\n")
+        .await
+        .expect("write lib.rs");
+    let input = input_path.to_string_lossy().to_string();
+
+    let prepared = prepare_embed_docs(&cfg, &input, &[], None)
+        .await
+        .expect("prepare docs");
+
+    assert_eq!(prepared.len(), 1);
+    let doc = &prepared[0];
+    let extra = doc.extra.as_ref().expect("extra");
+    assert_eq!(extra["code_file_path"], input);
+    assert!(
+        doc.chunk_extra
+            .iter()
+            .all(|extra| extra["chunk_locator"].as_str().unwrap().starts_with(&input)),
+        "chunk locators should preserve explicit input path: {:?}",
+        doc.chunk_extra
+    );
+}

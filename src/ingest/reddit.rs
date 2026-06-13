@@ -438,3 +438,40 @@ pub async fn ingest_reddit_with_options(
     ));
     Ok(summary)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn reddit_post_doc_preserves_plain_text_metadata() {
+        let mut cfg = Config::default_minimal();
+        cfg.reddit_min_score = 1;
+        let post = serde_json::json!({
+            "data": {
+                "title": "Rust chunking",
+                "selftext": "Post body",
+                "permalink": "",
+                "score": 42,
+                "subreddit": "rust",
+                "author": "alice",
+                "num_comments": 0,
+                "created_utc": 1767225600.0,
+                "url": "https://www.reddit.com/r/rust/comments/abc/rust_chunking/"
+            }
+        });
+
+        let built = build_post_doc(&cfg, "unused-token", &post, &RedditIngestOptions::default())
+            .await
+            .expect("post build");
+        let doc = built.doc.expect("doc");
+
+        assert_eq!(doc.url, "https://www.reddit.com");
+        assert_eq!(doc.domain, "www.reddit.com");
+        assert_eq!(doc.source_type, "reddit");
+        assert_eq!(doc.content_type, "text");
+        assert_eq!(doc.extra.as_ref().unwrap()["reddit_subreddit"], "rust");
+        assert_eq!(doc.extra.as_ref().unwrap()["reddit_score"], 42);
+        assert_eq!(doc.chunk_extra[0]["chunk_content_kind"], "plain_text");
+    }
+}

@@ -1,5 +1,7 @@
 use anyhow::{Result, bail};
 use base64::Engine as _;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use crate::core::config::Config;
 use crate::core::logging::log_warn;
@@ -12,6 +14,7 @@ use crate::vector::ops::file_ingest::{SelectionPolicy, collect_files};
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
+use crate::vector::ops::qdrant::qdrant_delete_repo_file_fragments;
 use crate::vector::ops::{SourceDocument, SourceOrigin, prepare_source_document};
 
 use super::types::{GitLabProject, GitLabTarget};
@@ -83,10 +86,67 @@ pub(crate) async fn embed_files(
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     let total = files.len();
+    let PreparedFiles {
+        docs,
+        skipped_files,
+    } = prepare_file_docs(tmp.path(), files, target, project, branch, reporter).await?;
+    let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url.clone()).collect();
+    let chunks = embed_docs(cfg, docs).await?;
+    if include_source && skipped_files == 0 {
+        let owner = target
+            .namespace_path
+            .rfind('/')
+            .map(|idx| &target.namespace_path[..idx]);
+        if let Err(err) = qdrant_delete_repo_file_fragments(
+            cfg,
+            "gitlab",
+            &target.host,
+            owner,
+            &target.project,
+            &current_urls,
+        )
+        .await
+        {
+            log_warn(&format!(
+                "command=ingest_gitlab legacy_fragment_cleanup_failed target={} err={err}",
+                target.namespace_path
+            ));
+        }
+    } else {
+        log_warn(&format!(
+            "command=ingest_gitlab legacy_fragment_cleanup_skipped include_source={include_source} skipped_files={skipped_files}"
+        ));
+    }
+    reporter
+        .report(serde_json::json!({
+            "files_done": total,
+            "files_total": total,
+            "chunks_embedded": chunks,
+            "phase": "embedded_files",
+        }))
+        .await;
+    Ok(chunks)
+}
+
+struct PreparedFiles {
+    docs: Vec<crate::vector::ops::PreparedDoc>,
+    skipped_files: usize,
+}
+
+async fn prepare_file_docs(
+    root: &Path,
+    files: Vec<PathBuf>,
+    target: &GitLabTarget,
+    project: &GitLabProject,
+    branch: &str,
+    reporter: &PhaseReporter,
+) -> Result<PreparedFiles> {
+    let total = files.len();
     let mut docs = Vec::new();
+    let mut skipped_files = 0usize;
     for (index, file) in files.into_iter().enumerate() {
         let rel = file
-            .strip_prefix(tmp.path())?
+            .strip_prefix(root)?
             .to_string_lossy()
             .replace('\\', "/");
         // S-M2: stat before read — skip files over the ingest size cap
@@ -96,12 +156,14 @@ pub(crate) async fn embed_files(
                     "command=ingest_gitlab skip_large_file path={rel} size_bytes={}",
                     meta.len()
                 ));
+                skipped_files += 1;
                 continue;
             }
             Err(e) => {
                 log_warn(&format!(
                     "command=ingest_gitlab stat_failed path={rel} err={e}"
                 ));
+                skipped_files += 1;
                 continue;
             }
             _ => {}
@@ -113,6 +175,7 @@ pub(crate) async fn embed_files(
                 log_warn(&format!(
                     "command=ingest_gitlab read_failed path={rel} err={e}"
                 ));
+                skipped_files += 1;
                 continue;
             }
         };
@@ -120,6 +183,7 @@ pub(crate) async fn embed_files(
             Ok(t) => t,
             Err(_) => {
                 log_warn(&format!("command=ingest_gitlab skip_non_utf8 path={rel}"));
+                skipped_files += 1;
                 continue;
             }
         };
@@ -140,6 +204,7 @@ pub(crate) async fn embed_files(
                 log_warn(&format!(
                     "command=ingest_gitlab invalid_source_doc path={rel} err={err}"
                 ));
+                skipped_files += 1;
                 continue;
             }
         };
@@ -149,6 +214,7 @@ pub(crate) async fn embed_files(
                 log_warn(&format!(
                     "command=ingest_gitlab prepare_source_doc_failed path={rel} err={err}"
                 ));
+                skipped_files += 1;
                 continue;
             }
         }
@@ -158,19 +224,13 @@ pub(crate) async fn embed_files(
                 .await;
         }
     }
-    let chunks = embed_docs(cfg, docs).await?;
-    reporter
-        .report(serde_json::json!({
-            "files_done": total,
-            "files_total": total,
-            "chunks_embedded": chunks,
-            "phase": "embedded_files",
-        }))
-        .await;
-    Ok(chunks)
+    Ok(PreparedFiles {
+        docs,
+        skipped_files,
+    })
 }
 
-fn gitlab_file_doc_extra(
+pub(crate) fn gitlab_file_doc_extra(
     target: &GitLabTarget,
     project: &GitLabProject,
     branch: &str,

@@ -35,6 +35,33 @@ async fn generic_file_docs_chunk_rust_as_code_with_symbols() {
     );
 }
 
+#[tokio::test]
+async fn generic_file_docs_mark_markdown_and_text_chunks_by_actual_chunker() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    std::fs::write(root.join("README.md"), "# Readme\n\ntext").unwrap();
+    std::fs::write(root.join("notes.txt"), "plain notes").unwrap();
+    let target = GenericGitTarget {
+        host: "example.com".into(),
+        name: "repo".into(),
+        clone_url: "https://example.com/r.git".into(),
+        web_url: "https://example.com/r".into(),
+    };
+
+    let md_docs = file_docs(root, &target, "main", root.join("README.md"), "git", "git")
+        .await
+        .unwrap();
+    let txt_docs = file_docs(root, &target, "main", root.join("notes.txt"), "git", "git")
+        .await
+        .unwrap();
+
+    assert_eq!(md_docs[0].chunk_extra[0]["chunk_content_kind"], "markdown");
+    assert_eq!(
+        txt_docs[0].chunk_extra[0]["chunk_content_kind"],
+        "plain_text"
+    );
+}
+
 #[test]
 fn parses_explicit_https_git_target() {
     let target = parse_generic_git_target("git:https://example.com/org/repo.git").unwrap();

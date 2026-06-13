@@ -235,20 +235,19 @@ fn vertical_doc_to_scrape_result(
     if let Some(structured) = doc.structured {
         let redacted = redact_sensitive_structured_keys(structured);
         scrape_result.structured_for_embedding = Some(redacted.clone());
-        scrape_result.structured = public_structured_summary(redacted);
+        scrape_result.structured = capped_public_structured_summary(redacted);
     }
     scrape_result.extractor_name = Some(doc.extractor_name.to_string());
     scrape_result.title = doc.title;
     Ok(scrape_result)
 }
 
-fn public_structured_summary(value: serde_json::Value) -> Option<serde_json::Value> {
-    let redacted = redact_sensitive_structured_keys(value);
-    let bytes = serde_json::to_vec(&redacted).ok()?;
+fn capped_public_structured_summary(value: serde_json::Value) -> Option<serde_json::Value> {
+    let bytes = serde_json::to_vec(&value).ok()?;
     if bytes.len() > MAX_PUBLIC_STRUCTURED_BYTES {
         None
     } else {
-        Some(redacted)
+        Some(value)
     }
 }
 
@@ -441,7 +440,7 @@ pub async fn scrape_batch_with_optional_embed(
 pub(crate) async fn scrape_result_to_prepared_doc(
     cfg: &Config,
     result: &ScrapeResult,
-) -> Result<crate::vector::ops::PreparedDoc, Box<dyn Error>> {
+) -> anyhow::Result<crate::vector::ops::PreparedDoc> {
     let structured_source = result
         .structured_for_embedding
         .clone()
@@ -462,10 +461,10 @@ pub(crate) async fn scrape_result_to_prepared_doc(
         result.extractor_name.clone(),
         structured,
     )
-    .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    .map_err(|err| anyhow::anyhow!(err))?;
     prepare_source_document(source)
         .await
-        .map_err(|err| -> Box<dyn Error> { err.into() })
+        .map_err(|err| anyhow::anyhow!(err))
 }
 
 #[cfg(test)]

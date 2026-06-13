@@ -15,7 +15,6 @@ pub use input::{chunk_markdown, chunk_text, url_lookup_candidates};
 #[allow(unused_imports)]
 pub(crate) use source_doc::{
     SourceDocument, SourceOrigin, prepare_plain_text_source, prepare_source_document,
-    prepare_source_documents_bounded, should_flush_prepared_batch,
     structured_payload_from_vertical_summary,
 };
 pub use stats::stats_payload;

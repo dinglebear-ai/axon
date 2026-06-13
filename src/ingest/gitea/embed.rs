@@ -130,7 +130,10 @@ pub(crate) async fn embed_issues(
     .await?;
     let docs = issues
         .into_iter()
-        .filter_map(|i| issue_doc(target, repo, i))
+        .map(|i| issue_doc(target, repo, i))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect();
     embed_docs(cfg, docs).await
 }
@@ -139,7 +142,7 @@ pub(crate) fn issue_doc(
     target: &GiteaTarget,
     repo: &GiteaRepo,
     issue: GiteaIssue,
-) -> Option<PreparedDoc> {
+) -> Result<Option<PreparedDoc>> {
     let labels = label_names(issue.labels);
     let label_text = if labels.is_empty() {
         String::new()
@@ -177,8 +180,8 @@ pub(crate) fn issue_doc(
             }),
         )),
     )
-    .ok()?;
-    (!doc.chunks.is_empty()).then_some(doc)
+    .map_err(|err| anyhow::anyhow!("prepare gitea issue source failed: {err}"))?;
+    Ok((!doc.chunks.is_empty()).then_some(doc))
 }
 
 pub(crate) async fn embed_pulls(
@@ -196,7 +199,10 @@ pub(crate) async fn embed_pulls(
     .await?;
     let docs = pulls
         .into_iter()
-        .filter_map(|p| pull_doc(target, repo, p))
+        .map(|p| pull_doc(target, repo, p))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect();
     embed_docs(cfg, docs).await
 }
@@ -205,7 +211,7 @@ pub(crate) fn pull_doc(
     target: &GiteaTarget,
     repo: &GiteaRepo,
     pull: GiteaPullRequest,
-) -> Option<PreparedDoc> {
+) -> Result<Option<PreparedDoc>> {
     let labels = label_names(pull.labels);
     let content = format!(
         "# PR #{}: {}\n\n{}",
@@ -238,6 +244,6 @@ pub(crate) fn pull_doc(
             }),
         )),
     )
-    .ok()?;
-    (!doc.chunks.is_empty()).then_some(doc)
+    .map_err(|err| anyhow::anyhow!("prepare gitea pull request source failed: {err}"))?;
+    Ok((!doc.chunks.is_empty()).then_some(doc))
 }

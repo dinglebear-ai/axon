@@ -181,7 +181,10 @@ pub(crate) async fn embed_issues(
     };
     let docs = issues
         .into_iter()
-        .filter_map(|issue| issue_doc(target, project, issue))
+        .map(|issue| issue_doc(target, project, issue))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect();
     embed_docs(cfg, docs).await
 }
@@ -190,7 +193,7 @@ fn issue_doc(
     target: &GitLabTarget,
     project: &GitLabProject,
     issue: GitLabIssue,
-) -> Option<PreparedDoc> {
+) -> Result<Option<PreparedDoc>> {
     let body = issue.description.as_deref().unwrap_or("");
     let labels = issue.labels.unwrap_or_default();
     let label_text = if labels.is_empty() {
@@ -228,8 +231,8 @@ fn issue_doc(
         Some(format!("Issue #{}: {}", issue.iid, issue.title)),
         Some(extra),
     )
-    .ok()?;
-    (!doc.chunks.is_empty()).then_some(doc)
+    .map_err(|err| anyhow::anyhow!("prepare gitlab issue source failed: {err}"))?;
+    Ok((!doc.chunks.is_empty()).then_some(doc))
 }
 
 pub(crate) async fn embed_merge_requests(
@@ -259,7 +262,10 @@ pub(crate) async fn embed_merge_requests(
     };
     let docs = mrs
         .into_iter()
-        .filter_map(|mr| merge_request_doc(target, project, mr))
+        .map(|mr| merge_request_doc(target, project, mr))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect();
     embed_docs(cfg, docs).await
 }
@@ -268,7 +274,7 @@ fn merge_request_doc(
     target: &GitLabTarget,
     project: &GitLabProject,
     mr: GitLabMergeRequest,
-) -> Option<PreparedDoc> {
+) -> Result<Option<PreparedDoc>> {
     let body = mr.description.as_deref().unwrap_or("");
     let content = format!("# MR !{}: {}\n\n{}", mr.iid, mr.title, body);
     let url = mr
@@ -300,8 +306,8 @@ fn merge_request_doc(
         Some(format!("MR !{}: {}", mr.iid, mr.title)),
         Some(extra),
     )
-    .ok()?;
-    (!doc.chunks.is_empty()).then_some(doc)
+    .map_err(|err| anyhow::anyhow!("prepare gitlab merge request source failed: {err}"))?;
+    Ok((!doc.chunks.is_empty()).then_some(doc))
 }
 
 pub(crate) async fn embed_wiki(
@@ -327,7 +333,10 @@ pub(crate) async fn embed_wiki(
     };
     let docs = pages
         .into_iter()
-        .filter_map(|page| wiki_doc(target, project, page))
+        .map(|page| wiki_doc(target, project, page))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect();
     embed_docs(cfg, docs).await
 }
@@ -342,8 +351,10 @@ fn wiki_doc(
     target: &GitLabTarget,
     project: &GitLabProject,
     page: GitLabWikiPage,
-) -> Option<PreparedDoc> {
-    let content = page.content?;
+) -> Result<Option<PreparedDoc>> {
+    let Some(content) = page.content else {
+        return Ok(None);
+    };
     let extra = gitlab_payload(
         target,
         project,
@@ -362,8 +373,8 @@ fn wiki_doc(
         Some(format!("Wiki: {}", page.title)),
         Some(extra),
     )
-    .ok()?;
-    (!doc.chunks.is_empty()).then_some(doc)
+    .map_err(|err| anyhow::anyhow!("prepare gitlab wiki source failed: {err}"))?;
+    Ok((!doc.chunks.is_empty()).then_some(doc))
 }
 
 /// Build a canonical per-chunk GitLab file payload with code + symbol metadata.

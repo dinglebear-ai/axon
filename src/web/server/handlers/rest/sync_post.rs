@@ -218,21 +218,27 @@ pub(crate) async fn v1_scrape(
     if let Some(embed) = req.embed {
         cfg.embed = embed;
     }
-    match scrape_svc::scrape(&cfg, &req.url, None).await {
-        Ok(result) => {
-            let doc = cfg
-                .embed
-                .then(|| crate::cli::commands::scrape::scrape_result_to_prepared_doc(&result));
-            if cfg.embed
-                && let Some(doc) = doc
-                && let Err(err) = embed_scrape_doc_sync(&cfg, doc)
-            {
-                return rest_error(StatusCode::BAD_GATEWAY, "upstream_error", err);
+    let result = match scrape_svc::scrape(&cfg, &req.url, None).await {
+        Ok(result) => result,
+        Err(err) => return map_service_error(err.as_ref()),
+    };
+    let doc = if cfg.embed {
+        match crate::cli::commands::scrape::scrape_result_to_prepared_doc(&cfg, &result).await {
+            Ok(doc) => Some(doc),
+            Err(err) => {
+                return rest_error(StatusCode::BAD_GATEWAY, "upstream_error", err.to_string());
             }
-            Json(result).into_response()
         }
-        Err(err) => map_service_error(err.as_ref()),
+    } else {
+        None
+    };
+    if cfg.embed
+        && let Some(doc) = doc
+        && let Err(err) = embed_scrape_doc_sync(&cfg, doc)
+    {
+        return rest_error(StatusCode::BAD_GATEWAY, "upstream_error", err);
     }
+    Json(result).into_response()
 }
 
 pub(crate) async fn v1_summarize(
