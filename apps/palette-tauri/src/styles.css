@@ -1131,6 +1131,7 @@ textarea {
 }
 
 .command-input-wrap {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
@@ -1145,21 +1146,48 @@ textarea {
   color: var(--aurora-text-muted);
 }
 
-/* Active-mode indicator: the selected action's icon replaces the search glyph
-   in the input. Tinted by action tone; click to clear the mode (Esc also works). */
-.command-mode-icon {
+/* Active-mode switcher: the selected action sits inside the input and opens a
+   compact list of alternate actions without resizing the command bar. */
+.command-action-switcher {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.command-action-trigger {
   all: unset;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
+  gap: 5px;
+  max-width: 138px;
+  height: 26px;
+  padding: 0 7px;
   color: var(--aurora-accent-strong);
+  background: color-mix(in srgb, var(--aurora-control-surface) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 24%, var(--aurora-border-default));
+  border-radius: 8px;
   cursor: pointer;
-  transition: color 120ms ease-out;
+  transition:
+    background 120ms ease-out,
+    border-color 120ms ease-out,
+    color 120ms ease-out;
 }
 
-.command-mode-icon:hover {
+.command-action-trigger span {
+  min-width: 0;
+  overflow: hidden;
   color: var(--aurora-text-primary);
+  font-size: 11px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-action-trigger:hover,
+.command-action-trigger[aria-expanded="true"] {
+  color: var(--aurora-text-primary);
+  background: var(--aurora-hover-bg);
+  border-color: var(--aurora-border-strong);
 }
 
 .command-mode-icon-warn {
@@ -1171,6 +1199,139 @@ textarea {
 }
 
 .command-mode-icon-violet {
+  color: var(--aurora-accent-violet-strong);
+}
+
+.command-action-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 9px);
+  left: 0;
+  display: flex;
+  width: min(388px, calc(100vw - 56px));
+  max-height: min(310px, calc(100vh - 76px));
+  padding: 7px;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--aurora-text-primary);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 62%, transparent);
+  border-radius: 10px;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.command-action-search,
+.command-action-empty {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 3px 7px;
+  color: var(--aurora-text-muted);
+  font-size: 10px;
+}
+
+.command-action-search {
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 62%, transparent);
+}
+
+.command-action-search span {
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: var(--aurora-letter-eyebrow);
+  text-transform: uppercase;
+}
+
+.command-action-search kbd {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--aurora-accent-strong);
+  text-overflow: ellipsis;
+}
+
+.command-action-empty {
+  justify-content: center;
+}
+
+.command-action-option {
+  all: unset;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 7px;
+  color: var(--aurora-accent-strong);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.command-action-option:hover {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 6%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 26%, var(--aurora-border-default));
+}
+
+.command-action-option-selected {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 8%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 34%, var(--aurora-border-default));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 5%, transparent),
+    var(--aurora-active-glow);
+}
+
+.command-action-option span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.command-action-option strong,
+.command-action-option small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-action-option strong {
+  color: var(--aurora-text-primary);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.command-action-option small {
+  color: var(--aurora-text-muted);
+  font-size: 10px;
+  font-weight: 520;
+}
+
+.command-action-option kbd {
+  justify-self: end;
+  max-width: 98px;
+  overflow: hidden;
+  color: var(--aurora-text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+
+.command-action-option-warn {
+  color: var(--axon-orange-strong);
+}
+
+.command-action-option-rose {
+  color: var(--aurora-accent-pink-strong);
+}
+
+.command-action-option-violet {
   color: var(--aurora-accent-violet-strong);
 }
 
