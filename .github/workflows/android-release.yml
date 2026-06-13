@@ -79,8 +79,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          build-root-directory: apps/android
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -109,7 +107,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Assemble release APK
-        run: ./gradlew -p apps/android :app:assembleRelease --no-daemon --stacktrace
+        run: apps/android/gradlew -p apps/android :app:assembleRelease --no-daemon --stacktrace
 
       - name: Sign and package APK
         id: package
