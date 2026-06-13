@@ -22,7 +22,7 @@ async fn markdown_with_control_chars_falls_back_to_plain_text_chunking() {
 
     assert_eq!(prepared.content_type, "markdown");
     assert_eq!(prepared.chunk_extra.len(), prepared.chunks.len());
-    assert_eq!(prepared.chunk_extra[0]["content_kind"], "markdown");
+    assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "markdown");
     assert_eq!(
         prepared.chunk_extra[0]["chunking_fallback"],
         "plain_text_control_chars"
@@ -42,7 +42,7 @@ async fn crawl_manifest_rs_url_does_not_use_code_chunking() {
     let prepared = prepare_source_document(source).await.expect("prepared doc");
 
     assert_eq!(prepared.content_type, "markdown");
-    assert_eq!(prepared.chunk_extra[0]["content_kind"], "markdown");
+    assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "markdown");
     assert!(prepared.chunk_extra[0].get("code_line_start").is_none());
 }
 
@@ -83,7 +83,7 @@ async fn file_source_attaches_existing_code_keys_and_new_locator_keys() {
         .iter()
         .find(|extra| extra.get("symbol_name").and_then(|v| v.as_str()) == Some("Parser::parse"))
         .unwrap_or_else(|| prepared.chunk_extra.first().expect("chunk metadata"));
-    assert_eq!(chunk_extra["content_kind"], "code");
+    assert_eq!(chunk_extra["chunk_content_kind"], "code");
     assert!(
         chunk_extra["chunk_locator"]
             .as_str()
@@ -134,7 +134,8 @@ async fn planner_owned_fields_are_removed_from_doc_extra() {
         None,
         Some(serde_json::json!({
             "reddit_subreddit": "rust",
-            "content_kind": "evil",
+            "content_kind": "legacy-evil",
+            "chunk_content_kind": "evil",
             "chunk_locator": "evil"
         })),
     )
@@ -144,7 +145,8 @@ async fn planner_owned_fields_are_removed_from_doc_extra() {
     let extra = prepared.extra.as_ref().expect("extra");
     assert_eq!(extra["reddit_subreddit"], "rust");
     assert!(extra.get("content_kind").is_none());
-    assert_eq!(prepared.chunk_extra[0]["content_kind"], "plain_text");
+    assert!(extra.get("chunk_content_kind").is_none());
+    assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "plain_text");
 }
 
 #[tokio::test]
@@ -167,7 +169,7 @@ async fn bounded_planner_clamps_and_prepares_all_docs() {
     assert!(
         prepared
             .iter()
-            .all(|doc| doc.chunk_extra[0]["content_kind"] == "plain_text")
+            .all(|doc| doc.chunk_extra[0]["chunk_content_kind"] == "plain_text")
     );
 }
 

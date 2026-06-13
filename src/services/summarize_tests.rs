@@ -16,6 +16,7 @@ fn scrape(url: &str, markdown: &str) -> ScrapeResult {
         follow_crawl_urls: vec![],
         extra: None,
         structured: None,
+        structured_for_embedding: None,
         extractor_name: None,
         title: None,
     }

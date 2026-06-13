@@ -220,25 +220,12 @@ pub async fn qdrant_delete_stale_repo_file_urls(
     Ok(stale.len())
 }
 
-pub async fn qdrant_delete_local_file_fragments(
-    cfg: &Config,
-    file_url: &str,
-    code_file_path: &str,
-) -> Result<usize> {
-    let indexed = scroll_url_set(
-        cfg,
-        serde_json::json!({
-            "must": [
-                {"key": "code_file_path", "match": {"value": code_file_path}}
-            ]
-        }),
-        None,
-    )
-    .await?;
+pub async fn qdrant_delete_local_file_fragments(cfg: &Config, file_url: &str) -> Result<usize> {
     let legacy_prefix = format!("{file_url}#L");
+    let indexed = scroll_url_set(cfg, local_legacy_fragment_scroll_filter(), None).await?;
     let stale: Vec<String> = indexed
         .into_iter()
-        .filter(|url| url.starts_with(&legacy_prefix) || url != file_url)
+        .filter(|url| url.starts_with(&legacy_prefix))
         .collect();
     if stale.is_empty() {
         return Ok(0);
@@ -257,7 +244,8 @@ pub async fn qdrant_delete_local_file_fragments(
             serde_json::json!({
                 "filter": {
                     "must": [
-                        {"key": "code_file_path", "match": {"value": code_file_path}}
+                        {"key": "domain", "match": {"value": "local"}},
+                        {"key": "source_type", "match": {"value": "embed"}}
                     ],
                     "should": batch
                 }
@@ -267,6 +255,32 @@ pub async fn qdrant_delete_local_file_fragments(
         .await?;
     }
     Ok(stale.len())
+}
+
+fn local_legacy_fragment_scroll_filter() -> serde_json::Value {
+    serde_json::json!({
+        "must": [
+            {"key": "domain", "match": {"value": "local"}},
+            {"key": "source_type", "match": {"value": "embed"}}
+        ]
+    })
+}
+
+#[cfg(test)]
+fn local_legacy_fragment_delete_body(urls: &[&str]) -> serde_json::Value {
+    let should: Vec<serde_json::Value> = urls
+        .iter()
+        .map(|url| serde_json::json!({"key": "url", "match": {"value": url}}))
+        .collect();
+    serde_json::json!({
+        "filter": {
+            "must": [
+                {"key": "domain", "match": {"value": "local"}},
+                {"key": "source_type", "match": {"value": "embed"}}
+            ],
+            "should": should
+        }
+    })
 }
 
 /// Test helper: build the delete body that `qdrant_delete_stale_tail` would

@@ -153,6 +153,12 @@ fn vertical_doc_to_scrape_result_preserves_capped_structured_summary() {
     let structured = result.structured.as_ref().expect("structured summary");
     assert_eq!(structured["name"], "ruff");
     assert!(structured.get("api_token").is_none());
+    let embedding_structured = result
+        .structured_for_embedding
+        .as_ref()
+        .expect("embedding structured");
+    assert_eq!(embedding_structured["name"], "ruff");
+    assert!(embedding_structured.get("api_token").is_none());
 }
 
 #[test]
@@ -171,6 +177,10 @@ fn vertical_structured_summary_drops_oversized_payload() {
     .expect("scrape result");
 
     assert!(result.structured.is_none());
+    assert!(
+        result.structured_for_embedding.is_some(),
+        "large redacted structured payload should remain available for embedding"
+    );
 }
 
 #[tokio::test]

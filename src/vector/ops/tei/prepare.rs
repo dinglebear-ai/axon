@@ -10,7 +10,6 @@ use crate::core::structured::extract_all;
 use crate::core::ui::{accent, symbol_for_status};
 use crate::vector::ops::input::classify::path_extension;
 use crate::vector::ops::input::select;
-use crate::vector::ops::qdrant::qdrant_delete_local_file_fragments;
 use crate::vector::ops::{SourceDocument, SourceOrigin, prepare_source_document};
 use spider::url::Url;
 use std::error::Error;
@@ -252,7 +251,7 @@ pub(super) async fn prepare_embed_docs(
             .and_then(structured_payload_from_blob)
             .or(remote_structured.clone());
         let source_doc = if url.starts_with("http://") || url.starts_with("https://") {
-            if manifest_structured.is_some() {
+            if input_is_dir {
                 SourceDocument::try_new_crawl_manifest(url, raw, None, structured)
             } else {
                 SourceDocument::try_new_web_markdown(
@@ -269,13 +268,6 @@ pub(super) async fn prepare_embed_docs(
             let locator_path = local_locator_path(input_path, &url, input_is_dir);
             let ext = path_extension(&locator_path).to_ascii_lowercase();
             if select::should_chunk_as_code(&url) {
-                if let Err(err) =
-                    qdrant_delete_local_file_fragments(cfg, &url, &locator_path).await
-                {
-                    log_warn(&format!(
-                        "command=embed local_fragment_cleanup_failed url={url} code_file_path={locator_path} err={err}"
-                    ));
-                }
                 SourceDocument::try_new_file(
                     SourceOrigin::LocalFile,
                     url,

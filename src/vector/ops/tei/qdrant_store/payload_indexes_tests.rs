@@ -29,6 +29,10 @@ async fn ensure_payload_indexes_fires_one_put_per_field() {
         .expect("should succeed");
 
     assert!(
+        KEYWORD_INDEX_FIELDS.contains(&"chunk_content_kind"),
+        "chunk_content_kind must be in the keyword index request list"
+    );
+    assert!(
         KEYWORD_INDEX_FIELDS.contains(&"code_chunking_method"),
         "code_chunking_method must be in the keyword index request list"
     );

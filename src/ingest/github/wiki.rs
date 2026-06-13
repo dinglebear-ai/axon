@@ -10,6 +10,7 @@ use crate::vector::ops::{
 };
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
+use url::Url;
 
 use super::GitHubCommonFields;
 use super::meta::{GitHubPayloadParams, build_github_payload};
@@ -94,10 +95,7 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
         }
 
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Home");
-        let wiki_url = format!(
-            "https://github.com/{}/{}/wiki/{stem}",
-            common.owner, common.name
-        );
+        let wiki_url = github_wiki_page_url(&common.owner, &common.name, stem)?;
         let title = stem.replace(['-', '_'], " ");
 
         let extra = build_github_payload(&GitHubPayloadParams {
@@ -138,6 +136,17 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
     }
 
     Ok(docs)
+}
+
+fn github_wiki_page_url(owner: &str, repo: &str, stem: &str) -> Result<String> {
+    let mut url = Url::parse("https://github.com/")?;
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("github base URL cannot be a base"))?;
+        segments.push(owner).push(repo).push("wiki").push(stem);
+    }
+    Ok(url.to_string())
 }
 
 /// Ingest wiki pages from a GitHub repository by cloning the wiki git repo.
@@ -224,4 +233,22 @@ pub async fn ingest_wiki(
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn github_wiki_page_url_percent_encodes_page_segment() {
+        let url = match github_wiki_page_url("openai", "model-context-protocol", "Getting Started")
+        {
+            Ok(url) => url,
+            Err(err) => panic!("wiki URL should build: {err}"),
+        };
+        assert_eq!(
+            url,
+            "https://github.com/openai/model-context-protocol/wiki/Getting%20Started"
+        );
+    }
 }
