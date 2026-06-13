@@ -85,7 +85,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Output | `output_dir` (`.cache/axon-rust/output`), `output_path`, `json_output`, `format: ScrapeFormat` |
 | Performance | `performance_profile`, `batch_concurrency` (default 16), `wait` (default false), `yes` (default false) |
 | Service URLs | `qdrant_url`, `tei_url`, `tavily_api_key` |
-| RAG/Ask tuning | `ask_max_context_chars` (300k), `ask_candidate_limit` (250), `ask_chunk_limit` (20), `ask_full_docs` (6), `ask_min_relevance_score` (0.45) — all clamped |
+| RAG/Ask tuning | `ask_max_context_chars`, `ask_candidate_limit`, and `ask_chunk_limit` use model-tiered defaults when unset; `ask_full_docs` has a hard default of 6 but resolves adaptively at runtime (4 simple / 6 complex, high-context models floor at 4); `ask_min_relevance_score` defaults to 0.45 — all clamped |
 | Ingest credentials | `github_token`, `gitlab_token`, `gitea_token`, `reddit_client_id`, `reddit_client_secret` |
 | Auto-switch | `auto_switch_thin_ratio` (0.60), `auto_switch_min_pages` (10) |
 | Spider tuning | `url_whitelist`, `block_assets`, `max_page_bytes`, `redirect_policy_strict`, `bypass_csp`, `accept_invalid_certs`, `custom_headers` |

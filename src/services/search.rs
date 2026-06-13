@@ -237,7 +237,7 @@ pub fn map_research_payload(payload: crate::services::types::ResearchPayload) ->
     ResearchResult { payload }
 }
 
-/// Run a web search via Tavily and return a typed [`SearchResult`].
+/// Run a web search via the configured backend and return a typed [`SearchResult`].
 #[must_use = "search returns a Result that should be handled"]
 pub async fn search(
     cfg: &Config,
@@ -248,7 +248,7 @@ pub async fn search(
     search_batch(cfg, &[query], opts, tx).await
 }
 
-/// Run multiple Tavily searches in sequence and return merged results.
+/// Run multiple searches in sequence and return merged results.
 pub async fn search_batch(
     cfg: &Config,
     queries: &[&str],

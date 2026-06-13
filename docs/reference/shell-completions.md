@@ -15,4 +15,4 @@ Installation targets:
 - Zsh: `~/.zfunc/_axon`
 - Fish: `~/.config/fish/completions/axon.fish`
 
-See [`docs/reference/commands/completions.md`](commands/completions.md) for command syntax and per-shell install steps.
+See [`docs/reference/actions/completions.md`](actions/completions.md) for command syntax and per-shell install steps.

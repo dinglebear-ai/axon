@@ -178,7 +178,7 @@ Suggest new crawl targets from the current indexed source coverage.
 
 ### search
 
-Web search via Tavily, auto-queues crawl jobs for results.
+Web search via SearXNG/Tavily, auto-queues crawl jobs for results.
 
 ```json
 { "action": "search", "query": "rust async patterns" }

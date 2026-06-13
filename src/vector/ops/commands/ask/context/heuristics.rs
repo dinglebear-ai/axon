@@ -46,7 +46,7 @@ impl SkipDecision {
 /// Returns true when the reranked top-K already provides sufficient coverage
 /// and the `fetch_full_docs(...)` stage can be safely elided.
 ///
-/// Mode-aware threshold (per `crates/vector/CLAUDE.md` Ranking Pipeline contract):
+/// Mode-aware threshold (per `src/vector/CLAUDE.md` Ranking Pipeline contract):
 /// - **Cosine path** (Unnamed legacy / dense-only Named): every score in top-K
 ///   must be `>= cfg.ask_min_relevance_score + cfg.ask_fulldoc_skip_score_delta`.
 /// - **RRF path** (Named with `dense + bm42`, hybrid enabled, non-empty sparse):

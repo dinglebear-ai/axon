@@ -83,7 +83,7 @@ Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and 
 - `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.prod.yaml`)
 - Gemini CLI auth plus `AXON_HEADLESS_GEMINI_CMD` for the default LLM synthesis
   path, or `AXON_LLM_BACKEND=openai-compat` plus `AXON_OPENAI_BASE_URL` and
-  `AXON_OPENAI_MODEL` for llama.cpp/OpenAI-compatible endpoints
+  `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`) for llama.cpp/OpenAI-compatible endpoints
 
 The legacy `OPENAI_*` env vars were removed in 3.0.0. Gemini headless remains
 the default backend (`AXON_HEADLESS_GEMINI_*`), and OpenAI-compatible
@@ -102,7 +102,8 @@ variables when `AXON_LLM_BACKEND=openai-compat`.
 |----------|---------|---------|
 | `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Use `openai-compat` for llama.cpp/OpenAI-compatible `/v1/chat/completions` servers. |
 | `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. |
-| `AXON_OPENAI_MODEL` | -- | Model name sent when `AXON_LLM_BACKEND=openai-compat`. |
+| `AXON_SYNTHESIS_OPENAI_MODEL` | -- | Model name sent for synthesis when `AXON_LLM_BACKEND=openai-compat`. |
+| `AXON_OPENAI_MODEL` | -- | Legacy alias for `AXON_SYNTHESIS_OPENAI_MODEL`. |
 | `AXON_OPENAI_API_KEY` | -- | Optional bearer token for endpoints that require auth. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command used for synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | process `HOME` | Source HOME for copying Gemini auth into an isolated temporary HOME. |

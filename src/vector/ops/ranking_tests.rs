@@ -1,4 +1,4 @@
-//! Tests for `crates/vector/ops/ranking.rs`.
+//! Tests for `src/vector/ops/ranking.rs`.
 //!
 //! Kept in a separate file so the production module stays within the
 //! 500-line monolith limit (tests are exempt via the `**/*_test.*` glob).

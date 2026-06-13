@@ -126,7 +126,7 @@ For local bearer-token operation, no manual env values are required. `setup init
 defaults to loopback MCP HTTP, writes `AXON_MCP_AUTH_MODE=bearer`, and generates
 `AXON_MCP_HTTP_TOKEN`. Optional features need credentials: Gemini auth under
 `~/.gemini` for default LLM features or `AXON_LLM_BACKEND=openai-compat` plus
-`AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL` for OpenAI-compatible synthesis,
+`AXON_OPENAI_BASE_URL` and `AXON_SYNTHESIS_OPENAI_MODEL` for OpenAI-compatible synthesis,
 `TAVILY_API_KEY` for search/research, `GITHUB_TOKEN` for higher-rate GitHub
 ingest, and `REDDIT_CLIENT_ID` plus `REDDIT_CLIENT_SECRET` for Reddit ingest.
 OAuth mode also requires
@@ -200,7 +200,8 @@ Keep in `.env`:
 - Docker/runtime bootstrap: `AXON_HOME`, `AXON_DATA_DIR`, `AXON_IMAGE`, `AXON_MCP_HTTP_PUBLISH`, `TEI_HTTP_PORT`, GPU device values.
 - LLM runtime pointers when needed: `AXON_HEADLESS_GEMINI_CMD`,
   `AXON_HEADLESS_GEMINI_HOME`, `AXON_LLM_BACKEND`, `AXON_OPENAI_BASE_URL`,
-  `AXON_OPENAI_MODEL`, and optional `AXON_OPENAI_API_KEY`.
+  `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`), and
+  optional `AXON_OPENAI_API_KEY`.
 
 Put in `config.toml`:
 
@@ -401,7 +402,7 @@ Common failures:
 - `plugins/axon/.claude-plugin/plugin.json` — Claude plugin manifest.
 - `scripts/plugin-setup.sh` — plugin hook delegating to shared setup.
 - `docs/reference/mcp/tool-schema.md` — generated MCP wire contract.
-- `docs/` — full documentation tree: guides, `reference/commands/`, architecture, and operations.
+- `docs/` — full documentation tree: guides, `reference/actions/`, architecture, and operations.
 
 ## License
 

@@ -138,11 +138,13 @@ On hybrid RRF paths, Qdrant's fusion order is already the ranking signal. Axon s
 
 `build.rs → build_context_from_candidates`
 
-The reranked pool is now assembled into three tiers, in order. Each entry is separated by `\n\n---\n\n`. A running `context_char_count` is maintained; once the count would exceed `cfg.ask_max_context_chars` (env: `AXON_ASK_MAX_CONTEXT_CHARS`), no further entries are added.
+The reranked pool is planned in three tiers. Full documents are fetched and budgeted first so complete authoritative pages are not crowded out by loose chunks. Top chunks are inserted next, with chunks from successfully inserted full-document URLs suppressed to avoid duplicating the same source. Supplemental chunks backfill remaining budget. Before the final prompt is emitted, all inserted entries are flattened by score and renumbered so the highest-scoring evidence appears earliest.
 
-### Tier 1 — Top Chunks
+Each entry is separated by `\n\n---\n\n`. A running `context_char_count` is maintained; once the count would exceed `cfg.ask_max_context_chars` (env: `AXON_ASK_MAX_CONTEXT_CHARS`), no further entries are added.
 
-`select_diverse_candidates(reranked, cfg.ask_chunk_limit, 1)`
+### Planned Top Chunks
+
+`select_context_indices(..., ask_chunk_limit, resolved_full_docs, ...)`
 
 Selects up to `ask_chunk_limit` (env: `AXON_ASK_CHUNK_LIMIT`) chunks from the reranked list, enforcing a diversity constraint of at most 1 chunk per unique URL per selection pass. Each selected chunk is formatted as:
 
@@ -152,11 +154,13 @@ Selects up to `ask_chunk_limit` (env: `AXON_ASK_CHUNK_LIMIT`) chunks from the re
 <chunk text>
 ```
 
-### Tier 2 — Full Documents
+### Planned Full Documents
 
-`select_diverse_candidates(reranked, cfg.ask_full_docs, 1)` → fetched concurrently from Qdrant
+`select_context_indices(..., ask_chunk_limit, resolved_full_docs, ...)` → fetched concurrently from Qdrant
 
-For up to `ask_full_docs` (env: `AXON_ASK_FULL_DOCS`) URLs, all stored chunks for that URL are fetched from Qdrant via `qdrant_retrieve_by_url`, capped at `cfg.ask_doc_chunk_limit` chunks per document. Fetches run concurrently up to `cfg.ask_doc_fetch_concurrency` (env: `AXON_ASK_DOC_FETCH_CONCURRENCY`) at a time, and results are re-sorted by original rank order before insertion.
+For up to `resolved_full_docs` URLs, all stored chunks for that URL are fetched from Qdrant via `qdrant_retrieve_by_url`, capped at `cfg.ask_doc_chunk_limit` chunks per document. `resolved_full_docs` comes from `ask.full-docs` / `AXON_ASK_FULL_DOCS` when explicitly set; otherwise it is adaptive: simple queries use 4 full docs, complex dual-embedding queries use 6, and high-context model families (Gemini, Claude, GPT, and Codex-named models) use at least 4.
+
+Fetches run concurrently up to `cfg.ask_doc_fetch_concurrency` (env: `AXON_ASK_DOC_FETCH_CONCURRENCY`) at a time, and results are re-sorted by original rank order before insertion.
 
 This only runs if `context_char_count < max_context_chars`. Each full doc is formatted as:
 
@@ -166,14 +170,14 @@ This only runs if `context_char_count < max_context_chars`. Each full doc is for
 <all chunks concatenated>
 ```
 
-### Tier 3 — Supplemental Chunks (backfill)
+### Supplemental Chunks (backfill)
 
 This tier fires only when **both** conditions hold:
 
 1. Context is under 85% of `max_context_chars`
 2. Either no full docs were selected, **or** fewer than 6 top chunks were selected
 
-Supplemental candidates are those remaining in the reranked pool that were not already inserted as full docs. On cosine/dense-only paths, they must satisfy `rerank_score >= ask_min_relevance_score + SUPPLEMENTAL_RELEVANCE_BONUS`; the current bonus is `0.0`, so this matches the normal relevance floor. On hybrid RRF paths, there is no score floor because RRF scores are unitless. Up to `cfg.ask_backfill_chunks` (env: `AXON_ASK_BACKFILL_CHUNKS`) are selected with the same per-URL diversity pass. Each is formatted as:
+Supplemental candidates are those remaining in the reranked pool that were not already inserted as full docs. On cosine/dense-only paths, they must satisfy the minimum supplemental score derived from `ask_min_relevance_score`. On hybrid RRF paths, there is no cosine score floor because RRF scores are unitless. Up to `cfg.ask_backfill_chunks` (env: `AXON_ASK_BACKFILL_CHUNKS`) are selected with the same per-URL diversity pass. Each is formatted as:
 
 ```
 ## Supplemental Chunk [S3]: example.com/changelog
@@ -182,6 +186,8 @@ Supplemental candidates are those remaining in the reranked pool that were not a
 ```
 
 ### Final assembly
+
+Inserted full docs, chunks, and supplemental entries are sorted by score, then their `[S#]` headers are renumbered in final display order:
 
 ```rust
 format!("Sources:\n{}", context_entries.join("\n\n---\n\n"))
@@ -232,11 +238,11 @@ Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs d
 
 | Env var | What it controls | Typical default |
 |---------|-----------------|-----------------|
-| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | 250 |
-| `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | 150 |
+| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | Model-tiered: 250 large, 150 GPT/Codex, 120 local Gemma, 60 unknown |
+| `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | Model-tiered: 200 large, 120 GPT/Codex, 100 local Gemma, 60 unknown |
 | `AXON_ASK_MIN_RELEVANCE_SCORE` | Minimum rerank score to keep a candidate | 0.45 |
-| `AXON_ASK_CHUNK_LIMIT` | Max top chunks (Tier 1) | 20 |
-| `AXON_ASK_FULL_DOCS` | Max full-document fetches (Tier 2) | 6 |
+| `AXON_ASK_CHUNK_LIMIT` | Max top chunks | Model-tiered: 50 large, 28 GPT/Codex, 20 local Gemma, 10 unknown |
+| `AXON_ASK_FULL_DOCS` | Explicit max full-document fetches | Unset = adaptive: 4 simple, 6 complex; high-context models floor at 4 |
 | `AXON_ASK_DOC_CHUNK_LIMIT` | Max chunks per full-doc fetch | 96 |
 | `AXON_ASK_DOC_FETCH_CONCURRENCY` | Concurrent Qdrant fetches for full docs | 4 |
 | `AXON_ASK_BACKFILL_CHUNKS` | Max supplemental chunks (Tier 3) | 5 |
@@ -272,14 +278,19 @@ User query string
        ▼  filter: rerank_score >= min_relevance AND topical_overlap
   reranked: Vec<AskCandidate>
        │
-       ├──► Tier 1: select_diverse_candidates → top N chunks
-       │              └─ format "## Top Chunk [Sx]: url\n\ntext"
+       ├──► select_context_indices → top chunks + full-doc URLs
        │
-       ├──► Tier 2: qdrant_retrieve_by_url (concurrent) → full docs
+       ├──► qdrant_retrieve_by_url (concurrent) → full docs
        │              └─ format "## Source Document [Sx]: url\n\ntext"
        │
-       └──► Tier 3: supplemental backfill (if under 85% budget)
+       ├──► top chunks, suppressing chunks for inserted full-doc URLs
+       │              └─ format "## Top Chunk [Sx]: url\n\ntext"
+       │
+       └──► supplemental backfill (if under 85% budget)
                       └─ format "## Supplemental Chunk [Sx]: url\n\ntext"
+       │
+       ▼
+  flatten by score + renumber source IDs
        │
        ▼
   context = "Sources:\n" + entries.join("\n\n---\n\n")

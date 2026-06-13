@@ -115,7 +115,7 @@ Copies the base env file, removes existing LLM and ask-tuning keys, then applies
 ```text
 AXON_LLM_BACKEND=openai-compat
 AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}
-AXON_OPENAI_MODEL=${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}
+AXON_SYNTHESIS_OPENAI_MODEL=${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}
 AXON_LLM_COMPLETION_CONCURRENCY=1
 ```
 
@@ -128,7 +128,7 @@ Copies the base env file, removes existing LLM and ask-tuning keys, then applies
 ```text
 AXON_LLM_BACKEND=openai-compat
 AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}
-AXON_OPENAI_MODEL=${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}
+AXON_SYNTHESIS_OPENAI_MODEL=${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}
 AXON_LLM_COMPLETION_CONCURRENCY=1
 ```
 
@@ -141,7 +141,7 @@ Copies the base env file, removes existing LLM and ask-tuning keys, then applies
 ```text
 AXON_LLM_BACKEND=openai-compat
 AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}
-AXON_OPENAI_MODEL=${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}
+AXON_SYNTHESIS_OPENAI_MODEL=${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}
 AXON_LLM_COMPLETION_CONCURRENCY=1
 ```
 
@@ -154,7 +154,7 @@ Copies the base env file, removes existing LLM and ask-tuning keys, then applies
 ```text
 AXON_LLM_BACKEND=openai-compat
 AXON_OPENAI_BASE_URL=${GEMMA_OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}
-AXON_OPENAI_MODEL=${GEMMA_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}
+AXON_SYNTHESIS_OPENAI_MODEL=${GEMMA_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}
 AXON_OPENAI_API_KEY=
 AXON_LLM_COMPLETION_CONCURRENCY=1
 AXON_ASK_MAX_CONTEXT_CHARS=${GEMMA_CONTEXT_CHARS:-128000}
@@ -219,7 +219,7 @@ For override profiles, the script removes these keys from the copied env before 
 ```text
 AXON_LLM_BACKEND
 AXON_OPENAI_BASE_URL
-AXON_OPENAI_MODEL
+AXON_SYNTHESIS_OPENAI_MODEL
 AXON_OPENAI_API_KEY
 AXON_ASK_*
 AXON_LLM_COMPLETION_*
@@ -372,7 +372,7 @@ Each profile records both the intended overrides and Axon's effective config sna
   "env_overrides": {
     "AXON_LLM_BACKEND": "openai-compat",
     "AXON_OPENAI_BASE_URL": "http://127.0.0.1:8080/v1",
-    "AXON_OPENAI_MODEL": "ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M",
+    "AXON_SYNTHESIS_OPENAI_MODEL": "ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M",
     "AXON_OPENAI_API_KEY": "",
     "AXON_ASK_MAX_CONTEXT_CHARS": "128000"
   },

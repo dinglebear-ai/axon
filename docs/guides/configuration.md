@@ -9,7 +9,7 @@ Axon uses two user-editable files under `~/.axon/`:
 
 ## Precedence (highest to lowest)
 
-1. CLI flags for command inputs (`--collection`, `--wait`, `--local`, etc.)
+1. CLI flags for command inputs (`--collection`, `--wait`, etc.)
 2. Environment variables for secrets, URLs, auth/runtime, bootstrap, and temporary compatibility shims
 3. `~/.axon/config.toml` for non-secret tuning
 4. Built-in defaults
@@ -114,7 +114,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
 | `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `batch-timeout-secs`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | `AXON_SCRAPE_BATCH_TIMEOUT_SECS` plus ladder env vars |
 
-URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_OPENAI_MODEL` for llama.cpp/OpenAI-compatible endpoints. `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`) for llama.cpp/OpenAI-compatible endpoints. `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 
@@ -281,14 +281,13 @@ Hybrid search tuning lives under `[search]` in `~/.axon/config.toml`.
 ### Ask / RAG tuning
 
 Core retrieval selection knobs live in `~/.axon/config.toml` under `[ask]`.
-The remaining rows are runtime env controls until typed TOML fields exist.
 
 | TOML key | Env override | Default | Description |
 |----------|--------------|---------|-------------|
-| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered (static default `300000`) | Max context characters passed to the LLM (clamped 20000-1000000). When unset, model-tier fallbacks apply: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
-| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `250` | Max retrieval candidates per prefetch (clamped 8-300) |
-| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `24` | Max total chunks selected for LLM context (clamped 3-64; when unset the effective value is model-tier-derived: 50/28/20/10) |
-| `ask.full-docs` | `AXON_ASK_FULL_DOCS` | `6` | Max full documents included in context |
+| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Max context characters passed to the LLM (clamped 20000-1000000). When unset, model-tier fallbacks apply: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
+| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | Model-tiered | Max retrieval candidates per prefetch (clamped 8-300). When unset, model-tier fallbacks apply: 250 large, 150 GPT/Codex, 120 local Gemma, 60 unknown |
+| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | Model-tiered | Max total chunks selected for LLM context (clamped 3-64). When unset, model-tier fallbacks apply: 50 large, 28 GPT/Codex, 20 local Gemma, 10 unknown |
+| `ask.full-docs` | `AXON_ASK_FULL_DOCS` | Adaptive | Explicit max full documents included in context (clamped 1-20). When unset, `ask` resolves 4 for simple queries and 6 for complex queries; high-context Gemini/Claude/GPT/Codex-family models use at least 4 |
 | `ask.backfill-chunks` | `AXON_ASK_BACKFILL_CHUNKS` | `5` | Backfill chunks from top documents to pad context (clamped 0-20) |
 | `ask.doc-fetch-concurrency` | `AXON_ASK_DOC_FETCH_CONCURRENCY` | `4` | Concurrent document fetches during context build (clamped 1-16) |
 | `ask.doc-chunk-limit` | `AXON_ASK_DOC_CHUNK_LIMIT` | `96` | Max chunks per document in context (clamped 8-2000) |

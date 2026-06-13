@@ -34,7 +34,7 @@ reviews, plans) live under the history directories at the bottom.
 
 | Doc | Description |
 |-----|-------------|
-| [reference/commands/](reference/commands/) | CLI reference — one page per command |
+| [reference/actions/](reference/actions/) | CLI reference — one page per command |
 | [reference/mcp/](reference/mcp/) | MCP server: overview, tool schema, transport, connect, deploy, env, tools, patterns |
 | [reference/http-api.md](reference/http-api.md) | HTTP API surface (`axon serve`) |
 | [reference/api-parity.md](reference/api-parity.md) | CLI ↔ MCP ↔ HTTP action parity matrix |
@@ -53,7 +53,7 @@ reviews, plans) live under the history directories at the bottom.
 |-----|-------------|
 | [architecture/overview.md](architecture/overview.md) | System architecture diagrams and data flow |
 | [architecture/stack/](architecture/stack/) | Trimodal architecture, technology choices, prerequisites |
-| [architecture/specs/](architecture/specs/) | Feature specifications (server-mode tiers/routing, vertical extractors, android) |
+| [architecture/specs/](architecture/specs/) | Feature specifications (vertical extractors, android, active design notes) |
 
 ### `operations/` — running it in production
 

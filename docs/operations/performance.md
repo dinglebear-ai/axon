@@ -137,14 +137,14 @@ Tuning strategy:
 ## Server-Mode HTTP Tuning
 
 `axon serve` exposes MCP, `/v1/ask`, direct `/v1` REST routes, and the setup/config panel
-on one Axum listener. Stateful CLI server-mode commands run through direct
-REST routes and share the same service layer as local CLI/MCP execution.
+on one Axum listener. External HTTP/MCP clients call those routes directly.
+The bundled CLI no longer performs generic server-mode forwarding.
 
 For high-latency LLM or embedding paths:
 
 - keep TEI/Qdrant local or on low-latency links
 - reduce ask context/candidate limits before increasing worker lanes
-- run CLI commands with `AXON_LOCAL_MODE=1` when you need to bypass a remote server
+- compare HTTP/MCP latency against the same command run locally in-process
 
 ## Benchmark Workflow
 
@@ -189,7 +189,7 @@ Track:
 | embed backlog grows | TEI throughput | lower batch/lane pressure, increase TEI capacity |
 | frequent stale reclaim | worker overload | reduce concurrency, raise stale timeout |
 | `ask` too slow | context size/LLM latency | lower candidate/chunk/context limits |
-| server-mode action appears slow | upstream TEI/Qdrant/LLM or remote latency | compare with `AXON_LOCAL_MODE=1`, lower ask context, verify service endpoints |
+| HTTP/MCP action appears slow | upstream TEI/Qdrant/LLM or network latency | compare with local CLI, lower ask context, verify service endpoints |
 
 ## Source Map
 

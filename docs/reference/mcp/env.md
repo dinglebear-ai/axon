@@ -29,7 +29,7 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 CLI and MCP commands always run in-process — locally against Qdrant and TEI.
 There is no client-to-server forwarding, so `AXON_SERVER_URL`, `AXON_LOCAL_MODE` /
 `--local`, and `AXON_SERVER_INSECURE` were removed in 5.0.0. To expose Axon over
-HTTP for API clients, run `axon serve` (see [SERVE.md](../commands/serve.md)).
+HTTP for API clients, run `axon serve` (see [SERVE.md](../actions/serve.md)).
 
 ## Transport selection
 
@@ -45,10 +45,12 @@ The MCP server reads existing Axon stack variables at startup:
 |----------|---------|
 | `QDRANT_URL` | Vector search and retrieval |
 | `TEI_URL` | Embedding generation |
-| `AXON_HEADLESS_GEMINI_MODEL` | Model override for Gemini headless completions |
+| `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | Model override for Gemini synthesis completions |
+| `AXON_HEADLESS_GEMINI_MODEL` | Legacy alias for `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` |
 | `AXON_LLM_BACKEND` | LLM backend selector: `gemini-headless` (default) or `openai-compat` |
 | `AXON_OPENAI_BASE_URL` | OpenAI-compatible `/v1` base URL when `AXON_LLM_BACKEND=openai-compat` |
-| `AXON_OPENAI_MODEL` | OpenAI-compatible model name |
+| `AXON_SYNTHESIS_OPENAI_MODEL` | OpenAI-compatible synthesis model name |
+| `AXON_OPENAI_MODEL` | Legacy alias for `AXON_SYNTHESIS_OPENAI_MODEL` |
 | `AXON_OPENAI_API_KEY` | Optional API key for OpenAI-compatible endpoints |
 | `TAVILY_API_KEY` | Tavily fallback for web search and research when `AXON_SEARXNG_URL` is unset |
 | `AXON_COLLECTION` | Default Qdrant collection |

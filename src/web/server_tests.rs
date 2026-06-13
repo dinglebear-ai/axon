@@ -1,4 +1,4 @@
-//! Tests for `crates/web/server.rs` ask classification and ask route contracts.
+//! Tests for `src/web/server.rs` ask classification and ask route contracts.
 
 #![allow(unsafe_code)]
 

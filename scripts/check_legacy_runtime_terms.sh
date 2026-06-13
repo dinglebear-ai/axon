@@ -17,7 +17,7 @@ paths=(
   docs/operations/operations.md
   docs/operations/security.md
   docs/guides/getting-started.md
-  docs/reference/commands
+  docs/reference/actions
   docs/reference/env-matrix.toml
 )
 

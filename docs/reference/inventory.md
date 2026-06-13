@@ -24,16 +24,13 @@ The full action set is defined by the `AxonRequest` enum in `src/mcp/schema.rs`;
 | `retrieve` | Fetch stored document chunks from Qdrant |
 | `scrape` | Scrape URLs to markdown |
 | `screenshot` | Capture page screenshot via Chrome |
-| `search` | Web search via Tavily, auto-queues crawl jobs |
+| `search` | Web search via SearXNG/Tavily, auto-queues crawl jobs |
 | `summarize` | Scrape and summarize one or more URLs |
 | `brand` | Analyze a URL's brand identity |
 | `diff` | Diff two URLs |
 | `evaluate` | RAG vs baseline with LLM judge |
 | `suggest` | Suggest new documentation URLs to crawl |
-| `dedupe` | Remove duplicate Qdrant points |
-| `migrate` | Migrate an unnamed-vector collection to named mode |
-| `debug` | Doctor diagnostics + LLM troubleshooting |
-| `setup` | Initialize/inspect infrastructure |
+| `elicit_demo` | MCP elicitation demo action |
 
 ### Lifecycle action families (subaction required)
 
@@ -43,9 +40,6 @@ The full action set is defined by the `AxonRequest` enum in `src/mcp/schema.rs`;
 | `extract` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | LLM-powered structured extraction |
 | `embed` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | Vector embedding into Qdrant |
 | `ingest` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | External source ingestion (GitHub, GitLab, Gitea, Git, Reddit, YouTube) |
-| `watch` | `create`, `list`, `run-now`, `history` (and schema-defined `get`/`update`/`pause`/`resume`/`delete`/`artifacts`) | Recurring watch definitions and runs |
-| `artifacts` | `head`, `grep`, `wc`, `read`, `list`, `delete`, `clean`, `search` | MCP artifact file management |
-| `vertical_scrape` | `list`, `capabilities` | Discovery-only vertical-extractor introspection (scraping routes through `scrape`) |
 
 ### Info actions
 
@@ -57,6 +51,12 @@ The full action set is defined by the `AxonRequest` enum in `src/mcp/schema.rs`;
 | `sources` | List all indexed URLs + chunk counts |
 | `stats` | Qdrant collection statistics |
 | `status` | Async job queue status |
+
+### REST-only or CLI-only operations
+
+`dedupe`, `debug`, `migrate`, `setup`, `watch`, and artifact file serving are
+documented in `docs/reference/api-parity.md`. They are not dedicated MCP action
+routes in the generated `docs/reference/mcp/tool-schema.md` contract.
 
 ## MCP resources
 
@@ -76,7 +76,7 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | `crawl <url>...` | Yes | Full site crawl for one or more start URLs |
 | `map <url>` | No | URL discovery without scraping |
 | `endpoints <url>...` | No | Discover API endpoints from page HTML and JavaScript bundles |
-| `search <query>` | No | Web search via Tavily, auto-queues crawl jobs |
+| `search <query>` | No | Web search via SearXNG/Tavily, auto-queues crawl jobs |
 | `research <query>` | No | Web research with LLM synthesis |
 | `extract <urls...>` | Yes | LLM-powered structured extraction |
 | `screenshot <url>...` | No | Capture a full-page screenshot via headless Chrome |
@@ -110,7 +110,7 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | `sessions [format]` | No | Index AI session exports (Claude/Codex/Gemini) |
 | `watch <sub>` | Depends | Manage recurring watch definitions and runs |
 | `monitor` | No | Monitor job lifecycle events as a line-oriented stream |
-| `sync` | No | Reconcile locally produced server-mode artifacts |
+| `sync` | No | Reconcile locally produced legacy prepared artifacts |
 
 ### Runtime and setup
 
@@ -182,5 +182,5 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | `scripts/enforce_monoliths.py` | Enforce file/function size limits |
 | `scripts/generate_mcp_schema_doc.py` | Regenerate MCP-TOOL-SCHEMA.md |
 | `scripts/live-test-all-commands.sh` | Integration test all CLI commands |
-| `scripts/test-client-server-mode.sh` | CLI client/server smoke test |
+| `scripts/test-client-server-mode.sh` | Legacy CLI client/server smoke test if present |
 | `scripts/test-mcp-tools-mcporter.sh` | MCP smoke test suite |

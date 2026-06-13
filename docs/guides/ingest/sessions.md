@@ -4,7 +4,7 @@ Last Modified: 2026-06-13
 Version: 1.0.0
 Last Updated: 01:26:53 | 02/25/2026 EST
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/commands/sessions.md`](../../reference/commands/sessions.md)
+> CLI reference (flags, subcommands, examples): [`docs/reference/actions/sessions.md`](../../reference/actions/sessions.md)
 
 Ingests exported AI conversation files (Claude, Codex, Gemini) into Qdrant. Session ingest scans local history paths, redacts secret-like tokens, normalizes each session chunk through the source-doc planner, and embeds planner-created `PreparedDoc` values through the shared TEI/Qdrant pipeline.
 

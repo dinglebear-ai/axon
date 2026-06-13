@@ -42,22 +42,24 @@ Behavior:
 - Runs ignored `worker_e2e` tests explicitly.
 - Requires local infra dependencies to be reachable.
 
-### Client/server smoke lane
+### REST/MCP smoke lane
 
-Use this when touching `AXON_SERVER_URL`, direct `/v1` REST routes, artifact handles, or
-Docker/systemd runtime wiring. The smoke must not edit `~/.axon/.env` or
-`~/.axon/config.toml`; pass temporary env overrides in the command invocation.
+Use this when touching direct `/v1` REST routes, MCP HTTP routing, artifact
+handles, or Docker/systemd runtime wiring. The smoke must not edit
+`~/.axon/.env` or `~/.axon/config.toml`; pass temporary env overrides in the
+command invocation.
 
 ```bash
-AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
-AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
+curl -fsS http://127.0.0.1:8001/v1/status
+curl -fsS -X POST http://127.0.0.1:8001/v1/scrape \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://example.com"}'
 just client-server-smoke
 ```
 
 Expected behavior:
-- `status` and stateful commands call the server, not local workers.
+- REST and MCP calls use server-owned workers/state.
 - scrape/crawl responses include server-owned output/artifact handles.
-- host-local scrape markdown is not created as the CLI source of truth.
 - token-auth failures, dead server failures, and schema mismatches fail clearly.
 
 ### Integration suite lane (infra-backed, skip-on-missing)

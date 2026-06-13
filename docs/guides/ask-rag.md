@@ -1,8 +1,10 @@
 # Ask Synthesis Backend
 
-`axon ask` uses the Gemini CLI headless path. The path is intended only for synthesis: no tools, no permissions, no warm session, and no workspace mutation.
+`axon ask` uses the configured `services::llm_backend` completion path. The default is the Gemini CLI headless backend; `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible `/v1/chat/completions` endpoint.
 
-Gemini is selected by `AXON_HEADLESS_GEMINI_CMD` (default: `gemini`). Set `AXON_HEADLESS_GEMINI_MODEL` to override the Gemini model. Set `AXON_HEADLESS_GEMINI_HOME` to copy auth from a prepared Gemini home instead of the process HOME.
+Gemini is selected by `AXON_HEADLESS_GEMINI_CMD` (default: `gemini`). Set `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` (or legacy `AXON_HEADLESS_GEMINI_MODEL`) to override the Gemini synthesis model. Set `AXON_HEADLESS_GEMINI_HOME` to copy auth from a prepared Gemini home instead of the process HOME.
+
+For OpenAI-compatible endpoints, set `AXON_OPENAI_BASE_URL` plus `AXON_SYNTHESIS_OPENAI_MODEL` (or legacy `AXON_OPENAI_MODEL`). `AXON_OPENAI_API_KEY` is optional and sent as a bearer token when present.
 
 Safety rules:
 
@@ -43,9 +45,9 @@ Explain mode:
 
 Streaming mode:
 
-- `axon ask "<question>"` prints Gemini token deltas as they arrive for interactive use by default.
+- `axon ask "<question>"` prints LLM token deltas as they arrive for interactive use by default.
 - Use `--no-stream` to disable answer streaming and render only the final response.
-- Streaming uses the in-process ask path. If `AXON_SERVER_URL` is set, the CLI silently ignores it for that request because `/v1/ask` is a buffered JSON endpoint.
+- Streaming uses the in-process ask path. Generic CLI client-to-server forwarding was removed in 5.0.0; call `/v1/ask` directly when using `axon serve` as an HTTP service.
 - `--json` and `--explain` remain buffered.
 
 Follow-up mode:
@@ -55,4 +57,4 @@ Follow-up mode:
 - When `--session` is omitted, Axon uses the most recently successful ask session from `$AXON_DATA_DIR/ask-sessions/latest`, falling back to `default`.
 - Use `axon ask --follow-up "<question>"` to include recent turns from the active local session.
 - Use `--session <name>` to keep separate local threads and `--reset-session` to clear one before changing topics.
-- Follow-up context is prepended by Axon before retrieval/synthesis; Gemini headless still runs as a stateless one-shot process, and answers must still be grounded in retrieved context with `[S#]` citations.
+- Follow-up context is prepended by Axon before retrieval/synthesis; the synthesis backend still runs as a stateless one-shot completion, and answers must still be grounded in retrieved context with `[S#]` citations.

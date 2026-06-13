@@ -1,4 +1,4 @@
-//! CLI Chrome runtime shim — delegates to `crates/crawl/chrome_bootstrap`.
+//! CLI Chrome runtime shim — delegates to `src/crawl/chrome_bootstrap`.
 //!
 //! These functions are only used by `runtime_migration_tests.rs` now that
 //! sync_crawl delegates to the services layer directly.

@@ -65,15 +65,9 @@ The main generated files are:
 - `~/.axon/.env` for URLs, secrets, auth, Docker interpolation, and runtime bootstrap values.
 - `~/.axon/config.toml` for non-secret tuning.
 
-Optional client/server mode for host CLI calls:
-
-```bash
-# Server listens on the MCP/action HTTP port.
-AXON_SERVER_URL=http://127.0.0.1:8001
-
-# For non-loopback published servers, use OAuth mode or set the same token on server and client.
-AXON_MCP_HTTP_TOKEN=
-```
+To expose Axon to external clients, run `axon serve` and point those clients at
+the first-party REST routes or MCP-over-HTTP endpoint. The bundled CLI runs
+commands in-process and no longer uses generic `AXON_SERVER_URL` forwarding.
 
 See [CONFIG.md](configuration.md) for the full variable reference.
 
@@ -109,9 +103,6 @@ Axon uses SQLite-backed jobs and in-process workers. Qdrant and TEI are the only
 
 # Run TEI prewarm + crawl/ask proof
 ./scripts/axon smoke
-
-# Test host CLI against a running axon serve process
-AXON_SERVER_URL=http://127.0.0.1:8001 ./scripts/axon status --json
 
 # Check the web panel
 # Open http://localhost:8001

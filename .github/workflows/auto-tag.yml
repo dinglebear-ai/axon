@@ -74,7 +74,7 @@ jobs:
       - name: Dispatch release.yml
         if: steps.tag_check.outputs.exists == 'false'
         run: |
-          gh workflow run release.yml --ref "v${{ steps.version.outputs.version }}"
+          gh workflow run release.yml --ref "v${{ steps.version.outputs.version }}" -f publish=true
           echo "Dispatched release.yml for v${{ steps.version.outputs.version }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
