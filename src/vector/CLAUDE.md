@@ -1,5 +1,5 @@
 # src/vector — Embeddings & Vector Search
-Last Modified: 2026-06-09
+Last Modified: 2026-06-13
 
 TEI embedding + Qdrant vector store ops. Supports both dense-only and hybrid (dense + sparse BM42) search depending on collection type.
 
@@ -9,7 +9,9 @@ TEI embedding + Qdrant vector store ops. Supports both dense-only and hybrid (de
 vector/
 ├── ops.rs           # Crate-level module root re-exporting ops/*
 └── ops/
-    ├── file_ingest.rs / file_ingest_tests.rs   # Shared walker + chunker used by all git providers and local embed
+    ├── file_ingest.rs / file_ingest_tests.rs   # Shared file walker + chunk_file() helper
+    ├── source_doc.rs / source_doc/{support}.rs # Normalized pre-chunk planner: SourceDocument → PreparedDoc
+    ├── source_doc_tests.rs / source_doc_audit_tests.rs
     ├── commands.rs / commands/
     │   ├── ask.rs               # Module root for the ask path
     │   ├── ask/
@@ -62,7 +64,9 @@ The diagram is intentionally complete — every named function in this CLAUDE.md
 On **429 and any 5xx**, `tei_embed()` retries up to **5 times** (6 total attempts) with exponential backoff starting at 1s (1, 2, 4, 8, 16s) + jitter. Override with `TEI_MAX_RETRIES` env var. The default is tuned so worst-case retry budget (~213s) fits inside the 300s doc timeout.
 
 ### Pipeline Resilience
-`run_embed_pipeline()` in `tei/pipeline.rs` processes docs concurrently with per-doc timeouts. Individual doc failures (TEI timeout, transport error) are **logged and skipped** — they do not abort the remaining batch. `EmbedSummary.docs_failed` reports how many docs failed. The pipeline uses **upsert-first** (deterministic UUID v5 point IDs overwrite existing) then **stale-tail cleanup** after successful upsert — no data is deleted until the replacement is safely stored.
+`run_embed_pipeline()` in `tei/pipeline.rs` processes docs concurrently with per-doc timeouts. Individual doc failures (TEI timeout, transport error) are **logged and skipped inside the batch** so independent docs can still finish; `EmbedSummary.docs_failed` reports how many failed. Public callers that require all-or-nothing behavior call `EmbedSummary::require_success(context)` after the pipeline returns. Scrape, REST sync, and ingest paths use this to turn partial embedding into an error.
+
+The pipeline uses **upsert-first** (deterministic UUID v5 point IDs overwrite existing) then **stale-tail cleanup** after successful upsert — no data is deleted until the replacement is safely stored. Stale-tail and local legacy-fragment cleanup failures are returned as errors; they are not swallowed after upsert.
 
 ### ensure_collection() — GET First + VectorMode Detection
 `ensure_collection()` in `tei/qdrant_store.rs` does **GET first, PUT only on 404**. Safe to call on every embed — no 409 Conflict on existing collections.
@@ -86,16 +90,37 @@ It also detects (and caches) the collection's **VectorMode**:
 
 Any new command that needs URL counts/dedup **must** use `qdrant_url_facets`. A full scroll on a 2M+ point collection takes 60-80 seconds.
 
+### Normalized Source Planning
+`source_doc.rs` is the normalized pre-chunk boundary for every indexing path:
+
+```
+caller-specific builder
+    -> SourceDocument (origin + URL/domain/text/title/metadata/chunk hint)
+    -> prepare_source_document(...)
+    -> PreparedDoc (chunks + per-chunk metadata + optional stable point IDs)
+    -> embed_prepared_docs(...)
+```
+
+Callers should build `SourceDocument` values or use `prepare_plain_text_source()` for prose-only sources. They should not call `chunk_file`, `chunk_markdown`, or `chunk_text` directly unless they are inside the planner or low-level tests. `PreparedDoc` is post-chunk/embed-ready and its fields are scoped to `crate::vector::ops`; callers use constructors and accessors rather than struct literals.
+
+Supported origins:
+- `LocalFile` and `GitFile`: file/code chunking, symbol extraction status, `code_*` metadata, and per-chunk `chunk_extra`.
+- `CrawlManifest` and `ScrapeResult`: markdown/plain-text planning, preserving scrape structured payloads and vertical `extractor_name`.
+- `PlainIngest`: plain text with byte/line ranges.
+- `Memory`: atomic one-chunk document with caller-provided stable point ID.
+
+The planner owns normalized payload fields and strips caller-supplied duplicates before regenerating them: `content_kind`, `chunk_content_kind`, `chunk_locator`, `source_range`, `chunking_fallback`, and `code_chunk_source`.
+
 ### Code Chunking (tree-sitter)
 `chunk_code()` in `input/code.rs` splits source code at AST boundaries (functions, structs, classes) using tree-sitter grammars. Returns `Option<Vec<String>>` — `None` means no grammar for the extension, caller should fall back to `chunk_text()`. Supported: Rust, Python, JavaScript, TypeScript/TSX, Go, Bash. Chunk range: 500–2000 chars.
 
-**Shared file-ingest engine** (`ops/file_ingest.rs`) — the canonical entry point for all git providers and local `embed <dir>`:
+**Shared file helper** (`ops/file_ingest.rs`) — used by the source-doc planner and file collectors:
 - `collect_files(root, SelectionPolicy)` — BFS walker with pruning (`select::is_pruned_dir`) and binary-ext filtering. `SelectionPolicy::Allowlist { include_source }` matches the GitHub/GitLab/generic-git allowlist; `SelectionPolicy::Permissive` accepts all non-binary, non-pruned files (used by the embed CLI path).
 - `chunk_file(content, ext)` → `Vec<CodeChunk>` — tries tree-sitter via `chunk_code_chunks`; falls back to synthetic `CodeChunk`s wrapping `chunk_text_with_offsets` so callers always get `CodeChunk` with line ranges.
 - `chunking_method(ext, chunk)` → `&'static str` — returns `"tree_sitter"` or `"prose"` based on whether the chunk carries a symbol.
-All providers (GitHub, GitLab, generic Git, Gitea) and `embed <dir>` now call this engine and emit one `PreparedDoc` per `CodeChunk` with canonical `code_*`/`symbol_*` payload fields.
+All providers (GitHub, GitLab, generic Git, Gitea) and `embed <dir>` now feed file content into `SourceDocument::try_new_file(...)`; the planner calls `chunk_file` and emits one file-level `PreparedDoc` with per-chunk `code_*`/`symbol_*` payload fields.
 
-**Local directory embed** (`axon embed <dir>`, `tei/prepare.rs`) routes local code files through `chunk_file` + `code_symbol_extraction_status` inside `spawn_blocking`, emitting one `PreparedDoc` per chunk with `code_*`/`symbol_*` extra payload. Crawl-output dirs (http manifest URLs) stay on prose chunking via `select_chunks`.
+**Local directory embed** (`axon embed <dir>`, `tei/prepare.rs`) routes local code files through `SourceDocument::try_new_file(SourceOrigin::LocalFile, ...)` and the planner's `chunk_file` + `code_symbol_extraction_status` path. Crawl-output dirs (http manifest URLs) stay on markdown/prose planning via `try_new_crawl_manifest`.
 
 `classify_file_type()` in `input/classify.rs` tags files as `test`/`config`/`doc`/`source` for metadata enrichment. Pure function, no I/O.
 
@@ -186,6 +211,7 @@ cargo test ranking        # BM25 ranking pipeline + snippet extraction
 cargo test qdrant         # Qdrant client, scroll, facet, ensure_collection
 cargo test chunk_text     # text chunking (7 tests, no services needed)
 cargo test chunk_code     # tree-sitter AST code chunking (23 tests)
+cargo test source_doc     # SourceDocument planner and payload normalization
 cargo test classify_file  # file type classification (46 tests)
 cargo test sparse         # sparse vector computation, stopwords, hash stability (9 tests)
 cargo test -- --nocapture # show request/response debug output

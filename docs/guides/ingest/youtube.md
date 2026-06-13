@@ -1,5 +1,5 @@
 # YouTube Ingest
-Last Modified: 2026-05-03
+Last Modified: 2026-06-13
 
 > See [`docs/reference/commands/youtube.md`](../../reference/commands/youtube.md) for CLI reference and usage examples.
 
@@ -137,7 +137,7 @@ Pipeline:
 5. Initial progress is reported as `videos_done=0`, `videos_total=N`, `chunks_embedded=0`.
 6. Valid videos are processed sequentially through the single-video `ingest_youtube()` pipeline.
 7. After each video, progress is reported with updated `videos_done`, `videos_total`, and cumulative `chunks_embedded`.
-8. Per-video failures are logged as warnings and the playlist/channel ingest continues with the remaining videos.
+8. Per-video failures fail the playlist/channel ingest after the per-video retry policy is exhausted. Already completed video URLs remain recorded in job progress so a recovered/retried job can skip them.
 
 ## Deduplication
 
@@ -146,13 +146,14 @@ All ingest methods (single video and playlist) use `embed_prepared_docs` via `Pr
 - Re-ingesting a video overwrites it cleanly — no duplicate chunks
 - If transcript length changes between runs (e.g. better captions, yt-dlp update), old chunk count is fully replaced
 - Safe to re-run playlist ingest: deterministic point IDs overwrite existing chunks cleanly, though source-side playlist processing still calls `yt-dlp` for each enumerated video.
+- Embed partial failures (`docs_failed > 0`) fail the video ingest instead of reporting a successful partial index.
 
 ## Known Limitations
 
 | Limitation | Detail |
 |-----------|--------|
 | **English captions required** | Only `--sub-langs en` is requested. Fails if no English captions exist. Run `yt-dlp --list-subs <url>` to check. |
-| **Age-restricted / private videos** | `yt-dlp` exits non-zero; error surfaces as a job failure (single video) or a per-video skip warning (playlist). |
+| **Age-restricted / private videos** | `yt-dlp` exits non-zero; error surfaces as a job failure. Playlist/channel ingest stops on the failed video after retry. |
 | **`yt-dlp` version drift** | YouTube format changes periodically require `yt-dlp` updates: `pip install -U yt-dlp` or re-pull the Docker image. |
 | **Manual captions not used** | Only `--write-auto-sub` is passed; `--write-subs` (manual captions) is not. If a video has manual captions but no auto-generated ones, it will fail. |
 | **Description-only videos** | If a video has no English captions, the transcript embed fails and the description is not embedded either (description embed requires a successful transcript run first). |
@@ -178,7 +179,7 @@ yt-dlp --write-auto-sub --write-info-json --skip-download \
 
 **429 errors on large channels**
 
-Playlist/channel ingest logs the per-video failure and continues with remaining videos. Update `yt-dlp`, reduce target size, or retry later if YouTube rate-limits the run.
+Each video gets the configured 429 retry/backoff sequence. If retries are exhausted, playlist/channel ingest fails at that video. Update `yt-dlp`, reduce target size, or retry later if YouTube rate-limits the run.
 
 **Playlist job shows no progress for first video**
 

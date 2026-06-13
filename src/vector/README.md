@@ -1,5 +1,5 @@
 # src/vector
-Last Modified: 2026-03-03
+Last Modified: 2026-06-13
 
 Embedding, vector storage, retrieval, and RAG operations.
 
@@ -9,13 +9,14 @@ Embedding, vector storage, retrieval, and RAG operations.
 - Implement retrieval and answer generation flows (`query`, `retrieve`, `ask`, `evaluate`, `suggest`).
 
 ## Responsibilities
-- Input chunking and embedding batch execution.
+- Source-document planning, input chunking, and embedding batch execution.
 - Qdrant collection management and point upsert/search.
 - Retrieval ranking, source display shaping, and answer context assembly.
 - RAG evaluation and suggestion workflows.
 
 ## Key Files
 - `ops.rs`: vector operations module root.
+- `ops/source_doc.rs`: normalized `SourceDocument` to `PreparedDoc` planner used by crawl, scrape, ingest, local embed, and memory.
 - `ops/input.rs`: text/input handling for embed flows.
 - `ops/tei.rs` + `ops/tei/tei_manifest.rs`: embedding client and manifest behavior.
 - `ops/qdrant.rs` + `ops/qdrant/*`: Qdrant client operations and payload types.
@@ -28,10 +29,12 @@ Embedding, vector storage, retrieval, and RAG operations.
 ## Integration Points
 - `src/cli/commands/*` invoke these operations for interactive and batch usage.
 - `src/jobs/embed` and ingest workflows rely on vector upsert paths.
+- `src/services/scrape`, `src/services/memory`, and all ingest handlers build `SourceDocument` values before embedding.
 - Depends on `TEI_URL` and `QDRANT_URL` runtime config from `src/core/config`.
 
 ## Notes
 - Retry/splitting behavior for TEI overload and payload limits is handled in embedding paths and should remain conservative for stability.
+- Callers should not hand-chunk content before embedding. Use `SourceDocument`/`prepare_source_document()` or `prepare_plain_text_source()` so normalized payload fields and symbol metadata stay consistent.
 - Keep retrieval/ranking logic deterministic where possible to reduce answer drift.
 
 ## Related Docs
