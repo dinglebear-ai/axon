@@ -71,6 +71,9 @@ pub(crate) struct PreparedDoc {
     /// deletes only those legacy fragment URLs after the replacement file URL has
     /// been durably upserted.
     pub(crate) local_legacy_fragment_url: Option<String>,
+    /// Optional per-chunk point IDs for sources that already have stable record
+    /// identities. Normal document chunks leave this empty and use URL/index IDs.
+    pub(crate) chunk_point_ids: Vec<uuid::Uuid>,
 }
 
 impl PreparedDoc {
@@ -99,11 +102,17 @@ impl PreparedDoc {
             structured,
             chunk_extra,
             local_legacy_fragment_url: None,
+            chunk_point_ids: Vec::new(),
         }
     }
 
     pub(super) fn with_local_legacy_fragment_cleanup(mut self) -> Self {
         self.local_legacy_fragment_url = Some(self.url.clone());
+        self
+    }
+
+    pub(super) fn with_chunk_point_ids(mut self, point_ids: Vec<uuid::Uuid>) -> Self {
+        self.chunk_point_ids = point_ids;
         self
     }
 }

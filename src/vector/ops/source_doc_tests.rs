@@ -149,6 +149,38 @@ async fn text_file_source_marks_chunks_as_plain_text_not_code() {
 }
 
 #[tokio::test]
+async fn memory_source_is_atomic_and_preserves_point_id() {
+    let point_id = uuid::Uuid::new_v4();
+    let url = format!("memory://{point_id}");
+    let source = SourceDocument::new_memory(
+        url.clone(),
+        "Important memory text".to_string(),
+        Some("Important memory".to_string()),
+        Some(serde_json::json!({
+            "memory": true,
+            "type": "fact",
+            "body": "Important memory text"
+        })),
+        point_id,
+    );
+
+    let prepared = prepare_source_document(source).await.expect("prepared doc");
+
+    assert_eq!(prepared.url, url);
+    assert_eq!(prepared.domain, "memory");
+    assert_eq!(prepared.source_type, "memory");
+    assert_eq!(prepared.content_type, "text");
+    assert_eq!(prepared.chunks, vec!["Important memory text".to_string()]);
+    assert_eq!(prepared.chunk_point_ids, vec![point_id]);
+    assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "plain_text");
+    assert_eq!(
+        prepared.chunk_extra[0]["chunk_locator"],
+        format!("{url}#chunk-0")
+    );
+    assert_eq!(prepared.extra.as_ref().unwrap()["memory"], true);
+}
+
+#[tokio::test]
 async fn source_document_preserves_vertical_structured_payload() {
     let source = SourceDocument::try_new_web_markdown(
         "https://pypi.org/project/ruff/".to_string(),

@@ -180,8 +180,11 @@ async fn embed_prepared_doc(
     // Per-chunk payload overrides (P-H1): taken out before `doc.chunks` is moved
     // by `into_iter()` below so the two positionally-parallel vectors zip cleanly.
     let chunk_extra = std::mem::take(&mut doc.chunk_extra);
+    let chunk_point_ids = std::mem::take(&mut doc.chunk_point_ids);
     for (idx, (chunk, vecv)) in doc.chunks.into_iter().zip(vectors).enumerate() {
-        let point_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{}:{}", url, idx).as_bytes());
+        let point_id = chunk_point_ids.get(idx).copied().unwrap_or_else(|| {
+            Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{}:{}", url, idx).as_bytes())
+        });
         // Apply extra metadata first so that system fields written below always win.
         // RESERVED_PAYLOAD_KEYS in apply_extra() provides a second line of defense. (S-M1)
         let mut payload = serde_json::json!({});

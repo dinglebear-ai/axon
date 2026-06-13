@@ -26,6 +26,7 @@ pub(crate) enum SourceOrigin {
     CrawlManifest,
     ScrapeResult,
     PlainIngest,
+    Memory,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +34,7 @@ enum SourceChunkHint {
     File { path: String, extension: String },
     MarkdownOrPlainText,
     PlainText,
+    AtomicText { point_id: uuid::Uuid },
 }
 
 #[derive(Debug, Clone)]
@@ -195,6 +197,27 @@ impl SourceDocument {
         )
     }
 
+    pub(crate) fn new_memory(
+        url: String,
+        text: String,
+        title: Option<String>,
+        extra: Option<Value>,
+        point_id: uuid::Uuid,
+    ) -> Self {
+        Self::new(
+            SourceOrigin::Memory,
+            url,
+            "memory".to_string(),
+            text,
+            "memory",
+            title,
+            extra,
+            None,
+            None,
+            SourceChunkHint::AtomicText { point_id },
+        )
+    }
+
     fn into_prepared(
         self,
         chunks: Vec<String>,
@@ -223,6 +246,7 @@ pub(crate) async fn prepare_source_document(doc: SourceDocument) -> Result<Prepa
         }
         SourceChunkHint::MarkdownOrPlainText => Ok(prepare_markdown_source(doc)),
         SourceChunkHint::PlainText => Ok(prepare_plain_source(doc)),
+        SourceChunkHint::AtomicText { point_id } => Ok(prepare_atomic_source(doc, point_id)),
     }
 }
 
@@ -375,6 +399,22 @@ fn prepare_plain_source(doc: SourceDocument) -> PreparedDoc {
         chunks.push(chunk);
     }
     doc.into_prepared(chunks, "text", chunk_extra)
+}
+
+fn prepare_atomic_source(doc: SourceDocument, point_id: uuid::Uuid) -> PreparedDoc {
+    let line_index = LineIndex::new(&doc.text);
+    let (line_start, line_end) = line_index.line_range_for_bytes(0, doc.text.len());
+    let chunk_extra = vec![chunk_metadata(base_chunk_metadata(
+        "plain_text",
+        &format!("{}#chunk-0", doc.url),
+        line_start,
+        line_end,
+        0,
+        doc.text.len(),
+    ))];
+    let chunk = doc.text.clone();
+    doc.into_prepared(vec![chunk], "text", chunk_extra)
+        .with_chunk_point_ids(vec![point_id])
 }
 
 fn safe_markdown_chunks(text: &str) -> (Vec<String>, bool) {
