@@ -36,10 +36,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-axon-linux
-      # RustEmbed (#[folder = "apps/web/out/"]) only needs the folder to exist;
-      # an empty placeholder ships an empty admin panel without a Node build.
-      - name: create web assets placeholder
-        run: mkdir -p apps/web/out
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: build web panel
+        working-directory: apps/web
+        run: npm ci && npm run build
       - name: cargo build --release --bin axon
         run: cargo build --release --locked --bin axon
       - name: Package
@@ -71,11 +75,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-axon-windows
-      # RustEmbed (#[folder = "apps/web/out/"]) only needs the folder to exist;
-      # an empty placeholder ships an empty admin panel without a Node build.
-      - name: create web assets placeholder
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: build web panel
+        working-directory: apps/web
         shell: bash
-        run: mkdir -p apps/web/out
+        run: npm ci && npm run build
       - name: cargo build --release --bin axon
         run: cargo build --release --locked --bin axon
         env:

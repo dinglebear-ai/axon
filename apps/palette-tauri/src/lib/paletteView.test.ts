@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { ACTIONS, actionMatches } from "./actions";
+import { actionDisplayMeta, actionKindLabel, actionKindTone } from "./actionMeta";
 import {
-  actionDisplayMeta,
   sortActionsByRelevance,
   sortActionsForDisplay,
   actionHint,
@@ -34,6 +34,25 @@ describe("palette view parsing helpers", () => {
     });
   });
 
+  it("parses bare help as the local help action", () => {
+    expect(parseCommand("help")).toMatchObject({ invoked: action("help"), search: "help", arg: "" });
+  });
+
+  it("parses help followed by an action target", () => {
+    expect(parseCommand("help scrape")).toMatchObject({ invoked: action("help"), search: "help", arg: "scrape" });
+  });
+
+  it("parses action help without invoking the backend action", () => {
+    expect(parseCommand("scrape help")).toMatchObject({ invoked: action("help"), search: "scrape", arg: "scrape" });
+    expect(parseCommand("fetch help")).toMatchObject({ invoked: action("help"), search: "fetch", arg: "scrape" });
+    expect(parseCommand("crawl --help")).toMatchObject({ invoked: action("help"), search: "crawl", arg: "crawl" });
+    expect(parseCommand("query -h")).toMatchObject({ invoked: action("help"), search: "query", arg: "query" });
+  });
+
+  it("leaves non-command help text searchable", () => {
+    expect(parseCommand("help me debug this")).toMatchObject({ invoked: action("help"), search: "help", arg: "me debug this" });
+  });
+
   it("uses direct URLs as action arguments for URL-aware actions", () => {
     const scrape = action("scrape");
     const parsed = parseCommand("https://example.com/docs");
@@ -62,6 +81,29 @@ describe("palette view parsing helpers", () => {
       input: "one URL",
       output: "content",
       label: "Scrape",
+      method: "POST",
+    });
+  });
+
+  it("exposes local help route metadata from actionMeta", () => {
+    expect(actionDisplayMeta(action("help"))).toEqual({
+      category: "System",
+      endpoint: "palette://help",
+      input: "action",
+      output: "help",
+      label: "Help",
+      method: "GET",
+    });
+  });
+
+  it("labels local actions without treating them like backend operations", () => {
+    expect(actionKindLabel(action("help"))).toBe("Local");
+    expect(actionKindTone(action("help"))).toBe("info");
+  });
+
+  it("keeps retrieve route metadata aligned with the actual palette request", () => {
+    expect(actionDisplayMeta(action("retrieve"))).toMatchObject({
+      endpoint: "/v1/retrieve",
       method: "POST",
     });
   });

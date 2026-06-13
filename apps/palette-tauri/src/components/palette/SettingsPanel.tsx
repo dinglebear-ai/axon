@@ -104,7 +104,7 @@ export function SettingsPanel({
     setConnectionTest({ status: "checking", detail: `Testing ${draftConfig.serverUrl || "server"}...` });
     try {
       const doctorAction = ACTIONS.find((a) => a.subcommand === "doctor");
-      if (!doctorAction) {
+      if (!doctorAction || doctorAction.kind === "local") {
         setConnectionTest({ status: "error", checkedAt: Date.now(), detail: "Doctor action is not registered in the palette." });
         return;
       }

@@ -3,7 +3,9 @@ import { useEffect, type Dispatch, type SetStateAction } from "react";
 import { ActionIcon } from "@/components/palette/ActionIcon";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
 import { acceptsDirectUrl, type PaletteAction } from "@/lib/actions";
-import { actionDisplayMeta, looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
+import { isAsyncAction } from "@/lib/actionHelp";
+import { actionDisplayMeta } from "@/lib/actionMeta";
+import { looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
 
 interface ActionListProps {
   filtered: PaletteAction[];
@@ -12,12 +14,13 @@ interface ActionListProps {
   parsed: ParsedCommand;
   onSubmit: (action: PaletteAction) => void;
   onEnterMode: (action: PaletteAction) => void;
+  onHelp: (action: PaletteAction) => void;
 }
 
 // The searchable, keyboard-navigable list of palette actions. A row click runs
 // the action directly when a command is invoked or the query is a bare URL the
 // action accepts, otherwise it enters argument mode for that action.
-export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, onEnterMode }: ActionListProps) {
+export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, onEnterMode, onHelp }: ActionListProps) {
   // Keyboard nav moves the selection; keep the selected row in view by scrolling
   // the list viewport the minimum amount needed (so arrowing past the fold works).
   useEffect(() => {
@@ -48,42 +51,60 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
                     <span>{meta.input} → {meta.output}</span>
                   </div>
                 )}
-                <button
+                <div
                   className={selectedRow ? "action-row action-row-selected" : "action-row"}
-                  onClick={() => {
-                    setSelected(index);
-                    if (parsed.invoked) {
-                      onSubmit(action);
-                    } else if (action.argMode === "none") {
-                      // No-input actions run immediately — no empty argument prompt.
-                      onSubmit(action);
-                    } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
-                      onSubmit(action);
-                    } else {
-                      onEnterMode(action);
-                    }
-                  }}
+                  onFocusCapture={() => setSelected(index)}
+                  onPointerEnter={() => setSelected(index)}
                 >
-                  <ActionIcon action={action} selected={selectedRow} />
-                  <span className="action-main">
-                    <span className="action-title-line">
-                      <span className="action-label">{meta.label}</span>
-                      <span className="action-method">{meta.method}</span>
-                      <span className="action-endpoint">{meta.endpoint}</span>
-                      {action.subcommand === "crawl" || action.subcommand === "ingest" || action.subcommand === "embed" || action.subcommand === "extract" ? (
-                        <span className="action-async">ASYNC</span>
-                      ) : null}
+                  <button
+                    className="action-row-main"
+                    type="button"
+                    onClick={() => {
+                      setSelected(index);
+                      if (parsed.invoked) {
+                        onSubmit(action);
+                      } else if (action.argMode === "none") {
+                        // No-input actions run immediately — no empty argument prompt.
+                        onSubmit(action);
+                      } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
+                        onSubmit(action);
+                      } else {
+                        onEnterMode(action);
+                      }
+                    }}
+                  >
+                    <ActionIcon action={action} selected={selectedRow} />
+                    <span className="action-main">
+                      <span className="action-title-line">
+                        <span className="action-label">{meta.label}</span>
+                        <span className="action-method">{meta.method}</span>
+                        <span className="action-endpoint">{meta.endpoint}</span>
+                        {isAsyncAction(action) ? (
+                          <span className="action-async">ASYNC</span>
+                        ) : null}
+                      </span>
+                      <span className="action-description">{action.description}</span>
                     </span>
-                    <span className="action-description">{action.description}</span>
-                  </span>
+                  </button>
                   <span className="action-meta">
                     {selectedRow ? (
-                      <span className="action-run-pill">Run <kbd>↵</kbd></span>
+                      <>
+                        <button
+                          className="action-help-button"
+                          type="button"
+                          onClick={() => onHelp(action)}
+                          aria-label={`Help for ${action.label}`}
+                          title={`Help for ${action.label}`}
+                        >
+                          ?
+                        </button>
+                        <span className="action-run-pill">Run <kbd>↵</kbd></span>
+                      </>
                     ) : (
                       <kbd>{action.subcommand}</kbd>
                     )}
                   </span>
-                </button>
+                </div>
               </div>
             );
           })}
