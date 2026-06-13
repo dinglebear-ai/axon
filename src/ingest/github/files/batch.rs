@@ -94,7 +94,7 @@ pub(super) async fn collect_and_embed_batched(
         if batch.len() >= EMBED_BATCH_SIZE {
             let batch_files = unique_file_count(&batch);
             let batch_docs = batch.len();
-            let batch_chunks = batch.len();
+            let batch_chunks = chunk_count(&batch);
             let batch_urls = urls_for_docs(&batch);
             match flush_batch(&ctx.cfg, &mut batch, reporter).await {
                 Ok(n) => {
@@ -139,7 +139,7 @@ pub(super) async fn collect_and_embed_batched(
     if !batch.is_empty() {
         let batch_files = unique_file_count(&batch);
         let batch_docs = batch.len();
-        let batch_chunks = batch.len();
+        let batch_chunks = chunk_count(&batch);
         let batch_urls = urls_for_docs(&batch);
         match flush_batch(&ctx.cfg, &mut batch, reporter).await {
             Ok(n) => {
@@ -207,6 +207,10 @@ fn unique_file_count(docs: &[PreparedDoc]) -> usize {
         .filter_map(|doc| doc.title.as_deref())
         .collect::<HashSet<_>>()
         .len()
+}
+
+fn chunk_count(docs: &[PreparedDoc]) -> usize {
+    docs.iter().map(|doc| doc.chunks.len()).sum()
 }
 
 fn urls_for_docs(docs: &[PreparedDoc]) -> HashSet<String> {

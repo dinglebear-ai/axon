@@ -1,4 +1,3 @@
-use futures_util::{StreamExt, stream};
 use serde_json::{Map, Value};
 
 use super::file_ingest::{chunk_file, chunking_method};
@@ -78,19 +77,6 @@ impl SourceDocument {
         }
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn url(&self) -> &str {
-        &self.url
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn estimated_bytes(&self) -> usize {
-        self.text.len()
-            + self.url.len()
-            + self.title.as_ref().map_or(0, String::len)
-            + self.extra.as_ref().map_or(0, |v| v.to_string().len())
-    }
-
     pub(crate) fn try_new_web_markdown(
         url: String,
         text: String,
@@ -136,15 +122,15 @@ impl SourceDocument {
         ))
     }
 
-    pub(crate) fn try_new_local_markdown(
+    pub(crate) fn new_local_markdown(
         url: String,
         domain: String,
         text: String,
         source_type: impl Into<String>,
         title: Option<String>,
         extra: Option<Value>,
-    ) -> Result<Self, String> {
-        Ok(Self::new(
+    ) -> Self {
+        Self::new(
             SourceOrigin::LocalFile,
             url,
             domain,
@@ -155,7 +141,7 @@ impl SourceDocument {
             None,
             None,
             SourceChunkHint::MarkdownOrPlainText,
-        ))
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -187,15 +173,15 @@ impl SourceDocument {
         ))
     }
 
-    pub(crate) fn try_new_plain_text(
+    pub(crate) fn new_plain_text(
         url: String,
         domain: String,
         text: String,
         source_type: impl Into<String>,
         title: Option<String>,
         extra: Option<Value>,
-    ) -> Result<Self, String> {
-        Ok(Self::new(
+    ) -> Self {
+        Self::new(
             SourceOrigin::PlainIngest,
             url,
             domain,
@@ -206,7 +192,27 @@ impl SourceDocument {
             None,
             None,
             SourceChunkHint::PlainText,
-        ))
+        )
+    }
+
+    fn into_prepared(
+        self,
+        chunks: Vec<String>,
+        content_type: &'static str,
+        chunk_extra: Vec<Value>,
+    ) -> PreparedDoc {
+        PreparedDoc::from_planned_chunks(
+            self.url,
+            self.domain,
+            chunks,
+            self.source_type,
+            content_type,
+            self.title,
+            self.extra,
+            self.extractor_name,
+            self.structured,
+            chunk_extra,
+        )
     }
 }
 
@@ -220,37 +226,6 @@ pub(crate) async fn prepare_source_document(doc: SourceDocument) -> Result<Prepa
     }
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) async fn prepare_source_documents_bounded<I>(
-    docs: I,
-    concurrency: usize,
-    max_inflight_bytes: usize,
-) -> Result<Vec<PreparedDoc>, String>
-where
-    I: IntoIterator<Item = SourceDocument>,
-{
-    let concurrency = concurrency.clamp(1, 32);
-    let max_inflight_bytes = max_inflight_bytes.max(1);
-    let mut buffered = stream::iter(docs)
-        .map(|doc| async move {
-            if doc.estimated_bytes() > max_inflight_bytes {
-                tracing::debug!(
-                    url = %doc.url(),
-                    estimated_bytes = doc.estimated_bytes(),
-                    max_inflight_bytes,
-                    "source_doc: single document exceeds planning byte budget"
-                );
-            }
-            prepare_source_document(doc).await
-        })
-        .buffer_unordered(concurrency);
-    let mut out = Vec::new();
-    while let Some(item) = buffered.next().await {
-        out.push(item?);
-    }
-    Ok(out)
-}
-
 pub(crate) fn prepare_plain_text_source(
     url: String,
     domain: String,
@@ -259,32 +234,8 @@ pub(crate) fn prepare_plain_text_source(
     title: Option<String>,
     extra: Option<Value>,
 ) -> Result<PreparedDoc, String> {
-    let source = SourceDocument::try_new_plain_text(url, domain, text, source_type, title, extra)?;
+    let source = SourceDocument::new_plain_text(url, domain, text, source_type, title, extra);
     Ok(prepare_plain_source(source))
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn should_flush_prepared_batch(
-    docs: &[PreparedDoc],
-    next_estimated_bytes: usize,
-    max_docs: usize,
-    max_bytes: usize,
-) -> bool {
-    if docs.is_empty() {
-        return false;
-    }
-    if docs.len() >= max_docs.max(1) {
-        return true;
-    }
-    let current_bytes: usize = docs
-        .iter()
-        .map(|doc| {
-            doc.chunks.iter().map(String::len).sum::<usize>()
-                + doc.url.len()
-                + doc.extra.as_ref().map_or(0, |v| v.to_string().len())
-        })
-        .sum();
-    current_bytes.saturating_add(next_estimated_bytes) >= max_bytes.max(1)
 }
 
 pub(crate) fn structured_payload_from_vertical_summary(
@@ -338,8 +289,14 @@ async fn prepare_file_source(
     let mut chunk_extra = Vec::with_capacity(chunks.len());
     for chunk in chunks {
         let method = chunking_method(&ext, &chunk);
+        let content_kind = match method {
+            "tree_sitter" => "code",
+            "markdown" => "markdown",
+            "prose" => "plain_text",
+            _ => "plain_text",
+        };
         let mut extra = base_chunk_metadata(
-            "code",
+            content_kind,
             &file_locator(&path, chunk.start_line, chunk.end_line),
             chunk.start_line,
             chunk.end_line,
@@ -361,18 +318,8 @@ async fn prepare_file_source(
     }
     let local_cleanup = doc.origin == SourceOrigin::LocalFile;
     let extra = ensure_file_doc_extra(doc.extra, &path, &ext, symbol_status);
-    let prepared = PreparedDoc::from_planned_chunks(
-        doc.url,
-        doc.domain,
-        chunk_texts,
-        doc.source_type,
-        "text",
-        doc.title,
-        extra,
-        doc.extractor_name,
-        doc.structured,
-        chunk_extra,
-    );
+    let doc = SourceDocument { extra, ..doc };
+    let prepared = doc.into_prepared(chunk_texts, "text", chunk_extra);
     Ok(if local_cleanup {
         prepared.with_local_legacy_fragment_cleanup()
     } else {
@@ -406,18 +353,7 @@ fn prepare_markdown_source(doc: SourceDocument) -> PreparedDoc {
             Some(chunk_metadata(extra))
         })
         .collect();
-    PreparedDoc::from_planned_chunks(
-        doc.url,
-        doc.domain,
-        chunks,
-        doc.source_type,
-        "markdown",
-        doc.title,
-        doc.extra,
-        doc.extractor_name,
-        doc.structured,
-        chunk_extra,
-    )
+    doc.into_prepared(chunks, "markdown", chunk_extra)
 }
 
 fn prepare_plain_source(doc: SourceDocument) -> PreparedDoc {
@@ -438,18 +374,7 @@ fn prepare_plain_source(doc: SourceDocument) -> PreparedDoc {
         )));
         chunks.push(chunk);
     }
-    PreparedDoc::from_planned_chunks(
-        doc.url,
-        doc.domain,
-        chunks,
-        doc.source_type,
-        "text",
-        doc.title,
-        doc.extra,
-        doc.extractor_name,
-        doc.structured,
-        chunk_extra,
-    )
+    doc.into_prepared(chunks, "text", chunk_extra)
 }
 
 fn safe_markdown_chunks(text: &str) -> (Vec<String>, bool) {

@@ -279,17 +279,24 @@ pub(super) async fn prepare_embed_docs(
                     None,
                 )
             } else {
-                SourceDocument::try_new_local_markdown(
+                Ok(SourceDocument::new_local_markdown(
                     url,
                     "local".to_string(),
                     raw,
                     resolved_source_type,
                     Some(locator_path),
                     None,
-                )
+                ))
             }
         } else {
-            SourceDocument::try_new_plain_text(url, domain, raw, resolved_source_type, None, None)
+            Ok(SourceDocument::new_plain_text(
+                url,
+                domain,
+                raw,
+                resolved_source_type,
+                None,
+                None,
+            ))
         }
         .map_err(|err| -> Box<dyn Error> { err.into() })?;
         let doc = prepare_source_document(source_doc)
@@ -324,10 +331,7 @@ fn local_locator_path(input_path: &Path, url: &str, input_is_dir: bool) -> Strin
                     .to_string()
             })
     } else {
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(url)
-            .to_string()
+        url.to_string()
     }
 }
 

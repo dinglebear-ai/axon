@@ -1,6 +1,8 @@
 use super::super::embed::gitlab_file_chunk_payload;
+use super::gitlab_file_doc_extra;
 use crate::ingest::gitlab::types::{GitLabProject, GitLabTarget};
 use crate::vector::ops::input::code::{ChunkSource, CodeChunk, Symbol, SymbolKind};
+use crate::vector::ops::{SourceDocument, SourceOrigin, prepare_source_document};
 
 fn make_target(namespace_path: &str) -> GitLabTarget {
     let project = namespace_path
@@ -118,5 +120,44 @@ fn owner_derivation_two_segment_namespace() {
     assert_eq!(
         payload["git_owner"], "group",
         "two-segment namespace should produce owner = group"
+    );
+}
+
+#[tokio::test]
+async fn gitlab_file_production_path_preserves_file_and_symbol_metadata() {
+    let target = make_target("group/project");
+    let project = make_project();
+    let rel = "src/lib.rs";
+    let extra = gitlab_file_doc_extra(&target, &project, "main", rel, "rs");
+    let source = SourceDocument::try_new_file(
+        SourceOrigin::GitFile,
+        format!("{}/-/blob/main/{rel}", target.web_url),
+        rel.to_string(),
+        "rs".to_string(),
+        "pub fn alpha() {}\n".to_string(),
+        "gitlab",
+        Some(rel.to_string()),
+        Some(extra),
+    )
+    .expect("source");
+
+    let doc = prepare_source_document(source).await.expect("prepared");
+
+    assert_eq!(
+        doc.url,
+        "https://gitlab.com/group/project/-/blob/main/src/lib.rs"
+    );
+    assert_eq!(doc.source_type, "gitlab");
+    assert_eq!(doc.content_type, "text");
+    assert_eq!(doc.extra.as_ref().unwrap()["git_owner"], "group");
+    assert_eq!(doc.extra.as_ref().unwrap()["git_content_kind"], "file");
+    assert_eq!(doc.extra.as_ref().unwrap()["code_file_path"], rel);
+    assert_eq!(doc.chunks.len(), doc.chunk_extra.len());
+    assert!(
+        doc.chunk_extra
+            .iter()
+            .any(|extra| extra["symbol_kind"].as_str() == Some("function")),
+        "expected function symbol metadata: {:?}",
+        doc.chunk_extra
     );
 }

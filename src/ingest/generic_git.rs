@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
@@ -16,6 +17,7 @@ use crate::vector::ops::file_ingest::{SelectionPolicy, collect_files};
 use crate::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name, path_extension,
 };
+use crate::vector::ops::qdrant::qdrant_delete_repo_file_fragments;
 use crate::vector::ops::{PreparedDoc, SourceDocument, SourceOrigin, prepare_source_document};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,9 +130,13 @@ pub(crate) async fn ingest_git_repository(
         .map_err(|e| anyhow!("{e}"))?;
     let total = files.len();
     let mut docs = Vec::new();
+    let mut skipped_files = 0usize;
     for (index, file) in files.into_iter().enumerate() {
         let mut file_docs =
             file_docs(tmp.path(), &target, &branch, file, source_type, provider).await?;
+        if file_docs.is_empty() {
+            skipped_files += 1;
+        }
         docs.append(&mut file_docs);
         if (index + 1) % 25 == 0 || index + 1 == total {
             reporter
@@ -138,9 +144,31 @@ pub(crate) async fn ingest_git_repository(
                 .await;
         }
     }
+    let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url.clone()).collect();
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
         .map_err(|e| anyhow!("{e}"))?;
+    if include_source && skipped_files == 0 {
+        if let Err(err) = qdrant_delete_repo_file_fragments(
+            cfg,
+            provider,
+            &target.host,
+            None,
+            &target.name,
+            &current_urls,
+        )
+        .await
+        {
+            log_warn(&format!(
+                "command=ingest_git legacy_fragment_cleanup_failed target={} err={err}",
+                target.clone_url
+            ));
+        }
+    } else {
+        log_warn(&format!(
+            "command=ingest_git legacy_fragment_cleanup_skipped include_source={include_source} skipped_files={skipped_files}"
+        ));
+    }
     reporter
         .report(serde_json::json!({
             "phase": "completed",
