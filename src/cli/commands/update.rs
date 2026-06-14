@@ -5,12 +5,11 @@ use crate::core::ui::{accent, muted, primary};
 use flate2::read::GzDecoder;
 use futures_util::StreamExt;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use std::env;
 use std::error::Error;
 use std::fmt;
 use std::fs;
-use std::io::{BufReader, Read};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
@@ -24,10 +23,23 @@ const UPDATE_INSTALL_PATH: &str = "AXON_UPDATE_INSTALL_PATH";
 const DEV_TARGET_DIR: &str = "AXON_DEV_TARGET_DIR";
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
+// Release-artifact integrity (SHA256 + optional OPS-H3 signature) lives in the
+// integrity submodule. Re-exported so the sidecar tests' `super::*` resolves
+// the verification helpers unchanged.
+mod integrity;
+#[cfg(test)]
+use integrity::verify_sha256;
+use integrity::{
+    parse_sha256_sidecar, resolve_optional_signature, verify_optional_signature, verify_sha256_file,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ReleaseAssetNames {
     archive: &'static str,
     checksum: &'static str,
+    /// Optional detached minisign signature sidecar (OPS-H3). Present in the
+    /// release only once signing is enabled; the updater treats it as optional.
+    signature: &'static str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,6 +210,14 @@ async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn 
     let expected = parse_sha256_sidecar(&checksum_body)?;
     verify_sha256_file(&archive_path, &expected)?;
 
+    // OPS-H3 (bounded): optional, independent-trust-root signature check on top
+    // of the SHA256 (which shares a trust root with the binary). Resolves the
+    // detached signature best-effort; verification is enforced only when a
+    // public key is configured AND a signature is present — otherwise inert.
+    let signature_path = temp.path().join(names.signature);
+    let signature_available = resolve_optional_signature(&options, &names, &signature_path).await?;
+    verify_optional_signature(&archive_path, &signature_path, signature_available)?;
+
     let already_current =
         !options.force && installed_binary_reports_version(&options.install_path, &version).await;
     if !already_current {
@@ -287,53 +307,12 @@ fn release_asset_names(os: &str, arch: &str) -> Result<ReleaseAssetNames, Box<dy
         ("linux", "x86_64") => Ok(ReleaseAssetNames {
             archive: "axon-linux-x86_64.tar.gz",
             checksum: "axon-linux-x86_64.tar.gz.sha256",
+            signature: "axon-linux-x86_64.tar.gz.minisig",
         }),
         _ => Err(err(format!(
             "unsupported platform for axon update: {os}/{arch}; only linux/x86_64 is wired"
         ))),
     }
-}
-
-fn parse_sha256_sidecar(body: &str) -> Result<String, Box<dyn Error>> {
-    let hash = body
-        .split_whitespace()
-        .next()
-        .ok_or_else(|| err("empty sha256 sidecar"))?;
-    if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(err(format!("invalid sha256 sidecar hash: {hash}")));
-    }
-    Ok(hash.to_ascii_lowercase())
-}
-
-#[cfg(test)]
-fn verify_sha256(bytes: &[u8], expected: &str) -> Result<(), Box<dyn Error>> {
-    let actual = hex::encode(Sha256::digest(bytes));
-    if actual != expected.to_ascii_lowercase() {
-        return Err(err(format!(
-            "checksum mismatch: expected {expected}, got {actual}"
-        )));
-    }
-    Ok(())
-}
-
-fn verify_sha256_file(path: &Path, expected: &str) -> Result<(), Box<dyn Error>> {
-    let mut file = fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    let actual = hex::encode(hasher.finalize());
-    if actual != expected.to_ascii_lowercase() {
-        return Err(err(format!(
-            "checksum mismatch: expected {expected}, got {actual}"
-        )));
-    }
-    Ok(())
 }
 
 fn extract_axon_binary(archive_path: &Path, temp_dir: &Path) -> Result<PathBuf, Box<dyn Error>> {

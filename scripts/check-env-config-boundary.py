@@ -62,6 +62,8 @@ IGNORED_TOKENS = {
     "GOOGLE_OAUTH_COLORS",  # Rust const (color hex list for brand filtering), not an env var
     "GEMINI_SKILL_INVOCATION",  # Rust const (ask synthesis prompt fragment), not an env var
     "OPENAI_COMPAT_SECRET",  # fake secret string literal in runners_tests.rs redaction test, not an env var
+    "GEMINI_DEFAULT_COMPLETION_CONCURRENCY",  # Rust const (default concurrency) in core/llm/types.rs, not an env var
+    "OPENAI_DEFAULT_COMPLETION_CONCURRENCY",  # Rust const (default concurrency) in core/llm/types.rs, not an env var
 }
 
 VALID_CLASSIFICATIONS = {

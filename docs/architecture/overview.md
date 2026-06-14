@@ -64,7 +64,7 @@ flowchart LR
 | `src/crawl/*` | Crawl engine, render mode strategy, sitemap backfill |
 | `src/jobs/*` | SQLite-backed worker runtime + job state transitions |
 | `src/vector/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
-| `src/services/llm_backend/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
+| `src/core/llm/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
 | `docker-compose.prod.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
 
 ## Execution Entry Points
@@ -275,9 +275,9 @@ Added in v0.12.0 to manage MCP tool response artifacts:
 | `artifacts/respond.rs` | Build MCP tool response payloads embedding artifact refs |
 | `artifacts/shape.rs` | `ArtifactShape` enum: `Blob`, `Text`, `Json`, `Image` |
 
-### LLM Backend (`src/services/llm_backend/`)
+### LLM Backend (`src/core/llm/`)
 
-`services/llm_backend` is the sole LLM synthesis gateway. It serves `ask`,
+`core/llm` is the sole LLM synthesis gateway. It serves `ask`,
 `summarize`, `evaluate`, `suggest`, `research`, `debug`, and extract fallback by launching
 Gemini headless with:
 
@@ -393,12 +393,12 @@ Ingest:
 
 LLM backend:
 
-- `src/services/llm_backend.rs`
-- `src/services/llm_backend/concurrency.rs`
-- `src/services/llm_backend/headless/dispatch.rs`
-- `src/services/llm_backend/headless/env.rs`
-- `src/services/llm_backend/headless/gemini.rs`
-- `src/services/llm_backend/types.rs`
+- `src/core/llm.rs`
+- `src/core/llm/types.rs`
+- `src/core/llm/concurrency.rs`
+- `src/core/llm/openai_compat.rs`
+- `src/core/llm/headless.rs`
+- `src/core/llm/headless/` (common, env, gemini)
 - `src/mcp/server/artifacts.rs`
 - `src/mcp/server/artifacts/` (lifecycle, path, respond, shape)
 

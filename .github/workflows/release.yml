@@ -33,6 +33,13 @@ jobs:
   axon-linux:
     name: build axon (linux)
     runs-on: ubuntu-latest
+    # The `secrets` context is NOT allowed in step-level `if:` conditionals, so
+    # the optional signing secret is promoted to job-level env here (where
+    # referencing `secrets` IS allowed) and the signing steps gate on
+    # `env.SIGNING_KEY` instead. Empty until the key is provisioned.
+    env:
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     steps:
       # Full checkout: the non-cone sparse list previously omitted root
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
@@ -60,12 +67,40 @@ jobs:
           cd target/release
           tar -czf axon-linux-x86_64.tar.gz axon
           sha256sum axon-linux-x86_64.tar.gz > axon-linux-x86_64.tar.gz.sha256
+      # OPS-H3 (bounded): artifact signing scaffold. This is a NO-OP until a
+      # signing key is provisioned as the `SIGNING_KEY` repo secret. Once set,
+      # it produces a detached minisign signature (`.minisig`) alongside the
+      # tarball so the self-updater can verify it (see src/cli/commands/update.rs
+      # `verify_optional_signature`). SHA256 alone shares one trust root with the
+      # binary; a signature provides an independent one.
+      # MANUAL FOLLOW-UP: provision `secrets.SIGNING_KEY` (minisign secret key)
+      # and, for verification, embed/distribute the matching public key.
+      - name: Sign artifact (minisign)
+        if: ${{ env.SIGNING_KEY != '' }}
+        run: |
+          set -euo pipefail
+          # Install minisign (rsign2 is a drop-in alternative if preferred).
+          sudo apt-get update && sudo apt-get install -y minisign
+          printf '%s' "$SIGNING_KEY" > /tmp/axon-minisign.key
+          cd target/release
+          echo "$SIGNING_KEY_PASSWORD" | minisign -S -s /tmp/axon-minisign.key \
+            -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
+          shred -u /tmp/axon-minisign.key
+          echo "Signed axon-linux-x86_64.tar.gz -> .minisig"
       - uses: actions/upload-artifact@v5
         with:
           name: axon-linux-x86_64
           path: |
             target/release/axon-linux-x86_64.tar.gz
             target/release/axon-linux-x86_64.tar.gz.sha256
+          if-no-files-found: error
+      # Separate upload so the optional signature does not weaken the
+      # required-file guarantee above. Only present when signing ran.
+      - uses: actions/upload-artifact@v5
+        if: ${{ env.SIGNING_KEY != '' }}
+        with:
+          name: axon-linux-x86_64-signature
+          path: target/release/axon-linux-x86_64.tar.gz.minisig
           if-no-files-found: error
 
   axon-windows:
@@ -238,6 +273,16 @@ jobs:
           merge-multiple: true
       - name: List artifacts
         run: ls -la dist/
+      # OPS-H3 (bounded): attach the minisign signature to the release when it
+      # exists (only after `secrets.SIGNING_KEY` is provisioned). Done as a
+      # separate, non-strict step so the absence of a signature today does not
+      # break the strict required-artifact release step below.
+      - name: Attach signature to release (when present)
+        if: ${{ hashFiles('dist/axon-linux-x86_64.tar.gz.minisig') != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/axon-linux-x86_64.tar.gz.minisig
+          fail_on_unmatched_files: true
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

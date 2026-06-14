@@ -196,7 +196,7 @@ High-level subsystem map:
   - CLI commands call `src/services::{query,retrieve,ask,summarize,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those public call-site entry points are removed from the API surface; callers must go through the services layer)
   - Each service function returns a typed result struct (defined in `src/services/types/service.rs`) — no raw JSON printing or stdout side-effects
   - MCP handlers and web routes call the same service functions, mapping typed results to wire format
-  - Gemini headless LLM completions live in `src/services/llm_backend/` — used by ask synthesis, summarize, research, evaluate, suggest, debug, and extract fallback
+  - Gemini headless LLM completions live in `src/core/llm/` — used by ask synthesis, summarize, research, evaluate, suggest, debug, and extract fallback
 - MCP server:
   - `src/mcp/` (schema, server routing, handler modules, config)
   - Single `axon` tool with `action`/`subaction` routing
@@ -339,6 +339,31 @@ AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
 # Qdrant collection (default: axon)
 AXON_COLLECTION=axon
 
+# Ask-retrieval recall knobs (hybrid RRF prefetch window + dual-embedding)
+# AXON_HYBRID_CANDIDATES controls the per-arm (dense + sparse) prefetch window
+# before RRF fusion for `query`; AXON_ASK_HYBRID_CANDIDATES overrides it for the
+# `ask` path only, defaulting wider to preserve recall before LLM synthesis.
+# Both clamp to 10–500. Authoritative defaults in src/vector/CLAUDE.md.
+AXON_HYBRID_CANDIDATES=100
+AXON_ASK_HYBRID_CANDIDATES=150
+# Dual-embedding (ask only): when the keyword form of the question (3+ non-stopword
+# tokens, differing from the trimmed NL question) is distinct, axon embeds BOTH the
+# NL form and the keyword form in a single TEI batch and dispatches them to Qdrant in
+# parallel, merging by (url, chunk-prefix). The NL form gets QUERY_INSTRUCTION; the
+# keyword form does NOT (keyword tokens are document-shaped). Short/single-keyword/
+# already-keyword-shaped questions skip the second dispatch. No env knob — gated by
+# query shape. See "Dual-Embedding for Ask" in src/vector/CLAUDE.md.
+#
+# Synthesis context-window capability is resolved from config (the active LLM
+# backend + its configured model): when the synthesis model is treated as
+# high-context, the ask path raises its full-doc context floor (e.g. a minimum of
+# 4 full docs on adaptive/complex queries). Resolved in
+# src/vector/ops/commands/ask/context.rs::high_context_synthesis_model from
+# cfg.llm_backend + the configured model name.
+# TODO: a parallel change is converting this to an explicit config field; once
+# landed, document the exact config/env knob name here instead of the model-family
+# resolution described above.
+
 # Search and research. Provide a SearXNG instance OR a Tavily key.
 # When AXON_SEARXNG_URL is set, search/research use SearXNG (JSON format must be
 # enabled in its settings.yml); otherwise they fall back to Tavily.
@@ -397,7 +422,7 @@ axon scrape https://example.com           # SQLite/in-process runtime (only mode
 
 **Supported commands:** scrape, summarize, diff, brand, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
 
-**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch.rs` and work today. A `watch` task (the only supported `task_type`) is a **URL change detector**: each run probes/scrapes every URL, filters noise (`ignore_patterns`), reuses `services::diff::compute_diff` against the stored `axon_watch_url_state` snapshot, applies a meaningfulness threshold, summarizes real changes via the Gemini `llm_backend`, writes `url-change` artifacts, and enqueues one crawl per common-prefix cluster (in-flight-guarded). The change-detection logic lives in `src/jobs/watch/{change_detect,cluster,dispatch,filter,report,url_state,orchestrate}.rs` with the conditional probe in `src/core/http/conditional.rs`. Enabled watches also **fire automatically**: the in-process scheduler loop in `src/jobs/workers/watch_scheduler.rs` (spawned by `spawn_workers`, so active under `axon serve`/`axon mcp`) leases due watches (`next_run_at <= now`) each `AXON_WATCH_TICK_SECS` and runs them, advancing `next_run_at` by `every_seconds`. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
+**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch.rs` and work today. A `watch` task (the only supported `task_type`) is a **URL change detector**: each run probes/scrapes every URL, filters noise (`ignore_patterns`), reuses `services::diff::compute_diff` against the stored `axon_watch_url_state` snapshot, applies a meaningfulness threshold, summarizes real changes via the Gemini `core/llm` backend, writes `url-change` artifacts, and enqueues one crawl per common-prefix cluster (in-flight-guarded). The change-detection logic lives in `src/jobs/watch/{change_detect,cluster,dispatch,filter,report,url_state,orchestrate}.rs` with the conditional probe in `src/core/http/conditional.rs`. Enabled watches also **fire automatically**: the in-process scheduler loop in `src/jobs/workers/watch_scheduler.rs` (spawned by `spawn_workers`, so active under `axon serve`/`axon mcp`) leases due watches (`next_run_at <= now`) each `AXON_WATCH_TICK_SECS` and runs them, advancing `next_run_at` by `every_seconds`. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
 
 ```bash
 # Env vars for runtime tuning

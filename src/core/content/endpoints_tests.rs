@@ -1,5 +1,4 @@
 use super::*;
-use crate::services::types::{EndpointKind, EndpointSourceKind};
 
 #[test]
 fn resolves_and_caps_script_sources() {

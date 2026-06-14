@@ -2,7 +2,9 @@ use crate::core::ask_explain::{CorpusHealthDiagnostic, CorpusHealthKind};
 use crate::core::config::Config;
 use crate::core::llm;
 use crate::core::logging::{log_info, log_warn};
+use crate::services::types::AskResult;
 
+mod assemble;
 mod context;
 mod normalize;
 mod output;
@@ -15,6 +17,7 @@ pub(crate) mod synthesis_prompt;
 mod tests;
 pub(crate) mod timing;
 
+use assemble::{assemble_ask_result, build_explain_result};
 pub(crate) use context::{AskContext, build_ask_context};
 pub(crate) use normalize::{normalize_ask_answer, summarize_citation_validation};
 pub(crate) use timing::{AskTiming, AskTimingSlot};
@@ -48,10 +51,15 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
     }
 }
 
+/// Thin JSON wrapper preserved for compatibility / tests. Serializes the typed
+/// `ask_result()` once; the services layer should call `ask_result()` directly
+/// to avoid the serialize→deserialize round-trip.
 pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json::Value> {
-    ask_payload_with_delta_handler(cfg, query, Option::<fn(&str)>::None).await
+    let result = ask_result(cfg, query).await?;
+    Ok(serde_json::to_value(result)?)
 }
 
+/// Thin JSON wrapper around `ask_result_with_deltas()` (see `ask_payload`).
 pub async fn ask_payload_with_deltas<F>(
     cfg: &Config,
     query: &str,
@@ -60,14 +68,32 @@ pub async fn ask_payload_with_deltas<F>(
 where
     F: FnMut(&str) + Send,
 {
-    ask_payload_with_delta_handler(cfg, query, Some(on_delta)).await
+    let result = ask_result_with_deltas(cfg, query, on_delta).await?;
+    Ok(serde_json::to_value(result)?)
 }
 
-async fn ask_payload_with_delta_handler<F>(
+/// Run the ask pipeline and return the typed `AskResult` directly.
+pub async fn ask_result(cfg: &Config, query: &str) -> anyhow::Result<AskResult> {
+    ask_result_with_delta_handler(cfg, query, Option::<fn(&str)>::None).await
+}
+
+/// Run the ask pipeline with streaming token deltas, returning typed `AskResult`.
+pub async fn ask_result_with_deltas<F>(
+    cfg: &Config,
+    query: &str,
+    on_delta: F,
+) -> anyhow::Result<AskResult>
+where
+    F: FnMut(&str) + Send,
+{
+    ask_result_with_delta_handler(cfg, query, Some(on_delta)).await
+}
+
+async fn ask_result_with_delta_handler<F>(
     cfg: &Config,
     query: &str,
     mut on_delta: Option<F>,
-) -> anyhow::Result<serde_json::Value>
+) -> anyhow::Result<AskResult>
 where
     F: FnMut(&str) + Send,
 {
@@ -106,7 +132,7 @@ where
         ctx.context_elapsed_ms,
     ));
     if cfg.ask_explain {
-        return Ok(build_explain_payload(
+        return Ok(build_explain_result(
             cfg,
             query,
             &ctx,
@@ -119,7 +145,7 @@ where
     let context = ask_context_with_follow_up(cfg, &ctx.context);
     let (answer, llm_total_ms) =
         resolve_answer_and_timing(cfg, query, &context, on_delta.take(), &mut timing).await?;
-    Ok(assemble_ask_payload(
+    Ok(assemble_ask_result(
         cfg,
         query,
         &ctx,
@@ -252,107 +278,6 @@ async fn retry_answer_for_citation_validation(
     }
 }
 
-/// Build the final JSON payload for a completed ask (non-explain path).
-#[allow(clippy::too_many_arguments)]
-fn assemble_ask_payload(
-    cfg: &Config,
-    query: &str,
-    ctx: &AskContext,
-    answer: &str,
-    llm_total_ms: u128,
-    total_elapsed_ms: u128,
-    timing: &AskTiming,
-    diagnostics_enabled: bool,
-) -> serde_json::Value {
-    log_info(&format!(
-        "ask complete answer_chars={} llm_ms={} total_ms={}",
-        answer.len(),
-        llm_total_ms,
-        total_elapsed_ms,
-    ));
-    serde_json::json!({
-        "query": query,
-        "answer": answer,
-        "citation_validation": summarize_citation_validation(answer),
-        "session": serde_json::Value::Null,
-        "warnings": &ctx.warnings,
-        "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, ctx),
-        "explain": serde_json::Value::Null,
-        "timing_ms": build_timing_json(
-            ctx.retrieval_elapsed_ms,
-            ctx.context_elapsed_ms,
-            llm_total_ms,
-            total_elapsed_ms,
-            timing,
-        ),
-    })
-}
-
-fn build_explain_payload(
-    cfg: &Config,
-    query: &str,
-    ctx: &AskContext,
-    diagnostics_enabled: bool,
-    timing: &AskTiming,
-    total_elapsed_ms: u128,
-) -> serde_json::Value {
-    log_info(&format!(
-        "ask explain complete total_ms={total_elapsed_ms} context_chars={}",
-        ctx.context.len()
-    ));
-    serde_json::json!({
-        "query": query,
-        "answer": "",
-        "session": serde_json::Value::Null,
-        "warnings": &ctx.warnings,
-        "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, ctx),
-        "explain": ctx.explain,
-        "timing_ms": build_timing_json(
-            ctx.retrieval_elapsed_ms,
-            ctx.context_elapsed_ms,
-            0,
-            total_elapsed_ms,
-            timing,
-        ),
-    })
-}
-
-fn build_diagnostics_json(enabled: bool, cfg: &Config, ctx: &AskContext) -> serde_json::Value {
-    if !enabled {
-        return serde_json::Value::Null;
-    }
-    serde_json::json!({
-        "candidate_pool": ctx.candidate_count,
-        "reranked_pool": ctx.reranked_count,
-        "chunks_selected": ctx.chunks_selected,
-        "full_docs_selected": ctx.full_docs_selected,
-        "supplemental_selected": ctx.supplemental_count,
-        "context_chars": ctx.context.len(),
-        "min_relevance_score": cfg.ask_min_relevance_score,
-        "ask_candidate_limit": cfg.ask_candidate_limit,
-        "ask_chunk_limit": cfg.ask_chunk_limit,
-        "ask_backfill_chunks": cfg.ask_backfill_chunks,
-        "ask_doc_chunk_limit": cfg.ask_doc_chunk_limit,
-        "ask_hybrid_candidates": cfg.ask_hybrid_candidates,
-        "ask_full_docs_configured": cfg.ask_full_docs,
-        "ask_full_docs_explicit": cfg.ask_full_docs_explicit,
-        "ask_fulldoc_skip_enabled": cfg.ask_fulldoc_skip_enabled,
-        "ask_max_context_chars": cfg.ask_max_context_chars,
-        "doc_fetch_concurrency": cfg.ask_doc_fetch_concurrency,
-        "top_domains": &ctx.top_domains,
-        "authority_ratio": ctx.authoritative_ratio,
-        "configured_authority_ratio": ctx.configured_authority_ratio,
-        "product_authority_ratio": ctx.product_authority_ratio,
-        "corpus_health": &ctx.corpus_health,
-        "full_doc_fetch_skipped": ctx.full_doc_fetch_skipped,
-        "full_doc_fetch_skip_reason": ctx.full_doc_fetch_skip_reason,
-        "full_doc_fetch_errors": &ctx.full_doc_fetch_errors,
-        "detected_complexity": ctx.detected_complexity,
-        "resolved_full_docs": ctx.resolved_full_docs,
-        "full_docs_source": ctx.full_docs_source,
-    })
-}
-
 fn print_normalized_stream_correction(answer: &str) {
     println!("{}", normalized_stream_correction_text(answer));
 }
@@ -419,65 +344,4 @@ fn history_only_ask_context(elapsed_ms: u128) -> AskContext {
         warnings: Vec::new(),
         explain: None,
     }
-}
-
-/// Back-compat: legacy timing shape always present; sub-stage fields populate
-/// only when `cfg.ask_diagnostics` is true.
-fn build_timing_json(
-    retrieval_ms: u128,
-    context_ms: u128,
-    llm_ms: u128,
-    total_ms: u128,
-    timing: &AskTiming,
-) -> serde_json::Value {
-    fn ms(v: u128) -> serde_json::Value {
-        serde_json::Value::Number(serde_json::Number::from(
-            u64::try_from(v).unwrap_or(u64::MAX),
-        ))
-    }
-    let mut obj = serde_json::Map::new();
-    obj.insert("retrieval".into(), ms(retrieval_ms));
-    obj.insert("context_build".into(), ms(context_ms));
-    obj.insert("llm".into(), ms(llm_ms));
-    obj.insert("total".into(), ms(total_ms));
-
-    // Always emit streamed + ttft even without diagnostics.
-    if let AskTiming::Disabled {
-        streamed,
-        llm_ttft_ms,
-        ..
-    } = timing
-    {
-        if let Some(v) = streamed {
-            obj.insert("streamed".into(), (*v).into());
-        }
-        if let Some(v) = llm_ttft_ms {
-            obj.insert("llm_ttft_ms".into(), ms(*v));
-        }
-        return serde_json::Value::Object(obj);
-    }
-    let Some(e) = timing.enabled() else {
-        return serde_json::Value::Object(obj);
-    };
-    let timing_fields: &[(&str, Option<u128>)] = &[
-        ("tei_embed_ms", e.tei_embed_ms),
-        ("qdrant_primary_ms", e.qdrant_primary_ms),
-        ("qdrant_secondary_ms", e.qdrant_secondary_ms),
-        ("rerank_ms", e.rerank_ms),
-        ("top_select_ms", e.top_select_ms),
-        ("full_doc_fetch_ms", e.full_doc_fetch_ms),
-        ("supplemental_ms", e.supplemental_ms),
-        ("llm_ttft_ms", e.llm_ttft_ms),
-        ("llm_total_ms", e.llm_total_ms),
-        ("normalize_ms", e.normalize_ms),
-    ];
-    for &(key, val) in timing_fields {
-        if let Some(v) = val {
-            obj.insert(key.into(), ms(v));
-        }
-    }
-    if let Some(v) = e.streamed {
-        obj.insert("streamed".into(), v.into());
-    }
-    serde_json::Value::Object(obj)
 }

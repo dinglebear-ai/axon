@@ -99,6 +99,18 @@ pub async fn v1_ask(
 
     let mut req_cfg = (*cfg).clone();
     apply_ask_overrides(&mut req_cfg, &req);
+
+    // SEC-M1: validate the collection override at the handler boundary, before it
+    // flows into retrieval — defense-in-depth matching the MCP path (which validates
+    // early via the same shared helper at src/mcp/server/common.rs). Reuses the one
+    // source-of-truth validator from `core::config`; no duplicated regex. The
+    // downstream `qdrant_collection_endpoint` choke point still validates, so this is
+    // belt-and-suspenders rather than the sole guard.
+    if let Err(reason) = crate::core::config::validate_collection_name(&req_cfg.collection) {
+        return HttpError::bad_request(format!("invalid collection name: {reason}"))
+            .into_response();
+    }
+
     let want_diagnostics = req_cfg.ask_diagnostics;
 
     match query_svc::ask(&req_cfg, &req.query, None).await {

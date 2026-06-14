@@ -269,7 +269,6 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
         return Ok(Vec::new());
     }
     let client = internal_service_http_client()?;
-    let mut vectors = Vec::new();
 
     let batch_size = cfg.tei_max_client_batch_size.clamp(1, 128);
     let embed_url = format!("{}/embed", cfg.tei_url.trim_end_matches('/'));
@@ -288,15 +287,84 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
     ));
     let tei_start = std::time::Instant::now();
 
-    // VecDeque gives O(1) pop_front / push_front — clearer intent than the
-    // Vec + reverse() + pop() trick for a FIFO queue with front-priority splits. (B-L1)
-    let mut queue: VecDeque<&[String]> = inputs.chunks(batch_size).collect();
+    // Initial batches, in document order. Each entry carries its byte-range
+    // [start, end) within `inputs` so its output vectors can be written back to
+    // the correct positions regardless of completion order. (PERF-M3)
+    let initial: Vec<(usize, &[String])> = {
+        let mut acc = Vec::new();
+        let mut start = 0usize;
+        for chunk in inputs.chunks(batch_size) {
+            acc.push((start, chunk));
+            start += chunk.len();
+        }
+        acc
+    };
 
-    while let Some(chunk) = queue.pop_front() {
-        match send_chunk_with_retries(client, &embed_url, chunk, max_attempts, request_timeout_ms)
-            .await?
+    // Pre-size the output so out-of-order completions can index directly into it.
+    // Each input maps to exactly one embedding vector at the same index.
+    let mut slots: Vec<Vec<f32>> = vec![Vec::new(); inputs.len()];
+
+    // Process batches with bounded concurrency. On a 413 split, the two halves
+    // are re-queued and likewise drained concurrently — previously the split
+    // drain was strictly serial (single VecDeque, one chunk at a time), so a
+    // pathological 413 on a 64-item batch fanned out to up to 64 serial RTTs
+    // that could blow the 300s doc timeout. Bounded concurrency keeps the same
+    // embeddings and the same input→vector position mapping while overlapping
+    // the re-sends. (PERF-M3)
+    use futures_util::stream::{FuturesUnordered, StreamExt};
+
+    // Concurrency for the split-drain fan-out. Bounded so a deep split cascade
+    // cannot itself become a thundering herd; the global TEI_CONCURRENCY
+    // semaphore in send_chunk_with_retries remains the hard ceiling on
+    // in-flight requests to TEI. Reuse the same knob for consistency.
+    let split_concurrency = env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64);
+
+    // Bind `Copy` references once so each spawned future captures only cheap
+    // copies (the `&'static` client, a `&str` view of the URL) under `async
+    // move` — capturing `&embed_url` directly would try to move the owned
+    // `String` into the first future.
+    let embed_url_ref: &str = &embed_url;
+
+    // Work queue of (offset, sub-slice) pairs still to embed.
+    let mut pending: VecDeque<(usize, &[String])> = initial.into_iter().collect();
+    let mut in_flight = FuturesUnordered::new();
+
+    loop {
+        // Top up in-flight futures up to the concurrency bound.
+        while in_flight.len() < split_concurrency
+            && let Some((offset, chunk)) = pending.pop_front()
         {
-            ChunkOutcome::Vectors(mut batch) => vectors.append(&mut batch),
+            in_flight.push(async move {
+                let outcome = send_chunk_with_retries(
+                    client,
+                    embed_url_ref,
+                    chunk,
+                    max_attempts,
+                    request_timeout_ms,
+                )
+                .await;
+                (offset, chunk, outcome)
+            });
+        }
+
+        let Some((offset, chunk, outcome)) = in_flight.next().await else {
+            // No in-flight work and nothing pending → done.
+            if pending.is_empty() {
+                break;
+            }
+            continue;
+        };
+
+        match outcome? {
+            ChunkOutcome::Vectors(batch) => {
+                // Position-stable write-back: the i-th vector belongs to the
+                // input at `offset + i`. Preserves overall input ordering even
+                // though batches may complete out of order.
+                debug_assert_eq!(batch.len(), chunk.len());
+                for (i, vec) in batch.into_iter().enumerate() {
+                    slots[offset + i] = vec;
+                }
+            }
             ChunkOutcome::Split => {
                 log_warn(&format!(
                     "tei_embed 413_split chunk_len={} splitting_at={}",
@@ -305,13 +373,15 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
                 ));
                 let mid = chunk.len() / 2;
                 let (left, right) = chunk.split_at(mid);
-                // Push sub-halves to the front so left is processed before right,
-                // preserving document order within the batch.
-                queue.push_front(right);
-                queue.push_front(left);
+                // Re-queue both halves; offsets are preserved so write-back
+                // still lands at the correct absolute input positions.
+                pending.push_back((offset, left));
+                pending.push_back((offset + mid, right));
             }
         }
     }
+
+    let vectors = slots;
 
     log_debug(&format!(
         "tei_embed done vectors={} duration_ms={}",
