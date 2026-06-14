@@ -13,13 +13,16 @@ use std::error::Error as StdError;
 use std::io;
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Duration;
 
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::task::JoinHandle;
 
-use crate::core::llm::headless::common::{append_bounded_tail, redacted_stderr_tail};
+use crate::core::llm::headless::common::{
+    joined_prompt, kill_and_wait, read_bounded_stderr, redacted_stderr_tail,
+};
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use protocol::{CodexStep, CodexStreamState};
 
@@ -42,11 +45,7 @@ pub async fn complete_streaming<F>(
 where
     F: FnMut(&str) -> Result<(), BoxError> + Send,
 {
-    let timeout = req.backend.completion_timeout();
-    match tokio::time::timeout(timeout, complete_streaming_inner(req, on_delta)).await {
-        Ok(result) => result,
-        Err(_) => Err(format!("codex app-server timed out after {}s", timeout.as_secs()).into()),
-    }
+    complete_streaming_inner(req, on_delta).await
 }
 
 async fn complete_streaming_inner<F>(
@@ -90,7 +89,16 @@ where
         env!("CARGO_PKG_VERSION"),
     );
 
-    let result = run_handshake(&mut state, &mut stdin, stdout, &mut on_delta).await;
+    let timeout = req.backend.completion_timeout();
+    let result = match tokio::time::timeout(
+        timeout,
+        run_handshake(&mut state, &mut stdin, stdout, &mut on_delta),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(format!("codex app-server timed out after {}s", timeout.as_secs()).into()),
+    };
 
     // `codex app-server` is a persistent process — it does not exit after a
     // turn — so terminate it explicitly regardless of outcome.
@@ -163,39 +171,6 @@ fn spawn_codex_child(
         .map_err(|err| format!("failed to spawn codex app-server: {err}").into())
 }
 
-fn joined_prompt(system_prompt: Option<&str>, user_prompt: &str) -> String {
-    match system_prompt.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(system) => format!("{system}\n\n{user_prompt}"),
-        None => user_prompt.to_string(),
-    }
-}
-
-async fn kill_and_wait(child: &mut Child) -> String {
-    let kill_result = child.kill().await;
-    let wait_result = child.wait().await;
-    match (kill_result, wait_result) {
-        (Ok(()), Ok(status)) => format!("killed and reaped with {status}"),
-        (Ok(()), Err(wait_err)) => format!("killed but wait failed: {wait_err}"),
-        (Err(kill_err), Ok(status)) => format!("kill failed: {kill_err}; wait returned {status}"),
-        (Err(kill_err), Err(wait_err)) => {
-            format!("kill failed: {kill_err}; wait failed: {wait_err}")
-        }
-    }
-}
-
-async fn read_bounded_stderr(stderr: tokio::process::ChildStderr) -> Result<Vec<u8>, io::Error> {
-    let mut tail = Vec::new();
-    let mut reader = BufReader::new(stderr);
-    let mut chunk = [0_u8; 1024];
-    loop {
-        let read = reader.read(&mut chunk).await?;
-        if read == 0 {
-            return Ok(tail);
-        }
-        append_bounded_tail(&mut tail, &chunk[..read]);
-    }
-}
-
 fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {
     let program = backend.codex_cmd.trim();
     if program.is_empty() {
@@ -231,7 +206,14 @@ async fn write_line(stdin: &mut ChildStdin, line: &str) -> Result<(), BoxError> 
 }
 
 async fn collect_stderr(task: JoinHandle<Result<Vec<u8>, io::Error>>) -> Vec<u8> {
-    task.await.ok().and_then(Result::ok).unwrap_or_default()
+    let mut task = task;
+    match tokio::time::timeout(Duration::from_millis(200), &mut task).await {
+        Ok(joined) => joined.ok().and_then(Result::ok).unwrap_or_default(),
+        Err(_) => {
+            task.abort();
+            Vec::new()
+        }
+    }
 }
 
 fn stderr_suffix(stderr: &[u8]) -> String {

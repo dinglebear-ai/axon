@@ -10,13 +10,6 @@ fn backend_with_cmd(cmd: &str) -> LlmBackendConfig {
 }
 
 #[test]
-fn joined_prompt_prepends_system() {
-    assert_eq!(joined_prompt(Some("sys"), "user"), "sys\n\nuser");
-    assert_eq!(joined_prompt(Some("  "), "user"), "user");
-    assert_eq!(joined_prompt(None, "user"), "user");
-}
-
-#[test]
 fn completion_timeout_is_at_least_one_second() {
     let zero = LlmBackendConfig {
         completion_timeout_secs: 0,
@@ -86,7 +79,20 @@ fn validate_codex_cmd_rejects_non_executable() {
 async fn codex_completion_timeout_covers_slow_child_before_handshake() {
     let dir = tempfile::tempdir().unwrap();
     let script = dir.path().join("slow-codex");
-    std::fs::write(&script, "#!/bin/sh\nsleep 5\n").unwrap();
+    let pid_file = dir.path().join("parent.pid");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo $$ > {}\n\
+             cat >/dev/null &\n\
+             echo '{{\"id\":0,\"result\":{{\"userAgent\":\"fake\"}}}}'\n\
+             echo '{{\"id\":1,\"result\":{{\"thread\":{{\"id\":\"thr_timeout\"}},\"model\":\"fake\"}}}}'\n\
+             sleep 5\n",
+            pid_file.display()
+        ),
+    )
+    .unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -106,5 +112,28 @@ async fn codex_completion_timeout_covers_slow_child_before_handshake() {
     let err = complete_text(req).await.unwrap_err();
 
     assert!(started.elapsed() < Duration::from_secs(3));
-    assert!(err.to_string().contains("timed out"));
+    let text = err.to_string();
+    assert!(text.contains("timed out"), "got: {text}");
+    assert!(text.contains("cleanup:"), "got: {text}");
+    assert!(text.contains("reaped"), "got: {text}");
+    #[cfg(unix)]
+    {
+        let pid = std::fs::read_to_string(pid_file)
+            .unwrap()
+            .trim()
+            .parse::<i32>()
+            .unwrap();
+        assert_process_exits(pid);
+    }
+}
+
+#[cfg(unix)]
+fn assert_process_exits(pid: i32) {
+    for _ in 0..20 {
+        if !Path::new("/proc").join(pid.to_string()).exists() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("process {pid} was still visible after codex timeout cleanup");
 }

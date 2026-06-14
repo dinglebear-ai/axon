@@ -118,6 +118,18 @@ fn malformed_protocol_error_is_bounded_and_redacted() {
 }
 
 #[test]
+fn malformed_protocol_error_truncates_on_utf8_boundary() {
+    let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
+    let line = format!("{{ bad json {} }}", "é".repeat(PROTOCOL_ERROR_LIMIT));
+
+    let err = state.handle_line(&line, &mut no_delta).unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("..."), "got: {text}");
+    assert!(text.len() < 700, "got {} bytes", text.len());
+}
+
+#[test]
 fn json_rpc_error_is_summarized_without_raw_payload_echo() {
     let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
     let line = r#"{"id":2,"error":{"message":"failed with sk-abcdefghijklmnopqrstuvwxyz0123456789","data":{"prompt":"secret prompt"}}}"#;
@@ -128,6 +140,25 @@ fn json_rpc_error_is_summarized_without_raw_payload_echo() {
     assert!(text.contains("[REDACTED]"));
     assert!(!text.contains("secret prompt"));
     assert!(!text.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
+}
+
+#[test]
+fn json_rpc_error_truncates_on_utf8_boundary() {
+    let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
+    let message = "🚀".repeat(PROTOCOL_ERROR_LIMIT);
+    let line = serde_json::json!({
+        "id": 2,
+        "error": {
+            "message": message,
+        }
+    })
+    .to_string();
+
+    let err = state.handle_line(&line, &mut no_delta).unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("..."), "got: {text}");
+    assert!(text.len() < 700, "got {} bytes", text.len());
 }
 
 #[test]

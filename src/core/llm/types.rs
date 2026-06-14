@@ -131,6 +131,75 @@ pub fn configured_model_for_config(cfg: &Config, purpose: LlmModelPurpose) -> Op
     }
 }
 
+/// Context-window size class of the configured synthesis model. This is shared
+/// by ask tuning, RAG context assembly, and research-source preservation so the
+/// model-capability policy does not drift between call sites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SynthesisModelTier {
+    /// ~1M-token windows — Gemini, Claude.
+    Large,
+    /// ~400k-token window — GPT/Codex.
+    Medium,
+    /// Local Gemma on the 12 GB llama.cpp path.
+    LocalGemma,
+    /// Unknown model — assume a < 50k-token window.
+    Small,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SynthesisModelProfile {
+    model: String,
+    is_gemini_backend: bool,
+}
+
+impl SynthesisModelProfile {
+    #[must_use]
+    pub fn from_config(cfg: &Config) -> Self {
+        Self {
+            model: configured_model_from_config(cfg)
+                .unwrap_or_default()
+                .to_ascii_lowercase(),
+            is_gemini_backend: matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless),
+        }
+    }
+
+    #[must_use]
+    pub fn tier(&self) -> SynthesisModelTier {
+        if self.is_gemini() || self.model.contains("claude") {
+            SynthesisModelTier::Large
+        } else if self.model.contains("gemma") {
+            SynthesisModelTier::LocalGemma
+        } else if self.is_gpt_or_codex() {
+            SynthesisModelTier::Medium
+        } else {
+            SynthesisModelTier::Small
+        }
+    }
+
+    #[must_use]
+    pub fn high_context_full_docs(&self) -> bool {
+        matches!(
+            self.tier(),
+            SynthesisModelTier::Large | SynthesisModelTier::Medium
+        )
+    }
+
+    #[must_use]
+    pub fn preserve_full_research_sources(&self) -> bool {
+        self.is_gemini() || self.model.contains("opus") || self.is_gpt_or_codex()
+    }
+
+    fn is_gemini(&self) -> bool {
+        self.is_gemini_backend || self.model.contains("gemini")
+    }
+
+    fn is_gpt_or_codex(&self) -> bool {
+        self.model.contains("codex")
+            || self.model.starts_with("gpt-")
+            || self.model.contains("/gpt-")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletionRequest {
     pub system_prompt: Option<String>,
