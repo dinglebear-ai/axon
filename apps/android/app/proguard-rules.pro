@@ -13,6 +13,15 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+# Navigation Compose typed routes ask kotlinx.serialization for serializers at
+# runtime. Keep the small route package intact so release/R8 builds can resolve
+# data object and data class destinations.
+-keep class com.axon.app.ui.nav.**Route { *; }
+-keep class com.axon.app.ui.nav.**Route$$serializer { *; }
+-keepclasseswithmembers class com.axon.app.ui.nav.**Route {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
 # Tink references Error Prone annotations that are compile-time only. R8 reports
 # them as missing in release minification unless they are explicitly ignored.
 -dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue

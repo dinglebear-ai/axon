@@ -1,6 +1,7 @@
 package com.axon.app.ui.nav
 
 import androidx.compose.runtime.compositionLocalOf
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -15,7 +16,9 @@ val LocalOpenDocument = compositionLocalOf<(url: String) -> Unit> {
 }
 
 /** Top-level shell that hosts [RailScaffold] — the navigation rail + content pane. */
+@SerialName("rail_shell")
 @Serializable data object RailShellRoute
 
 /** Full-screen suggest list — accessible from the Knowledge drawer section. */
+@SerialName("suggest")
 @Serializable data object SuggestRoute

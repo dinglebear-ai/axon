@@ -48,9 +48,11 @@ import com.axon.app.ui.options.ModeOptionsScreen
 import com.axon.app.ui.settings.SettingsScreen
 import com.axon.app.ui.status.TopChromeStatus
 import com.axon.app.ui.theme.AxonTheme
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import tv.tootie.aurora.components.AuroraThinking
 
+@SerialName("settings")
 @Serializable object SettingsRoute
 
 /**
@@ -60,6 +62,7 @@ import tv.tootie.aurora.components.AuroraThinking
  * because URLs often contain delimiters (`?`, `&`, `#`) that Navigation Compose
  * otherwise treats as route syntax.
  */
+@SerialName("document")
 @Serializable data class DocumentRoute(val url: String)
 
 /**
@@ -70,6 +73,7 @@ import tv.tootie.aurora.components.AuroraThinking
  * If an unrecognised name slips through (e.g. legacy deep link), the
  * destination logs and pops back via the `?:` fallback.
  */
+@SerialName("mode_options")
 @Serializable data class ModeOptionsRoute(val modeName: String)
 
 @Composable
