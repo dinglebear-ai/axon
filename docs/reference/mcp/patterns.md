@@ -183,7 +183,7 @@ Named-mode collections (new) support hybrid search. Legacy unnamed-mode collecti
 
 ## LLM completion backend pattern
 
-Operations requiring LLM synthesis (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) call the typed `services::llm_backend` facade. Gemini headless is the default backend and launches with an isolated temporary HOME, an allowlisted environment, timeout enforcement, and a concurrency semaphore. `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible chat-completions endpoint such as llama.cpp via `AXON_OPENAI_BASE_URL` and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`).
+Operations requiring LLM synthesis (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) call the typed `core::llm` facade. Gemini headless is the default backend and launches with an isolated temporary HOME, an allowlisted environment, timeout enforcement, and a concurrency semaphore. `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible chat-completions endpoint such as llama.cpp via `AXON_OPENAI_BASE_URL` and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`).
 
 ## See also
 

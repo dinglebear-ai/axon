@@ -47,6 +47,10 @@ pub(super) struct TomlLlmSection {
     pub synthesis_openai_model: Option<String>,
     /// Direct chat model for OpenAI-compatible completions. Env wins.
     pub chat_openai_model: Option<String>,
+    /// Explicit override for whether the synthesis backend has a large context
+    /// window (drives the adaptive full-docs floor in `ask`). Absent = infer
+    /// from the model name. Env `AXON_SYNTHESIS_HIGH_CONTEXT` wins.
+    pub synthesis_high_context: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]

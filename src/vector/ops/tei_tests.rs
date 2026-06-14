@@ -252,6 +252,65 @@ fn embed_summary_exposes_docs_failed() {
     assert_eq!(summary.chunks_embedded, 42);
 }
 
+// -- EmbedSummary::require_success — all-or-nothing embed gate (TEST-H1) --
+
+/// `require_success` must turn any partial embed failure into a hard `Err`.
+/// The error must name the calling context and report the failed/total count so
+/// operators can see which path admitted a partial-embed corpus.
+#[test]
+fn require_success_errors_when_docs_failed_nonzero() {
+    let summary = super::EmbedSummary {
+        docs_embedded: 7,
+        docs_failed: 3,
+        chunks_embedded: 21,
+    };
+    let err = summary
+        .require_success("scrape")
+        .expect_err("partial embed (docs_failed > 0) must be a hard error");
+    assert!(
+        err.contains("scrape"),
+        "error must carry the caller context, got: {err}"
+    );
+    // failed count and total (embedded + failed) must both appear.
+    assert!(
+        err.contains('3') && err.contains("10"),
+        "error must report failed/total counts (3/10), got: {err}"
+    );
+}
+
+/// A clean run (`docs_failed == 0`) must pass through unchanged and return the
+/// same summary it was given.
+#[test]
+fn require_success_passes_when_no_docs_failed() {
+    let summary = super::EmbedSummary {
+        docs_embedded: 5,
+        docs_failed: 0,
+        chunks_embedded: 12,
+    };
+    let ok = summary
+        .require_success("ingest")
+        .expect("clean embed (docs_failed == 0) must pass");
+    assert_eq!(ok.docs_embedded, 5);
+    assert_eq!(ok.docs_failed, 0);
+    assert_eq!(ok.chunks_embedded, 12);
+}
+
+/// The empty-input case (0 embedded, 0 failed) is `docs_failed == 0`, so the gate
+/// must treat it as success — an empty corpus is not a partial-embed corruption.
+#[test]
+fn require_success_passes_on_empty_input() {
+    let summary = super::EmbedSummary {
+        docs_embedded: 0,
+        docs_failed: 0,
+        chunks_embedded: 0,
+    };
+    let ok = summary
+        .require_success("rest-sync")
+        .expect("empty input (0/0) must be Ok, not an error");
+    assert_eq!(ok.docs_embedded, 0);
+    assert_eq!(ok.docs_failed, 0);
+}
+
 /// TEI retry default (5) must produce a worst-case retry budget that fits
 /// inside the doc timeout (300s default).
 #[test]

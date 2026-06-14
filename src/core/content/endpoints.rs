@@ -3,16 +3,19 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 use url::Url;
 
-use crate::services::types::{
-    DiscoveredEndpoint, EndpointKind, EndpointReport, EndpointSourceKind, EndpointVerification,
-};
-
 mod classify;
 mod scan;
 mod script_sources;
+mod types;
+
 use classify::{classify_value, is_noise_value, is_valid_absolute_host, looks_like_endpoint};
 use scan::scan_text;
 pub use script_sources::discover_script_sources;
+pub use types::{
+    DiscoveredEndpoint, EndpointKind, EndpointOptions, EndpointReport, EndpointSourceKind,
+    EndpointVerification, McpCandidateAttempt, McpHostKind, McpProbeOutcome, RpcProbeResult,
+    RpcProtocol, RpcTransport,
+};
 
 pub const DEFAULT_MAX_SCRIPTS: usize = 40;
 pub const DEFAULT_MAX_SCAN_BYTES: usize = 8 * 1024 * 1024;

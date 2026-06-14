@@ -260,7 +260,10 @@ async fn parse_chat_completion(
         prompt_tokens: usage.prompt_tokens.unwrap_or(0),
         completion_tokens: usage.completion_tokens.unwrap_or(0),
         total_tokens: usage.total_tokens.unwrap_or_else(|| {
-            usage.prompt_tokens.unwrap_or(0) + usage.completion_tokens.unwrap_or(0)
+            usage
+                .prompt_tokens
+                .unwrap_or(0)
+                .saturating_add(usage.completion_tokens.unwrap_or(0))
         }),
     });
     Ok(CompletionResponse { text, usage })

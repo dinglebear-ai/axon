@@ -3,6 +3,13 @@ name: auto-tag
 # Reads the version from Cargo.toml on every push to main. If a tag for that
 # version does not yet exist, creates it and explicitly dispatches release.yml.
 #
+# RELEASE GATES (OPS-M1): before a tag is created we (1) verify the new version
+# is a strictly-monotonic bump over the highest existing v* tag, and (2) wait
+# for the `CI` workflow (production-gate aggregation) to succeed for this exact
+# commit. This prevents an accidental version edit or a red CI from
+# auto-publishing a broken public release. auto-tag and CI fire on the same
+# push, so the CI wait polls until the run finishes (30 min cap).
+#
 # NOTE: tags pushed via GITHUB_TOKEN do NOT trigger other workflows (GitHub
 # security model). We therefore dispatch release.yml explicitly via the API
 # after creating the tag — no PAT required.
@@ -61,6 +68,77 @@ jobs:
             echo "Tag $tag does not exist — will create it."
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Sanity gate: the new version must be a strictly-monotonic bump over the
+      # highest existing v* tag. Blocks accidental downgrades or a re-used
+      # version with a hand-edited Cargo.toml. Uses `sort -V` (version sort).
+      - name: Verify monotonic version bump
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          new="${{ steps.version.outputs.version }}"
+          # Highest existing semver-shaped tag (strip leading v, ignore prereleases).
+          latest=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' \
+            | sed 's/^v//' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V \
+            | tail -1 || true)
+          if [ -z "$latest" ]; then
+            echo "No prior semver tag found — first release, accepting $new."
+            exit 0
+          fi
+          echo "Latest existing tag: v$latest; candidate: v$new"
+          # The candidate must sort strictly after the latest tag.
+          highest=$(printf '%s\n%s\n' "$latest" "$new" | sort -V | tail -1)
+          if [ "$new" = "$latest" ] || [ "$highest" != "$new" ]; then
+            echo "ERROR: version $new is not a strictly-monotonic bump over $latest." >&2
+            echo "Bump Cargo.toml (and all version-bearing files) before merging." >&2
+            exit 1
+          fi
+          echo "OK: $new > $latest."
+
+      # CI gate: do not cut a public release until the required CI checks for
+      # this exact commit have succeeded. We poll the `production-gate` job's
+      # parent CI run (the aggregation job that needs fmt/check/clippy/test/
+      # security/etc.) for the pushed SHA. auto-tag and CI both fire on the same
+      # push, so CI may still be in progress when this runs — hence the poll.
+      - name: Wait for CI to pass on this commit
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="${{ github.sha }}"
+          deadline=$(( $(date +%s) + 1800 ))  # 30 minute cap
+          echo "Waiting for CI 'production-gate' to succeed for $sha ..."
+          while :; do
+            # Look up the CI workflow run for this commit. `production-gate`
+            # is a job inside the `CI` workflow; we gate on the run conclusion.
+            conclusion=$(gh run list \
+              --workflow=ci.yml \
+              --commit "$sha" \
+              --json databaseId,status,conclusion \
+              --jq '.[0].conclusion' 2>/dev/null || true)
+            status=$(gh run list \
+              --workflow=ci.yml \
+              --commit "$sha" \
+              --json status \
+              --jq '.[0].status' 2>/dev/null || true)
+            if [ "$conclusion" = "success" ]; then
+              echo "CI succeeded for $sha — proceeding to tag."
+              break
+            fi
+            if [ "$conclusion" = "failure" ] || [ "$conclusion" = "cancelled" ] || [ "$conclusion" = "timed_out" ]; then
+              echo "ERROR: CI concluded '$conclusion' for $sha — refusing to cut a release." >&2
+              exit 1
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "ERROR: timed out waiting for CI to finish for $sha." >&2
+              exit 1
+            fi
+            echo "CI status='${status:-unknown}' conclusion='${conclusion:-pending}'; sleeping 20s ..."
+            sleep 20
+          done
 
       - name: Create and push tag
         if: steps.tag_check.outputs.exists == 'false'

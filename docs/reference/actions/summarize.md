@@ -48,7 +48,7 @@ All global scrape/config flags apply. Key flags:
 - Runs synchronously.
 - Uses `services::summarize::summarize`, which is shared by CLI, REST, and MCP.
 - Scrapes pages through the normal scrape service with markdown output.
-- Does not hardcode a model; the request goes through `services::llm_backend` and the configured LLM backend. The default is Gemini headless; `AXON_LLM_BACKEND=openai-compat` uses an OpenAI-compatible chat-completions endpoint.
+- Does not hardcode a model; the request goes through `core::llm` and the configured LLM backend. The default is Gemini headless; `AXON_LLM_BACKEND=openai-compat` uses an OpenAI-compatible chat-completions endpoint.
 - Treats scraped page content as untrusted context in the LLM prompt.
 - Accepts at most 10 URLs per request.
 - Generic CLI client-to-server forwarding was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon summarize` through HTTP; call the `/v1/summarize` REST route or MCP HTTP endpoint directly when using `axon serve` as a remote service.

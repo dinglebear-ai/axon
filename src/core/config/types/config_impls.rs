@@ -143,6 +143,7 @@ impl Default for Config {
             ask_authoritative_domains: vec![],
             ask_authoritative_boost: 0.0,
             ask_min_citations_nontrivial: 2,
+            synthesis_high_context: None,
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
             ask_hybrid_candidates: 150,

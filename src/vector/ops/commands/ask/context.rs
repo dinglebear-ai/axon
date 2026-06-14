@@ -78,7 +78,24 @@ pub(crate) fn resolve_ask_full_docs_for_model(
     }
 }
 
+/// Whether the configured synthesis backend has a large enough context window
+/// to justify the higher adaptive full-docs floor in `ask`.
+///
+/// The explicit `cfg.synthesis_high_context` override (env
+/// `AXON_SYNTHESIS_HIGH_CONTEXT` / TOML `[llm] synthesis-high-context`) is the
+/// primary signal: when set it is returned verbatim, so a new high-context
+/// model can be flagged without a code change. When unset (`None`), the
+/// backend's `SynthesisModelProfile` is used as the auto-detect fallback — this
+/// preserves today's behavior when the operator sets nothing. (arch-M4: removes
+/// the hard-coded model-family allowlist as the *primary* capability signal.)
 fn high_context_synthesis_model(cfg: &Config) -> bool {
+    if let Some(explicit) = cfg.synthesis_high_context {
+        return explicit;
+    }
+
+    // Fallback when the override is unset: derive context-window capability from
+    // the backend's model profile (arch-M4 keeps the explicit override as the
+    // primary signal; this profile is the auto-detect path).
     crate::core::llm::SynthesisModelProfile::from_config(cfg).high_context_full_docs()
 }
 

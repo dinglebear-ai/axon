@@ -11,8 +11,8 @@ mod colors;
 mod fonts;
 
 use std::error::Error;
+use std::sync::LazyLock;
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::header::HeaderMap;
 use scraper::{Html, Selector};
@@ -26,26 +26,26 @@ use crate::services::types::{BrandResult, LogoVariant};
 
 // ── Regex patterns (compiled once, shared with submodules) ───────────────────
 
-pub(super) static CSS_DECL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)([\w-]+)\s*:\s*([^;}{]+)").unwrap());
-pub(super) static CSS_VAR: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)--([\w-]+)\s*:\s*([^;}{]+)").unwrap());
-pub(super) static HEX_COLOR: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"#([0-9a-fA-F]{3})\b|#([0-9a-fA-F]{6})\b").unwrap());
-pub(super) static RGB_COLOR: Lazy<Regex> = Lazy::new(|| {
+pub(super) static CSS_DECL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)([\w-]+)\s*:\s*([^;}{]+)").unwrap());
+pub(super) static CSS_VAR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)--([\w-]+)\s*:\s*([^;}{]+)").unwrap());
+pub(super) static HEX_COLOR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"#([0-9a-fA-F]{3})\b|#([0-9a-fA-F]{6})\b").unwrap());
+pub(super) static RGB_COLOR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)").unwrap()
 });
-pub(super) static RGBA_COLOR: Lazy<Regex> = Lazy::new(|| {
+pub(super) static RGBA_COLOR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*[\d.]+\s*\)").unwrap()
 });
-pub(super) static HSL_COLOR: Lazy<Regex> = Lazy::new(|| {
+pub(super) static HSL_COLOR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)hsla?\(\s*(\d{1,3})\s*,\s*(\d{1,3})%\s*,\s*(\d{1,3})%\s*(?:,\s*[\d.]+\s*)?\)")
         .unwrap()
 });
-static TW_COLOR: Lazy<Regex> = Lazy::new(|| {
+static TW_COLOR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:bg|text|border|ring|outline|shadow|accent|fill|stroke)-\[([^\]]+)\]").unwrap()
 });
-pub(super) static FONT_SHORTHAND_FAMILY: Lazy<Regex> = Lazy::new(|| {
+pub(super) static FONT_SHORTHAND_FAMILY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?ix)(?:^|\s)(?:xx-small|x-small|small|medium|large|x-large|xx-large|larger|smaller|\d*\.?\d+(?:px|rem|em|pt|pc|in|cm|mm|%|vw|vh|vmin|vmax))(?:\s*/\s*[^\s,]+)?\s+(.+)$"#,
     )
@@ -54,7 +54,7 @@ pub(super) static FONT_SHORTHAND_FAMILY: Lazy<Regex> = Lazy::new(|| {
 
 macro_rules! sel {
     ($s:expr) => {{
-        static S: Lazy<Selector> = Lazy::new(|| Selector::parse($s).unwrap());
+        static S: LazyLock<Selector> = LazyLock::new(|| Selector::parse($s).unwrap());
         &*S
     }};
 }

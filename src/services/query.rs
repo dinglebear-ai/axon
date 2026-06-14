@@ -9,10 +9,10 @@ use crate::services::types::{
     AskResult, DocumentBackend, EvaluateResult, Pagination, QueryHit, QueryResult, RetrieveOptions,
     RetrieveResult, ServiceRetrieveVariantError, SuggestResult, Suggestion,
 };
-use crate::vector::ops::commands::ask::{ask_payload, ask_payload_with_deltas};
+use crate::vector::ops::commands::ask::{ask_result, ask_result_with_deltas};
 use crate::vector::ops::commands::discover_crawl_suggestions;
-use crate::vector::ops::commands::evaluate_payload;
-use crate::vector::ops::commands::query_results;
+use crate::vector::ops::commands::evaluate_result;
+use crate::vector::ops::commands::query_hits;
 use crate::vector::ops::qdrant::{DirectRetrieveResult, retrieve_result};
 use std::error::Error;
 use std::time::Duration;
@@ -149,7 +149,7 @@ pub async fn query(
     text: &str,
     opts: Pagination,
 ) -> Result<QueryResult, Box<dyn Error>> {
-    let results = query_results(cfg, text, opts.limit.max(1), opts.offset)
+    let results = query_hits(cfg, text, opts.limit.max(1), opts.offset)
         .await
         .map_err(|e| -> Box<dyn Error> {
             let message = format!(
@@ -158,7 +158,7 @@ pub async fn query(
             );
             wrap_service_error(message, e.as_ref())
         })?;
-    map_query_results(results)
+    Ok(QueryResult { results })
 }
 
 /// Retrieve stored document chunks for a URL.
@@ -397,8 +397,8 @@ pub async fn ask(
         },
     )
     .await;
-    let payload = if cfg.ask_stream && tx.is_some() {
-        ask_payload_with_deltas(cfg, question, ask_delta_handler(tx.clone()))
+    let result = if cfg.ask_stream && tx.is_some() {
+        ask_result_with_deltas(cfg, question, ask_delta_handler(tx.clone()))
             .await
             .map_err(|e| -> Box<dyn Error> {
                 let message = format!(
@@ -408,7 +408,7 @@ pub async fn ask(
                 wrap_service_error(message, e.root_cause())
             })?
     } else {
-        ask_payload(cfg, question)
+        ask_result(cfg, question)
             .await
             .map_err(|e| -> Box<dyn Error> {
                 let message = format!(
@@ -426,7 +426,47 @@ pub async fn ask(
         },
     )
     .await;
-    map_ask_payload(payload)
+    emit_ask_metrics(question, &result);
+    Ok(result)
+}
+
+/// OPS-H2 (bounded): emit ask-path timing + retrieval counts as STRUCTURED
+/// tracing fields at the service boundary so an operator can scrape ask latency
+/// and pool sizes from logs (JSON file sink) without a metrics backend.
+///
+/// This is the minimal, reviewable observability step. A real `/metrics`
+/// (Prometheus) surface is intentionally out of scope for this pass.
+/// TODO(OPS-H2): expose /metrics (Prometheus) at the web server bootstrap
+/// (`src/web/server/`) and convert these fields into counters/histograms —
+/// see .full-review/04-best-practices.md (OPS-H2).
+fn emit_ask_metrics(question: &str, result: &AskResult) {
+    let t = &result.timing_ms;
+    let (candidate_pool, reranked_pool, chunks_selected, full_docs_selected, context_chars) =
+        match &result.diagnostics {
+            Some(d) => (
+                d.candidate_pool,
+                d.reranked_pool,
+                d.chunks_selected,
+                d.full_docs_selected,
+                d.context_chars,
+            ),
+            None => (0, 0, 0, 0, 0),
+        };
+    tracing::info!(
+        target: "axon::ask::metrics",
+        query_preview = %question.chars().take(80).collect::<String>(),
+        retrieval_ms = t.retrieval as u64,
+        context_build_ms = t.context_build as u64,
+        llm_ms = t.llm as u64,
+        total_ms = t.total as u64,
+        candidate_pool,
+        reranked_pool,
+        chunks_selected,
+        full_docs_selected,
+        context_chars,
+        warnings = result.warnings.len(),
+        "ask path completed"
+    );
 }
 
 fn ask_delta_handler(tx: Option<mpsc::Sender<ServiceEvent>>) -> impl FnMut(&str) + Send {
@@ -443,7 +483,7 @@ pub async fn ask_stream<F>(
 where
     F: FnMut(&str) + Send,
 {
-    let payload = ask_payload_with_deltas(cfg, question, on_delta)
+    let result = ask_result_with_deltas(cfg, question, on_delta)
         .await
         .map_err(|e| -> Box<dyn Error> {
             let message = format!(
@@ -452,7 +492,7 @@ where
             );
             wrap_service_error(message, e.root_cause())
         })?;
-    Ok(map_ask_payload(payload)?.answer)
+    Ok(result.answer)
 }
 
 /// RAG evaluate: run RAG and baseline answers, then judge with a second LLM call.
@@ -466,18 +506,15 @@ pub async fn evaluate(
     let mut derived = cfg.clone();
     derived.query = Some(question.to_string());
     derived.positional = Vec::new();
-    let payload =
-        evaluate_payload(&derived)
-            .await
-            .map_err(|e| -> Box<dyn Error + Send + Sync> {
-                format!(
-                    "evaluate failed for {}: {e}",
-                    question.chars().take(80).collect::<String>()
-                )
-                .into()
-            })?;
-    map_evaluate_payload(payload)
-        .map_err(|err| -> Box<dyn Error + Send + Sync> { err.to_string().into() })
+    evaluate_result(&derived)
+        .await
+        .map_err(|e| -> Box<dyn Error + Send + Sync> {
+            format!(
+                "evaluate failed for {}: {e}",
+                question.chars().take(80).collect::<String>()
+            )
+            .into()
+        })
 }
 
 /// Suggest new URLs to crawl based on the current Qdrant index and an optional focus.

@@ -17,9 +17,11 @@ pub use deterministic::{
     PageExtraction,
 };
 pub use endpoints::{
-    DEFAULT_MAX_ENDPOINTS, DEFAULT_MAX_SCAN_BYTES, DEFAULT_MAX_SCRIPTS, EndpointExtractOptions,
-    PrefetchedBundle, ScriptSource, discover_script_sources, endpoint_host_counts,
-    extract_endpoints,
+    DEFAULT_MAX_ENDPOINTS, DEFAULT_MAX_SCAN_BYTES, DEFAULT_MAX_SCRIPTS, DiscoveredEndpoint,
+    EndpointExtractOptions, EndpointKind, EndpointOptions, EndpointReport, EndpointSourceKind,
+    EndpointVerification, McpCandidateAttempt, McpHostKind, McpProbeOutcome, PrefetchedBundle,
+    RpcProbeResult, RpcProtocol, RpcTransport, ScriptSource, discover_script_sources,
+    endpoint_host_counts, extract_endpoints,
 };
 pub use engine::{ExtractWebConfig, run_extract_with_engine};
 pub use extract_ladder::{LadderResult, LadderThresholds, LadderTier, extract_with_ladder};

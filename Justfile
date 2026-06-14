@@ -231,6 +231,10 @@ lint-all:
 legacy-runtime-check:
     ./scripts/check_legacy_runtime_terms.sh
 
+# TEST-M2 / PERF-C1: fail if block_on/block_in_place appears in the ask/retrieval hot path.
+blocking-async-check:
+    ./scripts/check_no_blocking_async.sh
+
 validate-plugin:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -262,6 +266,7 @@ runtime-current:
 
 verify:
     just legacy-runtime-check
+    just blocking-async-check
     just validate-plugin
     just web-check
     just fmt-check

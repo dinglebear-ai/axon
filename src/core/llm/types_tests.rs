@@ -105,6 +105,48 @@ fn chat_model_uses_chat_override_for_openai_compat_backend() {
 }
 
 #[test]
+fn openai_compat_lifts_default_completion_concurrency() {
+    // Operator left AXON_LLM_COMPLETION_CONCURRENCY at the Gemini default (4);
+    // the openai-compat backend should lift it to the HTTP-tuned default.
+    let cfg = Config {
+        llm_backend: LlmBackendKind::OpenAiCompat,
+        llm_completion_concurrency: GEMINI_DEFAULT_COMPLETION_CONCURRENCY,
+        ..Config::default()
+    };
+    let backend = LlmBackendConfig::from_config(&cfg);
+    assert_eq!(
+        backend.completion_concurrency,
+        OPENAI_DEFAULT_COMPLETION_CONCURRENCY
+    );
+}
+
+#[test]
+fn openai_compat_honours_explicit_completion_concurrency() {
+    // An explicit (non-default) value must win, never be overridden.
+    let cfg = Config {
+        llm_backend: LlmBackendKind::OpenAiCompat,
+        llm_completion_concurrency: 2,
+        ..Config::default()
+    };
+    let backend = LlmBackendConfig::from_config(&cfg);
+    assert_eq!(backend.completion_concurrency, 2);
+}
+
+#[test]
+fn gemini_keeps_default_completion_concurrency() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::GeminiHeadless,
+        llm_completion_concurrency: GEMINI_DEFAULT_COMPLETION_CONCURRENCY,
+        ..Config::default()
+    };
+    let backend = LlmBackendConfig::from_config(&cfg);
+    assert_eq!(
+        backend.completion_concurrency,
+        GEMINI_DEFAULT_COMPLETION_CONCURRENCY
+    );
+}
+
+#[test]
 fn chat_model_falls_back_to_synthesis_model_when_unset() {
     let cfg = Config {
         llm_backend: LlmBackendKind::GeminiHeadless,

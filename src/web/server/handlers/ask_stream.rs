@@ -167,6 +167,12 @@ pub async fn v1_ask_stream(
                 }
             }
             Err(message) => {
+                // SEC-H1: redact secret-shaped tokens (e.g. a leaked `AIza…`
+                // Gemini key echoed via subprocess stderr) before the error text
+                // is logged or written to the SSE error event. The non-streaming
+                // `/v1/ask` path is already masked; this closes the streaming gap.
+                let message = crate::core::redact::redact_secrets(&message);
+                crate::core::logging::log_warn(&format!("ask stream failed: {message}"));
                 if tx
                     .send(Ok(sse_json("error", &AskStreamEvent::Error { message })))
                     .await

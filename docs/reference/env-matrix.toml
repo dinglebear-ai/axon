@@ -2867,6 +2867,30 @@ compatibility = "canonical"
 reason = "Selects the LLM completion backend: 'gemini-headless' (default), 'openai-compat', or 'codex-app-server'. Non-secret runtime selector."
 
 [[env]]
+key = "AXON_SYNTHESIS_HIGH_CONTEXT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional tri-state override (true/false/unset) for whether the synthesis model is treated as high-context; when unset the model profile auto-detects. Env wins over the TOML [llm] synthesis-high-context form."
+
+[[env]]
+key = "AXON_UPDATE_MINISIGN_PUBKEY"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional minisign public key for the self-updater to verify release-archive signatures; inert (SHA256-only) when unset. Host-side CLI updater only."
+
+[[env]]
 key = "AXON_OPENAI_BASE_URL"
 classification = "keep-env"
 runtime_placement = "both"
