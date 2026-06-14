@@ -131,22 +131,18 @@ pub(crate) fn redact_for_error(text: &str) -> String {
     redact_secrets(text)
 }
 
+/// JSON-aware wrapper around the shared [`crate::core::redact`] value redactor.
+///
+/// When `text` parses as JSON, sensitive keys are redacted by name (recursively)
+/// and every leaf string value is scrubbed by the shared redactor. Otherwise the
+/// whole string is passed through the shared redactor directly.
 fn redact_secrets(text: &str) -> String {
     let trimmed = text.trim();
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
         return serde_json::to_string(&redact_secret_json(&value))
             .unwrap_or_else(|_| "[REDACTED]".to_string());
     }
-    text.split_whitespace()
-        .map(|token| {
-            if looks_secretish(token) {
-                "[REDACTED]"
-            } else {
-                token
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    crate::core::redact::redact_secrets(text)
 }
 
 fn redact_secret_json(value: &serde_json::Value) -> serde_json::Value {
@@ -169,11 +165,7 @@ fn redact_secret_json(value: &serde_json::Value) -> serde_json::Value {
             serde_json::Value::Array(values.iter().map(redact_secret_json).collect())
         }
         serde_json::Value::String(value) => {
-            if looks_secretish(value) {
-                serde_json::Value::String("[REDACTED]".to_string())
-            } else {
-                serde_json::Value::String(redact_secrets(value))
-            }
+            serde_json::Value::String(crate::core::redact::redact_secrets(value))
         }
         value => value.clone(),
     }
@@ -190,25 +182,6 @@ fn is_sensitive_json_key(key: &str) -> bool {
         || lower == "secret"
         || lower == "client_secret"
         || lower == "password"
-}
-
-fn looks_secretish(token: &str) -> bool {
-    let upper = token.to_ascii_uppercase();
-    let lower = token.to_ascii_lowercase();
-    upper.contains("API_KEY=")
-        || lower.contains("\"api_key\":")
-        || lower.contains("api_key:")
-        || upper.contains("TOKEN=")
-        || lower.contains("\"token\":")
-        || lower.contains("token:")
-        || upper.contains("SECRET=")
-        || lower.contains("\"secret\":")
-        || lower.contains("secret:")
-        || lower.starts_with("authorization:")
-        || lower.starts_with("authorization=")
-        || token.starts_with("sk-")
-        || token.starts_with("ghp_")
-        || token.starts_with("atk_")
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {
