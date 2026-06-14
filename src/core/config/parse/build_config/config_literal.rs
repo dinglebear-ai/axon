@@ -82,6 +82,7 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.max_depth = g.max_depth;
     cfg.include_subdomains = g.include_subdomains;
     cfg.exclude_path_prefix = inputs.exclude_path_prefix.clone();
+    cfg.ingest_exclude_paths = g.ingest_exclude_paths.clone();
     cfg.output_dir = g.output_dir.clone();
     cfg.output_path = g.output.clone();
     cfg.render_mode = g.render_mode;

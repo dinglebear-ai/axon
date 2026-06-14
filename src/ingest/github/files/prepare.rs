@@ -46,6 +46,7 @@ pub(super) enum FileEmbedRead {
 pub(super) async fn collect_indexable_files(
     root: &Path,
     include_source: bool,
+    exclude_paths: &[String],
 ) -> Result<Vec<String>> {
     let abs = collect_files(root, SelectionPolicy::Allowlist { include_source })
         .await
@@ -57,7 +58,17 @@ pub(super) async fn collect_indexable_files(
                 .ok()
                 .map(|r| r.to_string_lossy().replace('\\', "/"))
         })
+        .filter(|rel| !is_path_excluded(rel, exclude_paths))
         .collect())
+}
+
+/// Returns true when `rel` (a repo-relative, forward-slash path) contains any of
+/// the user-supplied `--exclude-path` substrings. Empty patterns are ignored so
+/// an accidental empty value cannot exclude every file.
+pub(super) fn is_path_excluded(rel: &str, exclude_paths: &[String]) -> bool {
+    exclude_paths
+        .iter()
+        .any(|pat| !pat.is_empty() && rel.contains(pat.as_str()))
 }
 
 /// Read a single file from the cloned repo and build **one** `PreparedDoc` for the

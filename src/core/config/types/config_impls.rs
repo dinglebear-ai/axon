@@ -23,6 +23,7 @@ impl Default for Config {
             max_depth: 10,
             include_subdomains: false,
             exclude_path_prefix: Vec::new(),
+            ingest_exclude_paths: Vec::new(),
             output_dir: PathBuf::from(".cache/axon-rust/output"),
             output_path: None,
             warc_output: None,

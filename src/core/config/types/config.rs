@@ -51,6 +51,11 @@ pub struct Config {
     /// URL path prefixes to skip during crawl (e.g. `/blog/`, `/legacy/`). Flag: `--exclude-path-prefix`.
     pub exclude_path_prefix: Vec<String>,
 
+    /// Repo-relative path substrings to skip during git ingest (e.g. `docs/references/`,
+    /// `vendor/`). A file is excluded when its repo-relative path contains any entry.
+    /// Flag: `--exclude-path` (repeatable). Empty = no extra exclusions.
+    pub ingest_exclude_paths: Vec<String>,
+
     /// Directory for saved markdown/HTML output files. Flag: `--output-dir`.
     pub output_dir: PathBuf,
 
