@@ -3,12 +3,12 @@ use serde_json::{Map, Value};
 use super::file_ingest::{chunk_file, chunking_method};
 use super::input::classify::{classify_file_type, is_test_path, language_name};
 use super::input::code::code_symbol_extraction_status;
-use super::input::{chunk_markdown, chunk_text, chunk_text_with_offsets};
+use super::input::{chunk_markdown_with_offsets, chunk_text_with_offsets};
 use super::tei::{PreparedDoc, StructuredPayload};
 
 mod support;
 
-use support::{LineIndex, domain_for_origin, domain_from_web_url, file_locator, locate_chunk};
+use support::{LineIndex, domain_for_origin, domain_from_web_url, file_locator};
 
 const PLANNER_OWNED_PAYLOAD_KEYS: &[&str] = &[
     "content_kind",
@@ -244,8 +244,16 @@ pub(crate) async fn prepare_source_document(doc: SourceDocument) -> Result<Prepa
         SourceChunkHint::File { path, extension } => {
             prepare_file_source(doc, path, extension).await
         }
-        SourceChunkHint::MarkdownOrPlainText => Ok(prepare_markdown_source(doc)),
-        SourceChunkHint::PlainText => Ok(prepare_plain_source(doc)),
+        SourceChunkHint::MarkdownOrPlainText => {
+            tokio::task::spawn_blocking(move || prepare_markdown_source(doc))
+                .await
+                .map_err(|e| format!("chunk_markdown panicked: {e}"))
+        }
+        SourceChunkHint::PlainText => {
+            tokio::task::spawn_blocking(move || prepare_plain_source(doc))
+                .await
+                .map_err(|e| format!("chunk_text panicked: {e}"))
+        }
         SourceChunkHint::AtomicText { point_id } => Ok(prepare_atomic_source(doc, point_id)),
     }
 }
@@ -352,13 +360,12 @@ async fn prepare_file_source(
 }
 
 fn prepare_markdown_source(doc: SourceDocument) -> PreparedDoc {
-    let (chunks, fallback) = safe_markdown_chunks(&doc.text);
+    let (chunks_with_offsets, fallback) = safe_markdown_chunks_with_offsets(&doc.text);
     let line_index = LineIndex::new(&doc.text);
-    let chunk_extra = chunks
-        .iter()
-        .scan(0usize, |cursor, chunk| {
-            let (byte_start, byte_end) = locate_chunk(&doc.text, chunk, *cursor);
-            *cursor = byte_end;
+    let mut chunks = Vec::with_capacity(chunks_with_offsets.len());
+    let chunk_extra = chunks_with_offsets
+        .into_iter()
+        .map(|(byte_start, byte_end, chunk)| {
             let (line_start, line_end) = line_index.line_range_for_bytes(byte_start, byte_end);
             let mut extra = base_chunk_metadata(
                 "markdown",
@@ -374,7 +381,8 @@ fn prepare_markdown_source(doc: SourceDocument) -> PreparedDoc {
                     "plain_text_control_chars".into(),
                 );
             }
-            Some(chunk_metadata(extra))
+            chunks.push(chunk);
+            chunk_metadata(extra)
         })
         .collect();
     doc.into_prepared(chunks, "markdown", chunk_extra)
@@ -417,14 +425,23 @@ fn prepare_atomic_source(doc: SourceDocument, point_id: uuid::Uuid) -> PreparedD
         .with_chunk_point_ids(vec![point_id])
 }
 
-fn safe_markdown_chunks(text: &str) -> (Vec<String>, bool) {
+fn safe_markdown_chunks_with_offsets(text: &str) -> (Vec<(usize, usize, String)>, bool) {
     if text
         .chars()
         .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
     {
-        (chunk_text(text), true)
+        (
+            chunk_text_with_offsets(text)
+                .into_iter()
+                .map(|(byte_start, chunk)| {
+                    let byte_end = byte_start + chunk.len();
+                    (byte_start, byte_end, chunk)
+                })
+                .collect(),
+            true,
+        )
     } else {
-        (chunk_markdown(text), false)
+        (chunk_markdown_with_offsets(text), false)
     }
 }
 

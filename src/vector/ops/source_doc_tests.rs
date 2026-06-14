@@ -1,6 +1,7 @@
 use super::{
     SourceDocument, SourceOrigin, prepare_source_document, structured_payload_from_vertical_summary,
 };
+use crate::vector::ops::input::chunk_markdown_with_offsets;
 use crate::vector::ops::tei::StructuredPayload;
 
 #[tokio::test]
@@ -42,6 +43,53 @@ async fn crawl_manifest_rs_url_does_not_use_code_chunking() {
     assert_eq!(prepared.content_type, "markdown");
     assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "markdown");
     assert!(prepared.chunk_extra[0].get("code_line_start").is_none());
+}
+
+#[tokio::test]
+async fn markdown_source_uses_splitter_offsets_for_heading_context_chunks() {
+    let body = "Follow progress → axon crawl status → embedding crawl output. ".repeat(120);
+    let text = format!("# Claude Code\n\n## Crawl debugging\n\n{body}\n\n## Done\n\nfinished");
+    let expected_ranges = chunk_markdown_with_offsets(&text)
+        .into_iter()
+        .map(|(start, end, _)| (start, end))
+        .collect::<Vec<_>>();
+    assert!(
+        expected_ranges.len() > 1,
+        "fixture must produce multiple markdown chunks"
+    );
+
+    let source = SourceDocument::try_new_crawl_manifest(
+        "https://code.claude.com/".to_string(),
+        text.clone(),
+        None,
+        None,
+    )
+    .expect("source doc");
+
+    let prepared = prepare_source_document(source).await.expect("prepared doc");
+    let actual_ranges = prepared
+        .chunk_extra
+        .iter()
+        .map(|extra| {
+            let range = &extra["source_range"];
+            (
+                range["byte_start"].as_u64().expect("byte_start") as usize,
+                range["byte_end"].as_u64().expect("byte_end") as usize,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(actual_ranges, expected_ranges);
+    for (start, end) in actual_ranges {
+        assert!(
+            text.is_char_boundary(start),
+            "start {start} must be a char boundary"
+        );
+        assert!(
+            text.is_char_boundary(end),
+            "end {end} must be a char boundary"
+        );
+    }
 }
 
 #[tokio::test]

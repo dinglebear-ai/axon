@@ -28,15 +28,6 @@ pub(super) fn file_locator(path: &str, line_start: u32, line_end: u32) -> String
     }
 }
 
-pub(super) fn locate_chunk(text: &str, chunk: &str, cursor: usize) -> (usize, usize) {
-    let start = text[cursor..]
-        .find(chunk)
-        .map(|offset| cursor + offset)
-        .or_else(|| text.find(chunk))
-        .unwrap_or(cursor.min(text.len()));
-    (start, start.saturating_add(chunk.len()).min(text.len()))
-}
-
 pub(super) struct LineIndex {
     text_len: usize,
     newline_offsets: Vec<usize>,

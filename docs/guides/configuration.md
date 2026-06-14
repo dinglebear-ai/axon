@@ -168,6 +168,17 @@ overrides, but should not live in `~/.axon/.env` for normal operation.
 | `tei.request-timeout-ms` | `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 1000-300000) |
 | `tei.max-client-batch-size` | `TEI_MAX_CLIENT_BATCH_SIZE` | `64` | Default batch size sent to TEI (auto-splits on 413; max: 128) |
 
+Additional embed throughput and volume controls are env-only until they are
+wired as typed config fields:
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `AXON_TEI_MAX_CONCURRENT` | `8` | Process-wide max concurrent Axon client requests to TEI (clamped 1-64) |
+| `AXON_EMBED_PREP_CONCURRENCY` | CPU count clamped 2-16 | Concurrent source-document preparation tasks before TEI embedding (clamped 1-64) |
+| `AXON_EMBED_MAX_CHUNKS_PER_DOC` | `0` | Optional circuit breaker: max chunks allowed through per non-source document after exact dedupe; `0` disables this cap so all unique chunks remain indexable |
+| `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC` | `0` | Optional circuit breaker: max chunks allowed through per source-code-like document after exact dedupe; `0` disables this cap so all unique chunks remain indexable |
+| `AXON_EMBED_DEDUPE_EXACT_CHUNKS` | `true` | Drop exact duplicate chunks within one logical document before embedding |
+
 TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 
 | Variable | Default | Description |
@@ -318,6 +329,10 @@ Queue caps now live in `~/.axon/config.toml` under `[workers]`.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_EMBED_DOC_CONCURRENCY` | CPU count | Max concurrent embed docs |
+| `AXON_EMBED_PREP_CONCURRENCY` | CPU count clamped 2-16 | Max concurrent source-document preparation tasks before embedding |
+| `AXON_EMBED_MAX_CHUNKS_PER_DOC` | `0` | Optional circuit breaker: max chunks per non-source document after exact dedupe (`0` disables) |
+| `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC` | `0` | Optional circuit breaker: max chunks per source-code-like document after exact dedupe (`0` disables) |
+| `AXON_EMBED_DEDUPE_EXACT_CHUNKS` | `true` | Enable exact duplicate chunk removal within a single document |
 | `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
 | `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Grace period before stale job reclaim |
 | `AXON_WATCH_TICK_SECS` | `15` | Watch scheduler sweep interval, seconds (min 1) |

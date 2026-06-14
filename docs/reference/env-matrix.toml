@@ -1151,6 +1151,54 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_EMBED_PREP_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret embed preparation tuning knob; migrate to config.toml when typed fields are wired."
+
+[[env]]
+key = "AXON_EMBED_MAX_CHUNKS_PER_DOC"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret embed volume guard for generated or prose documents; migrate to config.toml when typed fields are wired."
+
+[[env]]
+key = "AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret embed volume guard for source-code-like documents; migrate to config.toml when typed fields are wired."
+
+[[env]]
+key = "AXON_EMBED_DEDUPE_EXACT_CHUNKS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret embed dedupe guard; migrate to config.toml when typed fields are wired."
+
+[[env]]
 key = "AXON_EXCLUDE_PATH_PREFIX"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"
