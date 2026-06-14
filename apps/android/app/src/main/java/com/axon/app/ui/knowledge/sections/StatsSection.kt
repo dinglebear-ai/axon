@@ -37,6 +37,8 @@ import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
 import com.axon.app.ui.common.humanLabel
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.knowledge.KnowledgeViewModel
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
@@ -65,6 +67,9 @@ fun StatsSection(vm: KnowledgeViewModel) {
         is Resource.Error -> ErrorContent(message = s.message, onRetry = { vm.loadStats(force = true) })
         is Resource.Ready -> {
             val model = remember(s.value) { StatsDashboard.from(s.value) }
+            val reveal = rememberRevealState()
+            // Running index so StatLine rows cascade in across all three sections.
+            var lineIndex = 0
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -83,13 +88,28 @@ fun StatsSection(vm: KnowledgeViewModel) {
                 }
 
                 item { StatSectionLabel("Operations") }
-                model.counts.forEach { item { StatLine(it.label, it.value, it.tone) } }
+                model.counts.forEach {
+                    val idx = lineIndex++
+                    item(key = "ops-${it.label}") {
+                        StatLine(it.label, it.value, it.tone, modifier = Modifier.animateItem().revealOnce(reveal, "ops-${it.label}", idx))
+                    }
+                }
 
                 item { StatSectionLabel("Performance") }
-                model.performance.forEach { item { StatLine(it.label, it.value, it.tone) } }
+                model.performance.forEach {
+                    val idx = lineIndex++
+                    item(key = "perf-${it.label}") {
+                        StatLine(it.label, it.value, it.tone, modifier = Modifier.animateItem().revealOnce(reveal, "perf-${it.label}", idx))
+                    }
+                }
 
                 item { StatSectionLabel("Freshness") }
-                model.freshness.forEach { item { StatLine(it.label, it.value, it.tone) } }
+                model.freshness.forEach {
+                    val idx = lineIndex++
+                    item(key = "fresh-${it.label}") {
+                        StatLine(it.label, it.value, it.tone, modifier = Modifier.animateItem().revealOnce(reveal, "fresh-${it.label}", idx))
+                    }
+                }
 
                 if (model.payloadFields.isNotEmpty()) {
                     item { StatSectionLabel("Payload Fields") }
@@ -143,7 +163,7 @@ private fun StatSectionLabel(text: String) {
 }
 
 @Composable
-private fun StatLine(label: String, value: String, tone: StatTone = StatTone.Neutral) {
+private fun StatLine(label: String, value: String, tone: StatTone = StatTone.Neutral, modifier: Modifier = Modifier) {
     val colors = AxonTheme.colors
     val toneColor = when (tone) {
         StatTone.Neutral -> colors.textMuted
@@ -152,7 +172,7 @@ private fun StatLine(label: String, value: String, tone: StatTone = StatTone.Neu
         StatTone.Error -> colors.error
     }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(11.dp))
             .background(colors.control.copy(alpha = 0.6f))

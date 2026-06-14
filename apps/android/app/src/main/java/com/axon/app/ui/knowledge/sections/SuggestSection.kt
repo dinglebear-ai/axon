@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -46,6 +46,8 @@ import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
 import com.axon.app.ui.common.pressScale
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.knowledge.KnowledgeResultRow
 import com.axon.app.ui.knowledge.KnowledgeViewModel
 import com.axon.app.ui.nav.LocalOpenDocument
@@ -100,17 +102,21 @@ fun SuggestSection(vm: KnowledgeViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {
+                    val reveal = rememberRevealState()
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth(0.84f).widthIn(max = 350.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        items(hits, key = { it.url }) { hit ->
+                        itemsIndexed(hits, key = { _, it -> it.url }) { index, hit ->
                             KnowledgeResultRow(
                                 icon = Icons.Rounded.AutoAwesome,
                                 title = hit.url,
                                 detail = hit.reason ?: "Suggested source gap",
                                 metric = "suggest",
                                 onClick = { openDoc(hit.url) },
+                                modifier = Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, hit.url, index),
                             )
                         }
                     }

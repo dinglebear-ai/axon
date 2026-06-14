@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.rounded.Public
@@ -19,6 +19,8 @@ import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.knowledge.KnowledgeResultRow
 import com.axon.app.ui.knowledge.KnowledgeViewModel
 
@@ -44,16 +46,20 @@ fun DomainsSection(vm: KnowledgeViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
+                val reveal = rememberRevealState()
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    items(facets, key = { it.domain }) { facet ->
+                    itemsIndexed(facets, key = { _, it -> it.domain }) { index, facet ->
                         KnowledgeResultRow(
                             icon = Icons.Rounded.Public,
                             title = facet.domain,
                             detail = "Indexed domain",
                             metric = "${facet.vectors} vectors",
+                            modifier = Modifier
+                                .animateItem()
+                                .revealOnce(reveal, facet.domain, index),
                         )
                     }
                 }
