@@ -23,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
 
-const DEFAULT_CACHE_TTL_SECS: u64 = 24 * 60 * 60;
+const DEFAULT_CACHE_TTL_SECS: u64 = 60 * 60;
 
 /// Run a synchronous crawl for a single URL: cache check → HTTP crawl →
 /// optional Chrome fallback → sitemap backfill → embed → audit diff.

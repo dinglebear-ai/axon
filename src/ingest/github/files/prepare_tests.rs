@@ -187,3 +187,32 @@ fn markdown_file_uses_markdown_chunking_method() {
     assert!(chunks.iter().all(|chunk| chunk.symbol.is_none()));
     assert_eq!(chunking_method("md", &chunks[0]), "markdown");
 }
+
+#[test]
+fn is_path_excluded_matches_substring() {
+    let excludes = vec!["docs/references/".to_string()];
+    assert!(is_path_excluded(
+        "docs/references/openai-codex-site/domains/x/markdown/1.md",
+        &excludes
+    ));
+    assert!(!is_path_excluded("src/main.rs", &excludes));
+    assert!(!is_path_excluded(
+        "docs/architecture/overview.md",
+        &excludes
+    ));
+}
+
+#[test]
+fn is_path_excluded_multiple_patterns() {
+    let excludes = vec!["vendor/".to_string(), "docs/references/".to_string()];
+    assert!(is_path_excluded("third_party/vendor/lib.go", &excludes));
+    assert!(is_path_excluded("docs/references/api.md", &excludes));
+    assert!(!is_path_excluded("docs/guide.md", &excludes));
+}
+
+#[test]
+fn is_path_excluded_empty_patterns_never_match() {
+    assert!(!is_path_excluded("any/path.rs", &[]));
+    // An empty string pattern must not exclude everything.
+    assert!(!is_path_excluded("any/path.rs", &["".to_string()]));
+}

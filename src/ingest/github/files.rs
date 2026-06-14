@@ -47,7 +47,8 @@ pub async fn embed_files(
         }))
         .await;
 
-    let file_items = collect_indexable_files(&repo_root, include_source).await?;
+    let file_items =
+        collect_indexable_files(&repo_root, include_source, &cfg.ingest_exclude_paths).await?;
     let files_total = file_items.len();
 
     log_info(&format!(

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.12.0] - 2026-06-14
+
+### Added
+
+- **`--exclude-path` for git ingest** — repeatable flag that skips files whose
+  repo-relative path contains any supplied substring (e.g.
+  `--exclude-path docs/references/`). A file is excluded when its path matches.
+  Useful for repos that vendor third-party doc mirrors; re-ingesting `jmagar/lab`
+  with `--exclude-path docs/references/` cut it from ~247k to ~34k chunks.
+
+### Fixed
+
+- **Crawl cache TTL lowered from 24h to 1h** — a cached crawl manifest younger
+  than the TTL short-circuits the crawl and skips re-embedding, which silently
+  left a collection empty while reporting success after a Qdrant wipe. 1h is a
+  safer default for re-index workflows.
+
 ## [5.11.1] - 2026-06-14
 
 ### Fixed
