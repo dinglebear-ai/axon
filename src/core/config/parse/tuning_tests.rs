@@ -118,25 +118,25 @@ fn candidate_pool_scales_with_tier() {
 fn model_tier_classifies_known_families() {
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "claude-opus-4-8")),
-        AskModelTier::Large
+        SynthesisModelTier::Large
     );
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5-codex")),
-        AskModelTier::Medium
+        SynthesisModelTier::Medium
     );
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5.5")),
-        AskModelTier::Medium
+        SynthesisModelTier::Medium
     );
     assert_eq!(
         ask_model_tier(&cfg_with(
             LlmBackendKind::OpenAiCompat,
             "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M"
         )),
-        AskModelTier::LocalGemma
+        SynthesisModelTier::LocalGemma
     );
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "mistral-large")),
-        AskModelTier::Small
+        SynthesisModelTier::Small
     );
 }

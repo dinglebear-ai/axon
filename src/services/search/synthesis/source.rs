@@ -44,16 +44,7 @@ pub(super) fn build_extraction(
 }
 
 pub(super) fn preserve_full_research_sources(cfg: &Config) -> bool {
-    use crate::core::llm::LlmBackendKind;
-    let configured = llm::configured_model_from_config(cfg)
-        .unwrap_or_else(|| cfg.openai_model.clone())
-        .to_ascii_lowercase();
-    matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
-        || configured.contains("gemini")
-        || configured.contains("opus")
-        || configured.contains("codex")
-        || configured.starts_with("gpt-")
-        || configured.contains("/gpt-")
+    llm::SynthesisModelProfile::from_config(cfg).preserve_full_research_sources()
 }
 
 pub(super) fn classify_source(url: &str, title: &str) -> SourceMeta {

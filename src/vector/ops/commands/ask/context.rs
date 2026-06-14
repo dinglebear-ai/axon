@@ -79,23 +79,7 @@ pub(crate) fn resolve_ask_full_docs_for_model(
 }
 
 fn high_context_synthesis_model(cfg: &Config) -> bool {
-    use crate::core::llm::LlmBackendKind;
-
-    let headless_model = cfg.headless_gemini_model.to_ascii_lowercase();
-    let openai_model = cfg.openai_model.to_ascii_lowercase();
-    let codex_model = cfg.codex_model.to_ascii_lowercase();
-    let model = match cfg.llm_backend {
-        LlmBackendKind::GeminiHeadless => headless_model.as_str(),
-        LlmBackendKind::OpenAiCompat => openai_model.as_str(),
-        LlmBackendKind::CodexAppServer => codex_model.as_str(),
-    };
-
-    matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
-        || model.contains("gemini")
-        || model.contains("codex")
-        || model.contains("claude")
-        || model.starts_with("gpt-")
-        || model.contains("/gpt-")
+    crate::core::llm::SynthesisModelProfile::from_config(cfg).high_context_full_docs()
 }
 
 pub(crate) struct AskContext {

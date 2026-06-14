@@ -298,7 +298,13 @@ impl CodexStreamState {
 fn sanitize_protocol_error(text: &str) -> String {
     let mut redacted = crate::core::llm::headless::common::redact_for_error(text);
     if redacted.len() > PROTOCOL_ERROR_LIMIT {
-        redacted.truncate(PROTOCOL_ERROR_LIMIT);
+        let limit = redacted
+            .char_indices()
+            .map(|(idx, _)| idx)
+            .take_while(|idx| *idx <= PROTOCOL_ERROR_LIMIT)
+            .last()
+            .unwrap_or(0);
+        redacted.truncate(limit);
         redacted.push_str("...");
     }
     redacted

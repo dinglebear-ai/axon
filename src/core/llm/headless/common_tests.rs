@@ -33,3 +33,10 @@ fn headless_safety_keeps_only_stderr_tail() {
     assert_eq!(buf.len(), STDERR_TAIL_LIMIT);
     assert!(buf.ends_with(b"tail"));
 }
+
+#[test]
+fn joined_prompt_prepends_system() {
+    assert_eq!(joined_prompt(Some("sys"), "user"), "sys\n\nuser");
+    assert_eq!(joined_prompt(Some("  "), "user"), "user");
+    assert_eq!(joined_prompt(None, "user"), "user");
+}

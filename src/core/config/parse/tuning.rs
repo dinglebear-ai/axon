@@ -2,6 +2,7 @@ use super::helpers::env_bool_opt;
 use super::performance;
 use super::toml_config::{TomlConfig, load_toml_config};
 use crate::core::config::types::Config;
+use crate::core::llm::{SynthesisModelProfile, SynthesisModelTier};
 
 pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     // Computed into locals first: these defaults read the resolved LLM
@@ -257,58 +258,28 @@ fn ask_max_context_chars(cfg: &Config, toml: &TomlConfig) -> usize {
     )
 }
 
-/// Context-window size class of the configured LLM. Drives the `ask` retrieval
-/// depth (context budget, chunk count, candidate pool) so larger-window models
-/// receive proportionally more context. Detection: the gemini-headless backend
-/// is always Google; otherwise the OpenAI-compatible model name is sniffed.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum AskModelTier {
-    /// ~1M-token windows — Gemini, Claude.
-    Large,
-    /// ~400k-token window — GPT/Codex.
-    Medium,
-    /// Local Gemma on the 12 GB llama.cpp path.
-    LocalGemma,
-    /// Unknown model — assume a < 50k-token window.
-    Small,
-}
-
-fn ask_model_tier(cfg: &Config) -> AskModelTier {
-    use crate::core::llm::LlmBackendKind;
-    let model = crate::core::llm::configured_model_from_config(cfg)
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let is_google =
-        matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless) || model.contains("gemini");
-    if is_google || model.contains("claude") {
-        AskModelTier::Large
-    } else if model.contains("gemma") {
-        AskModelTier::LocalGemma
-    } else if model.contains("codex") || model.starts_with("gpt-") || model.contains("/gpt-") {
-        AskModelTier::Medium
-    } else {
-        AskModelTier::Small
-    }
+fn ask_model_tier(cfg: &Config) -> SynthesisModelTier {
+    SynthesisModelProfile::from_config(cfg).tier()
 }
 
 /// Context-char budget default per tier (≈ window-in-tokens as a char count,
 /// i.e. retrieved context is roughly a quarter of the window).
 fn model_context_char_budget(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
-        AskModelTier::Large => 1_000_000,
-        AskModelTier::Medium => 400_000,
-        AskModelTier::LocalGemma => 128_000,
-        AskModelTier::Small => 40_000,
+        SynthesisModelTier::Large => 1_000_000,
+        SynthesisModelTier::Medium => 400_000,
+        SynthesisModelTier::LocalGemma => 128_000,
+        SynthesisModelTier::Small => 40_000,
     }
 }
 
 /// Max chunks injected into the LLM context per tier.
 fn model_chunk_limit(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
-        AskModelTier::Large => 50,
-        AskModelTier::Medium => 28,
-        AskModelTier::LocalGemma => 20,
-        AskModelTier::Small => 10,
+        SynthesisModelTier::Large => 50,
+        SynthesisModelTier::Medium => 28,
+        SynthesisModelTier::LocalGemma => 20,
+        SynthesisModelTier::Small => 10,
     }
 }
 
@@ -316,20 +287,20 @@ fn model_chunk_limit(cfg: &Config) -> usize {
 /// enough to feed the tier's chunk limit (chunks selected can't exceed it).
 fn model_candidate_limit(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
-        AskModelTier::Large => 250,
-        AskModelTier::Medium => 150,
-        AskModelTier::LocalGemma => 120,
-        AskModelTier::Small => 60,
+        SynthesisModelTier::Large => 250,
+        SynthesisModelTier::Medium => 150,
+        SynthesisModelTier::LocalGemma => 120,
+        SynthesisModelTier::Small => 60,
     }
 }
 
 /// Hybrid (dense+sparse) prefetch window per arm before RRF fusion, per tier.
 fn model_hybrid_candidates(cfg: &Config) -> usize {
     match ask_model_tier(cfg) {
-        AskModelTier::Large => 200,
-        AskModelTier::Medium => 120,
-        AskModelTier::LocalGemma => 100,
-        AskModelTier::Small => 60,
+        SynthesisModelTier::Large => 200,
+        SynthesisModelTier::Medium => 120,
+        SynthesisModelTier::LocalGemma => 100,
+        SynthesisModelTier::Small => 60,
     }
 }
 
