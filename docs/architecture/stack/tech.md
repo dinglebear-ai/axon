@@ -105,7 +105,7 @@ Features explicitly NOT enabled (see `docs/reference/spider-feature-flags.md`):
 
 ## Gemini Headless LLM
 
-LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use the Gemini CLI headless path through `src/services/llm_backend/`:
+LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use the Gemini CLI headless path through `src/core/llm/`:
 
 - `AXON_HEADLESS_GEMINI_CMD` selects the Gemini CLI command.
 - `AXON_HEADLESS_GEMINI_HOME` selects the source HOME for Gemini auth copying.

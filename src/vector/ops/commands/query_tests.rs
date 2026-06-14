@@ -51,7 +51,7 @@ fn chunk_index_for_candidate_returns_payload_index() {
         code: CodeSearchMetadata::default(),
     };
 
-    assert_eq!(chunk_index_for_candidate(&selected), serde_json::json!(42));
+    assert_eq!(chunk_index_for_candidate(&selected), Some(42));
 }
 
 #[test]

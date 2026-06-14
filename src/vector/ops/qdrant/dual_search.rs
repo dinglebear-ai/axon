@@ -183,12 +183,26 @@ pub(crate) async fn qdrant_dual_search(
     let candidates = candidates_override
         .unwrap_or(cfg.hybrid_search_candidates)
         .max(limit);
+    // The secondary keyword arm is a recall booster layered on top of the
+    // primary NL arm; it does not need the full prefetch window. Halve its
+    // prefetch fan-out to cut Qdrant prefetch work/transfer while preserving
+    // final ranking quality (the primary arm still fetches the full window,
+    // and RRF fusion plus the downstream reranker dominate ordering). Floor at
+    // `limit` so the secondary arm never returns fewer rows than the caller
+    // ultimately needs. (PERF-M2b)
+    let secondary_candidates = (candidates / 2).max(limit);
     let hybrid_enabled = cfg.hybrid_search_enabled;
     let hnsw_ef = cfg.hnsw_ef_search;
     let body = BatchQueryBody {
         searches: [
             build_named_query_arm(&primary, limit, candidates, hybrid_enabled, hnsw_ef),
-            build_named_query_arm(&secondary, limit, candidates, hybrid_enabled, hnsw_ef),
+            build_named_query_arm(
+                &secondary,
+                limit,
+                secondary_candidates,
+                hybrid_enabled,
+                hnsw_ef,
+            ),
         ],
     };
 
@@ -206,15 +220,18 @@ pub(crate) async fn qdrant_dual_search(
     )
     .await?;
 
-    if parsed.result.len() < 2 {
-        return Err(anyhow!(
-            "qdrant_dual_search: expected 2 result arrays, got {}",
-            parsed.result.len()
-        ));
-    }
-    let mut iter = parsed.result.into_iter();
-    let primary_hits = iter.next().expect("len checked").points;
-    let secondary_hits = iter.next().expect("len checked").points;
+    // Destructure exactly two result arrays in one idiom — no panic path on the
+    // network-driven response (BP-L1). `try_from` consumes the Vec and fails
+    // cleanly if Qdrant returned anything other than two arrays.
+    let [primary_result, secondary_result] =
+        <[_; 2]>::try_from(parsed.result).map_err(|v: Vec<_>| {
+            anyhow!(
+                "qdrant_dual_search: expected 2 result arrays, got {}",
+                v.len()
+            )
+        })?;
+    let primary_hits = primary_result.points;
+    let secondary_hits = secondary_result.points;
 
     log_debug(&format!(
         "qdrant search_complete mode=dual_batch collection={} primary_hits={} secondary_hits={} latency_ms={}",

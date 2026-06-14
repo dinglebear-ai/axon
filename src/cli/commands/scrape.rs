@@ -9,7 +9,7 @@ use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_option, print_phase};
 use crate::services::scrape as scrape_service;
 use crate::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
-use futures::stream::{self, StreamExt};
+use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 
 pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {

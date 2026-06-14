@@ -16,7 +16,8 @@ axon/
 │   │   └── commands/                # Per-command handlers (scrape, crawl, ask, etc.)
 │   ├── core.rs                      # Core module root
 │   ├── core/                        # Config, HTTP client, content processing
-│   │   └── config/                  # CLI flags, env parsing, runtime config
+│   │   ├── config/                  # CLI flags, env parsing, runtime config
+│   │   └── llm/                     # Gemini headless + OpenAI-compat completions
 │   ├── crawl.rs                     # Crawl module root
 │   ├── crawl/                       # Spider-based crawl engine
 │   ├── ingest.rs                    # Ingest module root
@@ -37,7 +38,6 @@ axon/
 │   ├── services/                    # Typed service layer
 │   │   ├── context.rs              # ServiceContext
 │   │   ├── types/                  # Result structs
-│   │   ├── llm_backend/            # Gemini headless completions
 │   ├── vector.rs                    # Vector module root
 │   ├── vector/                      # Qdrant ops, TEI, hybrid search
 │   │   └── ops/                    # TEI embed, Qdrant upsert/search, ask

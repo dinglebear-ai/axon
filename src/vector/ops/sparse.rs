@@ -111,6 +111,11 @@ pub fn term_to_index(term: &str) -> u32 {
 /// axon_rust-d71.34 / M-SEC)
 const MAX_TERMS_PER_VECTOR: usize = 65_536;
 
+/// Longest stop word in `STOP_WORDS`, in bytes. Ties together the length guard
+/// and the stack buffer below: any term longer than this cannot match a stop
+/// word, and the lowercasing buffer is exactly this size — keep the two in sync.
+const STOP_WORD_MAX_BYTES: usize = 5;
+
 pub fn compute_sparse_vector(text: &str) -> SparseVector {
     compute_sparse_vector_inner(text, true)
 }
@@ -138,13 +143,13 @@ fn compute_sparse_vector_inner(text: &str, warn_on_empty: bool) -> SparseVector 
         // than 5 bytes cannot match a stop word. For short terms we do a
         // direct HashSet lookup when the term is already lowercase (the common
         // case), and only build a tiny 5-byte stack copy otherwise.
-        let is_stop_word = if term.len() > 5 {
+        let is_stop_word = if term.len() > STOP_WORD_MAX_BYTES {
             false
         } else if term.bytes().all(|b| b.is_ascii_lowercase()) {
             STOP_WORDS.contains(term)
         } else {
             // term has uppercase — lowercase into a stack buffer, no heap alloc.
-            let mut buf = [0u8; 5];
+            let mut buf = [0u8; STOP_WORD_MAX_BYTES];
             for (i, b) in term.bytes().enumerate() {
                 buf[i] = b.to_ascii_lowercase();
             }

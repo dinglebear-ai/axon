@@ -461,6 +461,16 @@ pub struct Config {
     /// Env: `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` (clamped 1–5). Default: 2.
     pub ask_min_citations_nontrivial: usize,
 
+    /// Explicit override for whether the configured synthesis backend has a
+    /// large context window, driving the adaptive full-docs context floor in
+    /// the `ask` path. `None` (default) falls back to the substring-heuristic
+    /// in `high_context_synthesis_model` that infers capability from the model
+    /// name. `Some(true)`/`Some(false)` force the decision regardless of the
+    /// model name, so a new high-context model can be flagged without code
+    /// changes (arch-M4). No behavior change unless the operator sets the knob.
+    /// Env: `AXON_SYNTHESIS_HIGH_CONTEXT` (true/false/1/0). TOML: `[llm] synthesis-high-context`.
+    pub synthesis_high_context: Option<bool>,
+
     /// Enable hybrid search (dense + BM42 sparse + RRF) for Named-mode collections.
     /// Env: `AXON_HYBRID_SEARCH` (true/false/1/0). Default: true.
     pub hybrid_search_enabled: bool,

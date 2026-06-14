@@ -9,8 +9,6 @@ The contract boundary between all entry points (CLI commands, MCP handlers, web 
 services/
 ├── context.rs              # ServiceContext — canonical handler entry point (cfg + jobs only)
 ├── runtime.rs              # Narrow job capability traits + ServiceJobRuntime umbrella + SqliteServiceRuntime
-├── llm_backend.rs          # Gemini headless LLM completion gateway module root
-├── llm_backend/           # Gemini dispatch, env allowlist, concurrency, and typed completion API
 ├── crawl.rs                # crawl start/status/cancel/list/cleanup/recover
 ├── crawl_sync.rs           # Synchronous crawl orchestration (24h cache, sitemap-only, HTTP→Chrome fallback)
 ├── debug.rs                # doctor + LLM-assisted debug
@@ -199,14 +197,18 @@ Pass `None` for `tx` in CLI commands that don't need streaming progress. `emit()
 
 **Backpressure:** `emit()` uses `.send().await` — it blocks if the channel is full. Use a channel size that matches expected burst rate (default 32 for ask/research streaming).
 
-## LLM Backend (`llm_backend/`)
+## LLM Backend (`src/core/llm/`)
 
-`llm_backend` is the typed completion facade used by ask synthesis, evaluate,
-suggest, research summaries, extract fallback, and debug. It launches Gemini
-headless with an isolated temporary HOME, an allowlisted environment, command
-validation, timeout enforcement, and backend/limit-keyed concurrency semaphores.
-The OpenAI-compatible backend reuses reqwest clients by timeout bucket and
-returns bounded, redacted upstream error bodies.
+The typed completion facade no longer lives under `services/` — it is now
+`crate::core::llm` (`src/core/llm.rs` + `src/core/llm/{types,concurrency,headless,openai_compat}.rs`).
+It is consumed by the service layer (ask synthesis, evaluate, suggest, research
+summaries, extract fallback, debug) but is not itself a service module.
+
+`core::llm` launches Gemini headless with an isolated temporary HOME, an
+allowlisted environment, command validation, timeout enforcement, and
+backend/limit-keyed concurrency semaphores. The OpenAI-compatible backend reuses
+reqwest clients by timeout bucket and returns bounded, redacted upstream error
+bodies.
 
 Use `CompletionRequest` and `CompletionResponse` for service-facing synthesis
 calls. Entry points should not spawn Gemini directly.

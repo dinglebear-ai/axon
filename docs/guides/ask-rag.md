@@ -1,6 +1,6 @@
 # Ask Synthesis Backend
 
-`axon ask` uses the configured `services::llm_backend` completion path. The default is the Gemini CLI headless backend; `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible `/v1/chat/completions` endpoint.
+`axon ask` uses the configured `core::llm` completion path. The default is the Gemini CLI headless backend; `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible `/v1/chat/completions` endpoint.
 
 Gemini is selected by `AXON_HEADLESS_GEMINI_CMD` (default: `gemini`). Set `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` (or legacy `AXON_HEADLESS_GEMINI_MODEL`) to override the Gemini synthesis model. Set `AXON_HEADLESS_GEMINI_HOME` to copy auth from a prepared Gemini home instead of the process HOME.
 

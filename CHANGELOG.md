@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.1] - 2026-06-14
+
+### Fixed
+
+- **RAG pipeline review remediation** — resolved findings from a comprehensive
+  review of the ask/retrieve/synthesis path: cache `mise which` resolution and
+  move Gemini home-dir prep off the async reactor (was blocking a Tokio worker
+  twice per completion); redact the streaming `/v1/ask/stream` error path before
+  emit/log; validate the web `/v1/ask` collection override at the handler;
+  integrity-check the resolved Gemini program path.
+- `release.yml`: gate the optional signing step on job-level `env` instead of
+  the `secrets` context in a step `if:` (the latter is forbidden by GitHub
+  Actions and had invalidated the workflow file).
+
+### Changed
+
+- **Typed service boundary** — `ask`/`evaluate`/`query` commands return typed
+  result structs directly; the `*_payload()` JSON shims are wire-identical.
+- **Synthesis context-window capability** gains an explicit
+  `AXON_SYNTHESIS_HIGH_CONTEXT` override; the model profile is the auto-detect
+  fallback.
+- **Backend-aware LLM completion concurrency** default (Gemini 4 /
+  OpenAI-compat 16; codex keeps its dedicated knob).
+
+### Performance
+
+- Dropped the per-ask 208-field `Config` deep clone and the ~1 MB/ask candidate
+  clone on the ask path; replaced O(n²) shingle-Jaccard dedup with MinHash
+  signatures; halved the secondary dual-search prefetch arm; concurrent TEI 413
+  split-drain.
+
+### Removed
+
+- `once_cell` and the redundant `futures` umbrella crate dependencies.
+
 ## [5.11.0] - 2026-06-14
 
 ### Changed

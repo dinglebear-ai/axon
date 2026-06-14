@@ -113,5 +113,5 @@ where
 }
 
 #[cfg(test)]
-#[path = "llm_backend_tests.rs"]
+#[path = "llm_tests.rs"]
 mod tests;

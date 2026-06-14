@@ -229,7 +229,7 @@ async fn build_extractions(
 async fn fetch_full_content(
     cfg: &Config,
     urls: &[String],
-    _tx: Option<mpsc::Sender<ServiceEvent>>,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> std::collections::HashMap<String, String> {
     use crate::core::config::{ConfigOverrides, RenderMode, ScrapeFormat};
     use futures_util::stream::{self, StreamExt};
@@ -237,6 +237,16 @@ async fn fetch_full_content(
     if urls.is_empty() {
         return std::collections::HashMap::new();
     }
+
+    let total = urls.len();
+    emit(
+        &tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: format!("research: fetching full content for {total} source(s)"),
+        },
+    )
+    .await;
     let mut scrape_cfg = cfg.apply_overrides(&ConfigOverrides {
         format: Some(ScrapeFormat::Markdown),
         output_path: Some(None),
@@ -247,20 +257,35 @@ async fn fetch_full_content(
     scrape_cfg.enable_verticals = false;
     let cfg_ref = &scrape_cfg;
 
+    let tx_ref = &tx;
     let fetched: Vec<(String, String)> = stream::iter(urls.iter().cloned())
         .map(move |url| async move {
-            match crate::services::scrape::scrape(cfg_ref, &url, None).await {
+            let outcome = match crate::services::scrape::scrape(cfg_ref, &url, None).await {
                 // Key by the *input* url: the scrape service may normalize/redirect
                 // its returned `r.url`, and build_extractions looks up by the
                 // original hit url — keying on `r.url` would miss and fall back to
                 // the snippet even on a successful fetch.
-                Ok(r) if !r.markdown.trim().is_empty() => Some((url, r.markdown)),
+                Ok(r) if !r.markdown.trim().is_empty() => Some((url.clone(), r.markdown)),
                 Ok(_) => None,
                 Err(e) => {
                     log_warn(&format!("research: scrape failed for {url}: {e}"));
                     None
                 }
-            }
+            };
+            let status = if outcome.is_some() {
+                "fetched"
+            } else {
+                "skipped"
+            };
+            emit(
+                tx_ref,
+                ServiceEvent::Log {
+                    level: LogLevel::Info,
+                    message: format!("research: {status} {url}"),
+                },
+            )
+            .await;
+            outcome
         })
         .buffer_unordered(RESEARCH_FETCH_CONCURRENCY)
         .filter_map(|r| async move { r })

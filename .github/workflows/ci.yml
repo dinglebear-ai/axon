@@ -815,6 +815,135 @@ jobs:
       - name: live Qdrant vector tests
         run: cargo test --locked --features live-qdrant qdrant -- --ignored
 
+  # OPS-H1: detect whether a PR touches the RAG-critical paths so the live
+  # embed→retrieve test only runs when retrieval/embedding/LLM code changes.
+  # Self-contained git diff (no third-party paths-filter action) — sets a
+  # `rag` boolean output consumed by `live-rag-pr`.
+  rag-changes:
+    name: rag-changes
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    outputs:
+      rag: ${{ steps.filter.outputs.rag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Detect RAG-path changes
+        id: filter
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          # Fall back to merge-base if the base SHA is not directly reachable.
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            base=$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" "$head" || echo "")
+          fi
+          if [ -z "$base" ]; then
+            echo "Could not resolve base — defaulting rag=true (fail safe)." >&2
+            echo "rag=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base" "$head" || true)
+          echo "Changed files:"; echo "$changed"
+          if echo "$changed" | grep -qE '^(src/vector/|src/core/llm/|tests/rag_live_integration\.rs)'; then
+            echo "RAG-critical paths changed — will run live RAG test."
+            echo "rag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No RAG-critical paths changed — skipping live RAG test."
+            echo "rag=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # OPS-H1: stand up Qdrant + TEI (modeled on mcp-smoke) and run a real
+  # embed→retrieve assertion on PRs that touch RAG code. Closes the gap where a
+  # retrieval/RRF/rerank regression could merge and auto-release unverified.
+  live-rag-pr:
+    name: live-rag-pr
+    runs-on: ubuntu-latest
+    needs: [rag-changes]
+    if: ${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}
+    timeout-minutes: 30
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.13.1
+        ports:
+          - 6333:6333
+    env:
+      QDRANT_URL: http://127.0.0.1:6333
+      TEI_URL: http://127.0.0.1:52000
+      AXON_TEST_QDRANT_URL: http://127.0.0.1:6333
+      AXON_TEST_TEI_URL: http://127.0.0.1:52000
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            plugins
+            docs
+            .github
+            tests
+            scripts
+            config
+            vendor
+            .cargo
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: live-rag-pr
+
+      - name: Restore Hugging Face model cache
+        uses: actions/cache@v5
+        with:
+          path: .cache/huggingface
+          key: hf-tei-${{ runner.os }}-BAAI-bge-small-en-v1.5-v1
+
+      - name: Start TEI (CPU)
+        run: |
+          mkdir -p .cache/huggingface
+          docker run -d --name axon-tei -p 52000:80 \
+            -v "$PWD/.cache/huggingface:/hf-cache" \
+            -e HF_HOME=/hf-cache \
+            -e HF_HUB_CACHE=/hf-cache/hub \
+            ghcr.io/huggingface/text-embeddings-inference:cpu-latest \
+            --model-id BAAI/bge-small-en-v1.5
+
+      - name: Wait for Qdrant and TEI
+        run: |
+          for _ in {1..90}; do
+            if curl -fsS http://127.0.0.1:6333/healthz >/dev/null 2>&1 && \
+               curl -fsS http://127.0.0.1:52000/health >/dev/null 2>&1; then
+              echo "Qdrant + TEI ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Timed out waiting for Qdrant/TEI readiness" >&2
+          docker logs axon-tei || true
+          exit 1
+
+      # Match the web-asset fallback used by every other axon-building job so a
+      # missing apps/web/out build doesn't fail the test binary compile/link.
+      - name: create web assets placeholder
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
+
+      - name: live RAG embed→retrieve integration test
+        env:
+          AXON_DATA_DIR: .cache/axon-ci
+          AXON_LOG_DIR: .cache/axon-ci/logs
+          AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
+        run: cargo test --locked --test rag_live_integration -- --ignored
+
+      - name: Teardown TEI
+        if: always()
+        run: docker rm -f axon-tei || true
+
   security:
     name: security
     runs-on: ubuntu-latest

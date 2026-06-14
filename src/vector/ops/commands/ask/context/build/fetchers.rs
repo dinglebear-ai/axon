@@ -82,7 +82,13 @@ pub async fn fetch_full_docs(
         }
     }
 
-    let cfg_arc = Arc::new(cfg.clone());
+    // PERF-H1: borrow `cfg` directly into the per-item futures instead of
+    // deep-cloning the 208-field `Config` per ask. `buffer_unordered` (unlike
+    // `tokio::spawn`) does NOT require its futures to be `'static` — they run on
+    // `fetch_stream.next().await` within this same `async fn`, so the borrow of
+    // `cfg` stays alive for the whole stream. `&Config` is `Copy`, so each
+    // `move` closure copies the shared reference rather than cloning the struct.
+    let cfg: &Config = cfg;
     // Cache enable gate. The cache itself is process-global; we only consult
     // it when `cfg.ask_cache_enabled`. Snapshot the per-collection generation
     // once for this fetch batch so all concurrent lookups in this stream see
@@ -101,7 +107,9 @@ pub async fn fetch_full_docs(
     // future is verified for `Send + 'static` by `tokio::spawn`.
     let tasks: Vec<(usize, usize)> = top_full_doc_indices.iter().copied().enumerate().collect();
     let mut fetch_stream = stream::iter(tasks.into_iter().map(|(order, doc_idx)| {
-        let cfg_for_task = Arc::clone(&cfg_arc);
+        // `&Config` is `Copy`; the closure captures the shared reference, not a
+        // clone of the struct. The borrow lives as long as the stream is driven.
+        let cfg_for_task: &Config = cfg;
         let url = reranked[doc_idx].url.clone();
         let collection = collection.clone();
         let doc_cache = doc_cache.clone();
@@ -112,13 +120,13 @@ pub async fn fetch_full_docs(
                     url: url.clone(),
                     generation,
                 };
-                let cfg_for_fetch = Arc::clone(&cfg_for_task);
+                let cfg_for_fetch: &Config = cfg_for_task;
                 let url_for_fetch = url.clone();
                 doc_cache
                     .expect("doc cache must exist when cache is enabled")
                     .get_or_fetch(key, move || async move {
                         qdrant::qdrant_retrieve_by_url(
-                            &cfg_for_fetch,
+                            cfg_for_fetch,
                             &url_for_fetch,
                             Some(doc_chunk_limit),
                         )
@@ -127,7 +135,7 @@ pub async fn fetch_full_docs(
                     .await
                 // Cache returns Arc<Vec<_>> directly — no clone needed.
             } else {
-                qdrant::qdrant_retrieve_by_url(&cfg_for_task, &url, Some(doc_chunk_limit))
+                qdrant::qdrant_retrieve_by_url(cfg_for_task, &url, Some(doc_chunk_limit))
                     .await
                     .map(Arc::new)
             };
@@ -169,3 +177,7 @@ fn record_empty_doc_fetch(errors: &mut Vec<FullDocFetchError>, url: String) {
 pub fn ask_doc_cache(cfg: &Config) -> Arc<DocCache> {
     doc_cache_for_config(DocCacheConfig::from_ask_config(cfg))
 }
+
+#[cfg(test)]
+#[path = "fetchers_tests.rs"]
+mod tests;

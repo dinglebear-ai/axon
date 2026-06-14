@@ -1,4 +1,4 @@
-use crate::services::types::EndpointKind;
+use super::EndpointKind;
 
 pub(super) fn looks_like_endpoint(value: &str) -> bool {
     let value = value.trim();
