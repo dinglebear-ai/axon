@@ -101,6 +101,7 @@ spider_agent = { version = "2.47.89", default-features = false, features = [
 spider_transformations = "2"
 ssh2-config = "0.7.1"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
+streaming-iterator = "0.1"
 subtle = "2"
 text-splitter = { version = "0.30", features = ["code", "markdown"] }
 tree-sitter = "0.26.9"
