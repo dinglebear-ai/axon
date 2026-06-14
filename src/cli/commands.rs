@@ -43,6 +43,7 @@ pub mod suggest;
 pub mod summarize;
 pub mod sync;
 pub mod train;
+pub mod update;
 pub mod watch;
 
 #[cfg(test)]
@@ -87,6 +88,7 @@ pub use suggest::run_suggest;
 pub use summarize::run_summarize;
 pub use sync::run_sync;
 pub use train::run_train;
+pub use update::run_update;
 pub use watch::run_watch;
 
 use crate::core::config::Config;

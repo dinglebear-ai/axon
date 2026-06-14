@@ -44,6 +44,7 @@ pub enum CommandKind {
     Migrate,
     Config,
     Sync,
+    Update,
     Palette,
 }
 
@@ -91,6 +92,7 @@ impl CommandKind {
             Self::Migrate => "migrate",
             Self::Config => "config",
             Self::Sync => "sync",
+            Self::Update => "update",
             Self::Palette => "palette",
         }
     }
