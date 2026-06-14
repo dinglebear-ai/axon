@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
 import com.axon.app.ui.theme.tint
@@ -156,12 +157,12 @@ fun FabOpInputCard(
                     Box(
                         modifier = Modifier
                             .size(28.dp)
-                            .background(Color.Transparent, RoundedCornerShape(8.dp))
-                            .clickable(remember { MutableInteractionSource() }, indication = null) {
+                            .pressScale {
                                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val text = cm.primaryClip?.getItemAt(0)?.text?.toString()
                                 if (text != null) input = text
-                            },
+                            }
+                            .background(Color.Transparent, RoundedCornerShape(8.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Rounded.ContentCopy, contentDescription = "Paste", tint = colors.textMuted.copy(alpha = 0.54f), modifier = Modifier.size(13.dp))
@@ -170,10 +171,10 @@ fun FabOpInputCard(
                     Box(
                         modifier = Modifier
                             .size(32.dp)
-                            .background(tone.base.copy(alpha = 0.90f), RoundedCornerShape(9.dp))
-                            .clickable(remember { MutableInteractionSource() }, indication = null) {
+                            .pressScale {
                                 submitIfReady()
-                            },
+                            }
+                            .background(tone.base.copy(alpha = 0.90f), RoundedCornerShape(9.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "Send", tint = Color(0xFF06131C), modifier = Modifier.size(15.dp))
@@ -182,7 +183,7 @@ fun FabOpInputCard(
 
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(
-                        modifier = Modifier.clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+                        modifier = Modifier.pressScale(onClick = onDismiss),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
