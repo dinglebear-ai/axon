@@ -45,6 +45,17 @@ fn codex_backend_gets_medium_context_budget() {
 }
 
 #[test]
+fn codex_backend_without_explicit_model_gets_medium_context_budget() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::CodexAppServer,
+        codex_model: String::new(),
+        ..Config::default_minimal()
+    };
+
+    assert_eq!(model_context_char_budget(&cfg), 400_000);
+}
+
+#[test]
 fn gpt_models_get_medium_context_budget() {
     let cfg = cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5.5");
     assert_eq!(model_context_char_budget(&cfg), 400_000);

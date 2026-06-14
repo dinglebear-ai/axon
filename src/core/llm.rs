@@ -56,21 +56,25 @@ pub(crate) fn completion_limiter_key(req: &CompletionRequest) -> CompletionKey {
     match req.backend.kind {
         LlmBackendKind::GeminiHeadless => CompletionKey::Gemini {
             cmd: req.backend.gemini_cmd.clone(),
-            model: req.backend.gemini_model.clone().unwrap_or_default(),
+            model: completion_model(req, req.backend.gemini_model.as_deref().unwrap_or_default()),
         },
         LlmBackendKind::OpenAiCompat => CompletionKey::OpenAi {
             base_url: req.backend.openai_base_url.clone().unwrap_or_default(),
-            model: req.backend.openai_model.clone().unwrap_or_default(),
+            model: completion_model(req, req.backend.openai_model.as_deref().unwrap_or_default()),
         },
         LlmBackendKind::CodexAppServer => CompletionKey::Codex {
             cmd: req.backend.codex_cmd.clone(),
-            model: req
-                .model
-                .clone()
-                .or_else(|| req.backend.codex_model.clone())
-                .unwrap_or_default(),
+            model: completion_model(req, req.backend.codex_model.as_deref().unwrap_or_default()),
         },
     }
+}
+
+fn completion_model(req: &CompletionRequest, backend_default: &str) -> String {
+    req.model
+        .as_deref()
+        .filter(|model| !model.trim().is_empty())
+        .unwrap_or(backend_default)
+        .to_string()
 }
 
 fn ensure_configured(req: &CompletionRequest) -> Result<(), Box<dyn StdError + Send + Sync>> {

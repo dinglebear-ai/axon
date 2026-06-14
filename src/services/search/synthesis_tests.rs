@@ -166,6 +166,17 @@ fn codex_backend_preserves_full_research_sources() {
 }
 
 #[test]
+fn codex_backend_without_explicit_model_preserves_full_research_sources() {
+    let cfg = Config {
+        llm_backend: llm::LlmBackendKind::CodexAppServer,
+        codex_model: String::new(),
+        ..Config::default()
+    };
+
+    assert!(source::preserve_full_research_sources(&cfg));
+}
+
+#[test]
 fn fallback_summary_uses_extractions_when_synthesis_unavailable() {
     let extractions = vec![ext(
         "https://example.com",

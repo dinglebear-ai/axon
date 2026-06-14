@@ -78,7 +78,7 @@ impl LlmBackendConfig {
             openai_base_url: non_empty(cfg.openai_base_url.clone()),
             openai_api_key: non_empty(cfg.openai_api_key.clone()),
             openai_model: non_empty(cfg.openai_model.clone()),
-            codex_cmd: non_empty(cfg.codex_cmd.clone()).unwrap_or_else(|| "codex".to_string()),
+            codex_cmd: cfg.codex_cmd.trim().to_string(),
             codex_model: non_empty(cfg.codex_model.clone()),
             codex_home: cfg.codex_home.clone(),
             completion_concurrency: match cfg.llm_backend {
@@ -146,6 +146,7 @@ pub enum SynthesisModelTier {
 pub struct SynthesisModelProfile {
     model: String,
     is_gemini_backend: bool,
+    is_codex_backend: bool,
 }
 
 impl SynthesisModelProfile {
@@ -156,6 +157,7 @@ impl SynthesisModelProfile {
                 .unwrap_or_default()
                 .to_ascii_lowercase(),
             is_gemini_backend: matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless),
+            is_codex_backend: matches!(cfg.llm_backend, LlmBackendKind::CodexAppServer),
         }
     }
 
@@ -165,7 +167,7 @@ impl SynthesisModelProfile {
             SynthesisModelTier::Large
         } else if self.model.contains("gemma") {
             SynthesisModelTier::LocalGemma
-        } else if self.is_gpt_or_codex() {
+        } else if self.is_gpt_or_codex() || self.is_codex_backend {
             SynthesisModelTier::Medium
         } else {
             SynthesisModelTier::Small
@@ -182,7 +184,10 @@ impl SynthesisModelProfile {
 
     #[must_use]
     pub fn preserve_full_research_sources(&self) -> bool {
-        self.is_gemini() || self.model.contains("opus") || self.is_gpt_or_codex()
+        self.is_gemini()
+            || self.model.contains("opus")
+            || self.is_gpt_or_codex()
+            || self.is_codex_backend
     }
 
     fn is_gemini(&self) -> bool {
