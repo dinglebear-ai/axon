@@ -1,10 +1,16 @@
 package com.axon.app.ui.fab
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,6 +24,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import kotlin.math.roundToInt
 
@@ -75,11 +82,26 @@ fun FabLauncher(
             )
         }
 
-        if (state is FabState.Idle && !imeVisible) {
+        // The + recedes as the ring blooms from its centre, and springs back in
+        // when the ring closes — the two motions read as one gesture.
+        AnimatedVisibility(
+            visible = state is FabState.Idle && !imeVisible,
+            enter = fadeIn(tween(durationMillis = 180)) +
+                scaleIn(
+                    initialScale = 0.6f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                ),
+            exit = fadeOut(tween(durationMillis = 110)) +
+                scaleOut(targetScale = 0.6f, animationSpec = tween(durationMillis = 130)),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 88.dp, end = 16.dp),
+        ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 88.dp, end = 16.dp)
                     .size(46.dp)
                     .onGloballyPositioned { coords ->
                         val pos = coords.positionInWindow()
@@ -90,9 +112,7 @@ fun FabLauncher(
                     }
                     .background(colors.panelStrong.copy(alpha = 0.76f), RoundedCornerShape(15.dp))
                     .border(1.dp, colors.borderStrong.copy(alpha = 0.74f), RoundedCornerShape(15.dp))
-                    .clickable(remember { MutableInteractionSource() }, indication = null) {
-                        state = FabState.Ring
-                    },
+                    .pressScale { state = FabState.Ring },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

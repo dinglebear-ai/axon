@@ -44,8 +44,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.local.Session
-import com.axon.app.ui.jobs.rememberRevealState
-import com.axon.app.ui.jobs.revealOnce
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 import java.net.URLDecoder
