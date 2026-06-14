@@ -2,12 +2,9 @@ package com.axon.app.ui.nav
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -18,6 +15,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
@@ -55,8 +53,8 @@ fun AxonRail(
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(RoundedCornerShape(dimens.rTile))
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onHomeClick),
+                .pressScale(onClick = onHomeClick)
+                .clip(RoundedCornerShape(dimens.rTile)),
             contentAlignment = Alignment.Center,
         ) {
             AxonMarkGlyph(modifier = Modifier.size(26.dp))
@@ -81,10 +79,10 @@ private fun RailItem(icon: RailGlyph, label: String, active: Boolean, onClick: (
     Box(
         modifier = Modifier
             .size(dimens.railItemWidth, dimens.railItemHeight)
-            .clip(RoundedCornerShape(dimens.rTile))
-            .background(if (active) colors.tint(colors.accentPrimary, 12, colors.navBg) else Color.Transparent)
             .semantics { contentDescription = label }
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+            .pressScale(onClick = onClick)
+            .clip(RoundedCornerShape(dimens.rTile))
+            .background(if (active) colors.tint(colors.accentPrimary, 12, colors.navBg) else Color.Transparent),
     ) {
         if (active) {
             Box(

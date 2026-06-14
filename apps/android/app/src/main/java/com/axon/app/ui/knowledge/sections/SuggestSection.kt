@@ -2,8 +2,6 @@ package com.axon.app.ui.knowledge.sections
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +45,7 @@ import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.knowledge.KnowledgeResultRow
 import com.axon.app.ui.knowledge.KnowledgeViewModel
 import com.axon.app.ui.nav.LocalOpenDocument
@@ -173,13 +171,9 @@ private fun CompactSuggestInput(
         Box(
             modifier = Modifier
                 .size(26.dp)
+                .pressScale(onClick = onSend)
                 .clip(RoundedCornerShape(8.dp))
-                .background(if (value.isNotBlank()) colors.accentPrimary else colors.tint(colors.accentPrimary, 20, colors.control))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onSend,
-                ),
+                .background(if (value.isNotBlank()) colors.accentPrimary else colors.tint(colors.accentPrimary, 20, colors.control)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

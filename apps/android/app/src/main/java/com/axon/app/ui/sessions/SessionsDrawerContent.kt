@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BookmarkAdded
@@ -44,6 +44,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.local.Session
+import com.axon.app.ui.jobs.rememberRevealState
+import com.axon.app.ui.jobs.revealOnce
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 import java.net.URLDecoder
@@ -57,6 +59,7 @@ fun SessionsDrawerContent(
 ) {
     val sessions by vm.sessions.collectAsStateWithLifecycle()
     val recentAsks by vm.recentAsks.collectAsStateWithLifecycle()
+    val reveal = rememberRevealState()
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
@@ -71,9 +74,12 @@ fun SessionsDrawerContent(
             }
             when {
                 sessions.isNotEmpty() -> {
-                    items(sessions, key = { it.id }) { session ->
+                    itemsIndexed(sessions, key = { _, it -> it.id }) { index, session ->
                         SessionRow(
                             session = session,
+                            modifier = Modifier
+                                .animateItem()
+                                .revealOnce(reveal, session.id, index),
                             onSelect = { onSelect(session.id) },
                             onPin   = { vm.pin(session.id) },
                             onUnpin = { vm.unpin(session.id) },
@@ -82,8 +88,13 @@ fun SessionsDrawerContent(
                     }
                 }
                 recentAsks.isNotEmpty() -> {
-                    items(recentAsks.take(8), key = { "ask-${it.id}" }) { ask ->
-                        AskHistorySessionRow(ask)
+                    itemsIndexed(recentAsks.take(8), key = { _, it -> "ask-${it.id}" }) { index, ask ->
+                        AskHistorySessionRow(
+                            ask,
+                            modifier = Modifier
+                                .animateItem()
+                                .revealOnce(reveal, "ask-${ask.id}", index),
+                        )
                     }
                 }
                 else -> {
@@ -116,12 +127,12 @@ private fun NewSessionRow(onClick: () -> Unit) {
 }
 
 @Composable
-private fun AskHistorySessionRow(entry: AskHistoryEntry) {
+private fun AskHistorySessionRow(entry: AskHistoryEntry, modifier: Modifier = Modifier) {
     val colors = AxonTheme.colors
     val title = remember(entry.query) { cleanHistoryText(entry.query) }
     val answer = remember(entry.answer) { cleanHistoryPreview(entry.answer) }
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(colors.control.copy(alpha = 0.045f))
@@ -212,6 +223,7 @@ private fun EmptySessionsRow() {
 @Composable
 private fun SessionRow(
     session: Session,
+    modifier: Modifier = Modifier,
     onSelect: () -> Unit,
     onPin: () -> Unit,
     onUnpin: () -> Unit,
@@ -220,7 +232,7 @@ private fun SessionRow(
     val colors = AxonTheme.colors
     var showMenu by remember { mutableStateOf(false) }
 
-    Box {
+    Box(modifier = modifier) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

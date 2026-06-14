@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -76,6 +76,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
     val error by vm.errorMessage.collectAsStateWithLifecycle()
     var drill by remember { mutableStateOf<JobDrill?>(null) }
     val overviewRows = jobOverviewRows(jobsByKind, watches)
+    val reveal = rememberRevealState()
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
@@ -91,8 +92,14 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                     if (error != null && active.isEmpty() && jobsByKind.isEmpty()) {
                         item { JobsErrorCard(error.orEmpty()) }
                     }
-                    items(overviewRows, key = { it.key }) { row ->
-                        JobOverviewRow(row = row, onClick = { drill = row.drill })
+                    itemsIndexed(overviewRows, key = { _, row -> row.key }) { index, row ->
+                        JobOverviewRow(
+                            row = row,
+                            modifier = Modifier
+                                .animateItem()
+                                .revealOnce(reveal, row.key, index),
+                            onClick = { drill = row.drill },
+                        )
                     }
                 }
                 is JobDrill.Kind -> {
@@ -108,8 +115,13 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                     if (jobs.isEmpty()) {
                         item { EmptyJobsCard("No ${selected.kind.label().lowercase()} jobs", "New ${selected.kind.label().lowercase()} submissions appear here.") }
                     } else {
-                        items(visibleJobs, key = { "${selected.kind}-${it.id}" }) { job ->
-                            JobDrillRow(job)
+                        itemsIndexed(visibleJobs, key = { _, job -> "${selected.kind}-${job.id}" }) { index, job ->
+                            JobDrillRow(
+                                job,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, "${selected.kind}-${job.id}", index),
+                            )
                         }
                         if (jobs.size > visibleJobs.size) {
                             item {
@@ -129,8 +141,13 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                     if (watches.isEmpty()) {
                         item { EmptyJobsCard("No watches", "Recurring URL change detectors appear here.") }
                     } else {
-                        items(watches, key = { it.id }) { watch ->
-                            WatchDrillRow(watch)
+                        itemsIndexed(watches, key = { _, watch -> watch.id }) { index, watch ->
+                            WatchDrillRow(
+                                watch,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, watch.id, index),
+                            )
                         }
                     }
                 }
@@ -215,11 +232,11 @@ private fun jobOverviewRows(
 }
 
 @Composable
-private fun JobOverviewRow(row: JobOverviewRowModel, onClick: () -> Unit) {
+private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = AxonTheme.colors
     val shape = RoundedCornerShape(8.dp)
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(shape)
             .background(colors.control.copy(alpha = 0.06f), shape)
