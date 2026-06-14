@@ -118,6 +118,45 @@ fn into_config_reads_openai_compat_env_settings() {
 
 #[allow(unsafe_code)]
 #[test]
+fn into_config_reads_codex_app_server_env_settings() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(
+        &[
+            "AXON_LLM_BACKEND",
+            "AXON_CODEX_CMD",
+            "AXON_CODEX_HOME",
+            "AXON_SYNTHESIS_CODEX_MODEL",
+            "AXON_CODEX_MODEL",
+            "AXON_CODEX_COMPLETION_CONCURRENCY",
+        ],
+        || unsafe {
+            env::set_var("AXON_LLM_BACKEND", "codex-app-server");
+            env::set_var("AXON_CODEX_CMD", "/opt/codex/bin/codex");
+            env::set_var("AXON_CODEX_HOME", "/home/example/.codex");
+            env::set_var("AXON_CODEX_MODEL", "legacy-model");
+            env::set_var("AXON_SYNTHESIS_CODEX_MODEL", "gpt-5.5");
+            env::set_var("AXON_CODEX_COMPLETION_CONCURRENCY", "2");
+
+            let cfg = into_config_via_args(&["status"]).expect("status config");
+            let backend = crate::core::llm::LlmBackendConfig::from_config(&cfg);
+
+            assert_eq!(
+                backend.kind,
+                crate::core::llm::LlmBackendKind::CodexAppServer
+            );
+            assert_eq!(backend.codex_cmd, "/opt/codex/bin/codex");
+            assert_eq!(
+                backend.codex_home.as_deref(),
+                Some(Path::new("/home/example/.codex"))
+            );
+            assert_eq!(backend.codex_model.as_deref(), Some("gpt-5.5"));
+            assert_eq!(backend.completion_concurrency, 2);
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn into_config_reads_split_synthesis_and_chat_models() {
     let _guard = ENV_LOCK.lock().unwrap();
     with_env_saved(

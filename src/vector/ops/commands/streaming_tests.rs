@@ -251,6 +251,34 @@ async fn ask_llm_streaming_with_runner_uses_generic_prompt_for_openai_compat() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn ask_llm_streaming_with_runner_uses_direct_prompt_for_codex_app_server() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::CodexAppServer,
+        codex_model: "gpt-5.5".to_string(),
+        ..Config::default()
+    };
+    let runner = MockRunner::with_streaming(&["The answer [S1]."], "The answer [S1].");
+
+    let answer = ask_llm_streaming_with_runner(&runner, &cfg, "How?", "Context block", false)
+        .await
+        .unwrap();
+
+    assert_eq!(answer, "The answer [S1].");
+    let observed = runner.observed.lock().expect("lock poisoned");
+    let req = observed.last().expect("request captured");
+    assert_eq!(req.backend.kind, LlmBackendKind::CodexAppServer);
+    assert!(req.system_prompt.as_deref().unwrap_or("").contains(
+        "Every sentence containing factual content must end with one or more source citations."
+    ));
+    assert!(
+        !req.system_prompt
+            .as_deref()
+            .unwrap_or("")
+            .contains("Use the axon-rag-synthesize skill")
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn baseline_llm_non_streaming_with_runner_builds_completion_request() {
     let cfg = Config::test_default();
     let runner = MockRunner::with_text("baseline answer");

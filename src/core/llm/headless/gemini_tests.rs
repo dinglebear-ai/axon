@@ -172,6 +172,7 @@ async fn gemini_headless_timeout_returns_error_for_hung_child() {
         completion_concurrency: 1,
         completion_timeout_secs: 1,
         configured: true,
+        ..LlmBackendConfig::default()
     };
 
     let err = complete_text(req)

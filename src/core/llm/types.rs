@@ -13,6 +13,7 @@ pub enum LlmModelPurpose {
 pub enum LlmBackendKind {
     GeminiHeadless,
     OpenAiCompat,
+    CodexAppServer,
 }
 
 impl LlmBackendKind {
@@ -20,8 +21,9 @@ impl LlmBackendKind {
         match value.trim() {
             "" | "gemini-headless" | "gemini" | "headless" => Ok(Self::GeminiHeadless),
             "openai-compat" | "openai_compat" => Ok(Self::OpenAiCompat),
+            "codex-app-server" | "codex_app_server" | "codex" => Ok(Self::CodexAppServer),
             other => Err(format!(
-                "AXON_LLM_BACKEND must be 'gemini-headless' or 'openai-compat' (got '{other}')"
+                "AXON_LLM_BACKEND must be 'gemini-headless', 'openai-compat', or 'codex-app-server' (got '{other}')"
             )),
         }
     }
@@ -36,6 +38,9 @@ pub struct LlmBackendConfig {
     pub openai_base_url: Option<String>,
     pub openai_api_key: Option<String>,
     pub openai_model: Option<String>,
+    pub codex_cmd: String,
+    pub codex_model: Option<String>,
+    pub codex_home: Option<PathBuf>,
     pub completion_concurrency: usize,
     pub completion_timeout_secs: u64,
     pub configured: bool,
@@ -51,6 +56,9 @@ impl Default for LlmBackendConfig {
             openai_base_url: None,
             openai_api_key: None,
             openai_model: None,
+            codex_cmd: "codex".to_string(),
+            codex_model: None,
+            codex_home: None,
             completion_concurrency: 4,
             completion_timeout_secs: 300,
             configured: false,
@@ -70,12 +78,25 @@ impl LlmBackendConfig {
             openai_base_url: non_empty(cfg.openai_base_url.clone()),
             openai_api_key: non_empty(cfg.openai_api_key.clone()),
             openai_model: non_empty(cfg.openai_model.clone()),
-            completion_concurrency: cfg
-                .llm_completion_concurrency
-                .clamp(1, tokio::sync::Semaphore::MAX_PERMITS),
+            codex_cmd: cfg.codex_cmd.trim().to_string(),
+            codex_model: non_empty(cfg.codex_model.clone()),
+            codex_home: cfg.codex_home.clone(),
+            completion_concurrency: match cfg.llm_backend {
+                LlmBackendKind::CodexAppServer => cfg
+                    .codex_completion_concurrency
+                    .clamp(1, tokio::sync::Semaphore::MAX_PERMITS),
+                _ => cfg
+                    .llm_completion_concurrency
+                    .clamp(1, tokio::sync::Semaphore::MAX_PERMITS),
+            },
             completion_timeout_secs: cfg.llm_completion_timeout_secs.max(1),
             configured: true,
         }
+    }
+
+    #[must_use]
+    pub fn completion_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.completion_timeout_secs.max(1))
     }
 }
 
@@ -102,6 +123,81 @@ pub fn configured_model_for_config(cfg: &Config, purpose: LlmModelPurpose) -> Op
             LlmModelPurpose::Chat => non_empty(cfg.openai_chat_model.clone())
                 .or_else(|| non_empty(cfg.openai_model.clone())),
         },
+        LlmBackendKind::CodexAppServer => non_empty(cfg.codex_model.clone()),
+    }
+}
+
+/// Context-window size class of the configured synthesis model. This is shared
+/// by ask tuning, RAG context assembly, and research-source preservation so the
+/// model-capability policy does not drift between call sites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SynthesisModelTier {
+    /// ~1M-token windows — Gemini, Claude.
+    Large,
+    /// ~400k-token window — GPT/Codex.
+    Medium,
+    /// Local Gemma on the 12 GB llama.cpp path.
+    LocalGemma,
+    /// Unknown model — assume a < 50k-token window.
+    Small,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SynthesisModelProfile {
+    model: String,
+    is_gemini_backend: bool,
+    is_codex_backend: bool,
+}
+
+impl SynthesisModelProfile {
+    #[must_use]
+    pub fn from_config(cfg: &Config) -> Self {
+        Self {
+            model: configured_model_from_config(cfg)
+                .unwrap_or_default()
+                .to_ascii_lowercase(),
+            is_gemini_backend: matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless),
+            is_codex_backend: matches!(cfg.llm_backend, LlmBackendKind::CodexAppServer),
+        }
+    }
+
+    #[must_use]
+    pub fn tier(&self) -> SynthesisModelTier {
+        if self.is_gemini() || self.model.contains("claude") {
+            SynthesisModelTier::Large
+        } else if self.model.contains("gemma") {
+            SynthesisModelTier::LocalGemma
+        } else if self.is_gpt_or_codex() || self.is_codex_backend {
+            SynthesisModelTier::Medium
+        } else {
+            SynthesisModelTier::Small
+        }
+    }
+
+    #[must_use]
+    pub fn high_context_full_docs(&self) -> bool {
+        matches!(
+            self.tier(),
+            SynthesisModelTier::Large | SynthesisModelTier::Medium
+        )
+    }
+
+    #[must_use]
+    pub fn preserve_full_research_sources(&self) -> bool {
+        self.is_gemini()
+            || self.model.contains("opus")
+            || self.is_gpt_or_codex()
+            || self.is_codex_backend
+    }
+
+    fn is_gemini(&self) -> bool {
+        self.is_gemini_backend || self.model.contains("gemini")
+    }
+
+    fn is_gpt_or_codex(&self) -> bool {
+        self.model.contains("codex")
+            || self.model.starts_with("gpt-")
+            || self.model.contains("/gpt-")
     }
 }
 

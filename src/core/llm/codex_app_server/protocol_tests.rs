@@ -102,6 +102,83 @@ fn response_error_propagates() {
 }
 
 #[test]
+fn response_error_redacts_compact_json_secret_message() {
+    let mut state = new_state();
+    let err = state
+        .handle_line(
+            r#"{"id":0,"error":{"message":"{\"api_key\":\"sk-protocol-secret\",\"token\":\"atk_protocol_secret\",\"message\":\"bad auth\"}"}}"#,
+            &mut no_delta,
+        )
+        .unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("bad auth"), "got: {text}");
+    assert!(text.contains("[REDACTED]"), "got: {text}");
+    assert!(!text.contains("sk-protocol-secret"), "got: {text}");
+    assert!(!text.contains("atk_protocol_secret"), "got: {text}");
+}
+
+#[test]
+fn malformed_protocol_error_is_bounded_and_redacted() {
+    let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
+    let secret = format!(
+        "{{ bad json {} }}",
+        "sk-abcdefghijklmnopqrstuvwxyz0123456789"
+    );
+
+    let err = state.handle_line(&secret, &mut no_delta).unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("[REDACTED]"));
+    assert!(text.len() < 600);
+    assert!(!text.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
+}
+
+#[test]
+fn malformed_protocol_error_truncates_on_utf8_boundary() {
+    let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
+    let line = format!("{{ bad json {} }}", "é".repeat(PROTOCOL_ERROR_LIMIT));
+
+    let err = state.handle_line(&line, &mut no_delta).unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("..."), "got: {text}");
+    assert!(text.len() < 700, "got {} bytes", text.len());
+}
+
+#[test]
+fn json_rpc_error_is_summarized_without_raw_payload_echo() {
+    let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
+    let line = r#"{"id":2,"error":{"message":"failed with sk-abcdefghijklmnopqrstuvwxyz0123456789","data":{"prompt":"secret prompt"}}}"#;
+
+    let err = state.handle_line(line, &mut no_delta).unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("[REDACTED]"));
+    assert!(!text.contains("secret prompt"));
+    assert!(!text.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
+}
+
+#[test]
+fn json_rpc_error_truncates_on_utf8_boundary() {
+    let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
+    let message = "🚀".repeat(PROTOCOL_ERROR_LIMIT);
+    let line = serde_json::json!({
+        "id": 2,
+        "error": {
+            "message": message,
+        }
+    })
+    .to_string();
+
+    let err = state.handle_line(&line, &mut no_delta).unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("..."), "got: {text}");
+    assert!(text.len() < 700, "got {} bytes", text.len());
+}
+
+#[test]
 fn deltas_accumulate_and_invoke_callback() {
     let mut state = new_state();
     let mut seen = String::new();

@@ -24,6 +24,7 @@ pub(crate) fn synthesis_prompt_for_backend(backend: crate::core::llm::LlmBackend
     match backend {
         crate::core::llm::LlmBackendKind::GeminiHeadless => synthesis_prompt_for_gemini(),
         crate::core::llm::LlmBackendKind::OpenAiCompat => synthesis_prompt_for_openai_compat(),
+        crate::core::llm::LlmBackendKind::CodexAppServer => synthesis_prompt_for_openai_compat(),
     }
 }
 

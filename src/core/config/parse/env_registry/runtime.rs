@@ -161,6 +161,23 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec("AXON_OPENAI_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec("AXON_CODEX_MODEL", KeepEnv, Both, None, Canonical, false),
+    spec(
+        "AXON_SYNTHESIS_CODEX_MODEL",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
+        "AXON_CODEX_COMPLETION_CONCURRENCY",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
     spec(
         "AXON_SYNTHESIS_OPENAI_MODEL",
         KeepEnv,

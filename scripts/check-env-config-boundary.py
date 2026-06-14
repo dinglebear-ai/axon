@@ -70,6 +70,7 @@ VALID_CLASSIFICATIONS = {
     "move-toml",
     "hard-default",
     "trusted-operator-bootstrap",
+    "codex-child-auth",
     "external/test-only",
 }
 
@@ -77,6 +78,7 @@ VALID_PLACEMENTS = {
     "host-only",
     "container-required",
     "compose-interpolation",
+    "child-only",
     "both",
     "not-runtime",
 }

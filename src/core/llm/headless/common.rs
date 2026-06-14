@@ -1,3 +1,8 @@
+use std::io;
+
+use tokio::io::{AsyncReadExt, BufReader};
+use tokio::process::Child;
+
 pub const STDERR_TAIL_LIMIT: usize = 4096;
 
 const FORBIDDEN_FLAGS: &[&str] = &[
@@ -87,7 +92,51 @@ pub fn append_bounded_tail(buffer: &mut Vec<u8>, chunk: &[u8]) {
     }
 }
 
+pub(crate) fn joined_prompt(system_prompt: Option<&str>, user_prompt: &str) -> String {
+    match system_prompt.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(system) => format!("{system}\n\n{user_prompt}"),
+        None => user_prompt.to_string(),
+    }
+}
+
+pub(crate) async fn kill_and_wait(child: &mut Child) -> String {
+    let kill_result = child.kill().await;
+    let wait_result = child.wait().await;
+    match (kill_result, wait_result) {
+        (Ok(()), Ok(status)) => format!("killed and reaped with {status}"),
+        (Ok(()), Err(wait_err)) => format!("killed but wait failed: {wait_err}"),
+        (Err(kill_err), Ok(status)) => format!("kill failed: {kill_err}; wait returned {status}"),
+        (Err(kill_err), Err(wait_err)) => {
+            format!("kill failed: {kill_err}; wait failed: {wait_err}")
+        }
+    }
+}
+
+pub(crate) async fn read_bounded_stderr(
+    stderr: tokio::process::ChildStderr,
+) -> Result<Vec<u8>, io::Error> {
+    let mut tail = Vec::new();
+    let mut reader = BufReader::new(stderr);
+    let mut chunk = [0_u8; 1024];
+    loop {
+        let read = reader.read(&mut chunk).await?;
+        if read == 0 {
+            return Ok(tail);
+        }
+        append_bounded_tail(&mut tail, &chunk[..read]);
+    }
+}
+
+pub(crate) fn redact_for_error(text: &str) -> String {
+    redact_secrets(text)
+}
+
 fn redact_secrets(text: &str) -> String {
+    let trimmed = text.trim();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        return serde_json::to_string(&redact_secret_json(&value))
+            .unwrap_or_else(|_| "[REDACTED]".to_string());
+    }
     text.split_whitespace()
         .map(|token| {
             if looks_secretish(token) {
@@ -100,11 +149,63 @@ fn redact_secrets(text: &str) -> String {
         .join(" ")
 }
 
+fn redact_secret_json(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.iter()
+                .map(|(key, value)| {
+                    if is_sensitive_json_key(key) {
+                        (
+                            key.clone(),
+                            serde_json::Value::String("[REDACTED]".to_string()),
+                        )
+                    } else {
+                        (key.clone(), redact_secret_json(value))
+                    }
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.iter().map(redact_secret_json).collect())
+        }
+        serde_json::Value::String(value) => {
+            if looks_secretish(value) {
+                serde_json::Value::String("[REDACTED]".to_string())
+            } else {
+                serde_json::Value::String(redact_secrets(value))
+            }
+        }
+        value => value.clone(),
+    }
+}
+
+fn is_sensitive_json_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    lower == "api_key"
+        || lower == "apikey"
+        || lower == "token"
+        || lower == "access_token"
+        || lower == "refresh_token"
+        || lower == "authorization"
+        || lower == "secret"
+        || lower == "client_secret"
+        || lower == "password"
+}
+
 fn looks_secretish(token: &str) -> bool {
     let upper = token.to_ascii_uppercase();
+    let lower = token.to_ascii_lowercase();
     upper.contains("API_KEY=")
+        || lower.contains("\"api_key\":")
+        || lower.contains("api_key:")
         || upper.contains("TOKEN=")
+        || lower.contains("\"token\":")
+        || lower.contains("token:")
         || upper.contains("SECRET=")
+        || lower.contains("\"secret\":")
+        || lower.contains("secret:")
+        || lower.starts_with("authorization:")
+        || lower.starts_with("authorization=")
         || token.starts_with("sk-")
         || token.starts_with("ghp_")
         || token.starts_with("atk_")

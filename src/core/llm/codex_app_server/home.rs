@@ -12,10 +12,12 @@
 //! works when no `auth.json` is present.
 
 use crate::core::llm::LlmBackendConfig;
+use std::collections::BTreeMap;
 use std::error::Error as StdError;
+use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tokio::process::Command;
 
@@ -24,7 +26,6 @@ type BoxError = Box<dyn StdError + Send + Sync>;
 /// Environment variables forwarded to the `codex app-server` child. Everything
 /// else is cleared; `CODEX_HOME` is set explicitly by the spawn path.
 const ALLOWED_ENV_KEYS: &[&str] = &[
-    "HOME",
     "PATH",
     "USER",
     "LANG",
@@ -34,7 +35,6 @@ const ALLOWED_ENV_KEYS: &[&str] = &[
     "TZ",
     "TMPDIR",
     "OPENAI_API_KEY",
-    "OPENAI_BASE_URL",
     "HTTP_PROXY",
     "HTTPS_PROXY",
     "NO_PROXY",
@@ -45,14 +45,32 @@ const ALLOWED_ENV_KEYS: &[&str] = &[
     "SSL_CERT_DIR",
 ];
 
+const MAX_CODEX_AUTH_JSON_BYTES: u64 = 1024 * 1024;
+
 /// Clear the environment and forward only the allowlisted keys.
 pub(super) fn apply_codex_env_allowlist(command: &mut Command) {
+    apply_codex_env_allowlist_from(command, std::env::vars_os());
+}
+
+fn apply_codex_env_allowlist_from<I>(command: &mut Command, env: I)
+where
+    I: IntoIterator<Item = (OsString, OsString)>,
+{
+    let env: BTreeMap<OsString, OsString> = env.into_iter().collect();
     command.env_clear();
     for key in ALLOWED_ENV_KEYS {
-        if let Some(value) = std::env::var_os(key).filter(|value| !value.is_empty()) {
+        if let Some(value) = env.get(OsStr::new(key)).filter(|value| !value.is_empty()) {
             command.env(key, value);
         }
     }
+}
+
+pub(super) fn apply_codex_home_env(command: &mut Command, home: &Path) {
+    command.env("CODEX_HOME", home);
+    command.env("HOME", home);
+    command.env("XDG_CONFIG_HOME", home.join(".config"));
+    command.env("XDG_CACHE_HOME", home.join(".cache"));
+    command.env("XDG_DATA_HOME", home.join(".local/share"));
 }
 
 /// Build an isolated `CODEX_HOME` and return the owning temp dir.
@@ -69,11 +87,29 @@ pub(super) fn prepare_codex_home(config: &LlmBackendConfig) -> Result<TempDir, B
     Ok(temp)
 }
 
-fn copy_auth(source: &std::path::Path, dest: &std::path::Path) -> Result<(), BoxError> {
+fn copy_auth(source: &Path, dest: &Path) -> Result<(), BoxError> {
     let auth = source.join("auth.json");
-    if auth.is_file() {
-        fs::copy(&auth, dest.join("auth.json"))
-            .map_err(|err| format!("failed to copy codex auth.json: {err}"))?;
+    let metadata = match fs::symlink_metadata(&auth) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(format!("failed to inspect codex auth.json: {err}").into()),
+    };
+    if metadata.file_type().is_symlink() {
+        return Err("codex auth.json must not be a symlink".into());
+    }
+    if !metadata.is_file() {
+        return Err("codex auth.json must be a regular file".into());
+    }
+    if metadata.len() > MAX_CODEX_AUTH_JSON_BYTES {
+        return Err("codex auth.json is larger than 1 MiB".into());
+    }
+    let dest_auth = dest.join("auth.json");
+    fs::copy(&auth, &dest_auth).map_err(|err| format!("failed to copy codex auth.json: {err}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dest_auth, fs::Permissions::from_mode(0o600))
+            .map_err(|err| format!("failed to chmod isolated codex auth.json: {err}"))?;
     }
     Ok(())
 }
@@ -86,16 +122,24 @@ fn codex_source_home(config: &LlmBackendConfig) -> Result<Option<PathBuf>, BoxEr
         return validate_source_home(path.clone()).map(Some);
     }
     if let Some(path) = non_empty_env("CODEX_HOME").map(PathBuf::from) {
-        return Ok(existing_dir(path));
+        return existing_valid_source_home(path);
     }
     if let Some(home) = non_empty_env("HOME").map(PathBuf::from) {
-        return Ok(existing_dir(home.join(".codex")));
+        return existing_valid_source_home(home.join(".codex"));
     }
     Ok(None)
 }
 
+#[cfg(test)]
 fn existing_dir(path: PathBuf) -> Option<PathBuf> {
     path.is_dir().then_some(path)
+}
+
+fn existing_valid_source_home(path: PathBuf) -> Result<Option<PathBuf>, BoxError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    validate_source_home(path).map(Some)
 }
 
 fn validate_source_home(path: PathBuf) -> Result<PathBuf, BoxError> {
@@ -115,7 +159,7 @@ fn validate_source_home(path: PathBuf) -> Result<PathBuf, BoxError> {
 }
 
 /// Write a minimal, side-effect-free `config.toml` into the isolated home.
-fn write_isolated_config(dir: &std::path::Path, model: Option<&str>) -> Result<(), BoxError> {
+fn write_isolated_config(dir: &Path, model: Option<&str>) -> Result<(), BoxError> {
     let mut toml = String::new();
     if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
         // TOML basic string: escape backslashes and quotes.

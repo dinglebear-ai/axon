@@ -47,6 +47,12 @@
 #
 # Env: AXON_CHAT_HEADLESS_GEMINI_MODEL
 # chat-gemini-model = ""
+#
+# Codex app-server settings are runtime/bootstrap env-only in this slice:
+# AXON_CODEX_CMD, AXON_CODEX_HOME, AXON_SYNTHESIS_CODEX_MODEL
+# (legacy alias AXON_CODEX_MODEL), and AXON_CODEX_COMPLETION_CONCURRENCY.
+# Command/home are intentionally not TOML keys because they depend on the host
+# runtime and auth location.
 
 [search]
 # Enable RRF hybrid search (requires a named-mode Qdrant collection).
@@ -78,8 +84,9 @@
 # collection = "axon"
 
 [ask]
-# LLM synthesis defaults to Gemini headless. Configure AXON_LLM_BACKEND and
-# backend-specific runtime variables in the env layer rather than config.toml.
+# LLM synthesis defaults to Gemini headless. Configure AXON_LLM_BACKEND
+# (gemini-headless, openai-compat, or codex-app-server) and backend-specific
+# runtime variables in the env layer rather than config.toml.
 
 # Max context characters passed to the LLM (clamped 20_000–1_000_000).
 # Env: AXON_ASK_MAX_CONTEXT_CHARS

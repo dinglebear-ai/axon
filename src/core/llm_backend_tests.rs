@@ -1,7 +1,8 @@
 use super::*;
+use crate::Config;
 
 #[test]
-fn limiter_key_uses_configured_backend_model_not_request_override() {
+fn limiter_key_uses_request_model_for_openai() {
     let backend = LlmBackendConfig {
         kind: LlmBackendKind::OpenAiCompat,
         openai_base_url: Some("http://127.0.0.1:8080/v1".to_string()),
@@ -16,7 +17,27 @@ fn limiter_key_uses_configured_backend_model_not_request_override() {
         completion_limiter_key(&req),
         CompletionKey::OpenAi {
             base_url: "http://127.0.0.1:8080/v1".to_string(),
-            model: "default-model".to_string(),
+            model: "override-model".to_string(),
+        }
+    );
+}
+
+#[test]
+fn limiter_key_uses_chat_model_override_for_openai() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::OpenAiCompat,
+        openai_base_url: "http://127.0.0.1:8080/v1".to_string(),
+        openai_model: "synthesis-model".to_string(),
+        openai_chat_model: "chat-model".to_string(),
+        ..Config::default()
+    };
+    let req = CompletionRequest::new("hello").backend_from_config_for(&cfg, LlmModelPurpose::Chat);
+
+    assert_eq!(
+        completion_limiter_key(&req),
+        CompletionKey::OpenAi {
+            base_url: "http://127.0.0.1:8080/v1".to_string(),
+            model: "chat-model".to_string(),
         }
     );
 }
@@ -38,6 +59,44 @@ fn limiter_key_falls_back_to_backend_model() {
         CompletionKey::Gemini {
             cmd: "gemini".to_string(),
             model: "configured-model".to_string(),
+        }
+    );
+}
+
+#[test]
+fn limiter_key_uses_chat_model_override_for_gemini() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::GeminiHeadless,
+        headless_gemini_cmd: "gemini".to_string(),
+        headless_gemini_model: "synthesis-model".to_string(),
+        headless_gemini_chat_model: "chat-model".to_string(),
+        ..Config::default()
+    };
+    let req = CompletionRequest::new("hello").backend_from_config_for(&cfg, LlmModelPurpose::Chat);
+
+    assert_eq!(
+        completion_limiter_key(&req),
+        CompletionKey::Gemini {
+            cmd: "gemini".to_string(),
+            model: "chat-model".to_string(),
+        }
+    );
+}
+
+#[test]
+fn limiter_key_distinguishes_codex_command_and_model() {
+    let req = CompletionRequest::new("hello").backend_from_config(&Config {
+        llm_backend: LlmBackendKind::CodexAppServer,
+        codex_cmd: "/opt/codex/bin/codex".to_string(),
+        codex_model: "gpt-5.5".to_string(),
+        ..Config::default()
+    });
+
+    assert_eq!(
+        completion_limiter_key(&req),
+        CompletionKey::Codex {
+            cmd: "/opt/codex/bin/codex".to_string(),
+            model: "gpt-5.5".to_string(),
         }
     );
 }
