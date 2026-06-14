@@ -2,8 +2,6 @@ package com.axon.app.ui.common
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,7 +15,6 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,18 +44,12 @@ fun DrawerSubItem(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = AxonTheme.colors
-    val clickModifier = if (onClick != null) {
-        Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClick,
-        )
-    } else Modifier
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(64.dp)
+            .then(if (onClick != null) Modifier.pressScale(onClick = onClick) else Modifier)
             .clip(RoundedCornerShape(9.dp))
             .background(
                 if (onClick != null) Color.Transparent
@@ -70,7 +61,6 @@ fun DrawerSubItem(
                 else Color.Transparent,
                 RoundedCornerShape(9.dp),
             )
-            .then(clickModifier)
             .padding(horizontal = 13.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
