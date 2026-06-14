@@ -262,6 +262,7 @@ Discovery and ingest:
 Operations:
 
 - `setup`
+- `update` — install the latest GitHub Release binary and sync the local container
 - `doctor`
 - `debug`
 - `serve`

@@ -60,6 +60,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "compose",
             "completions",
             "config",
+            "update",
             "palette",
         ],
     ),

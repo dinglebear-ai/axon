@@ -263,6 +263,30 @@ compatibility = "advanced"
 reason = "Development Compose bind-mount source for the locally built Axon binary directory."
 
 [[env]]
+key = "AXON_UPDATE_FILE_RELEASE_DIR"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side update smoke-test override pointing at a directory with local release assets."
+
+[[env]]
+key = "AXON_UPDATE_INSTALL_PATH"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side axon update install destination override; useful for controlled local installs and smoke tests."
+
+[[env]]
 key = "AXON_BASE_ENV_FILE"
 classification = "external/test-only"
 runtime_placement = "not-runtime"

@@ -252,6 +252,31 @@ Restart `axon serve` locally as in the standard deploy procedure.
 
 ## Upgrade Procedure
 
+### Updating the local Axon binary from GitHub Releases
+
+Use `axon update` to install the latest published Linux release binary into
+`~/.local/bin/axon` and restart the local Axon container against the same
+binary:
+
+```bash
+axon update
+```
+
+Useful variants:
+
+```bash
+axon update --version v5.9.2      # install a specific release tag
+axon update --no-container        # update PATH only
+axon update --force               # reinstall even if the version already matches
+```
+
+The updater currently supports the `axon-linux-x86_64.tar.gz` GitHub Release
+asset and requires the matching `.sha256` sidecar. It downloads into a temporary
+directory, verifies the checksum, installs atomically over the destination, and
+only then syncs the Compose service. For local smoke tests or CI, set
+`AXON_UPDATE_FILE_RELEASE_DIR` to a directory containing those two release files
+and `AXON_UPDATE_INSTALL_PATH` to a temporary destination.
+
 For code/config upgrades:
 
 1. Review release diff (especially schema, env vars, and worker tuning). Note any new `AXON_HEADLESS_GEMINI_*`, `AXON_LLM_*`, or test infrastructure variables.
