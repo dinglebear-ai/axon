@@ -102,6 +102,35 @@ fn response_error_propagates() {
 }
 
 #[test]
+fn malformed_protocol_error_is_bounded_and_redacted() {
+    let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
+    let secret = format!(
+        "{{ bad json {} }}",
+        "sk-abcdefghijklmnopqrstuvwxyz0123456789"
+    );
+
+    let err = state.handle_line(&secret, &mut no_delta).unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("[REDACTED]"));
+    assert!(text.len() < 600);
+    assert!(!text.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
+}
+
+#[test]
+fn json_rpc_error_is_summarized_without_raw_payload_echo() {
+    let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
+    let line = r#"{"id":2,"error":{"message":"failed with sk-abcdefghijklmnopqrstuvwxyz0123456789","data":{"prompt":"secret prompt"}}}"#;
+
+    let err = state.handle_line(line, &mut no_delta).unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("[REDACTED]"));
+    assert!(!text.contains("secret prompt"));
+    assert!(!text.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
+}
+
+#[test]
 fn deltas_accumulate_and_invoke_callback() {
     let mut state = new_state();
     let mut seen = String::new();

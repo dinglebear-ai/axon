@@ -97,6 +97,14 @@ fn generic_synthesis_prompt_omits_skill_frontmatter_and_activation() {
 }
 
 #[test]
+fn codex_app_server_uses_direct_synthesis_prompt() {
+    let prompt = synthesis_prompt_for_backend(crate::core::llm::LlmBackendKind::CodexAppServer);
+
+    assert!(!prompt.contains("Use the axon-rag-synthesize skill"));
+    assert!(prompt.contains("provided context"));
+}
+
+#[test]
 fn gemini_synthesis_prompt_keeps_activation_but_strips_frontmatter() {
     let prompt = synthesis_prompt_for_gemini();
     assert!(

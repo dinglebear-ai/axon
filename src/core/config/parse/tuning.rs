@@ -275,7 +275,9 @@ enum AskModelTier {
 
 fn ask_model_tier(cfg: &Config) -> AskModelTier {
     use crate::core::llm::LlmBackendKind;
-    let model = cfg.openai_model.to_ascii_lowercase();
+    let model = crate::core::llm::configured_model_from_config(cfg)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     let is_google =
         matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless) || model.contains("gemini");
     if is_google || model.contains("claude") {

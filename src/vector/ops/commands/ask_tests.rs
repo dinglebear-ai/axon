@@ -196,6 +196,31 @@ fn validate_ask_llm_config_rejects_openai_compat_without_base_url() {
 }
 
 #[test]
+fn validate_ask_llm_config_accepts_codex_app_server_config() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::CodexAppServer,
+        codex_cmd: "codex".to_string(),
+        codex_model: "gpt-5.5".to_string(),
+        ..Config::default()
+    };
+
+    validate_ask_llm_config(&cfg).expect("codex config should validate");
+}
+
+#[test]
+fn validate_ask_llm_config_rejects_empty_codex_cmd() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::CodexAppServer,
+        codex_cmd: "   ".to_string(),
+        codex_model: "gpt-5.5".to_string(),
+        ..Config::default()
+    };
+
+    let err = validate_ask_llm_config(&cfg).unwrap_err();
+    assert!(err.to_string().contains("AXON_CODEX_CMD"));
+}
+
+#[test]
 fn ask_result_defaults_missing_warnings_to_empty() {
     let result: AskResult = serde_json::from_value(serde_json::json!({
         "query": "what is axon?",

@@ -587,6 +587,42 @@ compatibility = "canonical"
 reason = "Gemini model override for direct chat. Falls back to the synthesis model when unset."
 
 [[env]]
+key = "AXON_CODEX_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Legacy alias for the Codex app-server synthesis model. Non-secret runtime selector."
+
+[[env]]
+key = "AXON_SYNTHESIS_CODEX_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Codex app-server model override for RAG synthesis. Non-secret runtime selector."
+
+[[env]]
+key = "AXON_CODEX_COMPLETION_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Max concurrent Codex app-server child completions. Defaults lower because each completion spawns a child process."
+
+[[env]]
 key = "AXON_LLM_COMPLETION_CONCURRENCY"
 classification = "keep-env"
 runtime_placement = "both"

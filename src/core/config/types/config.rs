@@ -321,6 +321,18 @@ pub struct Config {
     /// Source HOME for Gemini CLI auth isolation. Env: `AXON_HEADLESS_GEMINI_HOME`.
     pub headless_gemini_home: Option<PathBuf>,
 
+    /// Codex CLI command for app-server LLM synthesis. Env: `AXON_CODEX_CMD`.
+    pub codex_cmd: String,
+
+    /// Source CODEX_HOME for Codex auth isolation. Env: `AXON_CODEX_HOME`.
+    pub codex_home: Option<PathBuf>,
+
+    /// Codex-specific model override for synthesis. Env: `AXON_SYNTHESIS_CODEX_MODEL` or `AXON_CODEX_MODEL`.
+    pub codex_model: String,
+
+    /// Max concurrent Codex app-server completions. Env: `AXON_CODEX_COMPLETION_CONCURRENCY`.
+    pub codex_completion_concurrency: usize,
+
     /// Max concurrent LLM completion requests across the selected backend. Env: `AXON_LLM_COMPLETION_CONCURRENCY`.
     pub llm_completion_concurrency: usize,
 

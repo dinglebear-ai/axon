@@ -39,8 +39,16 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
                     anyhow::anyhow!(
                         "AXON_SYNTHESIS_OPENAI_MODEL is required for ask (legacy alias: AXON_OPENAI_MODEL)"
                     )
-                })?;
+            })?;
             Ok(())
+        }
+        llm::LlmBackendKind::CodexAppServer => {
+            cfg.codex_cmd
+                .trim()
+                .is_empty()
+                .then(|| anyhow::anyhow!("AXON_CODEX_CMD must not be empty"))
+                .map_or(Ok(()), Err)?;
+            llm::codex_app_server::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
         }
     }
 }

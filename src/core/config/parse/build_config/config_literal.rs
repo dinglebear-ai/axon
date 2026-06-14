@@ -224,6 +224,13 @@ fn populate_services_and_ask_basics(
     cfg.headless_gemini_home = non_empty_env("AXON_HEADLESS_GEMINI_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| env::var("HOME").ok().map(std::path::PathBuf::from));
+    cfg.codex_cmd = non_empty_env("AXON_CODEX_CMD").unwrap_or_else(|| "codex".to_string());
+    cfg.codex_home = non_empty_env("AXON_CODEX_HOME").map(std::path::PathBuf::from);
+    cfg.codex_model = non_empty_env("AXON_SYNTHESIS_CODEX_MODEL")
+        .or_else(|| non_empty_env("AXON_CODEX_MODEL"))
+        .unwrap_or_default();
+    cfg.codex_completion_concurrency =
+        parse_positive_usize_env("AXON_CODEX_COMPLETION_CONCURRENCY", 1)?;
     cfg.llm_completion_concurrency =
         parse_positive_usize_env("AXON_LLM_COMPLETION_CONCURRENCY", 4)?;
     cfg.llm_completion_timeout_secs =

@@ -155,6 +155,17 @@ fn parse_response_accepts_plain_text_contract() {
 }
 
 #[test]
+fn codex_backend_preserves_full_research_sources() {
+    let cfg = Config {
+        llm_backend: llm::LlmBackendKind::CodexAppServer,
+        codex_model: "gpt-5.5".to_string(),
+        ..Config::default()
+    };
+
+    assert!(source::preserve_full_research_sources(&cfg));
+}
+
+#[test]
 fn fallback_summary_uses_extractions_when_synthesis_unavailable() {
     let extractions = vec![ext(
         "https://example.com",
