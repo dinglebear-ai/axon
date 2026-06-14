@@ -123,11 +123,7 @@ pub fn configured_model_for_config(cfg: &Config, purpose: LlmModelPurpose) -> Op
             LlmModelPurpose::Chat => non_empty(cfg.openai_chat_model.clone())
                 .or_else(|| non_empty(cfg.openai_model.clone())),
         },
-        LlmBackendKind::CodexAppServer => match purpose {
-            LlmModelPurpose::Synthesis | LlmModelPurpose::Chat => {
-                non_empty(cfg.codex_model.clone())
-            }
-        },
+        LlmBackendKind::CodexAppServer => non_empty(cfg.codex_model.clone()),
     }
 }
 
