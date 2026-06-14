@@ -1,5 +1,4 @@
 use crate::core::config::Config;
-use crate::core::llm;
 use crate::services::types::{
     ResearchExtraction, SourceInstructionTrust, SourceReputation, SourceType,
 };
@@ -14,7 +13,7 @@ pub(super) struct SourceMeta {
 }
 
 pub(super) fn build_extraction(
-    cfg: &Config,
+    _cfg: &Config,
     hit: &RawHit,
     full_content: Option<&str>,
     per_source: usize,
@@ -26,11 +25,7 @@ pub(super) fn build_extraction(
         hit.snippet.as_str()
     };
     let trimmed = content.trim();
-    let extracted = if preserve_full_research_sources(cfg) {
-        trimmed.to_string()
-    } else {
-        truncate_chars(trimmed, per_source).to_string()
-    };
+    let extracted = truncate_chars(trimmed, per_source).to_string();
     let meta = classify_source(&hit.url, &hit.title);
     ResearchExtraction {
         url: hit.url.clone(),
@@ -41,16 +36,6 @@ pub(super) fn build_extraction(
         instruction_trust: meta.instruction_trust,
         relevance_score: None,
     }
-}
-
-fn preserve_full_research_sources(cfg: &Config) -> bool {
-    use crate::core::llm::LlmBackendKind;
-    let configured = llm::configured_model_from_config(cfg)
-        .unwrap_or_else(|| cfg.openai_model.clone())
-        .to_ascii_lowercase();
-    matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless)
-        || configured.contains("gemini")
-        || configured.contains("opus")
 }
 
 pub(super) fn classify_source(url: &str, title: &str) -> SourceMeta {

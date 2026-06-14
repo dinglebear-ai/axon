@@ -2,8 +2,8 @@ mod home;
 mod stream;
 
 use super::common::{
-    HeadlessCommandRequest, HeadlessCommandSpec, PromptTransport, append_bounded_tail,
-    env_or_default, redacted_stderr_tail,
+    HeadlessCommandRequest, HeadlessCommandSpec, PromptTransport, env_or_default, joined_prompt,
+    kill_and_wait, read_bounded_stderr, redacted_stderr_tail,
 };
 use super::env::apply_env_allowlist;
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
@@ -15,7 +15,7 @@ use std::process::Stdio;
 use std::time::Duration;
 use stream::GeminiStreamState;
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
 
@@ -147,7 +147,7 @@ where
         .ok_or("failed to open Gemini headless stderr")?;
     let stderr_task = tokio::spawn(async move { read_bounded_stderr(stderr).await });
 
-    let timeout = completion_timeout(&req.backend);
+    let timeout = req.backend.completion_timeout();
     let mut parser = GeminiStreamState::default();
     let mut lines = BufReader::new(stdout).lines();
     let stream_result = match tokio::time::timeout(timeout, async {
@@ -362,43 +362,6 @@ pub async fn complete_text(
     req: CompletionRequest,
 ) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
     complete_streaming(req, |_| Ok(())).await
-}
-
-fn joined_prompt(system_prompt: Option<&str>, user_prompt: &str) -> String {
-    match system_prompt.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(system) => format!("{system}\n\n{user_prompt}"),
-        None => user_prompt.to_string(),
-    }
-}
-
-async fn kill_and_wait(child: &mut Child) -> String {
-    let kill_result = child.kill().await;
-    let wait_result = child.wait().await;
-    match (kill_result, wait_result) {
-        (Ok(()), Ok(status)) => format!("killed and reaped with {status}"),
-        (Ok(()), Err(wait_err)) => format!("killed but wait failed: {wait_err}"),
-        (Err(kill_err), Ok(status)) => format!("kill failed: {kill_err}; wait returned {status}"),
-        (Err(kill_err), Err(wait_err)) => {
-            format!("kill failed: {kill_err}; wait failed: {wait_err}")
-        }
-    }
-}
-
-async fn read_bounded_stderr(stderr: tokio::process::ChildStderr) -> Result<Vec<u8>, io::Error> {
-    let mut tail = Vec::new();
-    let mut reader = BufReader::new(stderr);
-    let mut chunk = [0u8; 1024];
-    loop {
-        let read = reader.read(&mut chunk).await?;
-        if read == 0 {
-            return Ok(tail);
-        }
-        append_bounded_tail(&mut tail, &chunk[..read]);
-    }
-}
-
-fn completion_timeout(config: &LlmBackendConfig) -> Duration {
-    Duration::from_secs(config.completion_timeout_secs.max(1))
 }
 
 #[cfg(test)]

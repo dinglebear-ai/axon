@@ -263,30 +263,6 @@ compatibility = "advanced"
 reason = "Development Compose bind-mount source for the locally built Axon binary directory."
 
 [[env]]
-key = "AXON_UPDATE_FILE_RELEASE_DIR"
-classification = "external/test-only"
-runtime_placement = "not-runtime"
-surfaces = ["src", "docs"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "advanced"
-reason = "Host-side update smoke-test override pointing at a directory with local release assets."
-
-[[env]]
-key = "AXON_UPDATE_INSTALL_PATH"
-classification = "trusted-operator-bootstrap"
-runtime_placement = "host-only"
-surfaces = ["src", "docs"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "advanced"
-reason = "Host-side axon update install destination override; useful for controlled local installs and smoke tests."
-
-[[env]]
 key = "AXON_BASE_ENV_FILE"
 classification = "external/test-only"
 runtime_placement = "not-runtime"
@@ -609,6 +585,42 @@ container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Gemini model override for direct chat. Falls back to the synthesis model when unset."
+
+[[env]]
+key = "AXON_CODEX_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Legacy alias for the Codex app-server synthesis model. Non-secret runtime selector."
+
+[[env]]
+key = "AXON_SYNTHESIS_CODEX_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Codex app-server model override for RAG synthesis. Non-secret runtime selector."
+
+[[env]]
+key = "AXON_CODEX_COMPLETION_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Max concurrent Codex app-server child completions. Defaults lower because each completion spawns a child process."
 
 [[env]]
 key = "AXON_LLM_COMPLETION_CONCURRENCY"
@@ -1334,7 +1346,7 @@ reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a ty
 key = "AXON_JOB_WAIT_TIMEOUT_SECS"
 classification = "keep-env"
 runtime_placement = "both"
-surfaces = ["src"]
+surfaces = ["src", "env-template", "docs"]
 secret = false
 url_or_path = false
 container_allowed = true
@@ -2712,15 +2724,15 @@ reason = "CLI shortcut env var read by `axon scrape` to force a specific vertica
 
 [[env]]
 key = "OPENAI_API_KEY"
-classification = "external/test-only"
-runtime_placement = "not-runtime"
-surfaces = ["scripts", "tests"]
+classification = "codex-child-auth"
+runtime_placement = "child-only"
+surfaces = ["src", "env-template", "docs"]
 secret = true
 url_or_path = false
 container_allowed = false
 toml_destination = ""
-compatibility = "external"
-reason = "Not part of the Axon runtime. Referenced only by standalone helper scripts and tests that assert removed OpenAI runtime env is ignored."
+compatibility = "advanced"
+reason = "Ignored by Axon config; optional auth fallback forwarded only to the isolated `codex app-server` child."
 
 [[env]]
 key = "OPENAI_BASE_URL"
@@ -2804,7 +2816,7 @@ url_or_path = false
 container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
-reason = "Selects the LLM completion backend: 'gemini-headless' (default) or 'openai-compat'. Non-secret runtime selector."
+reason = "Selects the LLM completion backend: 'gemini-headless' (default), 'openai-compat', or 'codex-app-server'. Non-secret runtime selector."
 
 [[env]]
 key = "AXON_OPENAI_BASE_URL"
@@ -2879,10 +2891,34 @@ compatibility = "canonical"
 reason = "Selects the active saved LLM provider profile before falling back to config.toml."
 
 [[env]]
+key = "AXON_UPDATE_INSTALL_PATH"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side axon update install destination override; useful for controlled local installs and smoke tests."
+
+[[env]]
+key = "AXON_UPDATE_FILE_RELEASE_DIR"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side update smoke-test override pointing at a directory with local release assets."
+
+[[env]]
 key = "AXON_CODEX_CMD"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"
-surfaces = ["src"]
+surfaces = ["src", "docs", "compose"]
 secret = false
 url_or_path = true
 container_allowed = false
@@ -2894,7 +2930,7 @@ reason = "Operator-supplied codex app-server executable path for the experimenta
 key = "AXON_CODEX_HOME"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"
-surfaces = ["src"]
+surfaces = ["src", "docs", "compose"]
 secret = false
 url_or_path = true
 container_allowed = false

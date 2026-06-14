@@ -10,6 +10,7 @@ mod home;
 mod protocol;
 
 use std::error::Error as StdError;
+use std::io;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
@@ -20,12 +21,13 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::task::JoinHandle;
 
 use crate::core::llm::headless::common::{
-    joined_prompt, kill_and_wait, read_bounded_stderr, redacted_stderr_tail,
+    joined_prompt, read_bounded_stderr, redacted_stderr_tail,
 };
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use protocol::{CodexStep, CodexStreamState};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
+const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub async fn complete_text(req: CompletionRequest) -> Result<CompletionResponse, BoxError> {
     complete_streaming(req, |_| Ok(())).await
@@ -79,21 +81,43 @@ where
     );
 
     let timeout = req.backend.completion_timeout();
-    let result = run_handshake(&mut state, &mut stdin, stdout, &mut on_delta, timeout).await;
+    let result = match tokio::time::timeout(
+        timeout,
+        run_handshake(&mut state, &mut stdin, stdout, &mut on_delta),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(format!("codex app-server timed out after {}s", timeout.as_secs()).into()),
+    };
 
     // `codex app-server` is a persistent process — it does not exit after a
     // turn — so terminate it explicitly regardless of outcome.
-    let cleanup = kill_and_wait(&mut child).await;
+    let cleanup = cleanup_codex_child(&mut child).await;
     let stderr_tail = collect_stderr(stderr_task).await;
 
-    match result {
+    match (result, cleanup) {
         // A completed turn can still fail `into_response` (no answer text). Carry
         // the already-collected stderr context into that error too, not just the
         // handshake-error path — it often explains an empty response.
-        Ok(()) => state
+        (Ok(()), Ok(_cleanup)) => state
             .into_response()
-            .map_err(|err| format!("{err}{}", stderr_suffix(&stderr_tail)).into()),
-        Err(err) => Err(format!("{err}; cleanup: {cleanup}{}", stderr_suffix(&stderr_tail)).into()),
+            .map_err(|err| format!("{err}{}", stderr_diagnostics_suffix(&stderr_tail)).into()),
+        (Ok(()), Err(cleanup_err)) => Err(format!(
+            "codex app-server completed but cleanup failed: {cleanup_err}{}",
+            stderr_diagnostics_suffix(&stderr_tail)
+        )
+        .into()),
+        (Err(err), Ok(cleanup)) => Err(format!(
+            "{err}; cleanup: {cleanup}{}",
+            stderr_diagnostics_suffix(&stderr_tail)
+        )
+        .into()),
+        (Err(err), Err(cleanup_err)) => Err(format!(
+            "{err}; cleanup failed: {cleanup_err}{}",
+            stderr_diagnostics_suffix(&stderr_tail)
+        )
+        .into()),
     }
 }
 
@@ -102,37 +126,28 @@ async fn run_handshake<F>(
     stdin: &mut ChildStdin,
     stdout: ChildStdout,
     on_delta: &mut F,
-    timeout: Duration,
 ) -> Result<(), BoxError>
 where
     F: FnMut(&str) -> Result<(), BoxError> + Send,
 {
     write_line(stdin, &state.initial_line()).await?;
     let mut lines = BufReader::new(stdout).lines();
-    let loop_fut = async {
-        loop {
-            match lines.next_line().await {
-                Ok(Some(line)) => match state.handle_line(&line, on_delta)? {
-                    CodexStep::Continue => {}
-                    CodexStep::Send(messages) => {
-                        for message in &messages {
-                            write_line(stdin, message).await?;
-                        }
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) => match state.handle_line(&line, on_delta)? {
+                CodexStep::Continue => {}
+                CodexStep::Send(messages) => {
+                    for message in &messages {
+                        write_line(stdin, message).await?;
                     }
-                    CodexStep::Done => return Ok(()),
-                },
-                Ok(None) => {
-                    return Err::<(), BoxError>(
-                        "codex app-server stream ended before the turn completed".into(),
-                    );
                 }
-                Err(err) => return Err(Box::new(err) as BoxError),
+                CodexStep::Done => return Ok(()),
+            },
+            Ok(None) => {
+                return Err("codex app-server stream ended before the turn completed".into());
             }
+            Err(err) => return Err(Box::new(err) as BoxError),
         }
-    };
-    match tokio::time::timeout(timeout, loop_fut).await {
-        Ok(result) => result,
-        Err(_) => Err(format!("codex app-server timed out after {}s", timeout.as_secs()).into()),
     }
 }
 
@@ -150,10 +165,82 @@ fn spawn_codex_child(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     home::apply_codex_env_allowlist(&mut command);
-    command.env("CODEX_HOME", home.path());
+    home::apply_codex_home_env(&mut command, home.path());
+    configure_codex_child_isolation(&mut command);
     command
         .spawn()
         .map_err(|err| format!("failed to spawn codex app-server: {err}").into())
+}
+
+#[cfg(unix)]
+fn configure_codex_child_isolation(command: &mut Command) {
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn configure_codex_child_isolation(_command: &mut Command) {}
+
+#[cfg(unix)]
+async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
+    let kill_result = match child.id() {
+        Some(pid) => kill_process_group(pid).await,
+        None => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "codex child pid unavailable",
+        )),
+    };
+    let wait_result = tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await;
+    match (kill_result, wait_result) {
+        (Ok(()), Ok(Ok(status))) => Ok(format!("killed process group and reaped with {status}")),
+        (Ok(()), Ok(Err(wait_err))) => {
+            Err(format!("killed process group but wait failed: {wait_err}"))
+        }
+        (Ok(()), Err(_)) => Err(format!(
+            "killed process group but wait timed out after {}s",
+            CLEANUP_TIMEOUT.as_secs()
+        )),
+        (Err(kill_err), Ok(Ok(status))) => Err(format!(
+            "process group kill failed: {kill_err}; wait returned {status}"
+        )),
+        (Err(kill_err), Ok(Err(wait_err))) => Err(format!(
+            "process group kill failed: {kill_err}; wait failed: {wait_err}"
+        )),
+        (Err(kill_err), Err(_)) => Err(format!(
+            "process group kill failed: {kill_err}; wait timed out after {}s",
+            CLEANUP_TIMEOUT.as_secs()
+        )),
+    }
+}
+
+#[cfg(unix)]
+async fn kill_process_group(pid: u32) -> Result<(), io::Error> {
+    let status = Command::new("kill")
+        .arg("-KILL")
+        .arg("--")
+        .arg(format!("-{pid}"))
+        .status()
+        .await?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("kill exited with {status}")))
+    }
+}
+
+#[cfg(not(unix))]
+async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
+    child
+        .kill()
+        .await
+        .map_err(|err| format!("failed to kill codex child: {err}"))?;
+    match tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await {
+        Ok(Ok(status)) => Ok(format!("killed child and reaped with {status}")),
+        Ok(Err(err)) => Err(format!("killed child but wait failed: {err}")),
+        Err(_) => Err(format!(
+            "killed child but wait timed out after {}s",
+            CLEANUP_TIMEOUT.as_secs()
+        )),
+    }
 }
 
 fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {
@@ -163,6 +250,17 @@ fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {
     }
     // Only validate explicit paths; bare command names resolve via PATH.
     if !(program.contains('/') || program.contains('\\')) {
+        if crate::core::config::parse::docker::running_in_container()
+            && matches!(
+                backend.kind,
+                crate::core::llm::LlmBackendKind::CodexAppServer
+            )
+        {
+            return Err(
+                "AXON_LLM_BACKEND=codex-app-server is host-only in the production container unless Codex is installed in the image; set AXON_CODEX_CMD to an executable container path or run this backend from the host"
+                    .into(),
+            );
+        }
         return Ok(());
     }
     let metadata = std::fs::symlink_metadata(Path::new(program))
@@ -190,8 +288,24 @@ async fn write_line(stdin: &mut ChildStdin, line: &str) -> Result<(), BoxError> 
     Ok(())
 }
 
-async fn collect_stderr(task: JoinHandle<Vec<u8>>) -> Vec<u8> {
-    task.await.unwrap_or_default()
+async fn collect_stderr(task: JoinHandle<Result<Vec<u8>, io::Error>>) -> Result<Vec<u8>, String> {
+    let mut task = task;
+    match tokio::time::timeout(Duration::from_millis(200), &mut task).await {
+        Ok(Ok(Ok(stderr))) => Ok(stderr),
+        Ok(Ok(Err(err))) => Err(format!("failed to read codex stderr: {err}")),
+        Ok(Err(err)) => Err(format!("failed to join codex stderr reader: {err}")),
+        Err(_) => {
+            task.abort();
+            Err("timed out collecting codex stderr after cleanup".to_string())
+        }
+    }
+}
+
+fn stderr_diagnostics_suffix(stderr: &Result<Vec<u8>, String>) -> String {
+    match stderr {
+        Ok(stderr) => stderr_suffix(stderr),
+        Err(err) => format!("; stderr diagnostics unavailable: {err}"),
+    }
 }
 
 fn stderr_suffix(stderr: &[u8]) -> String {

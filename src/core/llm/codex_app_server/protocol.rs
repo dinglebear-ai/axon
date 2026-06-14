@@ -26,6 +26,7 @@ const CLIENT_TITLE: &str = "Axon";
 const ID_INITIALIZE: i64 = 0;
 const ID_THREAD_START: i64 = 1;
 const ID_TURN_START: i64 = 2;
+const PROTOCOL_ERROR_LIMIT: usize = 512;
 
 /// The first message every connection must send.
 #[must_use]
@@ -133,8 +134,12 @@ impl CodexStreamState {
         if trimmed.is_empty() {
             return Ok(CodexStep::Continue);
         }
-        let value: Value = serde_json::from_str(trimmed)
-            .map_err(|err| format!("malformed codex app-server message: {err}: {trimmed}"))?;
+        let value: Value = serde_json::from_str(trimmed).map_err(|err| {
+            format!(
+                "malformed codex app-server message: {err}: {}",
+                sanitize_protocol_error(trimmed)
+            )
+        })?;
 
         let method = value.get("method").and_then(Value::as_str);
         let id = value.get("id");
@@ -153,7 +158,12 @@ impl CodexStreamState {
 
     fn handle_response(&mut self, id: &Value, value: &Value) -> Result<CodexStep, BoxError> {
         if let Some(err) = value.get("error") {
-            return Err(format!("codex app-server request {id} failed: {err}").into());
+            let message = err
+                .get("message")
+                .and_then(Value::as_str)
+                .map(sanitize_protocol_error)
+                .unwrap_or_else(|| sanitize_protocol_error(&err.to_string()));
+            return Err(format!("codex app-server request {id} failed: {message}").into());
         }
         match id.as_i64() {
             Some(ID_INITIALIZE) => Ok(CodexStep::Send(thread_start_lines(
@@ -241,7 +251,7 @@ impl CodexStreamState {
             .and_then(|t| t.get("error"))
             .and_then(|e| e.get("message"))
             .and_then(Value::as_str)
-            .map(str::to_string)
+            .map(sanitize_protocol_error)
             .or_else(|| self.last_error.clone())
             .unwrap_or_else(|| "turn did not complete successfully".to_string());
         Err(format!("codex app-server turn failed: {message}").into())
@@ -254,6 +264,7 @@ impl CodexStreamState {
             .and_then(Value::as_str)
             .unwrap_or("unknown error")
             .to_string();
+        let message = sanitize_protocol_error(&message);
         let will_retry = params
             .and_then(|p| p.get("willRetry"))
             .and_then(Value::as_bool)
@@ -282,6 +293,25 @@ impl CodexStreamState {
             usage: self.usage,
         })
     }
+}
+
+fn sanitize_protocol_error(text: &str) -> String {
+    let mut redacted = crate::core::llm::headless::common::redact_for_error(text);
+    if redacted.len() > PROTOCOL_ERROR_LIMIT {
+        truncate_utf8_boundary(&mut redacted, PROTOCOL_ERROR_LIMIT);
+        redacted.push_str("...");
+    }
+    redacted
+}
+
+fn truncate_utf8_boundary(value: &mut String, max_bytes: usize) {
+    let end = value
+        .char_indices()
+        .map(|(idx, _)| idx)
+        .take_while(|idx| *idx <= max_bytes)
+        .last()
+        .unwrap_or(0);
+    value.truncate(end);
 }
 
 fn decline_server_request(id: &Value) -> CodexStep {

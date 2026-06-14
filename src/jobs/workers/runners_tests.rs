@@ -139,6 +139,46 @@ fn config_snapshot_omits_secrets() {
 }
 
 #[test]
+fn config_snapshot_preserves_codex_llm_backend_fields() {
+    let worker = Config {
+        codex_cmd: "/usr/local/bin/codex".to_string(),
+        codex_home: Some(PathBuf::from("/home/worker/.codex")),
+        ..Config::default()
+    };
+    let cfg = Config {
+        llm_backend: crate::core::llm::LlmBackendKind::CodexAppServer,
+        codex_cmd: "/opt/codex/bin/codex".to_string(),
+        codex_home: Some(PathBuf::from("/home/example/.codex")),
+        codex_model: "gpt-5.5".to_string(),
+        codex_completion_concurrency: 2,
+        ..Config::default()
+    };
+
+    let json = config_snapshot_json(&cfg).expect("snapshot json");
+    assert!(
+        !json.contains("/home/example/.codex"),
+        "submitter-local codex_home must not be serialized"
+    );
+    assert!(
+        !json.contains("/opt/codex/bin/codex"),
+        "submitter-local codex_cmd must not be serialized"
+    );
+    let restored = apply_config_snapshot(&worker, &json).expect("apply snapshot");
+
+    assert_eq!(
+        restored.llm_backend,
+        crate::core::llm::LlmBackendKind::CodexAppServer
+    );
+    assert_eq!(restored.codex_cmd, "/usr/local/bin/codex");
+    assert_eq!(
+        restored.codex_home,
+        Some(PathBuf::from("/home/worker/.codex"))
+    );
+    assert_eq!(restored.codex_model, "gpt-5.5");
+    assert_eq!(restored.codex_completion_concurrency, 2);
+}
+
+#[test]
 fn config_snapshot_maps_default_output_dir_when_container_env_is_set() {
     let mut submitted = Config::test_default();
     submitted.output_dir = PathBuf::from("/home/jmagar/.axon/output");

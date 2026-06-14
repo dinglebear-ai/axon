@@ -34,6 +34,28 @@ fn codex_model_gets_four_hundred_thousand_chars() {
 }
 
 #[test]
+fn codex_backend_gets_medium_context_budget() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::CodexAppServer,
+        codex_model: "gpt-5.5".to_string(),
+        ..Config::default_minimal()
+    };
+
+    assert_eq!(model_context_char_budget(&cfg), 400_000);
+}
+
+#[test]
+fn codex_backend_without_explicit_model_gets_medium_context_budget() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::CodexAppServer,
+        codex_model: String::new(),
+        ..Config::default_minimal()
+    };
+
+    assert_eq!(model_context_char_budget(&cfg), 400_000);
+}
+
+#[test]
 fn gpt_models_get_medium_context_budget() {
     let cfg = cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5.5");
     assert_eq!(model_context_char_budget(&cfg), 400_000);
@@ -107,25 +129,25 @@ fn candidate_pool_scales_with_tier() {
 fn model_tier_classifies_known_families() {
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "claude-opus-4-8")),
-        AskModelTier::Large
+        SynthesisModelTier::Large
     );
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5-codex")),
-        AskModelTier::Medium
+        SynthesisModelTier::Medium
     );
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "gpt-5.5")),
-        AskModelTier::Medium
+        SynthesisModelTier::Medium
     );
     assert_eq!(
         ask_model_tier(&cfg_with(
             LlmBackendKind::OpenAiCompat,
             "ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M"
         )),
-        AskModelTier::LocalGemma
+        SynthesisModelTier::LocalGemma
     );
     assert_eq!(
         ask_model_tier(&cfg_with(LlmBackendKind::OpenAiCompat, "mistral-large")),
-        AskModelTier::Small
+        SynthesisModelTier::Small
     );
 }

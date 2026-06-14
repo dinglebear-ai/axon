@@ -106,6 +106,10 @@ impl Default for Config {
             llm_backend: crate::core::llm::LlmBackendKind::GeminiHeadless,
             headless_gemini_cmd: "gemini".to_string(),
             headless_gemini_home: None,
+            codex_cmd: "codex".to_string(),
+            codex_home: None,
+            codex_model: String::new(),
+            codex_completion_concurrency: 1,
             llm_completion_concurrency: 4,
             llm_completion_timeout_secs: 300,
             openai_base_url: String::new(),
@@ -382,6 +386,13 @@ impl fmt::Debug for Config {
             )
             .field("headless_gemini_cmd", &self.headless_gemini_cmd)
             .field("headless_gemini_home", &self.headless_gemini_home)
+            .field("codex_cmd", &self.codex_cmd)
+            .field("codex_home", &self.codex_home)
+            .field("codex_model", &self.codex_model)
+            .field(
+                "codex_completion_concurrency",
+                &self.codex_completion_concurrency,
+            )
             .field("openai_base_url", &self.openai_base_url)
             .field("openai_api_key", &"[REDACTED]")
             .field("openai_model", &self.openai_model)

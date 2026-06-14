@@ -14,6 +14,7 @@ fn backend(server: &MockServer, api_key: Option<&str>) -> LlmBackendConfig {
         completion_concurrency: 1,
         completion_timeout_secs: 30,
         configured: true,
+        ..LlmBackendConfig::default()
     }
 }
 
@@ -136,6 +137,7 @@ fn openai_compat_rejects_chat_completions_suffix() {
         completion_concurrency: 1,
         completion_timeout_secs: 30,
         configured: true,
+        ..LlmBackendConfig::default()
     };
 
     let err = openai_chat_completions_url(&config).expect_err("suffix should be rejected");

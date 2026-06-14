@@ -13,6 +13,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub(crate) enum CompletionKey {
     Gemini { cmd: String, model: String },
     OpenAi { base_url: String, model: String },
+    Codex { cmd: String, model: String },
     Default,
 }
 
