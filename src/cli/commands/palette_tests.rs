@@ -22,19 +22,23 @@ fn expand_home_bare_tilde_returns_home() {
 }
 
 #[test]
-fn find_desktop_manifest_finds_from_repo_root() {
+fn find_palette_dir_finds_from_repo_root() {
     // This test only passes when run from inside the axon repo tree.
-    // Skip when apps/desktop/Cargo.toml isn't present (e.g. shallow CI clones).
+    // Skip when apps/palette-tauri isn't present (e.g. shallow CI clones).
     let cwd = std::env::current_dir().unwrap();
-    let expected = cwd.join("apps/desktop/Cargo.toml");
+    let expected = cwd.join("apps/palette-tauri/src-tauri/Cargo.toml");
     if !expected.exists() {
         return; // Graceful skip.
     }
-    let found = find_desktop_manifest().unwrap();
-    assert!(found.is_file(), "should find a file at {}", found.display());
+    let found = find_palette_dir().unwrap();
     assert!(
-        found.ends_with("apps/desktop/Cargo.toml"),
-        "expected apps/desktop/Cargo.toml, got {}",
+        found.join("src-tauri/Cargo.toml").is_file(),
+        "should find src-tauri/Cargo.toml under {}",
+        found.display()
+    );
+    assert!(
+        found.ends_with("apps/palette-tauri"),
+        "expected apps/palette-tauri, got {}",
         found.display()
     );
 }
@@ -45,7 +49,7 @@ fn write_desktop_entry_at_produces_valid_ini() {
 
     let dir = tempfile::tempdir().expect("tempdir");
     let dest = dir.path().join("test.desktop");
-    let binary = PathBuf::from("/usr/local/bin/axon-palette");
+    let binary = PathBuf::from("/usr/local/bin/axon-palette-tauri");
 
     write_desktop_entry_at(&binary, &dest).unwrap();
 
@@ -57,7 +61,7 @@ fn write_desktop_entry_at_produces_valid_ini() {
 
     assert!(content.contains("[Desktop Entry]"), "missing header");
     assert!(
-        content.contains("Exec=/usr/local/bin/axon-palette"),
+        content.contains("Exec=/usr/local/bin/axon-palette-tauri"),
         "missing Exec line"
     );
     assert!(content.contains("Type=Application"), "missing Type");

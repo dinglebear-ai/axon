@@ -1,13 +1,14 @@
 //! `axon palette` — resolve, launch, and optionally self-install the axon-palette desktop binary.
 //!
-//! The palette binary is a separate GPUI application (`apps/desktop`). It must NOT be merged into
-//! this workspace — its wasm-bindgen version conflicts with reqwest's locked 0.2.118.
+//! The palette binary is the Tauri application in `apps/palette-tauri`. It builds as a standalone
+//! workspace (`apps/palette-tauri/src-tauri` declares its own `[workspace]`) and is distributed as
+//! a portable single binary (`axon-palette-tauri[.exe]`).
 //!
 //! Subcommands:
 //!   axon palette                     — find and launch (auto-install prompt if missing)
 //!   axon palette launch              — same as bare invocation
 //!   axon palette install             — download release tarball matching this axon version
-//!   axon palette install --method build  — build from source
+//!   axon palette install --method build  — build from source (requires pnpm + the Tauri toolchain)
 //!   axon palette desktop             — write/refresh .desktop entry (Linux only)
 //!   axon palette autostart           — write/refresh autostart entry (Linux only)
 
@@ -19,9 +20,9 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 #[cfg(windows)]
-const PALETTE_BIN: &str = "axon-palette.exe";
+const PALETTE_BIN: &str = "axon-palette-tauri.exe";
 #[cfg(not(windows))]
-const PALETTE_BIN: &str = "axon-palette";
+const PALETTE_BIN: &str = "axon-palette-tauri";
 
 pub async fn run_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let sub = cfg.positional.first().map(String::as_str);
@@ -136,19 +137,21 @@ fn build_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
             muted("building axon-palette from source (may take several minutes)…")
         );
     }
-    let manifest = find_desktop_manifest()?;
-    let status = std::process::Command::new("cargo")
-        .args(["build", "--release", "--manifest-path"])
-        .arg(&manifest)
-        .status()
-        .map_err(|e| format!("cargo build failed: {e}"))?;
-    if !status.success() {
-        return Err("cargo build of axon-palette failed; see output above".into());
-    }
-    let built = manifest
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join("target/release")
+    let palette_dir = find_palette_dir()?;
+
+    // The Tauri palette needs its frontend deps and bundled assets before the
+    // Rust binary can compile. `pnpm install` then `tauri build --no-bundle`
+    // (which runs the frontend `beforeBuildCommand`) produces the portable
+    // binary without packaging installers.
+    run_in("pnpm", &["install", "--frozen-lockfile"], &palette_dir)?;
+    run_in(
+        "pnpm",
+        &["exec", "tauri", "build", "--no-bundle", "--ci"],
+        &palette_dir,
+    )?;
+
+    let built = palette_dir
+        .join("src-tauri/target/release")
         .join(PALETTE_BIN);
     let dest_dir = palette_install_dir()?;
     std::fs::create_dir_all(&dest_dir)?;
@@ -324,28 +327,41 @@ fn expand_home(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-/// Walk up from the running binary to find `apps/desktop/Cargo.toml`.
-fn find_desktop_manifest() -> Result<PathBuf, Box<dyn Error>> {
+/// Run a command in `dir`, mapping a non-zero exit or spawn failure to an error.
+fn run_in(program: &str, args: &[&str], dir: &Path) -> Result<(), Box<dyn Error>> {
+    let status = std::process::Command::new(program)
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .map_err(|e| format!("failed to run `{program}`: {e} (is it installed and on PATH?)"))?;
+    if !status.success() {
+        return Err(format!("`{program} {}` failed; see output above", args.join(" ")).into());
+    }
+    Ok(())
+}
+
+/// Walk up from the running binary to find the `apps/palette-tauri` source tree.
+fn find_palette_dir() -> Result<PathBuf, Box<dyn Error>> {
     let start = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let mut cur = start.as_path();
     for _ in 0..8 {
-        let m = cur.join("apps/desktop/Cargo.toml");
-        if m.is_file() {
-            return Ok(m);
+        let dir = cur.join("apps/palette-tauri");
+        if dir.join("src-tauri/Cargo.toml").is_file() {
+            return Ok(dir);
         }
         match cur.parent() {
             Some(p) => cur = p,
             None => break,
         }
     }
-    let cwd = std::env::current_dir()?.join("apps/desktop/Cargo.toml");
-    if cwd.is_file() {
+    let cwd = std::env::current_dir()?.join("apps/palette-tauri");
+    if cwd.join("src-tauri/Cargo.toml").is_file() {
         return Ok(cwd);
     }
-    Err("cannot find apps/desktop/Cargo.toml; run from the axon repo root".into())
+    Err("cannot find apps/palette-tauri; run from the axon repo root".into())
 }
 
 /// Version-matched, platform-aware asset URLs. Uses the running binary's own

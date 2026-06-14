@@ -410,7 +410,7 @@ Once a job reaches a terminal state, `GET <status_url>` returns:
 
 Terminal statuses: `completed`, `failed`, `canceled`, `cancelled`.
 
-App formatters (`formatting_rest.rs` on desktop, `formatCommandResponse` in `apps/web/app/page.tsx`) detect the `job` key and branch to the terminal-result rendering path. Zero-value metrics and sub-second elapsed times are omitted. The target URL or ingest source is shown as the final line.
+App formatters (the Tauri palette's `apps/palette-tauri/src/lib/{payload,format,crawlJob}.ts`, `formatCommandResponse` in `apps/web/app/page.tsx`) detect the `job` key and branch to the terminal-result rendering path. Zero-value metrics and sub-second elapsed times are omitted. The target URL or ingest source is shown as the final line.
 
 ### Artifact handles
 
@@ -436,13 +436,8 @@ Apps use `relative_path` to construct a safe URL: `/v1/artifacts/<relative_path>
 
 ### Coverage
 
-| Behavior | Test file | Tests |
+| Behavior | Test file | Run |
 |---|---|---|
-| Accepted-job response → poll path extraction | `apps/desktop/src/ui_commands_tests.rs` | `accepted_job_poll_path_*` |
-| Terminal status detection | `apps/desktop/src/ui_commands_tests.rs` | `terminal_statuses_are_identified_correctly` |
-| Async command classification | `apps/desktop/src/ui_commands_tests.rs` | `async_job_commands_are_identified_correctly` |
-| Terminal job result formatting (desktop) | `apps/desktop/src/output/formatting_rest_tests.rs` | `job_terminal_result_*` |
-| Accepted-job fallback still shows job_id | `apps/desktop/src/output/formatting_rest_tests.rs` | `job_start_result_accepted_still_shows_job_id` |
-| Screenshot artifact path construction | `apps/desktop/src/ui_commands_tests.rs` | `screenshot_artifact_path_*` |
-| Screenshot artifact formatting (no raw paths) | `apps/desktop/src/output/formatting_rest_tests.rs` | `screenshot_with_artifact_handle_*`, `screenshot_without_artifact_handle_*` |
+| Accepted-job poll + terminal status handling | `apps/palette-tauri/src/lib/crawlJob.test.ts`, `axonClient.test.ts` | `pnpm --dir apps/palette-tauri test` |
+| Terminal job result + artifact formatting | `apps/palette-tauri/src/lib/format.test.ts`, `components/palette/OperationResultView.test.tsx` | `pnpm --dir apps/palette-tauri test` |
 | Web panel TypeScript types + build | `apps/web/` | `npx tsc --noEmit` + `npm run build` |
