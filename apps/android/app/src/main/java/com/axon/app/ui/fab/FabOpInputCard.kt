@@ -2,6 +2,10 @@ package com.axon.app.ui.fab
 
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,7 +28,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -52,10 +58,26 @@ fun FabOpInputCard(
     val keyboardController = LocalSoftwareKeyboardController.current
     val colors = AxonTheme.colors
     val tone = colors.toneOf(if (op.isAsync) AxonTone.Orange else AxonTone.Cyan)
+    val canSend = input.isNotBlank()
 
     LaunchedEffect(op) {
         input = ""
+        // Drop straight into typing once the op is chosen — no extra tap to focus.
+        delay(80)
+        focusRequester.requestFocus()
+        keyboardController?.show()
     }
+
+    // The card blooms in after the op is picked from the ring — scrim fades up
+    // while the panel springs from slightly small and low.
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val enter by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium),
+        label = "fab-card-enter",
+    )
+    val cardSlidePx = with(LocalDensity.current) { 18.dp.toPx() }
 
     fun submitIfReady() {
         val normalized = normalizeFabInput(op, input)
@@ -65,7 +87,7 @@ fun FabOpInputCard(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xE6040A0E))
+            .background(Color(0xFF040A0E).copy(alpha = 0.90f * enter.coerceIn(0f, 1f)))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
     ) {
         Box(
@@ -80,6 +102,14 @@ fun FabOpInputCard(
                 modifier = Modifier
                     .fillMaxWidth(0.70f)
                     .widthIn(max = 318.dp)
+                    .graphicsLayer {
+                        val e = enter.coerceIn(0f, 1f)
+                        alpha = e
+                        val s = 0.92f + 0.08f * e
+                        scaleX = s
+                        scaleY = s
+                        translationY = (1f - e) * cardSlidePx
+                    }
                     .background(colors.panelStrong.copy(alpha = 0.46f), RoundedCornerShape(13.dp))
                     .border(1.dp, colors.tint(tone.base, 12, colors.panelStrong).copy(alpha = 0.52f), RoundedCornerShape(13.dp))
                     .padding(horizontal = 11.dp, vertical = 11.dp)
@@ -168,16 +198,26 @@ fun FabOpInputCard(
                         Icon(Icons.Rounded.ContentCopy, contentDescription = "Paste", tint = colors.textMuted.copy(alpha = 0.54f), modifier = Modifier.size(13.dp))
                     }
 
+                    val sendBgAlpha by animateFloatAsState(
+                        targetValue = if (canSend) 0.90f else 0.34f,
+                        animationSpec = tween(durationMillis = 160),
+                        label = "fab-send-alpha",
+                    )
                     Box(
                         modifier = Modifier
                             .size(32.dp)
-                            .pressScale {
+                            .pressScale(enabled = canSend) {
                                 submitIfReady()
                             }
-                            .background(tone.base.copy(alpha = 0.90f), RoundedCornerShape(9.dp)),
+                            .background(tone.base.copy(alpha = sendBgAlpha), RoundedCornerShape(9.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "Send", tint = Color(0xFF06131C), modifier = Modifier.size(15.dp))
+                        Icon(
+                            Icons.AutoMirrored.Rounded.Send,
+                            contentDescription = "Send",
+                            tint = Color(0xFF06131C).copy(alpha = if (canSend) 1f else 0.55f),
+                            modifier = Modifier.size(15.dp),
+                        )
                     }
                 }
 

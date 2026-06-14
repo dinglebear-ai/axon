@@ -28,8 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.fab.FabLauncher
-import com.axon.app.ui.jobs.rememberRevealState
-import com.axon.app.ui.jobs.revealOnce
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
 import tv.tootie.aurora.components.AuroraThinking
 

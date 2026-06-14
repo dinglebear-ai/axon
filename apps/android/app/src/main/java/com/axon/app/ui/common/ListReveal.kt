@@ -1,4 +1,4 @@
-package com.axon.app.ui.jobs
+package com.axon.app.ui.common
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
