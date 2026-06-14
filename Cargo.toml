@@ -1,9 +1,7 @@
 [workspace]
 members = ["xtask"]
-# apps/desktop is intentionally a separate workspace: it pulls in GPUI from
-# zed-industries/zed, whose transitive deps (gpui_wgpu → wasm-bindgen 0.2.120+)
-# conflict with axon's reqwest/web-sys-locked wasm-bindgen 0.2.118.
-exclude = ["apps/desktop"]
+# apps/palette-tauri/src-tauri declares its own `[workspace]`, so it builds as a
+# standalone workspace and is not a member here.
 resolver = "2"
 
 # Override lab-auth from the git source with a local vendored copy that uses
@@ -18,7 +16,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "5.10.1"
+version = "5.11.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
