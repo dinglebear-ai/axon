@@ -5,8 +5,9 @@ mod retrieval;
 pub(crate) mod streaming;
 mod suggest;
 
-pub use evaluate::evaluate_payload;
-pub use query::query_results;
+pub use ask::{ask_payload, ask_payload_with_deltas};
+pub use evaluate::{evaluate_payload, evaluate_result};
+pub use query::{query_hits, query_results};
 pub use suggest::discover_crawl_suggestions;
 
 use crate::core::config::Config;

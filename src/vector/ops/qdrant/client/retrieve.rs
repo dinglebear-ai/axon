@@ -18,8 +18,15 @@ pub fn parse_retrieve_scroll_points(points: &[serde_json::Value]) -> (Vec<Qdrant
     let mut out = Vec::new();
     let mut malformed = 0usize;
     for p in points {
-        // Clone required: scroll_pages_raw yields &[Value] (borrowed from response JSON).
-        // from_value consumes the value, so we must clone from the slice reference.
+        // Clone is forced by the callback contract: `scroll_pages_raw` (in
+        // `client/scroll.rs`) hands the page to this closure as `&[Value]`
+        // borrowed from the response JSON it still owns, so `from_value` (which
+        // consumes the value) cannot take it by value here. Eliminating this
+        // clone (PERF-L1) requires changing `scroll_pages_raw` to pass owned
+        // `Vec<Value>` pages into the callback — the batch path
+        // (`qdrant_batch_retrieve_by_urls`) already avoids the clone by
+        // consuming `parsed.result.into_iter()`. That change lives in
+        // `scroll.rs`, not this file.
         match serde_json::from_value::<QdrantPoint>(p.clone()) {
             Ok(point) => out.push(point),
             Err(err) => {

@@ -22,6 +22,19 @@ use crate::vector::ops::ranking::AskCandidate;
 use spider::url::Url;
 use std::collections::HashSet;
 
+/// Width of the MinHash signature (number of independent hash permutations).
+///
+/// Each candidate's shingle set is reduced **once** to a fixed-width signature of
+/// `MINHASH_SIGNATURE_LEN` `u64` minima. Estimated Jaccard between two candidates
+/// is then the fraction of signature slots that agree — an O(MINHASH_SIGNATURE_LEN)
+/// comparison instead of the old O(|A| + |B|) full-set intersection. This turns the
+/// per-pair cost from "touch ~300-element HashSets" into "compare 64 u64s", while
+/// the overall dedup stays O(n²) in pair *count* (n = candidates) but with a tiny,
+/// constant per-pair factor. The estimator is unbiased: E[agree/len] = true Jaccard,
+/// with standard error ~1/sqrt(len) ≈ 0.125 at len=64 — fine for a near-duplicate
+/// filter whose threshold (0.50) sits far from the boilerplate-overlap floor.
+const MINHASH_SIGNATURE_LEN: usize = 64;
+
 /// Minimum normalized shingle Jaccard for two candidates to be treated as
 /// near-duplicate copies of the same source content. Tuned conservatively:
 /// mirror copies of one page share most of their prose, while distinct pages
@@ -84,7 +97,11 @@ pub(in crate::vector::ops::commands::ask::context) fn dedup_near_duplicates(
     }
 
     let normalized_domains = normalize_domains(authoritative_domains);
-    let fingerprints: Vec<Option<HashSet<u64>>> = reranked
+    // Each fingerprint is a fixed-width MinHash signature (or `None` when the
+    // chunk is too short to compare reliably — semantics unchanged). Computed
+    // once per candidate; pairwise comparison is then estimated-Jaccard over the
+    // signatures (see `MINHASH_SIGNATURE_LEN` and `minhash_jaccard`).
+    let fingerprints: Vec<Option<MinHashSig>> = reranked
         .iter()
         .map(|c| fingerprint(&c.chunk_text))
         .collect();
@@ -106,7 +123,7 @@ pub(in crate::vector::ops::commands::ask::context) fn dedup_near_duplicates(
             let Some(rep_fp) = fingerprints[rep_idx].as_ref() else {
                 continue;
             };
-            if jaccard(idx_fp, rep_fp) >= NEAR_DUP_JACCARD_THRESHOLD {
+            if minhash_jaccard(idx_fp, rep_fp) >= NEAR_DUP_JACCARD_THRESHOLD {
                 matched_rep = Some(slot);
                 break;
             }
@@ -235,21 +252,58 @@ fn normalize_domains(domains: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Build a shingle fingerprint, or `None` if the text is too short to compare
+/// Fixed-width MinHash signature for one candidate's shingle set.
+type MinHashSig = [u64; MINHASH_SIGNATURE_LEN];
+
+/// Build a MinHash fingerprint, or `None` if the text is too short to compare
 /// reliably (in which case the candidate is never used to drop a sibling).
-fn fingerprint(text: &str) -> Option<HashSet<u64>> {
+///
+/// The signature is the elementwise minimum, over all shingle hashes, of
+/// `MINHASH_SIGNATURE_LEN` independent hash permutations. Each permutation is a
+/// cheap reversible scramble of the base FNV-1a shingle hash mixed with a
+/// per-slot seed (XOR-shift / multiply), so each slot draws its minimum from a
+/// different random ordering of the same shingle set. Two candidates sharing a
+/// fraction `J` of their shingles agree on each signature slot with probability
+/// `J` (the MinHash property), so the count of agreeing slots over the signature
+/// length is an unbiased estimator of the true shingle Jaccard.
+fn fingerprint(text: &str) -> Option<MinHashSig> {
     let tokens = normalize_tokens(text);
     if tokens.len() < MIN_TOKENS_FOR_DEDUP {
         return None;
     }
-    let mut shingles = HashSet::new();
+
+    // Collect distinct shingle hashes first; an empty set is "too short" per the
+    // original semantics (e.g. fewer than SHINGLE_SIZE tokens after normalize).
+    let mut shingles: HashSet<u64> = HashSet::new();
     for window in tokens.windows(SHINGLE_SIZE) {
         shingles.insert(hash_shingle(window));
     }
     if shingles.is_empty() {
         return None;
     }
-    Some(shingles)
+
+    let mut sig = [u64::MAX; MINHASH_SIGNATURE_LEN];
+    for &h in &shingles {
+        for (slot, sig_min) in sig.iter_mut().enumerate() {
+            let permuted = permute_hash(h, slot as u64);
+            if permuted < *sig_min {
+                *sig_min = permuted;
+            }
+        }
+    }
+    Some(sig)
+}
+
+/// One of `MINHASH_SIGNATURE_LEN` independent hash permutations of a shingle
+/// hash. Mixes in a per-slot seed then runs a SplitMix64-style finalizer so each
+/// slot induces a different (but deterministic) ordering over the shingle set.
+fn permute_hash(h: u64, seed: u64) -> u64 {
+    // Distinct, well-spread per-slot seed (odd multiplier keeps it a bijection).
+    let mut x = h ^ seed.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    // SplitMix64 finalizer — strong avalanche, cheap (no division/branches).
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
 }
 
 fn normalize_tokens(text: &str) -> Vec<String> {
@@ -276,16 +330,17 @@ fn hash_shingle(window: &[String]) -> u64 {
     hash
 }
 
-fn jaccard(a: &HashSet<u64>, b: &HashSet<u64>) -> f64 {
-    if a.is_empty() || b.is_empty() {
-        return 0.0;
-    }
-    let intersection = a.iter().filter(|s| b.contains(*s)).count();
-    let union = a.len() + b.len() - intersection;
-    if union == 0 {
-        return 0.0;
-    }
-    intersection as f64 / union as f64
+/// Estimated shingle Jaccard between two MinHash signatures.
+///
+/// The fraction of agreeing signature slots is an unbiased estimator of the true
+/// Jaccard similarity of the underlying shingle sets (standard error ~1/sqrt(len)).
+/// O(MINHASH_SIGNATURE_LEN) — a fixed 64-element scan — versus the old
+/// O(|A| + |B|) full-set intersection over ~300-element HashSets. The comparison
+/// target (`NEAR_DUP_JACCARD_THRESHOLD = 0.50`) is unchanged: this estimates the
+/// same quantity the old exact `jaccard` computed, just with bounded per-pair cost.
+fn minhash_jaccard(a: &MinHashSig, b: &MinHashSig) -> f64 {
+    let agree = a.iter().zip(b.iter()).filter(|(x, y)| x == y).count();
+    agree as f64 / MINHASH_SIGNATURE_LEN as f64
 }
 
 #[cfg(test)]

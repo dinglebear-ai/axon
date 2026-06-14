@@ -5,7 +5,8 @@ use crate::core::config::Config;
 use crate::core::endpoints::{EndpointKind, resolve_host_endpoint};
 use crate::core::health::browser_diagnostics_pattern;
 use crate::core::health::doctor::{
-    build_browser_runtime, probe_tei_info, tei_info_summary, tei_model_from_info, timed_probe,
+    build_browser_runtime, probe_llm_roundtrip, probe_tei_info, tei_info_summary,
+    tei_model_from_info, timed_probe,
 };
 use crate::core::http::internal_service_http_client;
 use serde_json::{Map, Value};
@@ -16,7 +17,10 @@ use std::time::Duration;
 /// SQLite-runtime doctor: skip PG/Redis/AMQP probes, check SQLite file and HTTP services.
 pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     let diagnostics = browser_diagnostics_pattern();
-    let probes = collect_service_probes(cfg).await;
+    // Run the service probes and the deep LLM round-trip concurrently so the
+    // bounded LLM probe (OPS-M4) does not serialize behind Qdrant/TEI/Chrome.
+    let (probes, llm_roundtrip) =
+        spider::tokio::join!(collect_service_probes(cfg), probe_llm_roundtrip(cfg));
     let pending_jobs = count_pending_jobs(&cfg.sqlite_path).await;
 
     let sqlite_path = cfg.sqlite_path.display().to_string();
@@ -72,6 +76,10 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
         "gemini_headless".to_string(),
         gemini_service_json(cfg, &gemini_probe),
     );
+    services.insert(
+        "llm".to_string(),
+        llm_service_json(cfg, &gemini_probe, &llm_roundtrip),
+    );
 
     let effective_qdrant = resolve_host_endpoint(EndpointKind::Qdrant, Some(&cfg.qdrant_url), &[]);
     let effective_tei = resolve_host_endpoint(EndpointKind::Embedding, Some(&cfg.tei_url), &[]);
@@ -106,7 +114,9 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
         "pipelines": {
             "crawl": true,
             "extract": true,
-            "extract_llm_ready": gemini_probe.0,
+            // Readiness now reflects a real LLM round-trip (OPS-M4): a present
+            // command with expired creds / unreachable endpoint reports false.
+            "extract_llm_ready": llm_roundtrip.0,
             "embed": true,
             "ingest": true,
         },
@@ -295,6 +305,34 @@ fn gemini_service_json(cfg: &Config, probe: &(bool, String)) -> Value {
         "detail": probe.1,
         "command": cfg.headless_gemini_cmd,
         "model": model,
+    })
+}
+
+/// Backend-agnostic LLM readiness summary (OPS-M4).
+///
+/// Surfaces the active backend, the deep round-trip result (the authoritative
+/// "can we actually synthesize" signal), and the shallow command/config
+/// validation as a secondary field so an operator can distinguish "command
+/// missing" from "command present but creds/endpoint broken".
+fn llm_service_json(
+    cfg: &Config,
+    validation: &(bool, String),
+    roundtrip: &(bool, String),
+) -> Value {
+    let backend = match cfg.llm_backend {
+        crate::core::llm::LlmBackendKind::GeminiHeadless => "gemini-headless",
+        crate::core::llm::LlmBackendKind::OpenAiCompat => "openai-compat",
+        crate::core::llm::LlmBackendKind::CodexAppServer => "codex-app-server",
+    };
+    let model = crate::core::llm::configured_model_from_config(cfg);
+    serde_json::json!({
+        "ok": roundtrip.0,
+        "backend": backend,
+        "model": model,
+        "roundtrip_ok": roundtrip.0,
+        "roundtrip_detail": roundtrip.1,
+        "config_valid": validation.0,
+        "config_detail": validation.1,
     })
 }
 

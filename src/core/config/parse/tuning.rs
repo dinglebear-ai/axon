@@ -55,6 +55,10 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     );
 
     let ask_hybrid = ask_hybrid_candidates(cfg, toml);
+    // Explicit high-context override: env wins over TOML; absent = `None`, which
+    // leaves `high_context_synthesis_model` on its substring-heuristic fallback.
+    cfg.synthesis_high_context =
+        env_bool_opt("AXON_SYNTHESIS_HIGH_CONTEXT").or(toml.llm.synthesis_high_context);
     cfg.hybrid_search_enabled = hybrid_search_enabled(toml);
     cfg.hybrid_search_candidates = hybrid_search_candidates(toml);
     cfg.ask_hybrid_candidates = ask_hybrid;

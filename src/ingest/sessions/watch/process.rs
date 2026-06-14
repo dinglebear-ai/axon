@@ -10,8 +10,8 @@ use crate::ingest::sessions::checkpoint::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use futures::StreamExt;
-use futures::stream::FuturesUnordered;
+use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;

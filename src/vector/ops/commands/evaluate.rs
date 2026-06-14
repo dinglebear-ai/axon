@@ -5,13 +5,16 @@ mod streaming;
 use crate::core::config::Config;
 use crate::core::http::http_client;
 use crate::core::logging::log_warn;
+use crate::services::types::{
+    EvaluateCrawlEnqueueOutcome, EvaluateDiagnostics, EvaluateResult, EvaluateTiming, Suggestion,
+};
 use std::time::Instant;
 
 use super::ask::{AskContext, build_ask_context, normalize_ask_answer};
 use super::suggest::discover_crawl_suggestions;
-use display::build_evaluate_json;
 use scoring::{
-    build_judge_reference, build_suggestion_focus, format_rag_sources, rag_underperformed,
+    build_judge_reference, build_suggestion_focus, extract_source_urls, format_rag_sources,
+    rag_underperformed,
 };
 use streaming::{run_analysis, run_baseline_answer, run_rag_answer};
 
@@ -76,42 +79,40 @@ struct EvalAnswers<'a> {
     context_chars: usize,
 }
 
-/// Run the evaluate pipeline and return structured JSON without printing to stdout.
+/// Thin JSON wrapper preserved for compatibility / tests. Serializes the typed
+/// `evaluate_result()` once; the services layer should call `evaluate_result()`
+/// directly to avoid the serialize→deserialize round-trip.
 ///
-/// Forces `json_output = true` internally so the non-streaming path is used,
-/// then builds the JSON payload via `build_evaluate_json()` and returns it.
+/// Note: the JSON additionally carries a `scores` field (derived from the
+/// analysis answer) that `EvaluateResult` does not model; it is regenerated here
+/// so the wrapper stays byte-identical to the historical payload.
 pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, String> {
+    let result = evaluate_result(cfg).await?;
+    let mut value = serde_json::to_value(&result).map_err(|e| e.to_string())?;
+    if let serde_json::Value::Object(map) = &mut value {
+        map.insert(
+            "scores".to_string(),
+            serde_json::to_value(scoring::structured_scores_from_analysis(
+                &result.analysis_answer,
+            ))
+            .map_err(|e| e.to_string())?,
+        );
+    }
+    Ok(value)
+}
+
+/// Run the evaluate pipeline and return the typed `EvaluateResult` directly.
+///
+/// Forces `json_output = true` internally so the non-streaming path is used.
+pub async fn evaluate_result(cfg: &Config) -> Result<EvaluateResult, String> {
     let mut derived = cfg.clone();
     derived.json_output = true;
     let query = evaluate_query(&derived)?;
     let client = http_client().map_err(|err| err.to_string())?;
     let eval_started = Instant::now();
     let ctx = build_evaluate_ask_context(&derived, &query).await?;
-    let rag_future = run_rag_answer(&derived, client, &query, &ctx.context);
     let (rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms) =
-        if derived.evaluate_retrieval_ab {
-            // Retrieval A/B: replace the no-context baseline with a second RAG run that has
-            // hybrid retrieval disabled, so the judge compares hybrid-RAG vs dense-only-RAG.
-            let mut dense_cfg = derived.clone();
-            dense_cfg.hybrid_search_enabled = false;
-            let dense_ctx = build_evaluate_ask_context(&dense_cfg, &query).await?;
-            let dense_future = run_rag_answer(&dense_cfg, client, &query, &dense_ctx.context);
-            let (rag, dense) = tokio::try_join!(rag_future, dense_future)?;
-            let (rag_answer, rag_elapsed_ms) = rag;
-            let (dense_answer, dense_elapsed_ms) = dense;
-            (rag_answer, rag_elapsed_ms, dense_answer, dense_elapsed_ms)
-        } else {
-            let baseline_future = run_baseline_answer(&derived, client, &query);
-            let (rag, baseline) = tokio::try_join!(rag_future, baseline_future)?;
-            let (rag_answer, rag_elapsed_ms) = rag;
-            let (baseline_answer, baseline_elapsed_ms) = baseline;
-            (
-                rag_answer,
-                rag_elapsed_ms,
-                baseline_answer,
-                baseline_elapsed_ms,
-            )
-        };
+        acquire_rag_and_baseline_answers(&derived, client, &query, &ctx.context).await?;
     let normalized_rag_answer = normalize_ask_answer(&derived, &query, &rag_answer, &ctx.context);
     let research_started = Instant::now();
     let (judge_reference, ref_chunk_count) = build_judge_reference(&derived, &query)
@@ -161,32 +162,80 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, String>
     } else {
         Vec::new()
     };
-    let crawl_enqueue_outcomes = Vec::new();
-    let timing = EvalTiming {
-        rag_elapsed_ms,
-        baseline_elapsed_ms,
-        research_elapsed_ms,
-        analysis_elapsed_ms,
-        total_elapsed_ms: eval_started.elapsed().as_millis(),
-    };
-    let eval_answers = EvalAnswers {
-        rag: &normalized_rag_answer,
-        baseline: &baseline_answer,
-        analysis: &analysis_answer,
-        crawl_suggestions: &crawl_suggestions,
-        crawl_enqueue_outcomes: &crawl_enqueue_outcomes,
-        ref_chunk_count,
+    let crawl_enqueue_outcomes: Vec<CrawlEnqueueOutcome> = Vec::new();
+    let total_elapsed_ms = eval_started.elapsed().as_millis();
+    let source_urls = extract_source_urls(&ctx.diagnostic_sources);
+
+    let diagnostics = derived.ask_diagnostics.then_some(EvaluateDiagnostics {
+        candidate_pool: ctx.candidate_count,
+        reranked_pool: ctx.reranked_count,
+        chunks_selected: ctx.chunks_selected,
+        full_docs_selected: ctx.full_docs_selected,
+        supplemental_selected: ctx.supplemental_count,
         context_chars,
-    };
-    let source_urls = scoring::extract_source_urls(&ctx.diagnostic_sources);
-    Ok(build_evaluate_json(
-        &derived,
-        &query,
-        &ctx,
-        &eval_answers,
-        &timing,
-        &source_urls,
-    ))
+        min_relevance_score: derived.ask_min_relevance_score,
+        doc_fetch_concurrency: derived.ask_doc_fetch_concurrency,
+    });
+
+    Ok(EvaluateResult {
+        query,
+        rag_answer: normalized_rag_answer,
+        baseline_answer,
+        analysis_answer,
+        source_urls,
+        crawl_suggestions: crawl_suggestions
+            .into_iter()
+            .map(|s| Suggestion {
+                url: s.url,
+                reason: s.reason,
+            })
+            .collect(),
+        crawl_enqueue_outcomes: crawl_enqueue_outcomes
+            .into_iter()
+            .map(|o| EvaluateCrawlEnqueueOutcome {
+                url: o.url,
+                job_id: o.job_id,
+                error: o.error,
+            })
+            .collect(),
+        ref_chunk_count,
+        diagnostics,
+        timing_ms: EvaluateTiming {
+            retrieval: ctx.retrieval_elapsed_ms,
+            context_build: ctx.context_elapsed_ms,
+            rag_llm: rag_elapsed_ms,
+            baseline_llm: baseline_elapsed_ms,
+            research_elapsed_ms,
+            analysis_llm_ms: analysis_elapsed_ms,
+            total: total_elapsed_ms,
+        },
+    })
+}
+
+/// Produce the RAG and baseline answers (with their elapsed-ms timings) for the
+/// evaluate run. In retrieval-A/B mode the "baseline" is a second RAG run with
+/// hybrid retrieval disabled, so the judge compares hybrid-RAG vs dense-only-RAG;
+/// otherwise it is the no-context baseline. Returns
+/// `(rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms)`.
+async fn acquire_rag_and_baseline_answers(
+    derived: &Config,
+    client: &reqwest::Client,
+    query: &str,
+    rag_context: &str,
+) -> Result<(String, u128, String, u128), String> {
+    let rag_future = run_rag_answer(derived, client, query, rag_context);
+    if derived.evaluate_retrieval_ab {
+        let mut dense_cfg = derived.clone();
+        dense_cfg.hybrid_search_enabled = false;
+        let dense_ctx = build_evaluate_ask_context(&dense_cfg, query).await?;
+        let dense_future = run_rag_answer(&dense_cfg, client, query, &dense_ctx.context);
+        let (rag, dense) = tokio::try_join!(rag_future, dense_future)?;
+        Ok((rag.0, rag.1, dense.0, dense.1))
+    } else {
+        let baseline_future = run_baseline_answer(derived, client, query);
+        let (rag, baseline) = tokio::try_join!(rag_future, baseline_future)?;
+        Ok((rag.0, rag.1, baseline.0, baseline.1))
+    }
 }
 
 fn evaluate_query(cfg: &Config) -> Result<String, String> {

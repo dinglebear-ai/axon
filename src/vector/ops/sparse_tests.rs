@@ -166,6 +166,32 @@ fn compute_sparse_vector_short_tokens_excluded() {
     );
 }
 
+/// All-stopword input has no indexable terms → empty sparse vector (the
+/// `tracing::warn!` dense-only-fallback branch). (TEST-L2)
+#[test]
+fn compute_sparse_vector_all_stopwords_returns_empty() {
+    let sv = compute_sparse_vector("the a an of to");
+    assert!(
+        sv.is_empty(),
+        "all-stopword input must yield an empty sparse vector, got {} indices",
+        sv.indices.len()
+    );
+    assert!(sv.values.is_empty());
+}
+
+/// Non-ASCII-only input produces no ASCII-alphanumeric tokens → empty sparse
+/// vector (forces dense-only fallback). (TEST-L2)
+#[test]
+fn compute_sparse_vector_non_ascii_only_returns_empty() {
+    let sv = compute_sparse_vector("日本語のみ");
+    assert!(
+        sv.is_empty(),
+        "non-ASCII-only input must yield an empty sparse vector, got {} indices",
+        sv.indices.len()
+    );
+    assert!(sv.values.is_empty());
+}
+
 #[test]
 fn sparse_dim_is_65536() {
     assert_eq!(

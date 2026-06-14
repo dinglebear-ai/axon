@@ -300,10 +300,36 @@ pub(crate) fn query_allows_low_signal(query_tokens: &[String], raw_query: &str) 
     ranking::query_wants_low_signal_sources(query_tokens, raw_query)
 }
 
+/// Project the borrowed reranked set into `AskCandidate`s.
+///
+/// This clones each inner candidate (chunk_text + two token sets). The clone is
+/// forced by the borrowed `&[RetrievedCandidate]` signature: `query.rs`
+/// re-indexes `reranked_candidates[hit_idx]` for previews after this call, so it
+/// cannot relinquish ownership. Capacity is pre-reserved to avoid intermediate
+/// reallocations. The ask path uses the move-based [`into_candidates_only`]
+/// instead, which avoids the clone entirely (PERF-M1).
 pub(crate) fn candidates_only(candidates: &[RetrievedCandidate]) -> Vec<ranking::AskCandidate> {
+    let mut out = Vec::with_capacity(candidates.len());
+    out.extend(
+        candidates
+            .iter()
+            .map(|candidate| candidate.candidate.clone()),
+    );
+    out
+}
+
+/// Move-based variant of [`candidates_only`]: consumes the owned reranked set and
+/// MOVES each inner `AskCandidate` out instead of cloning it. Preserves candidate
+/// ordering. Used by the ask path (`ask/context/retrieval.rs`), which owns the
+/// `Vec<RetrievedCandidate>` and does not reuse it after the projection — this
+/// eliminates the ~1 MB/ask transient clone (PERF-M1). `query.rs` keeps using
+/// the borrowing [`candidates_only`] because it re-indexes the set afterward.
+pub(crate) fn into_candidates_only(
+    candidates: Vec<RetrievedCandidate>,
+) -> Vec<ranking::AskCandidate> {
     candidates
-        .iter()
-        .map(|candidate| candidate.candidate.clone())
+        .into_iter()
+        .map(|candidate| candidate.candidate)
         .collect()
 }
 

@@ -3,19 +3,26 @@ use crate::core::ask_explain::{AskExplainRetrieval, AskExplainScoreKind};
 use crate::core::config::Config;
 use crate::core::logging::{log_debug, log_info};
 use crate::vector::ops::commands::retrieval::{
-    CandidateBuildPolicy, CandidateRankingTrace, CandidateScorePolicy, RetrievedCandidate,
-    authoritative_ratio, candidates_only, embed_retrieval_inputs, product_authority_ratio,
-    query_allows_low_signal, score_and_filter_candidates, score_and_filter_candidates_with_trace,
-    score_rrf_candidates_with_trace, top_domains, vector_mode_metadata,
+    CandidateBuildPolicy, CandidateRankingTrace, RetrievedCandidate, authoritative_ratio,
+    embed_retrieval_inputs, into_candidates_only, product_authority_ratio, query_allows_low_signal,
+    top_domains, vector_mode_metadata,
 };
-use crate::vector::ops::tei::qdrant_store::VectorMode;
 use crate::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
 
 mod build;
 mod dispatch;
+mod rerank;
 use build::build_ask_candidates;
 use dispatch::{DispatchOutcome, run_qdrant_dispatch};
+// `RerankParams` is re-exported `pub(super)` so `context_tests.rs` (the `context`
+// module's sidecar) can reach it via `super::retrieval::RerankParams`; it is also
+// used directly in this module. `apply_mode_aware_rerank` + `is_rrf_mode` are
+// only consumed by that sidecar, so their re-exports are gated on `cfg(test)`.
+pub(super) use rerank::RerankParams;
+#[cfg(test)]
+pub(super) use rerank::{apply_mode_aware_rerank, is_rrf_mode};
+use rerank::{rerank_with_optional_trace, retrieval_score_kind};
 
 type SearchHitsResult =
     Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>;
@@ -36,78 +43,6 @@ pub(super) struct AskRetrieval {
     pub(super) explain_retrieval: Option<AskExplainRetrieval>,
     pub(super) candidate_traces: Vec<CandidateRankingTrace>,
     pub(super) warnings: Vec<String>,
-}
-
-pub(super) struct RerankParams<'a> {
-    pub(super) authoritative_domains: &'a [String],
-    pub(super) authoritative_boost: f64,
-    pub(super) product_authority_boost: f64,
-    pub(super) min_relevance_score: f64,
-}
-
-#[cfg(test)]
-pub(super) fn is_rrf_mode(
-    vector_mode: VectorMode,
-    hybrid_search_enabled: bool,
-    sparse_was_empty: bool,
-) -> bool {
-    matches!(vector_mode, VectorMode::Named) && hybrid_search_enabled && !sparse_was_empty
-}
-
-pub(super) fn apply_mode_aware_rerank(
-    is_rrf: bool,
-    candidates: &[RetrievedCandidate],
-    query_tokens: &[String],
-    params: &RerankParams<'_>,
-) -> Vec<RetrievedCandidate> {
-    let score_policy = CandidateScorePolicy {
-        authoritative_domains: params.authoritative_domains,
-        authoritative_boost: params.authoritative_boost,
-        product_authority_boost: params.product_authority_boost,
-        apply_code_search_adjustment: false,
-        min_relevance_score: if is_rrf {
-            None
-        } else {
-            Some(params.min_relevance_score)
-        },
-        require_topical_overlap: true,
-    };
-    score_and_filter_candidates(candidates, query_tokens, &score_policy)
-}
-
-pub(super) fn apply_mode_aware_rerank_with_trace(
-    is_rrf: bool,
-    dense_score_kind: AskExplainScoreKind,
-    candidates: &[RetrievedCandidate],
-    query_tokens: &[String],
-    params: &RerankParams<'_>,
-) -> (Vec<RetrievedCandidate>, Vec<CandidateRankingTrace>) {
-    if is_rrf {
-        let score_policy = CandidateScorePolicy {
-            authoritative_domains: params.authoritative_domains,
-            authoritative_boost: params.authoritative_boost,
-            product_authority_boost: params.product_authority_boost,
-            apply_code_search_adjustment: false,
-            min_relevance_score: None,
-            require_topical_overlap: true,
-        };
-        return score_rrf_candidates_with_trace(candidates, query_tokens, &score_policy);
-    }
-
-    let score_policy = CandidateScorePolicy {
-        authoritative_domains: params.authoritative_domains,
-        authoritative_boost: params.authoritative_boost,
-        product_authority_boost: params.product_authority_boost,
-        apply_code_search_adjustment: false,
-        min_relevance_score: Some(params.min_relevance_score),
-        require_topical_overlap: true,
-    };
-    score_and_filter_candidates_with_trace(
-        candidates,
-        query_tokens,
-        &score_policy,
-        dense_score_kind,
-    )
 }
 
 #[tracing::instrument(
@@ -182,7 +117,7 @@ pub(super) async fn retrieve_ask_candidates(
     );
     let mut candidate_traces = candidate_traces;
     candidate_traces.extend(pre_rerank_traces);
-    let reranked = candidates_only(&reranked_candidates);
+    let reranked = into_candidates_only(reranked_candidates);
     timing.record(AskTimingSlot::Rerank, rerank_started);
     log_info(&format!(
         "ask rerank complete candidates={} selected_after_filter={} elapsed_ms={}",
@@ -422,40 +357,6 @@ fn explain_retrieval(
             .sparse_was_empty
             .then(|| "empty_sparse_fallback".to_string()),
     })
-}
-
-fn rerank_with_optional_trace(
-    ask_explain: bool,
-    rrf_mode: bool,
-    dense_score_kind: AskExplainScoreKind,
-    retrieved_candidates: &[RetrievedCandidate],
-    query_tokens: &[String],
-    rerank_params: &RerankParams<'_>,
-) -> (Vec<RetrievedCandidate>, Vec<CandidateRankingTrace>) {
-    if ask_explain {
-        apply_mode_aware_rerank_with_trace(
-            rrf_mode,
-            dense_score_kind,
-            retrieved_candidates,
-            query_tokens,
-            rerank_params,
-        )
-    } else {
-        (
-            apply_mode_aware_rerank(rrf_mode, retrieved_candidates, query_tokens, rerank_params),
-            Vec::new(),
-        )
-    }
-}
-
-fn retrieval_score_kind(vector_mode: VectorMode, rrf_mode: bool) -> AskExplainScoreKind {
-    if rrf_mode {
-        AskExplainScoreKind::Rrf
-    } else if matches!(vector_mode, VectorMode::Named) {
-        AskExplainScoreKind::NamedDense
-    } else {
-        AskExplainScoreKind::Cosine
-    }
 }
 
 async fn embed_ask_query_forms(

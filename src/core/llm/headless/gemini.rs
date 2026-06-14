@@ -25,6 +25,32 @@ const STDIN_PROMPT_PREAMBLE: &str =
     "Read the complete task and context from stdin, then answer only that task.";
 
 pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec, String> {
+    // SEC-M3 (OWASP LLM Excessive Agency) — NOTE, DELIBERATELY NOT CHANGED.
+    //
+    // `--approval-mode yolo` auto-approves any tool call the subprocess makes
+    // while it operates on attacker-influenced (indexed) content. That is broad
+    // agency for what is nominally a text-synthesis call, and would normally be a
+    // finding worth dropping to the most restrictive mode.
+    //
+    // It is LOAD-BEARING here and CANNOT be lowered without breaking behavior:
+    // axon's `ask`/`evaluate`/`research`/`summarize` synthesis activates a native
+    // Gemini skill (`axon-rag-synthesize`) via an `activate_skill` tool round-trip,
+    // and the stream-json parser (`stream::GeminiStreamState`) is built to allow
+    // that round-trip. Per the native-skill work (PR #209,
+    // docs/sessions/2026-05-13-gemini-native-skill-ask-quality.md), `yolo` is the
+    // ONLY approval mode that lets `activate_skill` complete in headless mode:
+    // `--approval-mode plan` silently downgrades to the default and the skill
+    // never activates, degrading answer grounding/quality.
+    //
+    // Residual risk is mitigated by design — the subprocess runs in an isolated
+    // `HOME`/`XDG_*` (see `spawn_gemini_child`) into which only the read-only
+    // `axon-rag-synthesize` skill is written, the env is allowlist-restricted
+    // (`apply_env_allowlist`), and the cwd is a throwaway tempdir, so there is no
+    // file/shell-mutating skill for `yolo` to auto-approve.
+    //
+    // PRODUCT DECISION NEEDED: ideally Gemini CLI grows a "no-agency, allow a
+    // pinned read-only skill" mode (or a per-skill allowlist) so synthesis can run
+    // without blanket auto-approve. Until then this flag must stay `yolo`.
     let args = vec![
         "--prompt".to_string(),
         String::new(),
@@ -43,12 +69,10 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
         agent: "gemini",
         program: env_or_default("AXON_HEADLESS_GEMINI_CMD", "gemini"),
         args,
-        prompt_transport: PromptTransport::Stdin,
-        output_mode: "stream-json",
-    };
-    let spec = HeadlessCommandSpec {
+        // Base transport is Argument; `effective_prompt_transport` downgrades to
+        // Stdin at runtime when the prompt exceeds PROMPT_ARG_MAX_BYTES.
         prompt_transport: PromptTransport::Argument,
-        ..spec
+        output_mode: "stream-json",
     };
     spec.validate()?;
     Ok(spec)
@@ -111,7 +135,13 @@ where
 {
     validate_config(&req.backend)?;
     let spec = configured_command_spec(&req.backend, req.model.clone(), req.system_prompt.clone())?;
-    let gemini_home = home::prepare_gemini_home(&req.backend)?;
+    // PERF-C1: prepare_gemini_home does blocking fs work (create_dir_all/copy/
+    // write); run it off the async reactor so it can't stall unrelated futures.
+    let backend_for_home = req.backend.clone();
+    let gemini_home =
+        tokio::task::spawn_blocking(move || home::prepare_gemini_home(&backend_for_home))
+            .await
+            .map_err(|err| format!("Gemini home preparation task failed: {err}"))??;
     let cwd = tempfile::tempdir()
         .map_err(|err| format!("failed to create isolated Gemini cwd: {err}"))?;
 
@@ -328,10 +358,29 @@ fn spawn_gemini_child(
         .map_err(|err| format!("failed to spawn Gemini headless command: {err}").into())
 }
 
+/// Process-wide cache of the `mise which gemini` lookup (PERF-C1).
+///
+/// Resolution forks a subprocess and is process-stable, so it must run at most
+/// once for the whole process lifetime. `None` means resolution was attempted
+/// and yielded nothing (fall back to the bare `"gemini"` program name on PATH).
+static RESOLVED_GEMINI_PROGRAM: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
 fn resolve_headless_program(program: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
+    // Only the bare `"gemini"` name triggers a `mise which` lookup. An explicit
+    // path or any override is returned as-is — skip the fork entirely.
     if program.contains('/') || program.contains('\\') || program != "gemini" {
         return Ok(program.to_string());
     }
+    // Cache the (blocking) lookup so the subprocess fork happens at most once per
+    // process, even though this is called on every completion (validate +
+    // spawn). Subsequent calls return the memoized value with no fork.
+    let resolved = RESOLVED_GEMINI_PROGRAM.get_or_init(mise_resolve_gemini);
+    Ok(resolved.clone().unwrap_or_else(|| program.to_string()))
+}
+
+/// One-shot blocking resolution of `gemini` via `mise which`. Only ever invoked
+/// through the `RESOLVED_GEMINI_PROGRAM` OnceLock so it runs at most once.
+fn mise_resolve_gemini() -> Option<String> {
     match std::process::Command::new("mise")
         .args(["which", "gemini"])
         .output()
@@ -339,15 +388,61 @@ fn resolve_headless_program(program: &str) -> Result<String, Box<dyn StdError + 
         Ok(output) if output.status.success() => {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() {
-                if let Ok(real_path) = fs::canonicalize(&path) {
-                    return Ok(real_path.display().to_string());
-                }
-                return Ok(path);
+                // Prefer the canonicalized path (resolves symlinks); fall back to
+                // the raw `mise which` output if canonicalize fails.
+                let resolved = fs::canonicalize(&path)
+                    .map(|p| p.display().to_string())
+                    .unwrap_or(path);
+                // SEC-L1: integrity-check the resolved program before pinning it.
+                // A poisoned PATH/mise could redirect the subprocess, so only
+                // cache an absolute path to an existing regular file (and, on
+                // unix, not world-writable). On any failure, return None so the
+                // caller falls back to the bare "gemini" name on PATH.
+                return validated_program_path(resolved);
             }
+            None
         }
-        _ => {}
+        _ => None,
     }
-    Ok(program.to_string())
+}
+
+/// Reject a resolved Gemini program path that is not safe to pin (SEC-L1).
+/// Returns `Some(path)` only when the path is absolute, an existing regular
+/// file, and (on unix) not world-writable; otherwise logs a warning and
+/// returns `None` so resolution falls back to the bare program name.
+fn validated_program_path(path: String) -> Option<String> {
+    if !Path::new(&path).is_absolute() {
+        crate::core::logging::log_warn(&format!(
+            "resolved gemini program {path:?} is not an absolute path; falling back to PATH lookup"
+        ));
+        return None;
+    }
+    let metadata = match fs::metadata(&path) {
+        Ok(meta) => meta,
+        Err(err) => {
+            crate::core::logging::log_warn(&format!(
+                "resolved gemini program {path:?} is not accessible ({err}); falling back to PATH lookup"
+            ));
+            return None;
+        }
+    };
+    if !metadata.is_file() {
+        crate::core::logging::log_warn(&format!(
+            "resolved gemini program {path:?} is not a regular file; falling back to PATH lookup"
+        ));
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o002 != 0 {
+            crate::core::logging::log_warn(&format!(
+                "resolved gemini program {path:?} is world-writable; falling back to PATH lookup"
+            ));
+            return None;
+        }
+    }
+    Some(path)
 }
 
 fn effective_prompt_transport(spec: &HeadlessCommandSpec, prompt: &str) -> PromptTransport {

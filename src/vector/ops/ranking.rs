@@ -335,9 +335,15 @@ fn host_matches_domains(url: &str, normalized_domains: &[String]) -> bool {
     let Some(host) = host else {
         return false;
     };
-    normalized_domains
-        .iter()
-        .any(|normalized| host == *normalized || host.ends_with(&format!(".{normalized}")))
+    normalized_domains.iter().any(|d| {
+        // Exact host or dot-boundary subdomain (e.g. host "a.example.com" vs
+        // domain "example.com"). Allocation-free: avoids a per-candidate
+        // `format!(".{d}")` by checking the suffix and the preceding byte.
+        host == *d
+            || (host.len() > d.len()
+                && host.ends_with(d.as_str())
+                && host.as_bytes()[host.len() - d.len() - 1] == b'.')
+    })
 }
 
 fn authority_boost_for_normalized_domains(
