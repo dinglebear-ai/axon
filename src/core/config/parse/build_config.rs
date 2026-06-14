@@ -52,6 +52,7 @@ pub(super) fn into_config_with_sources(
             | CommandKind::Compose
             | CommandKind::Setup
             | CommandKind::Config
+            | CommandKind::Update
             | CommandKind::Palette
     ) {
         return Ok(Config {

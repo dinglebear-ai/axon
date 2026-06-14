@@ -108,6 +108,8 @@ pub(super) enum CliCommand {
     Config(ConfigArgs),
     /// Reconcile locally produced server-mode artifacts
     Sync(SyncArgs),
+    /// Download and install the latest GitHub Release binary, then sync the local container
+    Update(UpdateArgs),
     /// Resolve, launch, and optionally install the axon-palette desktop binary
     Palette(PaletteArgs),
 }
@@ -257,6 +259,25 @@ pub(super) struct PaletteArgs {
     /// Binary acquisition method when the palette binary is missing or during install
     #[arg(long, value_enum)]
     pub(super) method: Option<SetupMethod>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct UpdateArgs {
+    /// GitHub repository in owner/name form.
+    #[arg(long, default_value = "jmagar/axon")]
+    pub(super) repo: String,
+
+    /// Release tag to install. Defaults to the latest GitHub Release.
+    #[arg(long)]
+    pub(super) version: Option<String>,
+
+    /// Install even when the destination already reports the target version.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) force: bool,
+
+    /// Do not restart/sync the local Axon container after installing.
+    #[arg(long = "no-container", action = ArgAction::SetTrue)]
+    pub(super) no_container: bool,
 }
 
 #[derive(Debug, Args)]

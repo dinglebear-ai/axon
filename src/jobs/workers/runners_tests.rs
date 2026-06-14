@@ -141,6 +141,7 @@ fn config_snapshot_omits_secrets() {
 #[test]
 fn config_snapshot_preserves_codex_llm_backend_fields() {
     let worker = Config {
+        codex_cmd: "/usr/local/bin/codex".to_string(),
         codex_home: Some(PathBuf::from("/home/worker/.codex")),
         ..Config::default()
     };
@@ -158,13 +159,17 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
         !json.contains("/home/example/.codex"),
         "submitter-local codex_home must not be serialized"
     );
+    assert!(
+        !json.contains("/opt/codex/bin/codex"),
+        "submitter-local codex_cmd must not be serialized"
+    );
     let restored = apply_config_snapshot(&worker, &json).expect("apply snapshot");
 
     assert_eq!(
         restored.llm_backend,
         crate::core::llm::LlmBackendKind::CodexAppServer
     );
-    assert_eq!(restored.codex_cmd, "/opt/codex/bin/codex");
+    assert_eq!(restored.codex_cmd, "/usr/local/bin/codex");
     assert_eq!(
         restored.codex_home,
         Some(PathBuf::from("/home/worker/.codex"))

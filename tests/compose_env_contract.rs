@@ -46,6 +46,10 @@ fn services_compose_reads_canonical_axon_home_env() {
         compose.contains("AXON_ENV_FILE: \"\"") && compose.contains("AXON_CONFIG_PATH: \"\""),
         "docker-compose.prod.yaml must clear host-only bootstrap overrides in the container"
     );
+    assert!(
+        compose.contains("AXON_CODEX_CMD: \"\"") && compose.contains("AXON_CODEX_HOME: \"\""),
+        "docker-compose.prod.yaml must clear host-only Codex bootstrap overrides in the container"
+    );
 }
 
 #[test]
@@ -442,8 +446,6 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_HEADLESS_GEMINI_MODEL",
         "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
         "AXON_CHAT_HEADLESS_GEMINI_MODEL",
-        "AXON_CODEX_CMD",
-        "AXON_CODEX_HOME",
         "AXON_CODEX_MODEL",
         "AXON_SYNTHESIS_CODEX_MODEL",
         "AXON_CODEX_COMPLETION_CONCURRENCY",

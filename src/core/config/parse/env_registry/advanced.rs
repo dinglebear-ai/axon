@@ -69,6 +69,22 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_UPDATE_INSTALL_PATH",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
+        "AXON_UPDATE_FILE_RELEASE_DIR",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "AXON_LOG_COLOR",
         ComposeEnv,
         ComposeInterpolation,

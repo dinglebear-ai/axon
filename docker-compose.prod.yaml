@@ -65,6 +65,8 @@ services:
       # into the container and change config/env loading paths.
       AXON_ENV_FILE: ""
       AXON_CONFIG_PATH: ""
+      AXON_CODEX_CMD: ""
+      AXON_CODEX_HOME: ""
       TZ: ${TZ:-America/New_York}
       # Filesystem-namespace claim affinity (axon_rust-p2oc). Embed jobs whose
       # input is a local path are stamped with the enqueueing process's namespace

@@ -197,8 +197,8 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 | `AXON_CHAT_HEADLESS_GEMINI_MODEL` | -- | Direct-chat Gemini model override. Empty = use the synthesis model. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
-| `AXON_CODEX_CMD` | `codex` | Codex CLI command used when `AXON_LLM_BACKEND=codex-app-server`. Explicit paths must be executable and non-symlinked. |
-| `AXON_CODEX_HOME` | -- | Optional source Codex home used for auth isolation. The backend creates a throwaway runtime home and does not load user hooks, MCP servers, apps, or skills. |
+| `AXON_CODEX_CMD` | `codex` | Host-only Codex CLI command used when `AXON_LLM_BACKEND=codex-app-server`. Do not put host paths in the shared compose `.env`; production compose clears this variable inside the container. Explicit paths must be executable and non-symlinked. |
+| `AXON_CODEX_HOME` | -- | Host-only source Codex home used for auth isolation. The backend creates a throwaway runtime home and does not load user hooks, MCP servers, apps, or skills. Do not put host paths in the shared compose `.env`; production compose clears this variable inside the container. |
 | `AXON_SYNTHESIS_CODEX_MODEL` | -- | Optional synthesis model for Codex app-server. If unset, Codex uses its configured default. Legacy alias: `AXON_CODEX_MODEL`. |
 | `AXON_CODEX_COMPLETION_CONCURRENCY` | `1` | Max concurrent Codex app-server completions. Defaults lower than HTTP backends because this backend spawns a child app-server per completion. |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent LLM completion requests. |
@@ -403,8 +403,8 @@ containing cached source text.
 | `AXON_ENDPOINT_BUNDLE_CONCURRENCY` | `8` | Concurrent JS-bundle fetches during `endpoints` discovery |
 | `AXON_ENDPOINT_CHROME_CONCURRENCY` | `1` | Concurrent Chrome probes during `endpoints` discovery (Chrome is scarce) |
 | `AXON_ENDPOINT_VERIFY_CONCURRENCY` | `16` | Concurrent endpoint verification requests |
-| `AXON_CODEX_CMD` | -- | Path to the Codex CLI binary for the codex LLM backend (non-symlink executable) |
-| `AXON_CODEX_HOME` | -- | Source HOME dir holding Codex auth files (non-symlink directory) |
+| `AXON_CODEX_CMD` | -- | Host-only path to the Codex CLI binary for the codex LLM backend (non-symlink executable) |
+| `AXON_CODEX_HOME` | -- | Host-only source HOME dir holding Codex auth files (non-symlink directory) |
 
 ### Webclaw port (axon_rust-zehr)
 
