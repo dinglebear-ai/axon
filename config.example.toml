@@ -200,6 +200,29 @@
 # Env: TEI_MAX_CLIENT_BATCH_SIZE
 # max-client-batch-size = 64
 
+# Env-only embed throughput/volume controls. These are intentionally listed
+# here for operator discoverability, but are not TOML keys yet.
+#
+# AXON_TEI_MAX_CONCURRENT=8
+#   Process-wide max concurrent Axon client requests to TEI (clamped 1-64).
+#
+# AXON_EMBED_PREP_CONCURRENCY=<cpu count clamped 2-16>
+#   Concurrent source-document preparation tasks before TEI embedding
+#   (clamped 1-64).
+#
+# AXON_EMBED_MAX_CHUNKS_PER_DOC=0
+#   Optional circuit breaker: max chunks allowed through per non-source
+#   document after exact dedupe. Default 0 disables the cap so all unique
+#   chunks remain indexable.
+#
+# AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC=0
+#   Optional circuit breaker: max chunks allowed through per source-code-like
+#   document after exact dedupe. Default 0 disables the cap so all unique
+#   chunks remain indexable.
+#
+# AXON_EMBED_DEDUPE_EXACT_CHUNKS=true
+#   Drop exact duplicate chunks within one logical document before embedding.
+
 [workers]
 # Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
 # Env: AXON_INGEST_LANES

@@ -1,6 +1,168 @@
-use super::{prepare_embed_docs, read_inputs, read_inputs_with_max_bytes};
+use super::{
+    ChunkVolumeGuardReport, ChunkVolumeLimits, enforce_chunk_volume_limits,
+    enforce_chunk_volume_limits_with_report, prepare_embed_docs, read_inputs,
+    read_inputs_with_max_bytes,
+};
 use crate::core::config::Config;
+use crate::vector::ops::tei::PreparedDoc;
+use serde_json::json;
 use tempfile::TempDir;
+use uuid::Uuid;
+
+fn prepared_doc_for_guard(chunks: Vec<&str>) -> PreparedDoc {
+    PreparedDoc {
+        url: "https://example.com/path".to_string(),
+        domain: "example.com".to_string(),
+        chunks: chunks.into_iter().map(str::to_string).collect(),
+        source_type: "crawl".to_string(),
+        content_type: "markdown",
+        title: None,
+        extra: None,
+        extractor_name: None,
+        structured: None,
+        chunk_extra: Vec::new(),
+        local_legacy_fragment_url: None,
+        chunk_point_ids: Vec::new(),
+    }
+}
+
+fn source_doc_for_guard(chunks: Vec<&str>) -> PreparedDoc {
+    let mut doc = prepared_doc_for_guard(chunks);
+    doc.source_type = "github".to_string();
+    doc.content_type = "text";
+    doc.chunk_extra = doc
+        .chunks
+        .iter()
+        .enumerate()
+        .map(|(idx, _)| json!({"chunk_content_kind": "code", "chunk_locator": format!("src/lib.rs#L{idx}")}))
+        .collect();
+    doc
+}
+
+#[test]
+fn chunk_volume_guard_deduplicates_exact_chunks_and_keeps_metadata_aligned() {
+    let mut doc = prepared_doc_for_guard(vec!["alpha", "beta", "alpha", "gamma", "beta"]);
+    doc.chunk_extra = vec![
+        json!({"chunk_locator": "first-alpha"}),
+        json!({"chunk_locator": "first-beta"}),
+        json!({"chunk_locator": "second-alpha"}),
+        json!({"chunk_locator": "gamma"}),
+        json!({"chunk_locator": "second-beta"}),
+    ];
+    doc.chunk_point_ids = (0..5)
+        .map(|i| Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("chunk-{i}").as_bytes()))
+        .collect();
+    let first_alpha_id = doc.chunk_point_ids[0];
+    let first_beta_id = doc.chunk_point_ids[1];
+    let gamma_id = doc.chunk_point_ids[3];
+
+    let guarded = enforce_chunk_volume_limits(
+        doc,
+        ChunkVolumeLimits {
+            max_chunks_per_doc: Some(10),
+            max_source_chunks_per_doc: Some(10),
+            dedupe_exact_chunks: true,
+        },
+    )
+    .expect("deduped doc should remain non-empty");
+
+    assert_eq!(guarded.chunks, vec!["alpha", "beta", "gamma"]);
+    assert_eq!(guarded.chunk_extra.len(), guarded.chunks.len());
+    assert_eq!(guarded.chunk_extra[0]["chunk_locator"], "first-alpha");
+    assert_eq!(guarded.chunk_extra[1]["chunk_locator"], "first-beta");
+    assert_eq!(guarded.chunk_extra[2]["chunk_locator"], "gamma");
+    assert_eq!(
+        guarded.chunk_point_ids,
+        vec![first_alpha_id, first_beta_id, gamma_id]
+    );
+}
+
+#[test]
+fn chunk_volume_guard_caps_pathological_docs_and_keeps_metadata_aligned() {
+    let mut doc = prepared_doc_for_guard(vec!["one", "two", "three", "four"]);
+    doc.chunk_extra = vec![
+        json!({"chunk_locator": "one"}),
+        json!({"chunk_locator": "two"}),
+        json!({"chunk_locator": "three"}),
+        json!({"chunk_locator": "four"}),
+    ];
+    doc.chunk_point_ids = (0..4)
+        .map(|i| Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("cap-{i}").as_bytes()))
+        .collect();
+    let kept_ids = doc.chunk_point_ids[..2].to_vec();
+
+    let guarded = enforce_chunk_volume_limits(
+        doc,
+        ChunkVolumeLimits {
+            max_chunks_per_doc: Some(2),
+            max_source_chunks_per_doc: Some(2),
+            dedupe_exact_chunks: true,
+        },
+    )
+    .expect("capped doc should remain non-empty");
+
+    assert_eq!(guarded.chunks, vec!["one", "two"]);
+    assert_eq!(guarded.chunk_extra.len(), guarded.chunks.len());
+    assert_eq!(guarded.chunk_extra[0]["chunk_locator"], "one");
+    assert_eq!(guarded.chunk_extra[1]["chunk_locator"], "two");
+    assert_eq!(guarded.chunk_point_ids, kept_ids);
+}
+
+#[test]
+fn chunk_volume_guard_uses_source_cap_for_code_like_docs() {
+    let doc = source_doc_for_guard(vec!["one", "two", "three", "four"]);
+
+    let guarded = enforce_chunk_volume_limits(
+        doc,
+        ChunkVolumeLimits {
+            max_chunks_per_doc: Some(2),
+            max_source_chunks_per_doc: Some(3),
+            dedupe_exact_chunks: true,
+        },
+    )
+    .expect("source doc should remain non-empty");
+
+    assert_eq!(
+        guarded.chunks,
+        vec!["one", "two", "three"],
+        "code-like docs should use the source-specific cap"
+    );
+    assert_eq!(guarded.chunk_extra.len(), guarded.chunks.len());
+}
+
+#[test]
+fn chunk_volume_guard_reports_dedupe_and_cap_totals() {
+    let doc = prepared_doc_for_guard(vec!["one", "two", "one", "three"]);
+
+    let outcome = enforce_chunk_volume_limits_with_report(
+        doc,
+        ChunkVolumeLimits {
+            max_chunks_per_doc: Some(2),
+            max_source_chunks_per_doc: Some(8),
+            dedupe_exact_chunks: true,
+        },
+    );
+
+    assert_eq!(outcome.doc.expect("doc").chunks, vec!["one", "two"]);
+    assert_eq!(
+        outcome.report,
+        ChunkVolumeGuardReport {
+            docs_deduped: 1,
+            docs_capped: 1,
+            duplicate_chunks_removed: 1,
+            chunks_removed_by_cap: 1,
+        }
+    );
+}
+
+#[test]
+fn chunk_volume_limits_default_to_no_cap_but_keep_exact_dedupe() {
+    let limits = super::chunk_volume_limits_from_values(None, None, None);
+
+    assert_eq!(limits.max_chunks_per_doc, None);
+    assert_eq!(limits.max_source_chunks_per_doc, None);
+    assert!(limits.dedupe_exact_chunks);
+}
 
 #[tokio::test]
 async fn prepare_embed_docs_uses_given_source_type() {
