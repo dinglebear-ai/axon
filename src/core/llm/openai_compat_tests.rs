@@ -182,6 +182,11 @@ async fn openai_compat_error_body_is_bounded_and_redacted() {
 
 #[test]
 fn openai_compat_plain_error_truncates_on_utf8_boundary() {
+    // NB: redaction runs before truncation. The `x` padding is zero-entropy, so
+    // `core::redact`'s low-entropy carve-out leaves it at full length and the
+    // body still exceeds the 512-char truncation point. If that carve-out is
+    // ever weakened, the padding would collapse to `[REDACTED]` and this test
+    // would fail for a non-obvious reason.
     let body = format!("{}{}", "x".repeat(511), "é".repeat(20));
 
     let sanitized = sanitize_openai_error_body(&body);

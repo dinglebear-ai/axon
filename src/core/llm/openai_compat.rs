@@ -160,7 +160,7 @@ fn sanitize_openai_error_body(text: &str) -> String {
         truncate_utf8_boundary(&mut rendered, LIMIT);
         return rendered;
     }
-    let mut rendered = redact_secret_like_tokens(trimmed);
+    let mut rendered = crate::core::redact::redact_secrets(trimmed);
     truncate_utf8_boundary(&mut rendered, LIMIT);
     rendered
 }
@@ -200,7 +200,7 @@ fn sanitize_error_json(value: &serde_json::Value) -> serde_json::Value {
             serde_json::Value::Array(values.iter().map(sanitize_error_json).collect())
         }
         serde_json::Value::String(value) => {
-            serde_json::Value::String(redact_secret_like_tokens(value))
+            serde_json::Value::String(crate::core::redact::redact_secrets(value))
         }
         value => value.clone(),
     }
@@ -219,24 +219,6 @@ fn is_request_echo_key(lower_key: &str) -> bool {
         || lower_key == "messages"
         || lower_key == "request"
         || lower_key == "request_body"
-}
-
-fn redact_secret_like_tokens(text: &str) -> String {
-    text.split_whitespace()
-        .map(|token| {
-            let lower = token.to_ascii_lowercase();
-            if lower.starts_with("sk-")
-                || lower.contains("api_key")
-                || lower.contains("token=")
-                || lower.contains("secret")
-            {
-                "[redacted]"
-            } else {
-                token
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 #[derive(Deserialize)]
