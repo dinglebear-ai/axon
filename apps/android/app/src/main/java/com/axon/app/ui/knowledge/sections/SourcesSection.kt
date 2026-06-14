@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Text
@@ -21,6 +21,8 @@ import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.knowledge.KnowledgeSourceRow
 import com.axon.app.ui.knowledge.KnowledgeViewModel
 import com.axon.app.ui.theme.AxonTheme
@@ -51,6 +53,7 @@ fun SourcesSection(
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
+                val reveal = rememberRevealState()
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -69,13 +72,16 @@ fun SourcesSection(
                                 .padding(horizontal = 2.dp, vertical = 1.dp),
                         )
                     }
-                    items(entries, key = { it.url }) { entry ->
+                    itemsIndexed(entries, key = { _, it -> it.url }) { index, entry ->
                         KnowledgeSourceRow(
                             title = sourceTitle(entry.url),
                             domain = sourceDomain(entry.url),
                             source = "crawl",
                             chunks = entry.chunks,
                             onClick = { onOpenDocument(entry.url) },
+                            modifier = Modifier
+                                .animateItem()
+                                .revealOnce(reveal, entry.url, index),
                         )
                     }
                 }
