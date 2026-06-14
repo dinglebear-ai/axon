@@ -40,16 +40,6 @@ pub fn validate_config(config: &LlmBackendConfig) -> Result<(), BoxError> {
 
 pub async fn complete_streaming<F>(
     req: CompletionRequest,
-    on_delta: F,
-) -> Result<CompletionResponse, BoxError>
-where
-    F: FnMut(&str) -> Result<(), BoxError> + Send,
-{
-    complete_streaming_inner(req, on_delta).await
-}
-
-async fn complete_streaming_inner<F>(
-    req: CompletionRequest,
     mut on_delta: F,
 ) -> Result<CompletionResponse, BoxError>
 where
@@ -127,28 +117,23 @@ where
 {
     write_line(stdin, &state.initial_line()).await?;
     let mut lines = BufReader::new(stdout).lines();
-    let loop_fut = async {
-        loop {
-            match lines.next_line().await {
-                Ok(Some(line)) => match state.handle_line(&line, on_delta)? {
-                    CodexStep::Continue => {}
-                    CodexStep::Send(messages) => {
-                        for message in &messages {
-                            write_line(stdin, message).await?;
-                        }
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) => match state.handle_line(&line, on_delta)? {
+                CodexStep::Continue => {}
+                CodexStep::Send(messages) => {
+                    for message in &messages {
+                        write_line(stdin, message).await?;
                     }
-                    CodexStep::Done => return Ok(()),
-                },
-                Ok(None) => {
-                    return Err::<(), BoxError>(
-                        "codex app-server stream ended before the turn completed".into(),
-                    );
                 }
-                Err(err) => return Err(Box::new(err) as BoxError),
+                CodexStep::Done => return Ok(()),
+            },
+            Ok(None) => {
+                return Err("codex app-server stream ended before the turn completed".into());
             }
+            Err(err) => return Err(Box::new(err) as BoxError),
         }
-    };
-    loop_fut.await
+    }
 }
 
 fn spawn_codex_child(
