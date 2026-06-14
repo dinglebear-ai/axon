@@ -429,6 +429,7 @@ dependencies = [
  "spider_transformations",
  "sqlx",
  "ssh2-config",
+ "streaming-iterator",
  "subtle",
  "supports-hyperlinks",
  "tar",
