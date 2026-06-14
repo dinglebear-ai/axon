@@ -21,7 +21,7 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::task::JoinHandle;
 
 use crate::core::llm::headless::common::{
-    joined_prompt, kill_and_wait, read_bounded_stderr, redacted_stderr_tail,
+    joined_prompt, read_bounded_stderr, redacted_stderr_tail,
 };
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use protocol::{CodexStep, CodexStreamState};
@@ -92,7 +92,7 @@ where
 
     // `codex app-server` is a persistent process — it does not exit after a
     // turn — so terminate it explicitly regardless of outcome.
-    let cleanup = kill_and_wait(&mut child).await;
+    let cleanup = cleanup_codex_child(&mut child).await;
     let stderr_tail = collect_stderr(stderr_task).await;
 
     match result {
@@ -155,9 +155,60 @@ fn spawn_codex_child(
         .kill_on_drop(true);
     home::apply_codex_env_allowlist(&mut command);
     home::apply_codex_home_env(&mut command, home.path());
+    configure_codex_child_isolation(&mut command);
     command
         .spawn()
         .map_err(|err| format!("failed to spawn codex app-server: {err}").into())
+}
+
+#[cfg(unix)]
+fn configure_codex_child_isolation(command: &mut Command) {
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn configure_codex_child_isolation(_command: &mut Command) {}
+
+#[cfg(unix)]
+async fn cleanup_codex_child(child: &mut Child) -> String {
+    let kill_result = match child.id() {
+        Some(pid) => kill_process_group(pid).await,
+        None => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "codex child pid unavailable",
+        )),
+    };
+    let wait_result = child.wait().await;
+    match (kill_result, wait_result) {
+        (Ok(()), Ok(status)) => format!("killed process group and reaped with {status}"),
+        (Ok(()), Err(wait_err)) => format!("killed process group but wait failed: {wait_err}"),
+        (Err(kill_err), Ok(status)) => {
+            format!("process-group kill failed: {kill_err}; wait returned {status}")
+        }
+        (Err(kill_err), Err(wait_err)) => {
+            format!("process-group kill failed: {kill_err}; wait failed: {wait_err}")
+        }
+    }
+}
+
+#[cfg(unix)]
+async fn kill_process_group(pid: u32) -> Result<(), io::Error> {
+    let status = Command::new("kill")
+        .arg("-KILL")
+        .arg("--")
+        .arg(format!("-{pid}"))
+        .status()
+        .await?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("kill exited with {status}")))
+    }
+}
+
+#[cfg(not(unix))]
+async fn cleanup_codex_child(child: &mut Child) -> String {
+    crate::core::llm::headless::common::kill_and_wait(child).await
 }
 
 fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {

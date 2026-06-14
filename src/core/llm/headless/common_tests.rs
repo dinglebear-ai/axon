@@ -26,6 +26,29 @@ fn headless_safety_redacts_and_bounds_stderr() {
 }
 
 #[test]
+fn headless_safety_redacts_compact_json_secrets() {
+    let redacted = redacted_stderr_tail(
+        br#"{"error":"bad auth","api_key":"sk-secret","nested":{"token":"atk_token"}}"#,
+    );
+
+    assert!(redacted.contains("bad auth"));
+    assert!(redacted.contains("[REDACTED]"));
+    assert!(!redacted.contains("sk-secret"));
+    assert!(!redacted.contains("atk_token"));
+}
+
+#[test]
+fn headless_safety_redacts_authorization_header_without_space_after_colon() {
+    let redacted =
+        redacted_stderr_tail(b"request failed Authorization:Bearer sk-secret-value normal");
+
+    assert!(redacted.contains("[REDACTED]"));
+    assert!(redacted.contains("normal"));
+    assert!(!redacted.contains("Authorization:Bearer"));
+    assert!(!redacted.contains("sk-secret-value"));
+}
+
+#[test]
 fn headless_safety_keeps_only_stderr_tail() {
     let mut buf = Vec::new();
     append_bounded_tail(&mut buf, &vec![b'a'; STDERR_TAIL_LIMIT]);

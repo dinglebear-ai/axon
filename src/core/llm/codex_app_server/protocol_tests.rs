@@ -102,6 +102,23 @@ fn response_error_propagates() {
 }
 
 #[test]
+fn response_error_redacts_compact_json_secret_message() {
+    let mut state = new_state();
+    let err = state
+        .handle_line(
+            r#"{"id":0,"error":{"message":"{\"api_key\":\"sk-protocol-secret\",\"token\":\"atk_protocol_secret\",\"message\":\"bad auth\"}"}}"#,
+            &mut no_delta,
+        )
+        .unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("bad auth"), "got: {text}");
+    assert!(text.contains("[REDACTED]"), "got: {text}");
+    assert!(!text.contains("sk-protocol-secret"), "got: {text}");
+    assert!(!text.contains("atk_protocol_secret"), "got: {text}");
+}
+
+#[test]
 fn malformed_protocol_error_is_bounded_and_redacted() {
     let mut state = CodexStreamState::new(None, "prompt", "/tmp", "test");
     let secret = format!(

@@ -242,12 +242,122 @@ async fn codex_completion_timeout_covers_slow_child_before_handshake() {
 }
 
 #[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_error_suffix_redacts_compact_stderr_secrets() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("stderr-codex");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\n\
+         echo '{\"api_key\":\"sk-compact-secret\",\"token\":\"atk_compact_secret\"}' >&2\n\
+         exit 1\n",
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        completion_timeout_secs: 3,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    let err = complete_text(req).await.unwrap_err();
+    let text = err.to_string();
+
+    assert!(text.contains("stderr:"), "got: {text}");
+    assert!(text.contains("[REDACTED]"), "got: {text}");
+    assert!(!text.contains("sk-compact-secret"), "got: {text}");
+    assert!(!text.contains("atk_compact_secret"), "got: {text}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_timeout_kills_grandchild_process_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("grandchild-codex");
+    let parent_pid_file = dir.path().join("parent.pid");
+    let grandchild_pid_file = dir.path().join("grandchild.pid");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+import time
+
+with open("{parent_pid_file}", "w", encoding="utf-8") as pid:
+    pid.write(str(os.getpid()))
+grandchild = subprocess.Popen(["sleep", "30"])
+with open("{grandchild_pid_file}", "w", encoding="utf-8") as pid:
+    pid.write(str(grandchild.pid))
+
+print(json.dumps({{"id": 0, "result": {{"userAgent": "fake"}}}}), flush=True)
+print(json.dumps({{"id": 1, "result": {{"thread": {{"id": "thr_timeout"}}, "model": "fake"}}}}), flush=True)
+time.sleep(30)
+"#,
+            parent_pid_file = parent_pid_file.display(),
+            grandchild_pid_file = grandchild_pid_file.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        completion_timeout_secs: 1,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    let err = complete_text(req).await.unwrap_err();
+    let text = err.to_string();
+    assert!(text.contains("timed out"), "got: {text}");
+    assert!(text.contains("process group"), "got: {text}");
+
+    let parent_pid = std::fs::read_to_string(parent_pid_file)
+        .unwrap()
+        .trim()
+        .parse::<i32>()
+        .unwrap();
+    let grandchild_pid = std::fs::read_to_string(grandchild_pid_file)
+        .unwrap()
+        .trim()
+        .parse::<i32>()
+        .unwrap();
+    assert_process_exits(parent_pid);
+    assert_process_exits(grandchild_pid);
+}
+
+#[cfg(unix)]
 fn assert_process_exits(pid: i32) {
-    for _ in 0..20 {
-        if !Path::new("/proc").join(pid.to_string()).exists() {
+    for _ in 0..40 {
+        if !process_is_running(pid) {
             return;
         }
         std::thread::sleep(Duration::from_millis(50));
     }
     panic!("process {pid} was still visible after codex timeout cleanup");
+}
+
+#[cfg(unix)]
+fn process_is_running(pid: i32) -> bool {
+    let proc_dir = Path::new("/proc").join(pid.to_string());
+    if !proc_dir.exists() {
+        return false;
+    }
+    let Ok(stat) = std::fs::read_to_string(proc_dir.join("stat")) else {
+        return true;
+    };
+    stat.split_whitespace()
+        .nth(2)
+        .is_none_or(|state| state != "Z")
 }

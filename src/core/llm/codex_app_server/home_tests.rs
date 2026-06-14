@@ -1,4 +1,6 @@
 use super::*;
+use std::collections::BTreeMap;
+use std::ffi::{OsStr, OsString};
 
 #[test]
 fn isolated_config_disables_side_effects() {
@@ -79,6 +81,35 @@ fn copy_auth_copies_when_present() {
 }
 
 #[test]
+fn codex_child_env_keeps_openai_key_but_not_external_base_url() {
+    let mut command = Command::new("env");
+    apply_codex_env_allowlist_from(
+        &mut command,
+        [
+            (
+                OsString::from("OPENAI_API_KEY"),
+                OsString::from("sk-test-key"),
+            ),
+            (
+                OsString::from("OPENAI_BASE_URL"),
+                OsString::from("http://localhost:8080/v1"),
+            ),
+        ],
+    );
+    let envs: BTreeMap<_, _> = command
+        .as_std()
+        .get_envs()
+        .filter_map(|(key, value)| value.map(|v| (key.to_os_string(), v.to_os_string())))
+        .collect();
+
+    assert_eq!(
+        envs.get(OsStr::new("OPENAI_API_KEY")).unwrap(),
+        OsStr::new("sk-test-key")
+    );
+    assert!(!envs.contains_key(OsStr::new("OPENAI_BASE_URL")));
+}
+
+#[test]
 fn codex_child_env_rehomes_home_and_xdg_dirs_to_isolated_home() {
     let dir = tempfile::tempdir().unwrap();
     let mut command = Command::new("env");
@@ -86,27 +117,24 @@ fn codex_child_env_rehomes_home_and_xdg_dirs_to_isolated_home() {
     apply_codex_env_allowlist(&mut command);
     apply_codex_home_env(&mut command, dir.path());
 
-    let envs: std::collections::BTreeMap<_, _> = command
+    let envs: BTreeMap<_, _> = command
         .as_std()
         .get_envs()
         .filter_map(|(key, value)| value.map(|v| (key.to_os_string(), v.to_os_string())))
         .collect();
 
-    assert_eq!(envs.get(std::ffi::OsStr::new("HOME")).unwrap(), dir.path());
+    assert_eq!(envs.get(OsStr::new("HOME")).unwrap(), dir.path());
+    assert_eq!(envs.get(OsStr::new("CODEX_HOME")).unwrap(), dir.path());
     assert_eq!(
-        envs.get(std::ffi::OsStr::new("CODEX_HOME")).unwrap(),
-        dir.path()
-    );
-    assert_eq!(
-        envs.get(std::ffi::OsStr::new("XDG_CONFIG_HOME")).unwrap(),
+        envs.get(OsStr::new("XDG_CONFIG_HOME")).unwrap(),
         &dir.path().join(".config")
     );
     assert_eq!(
-        envs.get(std::ffi::OsStr::new("XDG_CACHE_HOME")).unwrap(),
+        envs.get(OsStr::new("XDG_CACHE_HOME")).unwrap(),
         &dir.path().join(".cache")
     );
     assert_eq!(
-        envs.get(std::ffi::OsStr::new("XDG_DATA_HOME")).unwrap(),
+        envs.get(OsStr::new("XDG_DATA_HOME")).unwrap(),
         &dir.path().join(".local/share")
     );
 }
