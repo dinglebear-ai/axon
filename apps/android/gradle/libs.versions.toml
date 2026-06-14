@@ -14,9 +14,9 @@ kotlinx-serialization = "1.7.3"
 kotlinx-collections-immutable = "0.3.8"
 junit = "4.13.2"
 turbine = "1.1.0"
-# 1.0.0 lacks androidx.security.crypto.MasterKey; keep the 1.1 line until a stable
-# artifact with MasterKey is available and verified by EncryptedTokenStoreTest.
-securityCrypto = "1.1.0-alpha06"
+# 1.1.0 keeps androidx.security.crypto.MasterKey while moving off the old alpha
+# used before AndroidX published a stable security-crypto 1.1 line.
+securityCrypto = "1.1.0"
 robolectric = "4.13"
 androidxTestExtJunit = "1.2.1"
 androidxTestEspresso = "3.6.1"

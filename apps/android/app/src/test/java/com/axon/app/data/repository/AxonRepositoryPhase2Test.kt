@@ -63,7 +63,7 @@ class AxonRepositoryPhase2Test {
 
     @Test fun `listJobs returns full server array unchanged (no client-side slicing)`() = runBlocking {
         server.enqueue(MockResponse().setBody("""{"jobs":[{"id":"a","status":"x"},{"id":"b","status":"y"}],"limit":100,"offset":0}""").addHeader("Content-Type","application/json"))
-        val jobs = repo.listJobs(AxonClient.JobKind.Crawl).getOrThrow()
+        val jobs = repo.listJobs(JobFamily.Crawl).getOrThrow()
         assertEquals(2, jobs.size)
     }
 
