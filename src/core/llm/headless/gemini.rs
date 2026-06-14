@@ -147,7 +147,7 @@ where
         .ok_or("failed to open Gemini headless stderr")?;
     let stderr_task = tokio::spawn(async move { read_bounded_stderr(stderr).await });
 
-    let timeout = completion_timeout(&req.backend);
+    let timeout = req.backend.completion_timeout();
     let mut parser = GeminiStreamState::default();
     let mut lines = BufReader::new(stdout).lines();
     let stream_result = match tokio::time::timeout(timeout, async {
@@ -362,10 +362,6 @@ pub async fn complete_text(
     req: CompletionRequest,
 ) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
     complete_streaming(req, |_| Ok(())).await
-}
-
-fn completion_timeout(config: &LlmBackendConfig) -> Duration {
-    Duration::from_secs(config.completion_timeout_secs.max(1))
 }
 
 #[cfg(test)]

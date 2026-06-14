@@ -298,16 +298,20 @@ impl CodexStreamState {
 fn sanitize_protocol_error(text: &str) -> String {
     let mut redacted = crate::core::llm::headless::common::redact_for_error(text);
     if redacted.len() > PROTOCOL_ERROR_LIMIT {
-        let limit = redacted
-            .char_indices()
-            .map(|(idx, _)| idx)
-            .take_while(|idx| *idx <= PROTOCOL_ERROR_LIMIT)
-            .last()
-            .unwrap_or(0);
-        redacted.truncate(limit);
+        truncate_utf8_boundary(&mut redacted, PROTOCOL_ERROR_LIMIT);
         redacted.push_str("...");
     }
     redacted
+}
+
+fn truncate_utf8_boundary(value: &mut String, max_bytes: usize) {
+    let end = value
+        .char_indices()
+        .map(|(idx, _)| idx)
+        .take_while(|idx| *idx <= max_bytes)
+        .last()
+        .unwrap_or(0);
+    value.truncate(end);
 }
 
 fn decline_server_request(id: &Value) -> CodexStep {

@@ -43,11 +43,9 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
             Ok(())
         }
         llm::LlmBackendKind::CodexAppServer => {
-            cfg.codex_cmd
-                .trim()
-                .is_empty()
-                .then(|| anyhow::anyhow!("AXON_CODEX_CMD must not be empty"))
-                .map_or(Ok(()), Err)?;
+            if cfg.codex_cmd.trim().is_empty() {
+                return Err(anyhow::anyhow!("AXON_CODEX_CMD must not be empty"));
+            }
             llm::codex_app_server::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
         }
     }
