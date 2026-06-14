@@ -55,6 +55,8 @@ pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> C
                            axon ingest https://reddit.com/r/rust/comments/...\n\
                  YouTube:  axon ingest https://youtube.com/watch?v=...\n\
                            axon ingest @channelname\n\
+                 RSS/Atom: axon ingest https://blog.example.com/feed.xml\n\
+                           axon ingest rss:example.com/feed\n\
                  \n\
                  Run 'axon ingest --help' for full usage.",
         )?;

@@ -328,7 +328,7 @@ than embedded as literal text.
 { "action": "ingest", "subaction": "start", "source_type": "github", "target": "owner/repo" }
 ```
 
-Source types: `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube`, `sessions`.
+Source types: `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube`, `rss`, `sessions`.
 
 > Path-mode responses persist large payloads under `~/.axon/artifacts/<context>` and return the file `path`. The server runs in-process, so read that path directly from disk; there is no `artifacts` MCP action. Use `response_mode=inline`/`auto_inline` to get payloads in-band.
 

@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "5.9.2"
+    "version": "5.10.0"
   },
   "paths": {
     "/v1/artifacts": {
@@ -5668,6 +5668,7 @@
           "git",
           "reddit",
           "youtube",
+          "rss",
           "sessions"
         ]
       },

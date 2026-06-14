@@ -58,7 +58,7 @@ MCP docs:
 | `brand <url>` | Extract brand identity: colors, fonts, logos, favicon | No |
 | `evaluate <question>` | RAG vs baseline + independent LLM judge (accuracy, relevance, completeness, specificity, verdict) | No |
 | `suggest [focus]` | Suggest new docs URLs to crawl | No |
-| `ingest <target>` | Ingest external source (GitHub repo, GitLab project URL, Gitea/Forgejo repo, generic HTTPS Git repo, Reddit subreddit/thread, YouTube video/playlist/channel) — auto-detects source type from target where possible. Git providers: source code indexed by default; use `--no-source` to skip. | Yes (default) |
+| `ingest <target>` | Ingest external source (GitHub repo, GitLab project URL, Gitea/Forgejo repo, generic HTTPS Git repo, Reddit subreddit/thread, YouTube video/playlist/channel, RSS/Atom/JSON feed) — auto-detects source type from target where possible (feeds match `.rss`/`.atom`/`.rdf` extensions, `feed`/`rss`/`atom` path segments, `?feed=` queries, or an explicit `rss:`/`feed:`/`atom:` prefix). One document is embedded per feed entry (HTML → markdown). Git providers: source code indexed by default; use `--no-source` to skip. | Yes (default) |
 | `sessions [format]` | Ingest AI session exports (Claude/Codex/Gemini) into Qdrant | No |
 | `sources` | List all indexed URLs + chunk counts | No |
 | `domains` | List indexed domains + stats | No |
@@ -121,6 +121,8 @@ All flags are `--global` (usable with any subcommand).
 | `--drop-thin-markdown <bool>` | bool | `true` | Skip thin pages — do not save or embed them. |
 | `--delay-ms <ms>` | u64 | `0` | Delay between requests in milliseconds. Useful for polite crawling. |
 | `--header <HEADER>` | string | — | Custom HTTP header in `Key: Value` format. Repeatable (`--header "Auth: Bearer ..." --header "X-Custom: val"`). Applied to crawl, scrape, extract, and Chrome re-fetch paths. |
+| `--warc <PATH>` | path | — | Write every fetched page of a crawl to a WARC 1.1 archive at this path. HTTP and Chrome render paths both archive (spider `warc` feature). Crawl path only; round-trips through the crawl job config snapshot. |
+| `--automation-script <PATH>` | path | — | JSON file mapping URL path prefixes → ordered Chrome web-automation steps (`click`/`click_all`/`scroll_x`/`scroll_y`/`infinite_scroll`/`wait`/`wait_for`/`wait_for_and_click`/`wait_for_navigation`/`fill`/`evaluate`/`screenshot`). Steps run against each matching page before capture. **Requires a Chrome render path** (`--render-mode chrome`/`auto-switch`); ignored with a warning on HTTP-only. See `src/crawl/automation.rs`. |
 
 #### Output
 

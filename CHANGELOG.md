@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.0] - 2026-06-13
+
+### Added
+
+- **WARC archive output for crawls** (`--warc <path>`) — write every fetched
+  page of a crawl to a WARC 1.1 archive. HTTP and Chrome render paths both
+  archive identically (spider `warc` feature enabled, wired in
+  `src/crawl/engine/runtime.rs`). Useful for archival/compliance and
+  re-embedding from disk without re-fetching. The setting round-trips through
+  the crawl job config snapshot. Ported from spider's `warc`/`warc_chrome`
+  examples.
+- **Chrome web-automation scripts for crawls** (`--automation-script <path>`) —
+  a JSON file mapping URL path prefixes to ordered automation steps
+  (click/scroll/wait/fill/evaluate/screenshot) that spider runs against each
+  matching page during a Chrome crawl before capture. Unlocks crawling sites
+  that need interaction (cookie banners, "load more", infinite scroll). New
+  `src/crawl/automation.rs` parses the file into spider's `AutomationScriptsMap`;
+  applied only on Chrome render paths. Ported from spider's
+  `chrome_web_automation` example.
+- **RSS / Atom / JSON feed ingest source** — `axon ingest <feed-url>` (or the
+  explicit `rss:` / `feed:` / `atom:` prefix) auto-classifies feed URLs and
+  embeds one document per entry (HTML content converted to markdown, with
+  title/link/published metadata). Backed by `feed-rs`; new `src/ingest/rss.rs`.
+  Participates in `axon refresh` via `seed_url`. Available on the CLI
+  (auto-classified), MCP (`source_type=rss`), and REST ingest paths. Ported
+  from spider's `rss` example, adapted to axon's ingest framework.
+
 ## [5.9.2] - 2026-06-13
 
 ### Added

@@ -15,7 +15,7 @@ Parity notes: Uses canonical `target` field for Git, Reddit, YouTube, and sessio
 <!-- END GENERATED ACTION SURFACES -->
 
 
-Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube) into Qdrant. Source type is auto-detected from the target where possible.
+Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube, RSS/Atom/JSON feeds) into Qdrant. Source type is auto-detected from the target where possible. RSS/Atom feeds embed one document per entry (HTML content converted to markdown, with title/link/published metadata).
 
 > For implementation details and troubleshooting see [`docs/guides/ingest/ingest.md`](../../guides/ingest/ingest.md).
 >
@@ -43,14 +43,20 @@ The source type is inferred from `<TARGET>` in this order:
 | `gitea.com/owner/repo` or `codeberg.org/owner/repo` | Gitea/Forgejo |
 | `gitea:<host>/<owner>/<repo>` or `forgejo:<host>/<owner>/<repo>` | Gitea/Forgejo |
 | `git:https://host/path/repo.git` | Generic Git HTTPS clone |
+| `rss:`/`feed:`/`atom:` prefix, or a feed-shaped URL (`.rss`/`.atom`/`.rdf`, a `feed`/`rss`/`atom` path segment, or a `?feed=` query) | RSS/Atom/JSON feed |
 | `github.com/owner/repo` | GitHub |
 | `owner/repo` slug | GitHub |
+
+> Feed detection runs **after** the provider hosts, so a github.com/reddit/youtube
+> URL is never misrouted. Use an explicit `rss:`/`feed:`/`atom:` prefix to force
+> feed handling for a URL that doesn't look like a feed. Non-feed targets that
+> reach the feed parser fail with a clear error.
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `<TARGET>` | GitHub slug (`owner/repo`), GitLab URL or `gitlab:` target, Gitea/Forgejo URL or prefix target, `git:` HTTPS clone URL, YouTube URL / `@handle`, or Reddit subreddit (`r/name`) or URL |
+| `<TARGET>` | GitHub slug (`owner/repo`), GitLab URL or `gitlab:` target, Gitea/Forgejo URL or prefix target, `git:` HTTPS clone URL, YouTube URL / `@handle`, Reddit subreddit (`r/name`) or URL, or an RSS/Atom/JSON feed URL (or `rss:`/`feed:`/`atom:` prefix) |
 
 ## Required Environment Variables
 
@@ -151,6 +157,12 @@ axon ingest r/unraid --sort top --time week
 
 # Reddit: full URL (auto-detected)
 axon ingest "https://www.reddit.com/r/rust/" --wait true
+
+# RSS/Atom: feed URL (auto-detected from .xml/feed/atom shape)
+axon ingest "https://blog.rust-lang.org/feed.xml" --wait true
+
+# RSS/Atom: force feed handling with an explicit prefix
+axon ingest rss:example.com/feed --wait true
 
 # Job control
 axon ingest list

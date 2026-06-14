@@ -18,7 +18,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "5.9.2"
+version = "5.10.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -91,6 +91,10 @@ spider = { version = "2", default-features = false, features = [
   # the body on 304 Not Modified. Wired in src/crawl/engine/runtime.rs and
   # reconciled cross-run in src/crawl/engine/etag.rs (bead axon_rust-hiyf).
   "etag_cache",
+  # WARC 1.1 archive output: when --warc <path> is set, the crawl writes every
+  # fetched page as a WARC response record. Wired in src/crawl/engine/runtime.rs
+  # via website.configuration.with_warc(). HTTP and Chrome paths both archive.
+  "warc",
 ] }
 spider_agent = { version = "2.47.89", default-features = false, features = [
   "search_tavily",
@@ -142,6 +146,10 @@ sha2 = "0.11"
 hex = "0.4"
 reflink-copy = "0.1"
 dotenvy = "0.15"
+# RSS / Atom / JSON-feed parsing for the `ingest` RSS feed source type
+# (src/ingest/rss.rs). feed-rs handles RSS 0.9x/2.0 + Atom 1.0 + JSON Feed and
+# reuses the quick-xml already in the tree.
+feed-rs = "2"
 # rmcp 1.7+ is required: 1.5 introduced the HTTP Parts injection into
 # RequestContext::extensions that our OAuth scope check relies on
 # (ctx.extensions.get::<http::request::Parts>()), and 1.7 adds MCP task

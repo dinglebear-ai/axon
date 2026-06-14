@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "5.9.2"
+version = "5.10.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -392,6 +392,7 @@ dependencies = [
  "dashmap",
  "dialoguer",
  "dotenvy",
+ "feed-rs",
  "flate2",
  "futures",
  "futures-util",
@@ -2012,6 +2013,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "feed-rs"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4c0591d23efd0d595099af69a31863ac1823046b1b021e3b06ba3aae7e00991"
+dependencies = [
+ "chrono",
+ "mediatype",
+ "quick-xml 0.37.5",
+ "regex",
+ "serde",
+ "serde_json",
+ "siphasher 1.0.3",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3586,6 +3604,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mediatype"
+version = "0.19.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33746aadcb41349ec291e7f2f0a3aa6834d1d7c58066fb4b01f68efc4c4b7631"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4551,6 +4578,16 @@ name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
+name = "quick-xml"
+version = "0.37.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+dependencies = [
+ "encoding_rs",
+ "memchr",
+]
 
 [[package]]
 name = "quick-xml"
@@ -5942,7 +5979,7 @@ dependencies = [
  "percent-encoding",
  "phf 0.13.1",
  "pin-project-lite",
- "quick-xml",
+ "quick-xml 0.39.4",
  "rand 0.9.4",
  "regex",
  "reqwest 0.13.4",

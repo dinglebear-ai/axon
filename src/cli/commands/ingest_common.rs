@@ -303,6 +303,13 @@ pub async fn run_ingest_sync(cfg: &Config, source: IngestSource) -> Result<(), B
                 as usize;
             (n, "reddit", target.clone())
         }
+        IngestSource::Rss { target } => {
+            let result = ingest_service::ingest_rss(cfg, target, None).await?;
+            let n = chunks_embedded_from_payload(&result.payload)
+                .ok_or("ingest: service payload missing chunk count field")?
+                as usize;
+            (n, "rss", target.clone())
+        }
         IngestSource::Sessions { .. } => {
             return Err(anyhow::anyhow!(
                 "sessions ingest is handled by the sessions command, not ingest"

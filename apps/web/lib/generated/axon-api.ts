@@ -219,7 +219,7 @@ export type components = {
             "source_type": components['schemas']['RestIngestSourceType'];
             "target"?: string | null;
         };
-        "RestIngestSourceType": "github" | "gitlab" | "gitea" | "git" | "reddit" | "youtube" | "sessions";
+        "RestIngestSourceType": "github" | "gitlab" | "gitea" | "git" | "reddit" | "youtube" | "rss" | "sessions";
         "RestMapRequest": {
             "limit"?: number | null;
             "offset"?: number | null;

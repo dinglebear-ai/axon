@@ -44,6 +44,7 @@ pub enum RestIngestSourceType {
     Git,
     Reddit,
     Youtube,
+    Rss,
     Sessions,
 }
 
@@ -284,6 +285,7 @@ impl From<RestIngestSourceType> for crate::mcp::schema::IngestSourceType {
             RestIngestSourceType::Git => Self::Git,
             RestIngestSourceType::Reddit => Self::Reddit,
             RestIngestSourceType::Youtube => Self::Youtube,
+            RestIngestSourceType::Rss => Self::Rss,
             RestIngestSourceType::Sessions => Self::Sessions,
         }
     }

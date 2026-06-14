@@ -27,6 +27,8 @@ struct ConfigSnapshot {
     collection: Option<String>,
     output_dir: Option<PathBuf>,
     output_path: Option<PathBuf>,
+    warc_output: Option<PathBuf>,
+    automation_script: Option<PathBuf>,
     query: Option<String>,
     search_limit: Option<usize>,
     max_pages: Option<u32>,
@@ -139,6 +141,8 @@ impl ConfigSnapshot {
             collection: Some(cfg.collection.clone()),
             output_dir: Some(cfg.output_dir.clone()),
             output_path: cfg.output_path.clone(),
+            warc_output: cfg.warc_output.clone(),
+            automation_script: cfg.automation_script.clone(),
             query: cfg.query.clone(),
             search_limit: Some(cfg.search_limit),
             max_pages: Some(cfg.max_pages),
@@ -388,6 +392,8 @@ impl ConfigSnapshot {
         }
         set_option_exact!(
             output_path,
+            warc_output,
+            automation_script,
             query,
             chrome_remote_url,
             chrome_proxy,

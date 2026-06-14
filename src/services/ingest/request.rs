@@ -53,6 +53,11 @@ pub fn source_from_mcp_request(
             validate_youtube_ingest_target(&target)?;
             Ok(IngestSource::Youtube { target })
         }
+        IngestSourceType::Rss => {
+            let target = required_ingest_target(req, "target")?;
+            validate_rss_ingest_target(&target)?;
+            Ok(IngestSource::Rss { target })
+        }
         IngestSourceType::Sessions => Err(
             "remote sessions ingest must use /v1/ingest/sessions/prepared; server-local session scanning is disabled"
                 .to_string(),
@@ -79,6 +84,9 @@ pub fn validate_ingest_source(source: &IngestSource) -> Result<(), String> {
         }
         IngestSource::Youtube { target } => {
             validate_youtube_ingest_target(target)?;
+        }
+        IngestSource::Rss { target } => {
+            validate_rss_ingest_target(target)?;
         }
         IngestSource::Sessions { .. } => {}
         IngestSource::PreparedSessions { .. } => {}
@@ -145,6 +153,15 @@ fn validate_youtube_ingest_target(target: &str) -> Result<(), String> {
     ingest::youtube::classify_youtube_target(target)
         .map(|_| ())
         .map_err(|err| format!("invalid YouTube target: {err}"))
+}
+
+fn validate_rss_ingest_target(target: &str) -> Result<(), String> {
+    let url = reqwest::Url::parse(target)
+        .map_err(|err| format!("invalid RSS feed target; expected a feed URL: {err}"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("invalid RSS feed target; only http/https feed URLs are supported".to_string());
+    }
+    Ok(())
 }
 
 fn required_ingest_target(
