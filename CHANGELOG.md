@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.1] - 2026-06-14
+
+### Security
+
+- **Unified secret redaction** — added `core::redact` with a single regex-based
+  redactor (`redact_secrets`) that operates on the full string (not whitespace
+  tokens) and is a superset of every redactor it replaces: Google `AIza...` API
+  keys, Google `ya29.` OAuth tokens, token-anchored `sk-` OpenAI keys,
+  `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_` GitHub tokens, `atk_` tokens,
+  `Authorization:` header values, the `API_KEY`/`TOKEN`/`SECRET` (`=` or `:`)
+  marker rules, and a Shannon-entropy-gated 32+ char high-entropy run (benign
+  repeated padding is left intact). Prefix rules are `\b`-anchored to avoid
+  mid-word false positives. Replaces the divergent token-splitting redactors in
+  `core::llm::headless::common` and `core::llm::openai_compat` (the headless
+  JSON-aware structural redaction is preserved), closing a Google-API-key leak
+  path through the Gemini subprocess stderr tail (surfaced on the
+  `/v1/ask/stream` SSE error event and in `~/.axon/logs/axon.log`).
+
 ## [5.10.0] - 2026-06-13
 
 ### Added
