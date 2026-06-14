@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "5.10.1"
+    "version": "5.11.0"
   },
   "paths": {
     "/v1/artifacts": {
