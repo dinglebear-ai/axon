@@ -90,8 +90,10 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_CHAT_OPENAI_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_OPENAI_API_KEY` | keep-env | both | — | **yes** | runtime.rs |
 | `AXON_PROVIDER` | keep-env | both | — | no | provider_overlay.rs |
-| `AXON_CODEX_CMD` | trusted-bootstrap | host-only | — | no | codex_app_server.rs, .env.example, configuration.md |
-| `AXON_CODEX_HOME` | trusted-bootstrap | host-only | — | no | codex_app_server/home.rs, .env.example, configuration.md |
+| `AXON_UPDATE_INSTALL_PATH` | trusted-bootstrap | host-only | — | no | update.rs, deployment.md |
+| `AXON_UPDATE_FILE_RELEASE_DIR` | trusted-bootstrap | host-only | — | no | update.rs, deployment.md |
+| `AXON_CODEX_CMD` | trusted-bootstrap | host-only | — | no | codex_app_server.rs, configuration.md, compose scrub |
+| `AXON_CODEX_HOME` | trusted-bootstrap | host-only | — | no | codex_app_server/home.rs, configuration.md, compose scrub |
 | `OPENAI_MODEL` | external/test-only | not-runtime | — | no | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
 | `OPENAI_BASE_URL` | external/test-only | not-runtime | — | no | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
 | `OPENAI_API_KEY` | codex-child-auth | child-only | — | **yes** | ignored by Axon config; optionally forwarded only to isolated `codex app-server` child by codex_app_server/home.rs |

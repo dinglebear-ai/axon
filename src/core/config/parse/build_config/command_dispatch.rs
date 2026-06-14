@@ -8,7 +8,7 @@ use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
     IngestArgs, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ServeArgs, ServeSubcommand,
     SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode,
-    SetupInitArgs, SetupSubcommand, SyncSubcommand,
+    SetupInitArgs, SetupSubcommand, SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -316,6 +316,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
                 SyncSubcommand::Pending => vec!["pending".to_string()],
             };
         }
+        CliCommand::Update(args) => apply_update(&mut out, args),
         CliCommand::Palette(args) => apply_palette(&mut out, args),
     }
     out
@@ -345,6 +346,24 @@ fn apply_monitor(out: &mut DispatchOutput, action: MonitorSubcommand) {
             }
             out.positional = positional;
         }
+    }
+}
+
+fn apply_update(out: &mut DispatchOutput, args: UpdateArgs) {
+    out.command = CommandKind::Update;
+    if let Some(version) = args.version {
+        out.positional.push("--version".to_string());
+        out.positional.push(version);
+    }
+    if args.repo != "jmagar/axon" {
+        out.positional.push("--repo".to_string());
+        out.positional.push(args.repo);
+    }
+    if args.no_container {
+        out.positional.push("--no-container".to_string());
+    }
+    if args.force {
+        out.positional.push("--force".to_string());
     }
 }
 

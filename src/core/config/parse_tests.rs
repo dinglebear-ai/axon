@@ -216,6 +216,43 @@ fn parse_retrieve_max_points_into_config() {
     assert_eq!(cfg.retrieve_max_points, Some(25));
 }
 
+#[test]
+fn update_defaults_to_latest_release_and_container_sync() {
+    let cli = super::Cli::parse_from(["axon", "update"]);
+    let cfg = super::build_config::into_config(cli).expect("update should parse");
+
+    assert!(matches!(cfg.command, CommandKind::Update));
+    assert_eq!(cfg.positional, Vec::<String>::new());
+}
+
+#[test]
+fn update_accepts_version_repo_no_container_and_force_flags() {
+    let cli = super::Cli::parse_from([
+        "axon",
+        "update",
+        "--version",
+        "v5.9.2",
+        "--repo",
+        "jmagar/axon-fork",
+        "--no-container",
+        "--force",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("update flags should parse");
+
+    assert!(matches!(cfg.command, CommandKind::Update));
+    assert_eq!(
+        cfg.positional,
+        vec![
+            "--version".to_string(),
+            "v5.9.2".to_string(),
+            "--repo".to_string(),
+            "jmagar/axon-fork".to_string(),
+            "--no-container".to_string(),
+            "--force".to_string(),
+        ]
+    );
+}
+
 // --- ask session-management flag tests ---
 
 fn ask_cli(extra: &[&str]) -> super::Cli {

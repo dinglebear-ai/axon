@@ -30,6 +30,21 @@ fn validate_codex_cmd_allows_bare_name() {
 }
 
 #[test]
+fn validate_codex_cmd_rejects_bare_name_in_container_for_codex_backend() {
+    if crate::core::config::parse::docker::running_in_container() {
+        let backend = LlmBackendConfig {
+            kind: LlmBackendKind::CodexAppServer,
+            codex_cmd: "codex".to_string(),
+            ..LlmBackendConfig::default()
+        };
+
+        let err = validate_codex_cmd(&backend).unwrap_err();
+
+        assert!(err.to_string().contains("host-only"), "got: {err}");
+    }
+}
+
+#[test]
 fn validate_codex_cmd_rejects_empty() {
     assert!(validate_codex_cmd(&backend_with_cmd("   ")).is_err());
 }
@@ -118,6 +133,13 @@ import time
 
 with open("{pid_file}", "w", encoding="utf-8") as pid:
     pid.write(str(os.getpid()))
+
+home = os.environ.get("HOME")
+codex_home = os.environ.get("CODEX_HOME")
+assert home == codex_home, dict(HOME=home, CODEX_HOME=codex_home)
+assert os.environ.get("XDG_CONFIG_HOME", "").startswith(codex_home), os.environ.get("XDG_CONFIG_HOME")
+assert os.environ.get("XDG_CACHE_HOME", "").startswith(codex_home), os.environ.get("XDG_CACHE_HOME")
+assert os.environ.get("XDG_DATA_HOME", "").startswith(codex_home), os.environ.get("XDG_DATA_HOME")
 
 def read_msg():
     line = sys.stdin.readline()

@@ -162,7 +162,7 @@ fn codex_backend_preserves_full_research_sources() {
         ..Config::default()
     };
 
-    assert!(source::preserve_full_research_sources(&cfg));
+    assert!(llm::SynthesisModelProfile::from_config(&cfg).preserve_full_research_sources());
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn codex_backend_without_explicit_model_preserves_full_research_sources() {
         ..Config::default()
     };
 
-    assert!(source::preserve_full_research_sources(&cfg));
+    assert!(llm::SynthesisModelProfile::from_config(&cfg).preserve_full_research_sources());
 }
 
 #[test]
@@ -236,7 +236,7 @@ fn classify_source_marks_official_docs_as_authoritative_evidence() {
 }
 
 #[test]
-fn build_extraction_preserves_full_content_for_large_context_models() {
+fn build_extraction_preserves_full_content_within_model_budget_for_large_context_models() {
     let mut cfg = Config::test_default();
     cfg.ask_max_context_chars = 1_000_000;
     cfg.headless_gemini_model = "gemini-3.1-pro-preview".to_string();
@@ -247,7 +247,7 @@ fn build_extraction_preserves_full_content_for_large_context_models() {
     };
     let content = "x".repeat(50_000);
 
-    let extraction = build_extraction(&cfg, &hit, Some(&content), 1);
+    let extraction = build_extraction(&cfg, &hit, Some(&content), content.len());
 
     assert_eq!(extraction.extracted.len(), content.len());
     assert_eq!(extraction.source_type, SourceType::OfficialDocs);
@@ -255,6 +255,23 @@ fn build_extraction_preserves_full_content_for_large_context_models() {
         extraction.source_reputation,
         SourceReputation::Authoritative
     );
+}
+
+#[test]
+fn build_extraction_caps_full_content_for_large_context_models() {
+    let mut cfg = Config::test_default();
+    cfg.ask_max_context_chars = 1_000_000;
+    cfg.headless_gemini_model = "gemini-3.1-pro-preview".to_string();
+    let hit = RawHit {
+        url: "https://docs.anthropic.com/en/docs/claude-code".to_string(),
+        title: "Claude Code docs".to_string(),
+        snippet: "short".to_string(),
+    };
+    let content = "x".repeat(50_000);
+
+    let extraction = build_extraction(&cfg, &hit, Some(&content), 4_096);
+
+    assert_eq!(extraction.extracted.len(), 4_096);
 }
 
 #[test]
