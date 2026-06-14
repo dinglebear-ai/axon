@@ -12,7 +12,9 @@
 //! works when no `auth.json` is present.
 
 use crate::core::llm::LlmBackendConfig;
+use std::collections::BTreeMap;
 use std::error::Error as StdError;
+use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,7 +35,6 @@ const ALLOWED_ENV_KEYS: &[&str] = &[
     "TZ",
     "TMPDIR",
     "OPENAI_API_KEY",
-    "OPENAI_BASE_URL",
     "HTTP_PROXY",
     "HTTPS_PROXY",
     "NO_PROXY",
@@ -48,9 +49,17 @@ const MAX_CODEX_AUTH_JSON_BYTES: u64 = 1024 * 1024;
 
 /// Clear the environment and forward only the allowlisted keys.
 pub(super) fn apply_codex_env_allowlist(command: &mut Command) {
+    apply_codex_env_allowlist_from(command, std::env::vars_os());
+}
+
+fn apply_codex_env_allowlist_from<I>(command: &mut Command, env: I)
+where
+    I: IntoIterator<Item = (OsString, OsString)>,
+{
+    let env: BTreeMap<OsString, OsString> = env.into_iter().collect();
     command.env_clear();
     for key in ALLOWED_ENV_KEYS {
-        if let Some(value) = std::env::var_os(key).filter(|value| !value.is_empty()) {
+        if let Some(value) = env.get(OsStr::new(key)).filter(|value| !value.is_empty()) {
             command.env(key, value);
         }
     }

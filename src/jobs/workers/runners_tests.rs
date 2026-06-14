@@ -140,6 +140,10 @@ fn config_snapshot_omits_secrets() {
 
 #[test]
 fn config_snapshot_preserves_codex_llm_backend_fields() {
+    let worker = Config {
+        codex_home: Some(PathBuf::from("/home/worker/.codex")),
+        ..Config::default()
+    };
     let cfg = Config {
         llm_backend: crate::core::llm::LlmBackendKind::CodexAppServer,
         codex_cmd: "/opt/codex/bin/codex".to_string(),
@@ -150,7 +154,11 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
     };
 
     let json = config_snapshot_json(&cfg).expect("snapshot json");
-    let restored = apply_config_snapshot(&Config::default(), &json).expect("apply snapshot");
+    assert!(
+        !json.contains("/home/example/.codex"),
+        "submitter-local codex_home must not be serialized"
+    );
+    let restored = apply_config_snapshot(&worker, &json).expect("apply snapshot");
 
     assert_eq!(
         restored.llm_backend,
@@ -159,7 +167,7 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
     assert_eq!(restored.codex_cmd, "/opt/codex/bin/codex");
     assert_eq!(
         restored.codex_home,
-        Some(PathBuf::from("/home/example/.codex"))
+        Some(PathBuf::from("/home/worker/.codex"))
     );
     assert_eq!(restored.codex_model, "gpt-5.5");
     assert_eq!(restored.codex_completion_concurrency, 2);
