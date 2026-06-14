@@ -323,6 +323,55 @@ pub(super) async fn configure_website_with_crawl_id(
         website.configuration.with_etag_cache(true);
     }
 
+    // WARC archive output: when --warc <path> is set, spider writes every
+    // fetched page to a WARC 1.1 archive via the broadcast channel. HTTP and
+    // Chrome render paths both archive identically. Crawl path only.
+    if let Some(ref warc_path) = cfg.warc_output {
+        website
+            .configuration
+            .with_warc(spider::utils::warc::WarcConfig {
+                path: warc_path.to_string_lossy().to_string(),
+                write_warcinfo: true,
+                software: format!("axon/{}", env!("CARGO_PKG_VERSION")),
+            });
+    }
+
+    // Chrome web-automation: run declarative per-path-prefix steps
+    // (click/scroll/wait/fill/evaluate/…) against each page before capture.
+    // Requires a Chrome render path; ignored (with a warning) on HTTP-only.
+    if let Some(ref script_path) = cfg.automation_script {
+        match mode {
+            RenderMode::Chrome | RenderMode::AutoSwitch => {
+                let scripts =
+                    crate::crawl::automation::load_automation_scripts(script_path).await?;
+                crate::core::logging::log_info(&format!(
+                    "loaded {} automation-script prefix(es) from {}",
+                    scripts.len(),
+                    script_path.display()
+                ));
+                // auto-switch is HTTP-first: the Chrome pass (and therefore the
+                // automation steps) only runs on thin-content fallback, so a
+                // content-rich site may never execute the scripts. Surface this
+                // so it isn't a silent no-op — pass --render-mode chrome to force.
+                if matches!(mode, RenderMode::AutoSwitch) {
+                    crate::core::logging::log_warn(
+                        "--automation-script is set with --render-mode auto-switch; \
+                         automation only runs on the Chrome fallback pass, which fires \
+                         only when the HTTP pass returns thin content. Pass \
+                         --render-mode chrome to guarantee the steps run.",
+                    );
+                }
+                website.with_automation_scripts(Some(scripts));
+            }
+            RenderMode::Http => {
+                crate::core::logging::log_warn(
+                    "--automation-script is set but --render-mode is http; \
+                     web automation requires Chrome and will be skipped",
+                );
+            }
+        }
+    }
+
     website = apply_browser_settings(cfg, website, mode).await?;
 
     // P3 — spider builder fields previously parsed but never applied.

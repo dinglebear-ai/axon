@@ -200,6 +200,7 @@ pub enum IngestSourceType {
     Git,
     Reddit,
     Youtube,
+    Rss,
     Sessions,
 }
 

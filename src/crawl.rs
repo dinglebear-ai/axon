@@ -1,3 +1,4 @@
+pub mod automation;
 pub mod chrome_bootstrap;
 pub mod engine;
 pub mod manifest;

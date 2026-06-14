@@ -3,8 +3,8 @@
 > **Webclaw port feature flags** (tls-fingerprinting, quickjs, social-verticals) are documented in
 > [`docs/reference/cargo-features.md`](cargo-features.md) — that file also covers runtime env-var gates.
 
-**Total feature entries tracked in this inventory: 79 (includes `basic` meta-feature)**
-**Flags enabled in Axon: 19 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
+**Total feature entries tracked in this inventory: 80 (includes `basic` meta-feature)**
+**Flags enabled in Axon: 20 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
 
 ---
 
@@ -39,7 +39,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 
 ## Flags In Use
 
-### spider crate — 19 flags enabled
+### spider crate — 20 flags enabled
 
 | Flag | Category | Where Used in Source |
 |------|----------|----------------------|
@@ -62,6 +62,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 | `adblock` | Chrome / Browser | Implicit ad/tracker request filtering during crawl. No local toggle — always active when chrome features are in use |
 | `cache_mem` | Caching | In-memory page/request deduplication during crawls. No local call site; spider uses it internally for request memoization |
 | `etag_cache` | Caching | Conditional re-crawl. `--etag-conditional` seeds the per-`Website` ETag cache from `etag.json`; spider sends `If-None-Match`/`If-Modified-Since` and skips the body on `304`. Wired in `src/crawl/engine/runtime.rs`; cross-run reconciliation in `src/crawl/engine/etag.rs` (bead axon_rust-hiyf) |
+| `warc` | Output | WARC 1.1 archive output. `--warc <path>` calls `website.configuration.with_warc(WarcConfig { .. })` in `src/crawl/engine/runtime.rs` so spider writes every fetched page as a WARC response record. HTTP and Chrome paths both archive. Pulls in `sync` + `headers` (already enabled). |
 
 
 ### spider_agent crate — 2 flags enabled
@@ -116,6 +117,8 @@ Used in two files for HTML→Markdown content transformation:
 | `inline-more` | ✅ | Aggressive function inlining in spider internals for runtime perf |
 
 | `hedge` | ✅ | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `src/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
+
+| `warc` | ✅ | WARC 1.1 archive output (`--warc <path>`). Writes every fetched page as a WARC response record via `website.configuration.with_warc()`. Implies `sync` + `headers`. |
 
 
 ### Storage (3)
@@ -225,7 +228,7 @@ Used in two files for HTML→Markdown content transformation:
 | Category | Total | Enabled |
 |----------|-------|---------|
 
-| Core | 25 | 10 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`) — `glob` is NOT enabled |
+| Core | 26 | 11 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`, `warc`) — `glob` is NOT enabled |
 
 | Storage | 3 | 0 |
 | Caching | 6 | 2 (`cache_mem`, `etag_cache`) |
@@ -236,6 +239,6 @@ Used in two files for HTML→Markdown content transformation:
 | Spider Cloud | 1 | 0 |
 | Agent | 12 | 1 via spider_agent (`search_tavily`) |
 | Search | 5 | 0 |
-| **Total** | **79** | **19 spider + 2 spider_agent = 21** |
+| **Total** | **80** | **20 spider + 2 spider_agent = 22** |
 
 > `basic` is a meta-feature enabled on the `spider` crate that bundles core crawl behavior. The project uses `default-features = false` on all spider crates, so only explicitly listed features are compiled in.

@@ -7,6 +7,7 @@ pub mod github;
 pub mod gitlab;
 pub mod progress;
 pub mod reddit;
+pub mod rss;
 pub mod sessions;
 pub mod subprocess;
 pub mod youtube;

@@ -227,6 +227,15 @@ async fn execute_ingest_source(
             );
             cancelable(fut, cancel_token.as_ref()).await
         }
+        IngestSource::Rss { target } => {
+            let fut = crate::services::ingest::ingest_rss_with_progress(
+                cfg,
+                &target,
+                None,
+                Some(progress_tx),
+            );
+            cancelable(fut, cancel_token.as_ref()).await
+        }
         IngestSource::Sessions {
             sessions_claude,
             sessions_codex,

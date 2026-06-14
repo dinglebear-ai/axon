@@ -57,6 +57,15 @@ pub struct Config {
     /// Explicit single-file output path (overrides `output_dir` for single-URL commands). Flag: `--output`.
     pub output_path: Option<PathBuf>,
 
+    /// When set, write every fetched page of a crawl to a WARC 1.1 archive at
+    /// this path. Crawl path only (HTTP and Chrome both archive). Flag: `--warc`.
+    pub warc_output: Option<PathBuf>,
+
+    /// When set, path to a JSON file mapping URL path prefixes to ordered
+    /// Chrome web-automation steps (click/scroll/wait/evaluate/…) run during a
+    /// Chrome crawl before each matching page is captured. Flag: `--automation-script`.
+    pub automation_script: Option<PathBuf>,
+
     /// Browser rendering strategy: `http`, `chrome`, or `auto-switch`. Flag: `--render-mode`.
     pub render_mode: RenderMode,
 

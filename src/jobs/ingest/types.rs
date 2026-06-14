@@ -30,6 +30,9 @@ pub enum IngestSource {
     Youtube {
         target: String,
     },
+    Rss {
+        target: String,
+    },
     Sessions {
         sessions_claude: bool,
         sessions_codex: bool,
@@ -86,8 +89,9 @@ impl IngestJob {
 /// re-runnable job. Sessions are excluded: their content arrives via a sidecar
 /// payload, not the target string. This is the single source of truth for
 /// `axon refresh` origin classification — extend it when adding a provider.
-pub const RE_INGESTABLE_SOURCE_TYPES: &[&str] =
-    &["github", "gitlab", "gitea", "git", "reddit", "youtube"];
+pub const RE_INGESTABLE_SOURCE_TYPES: &[&str] = &[
+    "github", "gitlab", "gitea", "git", "reddit", "youtube", "rss",
+];
 
 pub(crate) fn source_type_label(source: &IngestSource) -> &'static str {
     match source {
@@ -97,6 +101,7 @@ pub(crate) fn source_type_label(source: &IngestSource) -> &'static str {
         IngestSource::GenericGit { .. } => "git",
         IngestSource::Reddit { .. } => "reddit",
         IngestSource::Youtube { .. } => "youtube",
+        IngestSource::Rss { .. } => "rss",
         IngestSource::Sessions { .. } => "sessions",
         IngestSource::PreparedSessions { .. } => "prepared_sessions",
     }
@@ -110,6 +115,7 @@ pub(crate) fn target_label(source: &IngestSource) -> String {
         IngestSource::GenericGit { target, .. } => target.clone(),
         IngestSource::Reddit { target } => target.clone(),
         IngestSource::Youtube { target } => target.clone(),
+        IngestSource::Rss { target } => target.clone(),
         IngestSource::Sessions {
             sessions_claude,
             sessions_codex,

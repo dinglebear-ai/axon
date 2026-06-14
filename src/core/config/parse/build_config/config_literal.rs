@@ -402,6 +402,8 @@ fn populate_misc(
     cfg.mcp_http_host = env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     cfg.mcp_http_port = mcp_http_port;
     cfg.custom_headers = custom_headers;
+    cfg.warc_output = g.warc.clone();
+    cfg.automation_script = g.automation_script.clone();
     cfg.quiet = g.quiet;
     cfg.log_level = env::var("AXON_LOG_LEVEL").ok();
     Ok(())

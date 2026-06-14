@@ -30,6 +30,17 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::core::config) output: Option<PathBuf>,
 
+    /// Write every fetched page of a crawl to a WARC 1.1 archive at this path
+    /// (crawl only; HTTP and Chrome both archive).
+    #[arg(global = true, long, value_name = "PATH")]
+    pub(in crate::core::config) warc: Option<PathBuf>,
+
+    /// JSON file mapping URL path prefixes to ordered Chrome web-automation
+    /// steps (click/scroll/wait/evaluate/…) run before each matching page is
+    /// captured during a Chrome crawl.
+    #[arg(global = true, long = "automation-script", value_name = "PATH")]
+    pub(in crate::core::config) automation_script: Option<PathBuf>,
+
     /// Page fetch mode: http, chrome, or auto-switch
     #[arg(global = true, long, value_enum, default_value_t = RenderMode::AutoSwitch)]
     pub(in crate::core::config) render_mode: RenderMode,
