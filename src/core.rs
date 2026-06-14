@@ -9,5 +9,6 @@ pub mod http;
 pub mod llm;
 pub mod logging;
 pub mod paths;
+pub mod redact;
 pub mod structured;
 pub mod ui;
