@@ -297,9 +297,10 @@ TEI_URL=http://axon-tei:80
 
 # LLM completion backend selection
 # AXON_LLM_BACKEND selects the synthesis path for ask/summarize/evaluate/suggest/
-# extract fallback/debug/research. Two backends:
+# extract fallback/debug/research. Supported backends:
 #   gemini-headless (default; also accepts "gemini"/"headless"/empty) — Gemini CLI
 #   openai-compat — any OpenAI-compatible /v1/chat/completions endpoint
+#   codex-app-server — Codex CLI app-server over stdio with isolated CODEX_HOME
 AXON_LLM_BACKEND=gemini-headless
 AXON_LLM_COMPLETION_CONCURRENCY=4
 AXON_LLM_COMPLETION_TIMEOUT_SECS=300
@@ -319,6 +320,16 @@ AXON_SYNTHESIS_OPENAI_MODEL=
 # Legacy alias still accepted:
 # AXON_OPENAI_MODEL=
 AXON_OPENAI_API_KEY=
+
+# Codex app-server backend (used when AXON_LLM_BACKEND=codex-app-server)
+# Spawns `codex app-server` per completion; not an OpenAI-compatible endpoint
+# and not the desktop Unix socket transport.
+AXON_CODEX_CMD=codex
+AXON_CODEX_HOME=
+AXON_SYNTHESIS_CODEX_MODEL=
+# Legacy alias still accepted:
+# AXON_CODEX_MODEL=
+AXON_CODEX_COMPLETION_CONCURRENCY=1
 
 # CDP endpoint for headless_browser (axon-chrome management API)
 AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
@@ -410,9 +421,10 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
 ### LLM completion backend (`AXON_LLM_BACKEND`)
-All LLM operations — `ask`, `summarize`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the backend selected by `AXON_LLM_BACKEND`, dispatched in `src/services/llm_backend.rs` on `LlmBackendKind`:
-- **`gemini-headless`** (default; also accepts `gemini`/`headless`/empty) — Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`, synthesis model override `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL`; legacy alias `AXON_HEADLESS_GEMINI_MODEL`). Implemented in `src/services/llm_backend/` Gemini dispatch.
-- **`openai-compat`** — any OpenAI-compatible endpoint (`src/services/llm_backend/openai_compat.rs`). Requires `AXON_OPENAI_BASE_URL` (the API root — the code appends `/chat/completions` and errors if you include it; include `/v1` when the endpoint serves `/v1/chat/completions`) and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias `AXON_OPENAI_MODEL`); `AXON_OPENAI_API_KEY` is optional (sent as a bearer token when set). llama.cpp and proxy endpoints both work.
+All LLM operations — `ask`, `summarize`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the backend selected by `AXON_LLM_BACKEND`, dispatched in `src/core/llm.rs` on `LlmBackendKind`:
+- **`gemini-headless`** (default; also accepts `gemini`/`headless`/empty) — Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`, synthesis model override `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL`; legacy alias `AXON_HEADLESS_GEMINI_MODEL`). Implemented in `src/core/llm/headless/` Gemini dispatch.
+- **`openai-compat`** — any OpenAI-compatible endpoint (`src/core/llm/openai_compat.rs`). Requires `AXON_OPENAI_BASE_URL` (the API root — the code appends `/chat/completions` and errors if you include it; include `/v1` when the endpoint serves `/v1/chat/completions`) and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias `AXON_OPENAI_MODEL`); `AXON_OPENAI_API_KEY` is optional (sent as a bearer token when set). llama.cpp and proxy endpoints both work.
+- **`codex-app-server`** — spawns `codex app-server` through the Codex CLI over stdio with an isolated throwaway `CODEX_HOME` and rehomed `HOME`/XDG directories. Configure with `AXON_CODEX_CMD`, optional `AXON_CODEX_HOME`, optional `AXON_SYNTHESIS_CODEX_MODEL`, and `AXON_CODEX_COMPLETION_CONCURRENCY` (default `1`). This is not an OpenAI-compatible HTTP endpoint and does not connect to the desktop Unix socket in this slice.
 
 Deterministic and vertical extractors in `src/extract/` and `src/core/content/deterministic.rs` run pure Rust without LLM calls; the LLM is invoked only when deterministic extraction yields nothing (the fallback path). The legacy un-prefixed `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0 and replaced by the `AXON_LLM_BACKEND` + `AXON_OPENAI_*` / `AXON_SYNTHESIS_*` scheme above.
 

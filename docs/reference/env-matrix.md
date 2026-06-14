@@ -78,6 +78,9 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_HEADLESS_GEMINI_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CHAT_HEADLESS_GEMINI_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_CODEX_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_SYNTHESIS_CODEX_MODEL` | keep-env | both | — | no | runtime.rs |
+| `AXON_CODEX_COMPLETION_CONCURRENCY` | keep-env | both | — | no | runtime.rs |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | keep-env | both | — | no | runtime.rs |
 | `AXON_LLM_COMPLETION_TIMEOUT_SECS` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_HOME` | trusted-bootstrap | both | — | no | advanced.rs |
@@ -91,7 +94,7 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_CODEX_HOME` | trusted-bootstrap | host-only | — | no | codex_app_server/home.rs |
 | `OPENAI_MODEL` | external/test-only | not-runtime | — | no | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
 | `OPENAI_BASE_URL` | external/test-only | not-runtime | — | no | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
-| `OPENAI_API_KEY` | external/test-only | not-runtime | — | **yes** | not in runtime; referenced only by scripts/tests asserting OpenAI env is ignored (removed in 3.0.0) |
+| `OPENAI_API_KEY` | codex-child-auth | child-only | — | **yes** | ignored by Axon config; optionally forwarded only to isolated `codex app-server` child by codex_app_server/home.rs |
 
 ### Trusted Operator Bootstrap
 
@@ -301,7 +304,7 @@ Keys in live env but not in .env.example (stale or operator-specific):
 - `AXON_WEB_ALLOWED_ORIGINS` — in advanced.rs registry; add to .env.example
 - `AXON_WEB_API_TOKEN` — secret; registered in runtime.rs; add to .env.example if the sample should advertise web API auth
 - `CHROME_URL` — stale alias; delete from live .env
-- `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` — removed in 3.0.0; no longer registered in migration.rs (classified `external/test-only`, read only by scripts/tests). Remove them from any existing `~/.axon/.env` manually. (Note: the new `AXON_OPENAI_*` keys are the live OpenAI-compatible backend vars — distinct from these.)
+- `OPENAI_BASE_URL` / `OPENAI_MODEL` — removed in 3.0.0; no longer registered in migration.rs (classified `external/test-only`, read only by scripts/tests). Remove them from any existing `~/.axon/.env` manually. (Note: the new `AXON_OPENAI_*` keys are the live OpenAI-compatible backend vars — distinct from these.) `OPENAI_API_KEY` is still ignored by Axon config, but may be forwarded to the isolated Codex child as an auth fallback for `AXON_LLM_BACKEND=codex-app-server`.
 - `TEI_MAX_BATCH_REQUESTS`, `TEI_MAX_BATCH_TOKENS`, `TEI_MAX_CONCURRENT_REQUESTS` — compose-env server args; already in registry
 - `TEI_TOKENIZATION_WORKERS` — observed live compose-env server arg; not yet registered
 
@@ -333,7 +336,7 @@ Keys in .env.example but not in live env (user hasn't set them):
 
 ### Scope Note (ztqd.4)
 
-`OPENAI_MODEL`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` were removed in 3.0.0. They are no longer registered in `migration.rs`; the registry classifies them `external/test-only` (referenced only by scripts/tests that assert the removed OpenAI env is ignored). No active runtime path reads them anymore — remove them from existing `~/.axon/.env` files manually. There is no `axon setup repair` command; `axon setup init` adds missing keys but does not prune unknown ones.
+`OPENAI_MODEL` and `OPENAI_BASE_URL` were removed in 3.0.0. They are no longer registered in `migration.rs`; the registry classifies them `external/test-only` (referenced only by scripts/tests that assert the removed OpenAI env is ignored). `OPENAI_API_KEY` is also ignored by Axon config, but the Codex app-server backend may forward it to the isolated child process as an optional auth fallback. Remove stale non-Codex OpenAI keys from existing `~/.axon/.env` files manually. There is no `axon setup repair` command; `axon setup init` adds missing keys but does not prune unknown ones.
 
 ### Keys Intentionally Dropped from .env.example (ztqd.4)
 
@@ -353,4 +356,4 @@ The following keys were in the old `.env.example` but are omitted from the new m
 | `TEI_SERVER_MAX_CLIENT_BATCH_SIZE` | compose-env | TEI tuning; advanced use only |
 | `OPENAI_MODEL` | external/test-only | Removed in 3.0.0; no runtime read. Remove manually from `~/.axon/.env` |
 | `OPENAI_BASE_URL` | external/test-only | Removed in 3.0.0; no runtime read. Remove manually from `~/.axon/.env` |
-| `OPENAI_API_KEY` | external/test-only | Removed in 3.0.0; no runtime read. Remove manually from `~/.axon/.env` |
+| `OPENAI_API_KEY` | codex-child-auth | Ignored by Axon config; optional auth fallback forwarded only to isolated `codex app-server` child |

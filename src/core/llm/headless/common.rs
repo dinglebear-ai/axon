@@ -87,6 +87,10 @@ pub fn append_bounded_tail(buffer: &mut Vec<u8>, chunk: &[u8]) {
     }
 }
 
+pub(crate) fn redact_for_error(text: &str) -> String {
+    redact_secrets(text)
+}
+
 fn redact_secrets(text: &str) -> String {
     text.split_whitespace()
         .map(|token| {

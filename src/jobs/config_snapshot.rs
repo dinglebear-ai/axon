@@ -80,6 +80,10 @@ struct ConfigSnapshot {
     headless_gemini_model: Option<String>,
     headless_gemini_cmd: Option<String>,
     headless_gemini_home: Option<PathBuf>,
+    codex_cmd: Option<String>,
+    codex_home: Option<PathBuf>,
+    codex_model: Option<String>,
+    codex_completion_concurrency: Option<usize>,
     openai_base_url: Option<String>,
     openai_model: Option<String>,
     llm_completion_concurrency: Option<usize>,
@@ -195,6 +199,10 @@ impl ConfigSnapshot {
             headless_gemini_model: Some(cfg.headless_gemini_model.clone()),
             headless_gemini_cmd: Some(cfg.headless_gemini_cmd.clone()),
             headless_gemini_home: cfg.headless_gemini_home.clone(),
+            codex_cmd: Some(cfg.codex_cmd.clone()),
+            codex_home: cfg.codex_home.clone(),
+            codex_model: Some(cfg.codex_model.clone()),
+            codex_completion_concurrency: Some(cfg.codex_completion_concurrency),
             openai_base_url: endpoints.openai_base_url,
             openai_model: Some(cfg.openai_model.clone()),
             llm_completion_concurrency: Some(cfg.llm_completion_concurrency),
@@ -326,6 +334,9 @@ impl ConfigSnapshot {
             qdrant_url,
             headless_gemini_model,
             headless_gemini_cmd,
+            codex_cmd,
+            codex_model,
+            codex_completion_concurrency,
             openai_base_url,
             openai_model,
             llm_completion_concurrency,
@@ -391,6 +402,7 @@ impl ConfigSnapshot {
             backfill_concurrency_limit,
             request_timeout_ms,
             headless_gemini_home,
+            codex_home,
             sessions_project,
             max_page_bytes,
             chrome_wait_for_selector,
@@ -430,6 +442,7 @@ fn llm_backend_snapshot(kind: crate::core::llm::LlmBackendKind) -> String {
     match kind {
         crate::core::llm::LlmBackendKind::GeminiHeadless => "gemini-headless".to_string(),
         crate::core::llm::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
+        crate::core::llm::LlmBackendKind::CodexAppServer => "codex-app-server".to_string(),
     }
 }
 

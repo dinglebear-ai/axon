@@ -79,6 +79,73 @@ fn copy_auth_copies_when_present() {
 }
 
 #[test]
+fn codex_child_env_rehomes_home_and_xdg_dirs_to_isolated_home() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut command = Command::new("env");
+
+    apply_codex_env_allowlist(&mut command);
+    apply_codex_home_env(&mut command, dir.path());
+
+    let envs: std::collections::BTreeMap<_, _> = command
+        .as_std()
+        .get_envs()
+        .filter_map(|(key, value)| value.map(|v| (key.to_os_string(), v.to_os_string())))
+        .collect();
+
+    assert_eq!(envs.get(std::ffi::OsStr::new("HOME")).unwrap(), dir.path());
+    assert_eq!(
+        envs.get(std::ffi::OsStr::new("CODEX_HOME")).unwrap(),
+        dir.path()
+    );
+    assert_eq!(
+        envs.get(std::ffi::OsStr::new("XDG_CONFIG_HOME")).unwrap(),
+        &dir.path().join(".config")
+    );
+    assert_eq!(
+        envs.get(std::ffi::OsStr::new("XDG_CACHE_HOME")).unwrap(),
+        &dir.path().join(".cache")
+    );
+    assert_eq!(
+        envs.get(std::ffi::OsStr::new("XDG_DATA_HOME")).unwrap(),
+        &dir.path().join(".local/share")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_auth_rejects_symlinked_auth_json() {
+    use std::os::unix::fs::symlink;
+
+    let source = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    symlink(outside.path(), source.path().join("auth.json")).unwrap();
+
+    let err = copy_auth(source.path(), dest.path()).unwrap_err();
+
+    assert!(err.to_string().contains("auth.json must not be a symlink"));
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_auth_writes_destination_auth_json_0600() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let source = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    fs::write(source.path().join("auth.json"), "{}").unwrap();
+
+    copy_auth(source.path(), dest.path()).unwrap();
+
+    let mode = fs::metadata(dest.path().join("auth.json"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600);
+}
+
+#[test]
 fn copy_auth_is_noop_when_absent() {
     let src = tempfile::tempdir().unwrap();
     let dst = tempfile::tempdir().unwrap();

@@ -1,4 +1,6 @@
 use super::*;
+use crate::core::llm::LlmBackendKind;
+use std::time::Duration;
 
 fn backend_with_cmd(cmd: &str) -> LlmBackendConfig {
     LlmBackendConfig {
@@ -78,4 +80,31 @@ fn validate_codex_cmd_rejects_non_executable() {
     std::fs::write(&file, "x").unwrap(); // default perms have no exec bit
     let err = validate_codex_cmd(&backend_with_cmd(file.to_str().unwrap())).unwrap_err();
     assert!(err.to_string().contains("not executable"), "got: {err}");
+}
+
+#[tokio::test]
+async fn codex_completion_timeout_covers_slow_child_before_handshake() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("slow-codex");
+    std::fs::write(&script, "#!/bin/sh\nsleep 5\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        completion_timeout_secs: 1,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    let started = std::time::Instant::now();
+    let err = complete_text(req).await.unwrap_err();
+
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert!(err.to_string().contains("timed out"));
 }

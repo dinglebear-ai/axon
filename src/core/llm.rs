@@ -1,5 +1,6 @@
 use std::error::Error as StdError;
 
+pub mod codex_app_server;
 pub mod concurrency;
 pub mod headless;
 pub mod openai_compat;
@@ -26,6 +27,7 @@ pub async fn complete_text(
     match req.backend.kind {
         LlmBackendKind::GeminiHeadless => headless::gemini::complete_text(req).await,
         LlmBackendKind::OpenAiCompat => openai_compat::complete_text(req).await,
+        LlmBackendKind::CodexAppServer => codex_app_server::complete_text(req).await,
     }
 }
 
@@ -46,6 +48,7 @@ where
     match req.backend.kind {
         LlmBackendKind::GeminiHeadless => headless::gemini::complete_streaming(req, on_delta).await,
         LlmBackendKind::OpenAiCompat => openai_compat::complete_streaming(req, on_delta).await,
+        LlmBackendKind::CodexAppServer => codex_app_server::complete_streaming(req, on_delta).await,
     }
 }
 
@@ -58,6 +61,14 @@ pub(crate) fn completion_limiter_key(req: &CompletionRequest) -> CompletionKey {
         LlmBackendKind::OpenAiCompat => CompletionKey::OpenAi {
             base_url: req.backend.openai_base_url.clone().unwrap_or_default(),
             model: req.backend.openai_model.clone().unwrap_or_default(),
+        },
+        LlmBackendKind::CodexAppServer => CompletionKey::Codex {
+            cmd: req.backend.codex_cmd.clone(),
+            model: req
+                .model
+                .clone()
+                .or_else(|| req.backend.codex_model.clone())
+                .unwrap_or_default(),
         },
     }
 }

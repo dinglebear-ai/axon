@@ -10,18 +10,16 @@ mod home;
 mod protocol;
 
 use std::error::Error as StdError;
+use std::io;
 use std::path::Path;
 use std::process::Stdio;
-use std::time::Duration;
 
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::task::JoinHandle;
 
-use crate::core::llm::headless::common::{
-    joined_prompt, kill_and_wait, read_bounded_stderr, redacted_stderr_tail,
-};
+use crate::core::llm::headless::common::{append_bounded_tail, redacted_stderr_tail};
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use protocol::{CodexStep, CodexStreamState};
 
@@ -38,6 +36,20 @@ pub fn validate_config(config: &LlmBackendConfig) -> Result<(), BoxError> {
 }
 
 pub async fn complete_streaming<F>(
+    req: CompletionRequest,
+    on_delta: F,
+) -> Result<CompletionResponse, BoxError>
+where
+    F: FnMut(&str) -> Result<(), BoxError> + Send,
+{
+    let timeout = req.backend.completion_timeout();
+    match tokio::time::timeout(timeout, complete_streaming_inner(req, on_delta)).await {
+        Ok(result) => result,
+        Err(_) => Err(format!("codex app-server timed out after {}s", timeout.as_secs()).into()),
+    }
+}
+
+async fn complete_streaming_inner<F>(
     req: CompletionRequest,
     mut on_delta: F,
 ) -> Result<CompletionResponse, BoxError>
@@ -78,8 +90,7 @@ where
         env!("CARGO_PKG_VERSION"),
     );
 
-    let timeout = req.backend.completion_timeout();
-    let result = run_handshake(&mut state, &mut stdin, stdout, &mut on_delta, timeout).await;
+    let result = run_handshake(&mut state, &mut stdin, stdout, &mut on_delta).await;
 
     // `codex app-server` is a persistent process — it does not exit after a
     // turn — so terminate it explicitly regardless of outcome.
@@ -102,7 +113,6 @@ async fn run_handshake<F>(
     stdin: &mut ChildStdin,
     stdout: ChildStdout,
     on_delta: &mut F,
-    timeout: Duration,
 ) -> Result<(), BoxError>
 where
     F: FnMut(&str) -> Result<(), BoxError> + Send,
@@ -130,10 +140,7 @@ where
             }
         }
     };
-    match tokio::time::timeout(timeout, loop_fut).await {
-        Ok(result) => result,
-        Err(_) => Err(format!("codex app-server timed out after {}s", timeout.as_secs()).into()),
-    }
+    loop_fut.await
 }
 
 fn spawn_codex_child(
@@ -150,10 +157,43 @@ fn spawn_codex_child(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     home::apply_codex_env_allowlist(&mut command);
-    command.env("CODEX_HOME", home.path());
+    home::apply_codex_home_env(&mut command, home.path());
     command
         .spawn()
         .map_err(|err| format!("failed to spawn codex app-server: {err}").into())
+}
+
+fn joined_prompt(system_prompt: Option<&str>, user_prompt: &str) -> String {
+    match system_prompt.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(system) => format!("{system}\n\n{user_prompt}"),
+        None => user_prompt.to_string(),
+    }
+}
+
+async fn kill_and_wait(child: &mut Child) -> String {
+    let kill_result = child.kill().await;
+    let wait_result = child.wait().await;
+    match (kill_result, wait_result) {
+        (Ok(()), Ok(status)) => format!("killed and reaped with {status}"),
+        (Ok(()), Err(wait_err)) => format!("killed but wait failed: {wait_err}"),
+        (Err(kill_err), Ok(status)) => format!("kill failed: {kill_err}; wait returned {status}"),
+        (Err(kill_err), Err(wait_err)) => {
+            format!("kill failed: {kill_err}; wait failed: {wait_err}")
+        }
+    }
+}
+
+async fn read_bounded_stderr(stderr: tokio::process::ChildStderr) -> Result<Vec<u8>, io::Error> {
+    let mut tail = Vec::new();
+    let mut reader = BufReader::new(stderr);
+    let mut chunk = [0_u8; 1024];
+    loop {
+        let read = reader.read(&mut chunk).await?;
+        if read == 0 {
+            return Ok(tail);
+        }
+        append_bounded_tail(&mut tail, &chunk[..read]);
+    }
 }
 
 fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {
@@ -190,8 +230,8 @@ async fn write_line(stdin: &mut ChildStdin, line: &str) -> Result<(), BoxError> 
     Ok(())
 }
 
-async fn collect_stderr(task: JoinHandle<Vec<u8>>) -> Vec<u8> {
-    task.await.unwrap_or_default()
+async fn collect_stderr(task: JoinHandle<Result<Vec<u8>, io::Error>>) -> Vec<u8> {
+    task.await.ok().and_then(Result::ok).unwrap_or_default()
 }
 
 fn stderr_suffix(stderr: &[u8]) -> String {
