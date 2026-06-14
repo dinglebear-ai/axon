@@ -101,8 +101,12 @@ where
         // handshake-error path — it often explains an empty response.
         Ok(()) => state
             .into_response()
-            .map_err(|err| format!("{err}{}", stderr_suffix(&stderr_tail)).into()),
-        Err(err) => Err(format!("{err}; cleanup: {cleanup}{}", stderr_suffix(&stderr_tail)).into()),
+            .map_err(|err| format!("{err}{}", stderr_diagnostics_suffix(&stderr_tail)).into()),
+        Err(err) => Err(format!(
+            "{err}; cleanup: {cleanup}{}",
+            stderr_diagnostics_suffix(&stderr_tail)
+        )
+        .into()),
     }
 }
 
@@ -190,14 +194,23 @@ async fn write_line(stdin: &mut ChildStdin, line: &str) -> Result<(), BoxError> 
     Ok(())
 }
 
-async fn collect_stderr(task: JoinHandle<Result<Vec<u8>, io::Error>>) -> Vec<u8> {
+async fn collect_stderr(task: JoinHandle<Result<Vec<u8>, io::Error>>) -> Result<Vec<u8>, String> {
     let mut task = task;
     match tokio::time::timeout(Duration::from_millis(200), &mut task).await {
-        Ok(joined) => joined.ok().and_then(Result::ok).unwrap_or_default(),
+        Ok(Ok(Ok(stderr))) => Ok(stderr),
+        Ok(Ok(Err(err))) => Err(format!("failed to read codex stderr: {err}")),
+        Ok(Err(err)) => Err(format!("failed to join codex stderr reader: {err}")),
         Err(_) => {
             task.abort();
-            Vec::new()
+            Err("timed out collecting codex stderr after cleanup".to_string())
         }
+    }
+}
+
+fn stderr_diagnostics_suffix(stderr: &Result<Vec<u8>, String>) -> String {
+    match stderr {
+        Ok(stderr) => stderr_suffix(stderr),
+        Err(err) => format!("; stderr diagnostics unavailable: {err}"),
     }
 }
 

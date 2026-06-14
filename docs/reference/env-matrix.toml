@@ -2724,15 +2724,15 @@ reason = "CLI shortcut env var read by `axon scrape` to force a specific vertica
 
 [[env]]
 key = "OPENAI_API_KEY"
-classification = "external/test-only"
-runtime_placement = "not-runtime"
-surfaces = ["scripts", "tests"]
+classification = "codex-child-auth"
+runtime_placement = "child-only"
+surfaces = ["src", "env-template", "docs"]
 secret = true
 url_or_path = false
 container_allowed = false
 toml_destination = ""
-compatibility = "external"
-reason = "Not part of the Axon runtime. Referenced only by standalone helper scripts and tests that assert removed OpenAI runtime env is ignored."
+compatibility = "advanced"
+reason = "Ignored by Axon config; optional auth fallback forwarded only to the isolated `codex app-server` child."
 
 [[env]]
 key = "OPENAI_BASE_URL"
@@ -2816,7 +2816,7 @@ url_or_path = false
 container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
-reason = "Selects the LLM completion backend: 'gemini-headless' (default) or 'openai-compat'. Non-secret runtime selector."
+reason = "Selects the LLM completion backend: 'gemini-headless' (default), 'openai-compat', or 'codex-app-server'. Non-secret runtime selector."
 
 [[env]]
 key = "AXON_OPENAI_BASE_URL"
@@ -2894,7 +2894,7 @@ reason = "Selects the active saved LLM provider profile before falling back to c
 key = "AXON_CODEX_CMD"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"
-surfaces = ["src"]
+surfaces = ["src", "env-template", "docs"]
 secret = false
 url_or_path = true
 container_allowed = false
@@ -2906,7 +2906,7 @@ reason = "Operator-supplied codex app-server executable path for the experimenta
 key = "AXON_CODEX_HOME"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"
-surfaces = ["src"]
+surfaces = ["src", "env-template", "docs"]
 secret = false
 url_or_path = true
 container_allowed = false

@@ -1196,6 +1196,18 @@ fn high_context_detection_uses_codex_model_name() {
 }
 
 #[test]
+fn high_context_detection_uses_codex_backend_without_explicit_model() {
+    let cfg = Config {
+        llm_backend: crate::core::llm::LlmBackendKind::CodexAppServer,
+        codex_model: String::new(),
+        ask_max_context_chars: 50_000,
+        ..Default::default()
+    };
+
+    assert!(high_context_synthesis_model(&cfg));
+}
+
+#[test]
 fn non_high_context_models_keep_explicit_low_override() {
     let (resolved, source) =
         resolve_ask_full_docs_for_model(1, true, QueryComplexity::Complex, false);
