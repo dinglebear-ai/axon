@@ -22,6 +22,12 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long = "exclude-path-prefix", value_delimiter = ',')]
     pub(in crate::core::config) exclude_path_prefix: Vec<String>,
 
+    /// Repo-relative path substrings to exclude from git ingest, e.g.
+    /// `--exclude-path docs/references/ --exclude-path vendor/` (repeatable).
+    /// A file is skipped when its repo-relative path contains any value.
+    #[arg(global = true, long = "exclude-path")]
+    pub(in crate::core::config) ingest_exclude_paths: Vec<String>,
+
     /// Directory for saved markdown/HTML output files
     #[arg(global = true, long, default_value = DEFAULT_OUTPUT_DIR)]
     pub(in crate::core::config) output_dir: PathBuf,
