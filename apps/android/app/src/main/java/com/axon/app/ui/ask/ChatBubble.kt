@@ -1,8 +1,13 @@
 package com.axon.app.ui.ask
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -11,6 +16,7 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.ui.common.humanizeJsonFragmentText
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.nav.AxonMarkGlyph
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
@@ -226,6 +233,22 @@ private fun InlineMarkdownText(text: String, showCaret: Boolean = false) {
     val colors = AxonTheme.colors
     val code = colors.toneOf(AxonTone.Rose)
     val parts = remember(text) { text.split('`') }
+    // A blinking caret reads as a live typing indicator while the answer streams.
+    val caretAlpha = if (showCaret) {
+        val blink = rememberInfiniteTransition(label = "caret")
+        val a by blink.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.15f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(640, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "caret-blink",
+        )
+        a
+    } else {
+        1f
+    }
     Text(
         text = buildAnnotatedString {
             parts.forEachIndexed { index, part ->
@@ -245,7 +268,7 @@ private fun InlineMarkdownText(text: String, showCaret: Boolean = false) {
                 }
             }
             if (showCaret) {
-                withStyle(SpanStyle(color = colors.accentStrong)) {
+                withStyle(SpanStyle(color = colors.accentStrong.copy(alpha = caretAlpha))) {
                     append("▍")
                 }
             }
@@ -311,7 +334,7 @@ private fun SourceCitationPill(
 ) {
     val colors = AxonTheme.colors
     val chip = colors.toneOf(AxonTone.Cyan)
-    val clickModifier = citation.url?.let { url -> Modifier.clickable { onOpenDocument(url) } } ?: Modifier
+    val clickModifier = citation.url?.let { url -> Modifier.pressScale { onOpenDocument(url) } } ?: Modifier
     Row(
         modifier = Modifier
             .then(clickModifier)
