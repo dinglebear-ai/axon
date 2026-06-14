@@ -1,8 +1,9 @@
 name: release
 
 # Triggered when you push a version tag (e.g. `git tag v2.0.0 && git push origin v2.0.0`).
-# Builds axon + axon-palette for Linux + Windows, packages them with SHA256
-# checksums, and publishes a GitHub Release with all four artifacts attached.
+# Builds axon (cross-compiled) + the Tauri axon-palette for Linux + Windows,
+# packages them with SHA256 checksums, and publishes a GitHub Release with all
+# four artifacts attached.
 #
 # Manual workflow_dispatch builds everything but skips the Release creation by
 # default (artifacts are still uploaded to the workflow run for inspection).
@@ -34,9 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Full checkout: the non-cone sparse list previously omitted root
-      # Cargo.toml/Cargo.lock (axon jobs) and apps/desktop (palette jobs),
-      # which broke every build. LFS blobs come down as pointers (lfs: false
-      # default) and are not needed to build.
+      # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
+      # pointers (lfs: false default) and are not needed to build.
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -73,9 +73,8 @@ jobs:
     runs-on: windows-latest
     steps:
       # Full checkout: the non-cone sparse list previously omitted root
-      # Cargo.toml/Cargo.lock (axon jobs) and apps/desktop (palette jobs),
-      # which broke every build. LFS blobs come down as pointers (lfs: false
-      # default) and are not needed to build.
+      # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
+      # pointers (lfs: false default) and are not needed to build.
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -120,73 +119,84 @@ jobs:
     name: build axon-palette (linux)
     runs-on: ubuntu-latest
     steps:
-      # Full checkout: the non-cone sparse list previously omitted root
-      # Cargo.toml/Cargo.lock (axon jobs) and apps/desktop (palette jobs),
-      # which broke every build. LFS blobs come down as pointers (lfs: false
-      # default) and are not needed to build.
+      # Full checkout: LFS blobs come down as pointers (lfs: false default) and
+      # are not needed to build.
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop
+          workspaces: apps/palette-tauri/src-tauri
           shared-key: release-palette-linux
-      # GPUI on Linux links against X11 + Wayland + xcb headers.
-      - name: Install Linux system deps
+      # Tauri on Linux links against WebKitGTK + GTK + libsoup.
+      - name: Install Tauri Linux system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libx11-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
-            libwayland-dev libssl-dev libfontconfig1-dev \
-            libxcb-randr0-dev libxcb-xkb-dev libxcb-cursor-dev libxcb-shape0-dev \
-            libxcb-xfixes0-dev libxcb-keysyms1-dev libxcb-image0-dev
-      - name: cargo build --release
-        run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
+            build-essential curl file libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libwebkit2gtk-4.1-dev patchelf pkg-config wget
+      - name: Install palette dependencies
+        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
+      # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
+      # (pnpm vite:build) and compiles the portable binary without packaging
+      # installers — matching the single-binary artifact shape the
+      # `axon palette install` flow expects.
+      - name: Build Tauri palette (portable binary)
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci
       - name: Package
         run: |
           set -euo pipefail
-          cd apps/desktop/target/release
-          tar -czf axon-palette-linux-x86_64.tar.gz axon-palette
+          cd apps/palette-tauri/src-tauri/target/release
+          tar -czf axon-palette-linux-x86_64.tar.gz axon-palette-tauri
           sha256sum axon-palette-linux-x86_64.tar.gz > axon-palette-linux-x86_64.tar.gz.sha256
       - uses: actions/upload-artifact@v5
         with:
           name: axon-palette-linux-x86_64
           path: |
-            apps/desktop/target/release/axon-palette-linux-x86_64.tar.gz
-            apps/desktop/target/release/axon-palette-linux-x86_64.tar.gz.sha256
+            apps/palette-tauri/src-tauri/target/release/axon-palette-linux-x86_64.tar.gz
+            apps/palette-tauri/src-tauri/target/release/axon-palette-linux-x86_64.tar.gz.sha256
           if-no-files-found: error
 
   palette-windows:
     name: build axon-palette (windows)
     runs-on: windows-latest
     steps:
-      # Full checkout: the non-cone sparse list previously omitted root
-      # Cargo.toml/Cargo.lock (axon jobs) and apps/desktop (palette jobs),
-      # which broke every build. LFS blobs come down as pointers (lfs: false
-      # default) and are not needed to build.
+      # Full checkout: LFS blobs come down as pointers (lfs: false default) and
+      # are not needed to build.
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop
+          workspaces: apps/palette-tauri/src-tauri
           shared-key: release-palette-windows
-      - name: Show Windows Rust CPU flags
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          rustc -vV
-          "RUSTFLAGS=$env:RUSTFLAGS"
-          rustc --print cfg | Select-String 'target_feature'
-          cargo config get build.rustflags --merged yes
-          if ($LASTEXITCODE -ne 0) { "build.rustflags not set" }
-          exit 0
-        env:
-          RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
-      - name: cargo build --release
-        run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
+      - name: Install palette dependencies
+        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
+      # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
+      # (pnpm vite:build) and compiles the portable .exe without packaging
+      # installers. The avx512-disabling RUSTFLAGS keep the binary portable
+      # across CPUs; the rustc-wrapper is a bash script that cannot run as a
+      # Windows rustc wrapper, so it is disabled here.
+      - name: Build Tauri palette (portable binary)
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci
         env:
           RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
           CARGO_BUILD_RUSTC_WRAPPER: ""
@@ -194,8 +204,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Push-Location apps/desktop/target/release
-          Compress-Archive -Path axon-palette.exe -DestinationPath axon-palette-windows-x86_64.zip -Force
+          Push-Location apps/palette-tauri/src-tauri/target/release
+          Compress-Archive -Path axon-palette-tauri.exe -DestinationPath axon-palette-windows-x86_64.zip -Force
           $hash = (Get-FileHash axon-palette-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
           "$hash  axon-palette-windows-x86_64.zip" | Out-File -Encoding ascii axon-palette-windows-x86_64.zip.sha256
           Pop-Location
@@ -203,8 +213,8 @@ jobs:
         with:
           name: axon-palette-windows-x86_64
           path: |
-            apps/desktop/target/release/axon-palette-windows-x86_64.zip
-            apps/desktop/target/release/axon-palette-windows-x86_64.zip.sha256
+            apps/palette-tauri/src-tauri/target/release/axon-palette-windows-x86_64.zip
+            apps/palette-tauri/src-tauri/target/release/axon-palette-windows-x86_64.zip.sha256
           if-no-files-found: error
 
   publish:

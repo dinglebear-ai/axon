@@ -5,9 +5,9 @@ fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_ch
     let workflow = include_str!("../.github/workflows/release.yml");
     let blocks = checkout_sparse_blocks(workflow);
     // The release workflow now uses a full checkout. The non-cone sparse list
-    // previously omitted root Cargo.toml/Cargo.lock (axon jobs) and apps/desktop
-    // (palette jobs), which broke every build, so full checkout is the chosen
-    // shape and there are no sparse blocks to validate. This guard still has
+    // previously omitted root Cargo.toml/Cargo.lock, which broke every build, so
+    // full checkout is the chosen shape and there are no sparse blocks to
+    // validate. This guard still has
     // teeth if sparse-checkout is ever reintroduced: each block below must carry
     // the required paths and disable cone mode.
     for (index, block) in blocks.iter().enumerate() {

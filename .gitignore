@@ -64,8 +64,9 @@ Thumbs.db
 
 # ── Rust ─────────────────────────────────────────────────────────────────────
 /target/
-# Nested cargo target dirs from per-workspace builds (e.g. apps/desktop).
+# Nested cargo target dirs from per-workspace builds (e.g. apps/palette-tauri).
 apps/*/target/
+apps/*/*/target/
 **/*.rs.bk
 *.profraw
 *.profdata

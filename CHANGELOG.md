@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.0] - 2026-06-14
+
+### Changed
+
+- **Release pipeline now ships the Tauri palette.** The `palette-linux` and
+  `palette-windows` jobs in `.github/workflows/release.yml` build
+  `apps/palette-tauri` via `pnpm` + `tauri build --no-bundle` and package the
+  portable `axon-palette-tauri[.exe]` binary. The published artifact names are
+  unchanged (`axon-palette-linux-x86_64.tar.gz`,
+  `axon-palette-windows-x86_64.zip`), so `axon palette install` keeps working,
+  but the GitHub Release now contains the polished Aurora-styled palette instead
+  of the old GPUI build.
+- **`axon palette` CLI repointed to the Tauri app** — the resolved/installed
+  binary is now `axon-palette-tauri[.exe]`, and `axon palette install --method
+  build` builds from `apps/palette-tauri` with `pnpm` + `tauri build
+  --no-bundle`.
+
+### Removed
+
+- **Deleted the GPUI desktop palette (`apps/desktop`)** and its
+  `.github/workflows/desktop.yml` CI workflow. The Tauri palette in
+  `apps/palette-tauri` is the sole desktop palette. Removed the
+  `exclude = ["apps/desktop"]` entry from the root `Cargo.toml` workspace.
+
 ## [5.10.1] - 2026-06-14
 
 ### Security
