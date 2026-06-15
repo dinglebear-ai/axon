@@ -53,6 +53,26 @@ fn changelog_heading_missing() {
 }
 
 #[test]
+fn json_version_ok() {
+    let json = "{\n  \"name\": \"axon-web\",\n  \"version\": \"5.6.1\",\n}";
+    assert!(check_json_version(json, "5.6.1", "apps/web/package.json").is_ok());
+}
+
+#[test]
+fn json_version_nested_ok() {
+    // OpenAPI carries the version nested under info; a substring match still
+    // finds it regardless of nesting/indentation.
+    let json = "{\n  \"openapi\": \"3.1.0\",\n  \"info\": {\n    \"version\": \"5.6.1\"\n  }\n}";
+    assert!(check_json_version(json, "5.6.1", "apps/web/openapi/axon.json").is_ok());
+}
+
+#[test]
+fn json_version_mismatch_is_error() {
+    let json = "{\n  \"version\": \"5.6.0\"\n}";
+    assert!(check_json_version(json, "5.6.1", "apps/web/package.json").is_err());
+}
+
+#[test]
 fn plugin_json_no_version_ok() {
     let json = r#"{"name": "axon", "description": "..."}"#;
     assert!(check_plugin_json(json, "plugin.json").is_ok());

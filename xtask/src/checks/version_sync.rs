@@ -5,10 +5,20 @@ use std::path::Path;
 ///
 /// Cargo.toml is the single source of truth — all other files are checked
 /// against the version declared there.
+///
+/// This is the **CLI component's** parity set only. Axon releases are
+/// per-component (see CLAUDE.md "Release Pipeline"): the palette, Android app,
+/// and Chrome extension version independently from their own source files and
+/// are NOT checked here — their release workflows validate that the pushed tag
+/// matches the component's own version. The web panel ships compiled into the
+/// `axon` binary, so apps/web/package.json and its OpenAPI spec are part of the
+/// CLI parity set and must track Cargo.toml.
 const VERSION_FILES: &[(&str, VersionKind)] = &[
     ("Cargo.toml", VersionKind::Cargo),
     ("README.md", VersionKind::ReadmeHeader),
     ("CHANGELOG.md", VersionKind::Changelog),
+    ("apps/web/package.json", VersionKind::JsonVersion),
+    ("apps/web/openapi/axon.json", VersionKind::JsonVersion),
     (
         "plugins/axon/.claude-plugin/plugin.json",
         VersionKind::PluginJson,
@@ -23,6 +33,8 @@ enum VersionKind {
     ReadmeHeader,
     /// `## [X.Y.Z]` heading in CHANGELOG
     Changelog,
+    /// `"version": "X.Y.Z"` JSON field anywhere in the file
+    JsonVersion,
     /// `"version": "X.Y.Z"` JSON field — must NOT be present
     PluginJson,
 }
@@ -69,6 +81,17 @@ fn check_changelog(content: &str, expected: &str) -> Result<()> {
     bail!(
         "CHANGELOG.md does not contain a '## [{expected}]' heading\n\
          Hint: add a changelog entry for version {expected}"
+    );
+}
+
+fn check_json_version(content: &str, expected: &str, path: &str) -> Result<()> {
+    let pattern = format!("\"version\": \"{expected}\"");
+    if content.contains(&pattern) {
+        return Ok(());
+    }
+    bail!(
+        "{path} does not contain '\"version\": \"{expected}\"'\n\
+         Hint: update the \"version\" field in {path} to match Cargo.toml"
     );
 }
 
@@ -123,6 +146,7 @@ pub fn check(root: &Path) -> Result<()> {
             VersionKind::Cargo => unreachable!(),
             VersionKind::ReadmeHeader => check_readme(&content, &version),
             VersionKind::Changelog => check_changelog(&content, &version),
+            VersionKind::JsonVersion => check_json_version(&content, &version, rel_path),
             VersionKind::PluginJson => check_plugin_json(&content, rel_path),
         };
 
