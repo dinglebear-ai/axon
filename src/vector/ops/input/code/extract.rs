@@ -10,8 +10,11 @@ use super::chunk::SymbolKind;
 mod bash;
 mod go;
 mod js_ts;
+mod json;
 mod python;
 mod rust;
+mod toml;
+mod yaml;
 
 #[derive(Debug, Clone)]
 pub(super) struct SymbolInfo {
@@ -86,6 +89,9 @@ pub(super) enum Extractor {
     /// error recovery that fabricates spurious nodes (bead axon_rust-2ykl).
     Tsx,
     Bash,
+    Json,
+    Yaml,
+    Toml,
 }
 
 pub(super) fn language_for_extension(ext: &str) -> Option<LanguageSpec> {
@@ -97,6 +103,9 @@ pub(super) fn language_for_extension(ext: &str) -> Option<LanguageSpec> {
         "tsx" => Extractor::Tsx,
         "go" => Extractor::Go,
         "sh" | "bash" => Extractor::Bash,
+        "json" => Extractor::Json,
+        "yaml" | "yml" => Extractor::Yaml,
+        "toml" => Extractor::Toml,
         _ => return None,
     };
     Some(LanguageSpec { extractor })
@@ -153,6 +162,12 @@ static TSX_REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
 });
 static BASH_REGISTRY: LazyLock<Registry> =
     LazyLock::new(|| Registry::new(tree_sitter_bash::LANGUAGE, bash::RULES, bash::refine));
+static JSON_REGISTRY: LazyLock<Registry> =
+    LazyLock::new(|| Registry::new(tree_sitter_json::LANGUAGE, json::RULES, json::refine));
+static YAML_REGISTRY: LazyLock<Registry> =
+    LazyLock::new(|| Registry::new(tree_sitter_yaml::LANGUAGE, yaml::RULES, yaml::refine));
+static TOML_REGISTRY: LazyLock<Registry> =
+    LazyLock::new(|| Registry::new(tree_sitter_toml_ng::LANGUAGE, toml::RULES, toml::refine));
 
 thread_local! {
     static PARSER: RefCell<Parser> = RefCell::new(Parser::new());
@@ -167,6 +182,9 @@ fn registry_for(extractor: Extractor) -> Option<&'static Registry> {
         Extractor::TypeScript => Some(&TYPESCRIPT_REGISTRY),
         Extractor::Tsx => Some(&TSX_REGISTRY),
         Extractor::Bash => Some(&BASH_REGISTRY),
+        Extractor::Json => Some(&JSON_REGISTRY),
+        Extractor::Yaml => Some(&YAML_REGISTRY),
+        Extractor::Toml => Some(&TOML_REGISTRY),
         Extractor::None => None,
     }
 }
