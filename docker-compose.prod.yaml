@@ -66,7 +66,17 @@ services:
       AXON_ENV_FILE: ""
       AXON_CONFIG_PATH: ""
       AXON_CODEX_CMD: ""
+      # Leave AXON_CODEX_HOME empty so axon's source-home resolver falls through
+      # to CODEX_HOME below (graceful when ~/.axon/codex isn't seeded yet).
       AXON_CODEX_HOME: ""
+      # Persist the container's codex home INSIDE the already-mounted ~/.axon, so
+      # config.toml (MCP servers), auth.json, refreshed OAuth tokens, and sessions
+      # survive container recreates. Fresh/empty by default → fast init, and fully
+      # separate from the operator's host ~/.codex. Seed it once on the host:
+      #   CODEX_HOME=~/.axon/codex codex login
+      #   (or: mkdir -p ~/.axon/codex && cp ~/.codex/auth.json ~/.axon/codex/)
+      # API-key auth (OPENAI_API_KEY in ~/.axon/.env) works without seeding.
+      CODEX_HOME: /home/axon/.axon/codex
       TZ: ${TZ:-America/New_York}
       # Filesystem-namespace claim affinity (axon_rust-p2oc). Embed jobs whose
       # input is a local path are stamped with the enqueueing process's namespace
@@ -87,6 +97,9 @@ services:
       # so ${HOME}/.gemini exists and contains valid credentials. If the directory is
       # absent, Docker will create it as root-owned — run `mkdir -p ~/.gemini` first.
       - ${GEMINI_HOME:-${HOME}/.gemini}:/home/axon/.gemini:ro
+      # NOTE: codex auth/config is NOT a separate mount — the container's codex
+      # home is CODEX_HOME=/home/axon/.axon/codex (see environment above), which
+      # already persists via the ~/.axon bind mount on the first volume line.
     ports:
       - "${AXON_MCP_HTTP_PUBLISH:-8001}:8001"
     command: ["serve"]

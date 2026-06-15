@@ -41,6 +41,9 @@ pub struct LlmBackendConfig {
     pub codex_cmd: String,
     pub codex_model: Option<String>,
     pub codex_home: Option<PathBuf>,
+    /// Load the user's real Codex config (MCP/skills/hooks) instead of the
+    /// isolated stripped home. Mirrors `Config::codex_load_user_config`.
+    pub codex_load_user_config: bool,
     pub completion_concurrency: usize,
     pub completion_timeout_secs: u64,
     pub configured: bool,
@@ -75,6 +78,7 @@ impl Default for LlmBackendConfig {
             codex_cmd: "codex".to_string(),
             codex_model: None,
             codex_home: None,
+            codex_load_user_config: false,
             completion_concurrency: GEMINI_DEFAULT_COMPLETION_CONCURRENCY,
             completion_timeout_secs: 300,
             configured: false,
@@ -97,6 +101,7 @@ impl LlmBackendConfig {
             codex_cmd: cfg.codex_cmd.trim().to_string(),
             codex_model: non_empty(cfg.codex_model.clone()),
             codex_home: cfg.codex_home.clone(),
+            codex_load_user_config: cfg.codex_load_user_config,
             // Codex uses its own dedicated concurrency knob; Gemini/OpenAI-compat
             // go through the backend-aware resolver (Gemini 4 / OpenAI-compat 16
             // defaults, explicit values honored) — PERF-L3.
