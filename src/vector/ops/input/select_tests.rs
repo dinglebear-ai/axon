@@ -43,6 +43,12 @@ fn detects_code_paths() {
         "app.tsx",
         "script.sh",
         "pkg/handler.go",
+        // Structured-data formats route through tree-sitter too (the routing
+        // predicate delegates to language_for_extension, so it stays in sync).
+        "package.json",
+        "compose.yaml",
+        "settings.YML",
+        "config.toml",
     ] {
         assert!(
             should_chunk_as_code(path),
@@ -57,7 +63,7 @@ fn non_code_paths_are_not_code() {
         "README.md",
         "notes.txt",
         "data.csv",
-        "config.toml",
+        "image.png",
         "Dockerfile",
         "Makefile",
     ] {
