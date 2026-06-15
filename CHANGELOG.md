@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Surrenders synthesis isolation; intended as the escape hatch toward
   tool-enabled (agentic) Codex use. Implemented as a passthrough spawn branch in
   `src/core/llm/codex_app_server.rs`.
+- **Codex CLI in the container image** — `config/Dockerfile` now installs
+  `@openai/codex` in both the production and dev runtime stages, so the
+  `codex-app-server` backend works in-container against the container's **fresh**
+  `~/.codex` (no host MCP servers/skills/hooks) — fast by default, MCP-capable
+  only when the container's own codex home is configured. The previous host-only
+  restriction in `validate_codex_cmd` is removed.
 
 ## [5.12.0] - 2026-06-14
 

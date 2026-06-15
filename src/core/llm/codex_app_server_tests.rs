@@ -30,18 +30,16 @@ fn validate_codex_cmd_allows_bare_name() {
 }
 
 #[test]
-fn validate_codex_cmd_rejects_bare_name_in_container_for_codex_backend() {
-    if crate::core::config::parse::docker::running_in_container() {
-        let backend = LlmBackendConfig {
-            kind: LlmBackendKind::CodexAppServer,
-            codex_cmd: "codex".to_string(),
-            ..LlmBackendConfig::default()
-        };
+fn validate_codex_cmd_allows_bare_name_in_container_for_codex_backend() {
+    // The production image ships @openai/codex, so a bare `codex` is valid
+    // in-container (resolved via PATH) — no host-only restriction.
+    let backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: "codex".to_string(),
+        ..LlmBackendConfig::default()
+    };
 
-        let err = validate_codex_cmd(&backend).unwrap_err();
-
-        assert!(err.to_string().contains("host-only"), "got: {err}");
-    }
+    assert!(validate_codex_cmd(&backend).is_ok());
 }
 
 #[test]

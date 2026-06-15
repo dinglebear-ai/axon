@@ -65,6 +65,10 @@ FROM debian:bookworm-slim AS runtime
 #   nodejs (22 LTS) — required to run the Gemini CLI (ask/evaluate/research synthesis)
 #                     Debian bookworm ships Node 18 which is too old for @google/gemini-cli;
 #                     use NodeSource for Node 22 LTS.
+#   @openai/codex   — the codex-app-server LLM backend (AXON_LLM_BACKEND=codex-app-server).
+#                     Installed in-image so the container has a FRESH codex home
+#                     (no host MCP servers/skills/hooks) — fast by default, and
+#                     MCP-capable only when the container's own ~/.codex is configured.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         libsqlite3-0 \
@@ -73,7 +77,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tini \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @google/gemini-cli@0.41.2 \
+    && npm install -g @google/gemini-cli@0.41.2 @openai/codex@0.136.0 \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 # Non-root user with stable UID/GID 1000 — matches the host user that owns
@@ -116,7 +120,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         git \
         tini \
-    && npm install -g @google/gemini-cli@0.41.2 \
+    && npm install -g @google/gemini-cli@0.41.2 @openai/codex@0.136.0 \
     && mkdir -p /home/axon \
     && chown 1000:1000 /home/axon \
     && rm -rf /var/lib/apt/lists/* /root/.npm

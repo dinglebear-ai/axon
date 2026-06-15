@@ -286,19 +286,10 @@ fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {
     if program.is_empty() {
         return Err("AXON_CODEX_CMD must not be empty".into());
     }
-    // Only validate explicit paths; bare command names resolve via PATH.
+    // Only validate explicit paths; bare command names resolve via PATH. The
+    // production image installs `@openai/codex` (see config/Dockerfile), so a
+    // bare `codex` resolves in-container too — no host-only restriction.
     if !(program.contains('/') || program.contains('\\')) {
-        if crate::core::config::parse::docker::running_in_container()
-            && matches!(
-                backend.kind,
-                crate::core::llm::LlmBackendKind::CodexAppServer
-            )
-        {
-            return Err(
-                "AXON_LLM_BACKEND=codex-app-server is host-only in the production container unless Codex is installed in the image; set AXON_CODEX_CMD to an executable container path or run this backend from the host"
-                    .into(),
-            );
-        }
         return Ok(());
     }
     let metadata = std::fs::symlink_metadata(Path::new(program))
