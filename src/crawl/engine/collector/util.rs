@@ -36,8 +36,16 @@ pub(super) async fn emit_progress(
     if let Some(tx) = col.progress_tx.as_ref() {
         let now = std::time::Instant::now();
         if now.duration_since(*last_progress) >= PROGRESS_INTERVAL {
-            tx.send(summary.clone()).await.ok();
+            tx.send(summary_with_adaptive(col, summary)).await.ok();
             *last_progress = now;
         }
     }
+}
+
+pub(super) fn summary_with_adaptive(col: &CollectorConfig, summary: &CrawlSummary) -> CrawlSummary {
+    let mut summary = summary.clone();
+    if let Some(adaptive) = col.adaptive.as_ref() {
+        summary.adaptive = Some(adaptive.snapshot());
+    }
+    summary
 }

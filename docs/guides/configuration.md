@@ -259,11 +259,13 @@ temporary overrides and legacy scripts.
 
 `[workers.adaptive-concurrency]` is TOML-only in this release and is disabled by default. When enabled, Axon replaces the fixed Spider crawl semaphore with Spider's adaptive semaphore on the main crawl path only. Post-crawl sitemap backfill, standalone `axon screenshot`, and non-Spider fetch helpers continue to use their existing fixed limits.
 
-HTTP `429`, HTTP `5xx`, and crawl broadcast lag reduce concurrency. Successful page statuses increase the target after Spider's fixed success threshold. Spider 2.52.0 uses a fixed failure decrease of `0.5`; `decrease-factor`, `sync-interval-ms`, and palette editing are intentionally unsupported here. Shrinks affect future admission and do not cancel already in-flight fetches.
+HTTP `429`, HTTP `5xx`, and crawl broadcast lag reduce concurrency. HTTP `2xx` responses are the only successes: they increase the target after Spider's fixed success threshold. Other `3xx`/`4xx` responses are neutral because Axon skips them as page errors without treating them as crawler pressure. Spider 2.52.0 uses a fixed failure decrease of `0.5`; `decrease-factor`, `sync-interval-ms`, and palette editing are intentionally unsupported here.
+
+Shrinks lower the controller target immediately, but they do not cancel already in-flight fetches. Spider 2.52.0 does not claw back permits already held by in-flight requests, so active requests may temporarily exceed the lower target while they finish. Axon drains that returned surplus on later pressure events.
 
 Pair adaptive mode with polite bounds: `respect-robots`, `delay-ms`, `max-pages`, path budgets, or `url-whitelist`. Axon logs warnings when adaptive mode is combined with uncapped or impolite settings.
 
-`chrome.remote-local-policy` applies only to Chrome render paths during crawls. It is intended for capable remote Chrome engines that support Spider/Chromey's policy push; generic CDP proxies may reject the underlying command. It does not apply to `axon screenshot` in this release.
+`chrome.remote-local-policy` applies only to Chrome render paths during crawls, including Chrome thin-page refetches. It is intended for capable remote Chrome engines that support Spider/Chromey's policy push; generic CDP proxies may reject the underlying command. It does not apply to `axon screenshot` in this release.
 
 ### Search and research
 

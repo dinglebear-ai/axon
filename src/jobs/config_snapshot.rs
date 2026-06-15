@@ -264,7 +264,7 @@ impl ConfigSnapshot {
         let mut snapshot = self;
         let fallback_fields = std::mem::take(&mut snapshot.process_fallback_fields);
         snapshot.apply_llm_backend(cfg)?;
-        snapshot.apply_regular_fields(cfg);
+        snapshot.apply_regular_fields(cfg)?;
         snapshot.apply_option_fields(cfg, exact_options, &fallback_fields);
         Ok(())
     }
@@ -285,7 +285,10 @@ impl ConfigSnapshot {
         Ok(())
     }
 
-    fn apply_regular_fields(&mut self, cfg: &mut Config) {
+    fn apply_regular_fields(
+        &mut self,
+        cfg: &mut Config,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         macro_rules! set {
             ($($field:ident),+ $(,)?) => {
                 $(if let Some(value) = self.$field.take() { cfg.$field = value; })+
@@ -379,8 +382,11 @@ impl ConfigSnapshot {
             quiet,
         );
         if let Some(value) = self.adaptive_concurrency.take() {
-            cfg.adaptive_concurrency = value.into();
+            cfg.adaptive_concurrency = value
+                .into_config_for(cfg)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         }
+        Ok(())
     }
 
     fn apply_option_fields(

@@ -286,7 +286,7 @@ Implementation rules:
 - `from_config(cfg: &Config) -> Option<Self>` returns `None` unless enabled.
 - Initial target should be `cfg.crawl_concurrency_limit.unwrap_or(resolved_max).clamp(min, max)`.
 - `attach_to(&self, website: &mut Website)` calls `website.with_adaptive_concurrency(self.semaphore.clone())`.
-- `record_status(status: u16)` treats `status == 429 || status >= 500` as failure; all other statuses are success.
+- `record_status(status: u16)` treats `status == 429 || status >= 500` as pressure. Only `2xx` statuses are success; other `3xx`/`4xx` statuses are neutral.
 - `record_broadcast_lag(dropped: u64)` records at least one failure and at most eight failures per lag event, then syncs.
 - After each recorded outcome, compare previous target to current target and call `self.semaphore.sync_from(&self.controller)` only when the target changed. This avoids a configurable sync interval while keeping runtime behavior responsive.
 - `snapshot()` returns raw counters and current target for logs/tests.
@@ -376,12 +376,12 @@ Document:
 - Adaptive concurrency is TOML-only in this release.
 - Default behavior is unchanged.
 - Adaptive mode applies to the main Spider crawl path. Post-crawl sitemap backfill, standalone screenshot, and non-Spider fetch helpers remain governed by their existing fixed limits unless separately wired later.
-- 429 and 5xx responses reduce concurrency; successful statuses increase after Spider's fixed success threshold.
-- Shrink affects future admission and may not cancel already in-flight fetches.
+- 429 and 5xx responses reduce concurrency; 2xx responses increase concurrency after Spider's fixed success threshold. Other 3xx/4xx responses are neutral.
+- Shrink affects future admission and does not cancel already in-flight fetches. Active requests can temporarily exceed the lower target, and returned surplus is drained on later pressure events.
 - Broadcast lag is treated as negative pressure.
 - Operators should pair adaptive mode with polite crawl settings: robots, delay, max pages, path budgets, or whitelist.
 - `decrease-factor`, `sync-interval-ms`, and palette editing are intentionally not supported in this release.
-- Remote-local-policy is Chrome-render-crawl only and may fail on generic CDP proxies.
+- Remote-local-policy is Chrome-render-crawl only, including Chrome thin-page refetches, and may fail on generic CDP proxies. Standalone `axon screenshot` remains out of scope.
 
 - [x] **Step 3: Update `CLAUDE.md`**
 

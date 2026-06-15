@@ -97,6 +97,32 @@ fn toml_workers_adaptive_concurrency_parses_min_and_max() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
+fn toml_workers_adaptive_concurrency_normalizes_min_and_default_max() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[workers]\ncrawl-concurrency-limit = 12\n\n[workers.adaptive-concurrency]\nenabled = true\nmin = 0"
+    )
+    .unwrap();
+    let mut got = None;
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        got = Some(
+            into_config_via_args(&["status"])
+                .unwrap()
+                .adaptive_concurrency,
+        );
+    });
+    let got = got.expect("config captured");
+    assert!(got.enabled);
+    assert_eq!(got.min, 1);
+    assert_eq!(got.max, Some(12));
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
 fn toml_chrome_remote_local_policy_parses() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();

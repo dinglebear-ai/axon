@@ -1,6 +1,7 @@
 use spider::url::Url;
 
 use crate::core::config::Config;
+use crate::core::config::parse::is_docker_service_host;
 
 pub(super) struct EndpointSnapshots {
     pub(super) tei_url: Option<String>,
@@ -69,6 +70,9 @@ fn endpoint_host_is_process_local(url: &Url) -> bool {
         .trim_end_matches(']')
         .to_ascii_lowercase();
     if host == "localhost" {
+        return true;
+    }
+    if is_docker_service_host(&host) {
         return true;
     }
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
