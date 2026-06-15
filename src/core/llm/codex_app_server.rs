@@ -221,7 +221,7 @@ fn configure_codex_child_isolation(_command: &mut Command) {}
 #[cfg(unix)]
 async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
     let kill_result = match child.id() {
-        Some(pid) => kill_process_group(pid).await,
+        Some(pid) => kill_process_group(pid),
         None => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "codex child pid unavailable",
@@ -251,17 +251,21 @@ async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
 }
 
 #[cfg(unix)]
-async fn kill_process_group(pid: u32) -> Result<(), io::Error> {
-    let status = Command::new("kill")
-        .arg("-KILL")
-        .arg("--")
-        .arg(format!("-{pid}"))
-        .status()
-        .await?;
-    if status.success() {
+#[allow(unsafe_code)]
+fn kill_process_group(pid: u32) -> Result<(), io::Error> {
+    // Send SIGKILL to the child's process group (negative pid) via syscall.
+    // The child is its own group leader (`process_group(0)` at spawn), so this
+    // reaps any app-server grandchildren too. Using libc directly avoids
+    // depending on an external `kill` binary — slim container images
+    // (config/Dockerfile) ship no procps, where shelling out fails with ENOENT.
+    let pgid = i32::try_from(pid).map_err(|_| io::Error::other("codex child pid out of range"))?;
+    // SAFETY: `kill(2)` with a negative pid + SIGKILL is a plain signal send; it
+    // dereferences no memory and cannot trigger UB.
+    let rc = unsafe { libc::kill(-pgid, libc::SIGKILL) };
+    if rc == 0 {
         Ok(())
     } else {
-        Err(io::Error::other(format!("kill exited with {status}")))
+        Err(io::Error::last_os_error())
     }
 }
 
