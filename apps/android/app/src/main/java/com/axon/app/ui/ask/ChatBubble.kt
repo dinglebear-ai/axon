@@ -1,19 +1,24 @@
 package com.axon.app.ui.ask
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -54,6 +59,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.ui.common.AuroraStatusDot
@@ -171,20 +177,29 @@ private fun activityIcon(name: String): ImageVector {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun UserBubble(
     text: String,
     modifier: Modifier = Modifier,
     timestamp: Long? = null,
+    showAvatar: Boolean = true,
     onEdit: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
 ) {
     val colors = AxonTheme.colors
+    val view = LocalView.current
     val displayText = remember(text) { displayUserText(text) }
-    val shape = RoundedCornerShape(topStart = 17.dp, topEnd = 6.dp, bottomStart = 17.dp, bottomEnd = 17.dp)
+    // Drop the tail corner on grouped continuations so a run of messages reads
+    // as one connected stack.
+    val shape = if (showAvatar) {
+        RoundedCornerShape(topStart = 17.dp, topEnd = 6.dp, bottomStart = 17.dp, bottomEnd = 17.dp)
+    } else {
+        RoundedCornerShape(17.dp)
+    }
     var revealed by remember { mutableStateOf(false) }
-    // Vertical gradient + top-edge highlight border + a soft cyan glow give the
-    // bubble depth instead of a flat fill.
+    // Vertical gradient fill stays constant; the border brightens and the bubble
+    // lifts when its actions are revealed (selection affordance).
     val fillBrush = remember(colors) {
         Brush.verticalGradient(
             listOf(
@@ -193,14 +208,16 @@ fun UserBubble(
             ),
         )
     }
-    val borderBrush = remember(colors) {
-        Brush.verticalGradient(
-            listOf(
-                colors.tint(colors.accentPrimary, 50, colors.control),
-                colors.tint(colors.accentPrimary, 22, colors.control),
-            ),
-        )
-    }
+    val borderTop by animateColorAsState(
+        colors.tint(colors.accentPrimary, if (revealed) 66 else 50, colors.control),
+        animationSpec = tween(200), label = "ub-border-top",
+    )
+    val borderBottom by animateColorAsState(
+        colors.tint(colors.accentPrimary, if (revealed) 34 else 22, colors.control),
+        animationSpec = tween(200), label = "ub-border-bottom",
+    )
+    val elevation by animateDpAsState(if (revealed) 9.dp else 5.dp, label = "ub-elev")
+    val glowAlpha by animateFloatAsState(if (revealed) 0.62f else 0.45f, label = "ub-glow")
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         Row(
             modifier = Modifier.widthIn(max = 300.dp),
@@ -219,19 +236,27 @@ fun UserBubble(
                     fontFamily = AxonTheme.fonts.body,
                     modifier = Modifier
                         .shadow(
-                            elevation = 5.dp,
+                            elevation = elevation,
                             shape = shape,
-                            ambientColor = colors.accentPrimary.copy(alpha = 0.4f),
-                            spotColor = colors.accentPrimary.copy(alpha = 0.5f),
+                            ambientColor = colors.accentPrimary.copy(alpha = glowAlpha - 0.1f),
+                            spotColor = colors.accentPrimary.copy(alpha = glowAlpha),
                         )
                         .clip(shape)
                         .background(fillBrush, shape)
-                        .border(1.dp, borderBrush, shape)
-                        .clickable(remember { MutableInteractionSource() }, indication = null) { revealed = !revealed }
+                        .border(1.dp, Brush.verticalGradient(listOf(borderTop, borderBottom)), shape)
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { revealed = !revealed },
+                            onLongClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                revealed = true
+                            },
+                        )
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
-            UserInitials()
+            if (showAvatar) UserInitials() else Spacer(Modifier.width(24.dp))
         }
         if (revealed) {
             MessageActions(
@@ -252,6 +277,7 @@ internal fun displayUserText(text: String): String {
         .getOrDefault(text)
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AxonBubble(
     text: String,
@@ -259,10 +285,12 @@ fun AxonBubble(
     modifier: Modifier = Modifier,
     onOpenDocument: (String) -> Unit = {},
     timestamp: Long? = null,
+    showAvatar: Boolean = true,
     onCopy: (() -> Unit)? = null,
     onRegenerate: (() -> Unit)? = null,
 ) {
     val colors = AxonTheme.colors
+    val view = LocalView.current
     val answerSources = remember(text) { parseAnswerSources(text) }
     val sources = remember(answerSources) {
         answerSources.map { AuroraSource(title = it.title, url = it.url) }.toImmutableList()
@@ -280,23 +308,36 @@ fun AxonBubble(
         val base = if (sources.isEmpty()) stripCitationText(text) else stripSourcesBlock(text)
         humanizeJsonFragmentText(base)
     }
-    val shape = RoundedCornerShape(topStart = 6.dp, topEnd = 17.dp, bottomStart = 17.dp, bottomEnd = 17.dp)
+    val shape = if (showAvatar) {
+        RoundedCornerShape(topStart = 6.dp, topEnd = 17.dp, bottomStart = 17.dp, bottomEnd = 17.dp)
+    } else {
+        RoundedCornerShape(17.dp)
+    }
     var revealed by remember { mutableStateOf(false) }
-    // Subtle vertical gradient + a brighter top hairline read as a lit glass
-    // panel rather than a flat block.
+    val isError = remember(text) { text.startsWith("Error:") }
+    // Border accent encodes state: rose for an error, cyan otherwise; it brightens
+    // while streaming and brightest when the message's actions are revealed.
+    val accent = if (isError) colors.accentPink else colors.accentPrimary
+    val topStrength = when {
+        revealed -> 34
+        isStreaming -> 26
+        else -> 20
+    }
+    val borderTop by animateColorAsState(
+        colors.tint(accent, topStrength, colors.panelStrong),
+        animationSpec = tween(240), label = "ab-border-top",
+    )
+    val borderBottom by animateColorAsState(
+        colors.tint(accent, 7, colors.panelStrong),
+        animationSpec = tween(240), label = "ab-border-bottom",
+    )
+    val elevation by animateDpAsState(if (revealed) 7.dp else 4.dp, label = "ab-elev")
+    // Subtle vertical gradient + the brighter top hairline read as a lit glass panel.
     val fillBrush = remember(colors) {
         Brush.verticalGradient(
             listOf(
                 colors.panelStrong.copy(alpha = 0.72f),
                 colors.panelMedium.copy(alpha = 0.5f),
-            ),
-        )
-    }
-    val borderBrush = remember(colors) {
-        Brush.verticalGradient(
-            listOf(
-                colors.tint(colors.accentPrimary, 20, colors.panelStrong),
-                colors.tint(colors.accentPrimary, 7, colors.panelStrong),
             ),
         )
     }
@@ -307,21 +348,29 @@ fun AxonBubble(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                AssistantGutter()
+                if (showAvatar) AssistantGutter() else Spacer(Modifier.width(26.dp))
                 ThinkingDots()
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                AssistantGutter()
+                if (showAvatar) AssistantGutter() else Spacer(Modifier.width(26.dp))
                 Column(horizontalAlignment = Alignment.Start) {
                     Column(
                         modifier = Modifier
                             .widthIn(max = 300.dp)
-                            .shadow(elevation = 4.dp, shape = shape)
+                            .shadow(elevation = elevation, shape = shape)
                             .clip(shape)
                             .background(fillBrush, shape)
-                            .border(1.dp, borderBrush, shape)
-                            .clickable(remember { MutableInteractionSource() }, indication = null) { revealed = !revealed }
+                            .border(1.dp, Brush.verticalGradient(listOf(borderTop, borderBottom)), shape)
+                            .combinedClickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { revealed = !revealed },
+                                onLongClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                    revealed = true
+                                },
+                            )
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(9.dp),
                     ) {

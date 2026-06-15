@@ -133,7 +133,6 @@ fun AskScreen(
                         .fillMaxWidth(0.90f)
                         .widthIn(max = 366.dp),
                     contentPadding = PaddingValues(start = 8.dp, top = 12.dp, end = 8.dp, bottom = 132.dp),
-                    verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     when {
                         chatItems.isNotEmpty() -> {
@@ -141,11 +140,22 @@ fun AskScreen(
                                 items = chatItems,
                                 key = { index, item -> stableChatItemKey(index, item) },
                             ) { index, item ->
+                                // Group consecutive same-sender messages: a wider gap
+                                // when the sender flips, a tight gap within a run.
+                                val prev = chatItems.getOrNull(index - 1)
+                                val isSenderStart = prev == null || chatSenderSide(prev) != chatSenderSide(item)
+                                val showAvatar = when (item) {
+                                    is ChatItem.UserMsg -> prev !is ChatItem.UserMsg
+                                    is ChatItem.AxonMsg -> prev !is ChatItem.AxonMsg
+                                    else -> true
+                                }
+                                val topGap = if (index == 0) 0.dp else if (isSenderStart) 11.dp else 4.dp
                                 // New bubbles fade + slide in once; streaming
                                 // updates reuse the stable key so they don't replay.
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .padding(top = topGap)
                                         .animateItem()
                                         .revealOnce(reveal, stableChatItemKey(index, item), index, staggerMs = 0),
                                 ) {
@@ -153,6 +163,7 @@ fun AskScreen(
                                         item = item,
                                         onOpenDocument = onOpenDocument,
                                         isLastAxon = index == lastAxonIdx,
+                                        showAvatar = showAvatar,
                                         onCopy = ::copyMessage,
                                         onEdit = { input = it },
                                         onRegenerate = { vm.regenerateLast() },
@@ -168,6 +179,7 @@ fun AskScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .padding(top = if (index == 0) 0.dp else 11.dp)
                                         .animateItem()
                                         .revealOnce(reveal, "history-${item.id}-${item.askedAt}", index, staggerMs = 0),
                                 ) {
@@ -271,6 +283,7 @@ private fun ChatItemContent(
     item: ChatItem,
     onOpenDocument: (String) -> Unit,
     isLastAxon: Boolean,
+    showAvatar: Boolean,
     onCopy: (String) -> Unit,
     onEdit: (String) -> Unit,
     onRegenerate: () -> Unit,
@@ -279,6 +292,7 @@ private fun ChatItemContent(
         is ChatItem.UserMsg -> UserBubble(
             text = item.text,
             timestamp = item.timestamp,
+            showAvatar = showAvatar,
             onEdit = { onEdit(item.text) },
             onCopy = { onCopy(item.text) },
         )
@@ -287,6 +301,7 @@ private fun ChatItemContent(
             isStreaming = item.isStreaming,
             onOpenDocument = onOpenDocument,
             timestamp = item.timestamp,
+            showAvatar = showAvatar,
             onCopy = if (item.text.isNotBlank()) { { onCopy(item.text) } } else null,
             onRegenerate = if (isLastAxon && !item.isStreaming) onRegenerate else null,
         )
@@ -305,3 +320,6 @@ private fun ChatItemContent(
         }
     }
 }
+
+/** 0 = user side, 1 = assistant side (answers, tool activity, op results). */
+private fun chatSenderSide(item: ChatItem): Int = if (item is ChatItem.UserMsg) 0 else 1
