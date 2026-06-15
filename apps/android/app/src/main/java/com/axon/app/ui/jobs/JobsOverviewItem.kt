@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.data.repository.JobUi
+import com.axon.app.ui.theme.AxonTheme
 
 @Composable
 fun JobsOverviewItem(job: JobUi, modifier: Modifier = Modifier) {
@@ -39,25 +40,29 @@ fun JobsOverviewItem(job: JobUi, modifier: Modifier = Modifier) {
             Text(
                 jobTarget(job),
                 fontSize = 12.sp,
-                color = Color(0xFFE6F4FB),
+                color = AxonTheme.colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 job.status,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF4A6374),
+                color = AxonTheme.colors.iconMuted,
             )
         }
     }
 }
 
+@Composable
 private fun statusColor(status: String): Color = when (status) {
-    "running", "processing" -> Color(0xFF29B6F6)   // cyan — active
-    "pending"               -> Color(0xFFC6A36B)   // amber — waiting
+    "running", "processing" -> AxonTheme.colors.accentPrimary   // cyan — active
+    "pending"               -> AxonTheme.colors.warn            // amber — waiting
+    // Material green/red status tones (app-specific; intentionally NOT the muted
+    // aurora success/error — these read as raw "done"/"failed" signals). No exact
+    // lib token; single-use; kept literal to hold appearance exactly.
     "done"                  -> Color(0xFF4CAF50)   // green — done
     "failed", "error"       -> Color(0xFFEF5350)   // red — failed
-    else                    -> Color(0xFF4A6374)   // muted — unknown
+    else                    -> AxonTheme.colors.iconMuted       // muted — unknown
 }
 
 private fun jobTarget(job: JobUi): String =

@@ -3,7 +3,6 @@ package com.axon.app.ui.fab
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ManageSearch
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
 enum class FabOp(
@@ -84,8 +83,3 @@ val FabRingOps = listOf(
     FabOp.Crawl,
     FabOp.Ingest,
 )
-
-val syncOpTint  = Color(0xFF29B6F6)
-val syncOpBg    = Color(0xFF13293A)
-val asyncOpTint = Color(0xFFC6A36B)
-val asyncOpBg   = Color(0x12C6A36B)
