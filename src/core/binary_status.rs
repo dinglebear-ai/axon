@@ -53,7 +53,7 @@ pub fn stale_binary_warning_for<'a>(
 
 pub fn warning_message(newer_input: &str) -> String {
     format!(
-        "outdated axon binary: {newer_input} is newer than the running executable. Rebuild with `cargo build --bin axon` or `cargo build --release --bin axon`; the Cargo wrapper should copy the fresh binary to ~/.local/bin/axon and plugins/axon/bin/axon."
+        "outdated axon binary: {newer_input} is newer than the running executable. Rebuild with `cargo build --bin axon` or `cargo build --release --bin axon`; the Cargo wrapper should copy the fresh binary to ~/.local/bin/axon."
     )
 }
 

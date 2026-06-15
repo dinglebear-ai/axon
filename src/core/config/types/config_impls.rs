@@ -53,7 +53,7 @@ impl Default for Config {
             max_sitemaps: 512,
             discover_llms_txt: true,
             max_llms_txt_urls: 512,
-            cache: true,
+            cache: false,
             cache_http_only: false,
             etag_conditional: false,
             path_budgets: Vec::new(),

@@ -1,5 +1,6 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 rust_dev_env := "if command -v mold >/dev/null 2>&1; then export RUSTFLAGS=\"${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold\"; fi"
+local_release_profile := "release-fast"
 
 default:
     @just --list
@@ -60,25 +61,33 @@ clippy:
     {{rust_dev_env}}; cargo clippy --all-targets --locked -- -D warnings
 
 build:
+    {{rust_dev_env}}; CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile {{local_release_profile}} --locked
+    just link-bin {{local_release_profile}}
+
+release-build:
     {{rust_dev_env}}; cargo build --release --locked
-    just link-bin
+    just link-bin release
 
 debug:
     {{rust_dev_env}}; cargo build --locked --bin axon
 
-# Install the release binary into ~/.local/bin/axon. Called automatically by
-# `just build` and `just install`. Safe to call manually after
-# `cargo build --release` to refresh the PATH copy.
-link-bin:
+# Install a built binary into ~/.local/bin/axon. Local recipes default to the
+# release-fast profile; pass `release` for real release artifacts.
+link-bin profile=local_release_profile:
     #!/usr/bin/env bash
     set -euo pipefail
+    profile="{{profile}}"
+    profile_dir="$profile"
+    if [ "$profile" = "release" ]; then
+      profile_dir="release"
+    fi
     AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
     case "$AXON_TARGET_DIR" in
-      /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;;
-      *)  AXON_BIN="$(pwd)/$AXON_TARGET_DIR/release/axon" ;;
+      /*) AXON_BIN="$AXON_TARGET_DIR/$profile_dir/axon" ;;
+      *)  AXON_BIN="$(pwd)/$AXON_TARGET_DIR/$profile_dir/axon" ;;
     esac
     if [ ! -x "$AXON_BIN" ]; then
-      echo "release binary not found at $AXON_BIN — run 'just build' first" >&2
+      echo "$profile binary not found at $AXON_BIN — run 'just build' first" >&2
       exit 1
     fi
     mkdir -p ~/.local/bin
@@ -87,8 +96,12 @@ link-bin:
     echo "axon → $AXON_BIN"
 
 install:
+    {{rust_dev_env}}; CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile {{local_release_profile}} --locked
+    just link-bin {{local_release_profile}}
+
+install-release:
     {{rust_dev_env}}; cargo build --release --locked
-    just link-bin
+    just link-bin release
 
 # Build the local dev runtime image from this checkout.
 container-build:
@@ -121,7 +134,7 @@ container-up:
     "${compose[@]}" up -d axon --no-deps
     "${compose[@]}" ps axon
 
-# Build release binary when stale, sync PATH symlinks, refresh local dev runtime if needed, restart container.
+# Build local release-fast binary when stale, sync PATH symlinks, refresh local dev runtime if needed, restart container.
 # Synchronous version of what `scripts/axon` does automatically in the background.
 sync-container:
     #!/usr/bin/env bash
@@ -134,10 +147,11 @@ sync-container:
       export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
     fi
 
+    profile="{{local_release_profile}}"
     AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
     case "$AXON_TARGET_DIR" in
-      /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;;
-      *) AXON_BIN="$repo/$AXON_TARGET_DIR/release/axon" ;;
+      /*) AXON_BIN="$AXON_TARGET_DIR/$profile/axon" ;;
+      *) AXON_BIN="$repo/$AXON_TARGET_DIR/$profile/axon" ;;
     esac
 
     release_stale=0
@@ -152,7 +166,7 @@ sync-container:
       done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo build.rs src config.example.toml config migrations apps/web/out assets)
     fi
     if [ "$release_stale" -eq 1 ]; then
-      cargo build --release --locked --bin axon
+      CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile "$profile" --locked --bin axon
     else
       echo "release binary is current: $AXON_BIN"
     fi

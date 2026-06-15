@@ -48,6 +48,12 @@
 # Env: AXON_CHAT_HEADLESS_GEMINI_MODEL
 # chat-gemini-model = ""
 #
+# Optional override for whether the synthesis model should be treated as
+# high-context by the adaptive ask context builder. Leave unset to infer from
+# the active model name.
+# Env: AXON_SYNTHESIS_HIGH_CONTEXT
+# synthesis-high-context = true
+#
 # Codex app-server settings are runtime/bootstrap env-only in this slice:
 # AXON_CODEX_CMD, AXON_CODEX_HOME, AXON_SYNTHESIS_CODEX_MODEL
 # (legacy alias AXON_CODEX_MODEL), and AXON_CODEX_COMPLETION_CONCURRENCY.

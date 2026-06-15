@@ -51,8 +51,8 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, value_enum, default_value_t = RenderMode::AutoSwitch)]
     pub(in crate::core::config) render_mode: RenderMode,
 
-    /// Enable crawl cache reuse. Disable with `--cache false`.
-    #[arg(global = true, long, action = ArgAction::Set, default_value_t = true)]
+    /// Enable crawl cache reuse. Disabled by default; opt in with `--cache true`.
+    #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::core::config) cache: bool,
 
     /// Keep cached crawl flow on the HTTP path and suppress Chrome runtime/bootstrap.
@@ -61,7 +61,7 @@ pub(in crate::core::config) struct GlobalArgs {
 
     /// Enable conditional re-crawl (ETag / If-Modified-Since). Re-crawls send
     /// validators and 304-unchanged pages are reused from the previous run
-    /// instead of being re-fetched. Requires `--cache true` (the default).
+    /// instead of being re-fetched. Requires `--cache true`.
     #[arg(global = true, long, action = ArgAction::SetTrue)]
     pub(in crate::core::config) etag_conditional: bool,
 
