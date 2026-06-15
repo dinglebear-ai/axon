@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.13.0] - 2026-06-15
+
+### Added
+
+- **`AXON_CODEX_LOAD_USER_CONFIG`** — opt-in flag (default `false`) for the
+  `codex-app-server` LLM backend. When `true`, Axon runs `codex app-server`
+  against the user's real `CODEX_HOME` with the full inherited environment so
+  MCP servers, skills, and hooks load, instead of the isolated stripped home.
+  Surrenders synthesis isolation; intended as the escape hatch toward
+  tool-enabled (agentic) Codex use. Implemented as a passthrough spawn branch in
+  `src/core/llm/codex_app_server.rs`.
+- **Codex CLI in the container image** — `config/Dockerfile` now installs
+  `@openai/codex` in both the production and dev runtime stages, so the
+  `codex-app-server` backend works in-container against the container's **fresh**
+  `~/.codex` (no host MCP servers/skills/hooks) — fast by default, MCP-capable
+  only when the container's own codex home is configured. The previous host-only
+  restriction in `validate_codex_cmd` is removed. Codex child cleanup now sends
+  SIGKILL to the process group via the `kill(2)` syscall instead of shelling out
+  to a `kill` binary, so it works in slim images that ship no `procps`. `ESRCH`
+  (the child already exited) is treated as success, and a cleanup failure on an
+  otherwise-successful turn is logged rather than discarding the completion.
+- **Persistent container codex home** — `docker-compose.prod.yaml` sets
+  `CODEX_HOME=/home/axon/.axon/codex`, so the container's codex home (config.toml
+  with MCP servers, auth.json, refreshed OAuth tokens, sessions) lives inside the
+  already-mounted `~/.axon` and survives container recreates. Fresh/empty by
+  default → fast init, and fully separate from the operator's host `~/.codex`.
+  Seed it once on the host with `CODEX_HOME=~/.axon/codex codex login` (or copy
+  `~/.codex/auth.json` into `~/.axon/codex/`); `OPENAI_API_KEY` works without
+  seeding. Replaces the earlier read-only `auth.json` bind mount.
+
 ## [5.12.0] - 2026-06-14
 
 ### Added

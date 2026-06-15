@@ -196,3 +196,117 @@ fn prepare_codex_home_copies_auth_and_writes_isolated_config() {
     assert!(written.contains("model = \"gpt-5.5\""));
     assert!(written.contains("approval_policy = \"never\""));
 }
+
+#[test]
+fn resolve_user_codex_home_honors_existing_override() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = LlmBackendConfig {
+        codex_home: Some(dir.path().to_path_buf()),
+        ..LlmBackendConfig::default()
+    };
+    assert_eq!(
+        resolve_user_codex_home(&cfg).unwrap(),
+        Some(dir.path().to_path_buf())
+    );
+}
+
+#[test]
+fn resolve_user_codex_home_errors_on_missing_override() {
+    let cfg = LlmBackendConfig {
+        codex_home: Some(std::path::PathBuf::from("/nonexistent/axon-codex-home-xyz")),
+        ..LlmBackendConfig::default()
+    };
+    assert!(resolve_user_codex_home(&cfg).is_err());
+}
+
+// Precedence: explicit config override beats both env tiers.
+#[test]
+fn codex_source_home_override_beats_env_tiers() {
+    let override_dir = tempfile::tempdir().unwrap();
+    let codex_env_dir = tempfile::tempdir().unwrap();
+    let home_env_dir = tempfile::tempdir().unwrap();
+    fs::create_dir(home_env_dir.path().join(".codex")).unwrap();
+    let cfg = LlmBackendConfig {
+        codex_home: Some(override_dir.path().to_path_buf()),
+        ..LlmBackendConfig::default()
+    };
+    let resolved = codex_source_home_from(
+        &cfg,
+        Some(codex_env_dir.path().display().to_string()),
+        Some(home_env_dir.path().display().to_string()),
+    )
+    .unwrap();
+    assert_eq!(resolved, Some(override_dir.path().to_path_buf()));
+}
+
+// Precedence: with no override, $CODEX_HOME wins over $HOME/.codex.
+#[test]
+fn codex_source_home_codex_home_env_beats_home() {
+    let codex_env_dir = tempfile::tempdir().unwrap();
+    let home_env_dir = tempfile::tempdir().unwrap();
+    fs::create_dir(home_env_dir.path().join(".codex")).unwrap();
+    let cfg = LlmBackendConfig::default();
+    let resolved = codex_source_home_from(
+        &cfg,
+        Some(codex_env_dir.path().display().to_string()),
+        Some(home_env_dir.path().display().to_string()),
+    )
+    .unwrap();
+    assert_eq!(resolved, Some(codex_env_dir.path().to_path_buf()));
+}
+
+// Precedence: falls through to $HOME/.codex when no override and no $CODEX_HOME.
+#[test]
+fn codex_source_home_falls_through_to_home_codex_dir() {
+    let home_env_dir = tempfile::tempdir().unwrap();
+    let codex_dir = home_env_dir.path().join(".codex");
+    fs::create_dir(&codex_dir).unwrap();
+    let cfg = LlmBackendConfig::default();
+    let resolved =
+        codex_source_home_from(&cfg, None, Some(home_env_dir.path().display().to_string()))
+            .unwrap();
+    assert_eq!(resolved, Some(codex_dir));
+}
+
+// A $CODEX_HOME pointing at a non-existent path is skipped (not an error), and
+// with nothing else resolvable the terminal result is None.
+#[test]
+fn codex_source_home_none_when_nothing_resolves() {
+    let cfg = LlmBackendConfig::default();
+    let resolved =
+        codex_source_home_from(&cfg, Some("/nonexistent/codex-home".to_string()), None).unwrap();
+    assert_eq!(resolved, None);
+}
+
+// The env tier validates an EXISTING candidate: a $CODEX_HOME that exists but is
+// a regular file (not a dir) is a hard error, not a silent skip.
+#[test]
+fn codex_source_home_env_tier_rejects_non_dir() {
+    let file = tempfile::NamedTempFile::new().unwrap();
+    let cfg = LlmBackendConfig::default();
+    let err =
+        codex_source_home_from(&cfg, Some(file.path().display().to_string()), None).unwrap_err();
+    assert!(
+        err.to_string().contains("must be a directory"),
+        "got: {err}"
+    );
+}
+
+// The env tier rejects a symlinked $CODEX_HOME (exists() follows the link, then
+// symlink_metadata in validate_source_home catches it).
+#[cfg(unix)]
+#[test]
+fn codex_source_home_env_tier_rejects_symlink() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    fs::create_dir(&real).unwrap();
+    let link = dir.path().join("link");
+    symlink(&real, &link).unwrap();
+    let cfg = LlmBackendConfig::default();
+    let err = codex_source_home_from(&cfg, Some(link.display().to_string()), None).unwrap_err();
+    assert!(
+        err.to_string().contains("must not be a symlink"),
+        "got: {err}"
+    );
+}
