@@ -277,3 +277,36 @@ fn codex_source_home_none_when_nothing_resolves() {
         codex_source_home_from(&cfg, Some("/nonexistent/codex-home".to_string()), None).unwrap();
     assert_eq!(resolved, None);
 }
+
+// The env tier validates an EXISTING candidate: a $CODEX_HOME that exists but is
+// a regular file (not a dir) is a hard error, not a silent skip.
+#[test]
+fn codex_source_home_env_tier_rejects_non_dir() {
+    let file = tempfile::NamedTempFile::new().unwrap();
+    let cfg = LlmBackendConfig::default();
+    let err =
+        codex_source_home_from(&cfg, Some(file.path().display().to_string()), None).unwrap_err();
+    assert!(
+        err.to_string().contains("must be a directory"),
+        "got: {err}"
+    );
+}
+
+// The env tier rejects a symlinked $CODEX_HOME (exists() follows the link, then
+// symlink_metadata in validate_source_home catches it).
+#[cfg(unix)]
+#[test]
+fn codex_source_home_env_tier_rejects_symlink() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    fs::create_dir(&real).unwrap();
+    let link = dir.path().join("link");
+    symlink(&real, &link).unwrap();
+    let cfg = LlmBackendConfig::default();
+    let err = codex_source_home_from(&cfg, Some(link.display().to_string()), None).unwrap_err();
+    assert!(
+        err.to_string().contains("must not be a symlink"),
+        "got: {err}"
+    );
+}
