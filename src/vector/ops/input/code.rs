@@ -180,3 +180,7 @@ fn max_tree_sitter_file_bytes() -> usize {
 #[cfg(test)]
 #[path = "code_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "code/parity_matrix_tests.rs"]
+mod parity_matrix_tests;
