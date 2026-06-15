@@ -11,6 +11,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -19,6 +20,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
@@ -34,6 +37,9 @@ private sealed interface FabState {
     data class Input(val op: FabOp) : FabState
 }
 
+/** Pixel clamp limits for the draggable + button. */
+private data class DragBounds(val minX: Float, val maxX: Float, val minY: Float, val maxY: Float)
+
 @Composable
 fun FabLauncher(
     onOpSubmit: (FabOp, String) -> Unit,
@@ -42,6 +48,9 @@ fun FabLauncher(
 ) {
     var state by remember { mutableStateOf<FabState>(FabState.Idle) }
     var fabCenter by remember { mutableStateOf(IntOffset.Zero) }
+    // User-draggable offset from the default anchor, so the + can be moved out of
+    // the way of whatever is on screen.
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
     val colors = AxonTheme.colors
 
     BackHandler(enabled = state !is FabState.Idle) {
@@ -62,6 +71,19 @@ fun FabLauncher(
                     y = (maxHeight * 0.44f).roundToPx(),
                 )
             }
+        }
+        // Clamp the draggable offset so the + can't be flung off-screen. The
+        // default anchor is bottom-end with padding(bottom = 158, end = 16).
+        val dragBounds = with(density) {
+            val fab = 46.dp.toPx()
+            val w = maxWidth.toPx()
+            val h = maxHeight.toPx()
+            DragBounds(
+                minX = -(w - fab - 16.dp.toPx()),
+                maxX = 16.dp.toPx(),
+                minY = -(h - fab - (158 + 56).dp.toPx()),
+                maxY = (158 - 50).dp.toPx(),
+            )
         }
 
         FabRing(
@@ -98,10 +120,11 @@ fun FabLauncher(
                 scaleOut(targetScale = 0.6f, animationSpec = tween(durationMillis = 130)),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 88.dp, end = 16.dp),
+                .padding(bottom = 158.dp, end = 16.dp),
         ) {
             Box(
                 modifier = Modifier
+                    .offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
                     .size(46.dp)
                     .onGloballyPositioned { coords ->
                         val pos = coords.positionInWindow()
@@ -109,6 +132,15 @@ fun FabLauncher(
                             x = (pos.x + coords.size.width / 2).roundToInt(),
                             y = (pos.y + coords.size.height / 2).roundToInt(),
                         )
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, drag ->
+                            change.consume()
+                            dragOffset = Offset(
+                                (dragOffset.x + drag.x).coerceIn(dragBounds.minX, dragBounds.maxX),
+                                (dragOffset.y + drag.y).coerceIn(dragBounds.minY, dragBounds.maxY),
+                            )
+                        }
                     }
                     .background(colors.panelStrong.copy(alpha = 0.76f), RoundedCornerShape(15.dp))
                     .border(1.dp, colors.borderStrong.copy(alpha = 0.74f), RoundedCornerShape(15.dp))

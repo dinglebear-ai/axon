@@ -312,22 +312,23 @@ private fun SendButton(
         label = "send-scale",
     )
 
-    // Rose fill whenever the button is actionable — ready to send OR streaming
-    // (so the stop affordance is just as prominent as send).
+    // Rose fill whenever the button is actionable — ready to send OR streaming.
+    // At rest it's a present panel button (not a dim/disabled-looking grey), so
+    // the mode caret reads as an accent rather than making it look greyed out.
     val active = canSend || loading
     val spec = tween<Color>(durationMillis = 180)
     val bg by animateColorAsState(
-        targetValue = if (active) colors.accentPink.copy(alpha = 0.92f) else colors.control.copy(alpha = 0.34f),
+        targetValue = if (active) colors.accentPink.copy(alpha = 0.92f) else colors.panelStrong.copy(alpha = 0.7f),
         animationSpec = spec,
         label = "send-bg",
     )
     val border by animateColorAsState(
-        targetValue = if (active) colors.accentPinkStrong.copy(alpha = 0.55f) else colors.borderDefault.copy(alpha = 0.42f),
+        targetValue = if (active) colors.accentPinkStrong.copy(alpha = 0.55f) else colors.borderStrong.copy(alpha = 0.6f),
         animationSpec = spec,
         label = "send-border",
     )
     val iconTint by animateColorAsState(
-        targetValue = if (active) Color(0xFF06131C) else colors.textMuted.copy(alpha = 0.72f),
+        targetValue = if (active) Color(0xFF06131C) else colors.textPrimary.copy(alpha = 0.58f),
         animationSpec = spec,
         label = "send-icon",
     )
