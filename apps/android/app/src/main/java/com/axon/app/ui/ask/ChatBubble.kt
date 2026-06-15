@@ -1,6 +1,9 @@
 package com.axon.app.ui.ask
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,8 +63,6 @@ import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
 import com.axon.app.ui.theme.tint
 import com.axon.app.ui.theme.toneOf
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import tv.tootie.aurora.components.AuroraAvatar
 import tv.tootie.aurora.components.AuroraAvatarSize
@@ -235,10 +237,15 @@ fun AxonBubble(
     onRegenerate: (() -> Unit)? = null,
 ) {
     val colors = AxonTheme.colors
-    val citations = rememberCitations(text)
-    val sources = remember(citations) {
-        citations.mapNotNull { c -> c.url?.let { AuroraSource(title = sourceDisplayTitle(it), url = it) } }
-            .toImmutableList()
+    val answerSources = remember(text) { parseAnswerSources(text) }
+    val sources = remember(answerSources) {
+        answerSources.map { AuroraSource(title = it.title, url = it.url) }.toImmutableList()
+    }
+    // Map each backend source number (`[S15]`) to its display index + URL so inline
+    // citations renumber to match the carousel (1..k) and link to the right doc,
+    // even when the backend's source numbering isn't a contiguous 1..k.
+    val citationLinks = remember(answerSources) {
+        answerSources.mapIndexedNotNull { i, s -> s.num?.let { n -> n to CitationLink(i + 1, s.url) } }.toMap()
     }
     // Keep inline `[Sn]` markers in the prose when we have sources to back them
     // (rendered as Aurora inline-citation badges); otherwise strip the dangling
@@ -275,16 +282,25 @@ fun AxonBubble(
                     ) {
                         InlineMarkdownText(
                             text = displayText,
-                            sources = sources,
+                            citationLinks = citationLinks,
                             onOpenDocument = onOpenDocument,
                             showCaret = isStreaming && displayText.isNotBlank(),
                         )
                         if (sources.isNotEmpty()) {
-                            AuroraSources(
-                                sources = sources,
-                                onSourceClick = { onOpenDocument(it.url) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            // Sources land softly once the answer settles rather
+                            // than snapping in at the Done event.
+                            var sourcesShown by remember(sources) { mutableStateOf(false) }
+                            LaunchedEffect(sources) { sourcesShown = true }
+                            AnimatedVisibility(
+                                visible = sourcesShown,
+                                enter = fadeIn(tween(280)) + expandVertically(tween(260)),
+                            ) {
+                                AuroraSources(
+                                    sources = sources,
+                                    onSourceClick = { onOpenDocument(it.url) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                     if (revealed && !isStreaming) {
@@ -410,7 +426,7 @@ private fun ThinkingDots() {
 @Composable
 private fun InlineMarkdownText(
     text: String,
-    sources: ImmutableList<AuroraSource> = persistentListOf(),
+    citationLinks: Map<Int, CitationLink> = emptyMap(),
     onOpenDocument: (String) -> Unit = {},
     showCaret: Boolean = false,
 ) {
@@ -434,28 +450,28 @@ private fun InlineMarkdownText(
         1f
     }
 
-    // Each `[Sn]` whose number maps to a known source becomes an inline Aurora
-    // citation badge; unmatched markers fall through as plain text.
-    val inlineContent = remember(sources) {
-        sources.mapIndexed { i, src ->
-            val n = i + 1
-            "cite_$n" to InlineTextContent(
+    // Each backend `[Sn]` that maps to a known source becomes an inline Aurora
+    // citation badge (renumbered to its display index); unmatched markers fall
+    // through as plain text.
+    val inlineContent = remember(citationLinks) {
+        citationLinks.entries.associate { (num, link) ->
+            "cite_$num" to InlineTextContent(
                 placeholder = Placeholder(
-                    width = if (n >= 10) 2.9.em else 2.2.em,
+                    width = if (link.displayIndex >= 10) 2.9.em else 2.2.em,
                     height = 1.5.em,
                     placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
                 ),
             ) {
-                AuroraInlineCitation(number = n, onClick = { onOpenDocument(src.url) })
+                AuroraInlineCitation(number = link.displayIndex, onClick = { onOpenDocument(link.url) })
             }
-        }.toMap()
+        }
     }
 
     Text(
         text = buildAnnotatedString {
             parts.forEachIndexed { index, part ->
                 if (index % 2 == 0) {
-                    appendProseWithCitations(part, sources.size)
+                    appendProseWithCitations(part, citationLinks.keys)
                 } else {
                     withStyle(
                         SpanStyle(
@@ -483,13 +499,13 @@ private fun InlineMarkdownText(
     )
 }
 
-/** Append a prose run, swapping each in-range `[Sn]` marker for an inline-citation placeholder. */
-private fun AnnotatedString.Builder.appendProseWithCitations(part: String, sourceCount: Int) {
+/** Append a prose run, swapping each `[Sn]` marker with a known source for an inline-citation placeholder. */
+private fun AnnotatedString.Builder.appendProseWithCitations(part: String, validNums: Set<Int>) {
     var cursor = 0
     inlineCitationMarkerRegex.findAll(part).forEach { match ->
         append(part.substring(cursor, match.range.first))
         val n = match.groupValues[1].toIntOrNull()
-        if (n != null && n in 1..sourceCount) {
+        if (n != null && n in validNums) {
             appendInlineContent("cite_$n", match.value)
         } else {
             append(match.value)
@@ -499,9 +515,26 @@ private fun AnnotatedString.Builder.appendProseWithCitations(part: String, sourc
     append(part.substring(cursor))
 }
 
-@Composable
-private fun rememberCitations(text: String): List<ChatCitation> = remember(text) {
-    extractedCitations(text)
+/** A resolvable inline citation: the 1-based display number shown in the badge + the doc URL it opens. */
+private data class CitationLink(val displayIndex: Int, val url: String)
+
+/** One parsed line from the answer's Sources block: backend `[Sn]` number (if any), URL, and a short title. */
+private data class AnswerSource(val num: Int?, val url: String, val title: String)
+
+private val sourceNumRegex = Regex("\\[S(\\d+)\\]")
+
+/** Parse the trailing Sources block into ordered, de-duplicated sources with their backend numbers. */
+private fun parseAnswerSources(text: String): List<AnswerSource> {
+    val block = answerMetadataBlockRegex.find(text)?.value ?: return emptyList()
+    return block.lineSequence()
+        .mapNotNull { line ->
+            val url = sourceUrlRegex.find(line)?.value?.trimEnd('.', ',', ')', '"', '\'') ?: return@mapNotNull null
+            val num = sourceNumRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
+            AnswerSource(num = num, url = url, title = sourceDisplayTitle(url))
+        }
+        .distinctBy { it.url }
+        .take(12)
+        .toList()
 }
 
 private data class ChatCitation(val label: String, val url: String?)
