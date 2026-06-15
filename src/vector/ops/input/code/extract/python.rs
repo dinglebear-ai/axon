@@ -16,8 +16,8 @@ use super::{DeclRole, DeclRule, node_name};
 ///   the `@decorator` lines) so a decorated symbol is one decl covering its
 ///   decorators. A decorated function still also matches the bare
 ///   `function_definition` rule at the inner range — `dedup_by_exact_range` only
-///   collapses identical ranges, so both survive with the same name+kind;
-///   `find_symbol_for_chunk` prefers the tighter inner range. This duplication is
+///   collapses identical ranges, so both survive with the same name+kind, and
+///   declaration-driven assembly emits one chunk per range. This duplication is
 ///   intentional and harmless (see bd axon_rust-8rpa.3).
 /// - `assignment left: (identifier) right: (lambda)` captures `f = lambda ...` as a
 ///   `Function`. `left` is a `pattern` supertype (identifier is a subtype), and
