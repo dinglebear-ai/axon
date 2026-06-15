@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DataObject
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -61,7 +62,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -386,8 +386,8 @@ private fun SendButton(
         ModeBadge(
             mode = mode,
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 4.dp, y = (-4).dp),
+                .align(Alignment.BottomEnd)
+                .offset(x = 3.dp, y = 3.dp),
         )
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             ConversationMode.entries.forEach { item ->
@@ -420,25 +420,27 @@ private fun SendButton(
     }
 }
 
-/** Corner badge showing the active conversation mode on the send button. */
+/**
+ * Corner caret on the send button hinting at the long-press mode menu, tinted by
+ * the active conversation mode (cyan for Ask, orange for Chat).
+ */
 @Composable
 private fun ModeBadge(mode: ConversationMode, modifier: Modifier = Modifier) {
     val colors = AxonTheme.colors
     val tone = if (mode == ConversationMode.Chat) colors.orange else colors.accentStrong
     Box(
         modifier = modifier
-            .size(15.dp)
+            .size(16.dp)
             .clip(CircleShape)
             .background(colors.pageBg)
             .border(1.dp, tone, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = mode.label.take(1),
-            color = tone,
-            fontSize = 8.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = AxonTheme.fonts.body,
+        Icon(
+            Icons.Rounded.KeyboardArrowDown,
+            contentDescription = "${mode.label} mode — long-press to change",
+            tint = tone,
+            modifier = Modifier.size(13.dp),
         )
     }
 }
