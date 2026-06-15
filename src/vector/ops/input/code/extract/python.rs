@@ -6,6 +6,23 @@ use super::{DeclRole, DeclRule, node_name};
 /// Python declaration rules. `function_definition` becomes a `Method` (qualified
 /// `Class::name`) when nested under a `class_definition`; `class_definition` maps
 /// to `Struct` to mirror the original node-walk.
+///
+/// Grammar parity notes (tree-sitter-python 0.25):
+/// - `async def` is NOT a distinct node kind — `async` is a keyword child of
+///   `function_definition`, so the bare `function_definition` rule already
+///   captures async functions (no separate rule needed).
+/// - `decorated_definition` wraps a `function_definition`/`class_definition` via
+///   its `definition` field. The decorated rules capture the OUTER range (spanning
+///   the `@decorator` lines) so a decorated symbol is one decl covering its
+///   decorators. A decorated function still also matches the bare
+///   `function_definition` rule at the inner range — `dedup_by_exact_range` only
+///   collapses identical ranges, so both survive with the same name+kind;
+///   `find_symbol_for_chunk` prefers the tighter inner range. This duplication is
+///   intentional and harmless (see bd axon_rust-8rpa.3).
+/// - `assignment left: (identifier) right: (lambda)` captures `f = lambda ...` as a
+///   `Function`. `left` is a `pattern` supertype (identifier is a subtype), and
+///   `right`/`lambda` resolve through the `expression` supertype — both transparent
+///   in queries.
 pub(super) static RULES: &[DeclRule] = &[
     DeclRule {
         pattern: "(function_definition name: (identifier) @name) @decl",
@@ -17,6 +34,23 @@ pub(super) static RULES: &[DeclRule] = &[
         kind: SymbolKind::Struct,
         role: DeclRole::Container,
     },
+    DeclRule {
+        pattern: "(decorated_definition \
+                   definition: (function_definition name: (identifier) @name)) @decl",
+        kind: SymbolKind::Function,
+        role: DeclRole::Leaf,
+    },
+    DeclRule {
+        pattern: "(decorated_definition \
+                   definition: (class_definition name: (identifier) @name)) @decl",
+        kind: SymbolKind::Struct,
+        role: DeclRole::Container,
+    },
+    DeclRule {
+        pattern: "(assignment left: (identifier) @name right: (lambda)) @decl",
+        kind: SymbolKind::Function,
+        role: DeclRole::Leaf,
+    },
 ];
 
 pub(super) fn refine(
@@ -25,7 +59,11 @@ pub(super) fn refine(
     content: &str,
     kind: SymbolKind,
 ) -> (SymbolKind, Option<String>) {
-    if decl.kind() == "function_definition"
+    // Both a bare `function_definition` and a `decorated_definition` wrapping one
+    // are reclassified to a qualified `Method` when nested under a class.
+    let is_fn_decl = matches!(decl.kind(), "function_definition" | "decorated_definition");
+    if is_fn_decl
+        && kind == SymbolKind::Function
         && let Some(class_name) = python_class_ancestor_name(decl, content)
     {
         return (
@@ -45,3 +83,7 @@ fn python_class_ancestor_name(mut node: Node<'_>, content: &str) -> Option<Strin
     }
     None
 }
+
+#[cfg(test)]
+#[path = "python_tests.rs"]
+mod tests;

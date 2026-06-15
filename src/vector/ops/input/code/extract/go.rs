@@ -71,3 +71,7 @@ fn go_receiver_name(node: Node<'_>, content: &str) -> Option<String> {
     let ty = trimmed.split_whitespace().last().unwrap_or(trimmed);
     Some(clean_symbol_fragment(ty))
 }
+
+#[cfg(test)]
+#[path = "go_tests.rs"]
+mod tests;
