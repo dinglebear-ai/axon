@@ -104,6 +104,16 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
      */
     private var lastAttachment: String? = null
 
+    /**
+     * Whether the most recent [ask] appended a follow-up turn. Set false at the
+     * start of every ask and true only where [appendTurn] runs (the Done and
+     * truncation-fallback paths). [regenerateLast] consults this instead of
+     * sniffing the answer text, so a partial-then-stopped answer (whose frozen
+     * text is neither "Error:" nor "Stopped.") doesn't fool it into evicting the
+     * previous good turn.
+     */
+    private var lastAskProducedTurn = false
+
     /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
     fun clearFollowUp() { _turns.value = emptyList() }
 
@@ -173,15 +183,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         val query = (items[userIdx] as ChatItem.UserMsg).text
 
         // Only drop the last stored turn if the answer being regenerated actually
-        // produced one. A turn is appended (appendTurn) only on a SUCCESSFUL ask
-        // (Done / truncation-fallback) — never when the last answer errored ("Error: …")
-        // or was stopped ("Stopped." from stopGeneration). If we dropLast() in those
-        // cases we'd wrongly evict the *previous* good turn and corrupt follow-up context.
-        val lastAnswer = items.drop(userIdx + 1).filterIsInstance<ChatItem.AxonMsg>().lastOrNull()
-        val producedTurn = lastAnswer != null &&
-            !lastAnswer.text.startsWith("Error:") &&
-            lastAnswer.text != "Stopped."
-        if (producedTurn) {
+        // produced one. [lastAskProducedTurn] is true only where appendTurn ran
+        // (Done / truncation-fallback); it stays false for errored or stopped
+        // answers (including partial-then-stopped, which keeps non-blank text).
+        // Dropping in those cases would wrongly evict the *previous* good turn.
+        if (lastAskProducedTurn) {
             _turns.value = _turns.value.dropLast(1)
         }
 
@@ -315,6 +321,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         // Remember the attachment of the question being asked so regenerateLast()
         // can re-run the same input (attachment text is never stored in turns/history).
         lastAttachment = attachment
+        lastAskProducedTurn = false
         val mode = _mode.value
         // Cancel any prior in-flight stream BEFORE launching a new one. Without
         // this guard, viewModelScope.launch creates parallel coroutines and a
@@ -397,6 +404,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                             completeActivities()
                             replaceLastAxonMsg(finalAnswer, isStreaming = false)
                             appendTurn(q = query, a = finalAnswer)
+                            lastAskProducedTurn = true
                         }
                         is AskStreamEvent.Error -> {
                             if (accumulated.isNotBlank()) flushStreaming(force = true)
@@ -434,6 +442,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     completeActivities()
                     replaceLastAxonMsg(finalAnswer, isStreaming = false)
                     appendTurn(q = query, a = finalAnswer)
+                    lastAskProducedTurn = true
                 } else {
                     _uiState.value = AskUiState.Error("No response received from server")
                     replaceLastAxonMsg("Error: No response received from server", isStreaming = false)
