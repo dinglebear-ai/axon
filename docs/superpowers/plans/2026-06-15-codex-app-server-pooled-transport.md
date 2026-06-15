@@ -78,7 +78,7 @@ persistent, tool-enabled Codex session — a different code path from synthesis.
 
 ## Architecture
 
-```
+```text
 core::llm::complete_streaming(req)              [unchanged facade]
   └─ CodexAppServer →
        CodexPool::get_or_spawn(backend)         [NEW: process pool keyed by (cmd, home-config, model)]
@@ -119,6 +119,7 @@ no "1 process / M concurrent threads" shortcut. Pool size = `codex_completion_co
 ## Task breakdown (maps to beads under epic `axon_rust-6a1r`)
 
 ### Task 0 — Concurrent-turns probe (`axon_rust-afdk`) — BLOCKS the pool
+
 - Extend `/tmp/codex_isolated_probe.py`: start two threads on one process, dispatch
   `turn/start` for both, measure whether the second's deltas interleave with the first
   or only begin after `turn/completed` of the first.
@@ -126,6 +127,7 @@ no "1 process / M concurrent threads" shortcut. Pool size = `codex_completion_co
   shape. No production code.
 
 ### Task 1 — Richer thread/turn params (`axon_rust-k179`) — independent, do first
+
 Smallest, highest-correctness-per-line change; ships value even before the pool.
 - `protocol.rs`:
   - `thread/start` params: add `ephemeral: true`; move the system prompt from
@@ -143,6 +145,7 @@ Smallest, highest-correctness-per-line change; ships value even before the pool.
   (`agentMessage/delta` + `item/completed`) is unchanged.
 
 ### Task 2 — Bounded process pool (`axon_rust-31bx`) — depends on Task 0
+
 - New `src/core/llm/codex_app_server/pool.rs` (+ `pool_tests.rs` sidecar). Monolith
   policy: keep < 500 lines; split child vs pool if needed.
 - `CodexChild`: spawn + one-time init, `run_turn(...)`, liveness check, explicit
@@ -159,12 +162,14 @@ Smallest, highest-correctness-per-line change; ships value even before the pool.
   enforcement, isolation preserved (no `HOME` leak — keep `home_tests.rs` invariants).
 
 ### Task 3 — Doctor/debug enrichment (`axon_rust-qsyh`) — independent
+
 - In `validate_config`/doctor for Codex: after init, call `model/list` and
   `account/rateLimits/read`; surface available models + default reasoning efforts + ChatGPT
   rate-limit headroom. Today doctor only checks the binary is executable.
 - Tests: parse fixtures captured from `generate-json-schema` v2 shapes.
 
 ### Task 4 — Structured output via `outputSchema` (`axon_rust-9i0q`) — depends on Task 2
+
 - `turn/start.outputSchema` lets Codex return schema-valid JSON natively. Wire into the
   `extract` LLM-fallback and `evaluate` judge so we stop prompt-coaxing JSON.
 - Lower priority; lands after the pool is stable.

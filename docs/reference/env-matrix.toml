@@ -623,6 +623,18 @@ compatibility = "canonical"
 reason = "Max concurrent Codex app-server child completions. Defaults lower because each completion spawns a child process."
 
 [[env]]
+key = "AXON_CODEX_LOAD_USER_CONFIG"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Opt-in: run codex app-server against the user's real CODEX_HOME (MCP servers, skills, hooks) instead of the isolated stripped home. Non-secret runtime toggle, default false."
+
+[[env]]
 key = "AXON_LLM_COMPLETION_CONCURRENCY"
 classification = "keep-env"
 runtime_placement = "both"

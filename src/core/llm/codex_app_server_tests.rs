@@ -413,28 +413,23 @@ async fn codex_completion_timeout_kills_grandchild_process_group() {
     let script = dir.path().join("grandchild-codex");
     let parent_pid_file = dir.path().join("parent.pid");
     let grandchild_pid_file = dir.path().join("grandchild.pid");
+    // Use /bin/sh, not python: a shell cold-starts in microseconds so both
+    // pidfiles are written well before the 1s completion timeout fires the
+    // group kill. A python interpreter's cold start can exceed 1s under heavy
+    // parallel test load, killing the child mid-startup before it writes the
+    // pidfiles — a real source of flakiness this test previously hit.
     std::fs::write(
         &script,
         format!(
-            r#"#!/usr/bin/env python3
-import json
-import os
-import subprocess
-import sys
-import time
-
-with open("{parent_pid_file}", "w", encoding="utf-8") as pid:
-    pid.write(str(os.getpid()))
-grandchild = subprocess.Popen(["sleep", "30"])
-with open("{grandchild_pid_file}", "w", encoding="utf-8") as pid:
-    pid.write(str(grandchild.pid))
-
-print(json.dumps({{"id": 0, "result": {{"userAgent": "fake"}}}}), flush=True)
-print(json.dumps({{"id": 1, "result": {{"thread": {{"id": "thr_timeout"}}, "model": "fake"}}}}), flush=True)
-time.sleep(30)
-"#,
-            parent_pid_file = parent_pid_file.display(),
-            grandchild_pid_file = grandchild_pid_file.display()
+            "#!/bin/sh\n\
+             echo $$ > {parent}\n\
+             sleep 30 &\n\
+             echo $! > {grandchild}\n\
+             echo '{{\"id\":0,\"result\":{{\"userAgent\":\"fake\"}}}}'\n\
+             echo '{{\"id\":1,\"result\":{{\"thread\":{{\"id\":\"thr_timeout\"}},\"model\":\"fake\"}}}}'\n\
+             sleep 30\n",
+            parent = parent_pid_file.display(),
+            grandchild = grandchild_pid_file.display()
         ),
     )
     .unwrap();
