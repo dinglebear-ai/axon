@@ -10,6 +10,9 @@ pub enum SymbolKind {
     Static,
     Type,
     Mod,
+    /// A top-level key/section in structured data (JSON/YAML object key, TOML
+    /// table). The "declaration" unit for config/data files.
+    Key,
     Other,
 }
 
@@ -43,6 +46,7 @@ impl SymbolKind {
             Self::Static => "static",
             Self::Type => "type",
             Self::Mod => "mod",
+            Self::Key => "key",
             Self::Other => "other",
         }
     }
@@ -69,6 +73,7 @@ impl SymbolKind {
             "static" => Self::Static,
             "type" => Self::Type,
             "mod" => Self::Mod,
+            "key" => Self::Key,
             "other" => Self::Other,
             _ => return None,
         };
@@ -77,8 +82,11 @@ impl SymbolKind {
 
     /// Whether a chunk carrying this symbol kind should be treated as a primary
     /// code-search target (and receive the symbol boost). Declaration-only kinds
-    /// (`Mod`) and the catch-all (`Other`) are deliberately excluded. Exhaustive
-    /// so adding a variant forces this decision rather than defaulting silently.
+    /// (`Mod`), structured-data keys (`Key`), and the catch-all (`Other`) are
+    /// deliberately excluded — config keys are common words (`port`, `server`,
+    /// `name`) and giving them code-symbol authority would over-rank config files
+    /// for generic queries. They stay searchable as chunks, just without the
+    /// boost. Exhaustive so adding a variant forces this decision.
     pub const fn is_source_symbol(self) -> bool {
         match self {
             Self::Function
@@ -90,7 +98,7 @@ impl SymbolKind {
             | Self::Const
             | Self::Static
             | Self::Type => true,
-            Self::Mod | Self::Other => false,
+            Self::Mod | Self::Key | Self::Other => false,
         }
     }
 }

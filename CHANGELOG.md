@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.15.0] - 2026-06-15
+
+### Added
+
+- **Structured-data chunking for JSON, YAML, and TOML.** `.json`, `.yaml`/`.yml`,
+  and `.toml` files now route through the declaration-driven chunker via new
+  tree-sitter grammars instead of generic prose splitting. Top-level object keys
+  (JSON/YAML) and tables / array-of-tables / top-level pairs (TOML) are captured
+  as `SymbolKind::Key` chunks; nested keys stay inside their parent's chunk and
+  the shared residual-sweep / oversized-split / 2000-char cap apply. Keys are
+  searchable but excluded from the code-symbol authority boost (config keys like
+  `port`/`server` are common words). Keyless files (top-level array/scalar/
+  sequence) fall back to non-empty prose. The embed routing predicate
+  (`should_chunk_as_code`) now derives from `language_for_extension` so it can
+  never drift from the registered grammar set.
+
 ## [5.14.0] - 2026-06-15
 
 ### Changed

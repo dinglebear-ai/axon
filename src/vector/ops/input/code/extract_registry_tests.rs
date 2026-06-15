@@ -6,7 +6,7 @@ use super::*;
 /// proves the whole registry is well-formed.
 #[test]
 fn all_registry_queries_compile() {
-    let registries: [&Registry; 8] = [
+    let registries: [&Registry; 11] = [
         &RUST_REGISTRY,
         &GO_REGISTRY,
         &PYTHON_REGISTRY,
@@ -14,6 +14,9 @@ fn all_registry_queries_compile() {
         &TYPESCRIPT_REGISTRY,
         &TSX_REGISTRY,
         &BASH_REGISTRY,
+        &JSON_REGISTRY,
+        &YAML_REGISTRY,
+        &TOML_REGISTRY,
         // exercise the dispatch path too
         registry_for(Extractor::Rust).unwrap(),
     ];
