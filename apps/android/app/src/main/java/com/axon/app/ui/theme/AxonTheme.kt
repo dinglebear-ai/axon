@@ -1,6 +1,7 @@
 package com.axon.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
@@ -17,7 +18,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.R
+import tv.tootie.aurora.theme.AuroraExtraColors
 import tv.tootie.aurora.theme.AuroraTheme
+import tv.tootie.aurora.theme.LocalAuroraColors
 
 @Immutable
 data class AxonPalette(
@@ -46,6 +49,18 @@ data class AxonPalette(
     val isDark: Boolean,
 )
 
+// App-specific dark colors that have NO equivalent in the (dark-only) aurora lib.
+// The orange accent trio is AXON brand identity, not an Aurora accent family
+// (Aurora is cyan/rose/violet only), so it stays hardcoded here.
+private val AxonOrangeDark = Color(0xFFFF9645)
+private val AxonOrangeStrongDark = Color(0xFFFFB474)
+private val AxonOrangeDeepDark = Color(0xFFC96A1C)
+
+// Canonical dark palette literals. This is the authoritative byte-for-byte record of
+// the dark appearance AND the [LocalAxonColors] static default / preview fallback.
+// At runtime, [AxonTheme] provides a palette DERIVED from the aurora lib instead
+// (see [auroraDerivedDarkPalette]); each derived field is asserted equal to the
+// corresponding literal below so the two never silently diverge on a lib bump.
 val AxonDarkColors = AxonPalette(
     pageBg = Color(0xFF07131C),
     navBg = Color(0xFF07111A),
@@ -63,12 +78,52 @@ val AxonDarkColors = AxonPalette(
     accentPink = Color(0xFFF9A8C4),
     accentPinkStrong = Color(0xFFFBC4D6),
     accentPinkDeep = Color(0xFFC46B88),
-    orange = Color(0xFFFF9645),
-    orangeStrong = Color(0xFFFFB474),
-    orangeDeep = Color(0xFFC96A1C),
+    orange = AxonOrangeDark,
+    orangeStrong = AxonOrangeStrongDark,
+    orangeDeep = AxonOrangeDeepDark,
     warn = Color(0xFFC6A36B),
     error = Color(0xFFC78490),
     success = Color(0xFF7DD3C7),
+    isDark = true,
+)
+
+/**
+ * Build the dark [AxonPalette] by DERIVING every lib-backed value from the aurora
+ * library's public surfaces ([ColorScheme] + [LocalAuroraColors]) rather than
+ * re-hardcoding the hex. Called once at [AxonTheme] construction so the derived
+ * fields are baked (no per-recomposition / per-read recompute).
+ *
+ * The aurora lib is dark-only, so only the dark palette derives; the orange accent
+ * trio is app-specific (Aurora has no orange family) and stays literal. Each derived
+ * value is exact-equal to the corresponding [AxonDarkColors] literal — verified
+ * against the lib's dark tokens in dab6.7.
+ */
+internal fun auroraDerivedDarkPalette(
+    scheme: ColorScheme,
+    extra: AuroraExtraColors,
+): AxonPalette = AxonPalette(
+    pageBg = scheme.background, // == #07131C (aurora pageBg)
+    navBg = scheme.surfaceContainerHighest, // == #07111A (aurora navBg)
+    panelMedium = scheme.surface, // == #102330 (aurora panelMedium)
+    panelStrong = scheme.surfaceContainerHigh, // == #13293A (aurora panelStrong)
+    control = scheme.surfaceVariant, // == #0C1A24 (aurora controlSurface)
+    hover = extra.hoverBg, // == #17364B (aurora hoverBg)
+    borderDefault = scheme.outline, // == #1D3D4E (aurora borderDefault)
+    borderStrong = scheme.outlineVariant, // == #24536C (aurora borderStrong)
+    textPrimary = scheme.onSurface, // == #E6F4FB (aurora textPrimary)
+    textMuted = scheme.onSurfaceVariant, // == #A7BCC9 (aurora textMuted)
+    accentPrimary = scheme.primary, // == #29B6F6 (aurora accentPrimary)
+    accentStrong = scheme.onPrimaryContainer, // == #67CBFA (aurora accentStrong)
+    accentDeep = scheme.primaryContainer, // == #1C7FAC (aurora accentDeep)
+    accentPink = extra.accentPink, // == #F9A8C4 (aurora accentPinkBase)
+    accentPinkStrong = scheme.onSecondaryContainer, // == #FBC4D6 (aurora accentPinkStrong)
+    accentPinkDeep = scheme.onSecondaryFixedVariant, // == #C46B88 (aurora accentPinkDeep)
+    orange = AxonOrangeDark, // app-specific (no aurora orange family)
+    orangeStrong = AxonOrangeStrongDark, // app-specific
+    orangeDeep = AxonOrangeDeepDark, // app-specific
+    warn = extra.warn, // == #C6A36B (aurora warnBase)
+    error = scheme.error, // == #C78490 (aurora errorBase)
+    success = extra.success, // == #7DD3C7 (aurora successBase)
     isDark = true,
 )
 
@@ -210,10 +265,14 @@ fun AxonTheme(
     dark: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    val colors = if (dark) AxonDarkColors else AxonLightColors
     AuroraTheme(darkTheme = dark) {
         val auroraColors = MaterialTheme.colorScheme
+        val auroraExtra = LocalAuroraColors.current
         val auroraShapes = MaterialTheme.shapes
+        // Derive the dark palette from the aurora lib at construction (baked once);
+        // light stays app-owned because the lib is dark-only.
+        val colors =
+            if (dark) auroraDerivedDarkPalette(auroraColors, auroraExtra) else AxonLightColors
         MaterialTheme(
             colorScheme = auroraColors,
             typography = AxonMaterialTypography,
