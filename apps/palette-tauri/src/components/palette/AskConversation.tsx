@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Streamdown } from "streamdown";
 
+import { Button } from "@/components/ui/aurora/button";
 import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
 
 // A read-only question→answer pair rendered with the ask bubble styling. Reused
@@ -98,7 +99,10 @@ export function AskConversation({
           placeholder={pending ? "Waiting for response..." : "Ask a follow-up..."}
           aria-label="Ask a follow-up"
         />
-        <button type="submit" disabled={!canSend}>Send</button>
+        {/* Scoped by `.ask-compose button`. type="submit" MUST be explicit — the
+            Button primitive never defaults it, and this is the app's only submit
+            button, so Enter-to-send would break silently without it. */}
+        <Button variant="plain" size="unstyled" type="submit" disabled={!canSend}>Send</Button>
       </form>
     </div>
   );

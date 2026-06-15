@@ -303,11 +303,11 @@ function SettingsTabButton({
 }) {
   const Icon = iconMap[icon] ?? SlidersHorizontal;
   return (
-    <button className={active ? "settings-tab settings-tab-active" : "settings-tab"} type="button" onClick={() => onClick(id)}>
+    <Button variant="plain" size="unstyled" className={active ? "settings-tab settings-tab-active" : "settings-tab"} type="button" onClick={() => onClick(id)}>
       <Icon size={13} />
       {label}
       {count != null && <span>{count}</span>}
-    </button>
+    </Button>
   );
 }
 
@@ -355,9 +355,10 @@ function SecretInput({ value, onChange, placeholder }: { value: string; onChange
         type={show ? "text" : "password"}
         onChange={(event) => onChange(event.target.value)}
       />
-      <button type="button" onClick={() => setShow((visible) => !visible)} aria-label={show ? "Hide secret" : "Reveal secret"}>
+      {/* Scoped by `.settings-secret button`. */}
+      <Button variant="plain" size="unstyled" type="button" onClick={() => setShow((visible) => !visible)} aria-label={show ? "Hide secret" : "Reveal secret"}>
         {show ? <EyeOff size={13} /> : <Eye size={13} />}
-      </button>
+      </Button>
     </span>
   );
 }
@@ -379,9 +380,9 @@ function SelectInput({ value, options, onChange }: { value: string; options: str
 
 function MiniToggle({ on, onChange }: { on: boolean; onChange: (value: boolean) => void }) {
   return (
-    <button className={on ? "settings-toggle settings-toggle-on" : "settings-toggle"} type="button" onClick={() => onChange(!on)} aria-pressed={on}>
+    <Button variant="plain" size="unstyled" className={on ? "settings-toggle settings-toggle-on" : "settings-toggle"} type="button" onClick={() => onChange(!on)} aria-pressed={on}>
       <span />
-    </button>
+    </Button>
   );
 }
 

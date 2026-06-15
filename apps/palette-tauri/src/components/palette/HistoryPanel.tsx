@@ -1,6 +1,7 @@
 import { Activity, Sparkles } from "lucide-react";
 
 import { ActionIcon } from "@/components/palette/ActionIcon";
+import { Button } from "@/components/ui/aurora/button";
 import type { PaletteAction } from "@/lib/actions";
 import type { PaletteResult } from "@/lib/axonClient";
 
@@ -32,7 +33,9 @@ export function HistoryPanel({
     <section className="history-panel">
       <header className="history-head">
         <span>Recent runs</span>
-        {items.length > 0 ? <button type="button" onClick={onClear}>clear</button> : null}
+        {/* Scoped by the `.history-head button` element selector — keep the
+            rendered native button so that selector stays the styling source. */}
+        {items.length > 0 ? <Button variant="plain" size="unstyled" type="button" onClick={onClear}>clear</Button> : null}
       </header>
       {items.length === 0 ? (
         <div className="history-empty">
@@ -45,7 +48,7 @@ export function HistoryPanel({
           {items.map((item, index) => {
             const ok = item.status >= 200 && item.status < 300;
             return (
-              <button className="history-row" type="button" key={`${item.action.subcommand}-${item.target}-${index}`} onClick={() => onOpen(item)}>
+              <Button variant="plain" size="unstyled" className="history-row" type="button" key={`${item.action.subcommand}-${item.target}-${index}`} onClick={() => onOpen(item)}>
                 <ActionIcon action={item.action} selected={false} />
                 <span className="history-main">
                   <span>{item.target}</span>
@@ -58,7 +61,7 @@ export function HistoryPanel({
                   <span className="history-duration">{item.duration ?? "—"}</span>
                 )}
                 <span className={ok ? "history-status history-status-ok" : "history-status history-status-error"}>{item.status || "ERR"}</span>
-              </button>
+              </Button>
             );
           })}
         </div>
