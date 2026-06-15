@@ -9,6 +9,12 @@ use super::{DeclRole, DeclRule};
 /// a range) while `@decl` spans the whole definition. [`refine`] then reproduces
 /// the original logic exactly — scanning children for the first `word`/
 /// `command_name` that is not the literal `function` keyword.
+///
+/// The single `function_definition` rule covers BOTH bash function forms —
+/// `f() {}` and `function f {}` — because tree-sitter-bash 0.25 parses both into a
+/// `function_definition` whose name is a `word` child (the `function` keyword, when
+/// present, is a separate sibling token that [`refine`] skips). Bash has no other
+/// meaningful top-level declaration kind, so this registry is intentionally minimal.
 pub(super) static RULES: &[DeclRule] = &[DeclRule {
     pattern: "(function_definition (word) @name) @decl",
     kind: SymbolKind::Function,
@@ -41,3 +47,7 @@ fn bash_function_name(node: Node<'_>, content: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+#[path = "bash_tests.rs"]
+mod tests;

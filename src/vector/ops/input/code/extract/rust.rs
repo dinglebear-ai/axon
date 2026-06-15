@@ -63,6 +63,14 @@ pub(super) static RULES: &[DeclRule] = &[
         kind: SymbolKind::Mod,
         role: DeclRole::Container,
     },
+    // `macro_rules! foo { ... }` parses as `macro_definition` with a `name`
+    // (identifier) field in tree-sitter-rust 0.24. No dedicated `Macro` variant
+    // exists, so map to `Mod` for searchability (per bd axon_rust-8rpa.3).
+    DeclRule {
+        pattern: "(macro_definition name: (identifier) @name) @decl",
+        kind: SymbolKind::Mod,
+        role: DeclRole::Leaf,
+    },
 ];
 
 pub(super) fn refine(
@@ -109,3 +117,7 @@ fn rust_impl_type_name(mut node: Node<'_>, content: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+#[path = "rust_tests.rs"]
+mod tests;
