@@ -66,8 +66,10 @@ pub(super) fn emit_leaf(
 /// Compute absolute `[start, end)` byte ranges for the sub-chunks of an
 /// oversized slice, splitting at line boundaries with a char-boundary-safe
 /// fallback when a single line exceeds the cap. Consecutive ranges overlap by
-/// roughly [`CHUNK_OVERLAP`] chars.
-fn split_offsets(slice: &str, base: usize) -> Vec<(usize, usize)> {
+/// roughly [`CHUNK_OVERLAP`] chars. Each range is bounded by
+/// [`MAX_CODE_CHUNK_CHARS`]. Shared with the residual sweep so prose gaps are
+/// bounded the same way as oversized declarations.
+pub(super) fn split_offsets(slice: &str, base: usize) -> Vec<(usize, usize)> {
     let mut ranges = Vec::new();
     let mut cur_start = 0usize; // relative to `slice`
     let mut cur_end = 0usize;
