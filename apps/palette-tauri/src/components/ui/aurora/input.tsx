@@ -37,6 +37,15 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
   clearable?: boolean
   /** Callback fired when the clear button is clicked. Escape hatch for controlled inputs. */
   onClear?: () => void
+  /**
+   * Escape hatch. When true, renders a BARE `<input>` with no wrapper, no inline
+   * style skin, no imperative focus handlers, and no adornment/clear logic — only
+   * `className`, the forwarded `ref`, `type`, and the remaining props are applied,
+   * so the consumer's className/CSS owns 100% of the appearance. The styled path
+   * (default) is unaffected.
+   * @default false
+   */
+  unstyled?: boolean
 }
 
 /** Token map for validation states */
@@ -102,10 +111,30 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       value,
       defaultValue,
       onChange,
+      unstyled = false,
       ...props
     },
     ref
   ) => {
+    // Escape hatch: bare <input>, consumer CSS owns 100% of appearance. No wrapper,
+    // no inline skin, no imperative focus handlers, no adornment/clear logic. The
+    // ref-based clear path only applies to the styled path below, so forward `ref`
+    // directly here.
+    if (unstyled) {
+      return (
+        <input
+          ref={ref}
+          type={type}
+          className={className}
+          style={style}
+          value={value}
+          defaultValue={defaultValue}
+          onChange={onChange}
+          {...props}
+        />
+      )
+    }
+
     // Hold a real ref to the underlying <input> so the clear button can drive the
     // actual DOM element (native value setter + dispatched "input" event) instead
     // of fabricating a detached element. Merge it with any forwarded ref.

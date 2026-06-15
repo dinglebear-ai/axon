@@ -2,6 +2,7 @@ import { useCallback, useEffect, type Dispatch, type SetStateAction } from "reac
 
 import { ActionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
+import { Kbd } from "@/components/ui/aurora/kbd";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
 import { acceptsDirectUrl, type PaletteAction } from "@/lib/actions";
 import { isAsyncAction } from "@/lib/actionHelp";
@@ -67,8 +68,8 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
       <div className="panel-heading">
         <span>Actions</span>
         <span className="panel-shortcuts">
-          <span><kbd>tab</kbd> switch</span>
-          <span><kbd>↵</kbd> run</span>
+          <span><Kbd unstyled>tab</Kbd> switch</span>
+          <span><Kbd unstyled>↵</Kbd> run</span>
         </span>
       </div>
       <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
@@ -126,10 +127,10 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
                         >
                           ?
                         </Button>
-                        <span className="action-run-pill">Run <kbd>↵</kbd></span>
+                        <span className="action-run-pill">Run <Kbd unstyled>↵</Kbd></span>
                       </>
                     ) : (
-                      <kbd>{action.subcommand}</kbd>
+                      <Kbd unstyled>{action.subcommand}</Kbd>
                     )}
                   </span>
                 </div>

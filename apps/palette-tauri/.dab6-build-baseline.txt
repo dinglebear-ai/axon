@@ -128,3 +128,49 @@ pnpm test                      : 14 files, 94 tests PASS
 pnpm typecheck (tsc --noEmit)  : exit 0
 pnpm vite:build                : exit 0 (built in 3.39s)
 Guardrail grep <input>/<kbd> in palette : 13 (all deferred — see above)
+
+AFTER dab6.4 RESUMED (input/kbd migration COMPLETE — blocker dab6.14 resolved)
+------------------------------------------------------------------------------
+Captured: 2026-06-15
+Outcome: The blocker is resolved — dab6.14 (registry commit e6ff7a9) added an
+`unstyled?: boolean` escape hatch to the registry Input and Kbd primitives. The
+palette vendored primitives were re-synced to gain the same `unstyled` prop
+(unstyled Input → bare <input>, no wrapper/skin/focus JS, ref forwarded; unstyled
+Kbd → bare <kbd className>, no inline style). All 13 raw <input>(4)/<kbd>(9 — in
+fact 10: PaletteFooter has 5 kbds, the task's "9" was a miscount) were migrated
+onto <Input unstyled>/<Kbd unstyled> with their existing className preserved.
+styles.css was NOT modified — the bespoke CSS remains the styling layer. Because
+unstyled emits NO skin and the rendered DOM is still a bare <input>/<kbd>, both
+class-scoped (.command-input, .settings-input) AND element-scoped (.ask-compose
+input, .palette-footer kbd, .panel-shortcuts kbd, .action-meta kbd, etc.)
+selectors continue to match unchanged → pixel-identical.
+
+MIGRATIONS (13 elements across 5 files)
+  Inputs (4):
+    PaletteCommandBar.tsx  .command-input
+    SettingsPanel.tsx      .settings-input (TextInput) + .settings-secret input (SecretInput)
+    AskConversation.tsx    .ask-compose input
+  Kbds (10):
+    ActionList.tsx         .panel-shortcuts kbd ×2, .action-run-pill kbd, .action-meta kbd
+    PaletteCommandBar.tsx  .command-action-option kbd
+    PaletteFooter.tsx      .palette-footer kbd ×5 (↑ ↓ tab ↵ esc)
+
+dist CSS byte size:   158461 bytes  (index-BgUz2Jnc.css)
+DELTA vs prior (dab6.4 deferred): +304 bytes  (+0.19%)  vs 158157
+DELTA vs baseline:                -642 bytes  (-0.40%)  vs 159103
+Why +304 vs the deferred state despite styles.css being untouched: the styled
+(default) path of input.tsx/kbd.tsx carries Tailwind utility class literals in its
+cn() strings; with Input/Kbd now imported and referenced by the migrated component
+files, Tailwind's content scan re-emits the small set of utilities those literals
+reference (e.g. inline-flex/min-w-5/rounded-[5px]/border/px-1.5 for Kbd; the Input
+wrapper/size/disabled utilities). The bespoke styles.css selectors are all still
+present, so the at-rest appearance is unchanged. No CSS rule was deleted (per task
+STEP 3 — CSS stays as the styling layer; the split-brain is killed by removing raw
+elements + routing through the primitive, not by moving CSS).
+
+VERIFY (all green)
+------------------
+pnpm test                      : 14 files, 94 tests PASS
+pnpm typecheck (tsc --noEmit)  : exit 0
+pnpm vite:build                : exit 0 (built in 3.77s)
+Guardrail grep <input>/<kbd> in palette : 0 (zero raw — all routed through Input/Kbd)

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { AxonMark } from "@/components/palette/AxonMark";
 import { Button } from "@/components/ui/aurora/button";
+import { Input } from "@/components/ui/aurora/input";
+import { Kbd } from "@/components/ui/aurora/kbd";
 import type { PaletteConfig } from "@/lib/axonClient";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
@@ -150,7 +152,7 @@ export function PaletteCommandBar({
                         <strong>{meta.label}</strong>
                         <small>{meta.input} to {meta.output}</small>
                       </span>
-                      <kbd>{action.subcommand}</kbd>
+                      <Kbd unstyled>{action.subcommand}</Kbd>
                     </Button>
                   );
                 })}
@@ -160,7 +162,8 @@ export function PaletteCommandBar({
         ) : (
           <Search size={16} strokeWidth={1.65} aria-hidden="true" />
         )}
-        <input
+        <Input
+          unstyled
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onInputKeyDown}

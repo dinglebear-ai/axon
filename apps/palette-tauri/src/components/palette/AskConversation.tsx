@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Streamdown } from "streamdown";
 
 import { Button } from "@/components/ui/aurora/button";
+import { Input } from "@/components/ui/aurora/input";
 import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
 
 // A read-only question→answer pair rendered with the ask bubble styling. Reused
@@ -92,7 +93,8 @@ export function AskConversation({
           onFollowUp(value);
         }}
       >
-        <input
+        <Input
+          unstyled
           value={draft}
           disabled={pending}
           onChange={(event) => setDraft(event.target.value)}
