@@ -65,3 +65,66 @@ VERIFY (all green after migration)
 pnpm test                      : 14 files, 94 tests PASS
 pnpm typecheck (tsc --noEmit)  : exit 0
 pnpm vite:build                : exit 0 (built in 2.92s)
+
+AFTER dab6.4 (input/kbd migration — DEFERRED; dead-primitive cleanup only)
+--------------------------------------------------------------------------
+Captured: 2026-06-15
+Outcome: The raw <input>(4) and <kbd>(9) migration was DEFERRED in full (task
+STEP 2c) and styles.css was NOT modified. This slice only deleted the two
+genuinely-dead vendored primitives (Badge, Separator).
+
+WHY THE MIGRATION WAS DEFERRED (parity could not be held)
+- Unlike Button — which special-cases variant="plain" size="unstyled" to emit NO
+  inline style (button.tsx:229), the escape hatch that made dab6.3 pixel-identical
+  — the vendored Input and Kbd primitives have NO unstyled/plain/asChild escape
+  hatch. They unconditionally inject their skin via inline style={} (which wins
+  over stylesheet rules), and Input also wraps its <input> in a
+  <div className="relative inline-flex w-full ..."> plus imperative onFocus/onBlur
+  handlers that mutate style.boxShadow/borderColor at runtime.
+- All 4 palette inputs are bespoke AND incompatible:
+  * .command-input (PaletteCommandBar): bare transparent, border:0, outline:0,
+    flex:1 1 auto child of .command-field. The primitive's wrapper <div> breaks
+    the flex participation and its full bordered/backgrounded skin is the opposite
+    look. (The exact 2c case the task named.)
+  * .settings-secret input + .ask-compose input: bare transparent border:0 flex:1
+    children of styled container spans/forms (siblings to icon + reveal/Send
+    buttons). Same wrapper-div flex-break problem.
+  * .settings-input: standalone but bespoke (height 34px vs primitive h-9=36px,
+    radius 9px vs --aurora-radius-1, border --aurora-border-default vs
+    --aurora-border-strong, font 12.5px, focus box-shadow 0 0 0 3px focus-ring vs
+    the primitive's color-mix double ring) AND the imperative focus JS fights any
+    CSS focus rule.
+- All 9 kbds are styled by 6 distinct DESCENDANT element selectors
+  (.palette-footer/.action-run-pill/.panel-shortcuts kbd; .action-meta kbd;
+  .command-action-option kbd; .command-action-search kbd) with bespoke and varying
+  bg color-mix(), borders, radii (4px/5px), heights (17px), font-sizes (10/10.5px),
+  and box-shadows — every one of which differs from the Kbd primitive's inline
+  defaults (bg --aurora-control-surface, border --aurora-border-strong, radius 5px,
+  height 20px, font 11/600, inset shadow). Inline style wins, so wrapping in <Kbd>
+  changes appearance. Holding parity would require passing each rule's full values
+  through the style prop at every call site — relocating CSS into TSX rather than
+  deleting it, with no styles.css shrink and added fragility.
+- Per the task ("If exact parity can't be held for an element, STOP and report
+  rather than changing appearance"), the migration is deferred for a decision:
+  the Input/Kbd primitives need an unstyled escape hatch (like Button) in the
+  registry before this migration can be done without changing appearance.
+
+CLEANUP DONE THIS SLICE
+- Deleted src/components/ui/aurora/badge.tsx and separator.tsx (0 imports, no
+  barrel, no test refs; "operation-badge" mentions are unrelated CSS classNames).
+  Re-addable from the corrected registry on demand. Input.tsx and Kbd.tsx are
+  KEPT in place as the (deferred) migration targets.
+
+dist CSS byte size:   158157 bytes  (index-BKcqpni2.css)
+DELTA vs baseline:    -946 bytes  (-0.59%)  vs 159103
+DELTA vs dab6.3:      -988 bytes  (-0.62%)  vs 159145
+Why a DECREASE despite styles.css being untouched: deleting badge.tsx +
+separator.tsx removed those files from Tailwind's content scan, so the Tailwind
+utility classes only they referenced are no longer emitted into the dist CSS.
+
+VERIFY (all green)
+------------------
+pnpm test                      : 14 files, 94 tests PASS
+pnpm typecheck (tsc --noEmit)  : exit 0
+pnpm vite:build                : exit 0 (built in 3.39s)
+Guardrail grep <input>/<kbd> in palette : 13 (all deferred — see above)
