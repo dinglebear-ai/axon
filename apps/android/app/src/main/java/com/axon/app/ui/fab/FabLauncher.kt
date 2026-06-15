@@ -85,10 +85,15 @@ fun FabLauncher(
                 val fab = 46.dp.toPx()
                 val w = maxWidth.toPx()
                 val h = maxHeight.toPx()
+                // Clamp the leftward/upward spans to >= 0 so a degenerate (zero/short)
+                // early-layout measure can't produce minX > maxX and trip DragBounds'
+                // require. On any real screen the spans are large and positive.
+                val spanX = (w - fab - 16.dp.toPx()).coerceAtLeast(0f)
+                val spanY = (h - fab - (158 + 56).dp.toPx()).coerceAtLeast(0f)
                 DragBounds(
-                    minX = -(w - fab - 16.dp.toPx()),
+                    minX = -spanX,
                     maxX = 16.dp.toPx(),
-                    minY = -(h - fab - (158 + 56).dp.toPx()),
+                    minY = -spanY,
                     maxY = (158 - 50).dp.toPx(),
                 )
             }
