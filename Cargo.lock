@@ -6795,7 +6795,6 @@ dependencies = [
  "pulldown-cmark",
  "strum",
  "thiserror 2.0.18",
- "tree-sitter",
 ]
 
 [[package]]

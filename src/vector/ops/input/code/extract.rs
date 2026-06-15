@@ -22,8 +22,7 @@ pub(super) struct SymbolInfo {
     pub(super) name: Option<String>,
     pub(super) kind: SymbolKind,
     /// Whether this declaration can contain methods (Container) or is a leaf.
-    /// Additive: callers (code.rs) ignore this today; a later bead consumes it.
-    #[allow(dead_code)]
+    /// Consumed by `assembly` to decide header-only vs full-chunk emission.
     pub(super) role: DeclRole,
 }
 
@@ -71,7 +70,6 @@ type Refine = fn(Node<'_>, &str, &str, SymbolKind) -> (SymbolKind, Option<String
 
 #[derive(Clone, Copy)]
 pub(super) struct LanguageSpec {
-    pub(super) grammar: LanguageFn,
     pub(super) extractor: Extractor,
 }
 
@@ -87,37 +85,16 @@ pub(super) enum Extractor {
 }
 
 pub(super) fn language_for_extension(ext: &str) -> Option<LanguageSpec> {
-    match ext {
-        "rs" => Some(LanguageSpec {
-            grammar: tree_sitter_rust::LANGUAGE,
-            extractor: Extractor::Rust,
-        }),
-        "py" => Some(LanguageSpec {
-            grammar: tree_sitter_python::LANGUAGE,
-            extractor: Extractor::Python,
-        }),
-        "js" | "jsx" => Some(LanguageSpec {
-            grammar: tree_sitter_javascript::LANGUAGE,
-            extractor: Extractor::JavaScript,
-        }),
-        "ts" => Some(LanguageSpec {
-            grammar: tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
-            extractor: Extractor::TypeScript,
-        }),
-        "tsx" => Some(LanguageSpec {
-            grammar: tree_sitter_typescript::LANGUAGE_TSX,
-            extractor: Extractor::TypeScript,
-        }),
-        "go" => Some(LanguageSpec {
-            grammar: tree_sitter_go::LANGUAGE,
-            extractor: Extractor::Go,
-        }),
-        "sh" | "bash" => Some(LanguageSpec {
-            grammar: tree_sitter_bash::LANGUAGE,
-            extractor: Extractor::Bash,
-        }),
-        _ => None,
-    }
+    let extractor = match ext {
+        "rs" => Extractor::Rust,
+        "py" => Extractor::Python,
+        "js" | "jsx" => Extractor::JavaScript,
+        "ts" | "tsx" => Extractor::TypeScript,
+        "go" => Extractor::Go,
+        "sh" | "bash" => Extractor::Bash,
+        _ => return None,
+    };
+    Some(LanguageSpec { extractor })
 }
 
 /// A registry entry: the compiled grammar, its compiled rules, and the refine hook.
@@ -286,22 +263,6 @@ fn dedup_by_exact_range(symbols: &mut Vec<SymbolInfo>) {
         idx += 1;
         k
     });
-}
-
-pub(super) fn find_symbol_for_chunk(
-    symbols: &[SymbolInfo],
-    chunk_start: usize,
-    chunk_end: usize,
-) -> Option<&SymbolInfo> {
-    symbols
-        .iter()
-        .filter(|sym| sym.byte_start <= chunk_start && sym.byte_end >= chunk_end)
-        .min_by_key(|sym| sym.byte_end.saturating_sub(sym.byte_start))
-        .or_else(|| {
-            symbols
-                .iter()
-                .find(|sym| sym.byte_start < chunk_end && sym.byte_end > chunk_start)
-        })
 }
 
 // ---- shared refine helpers, reused by the per-language modules ----

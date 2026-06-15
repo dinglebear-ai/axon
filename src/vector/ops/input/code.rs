@@ -1,20 +1,26 @@
 // AST-aware code chunking via tree-sitter.
 
-use super::CHUNK_OVERLAP;
-use text_splitter::{ChunkConfig, CodeSplitter};
+use crate::core::logging::log_warn;
 
+use super::chunk_text_with_offsets;
+
+mod assembly;
 pub mod chunk;
 mod extract;
 mod postprocess;
 
+use assembly::assemble;
 pub use chunk::{ChunkSource, CodeChunk, Symbol, SymbolKind};
-use extract::{Extractor, extract_symbols, find_symbol_for_chunk, language_for_extension};
+use extract::{Extractor, extract_symbols, language_for_extension};
 use postprocess::{
     attach_leading_comments, dedupe_exact_ranges, inject_declaration_headers,
     merge_tiny_declarations,
 };
 
 const MAX_CODE_CHUNK_BYTES_DEFAULT: usize = 2 * 1024 * 1024;
+/// A supported file larger than this (bytes) but yielding zero symbols is logged
+/// as suspected grammar drift rather than silently degrading to prose.
+const GRAMMAR_DRIFT_WARN_MIN_BYTES: usize = 200;
 
 /// Split source code into AST-aware chunks.
 ///
@@ -43,51 +49,83 @@ pub fn chunk_code(content: &str, file_extension: &str) -> Option<Vec<String>> {
 /// over this function.
 pub fn chunk_code_chunks(content: &str, file_extension: &str) -> Option<Vec<CodeChunk>> {
     let spec = language_for_extension(file_extension)?;
-    let chunks = split_code_indices(content, spec.grammar)?;
-    if chunks.is_empty() {
+
+    // Empty / whitespace-only content → no chunks (callers treat as nothing to
+    // index). A genuinely empty supported file is not a fallback case.
+    if content.trim().is_empty() {
         return Some(Vec::new());
     }
 
-    let symbols = if content.len() <= max_tree_sitter_file_bytes() {
-        extract_symbols(content, spec.extractor)
-    } else {
-        Vec::new()
-    };
-
-    let mut out = Vec::with_capacity(chunks.len());
-    for (byte_start, chunk) in chunks {
-        let byte_end = byte_start + chunk.len();
-        let start_line = line_for_byte(content, byte_start);
-        // Inclusive end: a chunk that ends on a newline must not be attributed to
-        // the following line, so derive from the last byte rather than the
-        // exclusive end.
-        let end_line = if byte_end > byte_start {
-            line_for_byte(content, byte_end - 1)
-        } else {
-            line_for_byte(content, byte_end)
-        };
-        let symbol = find_symbol_for_chunk(&symbols, byte_start, byte_end);
-        out.push(CodeChunk {
-            text: chunk.to_string(),
-            byte_start,
-            byte_end,
-            start_line,
-            end_line,
-            declaration_start_line: symbol.map_or(start_line, |sym| sym.start_line),
-            declaration_end_line: symbol.map_or(end_line, |sym| sym.end_line),
-            symbol: symbol.map(|sym| Symbol {
-                kind: sym.kind,
-                name: sym.name.clone(),
-            }),
-            source: ChunkSource::TreeSitter,
-        });
+    // Files over the tree-sitter byte ceiling skip parsing entirely and degrade
+    // to whole-file prose chunking rather than producing zero chunks.
+    if content.len() > max_tree_sitter_file_bytes() {
+        return Some(prose_fallback(content));
     }
 
+    // Single parse: extract_symbols parses internally; we never parse again.
+    let symbols = extract_symbols(content, spec.extractor);
+
+    if symbols.is_empty() {
+        // A non-trivial supported file with zero symbols is suspected grammar
+        // drift (node-kind names changed upstream) — surface it before degrading
+        // the whole file to prose.
+        if content.len() > GRAMMAR_DRIFT_WARN_MIN_BYTES {
+            log_warn(&format!(
+                "command=chunk_code grammar_drift_zero_symbols ext={file_extension} bytes={}",
+                content.len()
+            ));
+        }
+        return Some(prose_fallback(content));
+    }
+
+    let out = assemble(content, &symbols);
+    if out.is_empty() {
+        // Assembly dropped everything (e.g. all residual slivers, no leaves
+        // emitted) on non-empty content → never emit zero chunks.
+        return Some(prose_fallback(content));
+    }
+
+    // Postprocess pipeline. Kept on declaration-driven input:
+    //  - attach_leading_comments: prepend a declaration's doc-comment block.
+    //  - dedupe_exact_ranges: drop identical (decl-range, line-range, kind) chunks.
+    //  - merge_tiny_declarations: coalesce adjacent tiny const/static/type leaves.
+    //  - inject_declaration_headers: re-stamp a header on continuation chunks of
+    //    an oversized declaration that was split across several chunks.
+    // (Bead .5 retires merge_tiny_declarations / inject_declaration_headers; they
+    // are retained here because they still produce correct output on whole
+    // declarations and one existing test asserts the header re-stamp.)
     let out = attach_leading_comments(out, content, file_extension);
     let out = dedupe_exact_ranges(out);
     let out = merge_tiny_declarations(out);
     let out = inject_declaration_headers(out);
     Some(out)
+}
+
+/// Whole-file prose chunking, mirroring `file_ingest`'s prose branch: synthetic
+/// `CodeChunk`s with no symbol, `ChunkSource::Prose`, and correct line ranges.
+/// Used for the zero-declaration / oversized-file fallbacks so a non-empty
+/// supported file is never indexed as zero chunks.
+fn prose_fallback(content: &str) -> Vec<CodeChunk> {
+    let lines = assembly::LineIndex::new(content);
+    chunk_text_with_offsets(content)
+        .into_iter()
+        .map(|(byte_start, text)| {
+            let byte_end = byte_start + text.len();
+            let (start_line, end_line) = lines.line_range_for_bytes(byte_start, byte_end);
+            CodeChunk {
+                text,
+                byte_start,
+                byte_end,
+                start_line,
+                end_line,
+                declaration_start_line: start_line,
+                declaration_end_line: end_line,
+                symbol: None,
+                source: ChunkSource::Prose,
+            }
+        })
+        .filter(|chunk| !chunk.text.trim().is_empty())
+        .collect()
 }
 
 #[must_use]
@@ -125,76 +163,11 @@ pub fn code_symbol_extraction_status(
     }
 }
 
-fn split_code_indices(
-    content: &str,
-    lang: tree_sitter_language::LanguageFn,
-) -> Option<Vec<(usize, &str)>> {
-    let config = ChunkConfig::new(500..2000)
-        .with_overlap(CHUNK_OVERLAP)
-        .expect("CHUNK_OVERLAP < max chunk size");
-    // Use `.ok()?` rather than `.expect`: a tree-sitter ABI mismatch would
-    // panic on every file instead of gracefully falling back to prose chunking.
-    let splitter = CodeSplitter::new(lang, config).ok()?;
-
-    let mut chunks: Vec<(usize, &str)> = Vec::new();
-    for (offset, chunk) in splitter
-        .chunk_indices(content)
-        .filter(|(_, chunk)| !chunk.trim().is_empty())
-    {
-        push_bounded_chunks(content, offset, chunk, &mut chunks);
-    }
-
-    Some(chunks)
-}
-
-fn push_bounded_chunks<'a>(
-    content: &'a str,
-    offset: usize,
-    chunk: &'a str,
-    out: &mut Vec<(usize, &'a str)>,
-) {
-    if chunk.len() <= 2000 {
-        out.push((offset, chunk));
-        return;
-    }
-
-    let mut local_start = 0usize;
-    while local_start < chunk.len() {
-        let mut local_end = (local_start + 2000).min(chunk.len());
-        while local_end > local_start && !chunk.is_char_boundary(local_end) {
-            local_end -= 1;
-        }
-        if local_end == local_start {
-            break;
-        }
-        let abs_start = offset + local_start;
-        let abs_end = offset + local_end;
-        out.push((abs_start, &content[abs_start..abs_end]));
-        if local_end == chunk.len() {
-            break;
-        }
-        local_start = local_end.saturating_sub(CHUNK_OVERLAP);
-        while local_start > 0 && !chunk.is_char_boundary(local_start) {
-            local_start -= 1;
-        }
-    }
-}
-
 fn max_tree_sitter_file_bytes() -> usize {
     std::env::var("AXON_MAX_TREE_SITTER_FILE_BYTES")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(MAX_CODE_CHUNK_BYTES_DEFAULT)
-}
-
-fn line_for_byte(content: &str, byte: usize) -> u32 {
-    // Snap to a char boundary: callers may pass an inclusive end that lands
-    // inside a multibyte character, and slicing on a non-boundary panics.
-    let mut capped = byte.min(content.len());
-    while capped > 0 && !content.is_char_boundary(capped) {
-        capped -= 1;
-    }
-    content[..capped].bytes().filter(|b| *b == b'\n').count() as u32 + 1
 }
 
 #[cfg(test)]
