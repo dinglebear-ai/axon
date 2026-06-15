@@ -133,9 +133,9 @@ export const NUM = 42;\n",
                 Named("NUM", Const), // exported non-fn const → Const
             ],
         },
-        // ── tsx: arrow-fn component WITHOUT a JSX body (brace-less JSX-body
-        //    variant is a known gap, see
-        //    brace_less_jsx_arrow_component_is_a_known_tsx_gap) ──
+        // ── tsx: arrow-fn component + plain function. The brace-less direct-JSX
+        //    arrow body now captures too (see
+        //    brace_less_jsx_arrow_component_captures_in_tsx). ──
         LangCase {
             ext: "tsx",
             src: "export const Widget = (x: number): number => x + 1;\n\n\
@@ -189,35 +189,23 @@ function kw_form {\n  echo b\n}\n",
     }
 }
 
-/// FINDING (not a regression in this bead): in `.tsx`, an arrow-function const
-/// with a **brace-less direct-JSX body** (`const C = () => <jsx/>`) fails
-/// query-capture and degrades to a single symbol-less Prose chunk. This is the
-/// single most common React component shape. The same component written with a
-/// **block body** (`() => { return <jsx/>; }`) captures correctly as a Function
-/// (asserted in [`tsx_block_body_arrow_component_captures`]), as do the plain
-/// `function` form and the arrow form without JSX (parity matrix), and the
-/// equivalent `.jsx` direct-JSX arrow captures fine
-/// (see [`jsx_direct_jsx_arrow_component_captures`]). So the gap is specific to
-/// the tsx grammar/query route + brace-less JSX arrow bodies, reported
-/// separately. The anti-sliver invariant still holds: the prose chunk clears
-/// the floor, so no sliver leaks.
-///
-/// This test pins the current (buggy) behavior so a future grammar/query fix
-/// flips it loudly and forces the parity matrix to start asserting the symbol.
+/// Brace-less direct-JSX arrow components (`const C = () => <jsx/>`) — the single
+/// most common React component shape — now capture as a Function in `.tsx`. This
+/// was previously a known gap (the old `.tsx` route ran the plain-TypeScript
+/// grammar, which can't parse JSX, so the arrow degraded to a symbol-less Prose
+/// chunk). Routing `.tsx` to the JSX grammar (`Extractor::Tsx` → `LANGUAGE_TSX`,
+/// bead axon_rust-gnpr / CodeRabbit #3) closed it: the JSX body parses, the
+/// arrow-bound const matches the arrow-fn rule, and `Widget` is captured.
 #[test]
-fn brace_less_jsx_arrow_component_is_a_known_tsx_gap() {
+fn brace_less_jsx_arrow_component_captures_in_tsx() {
     let src = "export const Widget = ({ x }: Props) => <span>{x}</span>;\n";
     let chunks = chunk_code_chunks(src, "tsx").unwrap();
-    let captured = has_symbol(&chunks, "Widget", SymbolKind::Function);
     assert!(
-        !captured,
-        "brace-less JSX-body tsx arrow component now captures as a symbol — \
-         add it to the parity matrix and delete this gap test. Got: {:?}",
+        has_symbol(&chunks, "Widget", SymbolKind::Function),
+        "brace-less JSX-body tsx arrow component must capture as a Function; got {:?}",
         names_kinds(&chunks),
     );
-    // It must still be non-empty prose (never zero chunks, never a sliver).
     assert!(!chunks.is_empty());
-    assert!(chunks.iter().all(|c| c.source == ChunkSource::Prose));
 }
 
 /// The block-body form of a JSX arrow component DOES capture in `.tsx` — the

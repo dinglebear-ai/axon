@@ -93,9 +93,19 @@ fn split_offsets(slice: &str, base: usize) -> Vec<(usize, usize)> {
         }
         if cur_chars + line_chars > MAX_CODE_CHUNK_CHARS && cur_end > cur_start {
             flush(&mut ranges, cur_start, cur_end);
-            // Start the next window with overlap back into the previous one.
-            cur_start = overlap_start(slice, cur_end);
-            cur_chars = slice[cur_start..cur_end].chars().count();
+            // Start the next window with overlap back into the previous one — but
+            // only when the overlap still leaves room for this line under the cap.
+            // Otherwise drop the overlap and start fresh at the line, so a flushed
+            // window plus the incoming line can never breach MAX_CODE_CHUNK_CHARS.
+            let overlapped_start = overlap_start(slice, cur_end);
+            let overlap_chars = slice[overlapped_start..cur_end].chars().count();
+            if overlap_chars + line_chars > MAX_CODE_CHUNK_CHARS {
+                cur_start = line.0;
+                cur_chars = 0;
+            } else {
+                cur_start = overlapped_start;
+                cur_chars = overlap_chars;
+            }
         }
         cur_end = line.1;
         cur_chars += line_chars;

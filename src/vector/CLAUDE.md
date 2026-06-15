@@ -112,7 +112,9 @@ Supported origins:
 The planner owns normalized payload fields and strips caller-supplied duplicates before regenerating them: `content_kind`, `chunk_content_kind`, `chunk_locator`, `source_range`, `chunking_fallback`, and `code_chunk_source`.
 
 ### Code Chunking (tree-sitter)
-`chunk_code()` in `input/code.rs` splits source code at AST boundaries (functions, structs, classes) using tree-sitter grammars. Returns `Option<Vec<String>>` — `None` means no grammar for the extension, caller should fall back to `chunk_text()`. Supported: Rust, Python, JavaScript, TypeScript/TSX, Go, Bash. Chunk range: 500–2000 chars.
+`chunk_code()` in `input/code.rs` splits source code at AST boundaries (functions, structs, classes) using tree-sitter grammars. Returns `Option<Vec<String>>` — `None` means **no grammar for the extension**, and that is the only case in which the caller falls back to `chunk_text()`. Supported: Rust, Python, JavaScript, TypeScript/TSX, Go, Bash. Chunk range: 500–2000 chars.
+
+**Supported-grammar files never return `None`.** Under the declaration-driven pipeline (`chunk_code_chunks`), a supported file that cannot be AST-chunked — over the tree-sitter byte ceiling (`max_tree_sitter_file_bytes()`), zero declarations (suspected grammar drift, logged), or assembly that drops to nothing — degrades to **whole-file prose chunking internally** (`prose_fallback`, `ChunkSource::Prose`) and returns `Some(..)`. This guarantees a non-empty supported file is never indexed as zero chunks. The caller's `None`→`chunk_text()` path is reserved strictly for unsupported extensions; the prose degradation for supported-but-unparseable files is owned inside `chunk_code_chunks`, not delegated to the caller.
 
 **Shared file helper** (`ops/file_ingest.rs`) — used by the source-doc planner and file collectors:
 - `collect_files(root, SelectionPolicy)` — BFS walker with pruning (`select::is_pruned_dir`) and binary-ext filtering. `SelectionPolicy::Allowlist { include_source }` matches the GitHub/GitLab/generic-git allowlist; `SelectionPolicy::Permissive` accepts all non-binary, non-pruned files (used by the embed CLI path).

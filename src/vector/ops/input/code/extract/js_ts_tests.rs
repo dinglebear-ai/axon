@@ -212,3 +212,113 @@ fn exported_fn_and_class_decls_are_not_double_counted() {
         }
     }
 }
+
+/// Regression for bead axon_rust-2ykl. Mirrors apps/palette-tauri/src/App.tsx:414
+/// — a JSX-prop arrow whose body contains a nested `if` and bare call
+/// expressions. In TSX these statement-level constructs share the shape
+/// `name(args) { ... }` / `name(args)` and tree-sitter types them as
+/// `method_definition` / `method_signature` nodes; the unscoped method rules used
+/// to capture them as `method` declarations (`if`, `setRun`, `runStateFromHistory`
+/// — each its own noisy chunk with a misleading symbol). Scoping the method rules
+/// to `class_body` / `interface_body` makes that impossible while preserving real
+/// class methods (epic axon_rust-8rpa: a declaration is the chunk unit).
+#[test]
+fn tsx_jsx_prop_arrow_body_does_not_emit_statement_methods() {
+    let src = r#"
+const App = () => {
+  return (
+    <Widget
+      onOpen={(item) => {
+        const historyRun = runStateFromHistory(item);
+        if (historyRun) {
+          setRun(historyRun);
+        }
+        const label = item.label.toLowerCase();
+        return label.slice(0, 3);
+      }}
+    />
+  );
+};
+"#;
+    let symbols = extract_symbols(src, Extractor::TypeScript);
+    // The real declaration is still captured.
+    assert!(
+        has(&symbols, "App", SymbolKind::Function),
+        "the arrow-bound component App must still be a Function: {symbols:?}"
+    );
+    // No statement-level call / control-flow node leaks in as a method.
+    let methods: Vec<_> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Method)
+        .map(|s| s.name.clone())
+        .collect();
+    assert!(
+        methods.is_empty(),
+        "no statement-level method symbols expected, got: {methods:?}\nall: {symbols:?}"
+    );
+    for bad in [
+        "if",
+        "toLowerCase",
+        "setRun",
+        "slice",
+        "runStateFromHistory",
+    ] {
+        assert!(
+            !has(&symbols, bad, SymbolKind::Method),
+            "{bad:?} must not be captured as a Method: {symbols:?}"
+        );
+    }
+}
+
+/// Guards the other side of bead axon_rust-2ykl: scoping the method rules must
+/// NOT drop genuine class methods (a direct `class_body` member).
+#[test]
+fn ts_class_method_is_still_captured() {
+    let src = "class Engine {\n  run(req: number): number {\n    return req;\n  }\n}\n";
+    let symbols = extract_symbols(src, Extractor::TypeScript);
+    assert!(
+        has(&symbols, "Engine::run", SymbolKind::Method),
+        "class method Engine::run must still be captured: {symbols:?}"
+    );
+}
+
+/// Guards the interface side: a real `interface_body` method signature is still
+/// captured even though the unscoped `method_signature` rule was removed.
+#[test]
+fn ts_interface_method_signature_is_still_captured() {
+    let src = "interface Transport {\n  start(): void;\n}\n";
+    let symbols = extract_symbols(src, Extractor::TypeScript);
+    assert!(
+        has(&symbols, "start", SymbolKind::Method),
+        "interface method signature start must still be captured: {symbols:?}"
+    );
+}
+
+/// The `.tsx` route uses the JSX grammar (`Extractor::Tsx` → `LANGUAGE_TSX`), so a
+/// real component with a JSX body and inline event-handler calls parses cleanly:
+/// the component is captured and no statement-level call leaks in as a method
+/// (CodeRabbit #3 / bead axon_rust-2ykl — the same source feeding the plain-TS
+/// grammar is what fabricated the spurious method nodes).
+#[test]
+fn tsx_extractor_parses_jsx_body_without_spurious_methods() {
+    let src = r#"
+export const Row = ({ label }: { label: string }) => {
+  return (
+    <button onClick={() => onClear()}>
+      {label.toUpperCase()}
+    </button>
+  );
+};
+"#;
+    let symbols = extract_symbols(src, Extractor::Tsx);
+    assert!(
+        has(&symbols, "Row", SymbolKind::Function),
+        "the arrow component Row must be captured on the tsx route: {symbols:?}"
+    );
+    for bad in ["onClick", "onClear", "toUpperCase"] {
+        assert!(
+            !has(&symbols, bad, SymbolKind::Method),
+            "{bad:?} must not be captured as a Method on the tsx route: {symbols:?}"
+        );
+    }
+}
