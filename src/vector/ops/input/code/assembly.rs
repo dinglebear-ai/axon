@@ -80,11 +80,14 @@ pub(super) fn assemble(content: &str, symbols: &[SymbolInfo]) -> Vec<CodeChunk> 
 
         match sym.role {
             DeclRole::Container => {
-                emit_container_header(content, sym, &lines, &mut out);
-                // Advance past the body so the methods inside (later in the
-                // sorted list) produce empty leading gaps, and do NOT raise
-                // last_leaf_end so those methods still emit.
-                cursor = cursor.max(sym.byte_end);
+                let header_end = emit_container_header(content, sym, &lines, &mut out);
+                // Advance only past the HEADER, not the whole body. Body content
+                // not captured as a child leaf (struct fields, enum variants,
+                // class fields, doc comments) is then recovered by the residual
+                // sweep instead of silently dropped. Child method leaves (later
+                // in the sorted list, starting after header_end) still emit, and
+                // last_leaf_end is deliberately NOT raised so they are not folded.
+                cursor = cursor.max(header_end);
             }
             DeclRole::Leaf => {
                 emit_leaf(
@@ -111,43 +114,45 @@ pub(super) fn assemble(content: &str, symbols: &[SymbolInfo]) -> Vec<CodeChunk> 
     out
 }
 
-/// Emit a container's header chunk: its signature line(s) through the opening
-/// brace, carrying the container symbol. Kept deliberately small — the body is
-/// represented by the container's child leaf declarations, not by this chunk.
-/// Emitted only when a non-empty, non-trivial header exists.
+/// Emit a container's header chunk (its signature line(s) through the opening
+/// brace, carrying the container symbol) and return the **byte offset where the
+/// header ends**. The caller advances the cursor only to this point — NOT past
+/// the whole body — so the residual sweep recovers body content that is not
+/// captured as a child leaf (struct fields, enum variants, class fields, and
+/// their doc comments). Child method leaves still emit separately. The header
+/// chunk is emitted only when a non-empty, non-trivial header exists.
 fn emit_container_header(
     content: &str,
     sym: &SymbolInfo,
     lines: &LineIndex,
     out: &mut Vec<CodeChunk>,
-) {
+) -> usize {
     let Some(full) = content.get(sym.byte_start..sym.byte_end) else {
-        return;
+        return sym.byte_end;
     };
     let header_end_rel = full
         .find('{')
         .map_or_else(|| full.find('\n').unwrap_or(full.len()), |brace| brace + 1);
     let header_end = (sym.byte_start + header_end_rel).min(content.len());
-    let Some(header) = content.get(sym.byte_start..header_end) else {
-        return;
-    };
-    let trimmed = header.trim();
-    if trimmed.is_empty() {
-        return;
+    if let Some(header) = content.get(sym.byte_start..header_end) {
+        let trimmed = header.trim();
+        if !trimmed.is_empty() {
+            let text = take_chars(trimmed, MAX_CODE_CHUNK_CHARS);
+            let (start_line, end_line) = lines.line_range_for_bytes(sym.byte_start, header_end);
+            out.push(CodeChunk {
+                text,
+                byte_start: sym.byte_start,
+                byte_end: header_end,
+                start_line,
+                end_line,
+                declaration_start_line: sym.start_line,
+                declaration_end_line: sym.end_line,
+                symbol: symbol_of(sym),
+                source: ChunkSource::TreeSitter,
+            });
+        }
     }
-    let text = take_chars(trimmed, MAX_CODE_CHUNK_CHARS);
-    let (start_line, end_line) = lines.line_range_for_bytes(sym.byte_start, header_end);
-    out.push(CodeChunk {
-        text,
-        byte_start: sym.byte_start,
-        byte_end: header_end,
-        start_line,
-        end_line,
-        declaration_start_line: sym.start_line,
-        declaration_end_line: sym.end_line,
-        symbol: symbol_of(sym),
-        source: ChunkSource::TreeSitter,
-    });
+    header_end
 }
 
 fn symbol_of(sym: &SymbolInfo) -> Option<Symbol> {

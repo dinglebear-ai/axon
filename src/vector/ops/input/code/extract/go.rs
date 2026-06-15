@@ -5,12 +5,14 @@ use super::{DeclRole, DeclRule, clean_symbol_fragment};
 
 /// Go declaration rules.
 ///
-/// `const_declaration`/`var_declaration`/`type_declaration` carry their names in
-/// nested `*_spec` children, not a `name` field on the declaration node, so the
-/// old node-walk produced `name: None` for them (it read only the declaration's
-/// own `name` field). We mirror that exactly: these three rules use an anchored
-/// wildcard `@name` capture purely to satisfy the query's capture requirement
-/// and obtain the declaration range, then [`refine`] nulls the name back out.
+/// `const`/`var`/`type` declarations carry their names in nested `*_spec`
+/// children, not a `name` field on the declaration node. We anchor `@decl` on the
+/// **spec** (not the outer declaration), so a grouped block
+/// `const ( A = 1; B = 2 )` yields one named chunk per spec — matching `go/ast`'s
+/// per-spec model (bead axon_rust-8rpa: full per-language parity; closes the Go
+/// symbol-coverage gap vs lumen). The wrapper bytes (`const (`, `)`, blank lines)
+/// between specs fall to the residual sweep and drop below the floor. [`refine`]
+/// qualifies receiver methods and otherwise keeps the captured spec name.
 pub(super) static RULES: &[DeclRule] = &[
     DeclRule {
         pattern: "(function_declaration name: (identifier) @name) @decl",
@@ -23,17 +25,17 @@ pub(super) static RULES: &[DeclRule] = &[
         role: DeclRole::Leaf,
     },
     DeclRule {
-        pattern: "(const_declaration (const_spec name: (identifier) @name)) @decl",
+        pattern: "(const_declaration (const_spec name: (identifier) @name) @decl)",
         kind: SymbolKind::Const,
         role: DeclRole::Leaf,
     },
     DeclRule {
-        pattern: "(var_declaration (var_spec name: (identifier) @name)) @decl",
+        pattern: "(var_declaration (var_spec name: (identifier) @name) @decl)",
         kind: SymbolKind::Static,
         role: DeclRole::Leaf,
     },
     DeclRule {
-        pattern: "(type_declaration (type_spec name: (type_identifier) @name)) @decl",
+        pattern: "(type_declaration (type_spec name: (type_identifier) @name) @decl)",
         kind: SymbolKind::Type,
         role: DeclRole::Leaf,
     },
@@ -53,8 +55,6 @@ pub(super) fn refine(
             };
             (kind, Some(name))
         }
-        // Parity: declaration node has no `name` field → old walk gave `name: None`.
-        "const_declaration" | "var_declaration" | "type_declaration" => (kind, None),
         _ => (kind, Some(raw_name.to_string())),
     }
 }

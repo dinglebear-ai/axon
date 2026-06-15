@@ -22,14 +22,6 @@ fn has_symbol(chunks: &[CodeChunk], name: &str, kind: SymbolKind) -> bool {
         .any(|c| c.symbol_name() == Some(name) && c.symbol_kind() == Some(kind))
 }
 
-/// Is there a chunk of this kind carrying *no* name (anonymous decls like Go
-/// `const (...)` blocks or interface types whose decl node nulls the name)?
-fn has_unnamed_kind(chunks: &[CodeChunk], kind: SymbolKind) -> bool {
-    chunks
-        .iter()
-        .any(|c| c.symbol_kind() == Some(kind) && c.symbol_name().is_none())
-}
-
 fn names_kinds(chunks: &[CodeChunk]) -> Vec<(Option<&str>, Option<SymbolKind>)> {
     chunks
         .iter()
@@ -44,12 +36,10 @@ fn names_kinds(chunks: &[CodeChunk]) -> Vec<(Option<&str>, Option<SymbolKind>)> 
 // name+kind in the chunks `chunk_code_chunks` actually produces (the public
 // entry — distinct from raw `extract_symbols`, which the extract sidecars cover).
 
-/// A single named expectation against the chunk output.
+/// A single expectation: a chunk carries this exact (name, kind). Every supported
+/// language now produces named declarations, so there is no anonymous variant.
 enum Expect {
-    /// A chunk carries this exact (name, kind).
     Named(&'static str, SymbolKind),
-    /// A chunk carries this kind with no name (anonymous decl).
-    Unnamed(SymbolKind),
 }
 
 struct LangCase {
@@ -60,7 +50,7 @@ struct LangCase {
 
 #[test]
 fn per_language_parity_matrix() {
-    use Expect::{Named, Unnamed};
+    use Expect::Named;
     use SymbolKind::{Const, Enum, Function, Method, Mod, Struct, Type};
 
     let cases: &[LangCase] = &[
@@ -142,7 +132,10 @@ export const NUM = 42;\n",
 export function Other(): number {\n  return 2;\n}\n",
             expects: &[Named("Widget", Function), Named("Other", Function)],
         },
-        // ── go: func + receiver method + interface type + const block ──
+        // ── go: func + receiver method + interface/struct types + named consts.
+        //    Consts are blank-separated so they stay per-spec named end-to-end;
+        //    adjacent tiny same-kind consts would otherwise tiny-merge into one
+        //    unnamed chunk (see postprocess::merge_tiny_declarations). ──
         LangCase {
             ext: "go",
             src: "package demo\n\n\
@@ -150,12 +143,15 @@ type Reader interface {\n\tRead() int\n}\n\n\
 type Resp struct{}\n\n\
 func (r *Resp) Parse() int {\n\treturn 1\n}\n\n\
 func Free() int {\n\treturn 2\n}\n\n\
-const (\n\tA = 1\n\tB = 2\n)\n",
+const First = 1\n\n\
+const Second = 2\n",
             expects: &[
-                Unnamed(Type),               // interface decl nulls its name (parity)
+                Named("Reader", Type),       // interface type — named (spec @decl)
+                Named("Resp", Type),         // struct type — named
                 Named("Resp.Parse", Method), // receiver method
                 Named("Free", Function),
-                Unnamed(Const), // `const (...)` block → one unnamed Const decl
+                Named("First", Const), // const spec — named (was nulled for parity)
+                Named("Second", Const),
             ],
         },
         // ── sh: both `f() {}` and `function f {}` forms ──
@@ -171,20 +167,13 @@ function kw_form {\n  echo b\n}\n",
         let chunks = chunk_code_chunks(case.src, case.ext)
             .unwrap_or_else(|| panic!("ext {} should be supported", case.ext));
         for expect in case.expects {
-            match expect {
-                Named(name, kind) => assert!(
-                    has_symbol(&chunks, name, *kind),
-                    "[{}] missing symbol {name:?} ({kind:?}); got {:?}",
-                    case.ext,
-                    names_kinds(&chunks),
-                ),
-                Unnamed(kind) => assert!(
-                    has_unnamed_kind(&chunks, *kind),
-                    "[{}] missing unnamed {kind:?}; got {:?}",
-                    case.ext,
-                    names_kinds(&chunks),
-                ),
-            }
+            let Named(name, kind) = expect;
+            assert!(
+                has_symbol(&chunks, name, *kind),
+                "[{}] missing symbol {name:?} ({kind:?}); got {:?}",
+                case.ext,
+                names_kinds(&chunks),
+            );
         }
     }
 }
