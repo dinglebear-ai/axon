@@ -21,6 +21,7 @@ import {
 import { useState } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
+import { Input } from "@/components/ui/aurora/input";
 import { createAxonClient, executeAction, type PaletteConfig, type PaletteResult } from "@/lib/axonClient";
 import { ACTIONS } from "@/lib/actions";
 import {
@@ -335,7 +336,8 @@ function TextInput({
   placeholder?: string;
 }) {
   return (
-    <input
+    <Input
+      unstyled
       className={mono ? "settings-input settings-input-mono" : "settings-input"}
       value={value}
       onChange={(event) => onChange(event.target.value)}
@@ -349,7 +351,8 @@ function SecretInput({ value, onChange, placeholder }: { value: string; onChange
   return (
     <span className="settings-secret">
       <KeyRound size={12} />
-      <input
+      <Input
+        unstyled
         value={value}
         placeholder={placeholder ?? "unset - secret"}
         type={show ? "text" : "password"}
