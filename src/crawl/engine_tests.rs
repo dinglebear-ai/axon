@@ -574,6 +574,22 @@ fn chrome_remote_local_policy_preserves_private_discovered_link_rejection() {
     assert!(url.as_ref().is_empty());
 }
 
+#[test]
+fn remote_local_policy_disables_inline_autoswitch_thin_refetch() {
+    let mut cfg = Config {
+        render_mode: RenderMode::AutoSwitch,
+        chrome_remote_local_policy: true,
+        ..Config::default()
+    };
+    cfg.chrome_remote_url = Some("http://127.0.0.1:6000".to_string());
+
+    assert_eq!(
+        inline_chrome_ws_url(&cfg),
+        None,
+        "remote-local-policy must use the Spider-backed Chrome refetch path instead of raw inline CDP"
+    );
+}
+
 fn assert_chrome_intercept_has_loopback_blacklist(
     intercept: &spider::features::chrome_common::RequestInterceptConfiguration,
 ) {

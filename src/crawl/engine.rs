@@ -264,6 +264,12 @@ fn record_adaptive_summary(
 fn inline_chrome_ws_url(cfg: &Config) -> Option<String> {
     // AutoSwitch starts with HTTP, but thin pages can still use inline Chrome
     // re-rendering when the original config requested AutoSwitch.
+    if cfg.chrome_remote_local_policy {
+        log_warn(
+            "[Chrome] inline thin refetch disabled because remote-local-policy requires Spider interception",
+        );
+        return None;
+    }
     matches!(cfg.render_mode, RenderMode::AutoSwitch).then(|| cfg.chrome_remote_url.clone())?
 }
 
@@ -282,22 +288,12 @@ pub async fn run_crawl_once(
     crawl_id: Option<&str>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
     log_info(&format!(
-        "crawl start url={} render_mode={:?} max_pages={} max_depth={}",
-        start_url, mode, cfg.max_pages, cfg.max_depth
+        "crawl start url={start_url} render_mode={mode:?} max_pages={} max_depth={}",
+        cfg.max_pages, cfg.max_depth
     ));
     let total_start = Instant::now();
 
-    let markdown_dir = output_dir.join("markdown");
-    let recycling_bin = output_dir.join("markdown.old");
-
-    prepare_crawl_output_dir(output_dir, &markdown_dir, &recycling_bin, cfg)
-        .await
-        .map_err(|e| {
-            format!(
-                "failed to prepare output dir {} for crawl of {start_url}: {e}",
-                output_dir.display()
-            )
-        })?;
+    let (_, recycling_bin) = prepare_crawl_dirs(cfg, start_url, output_dir).await?;
 
     let mut website = runtime::configure_website_with_crawl_id(cfg, start_url, mode, crawl_id)
         .await
@@ -373,16 +369,64 @@ pub async fn run_crawl_once(
     summary.elapsed_ms = crawl_start.elapsed().as_millis();
     record_adaptive_summary(&adaptive, &mut summary);
 
-    // Conditional re-crawl reconciliation + persistence (bead axon_rust-hiyf).
-    // MUST run before the recycling bin is purged below — reconciliation relinks
-    // reused markdown out of markdown.old. `urls` already contains every URL that
-    // arrived in the broadcast (inserted before the status check), so seeded URLs
-    // absent from it are exactly spider's silent 304 skips.
+    reconcile_etag_and_cleanup(
+        cfg,
+        output_dir,
+        &recycling_bin,
+        &previous_manifest,
+        &etag_seeded_urls,
+        &etag_previous_sidecar,
+        &urls,
+        &website,
+        &mut summary,
+    )
+    .await?;
+
+    log_done(&format!(
+        "crawl done url={} pages_fetched={} duration_ms={}",
+        start_url,
+        summary.pages_seen,
+        total_start.elapsed().as_millis()
+    ));
+    Ok((summary, urls))
+}
+
+async fn prepare_crawl_dirs(
+    cfg: &Config,
+    start_url: &str,
+    output_dir: &Path,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), Box<dyn Error>> {
+    let markdown_dir = output_dir.join("markdown");
+    let recycling_bin = output_dir.join("markdown.old");
+    prepare_crawl_output_dir(output_dir, &markdown_dir, &recycling_bin, cfg)
+        .await
+        .map_err(|e| {
+            format!(
+                "failed to prepare output dir {} for crawl of {start_url}: {e}",
+                output_dir.display()
+            )
+        })?;
+    Ok((markdown_dir, recycling_bin))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "post-crawl ETag reconciliation needs crawl state from the completed Website"
+)]
+async fn reconcile_etag_and_cleanup(
+    cfg: &Config,
+    output_dir: &Path,
+    recycling_bin: &Path,
+    previous_manifest: &Arc<HashMap<String, ManifestEntry>>,
+    etag_seeded_urls: &HashSet<String>,
+    etag_previous_sidecar: &HashMap<String, etag::EtagEntry>,
+    urls: &HashSet<String>,
+    website: &Website,
+    summary: &mut CrawlSummary,
+) -> Result<(), Box<dyn Error>> {
+    // MUST run before the recycling bin is purged — reconciliation relinks reused
+    // markdown out of markdown.old for genuine Spider 304 skips.
     if cfg.etag_conditional {
-        // Gate reconciliation on spider's visited set so only genuine 304 skips
-        // (URLs spider actually scheduled + fetched this run) are reused — never
-        // pages that are no longer discovered (PR #153 review; bead axon_rust-hiyf).
-        // Canonicalize into the same key space as `urls`/`previous_manifest`.
         let etag_visited: HashSet<String> = website
             .get_links()
             .iter()
@@ -390,19 +434,19 @@ pub async fn run_crawl_once(
             .collect();
         let reused = etag::reconcile_unmodified(
             output_dir,
-            &previous_manifest,
-            &etag_seeded_urls,
-            &urls,
+            previous_manifest,
+            etag_seeded_urls,
+            urls,
             &etag_visited,
-            &etag_previous_sidecar,
+            etag_previous_sidecar,
         )
         .await;
         summary.reused_pages += reused as u32;
-        etag::persist_next_sidecar(output_dir, &website, &etag_previous_sidecar, &urls).await;
+        etag::persist_next_sidecar(output_dir, website, etag_previous_sidecar, urls).await;
     }
 
-    if dir_ops::path_exists(&recycling_bin).await {
-        tokio::fs::remove_dir_all(&recycling_bin)
+    if dir_ops::path_exists(recycling_bin).await {
+        tokio::fs::remove_dir_all(recycling_bin)
             .await
             .map_err(|e| {
                 format!(
@@ -412,14 +456,7 @@ pub async fn run_crawl_once(
             })?;
         log_info("Purged recycling bin — armory is now synchronized with battlefield.");
     }
-
-    log_done(&format!(
-        "crawl done url={} pages_fetched={} duration_ms={}",
-        start_url,
-        summary.pages_seen,
-        total_start.elapsed().as_millis()
-    ));
-    Ok((summary, urls))
+    Ok(())
 }
 
 /// Crawl only the sitemap — no follow-on main crawl.
