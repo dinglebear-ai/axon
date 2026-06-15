@@ -7,9 +7,8 @@ trap 'rm -rf "$tmp"' EXIT
 
 export HOME="$tmp/home"
 export AXON_RUSTC_WRAPPER_LOCAL_BIN="$HOME/.local/bin/axon"
-export AXON_RUSTC_WRAPPER_PLUGIN_BIN="$tmp/plugin/axon"
 export AXON_RUSTC_WRAPPER_NO_SCCACHE=1
-mkdir -p "$HOME/.local/bin" "$tmp/plugin" "$tmp/target/debug/deps"
+mkdir -p "$HOME/.local/bin" "$tmp/target/debug/deps"
 
 fake_rustc="$tmp/fake-rustc"
 cat >"$fake_rustc" <<'SH'
@@ -63,9 +62,8 @@ out="$tmp/target/debug/deps/axon-123"
   -o "$out"
 
 cmp "$out" "$HOME/.local/bin/axon"
-cmp "$out" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
 
-rm -f "$HOME/.local/bin/axon" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
+rm -f "$HOME/.local/bin/axon"
 "$repo/scripts/cargo-rustc-wrapper" "$fake_rustc" \
   --crate-name axon \
   --crate-type bin \
@@ -74,9 +72,8 @@ rm -f "$HOME/.local/bin/axon" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
   -o "$out"
 
 test ! -e "$HOME/.local/bin/axon"
-test ! -e "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
 
-rm -f "$HOME/.local/bin/axon" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
+rm -f "$HOME/.local/bin/axon"
 (
   cd "$tmp"
   "$repo/scripts/cargo-rustc-wrapper" "$fake_rustc" \
@@ -87,9 +84,8 @@ rm -f "$HOME/.local/bin/axon" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
 )
 
 cmp "$tmp/target/release/deps/axon-456" "$HOME/.local/bin/axon"
-cmp "$tmp/target/release/deps/axon-456" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
 
-rm -f "$HOME/.local/bin/axon" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
+rm -f "$HOME/.local/bin/axon"
 "$repo/scripts/cargo-rustc-wrapper" "$fake_rustc" \
   --crate-name axon \
   --crate-type bin \
@@ -98,6 +94,5 @@ rm -f "$HOME/.local/bin/axon" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
   -C extra-filename=-789
 
 cmp "$tmp/target/debug/deps/axon-789" "$HOME/.local/bin/axon"
-cmp "$tmp/target/debug/deps/axon-789" "$AXON_RUSTC_WRAPPER_PLUGIN_BIN"
 
 echo "cargo rustc wrapper install behavior ok"

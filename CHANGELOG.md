@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.16.0] - 2026-06-15
+
+### Added
+
+- **Fast local release profile.** Added `release-fast`, which keeps release
+  optimization but disables LTO and increases codegen units for quicker local
+  deployable builds.
+
+### Changed
+
+- **Crawl cache is opt-in by default.** `--cache` now defaults to `false`; use
+  `--cache true` when cache reuse is desired. `--etag-conditional` now requires
+  explicit `--cache true`.
+- **Local build wrapper installs only the local binary.** The repo-local Cargo
+  rustc wrapper now copies completed `axon` binaries only to `~/.local/bin/axon`
+  and no longer updates the plugin bundle binary path.
+
+### Documentation
+
+- Expanded `.env.example` / `config.example.toml` for recently shipped runtime,
+  compose, LLM, Qdrant, and TEI settings.
+- Removed stale plugin-binary provenance docs for the old checked-in binary
+  distribution path.
+
 ## [5.15.0] - 2026-06-15
 
 ### Added

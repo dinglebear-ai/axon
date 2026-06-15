@@ -143,7 +143,6 @@ They are not Axon runtime configuration and must not be added to production env 
 | `AXON_RUSTC_WRAPPER_DELEGATE` | external/test-only | not-runtime | Optional cargo rustc wrapper delegate command override | scripts |
 | `AXON_RUSTC_WRAPPER_LOCAL_BIN` | external/test-only | not-runtime | Test/install destination override for the local Axon binary | scripts |
 | `AXON_RUSTC_WRAPPER_NO_SCCACHE` | external/test-only | not-runtime | Test switch to bypass sccache in the cargo rustc wrapper | scripts |
-| `AXON_RUSTC_WRAPPER_PLUGIN_BIN` | external/test-only | not-runtime | Test/install destination override for the plugin Axon binary | scripts |
 
 ### Docker Compose Interpolation (compose-env)
 
