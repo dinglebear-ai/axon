@@ -1,3 +1,4 @@
+mod adaptive;
 mod cdp_render;
 mod collector;
 mod dir_ops;
@@ -15,13 +16,12 @@ mod waf;
 
 use crate::core::config::{Config, RenderMode};
 use crate::core::content::{LadderThresholds, build_selector_config};
-use crate::core::logging::{log_done, log_info};
+use crate::core::logging::{log_done, log_info, log_warn};
 use crate::crawl::manifest::ManifestEntry;
 use collector::{CollectorConfig, collect_crawl_pages};
 use dir_ops::prepare_crawl_output_dir;
 pub use dir_ops::update_latest_reflink;
 use runtime::configure_website;
-#[cfg(test)]
 use spider::website::Website;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -167,6 +167,7 @@ pub struct CrawlSummary {
     pub rate_limited: Vec<RateLimitHost>,
     /// Max crawl depth from config — the denominator of the DEPTH stat.
     pub depth_max: u32,
+    pub adaptive: Option<adaptive::AdaptiveCrawlSnapshot>,
 }
 
 impl CrawlSummary {
@@ -231,6 +232,40 @@ pub fn should_fallback_to_chrome(summary: &CrawlSummary, max_pages: u32, cfg: &C
     summary.markdown_files < (max_pages / 10).max(cfg.auto_switch_min_pages as u32)
 }
 
+fn configure_adaptive_crawl(
+    cfg: &Config,
+    website: &mut Website,
+) -> Option<adaptive::AdaptiveCrawlControl> {
+    let adaptive = adaptive::AdaptiveCrawlControl::from_config(cfg);
+    if let Some(control) = adaptive.as_ref() {
+        for warning in adaptive::warnings_for_config(cfg) {
+            log_warn(&format!("[adaptive-concurrency] {warning}"));
+        }
+        control.attach_to(website);
+    }
+    adaptive
+}
+
+fn record_adaptive_summary(
+    adaptive: &Option<adaptive::AdaptiveCrawlControl>,
+    summary: &mut CrawlSummary,
+) {
+    if let Some(control) = adaptive.as_ref() {
+        let snapshot = control.snapshot();
+        log_info(&format!(
+            "[adaptive-concurrency] crawl stats {}",
+            snapshot.log_summary()
+        ));
+        summary.adaptive = Some(snapshot);
+    }
+}
+
+fn inline_chrome_ws_url(cfg: &Config) -> Option<String> {
+    // AutoSwitch starts with HTTP, but thin pages can still use inline Chrome
+    // re-rendering when the original config requested AutoSwitch.
+    matches!(cfg.render_mode, RenderMode::AutoSwitch).then(|| cfg.chrome_remote_url.clone())?
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "crawl orchestration requires many config/state params"
@@ -266,6 +301,7 @@ pub async fn run_crawl_once(
     let mut website = runtime::configure_website_with_crawl_id(cfg, start_url, mode, crawl_id)
         .await
         .map_err(|e| format!("failed to configure crawl website for {start_url}: {e}"))?;
+    let adaptive = configure_adaptive_crawl(cfg, &mut website);
 
     // Conditional re-crawl seeding (bead axon_rust-hiyf): load persisted ETag
     // validators and seed spider's per-Website cache before the crawl so unchanged
@@ -288,18 +324,7 @@ pub async fn run_crawl_once(
     let start_host = start_host(start_url);
     let crawl_start = Instant::now();
 
-    // Enable inline Chrome re-rendering when the *config* requests AutoSwitch,
-    // even though `mode` is `Http` for the initial crawl phase (AutoSwitch
-    // always starts with HTTP — `resolve_initial_mode` converts AutoSwitch→Http).
-    // Chrome mode does its own rendering; Http mode with no AutoSwitch intent
-    // has no Chrome target. When cfg.render_mode is AutoSwitch and Chrome is
-    // configured, thin pages are re-rendered immediately while the HTTP crawl
-    // continues — no second pass needed.
-    let inline_chrome_ws_url = if matches!(cfg.render_mode, RenderMode::AutoSwitch) {
-        cfg.chrome_remote_url.clone()
-    } else {
-        None
-    };
+    let inline_chrome_ws_url = inline_chrome_ws_url(cfg);
 
     let join = tokio::spawn(collect_crawl_pages(
         rx,
@@ -323,6 +348,7 @@ pub async fn run_crawl_once(
             structured_max_bytes: cfg.structured_data_max_bytes,
             max_depth: cfg.max_depth as u32,
             retry_backoff_ms: cfg.retry_backoff_ms,
+            adaptive: adaptive.clone(),
         },
     ));
 
@@ -344,6 +370,7 @@ pub async fn run_crawl_once(
         .map_err(|e| format!("collector join failure for {start_url}: {e}"))?
         .map_err(|e| format!("collector failure for {start_url}: {e}"))?;
     summary.elapsed_ms = crawl_start.elapsed().as_millis();
+    record_adaptive_summary(&adaptive, &mut summary);
 
     // Conditional re-crawl reconciliation + persistence (bead axon_rust-hiyf).
     // MUST run before the recycling bin is purged below — reconciliation relinks
@@ -446,6 +473,7 @@ pub async fn run_sitemap_only(
             structured_max_bytes: cfg.structured_data_max_bytes,
             max_depth: cfg.max_depth as u32,
             retry_backoff_ms: cfg.retry_backoff_ms,
+            adaptive: None,
         },
     ));
 

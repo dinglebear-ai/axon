@@ -5,6 +5,13 @@ use super::enums::{
 use crate::core::llm::LlmBackendKind;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdaptiveConcurrencyConfig {
+    pub enabled: bool,
+    pub min: usize,
+    pub max: Option<usize>,
+}
+
 #[derive(Clone)]
 pub struct Config {
     /// The subcommand being executed (scrape, crawl, ask, etc.).
@@ -93,6 +100,9 @@ pub struct Config {
 
     /// Number of retries for Chrome bootstrap failures. TOML: `chrome.bootstrap-retries`.
     pub chrome_bootstrap_retries: usize,
+
+    /// Push Spider/Chromey's remote local policy to capable Chrome engines. TOML: `chrome.remote-local-policy`.
+    pub chrome_remote_local_policy: bool,
 
     /// Whether to honour `robots.txt` directives. Defaults `false`. TOML: `scrape.respect-robots`.
     pub respect_robots: bool,
@@ -229,6 +239,9 @@ pub struct Config {
 
     /// Override concurrency limit for sitemap backfill fetches. TOML: `workers.backfill-concurrency-limit`.
     pub backfill_concurrency_limit: Option<usize>,
+
+    /// Opt-in Spider adaptive crawl semaphore settings. TOML: `workers.adaptive-concurrency`.
+    pub adaptive_concurrency: AdaptiveConcurrencyConfig,
 
     /// Only run sitemap discovery, not a full crawl. Flag: `--sitemap-only`.
     pub sitemap_only: bool,

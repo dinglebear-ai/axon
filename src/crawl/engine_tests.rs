@@ -16,6 +16,7 @@ fn summary(pages_seen: u32, thin: u32, markdown_files: u32) -> CrawlSummary {
         recent_events: Vec::new(),
         rate_limited: Vec::new(),
         depth_max: 0,
+        adaptive: None,
     }
 }
 
@@ -511,6 +512,64 @@ fn test_spider_max_page_bytes_wiring() {
     let mut website = Website::new("https://example.com");
     website.with_max_page_bytes(Some(1_048_576.0));
     assert_eq!(website.configuration.max_page_bytes, Some(1_048_576.0));
+}
+
+#[test]
+fn chrome_remote_local_policy_defaults_disabled() {
+    let cfg = default_cfg();
+    let intercept = runtime::chrome_intercept_config(&cfg);
+
+    assert!(intercept.enabled);
+    assert!(!intercept.remote_local_policy);
+}
+
+#[test]
+fn chrome_remote_local_policy_can_be_enabled() {
+    let mut cfg = default_cfg();
+    cfg.chrome_remote_local_policy = true;
+    let intercept = runtime::chrome_intercept_config(&cfg);
+
+    assert!(intercept.enabled);
+    assert!(intercept.remote_local_policy);
+}
+
+#[test]
+fn chrome_remote_local_policy_preserves_ssrf_blacklist_patterns() {
+    let mut cfg = default_cfg();
+    cfg.chrome_remote_local_policy = true;
+    let mut website = Website::new("https://example.com");
+
+    runtime::apply_limit_and_behavior_settings(&cfg, &mut website, "https://example.com");
+
+    let blacklist = website
+        .configuration
+        .blacklist_url
+        .as_ref()
+        .expect("SSRF blacklist should be configured");
+    assert!(
+        blacklist
+            .iter()
+            .any(|pattern| pattern.to_string().contains("127\\.")),
+        "SSRF blacklist should still include loopback protections: {blacklist:?}"
+    );
+}
+
+#[test]
+fn chrome_remote_local_policy_preserves_private_discovered_link_rejection() {
+    let mut cfg = default_cfg();
+    cfg.chrome_remote_local_policy = true;
+    let mut website = Website::new("https://example.com");
+
+    runtime::apply_request_and_identity_settings(&cfg, &mut website, "https://example.com");
+
+    let (url, _) = website
+        .on_link_find_callback
+        .as_ref()
+        .expect("link filter callback should be installed")(
+        "http://127.0.0.1/admin".into(), None
+    );
+
+    assert!(url.as_ref().is_empty());
 }
 
 // --- Junk URL detection tests ---

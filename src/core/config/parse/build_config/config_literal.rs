@@ -131,6 +131,7 @@ fn populate_chrome_and_filtering(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
         .unwrap_or(3_000)
         .max(250);
     cfg.chrome_bootstrap_retries = inputs.toml.chrome.bootstrap_retries.unwrap_or(2).min(10);
+    cfg.chrome_remote_local_policy = inputs.toml.chrome.remote_local_policy.unwrap_or(false);
 }
 
 fn populate_perf_and_credentials(
@@ -165,6 +166,20 @@ fn populate_perf_and_credentials(
     cfg.performance_profile = g.performance_profile;
     cfg.crawl_concurrency_limit = inputs.crawl_concurrency_limit;
     cfg.backfill_concurrency_limit = inputs.backfill_concurrency_limit;
+    cfg.adaptive_concurrency.enabled = inputs
+        .toml
+        .workers
+        .adaptive_concurrency
+        .enabled
+        .unwrap_or(false);
+    cfg.adaptive_concurrency.min = inputs
+        .toml
+        .workers
+        .adaptive_concurrency
+        .min
+        .unwrap_or(1)
+        .max(1);
+    cfg.adaptive_concurrency.max = inputs.toml.workers.adaptive_concurrency.max;
     cfg.sitemap_only = g.sitemap_only;
     cfg.delay_ms = inputs.toml.scrape.delay_ms.unwrap_or(0);
     cfg.request_timeout_ms = inputs.toml.scrape.request_timeout_ms;

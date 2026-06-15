@@ -34,6 +34,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.custom_headers = vec!["Authorization: Bearer submitted".to_string()];
     submitted.discover_llms_txt = false;
     submitted.max_llms_txt_urls = 77;
+    submitted.adaptive_concurrency.enabled = true;
+    submitted.adaptive_concurrency.min = 2;
+    submitted.adaptive_concurrency.max = Some(32);
+    submitted.chrome_remote_local_policy = true;
 
     let mut worker = Config::test_default();
     worker.collection = "worker_collection".to_string();
@@ -60,6 +64,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     worker.custom_headers = vec!["Authorization: Bearer worker".to_string()];
     worker.discover_llms_txt = true;
     worker.max_llms_txt_urls = 512;
+    worker.adaptive_concurrency.enabled = false;
+    worker.adaptive_concurrency.min = 1;
+    worker.adaptive_concurrency.max = None;
+    worker.chrome_remote_local_policy = false;
 
     let config_json = match config_snapshot_json(&submitted) {
         Ok(json) => json,
@@ -108,6 +116,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     // matching the sitemap-discovery parity (async crawl is the common override path).
     assert!(!effective.discover_llms_txt);
     assert_eq!(effective.max_llms_txt_urls, 77);
+    assert!(effective.adaptive_concurrency.enabled);
+    assert_eq!(effective.adaptive_concurrency.min, 2);
+    assert_eq!(effective.adaptive_concurrency.max, Some(32));
+    assert!(effective.chrome_remote_local_policy);
 }
 
 #[test]

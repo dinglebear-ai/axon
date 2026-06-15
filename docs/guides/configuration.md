@@ -111,7 +111,8 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[ask]` | `max-context-chars`, `chunk-limit`, `candidate-limit`, `full-docs`, `backfill-chunks`, `doc-fetch-concurrency`, `doc-chunk-limit`, `min-relevance-score`, `authoritative-domains`, `authoritative-boost`, `min-citations-nontrivial` | `AXON_ASK_MAX_CONTEXT_CHARS`, `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_FULL_DOCS`, `AXON_ASK_BACKFILL_CHUNKS`, `AXON_ASK_DOC_FETCH_CONCURRENCY`, `AXON_ASK_DOC_CHUNK_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, `AXON_ASK_AUTHORITATIVE_BOOST`, `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs`, `concurrency-limit`, `crawl-concurrency-limit`, `backfill-concurrency-limit`, `watchdog-stale-timeout-secs`, `watchdog-confirm-secs`, `watchdog-sweep-secs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS`, `AXON_JOB_STALE_TIMEOUT_SECS`, `AXON_JOB_STALE_CONFIRM_SECS`, `AXON_WATCHDOG_SWEEP_SECS` |
-| `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
+| `[workers.adaptive-concurrency]` | `enabled`, `min`, `max` | TOML-only in this release |
+| `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries`, `remote-local-policy` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
 | `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `batch-timeout-secs`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | `AXON_SCRAPE_BATCH_TIMEOUT_SECS` plus ladder env vars |
 
 URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`) for llama.cpp/OpenAI-compatible endpoints, or `AXON_LLM_BACKEND=codex-app-server` to spawn Codex CLI app-server completions over stdio. `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
@@ -237,6 +238,9 @@ temporary overrides and legacy scripts.
 | `workers.concurrency-limit` | -- | profile default | Override crawl and backfill concurrency at once |
 | `workers.crawl-concurrency-limit` | -- | profile default | Override crawl concurrency |
 | `workers.backfill-concurrency-limit` | -- | profile default | Override sitemap backfill concurrency |
+| `workers.adaptive-concurrency.enabled` | -- | `false` | TOML-only opt-in for Spider adaptive crawl concurrency |
+| `workers.adaptive-concurrency.min` | -- | `1` | Minimum adaptive crawl concurrency |
+| `workers.adaptive-concurrency.max` | -- | resolved crawl limit | Maximum adaptive crawl concurrency, capped by `min(crawl-broadcast-buffer-max, 1024)` |
 | `workers.watchdog-stale-timeout-secs` | `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
 | `workers.watchdog-confirm-secs` | `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Additional grace period before stale reclaim |
 | `workers.watchdog-sweep-secs` | `AXON_WATCHDOG_SWEEP_SECS` | `15` | Seconds between watchdog sweeps |
@@ -249,6 +253,17 @@ temporary overrides and legacy scripts.
 | `chrome.network-idle-timeout-secs` | -- | `15` | Seconds to wait for Chrome network idle before capture |
 | `chrome.bootstrap-timeout-ms` | -- | `3000` | Remote Chrome bootstrap probe timeout in milliseconds (minimum 250) |
 | `chrome.bootstrap-retries` | -- | `2` | Remote Chrome bootstrap retry count (clamped 0-10) |
+| `chrome.remote-local-policy` | -- | `false` | Push Spider/Chromey's local policy to capable remote Chrome engines for Chrome-rendered crawls |
+
+### Adaptive crawl concurrency
+
+`[workers.adaptive-concurrency]` is TOML-only in this release and is disabled by default. When enabled, Axon replaces the fixed Spider crawl semaphore with Spider's adaptive semaphore on the main crawl path only. Post-crawl sitemap backfill, standalone `axon screenshot`, and non-Spider fetch helpers continue to use their existing fixed limits.
+
+HTTP `429`, HTTP `5xx`, and crawl broadcast lag reduce concurrency. Successful page statuses increase the target after Spider's fixed success threshold. Spider 2.52.0 uses a fixed failure decrease of `0.5`; `decrease-factor`, `sync-interval-ms`, and palette editing are intentionally unsupported here. Shrinks affect future admission and do not cancel already in-flight fetches.
+
+Pair adaptive mode with polite bounds: `respect-robots`, `delay-ms`, `max-pages`, path budgets, or `url-whitelist`. Axon logs warnings when adaptive mode is combined with uncapped or impolite settings.
+
+`chrome.remote-local-policy` applies only to Chrome render paths during crawls. It is intended for capable remote Chrome engines that support Spider/Chromey's policy push; generic CDP proxies may reject the underlying command. It does not apply to `axon screenshot` in this release.
 
 ### Search and research
 
