@@ -21,12 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `codex-app-server` backend works in-container against the container's **fresh**
   `~/.codex` (no host MCP servers/skills/hooks) — fast by default, MCP-capable
   only when the container's own codex home is configured. The previous host-only
-  restriction in `validate_codex_cmd` is removed.
+  restriction in `validate_codex_cmd` is removed. Codex child cleanup now sends
+  SIGKILL to the process group via the `kill(2)` syscall instead of shelling out
+  to a `kill` binary, so it works in slim images that ship no `procps`.
 - **Codex auth mount** — `docker-compose.prod.yaml` mounts the host's
-  `~/.codex/auth.json` (only that file, writable for ChatGPT OAuth token refresh)
-  into the container so the codex backend can authenticate without dragging in
-  host MCP/config. The image pre-creates a `1000`-owned `~/.codex`. Prerequisite:
-  run `codex login` on the host first (or use `OPENAI_API_KEY` and drop the mount).
+  `~/.codex/auth.json` (only that file, **read-only**) into the container so the
+  codex backend can authenticate without dragging in host MCP/config and without
+  ever mutating the host file. In the default isolated mode axon copies auth.json
+  into a throwaway `CODEX_HOME` and refreshes the OAuth token there. The image
+  pre-creates a `1000`-owned `~/.codex`. Prerequisite: run `codex login` on the
+  host first (or use `OPENAI_API_KEY` and drop the mount).
 
 ## [5.12.0] - 2026-06-14
 
