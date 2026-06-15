@@ -30,7 +30,10 @@ pub(super) fn attach_leading_comments(
             // survive, so we bound the prefix to MAX_HEADER_CHARS (char-boundary
             // safe via take_chars) and give the body its normal budget.
             let capped_prefix = take_chars(&prefix, MAX_HEADER_CHARS);
-            let body_budget = MAX_CODE_CHUNK_CHARS.saturating_sub(capped_prefix.len());
+            // `take_chars` budgets by characters, so the prefix must be measured in
+            // characters too — `.len()` (bytes) would over-charge a multibyte
+            // prefix and truncate the declaration body more than intended.
+            let body_budget = MAX_CODE_CHUNK_CHARS.saturating_sub(capped_prefix.chars().count());
             let body = take_chars(&chunk.text, body_budget);
             chunk.text = format!("{capped_prefix}{body}");
             chunk.start_line = start_line;

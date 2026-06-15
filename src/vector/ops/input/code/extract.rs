@@ -81,6 +81,10 @@ pub(super) enum Extractor {
     Python,
     JavaScript,
     TypeScript,
+    /// `.tsx` — TypeScript + JSX. A distinct variant so `.tsx` routes to the JSX
+    /// grammar (`LANGUAGE_TSX`); parsing JSX with the plain-TS grammar forces
+    /// error recovery that fabricates spurious nodes (bead axon_rust-2ykl).
+    Tsx,
     Bash,
 }
 
@@ -89,7 +93,8 @@ pub(super) fn language_for_extension(ext: &str) -> Option<LanguageSpec> {
         "rs" => Extractor::Rust,
         "py" => Extractor::Python,
         "js" | "jsx" => Extractor::JavaScript,
-        "ts" | "tsx" => Extractor::TypeScript,
+        "ts" => Extractor::TypeScript,
+        "tsx" => Extractor::Tsx,
         "go" => Extractor::Go,
         "sh" | "bash" => Extractor::Bash,
         _ => return None,
@@ -153,23 +158,21 @@ thread_local! {
     static PARSER: RefCell<Parser> = RefCell::new(Parser::new());
 }
 
-fn registry_for(extractor: Extractor, ext: Option<&str>) -> Option<&'static Registry> {
+fn registry_for(extractor: Extractor) -> Option<&'static Registry> {
     match extractor {
         Extractor::Rust => Some(&RUST_REGISTRY),
         Extractor::Go => Some(&GO_REGISTRY),
         Extractor::Python => Some(&PYTHON_REGISTRY),
         Extractor::JavaScript => Some(&JAVASCRIPT_REGISTRY),
-        Extractor::TypeScript => match ext {
-            Some("tsx") => Some(&TSX_REGISTRY),
-            _ => Some(&TYPESCRIPT_REGISTRY),
-        },
+        Extractor::TypeScript => Some(&TYPESCRIPT_REGISTRY),
+        Extractor::Tsx => Some(&TSX_REGISTRY),
         Extractor::Bash => Some(&BASH_REGISTRY),
         Extractor::None => None,
     }
 }
 
 pub(super) fn extract_symbols(content: &str, extractor: Extractor) -> Vec<SymbolInfo> {
-    let Some(registry) = registry_for(extractor, None) else {
+    let Some(registry) = registry_for(extractor) else {
         return Vec::new();
     };
     PARSER.with(|slot| {

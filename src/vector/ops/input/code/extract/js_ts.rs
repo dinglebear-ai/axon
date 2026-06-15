@@ -49,13 +49,20 @@ pub(super) static TS_RULES: &[DeclRule] = &[
         kind: SymbolKind::Enum,
         role: DeclRole::Container,
     },
+    // Method rules are anchored to their container body (`class_body` /
+    // `interface_body`) — NOT matched bare. In TSX, statement-level call and
+    // control-flow constructs (`setRun(x)`, `if (x) { ... }`) share the
+    // `name(args) { ... }` shape and tree-sitter types them as
+    // `method_definition`/`method_signature` nodes; a bare rule captured them as
+    // standalone `method` chunks with misleading symbols (bead axon_rust-2ykl).
+    // Anchoring keeps real class/interface members and drops the impostors.
     DeclRule {
-        pattern: "(method_definition name: (property_identifier) @name) @decl",
+        pattern: "(class_body (method_definition name: (property_identifier) @name) @decl)",
         kind: SymbolKind::Method,
         role: DeclRole::Leaf,
     },
     DeclRule {
-        pattern: "(method_signature name: (property_identifier) @name) @decl",
+        pattern: "(interface_body (method_signature name: (property_identifier) @name) @decl)",
         kind: SymbolKind::Method,
         role: DeclRole::Leaf,
     },
@@ -111,7 +118,7 @@ pub(super) static JS_RULES: &[DeclRule] = &[
         role: DeclRole::Container,
     },
     DeclRule {
-        pattern: "(method_definition name: (property_identifier) @name) @decl",
+        pattern: "(class_body (method_definition name: (property_identifier) @name) @decl)",
         kind: SymbolKind::Method,
         role: DeclRole::Leaf,
     },

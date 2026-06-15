@@ -15,7 +15,7 @@ fn all_registry_queries_compile() {
         &TSX_REGISTRY,
         &BASH_REGISTRY,
         // exercise the dispatch path too
-        registry_for(Extractor::Rust, None).unwrap(),
+        registry_for(Extractor::Rust).unwrap(),
     ];
 
     for registry in registries {
@@ -35,14 +35,24 @@ fn all_registry_queries_compile() {
 
 #[test]
 fn tsx_dispatch_routes_to_tsx_registry() {
-    // Extractor::TypeScript with a tsx extension hint must select the TSX grammar.
-    let reg = registry_for(Extractor::TypeScript, Some("tsx")).unwrap();
+    // `.tsx` resolves to Extractor::Tsx (via language_for_extension) and must
+    // select the JSX grammar; `.ts` (Extractor::TypeScript) selects plain TS.
+    let reg = registry_for(Extractor::Tsx).unwrap();
     assert!(std::ptr::eq(reg, &*TSX_REGISTRY));
-    let reg = registry_for(Extractor::TypeScript, Some("ts")).unwrap();
+    let reg = registry_for(Extractor::TypeScript).unwrap();
     assert!(std::ptr::eq(reg, &*TYPESCRIPT_REGISTRY));
 }
 
 #[test]
+fn tsx_extension_resolves_to_tsx_extractor() {
+    // The `.tsx` extension routes to the JSX-aware extractor end-to-end.
+    let spec = language_for_extension("tsx").unwrap();
+    assert_eq!(spec.extractor, Extractor::Tsx);
+    let spec = language_for_extension("ts").unwrap();
+    assert_eq!(spec.extractor, Extractor::TypeScript);
+}
+
+#[test]
 fn none_extractor_has_no_registry() {
-    assert!(registry_for(Extractor::None, None).is_none());
+    assert!(registry_for(Extractor::None).is_none());
 }

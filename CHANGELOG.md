@@ -22,9 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slivers (`() =>`, `;`, `{`) as standalone chunks. No `PAYLOAD_SCHEMA_VERSION`
   bump — boundary-only change; re-ingest reaps orphans via upsert + stale-tail
   cleanup. (epic axon_rust-8rpa)
-  - Known follow-up: brace-less JSX-body arrow components in `.tsx`
-    (`const F = () => <jsx/>`) degrade to prose rather than capturing as a
-    declaration (tracked in axon_rust-gnpr; pinned by a parity-matrix test).
+- **Fixed `.tsx` parsing to use the JSX grammar.** `.tsx` files now route to a
+  dedicated `Extractor::Tsx` (tree-sitter `LANGUAGE_TSX`) instead of the plain
+  TypeScript grammar. Parsing JSX with the non-JSX grammar forced error recovery
+  that fabricated spurious `method` declarations from statement-level calls and
+  `if` blocks (`slice(0,3)`, `if (...)` captured as methods — bead axon_rust-2ykl)
+  and also degraded brace-less direct-JSX arrow components
+  (`const C = () => <jsx/>`) to symbol-less prose (bead axon_rust-gnpr). Both are
+  now fixed: real React components capture as Functions and no statement-level
+  node leaks in as a method. Method/method-signature query rules are additionally
+  scoped to `class_body` / `interface_body` as defense-in-depth.
 
 ## [5.12.0] - 2026-06-14
 
