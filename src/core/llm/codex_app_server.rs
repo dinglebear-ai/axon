@@ -24,6 +24,7 @@ use crate::core::llm::headless::common::{
     joined_prompt, read_bounded_stderr, redacted_stderr_tail,
 };
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
+use crate::core::logging::{log_info, log_warn};
 use protocol::{CodexStep, CodexStreamState};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
@@ -112,11 +113,24 @@ where
         (Ok(()), Ok(_cleanup)) => state
             .into_response()
             .map_err(|err| format!("{err}{}", stderr_diagnostics_suffix(&stderr_tail)).into()),
-        (Ok(()), Err(cleanup_err)) => Err(format!(
-            "codex app-server completed but cleanup failed: {cleanup_err}{}",
-            stderr_diagnostics_suffix(&stderr_tail)
-        )
-        .into()),
+        // The turn succeeded; a cleanup failure (leaked/zombie child) is an
+        // operational concern, not a reason to throw away a usable answer. Log it
+        // and still return the completion. Only fall back to an error if there is
+        // no answer text to return.
+        (Ok(()), Err(cleanup_err)) => match state.into_response() {
+            Ok(response) => {
+                log_warn(&format!(
+                    "codex app-server turn succeeded but child cleanup failed: {cleanup_err}{}",
+                    stderr_diagnostics_suffix(&stderr_tail)
+                ));
+                Ok(response)
+            }
+            Err(err) => Err(format!(
+                "codex app-server completed but cleanup failed: {cleanup_err}; {err}{}",
+                stderr_diagnostics_suffix(&stderr_tail)
+            )
+            .into()),
+        },
         (Err(err), Ok(cleanup)) => Err(format!(
             "{err}; cleanup: {cleanup}{}",
             stderr_diagnostics_suffix(&stderr_tail)
@@ -201,8 +215,14 @@ fn spawn_codex_child_passthrough(
     // Inherit the ambient environment (PATH, tokens, OPENAI_API_KEY, etc.) so the
     // user's MCP servers can authenticate. Only pin CODEX_HOME when explicitly
     // overridden; otherwise Codex resolves its own default home.
-    if let Some(home) = home::resolve_user_codex_home(backend)? {
-        command.env("CODEX_HOME", home);
+    match home::resolve_user_codex_home(backend)? {
+        Some(home) => {
+            command.env("CODEX_HOME", home);
+        }
+        None => log_info(
+            "codex load-user-config: no CODEX_HOME resolved; relying on Codex's \
+             default home and ambient-environment auth (e.g. OPENAI_API_KEY)",
+        ),
     }
     configure_codex_child_isolation(&mut command);
     command
@@ -263,10 +283,18 @@ fn kill_process_group(pid: u32) -> Result<(), io::Error> {
     // dereferences no memory and cannot trigger UB.
     let rc = unsafe { libc::kill(-pgid, libc::SIGKILL) };
     if rc == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
+        return Ok(());
     }
+    let err = io::Error::last_os_error();
+    // ESRCH = no process in the group: the child (and its tree) already exited,
+    // which is exactly the cleanup goal — treat it as success. A persistent
+    // app-server can race-exit between the handshake returning and this signal;
+    // surfacing ESRCH here would otherwise convert a completed turn into a bogus
+    // "cleanup failed" error. Genuine faults (EPERM/EINVAL) still propagate.
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(());
+    }
+    Err(err)
 }
 
 #[cfg(not(unix))]

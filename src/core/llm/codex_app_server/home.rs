@@ -10,6 +10,12 @@
 //! minimal `config.toml` that disables MCP servers, the built-in apps tool
 //! server, hooks, and OTLP. Auth via `OPENAI_API_KEY` in the environment also
 //! works when no `auth.json` is present.
+//!
+//! This module serves both backend paths: the default isolated path
+//! ([`prepare_codex_home`]) and the opt-in passthrough path
+//! ([`resolve_user_codex_home`], used when `codex_load_user_config` is set),
+//! which deliberately resolves the user's *real* `CODEX_HOME` so MCP servers,
+//! skills, and hooks load.
 
 use crate::core::llm::LlmBackendConfig;
 use std::collections::BTreeMap;
