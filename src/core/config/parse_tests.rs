@@ -1,4 +1,4 @@
-use super::build_config::tests::ENV_LOCK;
+use super::build_config::tests::{ENV_LOCK, with_env_saved};
 use super::docker::is_docker_service_host;
 use crate::core::config::types::{CommandKind, McpTransport};
 use crate::crawl::engine::crawl_subscribe_buffer_size;
@@ -281,12 +281,22 @@ fn try_ask_cli(extra: &[&str]) -> Result<super::Cli, clap::Error> {
     super::Cli::try_parse_from(argv)
 }
 
+#[allow(unsafe_code)]
+fn into_ask_config(extra: &[&str]) -> Result<crate::core::config::Config, String> {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut result = None;
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::remove_var("AXON_CONFIG_PATH");
+        result = Some(super::build_config::into_config(ask_cli(extra)));
+    });
+    result.expect("config result set")
+}
+
 #[test]
 fn parse_ask_continue_alias_is_equivalent_to_follow_up() {
-    let cfg_a =
-        super::build_config::into_config(ask_cli(&["--follow-up", "q"])).expect("follow-up");
-    let cfg_b = super::build_config::into_config(ask_cli(&["--continue", "q"])).expect("continue");
-    let cfg_c = super::build_config::into_config(ask_cli(&["-c", "q"])).expect("-c");
+    let cfg_a = into_ask_config(&["--follow-up", "q"]).expect("follow-up");
+    let cfg_b = into_ask_config(&["--continue", "q"]).expect("continue");
+    let cfg_c = into_ask_config(&["-c", "q"]).expect("-c");
     assert!(cfg_a.ask_follow_up);
     assert!(cfg_b.ask_follow_up);
     assert!(cfg_c.ask_follow_up);
@@ -294,8 +304,7 @@ fn parse_ask_continue_alias_is_equivalent_to_follow_up() {
 
 #[test]
 fn parse_ask_resume_is_alias_for_follow_up_plus_session() {
-    let cfg = super::build_config::into_config(ask_cli(&["--resume", "rust-thread", "q"]))
-        .expect("resume");
+    let cfg = into_ask_config(&["--resume", "rust-thread", "q"]).expect("resume");
     assert!(cfg.ask_follow_up);
     assert_eq!(cfg.ask_session.as_deref(), Some("rust-thread"));
 }
@@ -323,19 +332,15 @@ fn parse_ask_reset_session_conflicts_with_new_session() {
 
 #[test]
 fn parse_ask_list_sessions_with_query_rejected() {
-    let err = super::build_config::into_config(ask_cli(&["--list-sessions", "stray-query"]))
+    let err = into_ask_config(&["--list-sessions", "stray-query"])
         .expect_err("list-sessions + query must fail");
     assert!(err.contains("--list-sessions"));
 }
 
 #[test]
 fn parse_ask_list_sessions_with_query_flag_rejected() {
-    let err = super::build_config::into_config(ask_cli(&[
-        "--query",
-        "stray-via-flag",
-        "--list-sessions",
-    ]))
-    .expect_err("list-sessions + --query must fail");
+    let err = into_ask_config(&["--query", "stray-via-flag", "--list-sessions"])
+        .expect_err("list-sessions + --query must fail");
     assert!(err.contains("--list-sessions"));
 }
 
@@ -353,16 +358,14 @@ fn parse_ask_resume_conflicts_with_reset_session() {
 
 #[test]
 fn parse_ask_list_sessions_alone_is_ok() {
-    let cfg =
-        super::build_config::into_config(ask_cli(&["--list-sessions"])).expect("list-sessions");
+    let cfg = into_ask_config(&["--list-sessions"]).expect("list-sessions");
     assert!(matches!(cfg.command, CommandKind::Ask));
     assert!(cfg.ask_list_sessions);
 }
 
 #[test]
 fn parse_ask_new_session_records_flag() {
-    let cfg = super::build_config::into_config(ask_cli(&["--new-session", "--session", "x", "q"]))
-        .expect("new-session");
+    let cfg = into_ask_config(&["--new-session", "--session", "x", "q"]).expect("new-session");
     assert!(cfg.ask_new_session);
     assert_eq!(cfg.ask_session.as_deref(), Some("x"));
 }

@@ -265,7 +265,7 @@ Shrinks lower the controller target immediately, but they do not cancel already 
 
 Pair adaptive mode with polite bounds: `respect-robots`, `delay-ms`, `max-pages`, path budgets, or `url-whitelist`. Axon logs warnings when adaptive mode is combined with uncapped or impolite settings.
 
-`chrome.remote-local-policy` applies only to Chrome render paths during crawls, including Chrome thin-page refetches. It is intended for capable remote Chrome engines that support Spider/Chromey's policy push; generic CDP proxies may reject the underlying command. It does not apply to `axon screenshot` in this release.
+`chrome.remote-local-policy` applies only to Spider-backed Chrome render paths during crawls, including the post-crawl Chrome thin-page refetch path. When this policy is enabled, Axon's raw inline CDP thin-page optimization is skipped so Chrome refetches flow through Spider interception. It is intended for capable remote Chrome engines that support Spider/Chromey's policy push; generic CDP proxies may reject the underlying command. It does not apply to `axon screenshot` in this release.
 
 ### Search and research
 

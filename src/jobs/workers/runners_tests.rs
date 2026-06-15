@@ -344,6 +344,30 @@ fn config_snapshot_rejects_adaptive_max_above_worker_cap() {
 }
 
 #[test]
+fn config_snapshot_resolves_adaptive_default_max_after_option_fields() {
+    let mut submitted = Config::test_default();
+    submitted.crawl_concurrency_limit = Some(64);
+    submitted.adaptive_concurrency.enabled = true;
+    submitted.adaptive_concurrency.min = 2;
+    submitted.adaptive_concurrency.max = None;
+
+    let mut worker = Config::test_default();
+    worker.crawl_concurrency_limit = Some(1);
+    worker.crawl_broadcast_buffer_max = 128;
+
+    let config_json = config_snapshot_json(&submitted).expect("encode snapshot");
+    let effective = apply_config_snapshot(&worker, &config_json).expect("apply snapshot");
+
+    assert_eq!(effective.crawl_concurrency_limit, Some(64));
+    assert_eq!(effective.adaptive_concurrency.min, 2);
+    assert_eq!(
+        effective.adaptive_concurrency.max,
+        Some(64),
+        "adaptive max=None must resolve against the restored snapshot crawl limit, not the worker process default"
+    );
+}
+
+#[test]
 fn config_snapshot_rejects_invalid_llm_backend_values() {
     let worker = Config::test_default();
     let config_json = r#"{

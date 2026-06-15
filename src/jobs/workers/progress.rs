@@ -16,7 +16,7 @@ pub(super) fn spawn_crawl_progress_persister(
     let (tx, mut rx) = mpsc::channel::<CrawlSummary>(32);
     let task = tokio::spawn(async move {
         while let Some(summary) = rx.recv().await {
-            let progress = serde_json::json!({
+            let mut progress = serde_json::json!({
                 "output_dir": output_dir,
                 "output_path": output_dir.join("markdown"),
                 "pages_crawled": summary.pages_seen,
@@ -32,6 +32,14 @@ pub(super) fn spawn_crawl_progress_persister(
                 "events": summary.recent_events,
                 "rate_limited": summary.rate_limited,
             });
+            if let (Some(adaptive), Some(obj)) =
+                (summary.adaptive.as_ref(), progress.as_object_mut())
+            {
+                obj.insert(
+                    "adaptive_concurrency".to_string(),
+                    serde_json::to_value(adaptive).unwrap_or(serde_json::Value::Null),
+                );
+            }
             if let Err(e) = update_result_json_for_attempt(
                 &pool,
                 JobKind::Crawl,
@@ -77,3 +85,7 @@ pub(super) fn spawn_embed_progress_persister(
     });
     (tx, task)
 }
+
+#[cfg(test)]
+#[path = "progress_tests.rs"]
+mod tests;

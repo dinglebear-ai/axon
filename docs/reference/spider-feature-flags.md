@@ -4,7 +4,7 @@
 > [`docs/reference/cargo-features.md`](cargo-features.md) — that file also covers runtime env-var gates.
 
 **Total feature entries tracked in this inventory: 80 (includes `basic` meta-feature)**
-**Flags enabled in Axon: 20 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
+**Flags enabled in Axon: 21 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
 
 ---
 
@@ -39,7 +39,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 
 ## Flags In Use
 
-### spider crate — 20 flags enabled
+### spider crate — 21 flags enabled
 
 | Flag | Category | Where Used in Source |
 |------|----------|----------------------|
@@ -231,7 +231,7 @@ Used in two files for HTML→Markdown content transformation:
 | Category | Total | Enabled |
 |----------|-------|---------|
 
-| Core | 26 | 11 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`, `warc`) — `glob` is NOT enabled |
+| Core | 26 | 12 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`, `adaptive_concurrency`, `warc`) — `glob` is NOT enabled |
 
 | Storage | 3 | 0 |
 | Caching | 6 | 2 (`cache_mem`, `etag_cache`) |
@@ -242,6 +242,6 @@ Used in two files for HTML→Markdown content transformation:
 | Spider Cloud | 1 | 0 |
 | Agent | 12 | 1 via spider_agent (`search_tavily`) |
 | Search | 5 | 0 |
-| **Total** | **80** | **20 spider + 2 spider_agent = 22** |
+| **Total** | **80** | **21 spider + 2 spider_agent = 23** |
 
 > `basic` is a meta-feature enabled on the `spider` crate that bundles core crawl behavior. The project uses `default-features = false` on all spider crates, so only explicitly listed features are compiled in.
