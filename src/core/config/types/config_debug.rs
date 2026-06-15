@@ -126,6 +126,7 @@ impl fmt::Debug for Config {
                 "codex_completion_concurrency",
                 &self.codex_completion_concurrency,
             )
+            .field("codex_load_user_config", &self.codex_load_user_config)
             .field("openai_base_url", &self.openai_base_url)
             .field("openai_api_key", &"[REDACTED]")
             .field("openai_model", &self.openai_model)

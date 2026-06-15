@@ -151,6 +151,7 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
         codex_home: Some(PathBuf::from("/home/example/.codex")),
         codex_model: "gpt-5.5".to_string(),
         codex_completion_concurrency: 2,
+        codex_load_user_config: true,
         ..Config::default()
     };
 
@@ -176,6 +177,7 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
     );
     assert_eq!(restored.codex_model, "gpt-5.5");
     assert_eq!(restored.codex_completion_concurrency, 2);
+    assert!(restored.codex_load_user_config);
 }
 
 #[test]

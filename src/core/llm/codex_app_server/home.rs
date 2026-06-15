@@ -10,6 +10,12 @@
 //! minimal `config.toml` that disables MCP servers, the built-in apps tool
 //! server, hooks, and OTLP. Auth via `OPENAI_API_KEY` in the environment also
 //! works when no `auth.json` is present.
+//!
+//! This module serves both backend paths: the default isolated path
+//! ([`prepare_codex_home`]) and the opt-in passthrough path
+//! ([`resolve_user_codex_home`], used when `codex_load_user_config` is set),
+//! which deliberately resolves the user's *real* `CODEX_HOME` so MCP servers,
+//! skills, and hooks load.
 
 use crate::core::llm::LlmBackendConfig;
 use std::collections::BTreeMap;
@@ -114,17 +120,37 @@ fn copy_auth(source: &Path, dest: &Path) -> Result<(), BoxError> {
     Ok(())
 }
 
+/// Resolve the user's real `CODEX_HOME` for the passthrough (load-user-config)
+/// spawn path: explicit `AXON_CODEX_HOME` override → `$CODEX_HOME` → `$HOME/.codex`.
+/// Returns `None` when no candidate exists (Codex falls back to its own default).
+pub(super) fn resolve_user_codex_home(
+    config: &LlmBackendConfig,
+) -> Result<Option<PathBuf>, BoxError> {
+    codex_source_home(config)
+}
+
 /// Resolve the source `CODEX_HOME` to copy `auth.json` from: explicit config
 /// override → `$CODEX_HOME` → `$HOME/.codex`. Returns `None` when no candidate
 /// directory exists (env-based auth is still possible).
 fn codex_source_home(config: &LlmBackendConfig) -> Result<Option<PathBuf>, BoxError> {
+    codex_source_home_from(config, non_empty_env("CODEX_HOME"), non_empty_env("HOME"))
+}
+
+/// Precedence core for [`codex_source_home`], with the `$CODEX_HOME` / `$HOME`
+/// environment values injected so the resolution order is unit-testable without
+/// mutating process-global env. Mirrors `apply_codex_env_allowlist_from`.
+fn codex_source_home_from(
+    config: &LlmBackendConfig,
+    codex_home_env: Option<String>,
+    home_env: Option<String>,
+) -> Result<Option<PathBuf>, BoxError> {
     if let Some(path) = &config.codex_home {
         return validate_source_home(path.clone()).map(Some);
     }
-    if let Some(path) = non_empty_env("CODEX_HOME").map(PathBuf::from) {
+    if let Some(path) = codex_home_env.map(PathBuf::from) {
         return existing_valid_source_home(path);
     }
-    if let Some(home) = non_empty_env("HOME").map(PathBuf::from) {
+    if let Some(home) = home_env.map(PathBuf::from) {
         return existing_valid_source_home(home.join(".codex"));
     }
     Ok(None)
