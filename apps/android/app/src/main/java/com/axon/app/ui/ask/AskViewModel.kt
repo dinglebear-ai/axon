@@ -95,6 +95,15 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
      */
     private var askJob: Job? = null
 
+    /**
+     * Attachment text of the most recent [ask] call. Attachments are intentionally
+     * never stored in [_turns]/history (they'd leak into later follow-ups), so we
+     * remember the latest one here to let [regenerateLast] re-run the same input.
+     * Regenerate always targets the most recent user message, so reusing the most
+     * recent attachment is correct.
+     */
+    private var lastAttachment: String? = null
+
     /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
     fun clearFollowUp() { _turns.value = emptyList() }
 
@@ -162,9 +171,26 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         val userIdx = items.indexOfLast { it is ChatItem.UserMsg }
         if (userIdx < 0) return
         val query = (items[userIdx] as ChatItem.UserMsg).text
-        _chatItems.value = items.subList(0, userIdx)
-        _turns.value = _turns.value.dropLast(1)
-        ask(query)
+
+        // Only drop the last stored turn if the answer being regenerated actually
+        // produced one. A turn is appended (appendTurn) only on a SUCCESSFUL ask
+        // (Done / truncation-fallback) — never when the last answer errored ("Error: …")
+        // or was stopped ("Stopped." from stopGeneration). If we dropLast() in those
+        // cases we'd wrongly evict the *previous* good turn and corrupt follow-up context.
+        val lastAnswer = items.drop(userIdx + 1).filterIsInstance<ChatItem.AxonMsg>().lastOrNull()
+        val producedTurn = lastAnswer != null &&
+            !lastAnswer.text.startsWith("Error:") &&
+            lastAnswer.text != "Stopped."
+        if (producedTurn) {
+            _turns.value = _turns.value.dropLast(1)
+        }
+
+        // toList() takes a defensive copy — subList returns a live view backed by the
+        // snapshot list, which pins the dropped tail in memory and is fragile to mutate.
+        _chatItems.value = items.subList(0, userIdx).toList()
+        // Re-ask with the original attachment so an attachment-backed question
+        // regenerates on the same input (attachments are never stored in turns/history).
+        ask(query, attachment = lastAttachment)
     }
 
     private fun appendOrUpdateActivity(phase: String, query: String) {
@@ -286,6 +312,9 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
 
     fun ask(query: String, attachment: String? = null) {
         if (query.isBlank()) return
+        // Remember the attachment of the question being asked so regenerateLast()
+        // can re-run the same input (attachment text is never stored in turns/history).
+        lastAttachment = attachment
         val mode = _mode.value
         // Cancel any prior in-flight stream BEFORE launching a new one. Without
         // this guard, viewModelScope.launch creates parallel coroutines and a

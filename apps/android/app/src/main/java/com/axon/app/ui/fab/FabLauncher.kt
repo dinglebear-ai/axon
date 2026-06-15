@@ -38,7 +38,13 @@ private sealed interface FabState {
 }
 
 /** Pixel clamp limits for the draggable + button. */
-private data class DragBounds(val minX: Float, val maxX: Float, val minY: Float, val maxY: Float)
+private data class DragBounds(val minX: Float, val maxX: Float, val minY: Float, val maxY: Float) {
+    init {
+        require(minX <= maxX && minY <= maxY) {
+            "DragBounds requires minX <= maxX and minY <= maxY, got ($minX, $maxX, $minY, $maxY)"
+        }
+    }
+}
 
 @Composable
 fun FabLauncher(
@@ -74,16 +80,18 @@ fun FabLauncher(
         }
         // Clamp the draggable offset so the + can't be flung off-screen. The
         // default anchor is bottom-end with padding(bottom = 158, end = 16).
-        val dragBounds = with(density) {
-            val fab = 46.dp.toPx()
-            val w = maxWidth.toPx()
-            val h = maxHeight.toPx()
-            DragBounds(
-                minX = -(w - fab - 16.dp.toPx()),
-                maxX = 16.dp.toPx(),
-                minY = -(h - fab - (158 + 56).dp.toPx()),
-                maxY = (158 - 50).dp.toPx(),
-            )
+        val dragBounds = remember(maxWidth, maxHeight, density) {
+            with(density) {
+                val fab = 46.dp.toPx()
+                val w = maxWidth.toPx()
+                val h = maxHeight.toPx()
+                DragBounds(
+                    minX = -(w - fab - 16.dp.toPx()),
+                    maxX = 16.dp.toPx(),
+                    minY = -(h - fab - (158 + 56).dp.toPx()),
+                    maxY = (158 - 50).dp.toPx(),
+                )
+            }
         }
 
         FabRing(

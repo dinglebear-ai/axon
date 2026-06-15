@@ -65,11 +65,33 @@ fun AskScreen(
                 val results = uris.map { uri -> withContext(Dispatchers.IO) { readPromptAttachment(context, uri) } }
                 val ok = results.mapNotNull { it.getOrNull() }
                 val failed = results.size - ok.size
+                val before = attachments.size
                 if (ok.isNotEmpty()) {
                     attachments = (attachments + ok).distinctBy { it.name }.take(MAX_ATTACHMENTS)
                 }
-                if (failed > 0) {
-                    Toast.makeText(context, "$failed file(s) couldn't be attached", Toast.LENGTH_SHORT).show()
+                // Files successfully read but dropped by dedupe (same display name)
+                // or the MAX_ATTACHMENTS cap — not counted in `failed`.
+                val accepted = (attachments.size - before).coerceAtLeast(0)
+                val skipped = ok.size - accepted
+
+                // Build one combined Toast so the user isn't spammed with two.
+                val readFailure = results.firstOrNull { it.isFailure }?.exceptionOrNull()?.message
+                val failMsg = when {
+                    failed == 1 -> readFailure ?: "1 file couldn't be attached"
+                    failed > 1 -> buildString {
+                        append("$failed files couldn't be attached")
+                        if (readFailure != null) append(" — $readFailure")
+                    }
+                    else -> null
+                }
+                val skipMsg = if (skipped > 0) {
+                    "Some files were skipped (duplicate name or $MAX_ATTACHMENTS-file limit)."
+                } else {
+                    null
+                }
+                val message = listOfNotNull(failMsg, skipMsg).joinToString("\n").ifBlank { null }
+                if (message != null) {
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -77,8 +99,7 @@ fun AskScreen(
     val listState = rememberLazyListState()
     val reveal = rememberRevealState()
     val lastAxonIdx = chatItems.indexOfLast { it is ChatItem.AxonMsg }
-    // True when the last item is visible — gates stream-follow so we never yank a
-    // user who has scrolled up, and drives the "jump to latest" pill.
+    // Length of the in-flight streamed answer; drives the follow-to-bottom effect below.
     val streamingLen = (chatItems.lastOrNull() as? ChatItem.AxonMsg)
         ?.takeIf { it.isStreaming }?.text?.length ?: 0
     // Sticky "parked at the bottom" flag: disengages only on a real upward drag,
@@ -326,13 +347,13 @@ private fun ChatItemContent(
 }
 
 /** 0 = user side, 1 = assistant side (answers, tool activity, op results). */
-private fun chatSenderSide(item: ChatItem): Int = if (item is ChatItem.UserMsg) 0 else 1
+internal fun chatSenderSide(item: ChatItem): Int = if (item is ChatItem.UserMsg) 0 else 1
 
 /** Max files attachable to a single prompt. */
 private const val MAX_ATTACHMENTS = 6
 
 /** Concatenate attached files into one labeled block inlined into the question (null when none). */
-private fun combinedAttachmentText(attachments: List<PromptAttachment>): String? =
+internal fun combinedAttachmentText(attachments: List<PromptAttachment>): String? =
     if (attachments.isEmpty()) {
         null
     } else {

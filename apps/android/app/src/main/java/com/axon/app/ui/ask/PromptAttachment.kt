@@ -11,7 +11,11 @@ internal data class PromptAttachment(
     val content: String,
     val truncated: Boolean,
     val sizeBytes: Long,
-)
+) {
+    init {
+        require(sizeBytes >= 0) { "sizeBytes must be >= 0" }
+    }
+}
 
 private const val MAX_ATTACH_BYTES = 512 * 1024
 private const val MAX_ATTACH_CHARS = 16_000
