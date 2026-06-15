@@ -1,5 +1,7 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ReactNode } from "react";
 
+import { isTauriRuntime } from "@/lib/invoke";
 import { arrField, isRecord, numField, strField } from "@/lib/payload";
 
 const LIST_LIMIT = 18;
@@ -306,7 +308,13 @@ export function imagePreviewSrc(path: string | undefined): string | undefined {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path) || path.startsWith("data:image/")) return path;
   if (!/\.(png|jpe?g|webp|gif|avif)$/i.test(path)) return undefined;
-  return path.startsWith("/") ? `file://${path}` : path;
+  if (!path.startsWith("/")) return path;
+  // Local absolute path. In Tauri, route through the asset protocol so the
+  // WebView's CSP (img-src ... asset:) allows it — a raw file:// URL is not
+  // covered and silently fails on WebKitGTK/WebView2. Outside Tauri (vite dev /
+  // fixture route) convertFileSrc is unavailable and the path isn't a real local
+  // file the browser can read, so fall back to the raw path unchanged.
+  return isTauriRuntime ? convertFileSrc(path) : path;
 }
 
 export function shortId(id: string | undefined): string | undefined {
