@@ -2,7 +2,15 @@ package com.axon.app.ui.nav
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,60 +18,40 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Construction
-import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.FlightTakeoff
-import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.Menu
-import androidx.compose.material.icons.rounded.MonitorHeart
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Storage
-import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.rounded.TaskAlt
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.axon.app.ui.ask.AskScreen
-import com.axon.app.ui.common.AuroraStatusDot
-import com.axon.app.ui.common.DotState
-import com.axon.app.ui.common.Resource
-import com.axon.app.ui.common.humanizeJsonFragmentText
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.jobs.JobsScreen
 import com.axon.app.ui.knowledge.KnowledgeScreen
 import com.axon.app.ui.knowledge.KnowledgeTab
 import com.axon.app.ui.management.ManagementDrawerContent
-import com.axon.app.ui.management.ManagementViewModel
 import com.axon.app.ui.sessions.SessionsDrawerContent
 import com.axon.app.ui.settings.SettingsScreen
 import com.axon.app.ui.status.TopChromeStatus
 import com.axon.app.ui.setup.SetupDrawerContent
-import com.axon.app.ui.setup.SetupViewModel
 import com.axon.app.ui.theme.AxonTheme
-import com.axon.app.ui.theme.tint
 
 sealed interface ShellOverlay {
     val title: String
@@ -93,11 +81,8 @@ enum class ShellCommand(val title: String, val endpoint: String, val summary: St
     Debug("Debug", "debug", "env + paths + versions"),
 }
 
-private data class SidebarItem(
-    val label: String,
-    val value: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-)
+/** Sentinel for the default "Ask" home page (no active drawer section). */
+private data object ShellHome
 
 @Composable
 fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
@@ -159,139 +144,92 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             AxonTopBar(
                 title = activeOverlay?.title ?: activePage?.title() ?: "Ask",
+                overlayActive = activeOverlay != null,
                 sidebarOpen = sidebarOpen,
                 onToggleSidebar = { sidebarOpen = !sidebarOpen },
+                onCloseOverlay = { activeOverlay = null },
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault.copy(alpha = 0.32f)))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(0.dp))) {
-                    val overlay = activeOverlay
-                    if (overlay == null) {
-                        ShellPageContent(
-                            page = activePage,
+                // Fade + gentle rise whenever the visible surface changes — page
+                // switches and overlay open/close stop being a hard cut.
+                AnimatedContent(
+                    targetState = activeOverlay ?: activePage ?: ShellHome,
+                    transitionSpec = {
+                        val enter = fadeIn(tween(durationMillis = 220, delayMillis = 24)) +
+                            slideInVertically(tween(durationMillis = 300)) { full -> full / 18 }
+                        val exit = fadeOut(tween(durationMillis = 150))
+                        enter togetherWith exit
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "shell-content",
+                ) { target ->
+                    when (target) {
+                        is ShellOverlay -> ShellOverlayContent(
+                            overlay = target,
+                            navController = navController,
+                        )
+                        is DrawerSection -> ShellPageContent(
+                            page = target,
                             navController = navController,
                             onOpenOverlay = ::openOverlay,
                         )
-                    } else {
-                        ShellOverlayContent(
-                            overlay = overlay,
+                        else -> ShellPageContent(
+                            page = null,
                             navController = navController,
-                            onBack = { activeOverlay = null },
-                            onHome = {
-                                activeOverlay = null
-                                activePage = null
-                            },
+                            onOpenOverlay = ::openOverlay,
                         )
                     }
                 }
-                if (sidebarOpen) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF040A0E).copy(alpha = 0.50f))
-                            .clickable(remember { MutableInteractionSource() }, indication = null) {
-                                sidebarOpen = false
-                            },
-                    )
-                    AxonSidebarSheet(
-                        items = sidebarItems,
-                        selected = selectedValue(),
-                        onSelect = ::selectSidebarValue,
-                    )
-                }
+                ShellSidebarOverlay(
+                    open = sidebarOpen,
+                    items = sidebarItems,
+                    selected = selectedValue(),
+                    onSelect = ::selectSidebarValue,
+                    onScrimClick = { sidebarOpen = false },
+                )
             }
         }
     }
 }
 
+/**
+ * Scrim + sidebar sheet that springs in from the left edge. Stays composed
+ * through the close animation (until progress fully settles to 0) so dismissal
+ * glides out instead of vanishing.
+ */
 @Composable
-private fun AxonSidebarSheet(
+private fun BoxScope.ShellSidebarOverlay(
+    open: Boolean,
     items: List<SidebarItem>,
     selected: String,
     onSelect: (String) -> Unit,
+    onScrimClick: () -> Unit,
 ) {
-    val colors = AxonTheme.colors
-    Column(
-        modifier = Modifier
-            .width(196.dp)
-            .fillMaxHeight()
-            .background(colors.panelStrong)
-            .border(width = 1.dp, color = colors.borderDefault)
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            AxonMarkGlyph(Modifier.size(24.dp))
-            Text(
-                "Axon",
-                color = colors.textPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.ExtraBold,
-                fontFamily = AxonTheme.fonts.display,
-            )
-        }
-        Spacer(Modifier.height(2.dp))
-        items.forEach { item ->
-            AxonSidebarRow(
-                item = item,
-                selected = item.value == selected,
-                onClick = { onSelect(item.value) },
-            )
-        }
-    }
-}
+    val progress by animateFloatAsState(
+        targetValue = if (open) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "sidebar-open",
+    )
+    if (!open && progress < 0.001f) return
 
-@Composable
-private fun AxonSidebarRow(
-    item: SidebarItem,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val colors = AxonTheme.colors
-    val shape = RoundedCornerShape(13.dp)
-    Row(
+    val slidePx = with(LocalDensity.current) { SidebarSheetWidth.toPx() }
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(46.dp)
-            .clip(shape)
-            .background(if (selected) colors.tint(colors.accentPrimary, 11, colors.panelStrong) else colors.control.copy(alpha = 0.32f), shape)
-            .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 28, colors.panelStrong) else colors.borderDefault.copy(alpha = 0.55f), shape)
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .height(22.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(if (selected) colors.accentPrimary else colors.borderDefault.copy(alpha = 0.0f)),
-        )
-        Icon(
-            imageVector = item.icon,
-            contentDescription = item.label,
-            tint = if (selected) colors.accentStrong else colors.textMuted,
-            modifier = Modifier.size(18.dp),
-        )
-        Text(
-            text = item.label,
-            color = if (selected) colors.textPrimary else colors.textMuted,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = AxonTheme.fonts.body,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-    }
+            .fillMaxSize()
+            .graphicsLayer { alpha = progress }
+            .background(Color(0xFF040A0E).copy(alpha = 0.50f))
+            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onScrimClick),
+    )
+    AxonSidebarSheet(
+        items = items,
+        selected = selected,
+        onSelect = onSelect,
+        modifier = Modifier.graphicsLayer { translationX = -slidePx * (1f - progress) },
+    )
 }
 
 @Composable
@@ -353,143 +291,89 @@ private fun DrawerSection.title(): String = when (this) {
 private fun ShellOverlayContent(
     overlay: ShellOverlay,
     navController: NavController,
-    onBack: () -> Unit,
-    onHome: () -> Unit,
 ) {
     val colors = AxonTheme.colors
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.pageBg),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .background(colors.panelMedium)
-                .border(1.dp, colors.borderDefault)
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "Back",
-                tint = colors.textMuted.copy(alpha = 0.86f),
-                modifier = Modifier
-                    .size(25.dp)
-                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onBack)
-                    .padding(5.dp),
+        when (overlay) {
+            is ShellOverlay.Knowledge -> KnowledgeScreen(
+                initialTab = overlay.tab,
+                showChrome = false,
+                onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
             )
-            Text(
-                overlay.title,
-                color = colors.textPrimary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.ExtraBold,
-                fontFamily = AxonTheme.fonts.display,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                Icons.Rounded.Close,
-                contentDescription = "Close",
-                tint = colors.textMuted,
-                modifier = Modifier
-                    .size(25.dp)
-                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onHome)
-                    .padding(5.dp),
-            )
-        }
-        Box(modifier = Modifier.fillMaxSize()) {
-            when (overlay) {
-                is ShellOverlay.Knowledge -> KnowledgeScreen(
-                    initialTab = overlay.tab,
-                    showChrome = false,
-                    onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
-                )
-                ShellOverlay.Settings -> SettingsScreen()
-                is ShellOverlay.Command -> ShellCommandReport(command = overlay.command)
-            }
+            ShellOverlay.Settings -> SettingsScreen()
+            is ShellOverlay.Command -> ShellCommandReport(command = overlay.command)
         }
     }
 }
 
-
+/**
+ * Single shell header. On a page/home it shows the menu + brand + live status;
+ * inside an overlay it morphs into a focused back/title/close bar — so an
+ * overlay no longer stacks a second redundant header beneath this one.
+ */
 @Composable
 private fun AxonTopBar(
     title: String,
+    overlayActive: Boolean,
     sidebarOpen: Boolean,
     onToggleSidebar: () -> Unit,
+    onCloseOverlay: () -> Unit,
 ) {
     val colors = AxonTheme.colors
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(52.dp)
             .background(colors.navBg)
-            .padding(start = 13.dp, end = 11.dp),
+            .padding(horizontal = 8.dp),
     ) {
+        // Sidebar toggle + brand — present on every screen, overlays included.
         Row(
             modifier = Modifier.align(Alignment.CenterStart),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                Icons.Rounded.Menu,
-                contentDescription = if (sidebarOpen) "Collapse sidebar" else "Open sidebar",
-                tint = colors.textMuted,
+            Box(
                 modifier = Modifier
-                    .size(25.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onToggleSidebar)
-                    .padding(5.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text("Axon", color = colors.textPrimary.copy(alpha = 0.88f), fontSize = 13.2.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display)
-            Spacer(Modifier.width(8.dp))
-            AuroraStatusDot(DotState.Done, size = 5.dp)
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .pressScale(onClick = onToggleSidebar)
+                    .semantics { contentDescription = if (sidebarOpen) "Collapse sidebar" else "Open sidebar" }
+                    .padding(7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                AxonMarkGlyph(Modifier.fillMaxSize())
+            }
         }
         Text(
             title,
-            color = colors.textPrimary.copy(alpha = 0.90f),
-            fontSize = 13.2.sp,
+            color = colors.textPrimary.copy(alpha = 0.95f),
+            fontSize = 16.sp,
             fontWeight = FontWeight.ExtraBold,
             fontFamily = AxonTheme.fonts.display,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .align(Alignment.Center)
-                .widthIn(max = 180.dp),
+                .widthIn(max = 200.dp),
         )
-        TopChromeStatus(modifier = Modifier.align(Alignment.CenterEnd))
-    }
-}
-
-@Composable
-fun AxonMarkGlyph(modifier: Modifier = Modifier) {
-    val colors = AxonTheme.colors
-    Canvas(modifier = modifier) {
-        val cx = size.width / 2f
-        val nodeRadius = size.minDimension * 0.095f
-        val stroke = size.minDimension * 0.055f
-        val ys = listOf(
-            size.height * 0.26f,
-            size.height * 0.42f,
-            size.height * 0.58f,
-            size.height * 0.74f,
-        )
-        drawLine(colors.borderStrong, Offset(cx, ys[0] + nodeRadius), Offset(cx, ys[3] - nodeRadius), stroke, StrokeCap.Round)
-        drawLine(colors.borderStrong, Offset(cx, ys[0] - nodeRadius * 1.4f), Offset(cx - size.width * 0.24f, 0f), stroke, StrokeCap.Round)
-        drawLine(colors.borderStrong, Offset(cx, ys[0] - nodeRadius * 1.4f), Offset(cx, 0f), stroke, StrokeCap.Round)
-        drawLine(colors.borderStrong, Offset(cx, ys[0] - nodeRadius * 1.4f), Offset(cx + size.width * 0.24f, 0f), stroke, StrokeCap.Round)
-        drawLine(colors.accentStrong, Offset(cx, ys[3] + nodeRadius * 1.4f), Offset(cx - size.width * 0.24f, size.height), stroke, StrokeCap.Round)
-        drawLine(colors.accentStrong, Offset(cx, ys[3] + nodeRadius * 1.4f), Offset(cx, size.height), stroke, StrokeCap.Round)
-        drawLine(colors.accentStrong, Offset(cx, ys[3] + nodeRadius * 1.4f), Offset(cx + size.width * 0.24f, size.height), stroke, StrokeCap.Round)
-        val fills = listOf(colors.borderStrong, colors.accentDeep, colors.accentPrimary, colors.accentStrong)
-        ys.forEachIndexed { index, y ->
-            drawCircle(fills[index], nodeRadius, Offset(cx, y))
-            if (index < 3) {
-                drawCircle(colors.accentStrong, nodeRadius * 1.35f, Offset(cx, y), style = Stroke(width = stroke * 0.65f))
+        Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+            if (overlayActive) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = "Close",
+                    tint = colors.textMuted,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .pressScale(onClick = onCloseOverlay)
+                        .padding(8.dp),
+                )
+            } else {
+                TopChromeStatus()
             }
         }
     }

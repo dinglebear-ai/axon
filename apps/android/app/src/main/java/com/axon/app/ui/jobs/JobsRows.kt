@@ -36,11 +36,11 @@ import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
 @Composable
-internal fun JobDrillRow(job: JobUi) {
+internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier) {
     val colors = AxonTheme.colors
     val tone = jobTone(job.kind)
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 18.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -118,11 +118,11 @@ internal fun MoreJobsHint(remaining: Int) {
 }
 
 @Composable
-internal fun WatchDrillRow(watch: WatchUi) {
+internal fun WatchDrillRow(watch: WatchUi, modifier: Modifier = Modifier) {
     val colors = AxonTheme.colors
     val tone = if (watch.enabled) colors.accentPrimary else colors.textMuted
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(colors.control, RoundedCornerShape(12.dp))

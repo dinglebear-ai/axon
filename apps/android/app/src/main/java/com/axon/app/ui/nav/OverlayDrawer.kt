@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 
 @Composable
@@ -100,7 +101,7 @@ private fun DrawerHeader(section: DrawerSection, onDismiss: () -> Unit) {
             tint = colors.textMuted,
             modifier = Modifier
                 .size(26.dp)
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
+                .pressScale(onClick = onDismiss)
                 .padding(5.dp),
         )
     }

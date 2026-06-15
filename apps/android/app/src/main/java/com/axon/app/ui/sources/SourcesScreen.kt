@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +23,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.SourceEntryUi
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
@@ -83,9 +85,15 @@ fun SourcesScreen(vm: SourcesViewModel = viewModel()) {
                     }
                 }
                 AuroraSeparator()
+                val reveal = rememberRevealState()
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    items(state.sources, key = { it.url }) { entry ->
-                        SourceRow(entry)
+                    itemsIndexed(state.sources, key = { _, it -> it.url }) { index, entry ->
+                        SourceRow(
+                            entry,
+                            modifier = Modifier
+                                .animateItem()
+                                .revealOnce(reveal, entry.url, index),
+                        )
                     }
                 }
             }
@@ -94,7 +102,7 @@ fun SourcesScreen(vm: SourcesViewModel = viewModel()) {
 }
 
 @Composable
-private fun SourceRow(entry: SourceEntryUi) {
+private fun SourceRow(entry: SourceEntryUi, modifier: Modifier = Modifier) {
     val uriHandler = LocalUriHandler.current
     val domain = runCatching {
         java.net.URI(entry.url).host?.removePrefix("www.") ?: entry.url
@@ -102,6 +110,7 @@ private fun SourceRow(entry: SourceEntryUi) {
 
     AuroraItem(
         title = entry.url,
+        modifier = modifier,
         description = domain,
         trailingContent = {
             Text(

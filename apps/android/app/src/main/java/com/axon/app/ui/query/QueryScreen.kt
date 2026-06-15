@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +27,8 @@ import com.axon.app.data.repository.QueryHitUi
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
 import tv.tootie.aurora.components.AuroraPromptInput
@@ -59,12 +61,18 @@ fun QueryScreen(vm: QueryViewModel = viewModel()) {
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
                 } else {
+                    val reveal = rememberRevealState()
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        items(state.hits, key = { h -> "${h.url}#${h.rank}" }) { hit ->
-                            QueryHitCard(hit)
+                        itemsIndexed(state.hits, key = { _, h -> "${h.url}#${h.rank}" }) { index, hit ->
+                            QueryHitCard(
+                                hit,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, "${hit.url}#${hit.rank}", index),
+                            )
                         }
                     }
                 }
@@ -104,11 +112,11 @@ fun QueryScreen(vm: QueryViewModel = viewModel()) {
 }
 
 @Composable
-private fun QueryHitCard(hit: QueryHitUi) {
+private fun QueryHitCard(hit: QueryHitUi, modifier: Modifier = Modifier) {
     val openDocument = LocalOpenDocument.current
     AuroraCard(
         onClick = { openDocument(hit.url) },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         variant = AuroraCardVariant.Elevated,
     ) {
         Column(

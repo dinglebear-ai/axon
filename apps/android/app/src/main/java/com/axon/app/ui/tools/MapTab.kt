@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import tv.tootie.aurora.components.AuroraItem
 import tv.tootie.aurora.components.AuroraStatCard
 import tv.tootie.aurora.components.AuroraSeparator
@@ -59,12 +61,18 @@ fun MapTab(vm: ToolsViewModel) {
                     )
                 }
                 AuroraSeparator()
+                val reveal = rememberRevealState()
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    items(s.result.urls, key = { it }) { url ->
-                        MapUrlRow(url = url)
+                    itemsIndexed(s.result.urls, key = { _, it -> it }) { index, url ->
+                        MapUrlRow(
+                            url = url,
+                            modifier = Modifier
+                                .animateItem()
+                                .revealOnce(reveal, url, index),
+                        )
                     }
                 }
             }
@@ -80,10 +88,11 @@ fun MapTab(vm: ToolsViewModel) {
 }
 
 @Composable
-private fun MapUrlRow(url: String) {
+private fun MapUrlRow(url: String, modifier: Modifier = Modifier) {
     val uriHandler = LocalUriHandler.current
     AuroraItem(
         title = url,
+        modifier = modifier,
         onClick = {
             val scheme = Uri.parse(url).scheme
             if (scheme == "https" || scheme == "http") {

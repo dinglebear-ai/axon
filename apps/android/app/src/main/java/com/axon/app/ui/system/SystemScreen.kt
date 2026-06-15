@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
@@ -32,6 +32,8 @@ import com.axon.app.ui.common.HumanJsonRow
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
 import com.axon.app.ui.common.humanRows
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraButtonVariant
@@ -67,12 +69,18 @@ fun SystemScreen(vm: SystemViewModel = viewModel()) {
             is Resource.Error -> ErrorContent(message = s.message, onRetry = { vm.refresh() })
             is Resource.Ready -> {
                 val rows = remember(s.value) { s.value.humanRows() }
+                val reveal = rememberRevealState()
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    items(rows, key = { "${it.depth}-${it.label}-${it.value}" }) { row ->
-                        DoctorRow(row)
+                    itemsIndexed(rows, key = { _, it -> "${it.depth}-${it.label}-${it.value}" }) { index, row ->
+                        DoctorRow(
+                            row,
+                            modifier = Modifier
+                                .animateItem()
+                                .revealOnce(reveal, "${row.depth}-${row.label}-${row.value}", index),
+                        )
                     }
                 }
             }
@@ -81,10 +89,10 @@ fun SystemScreen(vm: SystemViewModel = viewModel()) {
 }
 
 @Composable
-private fun DoctorRow(row: HumanJsonRow) {
+private fun DoctorRow(row: HumanJsonRow, modifier: Modifier = Modifier) {
     val colors = AxonTheme.colors
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(11.dp))
             .background(colors.control.copy(alpha = 0.6f))
