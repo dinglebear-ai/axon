@@ -122,6 +122,50 @@ fn substantial_top_of_file_kept_as_prose() {
     );
 }
 
+// ── oversized residual gap → split into bounded prose chunks ──────────
+
+#[test]
+fn oversized_residual_gap_is_split_under_cap() {
+    // A large non-declaration span between captured declarations (here a big
+    // top-level object-literal const, which the TS arrow rules do NOT capture)
+    // must be split into multiple bounded prose chunks — never emitted as one
+    // oversized chunk that blows past MAX_CODE_CHUNK_CHARS and dilutes retrieval.
+    let big = (0..240)
+        .map(|i| format!("  key{i}: \"value {i} with a bit of padding text to add length\","))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let src = format!(
+        "export function keep(): number {{\n  return 1;\n}}\n\nconst BIG = {{\n{big}\n}};\n"
+    );
+    let chunks = chunk_code_chunks(&src, "ts").unwrap();
+
+    // Every chunk (declaration or prose) stays within the cap.
+    for c in &chunks {
+        assert!(
+            c.text.chars().count() <= 2000,
+            "chunk exceeds cap ({} chars): {:?}",
+            c.text.chars().count(),
+            &c.text[..c.text.len().min(60)],
+        );
+    }
+    // The big const span is too large for one chunk → it produced multiple
+    // symbol-less prose chunks.
+    let prose = chunks
+        .iter()
+        .filter(|c| c.symbol.is_none() && c.source == ChunkSource::Prose)
+        .count();
+    assert!(
+        prose >= 2,
+        "oversized residual must split into >=2 prose chunks, got {prose}: {:?}",
+        chunks
+            .iter()
+            .map(|c| c.text.chars().count())
+            .collect::<Vec<_>>(),
+    );
+    // The captured declaration is still present.
+    assert!(chunks.iter().any(|c| c.symbol_name() == Some("keep")));
+}
+
 // ── barrel file (only re-exports) → non-empty PROSE fallback ──────────
 
 #[test]

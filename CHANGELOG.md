@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now fixed: real React components capture as Functions and no statement-level
   node leaks in as a method. Method/method-signature query rules are additionally
   scoped to `class_body` / `interface_body` as defense-in-depth.
+- **Bounded residual prose chunks to the chunk cap.** A large non-declaration
+  span between captured declarations (a big top-level object/array const, a test
+  file's `describe(...)` blocks) was emitted by the residual sweep as one
+  unbounded prose chunk (observed up to ~7 KB), producing coarse, low-quality
+  retrieval units. Oversized residual gaps now split at line boundaries (with
+  overlap) through the same `MAX_CODE_CHUNK_CHARS`-bounded splitter the code path
+  uses, so no chunk — declaration, prose-fallback, or residual — exceeds the cap.
 
 ## [5.12.0] - 2026-06-14
 
