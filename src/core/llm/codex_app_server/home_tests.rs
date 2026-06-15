@@ -213,7 +213,7 @@ fn resolve_user_codex_home_honors_existing_override() {
 #[test]
 fn resolve_user_codex_home_errors_on_missing_override() {
     let cfg = LlmBackendConfig {
-        codex_home: Some(std::path::PathBuf::from("/nonexistent/axon-codex-home-xyz")),
+        codex_home: Some(PathBuf::from("/nonexistent/axon-codex-home-xyz")),
         ..LlmBackendConfig::default()
     };
     assert!(resolve_user_codex_home(&cfg).is_err());
