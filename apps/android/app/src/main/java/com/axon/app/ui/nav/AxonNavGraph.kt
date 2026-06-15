@@ -3,8 +3,6 @@ package com.axon.app.ui.nav
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -41,6 +39,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.axon.app.AxonApp
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.document.DocumentScreen
 import com.axon.app.ui.knowledge.SuggestScreen
 import com.axon.app.ui.operations.OperationMode
@@ -162,8 +161,8 @@ internal fun BackShell(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .size(26.dp)
+                    .pressScale(onClick = onBack)
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onBack)
                     .padding(5.dp),
             )
             Text(

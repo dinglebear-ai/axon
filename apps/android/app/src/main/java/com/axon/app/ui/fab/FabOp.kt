@@ -2,7 +2,6 @@ package com.axon.app.ui.fab
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ManageSearch
-import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -15,17 +14,17 @@ enum class FabOp(
 ) {
     Scrape(
         label       = "Scrape",
-        icon        = Icons.Rounded.ContentPaste,
+        icon        = Icons.Rounded.Article,
         placeholder = "https://",
     ),
     Research(
         label       = "Research",
-        icon        = Icons.Rounded.Science,
+        icon        = Icons.Rounded.Psychology,
         placeholder = "search query…",
     ),
     Extract(
         label       = "Extract",
-        icon        = Icons.Rounded.FilterAlt,
+        icon        = Icons.Rounded.DataObject,
         placeholder = "https://",
     ),
     Embed(
@@ -46,17 +45,17 @@ enum class FabOp(
     ),
     Map(
         label       = "Map",
-        icon        = Icons.Rounded.Map,
+        icon        = Icons.Rounded.AccountTree,
         placeholder = "https://",
     ),
     Retrieve(
         label       = "Retrieve",
-        icon        = Icons.Rounded.Archive,
+        icon        = Icons.Rounded.Unarchive,
         placeholder = "https://",
     ),
     Summarize(
         label       = "Summarize",
-        icon        = Icons.AutoMirrored.Rounded.Notes,
+        icon        = Icons.Rounded.Summarize,
         placeholder = "https://",
     ),
     Crawl(
@@ -67,7 +66,7 @@ enum class FabOp(
     ),
     Ingest(
         label       = "Ingest",
-        icon        = Icons.Rounded.Download,
+        icon        = Icons.Rounded.CloudDownload,
         isAsync     = true,
         placeholder = "URL or github/user/repo…",
     ),

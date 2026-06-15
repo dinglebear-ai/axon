@@ -2,8 +2,6 @@ package com.axon.app.ui.knowledge.sections
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -30,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +45,9 @@ import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.common.pressScale
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.knowledge.KnowledgeResultRow
 import com.axon.app.ui.knowledge.KnowledgeViewModel
 import com.axon.app.ui.nav.LocalOpenDocument
@@ -102,17 +102,21 @@ fun SuggestSection(vm: KnowledgeViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {
+                    val reveal = rememberRevealState()
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth(0.84f).widthIn(max = 350.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        items(hits, key = { it.url }) { hit ->
+                        itemsIndexed(hits, key = { _, it -> it.url }) { index, hit ->
                             KnowledgeResultRow(
                                 icon = Icons.Rounded.AutoAwesome,
                                 title = hit.url,
                                 detail = hit.reason ?: "Suggested source gap",
                                 metric = "suggest",
                                 onClick = { openDoc(hit.url) },
+                                modifier = Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, hit.url, index),
                             )
                         }
                     }
@@ -173,13 +177,9 @@ private fun CompactSuggestInput(
         Box(
             modifier = Modifier
                 .size(26.dp)
+                .pressScale(onClick = onSend)
                 .clip(RoundedCornerShape(8.dp))
-                .background(if (value.isNotBlank()) colors.accentPrimary else colors.tint(colors.accentPrimary, 20, colors.control))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onSend,
-                ),
+                .background(if (value.isNotBlank()) colors.accentPrimary else colors.tint(colors.accentPrimary, 20, colors.control)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

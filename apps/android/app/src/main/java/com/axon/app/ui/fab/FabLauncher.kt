@@ -1,10 +1,17 @@
 package com.axon.app.ui.fab
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -13,11 +20,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import kotlin.math.roundToInt
 
@@ -25,6 +35,15 @@ private sealed interface FabState {
     data object Idle  : FabState
     data object Ring  : FabState
     data class Input(val op: FabOp) : FabState
+}
+
+/** Pixel clamp limits for the draggable + button. */
+private data class DragBounds(val minX: Float, val maxX: Float, val minY: Float, val maxY: Float) {
+    init {
+        require(minX <= maxX && minY <= maxY) {
+            "DragBounds requires minX <= maxX and minY <= maxY, got ($minX, $maxX, $minY, $maxY)"
+        }
+    }
 }
 
 @Composable
@@ -35,6 +54,9 @@ fun FabLauncher(
 ) {
     var state by remember { mutableStateOf<FabState>(FabState.Idle) }
     var fabCenter by remember { mutableStateOf(IntOffset.Zero) }
+    // User-draggable offset from the default anchor, so the + can be moved out of
+    // the way of whatever is on screen.
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
     val colors = AxonTheme.colors
 
     BackHandler(enabled = state !is FabState.Idle) {
@@ -53,6 +75,26 @@ fun FabLauncher(
                 IntOffset(
                     x = (maxWidth / 2).roundToPx(),
                     y = (maxHeight * 0.44f).roundToPx(),
+                )
+            }
+        }
+        // Clamp the draggable offset so the + can't be flung off-screen. The
+        // default anchor is bottom-end with padding(bottom = 158, end = 16).
+        val dragBounds = remember(maxWidth, maxHeight, density) {
+            with(density) {
+                val fab = 46.dp.toPx()
+                val w = maxWidth.toPx()
+                val h = maxHeight.toPx()
+                // Clamp the leftward/upward spans to >= 0 so a degenerate (zero/short)
+                // early-layout measure can't produce minX > maxX and trip DragBounds'
+                // require. On any real screen the spans are large and positive.
+                val spanX = (w - fab - 16.dp.toPx()).coerceAtLeast(0f)
+                val spanY = (h - fab - (158 + 56).dp.toPx()).coerceAtLeast(0f)
+                DragBounds(
+                    minX = -spanX,
+                    maxX = 16.dp.toPx(),
+                    minY = -spanY,
+                    maxY = (158 - 50).dp.toPx(),
                 )
             }
         }
@@ -75,11 +117,27 @@ fun FabLauncher(
             )
         }
 
-        if (state is FabState.Idle && !imeVisible) {
+        // The + recedes as the ring blooms from its centre, and springs back in
+        // when the ring closes — the two motions read as one gesture.
+        AnimatedVisibility(
+            visible = state is FabState.Idle && !imeVisible,
+            enter = fadeIn(tween(durationMillis = 180)) +
+                scaleIn(
+                    initialScale = 0.6f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                ),
+            exit = fadeOut(tween(durationMillis = 110)) +
+                scaleOut(targetScale = 0.6f, animationSpec = tween(durationMillis = 130)),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 158.dp, end = 16.dp),
+        ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 88.dp, end = 16.dp)
+                    .offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
                     .size(46.dp)
                     .onGloballyPositioned { coords ->
                         val pos = coords.positionInWindow()
@@ -88,11 +146,18 @@ fun FabLauncher(
                             y = (pos.y + coords.size.height / 2).roundToInt(),
                         )
                     }
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, drag ->
+                            change.consume()
+                            dragOffset = Offset(
+                                (dragOffset.x + drag.x).coerceIn(dragBounds.minX, dragBounds.maxX),
+                                (dragOffset.y + drag.y).coerceIn(dragBounds.minY, dragBounds.maxY),
+                            )
+                        }
+                    }
                     .background(colors.panelStrong.copy(alpha = 0.76f), RoundedCornerShape(15.dp))
                     .border(1.dp, colors.borderStrong.copy(alpha = 0.74f), RoundedCornerShape(15.dp))
-                    .clickable(remember { MutableInteractionSource() }, indication = null) {
-                        state = FabState.Ring
-                    },
+                    .pressScale { state = FabState.Ring },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

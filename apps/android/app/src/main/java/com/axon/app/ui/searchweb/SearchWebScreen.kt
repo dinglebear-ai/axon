@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +26,8 @@ import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.nav.LocalOpenDocument
 import tv.tootie.aurora.components.AuroraCallout
 import tv.tootie.aurora.components.AuroraCalloutVariant
@@ -87,14 +89,18 @@ fun SearchWebScreen(vm: SearchWebViewModel = viewModel()) {
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
+                    val reveal = rememberRevealState()
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        items(result.results, key = { it.url }) { hit ->
+                        itemsIndexed(result.results, key = { _, it -> it.url }) { index, hit ->
                             AuroraCard(
                                 onClick = { openDoc(hit.url) },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, hit.url, index)
+                                    .fillMaxWidth(),
                                 variant = AuroraCardVariant.Outlined,
                             ) {
                                 Column(

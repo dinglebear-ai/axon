@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +25,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.axon.app.data.remote.ResearchHit
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
+import com.axon.app.ui.common.rememberRevealState
+import com.axon.app.ui.common.revealOnce
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
@@ -67,6 +69,7 @@ fun ResearchTab(vm: ToolsViewModel) {
             )
 
             is ResearchUiState.Success -> {
+                val reveal = rememberRevealState()
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -112,8 +115,13 @@ fun ResearchTab(vm: ToolsViewModel) {
                                 )
                             }
                         }
-                        items(s.result.hits, key = { "${it.position}_${it.url}" }) { hit ->
-                            ResearchHitCard(hit)
+                        itemsIndexed(s.result.hits, key = { _, it -> "${it.position}_${it.url}" }) { index, hit ->
+                            ResearchHitCard(
+                                hit,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, "${hit.position}_${hit.url}", index),
+                            )
                         }
                     }
                 }
@@ -130,10 +138,11 @@ fun ResearchTab(vm: ToolsViewModel) {
 }
 
 @Composable
-private fun ResearchHitCard(hit: ResearchHit) {
+private fun ResearchHitCard(hit: ResearchHit, modifier: Modifier = Modifier) {
     val uriHandler = LocalUriHandler.current
     AuroraItem(
         title = hit.title,
+        modifier = modifier,
         description = hit.snippet?.take(120)?.let { if (it.length == 120) "$it…" else it },
         leadingContent = {
             Text(

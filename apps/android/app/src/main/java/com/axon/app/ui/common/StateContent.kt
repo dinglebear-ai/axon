@@ -1,5 +1,7 @@
 package com.axon.app.ui.common
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -88,11 +90,33 @@ fun <T> ResourceContent(
     idle: @Composable () -> Unit = { LoadingContent(loadingLabel, modifier) },
     ready: @Composable (T) -> Unit,
 ) {
-    when (state) {
-        Resource.Idle -> idle()
-        Resource.Loading -> LoadingContent(loadingLabel, modifier)
-        is Resource.Error -> ErrorContent(message = state.message, modifier = modifier, onRetry = onRetry)
-        is Resource.Ready -> ready(state.value)
+    // Crossfade on a stable *phase* token, not the state value: a Ready→Ready
+    // value refresh keeps the same token and renders through without re-animating
+    // (avoids flicker for callers that re-emit Ready). The branch content is read
+    // from the live `state` inside the lambda so updated values still flow through.
+    val phase = when (state) {
+        Resource.Idle -> 0
+        Resource.Loading -> 1
+        is Resource.Error -> 2
+        is Resource.Ready -> 3
+    }
+    Crossfade(targetState = phase, animationSpec = tween(durationMillis = 200), label = "ResourceContent") { token ->
+        when (token) {
+            0 -> idle()
+            1 -> LoadingContent(loadingLabel, modifier)
+            2 -> {
+                val s = state
+                if (s is Resource.Error) {
+                    ErrorContent(message = s.message, modifier = modifier, onRetry = onRetry)
+                }
+            }
+            else -> {
+                val s = state
+                if (s is Resource.Ready) {
+                    ready(s.value)
+                }
+            }
+        }
     }
 }
 

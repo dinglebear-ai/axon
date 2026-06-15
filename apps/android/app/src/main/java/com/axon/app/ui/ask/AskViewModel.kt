@@ -2,6 +2,7 @@ package com.axon.app.ui.ask
 
 import android.app.Application
 import android.os.SystemClock
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+private const val TAG = "AskViewModel"
 private const val FAB_STATUS_INITIAL_DELAY_MS = 1_800L
 private const val FAB_STATUS_POLL_INTERVAL_MS = 2_500L
 private const val FAB_STATUS_MAX_ATTEMPTS = 6
@@ -95,8 +97,48 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
      */
     private var askJob: Job? = null
 
+    /**
+     * Attachment text of the most recent [ask] call. Attachments are intentionally
+     * never stored in [_turns]/history (they'd leak into later follow-ups), so we
+     * remember the latest one here to let [regenerateLast] re-run the same input.
+     * Regenerate always targets the most recent user message, so reusing the most
+     * recent attachment is correct.
+     */
+    private var lastAttachment: String? = null
+
+    /**
+     * Whether the most recent [ask] appended a follow-up turn. Set false at the
+     * start of every ask and true only where [appendTurn] runs (the Done and
+     * truncation-fallback paths). [regenerateLast] consults this instead of
+     * sniffing the answer text, so a partial-then-stopped answer (whose frozen
+     * text is neither "Error:" nor "Stopped.") doesn't fool it into evicting the
+     * previous good turn.
+     */
+    private var lastAskProducedTurn = false
+
     /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
     fun clearFollowUp() { _turns.value = emptyList() }
+
+    /**
+     * User-invoked stop: cancel the in-flight stream and freeze whatever partial
+     * answer is already on screen. The last flushed text lives in [_chatItems], so
+     * we just clear the streaming flag (cancelling the coroutine rethrows the
+     * CancellationException, skipping the truncation-fallback in [ask]).
+     */
+    fun stopGeneration() {
+        if (askJob?.isActive != true) return
+        askJob?.cancel()
+        askJob = null
+        val items = _chatItems.value.toMutableList()
+        val lastIdx = items.indexOfLast { it is ChatItem.AxonMsg }
+        if (lastIdx >= 0) {
+            val msg = items[lastIdx] as ChatItem.AxonMsg
+            items[lastIdx] = msg.copy(text = msg.text.ifBlank { "Stopped." }, isStreaming = false)
+            _chatItems.value = items
+        }
+        completeActivities()
+        _uiState.value = AskUiState.Idle
+    }
 
     fun setMode(mode: ConversationMode) {
         if (_mode.value == mode) return
@@ -122,11 +164,41 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         val items = _chatItems.value.toMutableList()
         val lastIdx = items.indexOfLast { it is ChatItem.AxonMsg }
         if (lastIdx >= 0) {
-            items[lastIdx] = ChatItem.AxonMsg(text, isStreaming)
+            // copy() keeps the original timestamp so it doesn't reset on each stream flush.
+            items[lastIdx] = (items[lastIdx] as ChatItem.AxonMsg).copy(text = text, isStreaming = isStreaming)
             _chatItems.value = items
         } else {
             _chatItems.value = items + ChatItem.AxonMsg(text, isStreaming)
         }
+    }
+
+    /**
+     * Re-runs the most recent user question, replacing its answer. Drops the old
+     * answer/activities and the stored turn, then [ask] re-appends the question
+     * and streams a fresh response.
+     */
+    fun regenerateLast() {
+        if (askJob?.isActive == true) return
+        val items = _chatItems.value
+        val userIdx = items.indexOfLast { it is ChatItem.UserMsg }
+        if (userIdx < 0) return
+        val query = (items[userIdx] as ChatItem.UserMsg).text
+
+        // Only drop the last stored turn if the answer being regenerated actually
+        // produced one. [lastAskProducedTurn] is true only where appendTurn ran
+        // (Done / truncation-fallback); it stays false for errored or stopped
+        // answers (including partial-then-stopped, which keeps non-blank text).
+        // Dropping in those cases would wrongly evict the *previous* good turn.
+        if (lastAskProducedTurn) {
+            _turns.value = _turns.value.dropLast(1)
+        }
+
+        // toList() takes a defensive copy — subList returns a live view backed by the
+        // snapshot list, which pins the dropped tail in memory and is fragile to mutate.
+        _chatItems.value = items.subList(0, userIdx).toList()
+        // Re-ask with the original attachment so an attachment-backed question
+        // regenerates on the same input (attachments are never stored in turns/history).
+        ask(query, attachment = lastAttachment)
     }
 
     private fun appendOrUpdateActivity(phase: String, query: String) {
@@ -181,9 +253,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     private fun pollCrawlOnce(jobId: String) {
         viewModelScope.launch {
             delay(FAB_STATUS_INITIAL_DELAY_MS)
+            var everSucceeded = false
             repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
                 val terminal = container.axonRepository.crawlStatus(jobId).fold(
                     onSuccess = { status ->
+                        everSucceeded = true
                         val readableStatus = status.status.replaceFirstChar { it.titlecase() }
                         val pages = status.pagesCrawled
                         updateInjection(jobId) { item ->
@@ -201,18 +275,36 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     onFailure = { false },
                 )
-                if (terminal || attempt == FAB_STATUS_MAX_ATTEMPTS - 1) return@launch
+                if (terminal) return@launch
+                if (attempt == FAB_STATUS_MAX_ATTEMPTS - 1) {
+                    finishStalePoll(jobId, everSucceeded)
+                    return@launch
+                }
                 delay(FAB_STATUS_POLL_INTERVAL_MS)
             }
+        }
+    }
+
+    /**
+     * After the poll loop gives up: if not a single status request ever
+     * succeeded, the chip would otherwise stay frozen on its initial status with
+     * no explanation — surface that the poller couldn't reach the status.
+     */
+    private fun finishStalePoll(jobId: String, everSucceeded: Boolean) {
+        if (everSucceeded) return
+        updateInjection(jobId) { item ->
+            item.copy(detail = "Couldn't reach job status — track it from Jobs.")
         }
     }
 
     private fun pollJobOnce(kind: JobFamily, jobId: String) {
         viewModelScope.launch {
             delay(FAB_STATUS_INITIAL_DELAY_MS)
+            var everSucceeded = false
             repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
                 val terminal = container.axonRepository.getJob(kind, jobId).fold(
                     onSuccess = { job ->
+                        everSucceeded = true
                         val readableStatus = job.status.replaceFirstChar { it.titlecase() }
                         updateInjection(jobId) { item ->
                             item.copy(
@@ -227,7 +319,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     onFailure = { false },
                 )
-                if (terminal || attempt == FAB_STATUS_MAX_ATTEMPTS - 1) return@launch
+                if (terminal) return@launch
+                if (attempt == FAB_STATUS_MAX_ATTEMPTS - 1) {
+                    finishStalePoll(jobId, everSucceeded)
+                    return@launch
+                }
                 delay(FAB_STATUS_POLL_INTERVAL_MS)
             }
         }
@@ -243,11 +339,15 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     submittedAt = System.currentTimeMillis(),
                 ),
             )
-        }
+        }.onFailure { Log.w(TAG, "Failed to record recent $kind job $jobId", it) }
     }
 
-    fun ask(query: String) {
+    fun ask(query: String, attachment: String? = null) {
         if (query.isBlank()) return
+        // Remember the attachment of the question being asked so regenerateLast()
+        // can re-run the same input (attachment text is never stored in turns/history).
+        lastAttachment = attachment
+        lastAskProducedTurn = false
         val mode = _mode.value
         // Cancel any prior in-flight stream BEFORE launching a new one. Without
         // this guard, viewModelScope.launch creates parallel coroutines and a
@@ -257,15 +357,26 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             appendItem(ChatItem.UserMsg(query))
             appendItem(ChatItem.AxonMsg("", isStreaming = true))
             _uiState.value = AskUiState.Loading
-            val collection = if (mode == ConversationMode.Ask) {
+            // An attached document is fed straight to the LLM via the chat path:
+            // RAG retrieval would embed the whole file as the query and reject it
+            // ("no candidates passed topical overlap"), so attachments bypass it.
+            val useRag = mode == ConversationMode.Ask && attachment.isNullOrBlank()
+            val collection = if (useRag) {
                 container.settingsRepository.settings.first().collection
             } else {
                 null
             }
 
             // Prepend prior turns into the wire query, but keep the raw `query` for UI/history
-            // so we don't nest prior context inside future turns.
-            val effective = buildFollowUpQuery(_turns.value, query)
+            // so we don't nest prior context inside future turns. An attachment's text is
+            // inlined into the current question only — never stored in turns/history, so it
+            // doesn't leak into later follow-ups.
+            val questionWithAttachment = if (!attachment.isNullOrBlank()) {
+                "Attached document:\n\"\"\"\n$attachment\n\"\"\"\n\nUsing the attached document above, answer:\n$query"
+            } else {
+                query
+            }
+            val effective = buildFollowUpQuery(_turns.value, questionWithAttachment)
 
             // Use StringBuilder to avoid O(n²) string concatenation across delta events.
             // Declared inside the launch block — concurrent ask() calls each get their own
@@ -283,7 +394,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             runCatching {
-                val stream = if (mode == ConversationMode.Ask) {
+                val stream = if (useRag) {
                     container.axonRepository.askStream(effective, collection = collection)
                 } else {
                     container.axonRepository.chatStream(effective)
@@ -291,7 +402,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                 stream.collect { event ->
                     when (event) {
                         is AskStreamEvent.Meta -> {
-                            if (mode == ConversationMode.Ask) appendOrUpdateActivity(event.phase, query)
+                            if (useRag) appendOrUpdateActivity(event.phase, query)
                         }
                         is AskStreamEvent.Delta -> {
                             accumulated.append(event.text)
@@ -319,6 +430,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                             completeActivities()
                             replaceLastAxonMsg(finalAnswer, isStreaming = false)
                             appendTurn(q = query, a = finalAnswer)
+                            lastAskProducedTurn = true
                         }
                         is AskStreamEvent.Error -> {
                             if (accumulated.isNotBlank()) flushStreaming(force = true)
@@ -356,6 +468,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     completeActivities()
                     replaceLastAxonMsg(finalAnswer, isStreaming = false)
                     appendTurn(q = query, a = finalAnswer)
+                    lastAskProducedTurn = true
                 } else {
                     _uiState.value = AskUiState.Error("No response received from server")
                     replaceLastAxonMsg("Error: No response received from server", isStreaming = false)

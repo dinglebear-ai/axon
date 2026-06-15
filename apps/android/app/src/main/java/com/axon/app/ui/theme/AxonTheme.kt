@@ -147,10 +147,10 @@ val AxonDisplayFont = FontFamily(
 )
 
 val AxonBodyFont = FontFamily(
-    Font(R.font.inter_regular, FontWeight.Normal),
-    Font(R.font.inter_medium, FontWeight.Medium),
-    Font(R.font.inter_semibold, FontWeight.SemiBold),
-    Font(R.font.inter_bold, FontWeight.Bold),
+    Font(R.font.noto_sans_regular, FontWeight.Normal),
+    Font(R.font.noto_sans_medium, FontWeight.Medium),
+    Font(R.font.noto_sans_semibold, FontWeight.SemiBold),
+    Font(R.font.noto_sans_bold, FontWeight.Bold),
 )
 
 val AxonMonoFont = FontFamily(
