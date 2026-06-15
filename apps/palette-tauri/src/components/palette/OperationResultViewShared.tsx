@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { arrField, isRecord, numField, strField } from "@/lib/payload";
+import { arrField, isRecord, numField, shortId, strField, titleCase } from "@/lib/payload";
+import { hostLabel } from "@/lib/url";
 
 const LIST_LIMIT = 18;
 
@@ -50,7 +52,7 @@ export function ResultRows({ rows, preferSnippet }: { rows: unknown[]; preferSni
 }
 
 export function UrlListView({ title, payload, keys }: { title: string; payload: Record<string, unknown>; keys: string[] }) {
-  const urls = firstArray(payload, keys).filter((item): item is string => typeof item === "string");
+  const urls = arrayByKeys(payload, keys).filter((item): item is string => typeof item === "string");
   const count = numField(payload, "count") ?? numField(payload, "total") ?? urls.length;
   return (
     <div className="output-body operation-view aurora-scrollbar">
@@ -87,7 +89,7 @@ export function JobRows({ rows, title = "Jobs" }: { rows: unknown[]; title?: str
             <article key={`${id ?? index}`} className="operation-row">
               <StatusDot status={status} />
               <div className="operation-row-main">
-                <div className="operation-row-title">{target ?? shortId(id) ?? `Job ${index + 1}`}</div>
+                <div className="operation-row-title">{target ?? (id ? shortId(id) : undefined) ?? `Job ${index + 1}`}</div>
                 {id ? <div className="operation-url">{id}</div> : null}
               </div>
               <span className={`operation-badge operation-badge-${toneForStatus(status)}`}>{status}</span>
@@ -204,7 +206,12 @@ export function StatusDot({ status }: { status: string }) {
   return <span className={`operation-dot operation-dot-${toneForStatus(status)}`} aria-hidden="true" />;
 }
 
-export function firstArray(payload: Record<string, unknown>, keys: string[]): unknown[] {
+// Returns the first non-empty array found among the given payload keys, in order.
+// Distinct from payload.ts's `firstArray(v)` (which scans values regardless of
+// key) — these views need key-priority lookup (e.g. prefer `results` over
+// `search_results`), so this stays a local shared helper rather than the canonical
+// one. Renamed from `firstArray` to avoid collision with the canonical export.
+export function arrayByKeys(payload: Record<string, unknown>, keys: string[]): unknown[] {
   for (const key of keys) {
     const value = arrField(payload, key);
     if (value.length > 0) return value;
@@ -214,14 +221,6 @@ export function firstArray(payload: Record<string, unknown>, keys: string[]): un
 
 export function isJobLifecycle(subcommand: string): boolean {
   return /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/.test(subcommand);
-}
-
-export function hostLabel(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url.split("/")[0] || url;
-  }
 }
 
 function emptyCopy(kind: EmptyKind): { title: string; body: string } {
@@ -302,20 +301,18 @@ function isEmptyBulletLine(line: string): boolean {
   return /^\s*$/.test(line) || /^\s*(?:[-+*]\s*|[•‣◦]\s*)$/.test(line);
 }
 
+// Resolve a screenshot path/URL to something the WebView can render. Remote
+// http(s) and inline data:image sources pass through. Local filesystem paths are
+// converted via Tauri's `convertFileSrc` (the `asset:` protocol the CSP allows),
+// not a raw `file://` URL — `file:` is excluded from `img-src`, so the old branch
+// only produced broken images and let payload-controlled paths build arbitrary
+// `file://` references (S-L2).
 export function imagePreviewSrc(path: string | undefined): string | undefined {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path) || path.startsWith("data:image/")) return path;
   if (!/\.(png|jpe?g|webp|gif|avif)$/i.test(path)) return undefined;
-  return path.startsWith("/") ? `file://${path}` : path;
-}
-
-export function shortId(id: string | undefined): string | undefined {
-  if (!id) return undefined;
-  return id.length > 14 ? `${id.slice(0, 8)}...${id.slice(-4)}` : id;
-}
-
-export function titleCase(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  if (!path.startsWith("/")) return path;
+  return convertFileSrc(path);
 }
 
 function labelize(value: string): string {

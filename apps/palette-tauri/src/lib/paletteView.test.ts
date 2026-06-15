@@ -8,6 +8,7 @@ import {
   actionHint,
   argumentFor,
   firstUrl,
+  hostLabel,
   parseCommand,
   validationMessage,
 } from "./paletteView";
@@ -72,6 +73,13 @@ describe("palette view parsing helpers", () => {
   it("validates required arguments and extracts pasted URLs", () => {
     expect(validationMessage(action("ask"), "")).not.toBe("");
     expect(firstUrl('read this: "https://example.com/docs".')).toBe("https://example.com/docs");
+  });
+
+  it("re-exports the canonical url helpers (H1)", () => {
+    // hostLabel/firstUrl now live in lib/url.ts; paletteView re-exports them so
+    // existing importers keep working.
+    expect(hostLabel("https://example.com:8080/docs")).toBe("example.com");
+    expect(firstUrl("none")).toBeNull();
   });
 
   it("exposes mock-aligned route metadata for browse rows", () => {

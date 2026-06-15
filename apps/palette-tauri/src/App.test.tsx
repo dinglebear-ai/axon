@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -105,5 +107,89 @@ describe("App local help", () => {
     expect(await screen.findByText("No matching action:")).toBeTruthy();
     expect(screen.getByText("nope")).toBeTruthy();
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
+  });
+});
+
+describe("App command palette accessibility + keyboard nav", () => {
+  afterEach(() => cleanup());
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      return undefined;
+    });
+  });
+
+  async function renderApp() {
+    render(<App />);
+    return await screen.findByRole("combobox");
+  }
+
+  // T-C1 — axe on the rendered command palette. On first mount the listbox is not
+  // shown, so the combobox is collapsed (aria-expanded=false) and carries no
+  // aria-controls/aria-activedescendant dangling IDREFs. Then open the listbox via
+  // ArrowDown and re-run axe so the expanded state (with real referenced ids) is
+  // also clean.
+  it("renders the input as a combobox with no axe violations", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    const input = await screen.findByRole("combobox");
+    expect(input).toHaveAttribute("aria-autocomplete", "list");
+    expect(input).toHaveAttribute("aria-expanded", "false");
+    expect(input).not.toHaveAttribute("aria-controls");
+    expect(await axe(container)).toHaveNoViolations();
+
+    input.focus();
+    await user.keyboard("{ArrowDown}");
+    await screen.findByRole("listbox", { name: "Actions" });
+    expect(input).toHaveAttribute("aria-expanded", "true");
+    expect(input).toHaveAttribute("aria-controls", "palette-action-list");
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // T-H1 — ArrowDown opens the listbox and tracks the active descendant.
+  it("opens the listbox on ArrowDown and exposes a role=listbox of options", async () => {
+    const user = userEvent.setup();
+    const input = await renderApp();
+    input.focus();
+    await user.keyboard("{ArrowDown}");
+
+    const listbox = await screen.findByRole("listbox", { name: "Actions" });
+    expect(listbox).toBeInTheDocument();
+    const options = screen.getAllByRole("option");
+    expect(options.length).toBeGreaterThan(0);
+    // The combobox points at one of the options as the active descendant.
+    const active = input.getAttribute("aria-activedescendant");
+    expect(active).toMatch(/^action-/);
+    expect(options.some((o) => o.id === active)).toBe(true);
+  });
+
+  // T-H1 — Enter on a partial (non-invoked) match for an arg-taking action enters
+  // argument mode rather than submitting. "scr" matches scrape by fuzzy search but
+  // is not the exact invoked subcommand, so Enter routes to enterActionMode and the
+  // switcher disclosure (which only renders in mode) appears. No REST submit fires.
+  it("enters argument mode on Enter for an action that needs an argument", async () => {
+    const user = userEvent.setup();
+    const input = await renderApp();
+    await user.type(input, "scr");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByRole("button", { name: /Switch from/ })).toBeInTheDocument();
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
+  });
+
+  // T-H1 — Escape backs out of argument mode rather than submitting.
+  it("clears argument mode on Escape", async () => {
+    const user = userEvent.setup();
+    const input = await renderApp();
+    await user.type(input, "scr");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("button", { name: /Switch from/ })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Switch from/ })).toBeNull(),
+    );
   });
 });

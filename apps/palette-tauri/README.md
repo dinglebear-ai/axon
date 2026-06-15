@@ -2,7 +2,7 @@
 
 Tauri v2 palette for the Axon HTTP API. The frontend uses React, Aurora registry components installed through the shadcn CLI, and an OpenAPI-generated TypeScript type layer.
 
-> **Note (M1):** OpenAPI types are generated into `src/lib/axon-api.d.ts` via `pnpm generate:api`.  Request execution is currently hand-coded in `src/lib/axonClient.ts`; a full migration to the generated request helpers is tracked in issue #177 (finding M1).
+> **Note (M1):** OpenAPI types are generated into `src/lib/axon-api.d.ts` via `pnpm generate:api`.  Request execution is currently hand-coded in `src/lib/axonClient.ts`; a full migration to the generated request helpers is tracked in issue #177 (finding M1).  Known state: the generated `axon-api.d.ts` is **not yet imported anywhere** — it serves only as a reference for the wire shapes hand-coded in `axonClient.ts`, and responses are read by **key-probing** untyped payloads rather than against the generated types. Closing #177 is what wires the generated types in.
 
 The desktop shell launches hidden, registers a global shortcut, and exposes a tray/menu entry for showing the palette, opening settings, and quitting. The main window is an undecorated transient palette that hides on Escape, close, and blur by default.
 
@@ -26,8 +26,18 @@ pnpm vite:build
 # Full CI-grade verification: frozen install + tests + typecheck + Vite build
 pnpm verify
 
-# Tauri dev server (requires a running axon instance or AXON_DEV_SERVER env var)
+# Tauri dev server (requires a running axon instance or AXON_DEV_SERVER env var).
+# With no reachable backend the shell launches but every action fails at request
+# time — for backend-free UI iteration use the fixture harness below instead.
 pnpm dev
+
+# Browser dev entry — runs the renderer in a plain browser via the dev/prod invoke
+# seam (src/lib/invoke.ts). The Vite proxy forwards /v1/* to AXON_DEV_SERVER.
+pnpm vite:dev
+
+# No-backend result-view harness: renders OperationResultFixture against
+# representative payloads at /?fixture=operation-results (no axon instance needed).
+pnpm fixture:operation-results
 
 # Tauri release build
 pnpm build
@@ -59,3 +69,11 @@ Aurora tokens/components are rooted in the installed registry output:
 - `src/components/aurora.css`
 - `src/components/ui/aurora/*`
 - `src/styles.css`
+
+Components come from the `@aurora` shadcn registry, configured in `components.json`
+(`"@aurora": "https://aurora.tootie.tv/r/{name}.json"`). Install or update a
+primitive through the shadcn CLI, e.g.:
+
+```bash
+pnpm dlx shadcn@latest add @aurora/button
+```

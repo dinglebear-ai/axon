@@ -1,11 +1,19 @@
-import * as React from "react"
+import type * as React from "react"
 
 export interface ScrollAreaProps extends React.HTMLAttributes<HTMLDivElement> {
   viewportClassName?: string
+  ref?: React.Ref<HTMLDivElement>
 }
 
-export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
-  ({ className, viewportClassName, style, children, ...props }, ref) => (
+export function ScrollArea({
+  className,
+  viewportClassName,
+  style,
+  children,
+  ref,
+  ...props
+}: ScrollAreaProps) {
+  return (
     <div
       ref={ref}
       className={["overflow-hidden rounded-[8px] border", className].filter(Boolean).join(" ")}
@@ -21,7 +29,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       </div>
     </div>
   )
-)
+}
 ScrollArea.displayName = "ScrollArea"
 
 export default ScrollArea

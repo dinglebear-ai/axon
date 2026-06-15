@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { Streamdown } from "streamdown";
+import { memo, useState } from "react";
 
-import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
+import { MarkdownBody } from "@/components/palette/MarkdownBody";
 
 // A read-only question→answer pair rendered with the ask bubble styling. Reused
-// by the live ask view and the side-by-side evaluate view.
-export function ConversationThread({
+// by the live ask view and the side-by-side evaluate view. Memoized so unrelated
+// App re-renders during a stream don't recompute the thread (P-M1).
+export const ConversationThread = memo(function ConversationThread({
   prompt,
   answer,
   assistantLabel = "Axon",
@@ -28,13 +28,7 @@ export function ConversationThread({
           </div>
         ) : null}
         <div className="ask-answer ask-answer-reader">
-          {answer ? (
-            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
-              {answer}
-            </Streamdown>
-          ) : (
-            <span className="ask-waiting">{waiting}</span>
-          )}
+          {answer ? <MarkdownBody>{answer}</MarkdownBody> : <span className="ask-waiting">{waiting}</span>}
         </div>
       </div>
     );
@@ -51,21 +45,15 @@ export function ConversationThread({
       <div className="ask-message ask-message-assistant">
         <span>{assistantLabel}</span>
         <div className="ask-answer">
-          {answer ? (
-            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
-              {answer}
-            </Streamdown>
-          ) : (
-            <span className="ask-waiting">{waiting}</span>
-          )}
+          {answer ? <MarkdownBody>{answer}</MarkdownBody> : <span className="ask-waiting">{waiting}</span>}
         </div>
       </div>
     </div>
   );
-}
+});
 
 // The full ask view: a conversation thread plus a follow-up compose box.
-export function AskConversation({
+export const AskConversation = memo(function AskConversation({
   prompt,
   answer,
   pending,
@@ -102,4 +90,4 @@ export function AskConversation({
       </form>
     </div>
   );
-}
+});
