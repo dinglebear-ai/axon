@@ -1,0 +1,34 @@
+dab6 build baseline — captured for axon_rust-dab6.2
+====================================================
+Captured: 2026-06-15
+Branch:   claude/aurora-split-web
+Commit:   (this commit — re-sync Aurora primitives from corrected registry; thin token override)
+Host:     dookie
+Toolchain: pnpm 11.5.0, vite 7.3.3, node (mise lts)
+
+PURPOSE
+-------
+This is the BASELINE captured BEFORE the dab6.3/.4 dedup work (migrating 30 raw
+<button>, 4 raw <input>, and 9 raw <kbd> onto the Aurora primitives and deleting
+the ~672 duplicated CSS selectors in styles.css). Compare against these numbers
+after that deletion to prove the win.
+
+State at capture: primitives re-synced from the corrected registry and aurora.css
+converted to a thin override over the vendored registry token set
+(aurora-registry.css). styles.css NOT yet touched (still carries the duplicate
+selectors — that is dab6.3/.4).
+
+MEASUREMENTS (pnpm vite:build, dist cleaned before each run)
+-----------------------------------------------------------
+dist CSS file:        dist/assets/index-<hash>.css
+dist CSS byte size:   159103 bytes  (159.10 kB; gzip 21.80 kB)   [deterministic across runs]
+
+vite build wall-clock (3 runs):  4.03s / 4.77s / 4.39s   (median ~4.39s)
+vite internal "built in":        3.02s / 3.54s / 3.65s   (median ~3.54s)
+
+VERIFY (all green at capture)
+-----------------------------
+pnpm install --frozen-lockfile : up to date
+pnpm test                      : 14 files, 94 tests PASS
+pnpm typecheck (tsc --noEmit)  : exit 0
+pnpm vite:build                : exit 0
