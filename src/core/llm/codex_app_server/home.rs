@@ -133,13 +133,24 @@ pub(super) fn resolve_user_codex_home(
 /// override → `$CODEX_HOME` → `$HOME/.codex`. Returns `None` when no candidate
 /// directory exists (env-based auth is still possible).
 fn codex_source_home(config: &LlmBackendConfig) -> Result<Option<PathBuf>, BoxError> {
+    codex_source_home_from(config, non_empty_env("CODEX_HOME"), non_empty_env("HOME"))
+}
+
+/// Precedence core for [`codex_source_home`], with the `$CODEX_HOME` / `$HOME`
+/// environment values injected so the resolution order is unit-testable without
+/// mutating process-global env. Mirrors `apply_codex_env_allowlist_from`.
+fn codex_source_home_from(
+    config: &LlmBackendConfig,
+    codex_home_env: Option<String>,
+    home_env: Option<String>,
+) -> Result<Option<PathBuf>, BoxError> {
     if let Some(path) = &config.codex_home {
         return validate_source_home(path.clone()).map(Some);
     }
-    if let Some(path) = non_empty_env("CODEX_HOME").map(PathBuf::from) {
+    if let Some(path) = codex_home_env.map(PathBuf::from) {
         return existing_valid_source_home(path);
     }
-    if let Some(home) = non_empty_env("HOME").map(PathBuf::from) {
+    if let Some(home) = home_env.map(PathBuf::from) {
         return existing_valid_source_home(home.join(".codex"));
     }
     Ok(None)

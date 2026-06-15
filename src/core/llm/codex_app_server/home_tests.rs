@@ -218,3 +218,62 @@ fn resolve_user_codex_home_errors_on_missing_override() {
     };
     assert!(resolve_user_codex_home(&cfg).is_err());
 }
+
+// Precedence: explicit config override beats both env tiers.
+#[test]
+fn codex_source_home_override_beats_env_tiers() {
+    let override_dir = tempfile::tempdir().unwrap();
+    let codex_env_dir = tempfile::tempdir().unwrap();
+    let home_env_dir = tempfile::tempdir().unwrap();
+    fs::create_dir(home_env_dir.path().join(".codex")).unwrap();
+    let cfg = LlmBackendConfig {
+        codex_home: Some(override_dir.path().to_path_buf()),
+        ..LlmBackendConfig::default()
+    };
+    let resolved = codex_source_home_from(
+        &cfg,
+        Some(codex_env_dir.path().display().to_string()),
+        Some(home_env_dir.path().display().to_string()),
+    )
+    .unwrap();
+    assert_eq!(resolved, Some(override_dir.path().to_path_buf()));
+}
+
+// Precedence: with no override, $CODEX_HOME wins over $HOME/.codex.
+#[test]
+fn codex_source_home_codex_home_env_beats_home() {
+    let codex_env_dir = tempfile::tempdir().unwrap();
+    let home_env_dir = tempfile::tempdir().unwrap();
+    fs::create_dir(home_env_dir.path().join(".codex")).unwrap();
+    let cfg = LlmBackendConfig::default();
+    let resolved = codex_source_home_from(
+        &cfg,
+        Some(codex_env_dir.path().display().to_string()),
+        Some(home_env_dir.path().display().to_string()),
+    )
+    .unwrap();
+    assert_eq!(resolved, Some(codex_env_dir.path().to_path_buf()));
+}
+
+// Precedence: falls through to $HOME/.codex when no override and no $CODEX_HOME.
+#[test]
+fn codex_source_home_falls_through_to_home_codex_dir() {
+    let home_env_dir = tempfile::tempdir().unwrap();
+    let codex_dir = home_env_dir.path().join(".codex");
+    fs::create_dir(&codex_dir).unwrap();
+    let cfg = LlmBackendConfig::default();
+    let resolved =
+        codex_source_home_from(&cfg, None, Some(home_env_dir.path().display().to_string()))
+            .unwrap();
+    assert_eq!(resolved, Some(codex_dir));
+}
+
+// A $CODEX_HOME pointing at a non-existent path is skipped (not an error), and
+// with nothing else resolvable the terminal result is None.
+#[test]
+fn codex_source_home_none_when_nothing_resolves() {
+    let cfg = LlmBackendConfig::default();
+    let resolved =
+        codex_source_home_from(&cfg, Some("/nonexistent/codex-home".to_string()), None).unwrap();
+    assert_eq!(resolved, None);
+}
