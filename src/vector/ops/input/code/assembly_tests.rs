@@ -166,6 +166,50 @@ fn oversized_residual_gap_is_split_under_cap() {
     assert!(chunks.iter().any(|c| c.symbol_name() == Some("keep")));
 }
 
+// ── container body content (struct fields + their docs) is not dropped ──
+
+#[test]
+fn struct_field_bodies_are_not_dropped() {
+    // A documented struct is a Container: only its header line is captured as a
+    // declaration chunk. The field block (and the field doc comments) is not a
+    // child leaf, so it must be recovered by the residual sweep rather than
+    // silently dropped — otherwise documented public API fields never get indexed.
+    let src = "\
+/// Connection settings.
+pub struct Config {
+    /// The hostname to connect to for the upstream service.
+    pub hostname: String,
+    /// The TCP port number on the upstream host.
+    pub port: u16,
+}
+
+fn unrelated() {
+    let _ = 1;
+}
+";
+    let chunks = chunk_code_chunks(src, "rs").unwrap();
+    // The struct is captured by name…
+    assert!(
+        chunks
+            .iter()
+            .any(|c| c.symbol_name() == Some("Config")
+                && c.symbol_kind() == Some(SymbolKind::Struct)),
+        "struct Config header must be captured: {:?}",
+        chunks
+            .iter()
+            .map(|c| (c.symbol_name(), &c.text))
+            .collect::<Vec<_>>(),
+    );
+    // …and the field bodies / doc comments appear in SOME chunk (not dropped).
+    for needle in ["hostname to connect", "TCP port number", "pub port: u16"] {
+        assert!(
+            chunks.iter().any(|c| c.text.contains(needle)),
+            "container body content {needle:?} was dropped; chunks: {:?}",
+            chunks.iter().map(|c| c.text.trim()).collect::<Vec<_>>(),
+        );
+    }
+}
+
 // ── barrel file (only re-exports) → non-empty PROSE fallback ──────────
 
 #[test]
