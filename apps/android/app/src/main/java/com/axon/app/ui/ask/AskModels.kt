@@ -51,6 +51,12 @@ sealed interface AskUiState {
 }
 
 sealed interface ChatItem {
+    // NOTE: `timestamp` on UserMsg/AxonMsg is display-only presentation metadata
+    // (rendered as the message time). Item identity and list keying go through
+    // [stableChatItemKey], NOT structural equality, so the wall-clock default is
+    // safe — do not use `==`/`hashCode`/remember-keys on these by value, or the
+    // clock will leak into identity. It is a constructor property (rather than a
+    // body val) so `copy()` preserves it across streaming flushes.
     data class UserMsg(
         val text: String,
         val timestamp: Long = System.currentTimeMillis(),
