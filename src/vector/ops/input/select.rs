@@ -50,10 +50,6 @@ const BINARY_EXTENSIONS: &[&str] = &[
     "db", "sqlite", "sqlite3",
 ];
 
-/// Extensions for which tree-sitter AST-aware chunking is available. Must stay
-/// in sync with `super::code::language_for_extension`.
-const CODE_EXTENSIONS: &[&str] = &["rs", "py", "js", "jsx", "ts", "tsx", "go", "sh", "bash"];
-
 /// Returns true if a directory with this name should be pruned (not descended
 /// into) during a recursive embed walk. Comparison is case-sensitive — these
 /// names are conventionally lowercase on every platform we target.
@@ -70,10 +66,13 @@ pub fn is_binary_ext(ext: &str) -> bool {
 
 /// Returns true if the file at `path` should chunk through tree-sitter
 /// (`code::chunk_code`) rather than the prose/markdown splitters. Matched on the
-/// path's extension, case-insensitively.
+/// path's extension, case-insensitively. Delegates to
+/// [`super::code::supports_tree_sitter_chunking`] — the single source of truth
+/// (`language_for_extension`) — so the routing predicate can never drift from the
+/// set of registered grammars.
 pub fn should_chunk_as_code(path: &str) -> bool {
     let ext = path_extension(path).to_ascii_lowercase();
-    CODE_EXTENSIONS.contains(&ext.as_str())
+    super::code::supports_tree_sitter_chunking(&ext)
 }
 
 /// Returns true when an embed input string is shaped like a filesystem path.
