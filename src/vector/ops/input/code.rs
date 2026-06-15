@@ -91,9 +91,16 @@ pub fn chunk_code_chunks(content: &str, file_extension: &str) -> Option<Vec<Code
     //  - merge_tiny_declarations: coalesce adjacent tiny const/static/type leaves.
     //  - inject_declaration_headers: re-stamp a header on continuation chunks of
     //    an oversized declaration that was split across several chunks.
-    // (Bead .5 retires merge_tiny_declarations / inject_declaration_headers; they
-    // are retained here because they still produce correct output on whole
-    // declarations and one existing test asserts the header re-stamp.)
+    // (Bead .5 originally planned to retire merge_tiny_declarations /
+    // inject_declaration_headers as obsolete under declaration-driven assembly.
+    // That plan is superseded: both still do useful work and are tested.
+    // merge_tiny_declarations coalesces adjacent tiny const/static/type leaf
+    // chunks that assembly still emits separately (postprocess_tests::
+    // tiny_consts_merge_and_clear_symbol_name). inject_declaration_headers
+    // re-stamps a declaration header onto the continuation sub-chunks of an
+    // oversized declaration that assembly split across several chunks
+    // (code_tests::oversized_rust_function_continuations_include_header). They
+    // are kept deliberately, not by inertia.)
     let out = attach_leading_comments(out, content, file_extension);
     let out = dedupe_exact_ranges(out);
     let out = merge_tiny_declarations(out);

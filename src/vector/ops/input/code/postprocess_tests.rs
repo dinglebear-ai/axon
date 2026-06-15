@@ -63,3 +63,45 @@ fn tiny_consts_merge_and_clear_symbol_name() {
     assert_eq!(out[0].symbol_kind(), Some(SymbolKind::Const));
     assert!(out[0].symbol_name().is_none());
 }
+
+#[test]
+fn oversized_leading_comment_does_not_starve_declaration_body() {
+    // Build a >2000-char leading `///` doc comment above a small fn. Before the
+    // fix, the prefix length (> MAX_CODE_CHUNK_CHARS) saturated the body budget
+    // to 0 and the body was truncated away, leaving a chunk that was only the
+    // comment. The body must survive; the comment must be capped.
+    // A non-comment line first so the comment block doesn't touch line 1
+    // (leading_comment_prefix declines a block that reaches the file top).
+    let mut src = String::from("use std::fmt;\n");
+    let mut line_no = 1u32; // the `use` line
+    // Each line is ~25 chars; 200 lines comfortably exceeds 2000 chars.
+    for i in 0..200 {
+        src.push_str(&format!("/// doc line number {i} here\n"));
+        line_no += 1;
+    }
+    let body = "pub fn small() -> i32 { 42 }";
+    let decl_line = line_no + 1;
+    src.push_str(body);
+    src.push('\n');
+
+    let out = attach_leading_comments(
+        vec![chunk(body, decl_line, decl_line, SymbolKind::Function)],
+        &src,
+        "rs",
+    );
+
+    assert_eq!(out.len(), 1);
+    let text = &out[0].text;
+    // The full declaration body survives.
+    assert!(
+        text.contains(body),
+        "declaration body was starved/truncated: {text:?}"
+    );
+    // The leading comment is present but capped — far below the raw comment size.
+    assert!(text.contains("/// doc line"), "comment missing: {text:?}");
+    let comment_len = text.len() - body.len();
+    assert!(
+        comment_len <= MAX_HEADER_CHARS,
+        "comment prefix not capped: {comment_len} chars"
+    );
+}
