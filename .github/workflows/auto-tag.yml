@@ -44,8 +44,16 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: write   # required to create and push component release tags
   actions: write   # required to dispatch the release workflows
+
+# Serialize runs for the same ref so two rapid merges to main cannot race on
+# creating/pushing the same component tag (which would fail one run's `git
+# push`). cancel-in-progress: false lets an in-flight release finish tagging
+# rather than being cancelled by the next push.
+concurrency:
+  group: auto-tag-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
