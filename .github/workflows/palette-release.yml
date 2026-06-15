@@ -1,0 +1,228 @@
+name: palette-release
+
+# Releases the Tauri axon-palette independently of the main axon `v*` releases.
+#
+# Triggered by pushing a palette-specific tag whose version matches the
+# `version` in apps/palette-tauri/src-tauri/tauri.conf.json, e.g.:
+#
+#   git tag palette-v5.9.1 && git push origin palette-v5.9.1
+#
+# Builds the portable palette binary for Linux + Windows, packages each with a
+# SHA256 checksum, and publishes a GitHub Release with both artifacts attached.
+#
+# Manual workflow_dispatch builds + packages the binaries and uploads them to
+# the run as artifacts for inspection, but does NOT create a Release unless
+# explicitly called with publish=true on a palette-v* tag. auto-tag.yml
+# dispatches this workflow with publish=true after creating a new palette-v*
+# tag, because tags pushed with GITHUB_TOKEN do not trigger tag-push workflows.
+on:
+  push:
+    tags: ["palette-v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Create the GitHub Release when running on a palette-v* tag"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  WINDOWS_PORTABLE_RUSTFLAGS: >-
+    -C target-cpu=x86-64
+    -C target-feature=-avx512f,-avx512vl,-avx512bw,-avx512dq,-avx512cd,-avx512ifma,-avx512vbmi,-avx512vbmi2,-avx512vnni,-avx512bitalg,-avx512vpopcntdq
+
+jobs:
+  version:
+    name: resolve and validate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve and validate version
+        id: version
+        run: |
+          set -euo pipefail
+          conf="apps/palette-tauri/src-tauri/tauri.conf.json"
+          version="$(grep -m1 -E '"version"[[:space:]]*:' "$conf" \
+            | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')"
+          if [[ -z "$version" ]]; then
+            echo "::error::could not read version from $conf" >&2
+            exit 1
+          fi
+
+          # The three palette version-bearing files must agree so the artifact,
+          # the cargo package, and the npm package never disagree on a version.
+          pkg="$(grep -m1 -E '"version"[[:space:]]*:' apps/palette-tauri/package.json \
+            | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')"
+          crate="$(grep -m1 -E '^version[[:space:]]*=' apps/palette-tauri/src-tauri/Cargo.toml \
+            | sed -E 's/.*"([^"]+)".*/\1/')"
+          if [[ "$pkg" != "$version" || "$crate" != "$version" ]]; then
+            echo "::error::palette version mismatch — tauri.conf.json=$version package.json=$pkg src-tauri/Cargo.toml=$crate (all three must match)" >&2
+            exit 1
+          fi
+
+          # On a real tag push, the tag version must match tauri.conf.json so a
+          # release can never ship a binary the tag disagrees with.
+          if [[ "${GITHUB_REF}" == refs/tags/palette-v* ]]; then
+            tag_version="${GITHUB_REF#refs/tags/palette-v}"
+            if [[ "$tag_version" != "$version" ]]; then
+              echo "::error::tag palette-v$tag_version does not match version $version — bump $conf before tagging" >&2
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  palette-linux:
+    name: build axon-palette (linux)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      # Full checkout: LFS blobs come down as pointers (lfs: false default) and
+      # are not needed to build.
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/palette-tauri/src-tauri
+          shared-key: release-palette-linux
+      # Tauri on Linux links against WebKitGTK + GTK + libsoup.
+      - name: Install Tauri Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl file libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libwebkit2gtk-4.1-dev patchelf pkg-config wget
+      - name: Install palette dependencies
+        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
+      # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
+      # (pnpm vite:build) and compiles the portable binary without packaging
+      # installers — matching the single-binary artifact shape the
+      # `axon palette install` flow expects.
+      - name: Build Tauri palette (portable binary)
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci
+      - name: Package
+        run: |
+          set -euo pipefail
+          cd apps/palette-tauri/src-tauri/target/release
+          tar -czf axon-palette-linux-x86_64.tar.gz axon-palette-tauri
+          sha256sum axon-palette-linux-x86_64.tar.gz > axon-palette-linux-x86_64.tar.gz.sha256
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-palette-linux-x86_64
+          path: |
+            apps/palette-tauri/src-tauri/target/release/axon-palette-linux-x86_64.tar.gz
+            apps/palette-tauri/src-tauri/target/release/axon-palette-linux-x86_64.tar.gz.sha256
+          if-no-files-found: error
+
+  palette-windows:
+    name: build axon-palette (windows)
+    needs: version
+    runs-on: windows-latest
+    steps:
+      # Full checkout: LFS blobs come down as pointers (lfs: false default) and
+      # are not needed to build.
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/palette-tauri/src-tauri
+          shared-key: release-palette-windows
+      - name: Install palette dependencies
+        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
+      # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
+      # (pnpm vite:build) and compiles the portable .exe without packaging
+      # installers. The avx512-disabling RUSTFLAGS keep the binary portable
+      # across CPUs; the rustc-wrapper is a bash script that cannot run as a
+      # Windows rustc wrapper, so it is disabled here.
+      - name: Build Tauri palette (portable binary)
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci
+        env:
+          RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
+          CARGO_BUILD_RUSTC_WRAPPER: ""
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location apps/palette-tauri/src-tauri/target/release
+          Compress-Archive -Path axon-palette-tauri.exe -DestinationPath axon-palette-windows-x86_64.zip -Force
+          $hash = (Get-FileHash axon-palette-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  axon-palette-windows-x86_64.zip" | Out-File -Encoding ascii axon-palette-windows-x86_64.zip.sha256
+          Pop-Location
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-palette-windows-x86_64
+          path: |
+            apps/palette-tauri/src-tauri/target/release/axon-palette-windows-x86_64.zip
+            apps/palette-tauri/src-tauri/target/release/axon-palette-windows-x86_64.zip.sha256
+          if-no-files-found: error
+
+  publish:
+    name: publish github release
+    needs: [version, palette-linux, palette-windows]
+    runs-on: ubuntu-latest
+    # Create a release on real tag pushes. workflow_dispatch remains a dry-run
+    # unless explicitly called with publish=true on a palette-v* tag (used by
+    # auto-tag).
+    if: >-
+      startsWith(github.ref, 'refs/tags/palette-v') &&
+      (
+        github.event_name == 'push' ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish)
+      )
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la dist/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Palette v${{ needs.version.outputs.version }}
+          # Curated body instead of generate_release_notes: the palette versions
+          # independently, so auto-notes would diff against an unrelated axon v*
+          # tag and dump the whole axon PR history into the palette's notes.
+          body: |
+            Axon Palette — desktop launcher v${{ needs.version.outputs.version }}.
+
+            **Install:** download the binary for your platform and run
+            `axon palette install`, or unpack the portable binary directly.
+
+            **Verify:** `sha256sum -c axon-palette-linux-x86_64.tar.gz.sha256`
+
+            See `apps/palette-tauri/README.md` for build and configuration details.
+          files: |
+            dist/axon-palette-linux-x86_64.tar.gz
+            dist/axon-palette-linux-x86_64.tar.gz.sha256
+            dist/axon-palette-windows-x86_64.zip
+            dist/axon-palette-windows-x86_64.zip.sha256
+          fail_on_unmatched_files: true
+          # Keep the repo's "Latest release" badge pointing at axon `v*` releases.
+          make_latest: false
