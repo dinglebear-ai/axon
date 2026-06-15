@@ -87,8 +87,9 @@ pre-push:
   parallel: false
   commands:
     version-sync:
-      # OPS-M3: enforce version parity (Cargo.toml / README / CHANGELOG /
-      # plugin.json) before a push — same gate CI runs as `check-version-sync`.
+      # OPS-M3: enforce CLI version parity (Cargo.toml / README / CHANGELOG /
+      # apps/web/package.json / apps/web/openapi/axon.json) before a push — same
+      # gate CI runs as `check-version-sync`.
       # Runs first (cheap, content-only) so a version mismatch fails fast
       # before the expensive workspace clippy/test compile. Prefer the
       # pre-built xtask binary; fall back to `cargo xtask` on a clean target/.

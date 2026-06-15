@@ -26,7 +26,9 @@ enum Command {
     CheckBrokenSymlinks,
     /// Scan staged files for secrets and credentials.
     CheckSecrets,
-    /// Verify Cargo.toml, README.md, CHANGELOG.md, and plugin.json carry the same version.
+    /// Verify the CLI component's version-bearing files (Cargo.toml, README.md,
+    /// CHANGELOG.md, apps/web/package.json, apps/web/openapi/axon.json) carry the
+    /// same version, and that plugin.json carries none.
     CheckVersionSync,
 }
 

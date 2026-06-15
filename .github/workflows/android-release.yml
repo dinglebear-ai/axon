@@ -11,7 +11,10 @@ name: android-release
 # publishes a GitHub Release with the APK + SHA256 attached.
 #
 # Manual workflow_dispatch builds + signs the APK and uploads it to the run as
-# an artifact for inspection, but does NOT create a Release (dry-run).
+# an artifact for inspection, but does NOT create a Release unless explicitly
+# called with publish=true on an android-v* tag. auto-tag.yml dispatches this
+# workflow with publish=true after creating a new android-v* tag, because tags
+# pushed with GITHUB_TOKEN do not trigger tag-push workflows.
 #
 # ---------------------------------------------------------------------------
 # Required configuration (Settings → Secrets and variables → Actions)
@@ -36,6 +39,11 @@ on:
   push:
     tags: ["android-v*"]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Create the GitHub Release when running on an android-v* tag"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -194,8 +202,14 @@ jobs:
           if-no-files-found: error
 
       - name: Create GitHub Release
-        # Only create a release on real tag pushes; workflow_dispatch is dry-run.
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/android-v')
+        # Create a release on real tag pushes; workflow_dispatch is a dry-run
+        # unless explicitly called with publish=true on an android-v* tag.
+        if: >-
+          startsWith(github.ref, 'refs/tags/android-v') &&
+          (
+            github.event_name == 'push' ||
+            (github.event_name == 'workflow_dispatch' && inputs.publish)
+          )
         uses: softprops/action-gh-release@v2
         with:
           name: Android v${{ steps.version.outputs.version }}
