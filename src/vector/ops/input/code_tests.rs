@@ -388,7 +388,7 @@ function App(): JSX.Element {
 fn symbol_kind_str_roundtrips_for_every_variant() {
     use SymbolKind::*;
     for kind in [
-        Function, Method, Struct, Enum, Trait, Impl, Const, Static, Type, Mod, Other,
+        Function, Method, Struct, Enum, Trait, Impl, Const, Static, Type, Mod, Key, Other,
     ] {
         assert_eq!(
             SymbolKind::from_str(kind.as_str()),
@@ -403,7 +403,7 @@ fn symbol_kind_str_roundtrips_for_every_variant() {
 }
 
 #[test]
-fn source_symbol_classification_excludes_mod_and_other() {
+fn source_symbol_classification_excludes_mod_key_and_other() {
     use SymbolKind::*;
     for kind in [
         Function, Method, Struct, Enum, Trait, Impl, Const, Static, Type,
@@ -413,7 +413,10 @@ fn source_symbol_classification_excludes_mod_and_other() {
             "{kind:?} should be a source symbol"
         );
     }
+    // Mod, Key (structured-data keys), and Other are deliberately NOT source
+    // symbols — config keys are common words and must not get the symbol boost.
     assert!(!Mod.is_source_symbol());
+    assert!(!Key.is_source_symbol());
     assert!(!Other.is_source_symbol());
 }
 
