@@ -289,8 +289,8 @@ private fun attachmentIcon(name: String): ImageVector =
 
 /**
  * Tap to send; while a response streams it morphs into a stop control. A
- * long-press opens the Ask/Chat menu, and a corner badge shows the current mode
- * (cyan "A" for Ask, orange "C" for Chat) so it's always visible.
+ * long-press opens the Ask/Chat menu, and a corner badge shows a caret tinted by
+ * the current mode (cyan for Ask, orange for Chat) so it's always visible.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

@@ -77,7 +77,6 @@ import tv.tootie.aurora.components.AuroraAvatarSize
 import tv.tootie.aurora.components.AuroraInlineCitation
 import tv.tootie.aurora.components.AuroraSource
 import tv.tootie.aurora.components.AuroraSources
-import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
@@ -298,9 +297,7 @@ fun AxonBubble(
     // Map each backend source number (`[S15]`) to its display index + URL so inline
     // citations renumber to match the carousel (1..k) and link to the right doc,
     // even when the backend's source numbering isn't a contiguous 1..k.
-    val citationLinks = remember(answerSources) {
-        answerSources.mapIndexedNotNull { i, s -> s.num?.let { n -> n to CitationLink(i + 1, s.url) } }.toMap()
-    }
+    val citationLinks = remember(answerSources) { buildCitationLinks(answerSources) }
     // Keep inline `[Sn]` markers in the prose when we have sources to back them
     // (rendered as Aurora inline-citation badges); otherwise strip the dangling
     // markers so no bare `[S1]` leaks into the text.
@@ -609,81 +606,3 @@ private fun AnnotatedString.Builder.appendProseWithCitations(part: String, valid
     append(part.substring(cursor))
 }
 
-/** A resolvable inline citation: the 1-based display number shown in the badge + the doc URL it opens. */
-private data class CitationLink(val displayIndex: Int, val url: String)
-
-/** One parsed line from the answer's Sources block: backend `[Sn]` number (if any), URL, and a short title. */
-private data class AnswerSource(val num: Int?, val url: String, val title: String)
-
-private val sourceNumRegex = Regex("\\[S(\\d+)\\]")
-
-/** Parse the trailing Sources block into ordered, de-duplicated sources with their backend numbers. */
-private fun parseAnswerSources(text: String): List<AnswerSource> {
-    val block = answerMetadataBlockRegex.find(text)?.value ?: return emptyList()
-    return block.lineSequence()
-        .mapNotNull { line ->
-            val url = sourceUrlRegex.find(line)?.value?.trimEnd('.', ',', ')', '"', '\'') ?: return@mapNotNull null
-            val num = sourceNumRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-            AnswerSource(num = num, url = url, title = sourceDisplayTitle(url))
-        }
-        .distinctBy { it.url }
-        .take(12)
-        .toList()
-}
-
-private data class ChatCitation(val label: String, val url: String?)
-
-private val answerMetadataBlockRegex = Regex(
-    "(?is)\\n*#{1,3}\\s*(?:Citation\\s+Validation\\s+Failed|Retrieved\\s+Sources|Sources)\\s*\\n.*$",
-)
-
-internal fun stripCitationText(text: String): String =
-    text
-        .replace(answerMetadataBlockRegex, "")
-        .replace(Regex("\\s*\\[S\\d+\\]"), "")
-        .trim()
-
-/** Strip only the trailing sources/metadata block, leaving inline `[Sn]` markers intact. */
-internal fun stripSourcesBlock(text: String): String =
-    text.replace(answerMetadataBlockRegex, "").trim()
-
-private val inlineCitationMarkerRegex = Regex("\\[S(\\d+)\\]")
-
-internal fun extractedCitationLabels(text: String): List<String> {
-    return extractedCitations(text).map { it.label }
-}
-
-private val sourceUrlRegex = Regex("https?://[^\\s)\\]\"']+")
-
-private fun extractedCitations(text: String): List<ChatCitation> {
-    val markers = Regex("\\[S\\d+\\]")
-        .findAll(text)
-        .map { ChatCitation(label = it.value.removeSurrounding("[", "]"), url = null) }
-        .toList()
-
-    // The backend emits sources as `- [S1] https://…` (and older runs as
-    // `- https://…`); pull the URL out of each line regardless of the `[Sn]`
-    // prefix so they stay clickable.
-    val urls = answerMetadataBlockRegex.find(text)
-        ?.value
-        ?.lineSequence()
-        ?.mapNotNull { line -> sourceUrlRegex.find(line)?.value?.trimEnd('.', ',', ')', '"', '\'') }
-        ?.map { ChatCitation(label = compactSourceLabel(it), url = it) }
-        ?.toList()
-        ?: emptyList()
-
-    return (urls + markers).distinctBy { it.url ?: it.label }.take(8)
-}
-
-private fun compactSourceLabel(url: String): String =
-    runCatching {
-        val withoutScheme = url.substringAfter("://")
-        val host = withoutScheme.substringBefore("/")
-        host.removePrefix("www.").substringBeforeLast(".").takeIf { it.isNotBlank() } ?: host
-    }.getOrElse { "source" }
-
-/** Carousel-facing title: the last path segment (e.g. `scrape.md`), else the host stem. */
-private fun sourceDisplayTitle(url: String): String =
-    runCatching {
-        URI(url).path.orEmpty().trim('/').split('/').lastOrNull { it.isNotBlank() }
-    }.getOrNull()?.takeIf { it.isNotBlank() } ?: compactSourceLabel(url)
