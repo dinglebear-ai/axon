@@ -85,12 +85,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --system --gid 1000 axon \
     && useradd  --system --uid 1000 --gid 1000 \
                 --home-dir /home/axon --shell /usr/sbin/nologin \
-                --create-home axon \
-    # Pre-create ~/.codex owned by the axon user so the single-file auth.json
-    # bind mount (docker-compose) lands in a 1000-owned dir — otherwise Docker
-    # auto-creates it as root and codex cannot write its session/cache files.
-    && mkdir -p /home/axon/.codex \
-    && chown 1000:1000 /home/axon/.codex
+                --create-home axon
 
 COPY --from=builder /usr/local/bin/axon /usr/local/bin/axon
 
@@ -126,8 +121,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         tini \
     && npm install -g @google/gemini-cli@0.41.2 @openai/codex@0.136.0 \
-    && mkdir -p /home/axon/.codex \
-    && chown -R 1000:1000 /home/axon \
+    && mkdir -p /home/axon \
+    && chown 1000:1000 /home/axon \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 USER 1000:1000
