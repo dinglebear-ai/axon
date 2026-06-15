@@ -54,19 +54,23 @@ fun AskScreen(
     val historyReady by vm.historyReady.collectAsStateWithLifecycle()
     val mode by vm.mode.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
-    var attachment by remember { mutableStateOf<PromptAttachment?>(null) }
+    var attachments by remember { mutableStateOf<List<PromptAttachment>>(emptyList()) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val pickAttachment = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
             scope.launch {
-                withContext(Dispatchers.IO) { readPromptAttachment(context, uri) }
-                    .onSuccess { attachment = it }
-                    .onFailure {
-                        Toast.makeText(context, it.message ?: "Couldn't attach that file", Toast.LENGTH_SHORT).show()
-                    }
+                val results = uris.map { uri -> withContext(Dispatchers.IO) { readPromptAttachment(context, uri) } }
+                val ok = results.mapNotNull { it.getOrNull() }
+                val failed = results.size - ok.size
+                if (ok.isNotEmpty()) {
+                    attachments = (attachments + ok).distinctBy { it.name }.take(MAX_ATTACHMENTS)
+                }
+                if (failed > 0) {
+                    Toast.makeText(context, "$failed file(s) couldn't be attached", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -231,12 +235,12 @@ fun AskScreen(
                     value = input,
                     onValueChange = { input = it },
                     loading = uiState is AskUiState.Loading || uiState is AskUiState.Streaming,
-                    placeholder = "Ask a follow-up...",
+                    placeholder = if (mode == ConversationMode.Chat) "Chat with Axon…" else "Ask a follow-up…",
                     mode = mode,
                     onModeChange = vm::setMode,
-                    attachmentName = attachment?.name,
+                    attachments = attachments,
                     onAttachClick = { pickAttachment.launch(arrayOf("*/*")) },
-                    onRemoveAttachment = { attachment = null },
+                    onRemoveAttachment = { idx -> attachments = attachments.filterIndexed { i, _ -> i != idx } },
                     onStop = { vm.stopGeneration() },
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
@@ -245,9 +249,9 @@ fun AskScreen(
                         .navigationBarsPadding()
                         .padding(horizontal = 0.dp, vertical = 9.dp),
                     onSend = {
-                        vm.ask(input, attachment = attachment?.content)
+                        vm.ask(input, attachment = combinedAttachmentText(attachments))
                         input = ""
-                        attachment = null
+                        attachments = emptyList()
                     },
                 )
             }
@@ -323,3 +327,14 @@ private fun ChatItemContent(
 
 /** 0 = user side, 1 = assistant side (answers, tool activity, op results). */
 private fun chatSenderSide(item: ChatItem): Int = if (item is ChatItem.UserMsg) 0 else 1
+
+/** Max files attachable to a single prompt. */
+private const val MAX_ATTACHMENTS = 6
+
+/** Concatenate attached files into one labeled block inlined into the question (null when none). */
+private fun combinedAttachmentText(attachments: List<PromptAttachment>): String? =
+    if (attachments.isEmpty()) {
+        null
+    } else {
+        attachments.joinToString("\n\n") { "=== ${it.name} ===\n${it.content}" }
+    }
