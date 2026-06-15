@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.0] - 2026-06-15
+
+### Changed
+
+- **Declaration-driven code chunking (query-capture).** Reworked the code chunker
+  from size-window splitting (`text-splitter` `CodeSplitter`) to declaration-driven
+  chunking, where a named declaration is the chunk unit. A data-driven tree-sitter
+  query registry drives per-language declaration extraction across all 8 grammars
+  (Rust, Python, JS, JSX, TS, TSX, Go, Bash), closing the prior TS/JS parity gap
+  (name-bound arrow-fns, function-expressions, exported consts, enums). Adds an
+  axon-original residual-gap sweep and a zero-declaration whole-file prose fallback
+  so import/glue/barrel files never drop to zero chunks, plus oversized-declaration
+  line-boundary splitting (multibyte-safe). Drives the symbol-less code-chunk
+  fragment rate below 1% (from 5% axon / 11% lab) and eliminates anonymous AST
+  slivers (`() =>`, `;`, `{`) as standalone chunks. No `PAYLOAD_SCHEMA_VERSION`
+  bump — boundary-only change; re-ingest reaps orphans via upsert + stale-tail
+  cleanup. (epic axon_rust-8rpa)
+- **Fixed `.tsx` parsing to use the JSX grammar.** `.tsx` files now route to a
+  dedicated `Extractor::Tsx` (tree-sitter `LANGUAGE_TSX`) instead of the plain
+  TypeScript grammar. Parsing JSX with the non-JSX grammar forced error recovery
+  that fabricated spurious `method` declarations from statement-level calls and
+  `if` blocks (`slice(0,3)`, `if (...)` captured as methods — bead axon_rust-2ykl)
+  and also degraded brace-less direct-JSX arrow components
+  (`const C = () => <jsx/>`) to symbol-less prose (bead axon_rust-gnpr). Both are
+  now fixed: real React components capture as Functions and no statement-level
+  node leaks in as a method. Method/method-signature query rules are additionally
+  scoped to `class_body` / `interface_body` as defense-in-depth.
+- **Bounded residual prose chunks to the chunk cap.** A large non-declaration
+  span between captured declarations (a big top-level object/array const, a test
+  file's `describe(...)` blocks) was emitted by the residual sweep as one
+  unbounded prose chunk (observed up to ~7 KB), producing coarse, low-quality
+  retrieval units. Oversized residual gaps now split at line boundaries (with
+  overlap) through the same `MAX_CODE_CHUNK_CHARS`-bounded splitter the code path
+  uses, so no chunk — declaration, prose-fallback, or residual — exceeds the cap.
+- **Recovered container bodies and per-spec Go declaration names.** Container
+  declarations (struct/enum/class/impl/trait/mod) emitted only a header chunk and
+  advanced the cursor past the whole body, silently dropping body content not
+  captured as a child leaf — struct fields, enum variants, class fields, and
+  their doc comments. The cursor now advances only to the header end so the
+  residual sweep recovers that content. Separately, Go `const`/`var`/`type` names
+  were nulled for backward-parity (dragging Go symbol coverage to ~73%); `@decl`
+  is now anchored on the spec node so grouped declarations get per-spec names.
+
 ## [5.13.0] - 2026-06-15
 
 ### Added

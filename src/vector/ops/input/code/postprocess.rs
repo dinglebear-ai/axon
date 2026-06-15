@@ -22,9 +22,20 @@ pub(super) fn attach_leading_comments(
             if chunk.text.trim_start().starts_with(prefix.trim_start()) {
                 return chunk;
             }
-            let body_budget = MAX_CODE_CHUNK_CHARS.saturating_sub(prefix.len());
+            // Cap the COMMENT prefix, not the body. A leading doc-comment block
+            // can exceed MAX_CODE_CHUNK_CHARS on its own; if we subtracted its
+            // full length from the body budget the budget would saturate to 0
+            // and the entire declaration body would be truncated away, leaving a
+            // chunk that is only the comment. The declaration body must always
+            // survive, so we bound the prefix to MAX_HEADER_CHARS (char-boundary
+            // safe via take_chars) and give the body its normal budget.
+            let capped_prefix = take_chars(&prefix, MAX_HEADER_CHARS);
+            // `take_chars` budgets by characters, so the prefix must be measured in
+            // characters too — `.len()` (bytes) would over-charge a multibyte
+            // prefix and truncate the declaration body more than intended.
+            let body_budget = MAX_CODE_CHUNK_CHARS.saturating_sub(capped_prefix.chars().count());
             let body = take_chars(&chunk.text, body_budget);
-            chunk.text = format!("{prefix}{body}");
+            chunk.text = format!("{capped_prefix}{body}");
             chunk.start_line = start_line;
             chunk
         })

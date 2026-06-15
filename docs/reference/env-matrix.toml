@@ -1199,6 +1199,18 @@ compatibility = "canonical"
 reason = "Non-secret embed volume guard for source-code-like documents; migrate to config.toml when typed fields are wired."
 
 [[env]]
+key = "AXON_RESIDUAL_GAP_FLOOR"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Min stripped-char count for an inter-declaration residual gap to survive as a prose chunk in the declaration-driven code chunker (src/vector/ops/input/code/assembly/residual.rs). Non-secret deterministic chunking knob; kept in env until a typed config.toml field is wired."
+
+[[env]]
 key = "AXON_EMBED_DEDUPE_EXACT_CHUNKS"
 classification = "keep-env"
 runtime_placement = "both"
