@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { formatPayload } from "./format";
+import { MIN_PROGRESS_PCT, formatPayload } from "./format";
+
+describe("MIN_PROGRESS_PCT", () => {
+  it("is the shared minimum visible progress-bar width", () => {
+    expect(MIN_PROGRESS_PCT).toBe(2);
+  });
+});
 
 describe("formatPayload", () => {
   it("uses nested REST payload summaries for research output", () => {

@@ -143,31 +143,30 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
    * When `onClick` is also provided, `role="button"` is applied automatically.
    */
   interactive?: boolean
+  ref?: React.Ref<HTMLSpanElement>
 }
 
 // ---------------------------------------------------------------------------
 // Badge
 // ---------------------------------------------------------------------------
 
-const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
-  (
-    {
-      className,
-      variant,
-      tone: toneProp,
-      dot = false,
-      pulse = false,
-      size = "default",
-      shape = "label",
-      interactive = false,
-      style,
-      children,
-      onClick,
-      onKeyDown,
-      ...props
-    },
-    ref
-  ) => {
+function Badge({
+  className,
+  variant,
+  tone: toneProp,
+  dot = false,
+  pulse = false,
+  size = "default",
+  shape = "label",
+  interactive = false,
+  style,
+  children,
+  onClick,
+  onKeyDown,
+  ref,
+  ...props
+}: BadgeProps) {
+  {
     const tone = resolveTone(toneProp ?? variant)
     const { text, border, bg, dot: dotColor, dotShadow } = badgeToneMap[tone]
 
@@ -277,7 +276,7 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
       </span>
     )
   }
-)
+}
 Badge.displayName = "Badge"
 
 export { Badge }

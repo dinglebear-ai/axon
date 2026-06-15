@@ -29,3 +29,33 @@ export function arrField(value: Record<string, unknown>, key: string): unknown[]
   const field = value[key];
   return Array.isArray(field) ? field : [];
 }
+
+/**
+ * First array found among a record's values, or `null` when none exist (or the
+ * input is not a record). Preserves the "find the result array regardless of its
+ * key" semantics that OperationResultViewShared relied on.
+ */
+export function firstArray(v: unknown): unknown[] | null {
+  if (!isRecord(v)) return null;
+  for (const value of Object.values(v)) {
+    if (Array.isArray(value)) return value;
+  }
+  return null;
+}
+
+/**
+ * Truncate a long identifier for display: values over 12 chars become the first
+ * 12 chars plus an ellipsis. Pure truncation — callers guard empty/undefined
+ * values themselves (e.g. `id ? shortId(id) : "—"`).
+ */
+export function shortId(value: string): string {
+  return value.length > 12 ? `${value.slice(0, 12)}…` : value;
+}
+
+/**
+ * Capitalize the first letter of every word, treating whitespace, `/`, and `-`
+ * as word boundaries (e.g. `crawl-list` → `Crawl-List`, `a/b` → `A/B`).
+ */
+export function titleCase(s: string): string {
+  return s.replace(/(^|[\s/-])(\w)/g, (_match, sep: string, ch: string) => sep + ch.toUpperCase());
+}

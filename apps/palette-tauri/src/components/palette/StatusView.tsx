@@ -1,9 +1,6 @@
-import { arrField, boolField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
+import { memo } from "react";
 
-function shortId(id: string | undefined): string {
-  if (!id) return "—";
-  return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
-}
+import { arrField, boolField, isRecord, numField, shortId, strField, unwrapPayload } from "@/lib/payload";
 
 function jobUrl(job: Record<string, unknown>): string | undefined {
   const direct = strField(job, "url") ?? strField(job, "target");
@@ -21,7 +18,7 @@ function JobRow({ job }: { job: Record<string, unknown> }) {
   return (
     <div className="status-job">
       <span className={`status-pill status-pill-${status}`}>{status}</span>
-      <span className="status-job-url" title={url}>{url ?? shortId(id)}</span>
+      <span className="status-job-url" title={url}>{url ?? (id ? shortId(id) : "—")}</span>
       <span className="status-job-meta">
         {id ? <code>{shortId(id)}</code> : null}
         {attempts !== undefined ? <span>attempt {attempts}</span> : null}
@@ -30,7 +27,7 @@ function JobRow({ job }: { job: Record<string, unknown> }) {
   );
 }
 
-export function StatusView({ payload }: { payload: unknown }) {
+export const StatusView = memo(function StatusView({ payload }: { payload: unknown }) {
   const data = unwrapPayload(payload);
   const degraded = boolField(data, "degraded") ?? false;
   const errors = arrField(data, "errors").filter((e): e is string => typeof e === "string");
@@ -66,13 +63,18 @@ export function StatusView({ payload }: { payload: unknown }) {
           <section key={family} className="status-section">
             <h3 className="stats-heading">{family} · {jobs.length}</h3>
             <div className="status-job-list">
-              {jobs.map((job, i) => (
-                <JobRow key={i} job={isRecord(job) ? job : {}} />
-              ))}
+              {jobs.map((job, i) => {
+                const record = isRecord(job) ? job : {};
+                // M4: key on the stable job id so React reconciles rows by identity,
+                // not position — prevents row state/DOM reuse glitches when the poll
+                // reorders or drops jobs. Falls back to family+index only when no id.
+                const key = strField(record, "job_id") ?? strField(record, "id") ?? `${family}-${i}`;
+                return <JobRow key={key} job={record} />;
+              })}
             </div>
           </section>
         ))
       )}
     </div>
   );
-}
+});

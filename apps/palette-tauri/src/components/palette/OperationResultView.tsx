@@ -1,3 +1,4 @@
+import { memo, type ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -6,9 +7,9 @@ import {
   FileText,
   ServerCog,
 } from "lucide-react";
-import { Streamdown } from "streamdown";
 
 import { HelpResultView } from "@/components/palette/HelpResultView";
+import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import {
   ChipSection,
   DetailLine,
@@ -21,18 +22,15 @@ import {
   StatusDot,
   Swatch,
   UrlListView,
-  firstArray,
+  arrayByKeys,
   formatDetailValue,
   imagePreviewSrc,
   isBadStatus,
   isJobLifecycle,
   sanitizeReaderMarkdown,
-  shortId,
-  titleCase,
   toneForStatus,
 } from "@/components/palette/OperationResultViewShared";
-import { arrField, boolField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
-import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
+import { arrField, boolField, isRecord, numField, shortId, strField, titleCase, unwrapPayload } from "@/lib/payload";
 
 const LIST_LIMIT = 18;
 export { sanitizeReaderMarkdown } from "@/components/palette/OperationResultViewShared";
@@ -43,90 +41,55 @@ interface OperationResultViewProps {
   fallbackText?: string;
 }
 
+// Single source of truth (L4): the allowlist (`hasStructuredOperationView`) and the
+// renderer dispatch are derived from this one map so they cannot drift. Each entry
+// renders the unwrapped `data`; the raw `payload`/`fallbackText` are passed through
+// for the views that need them (help). Job-lifecycle subcommands (crawl-status,
+// embed-list, …) are matched dynamically via `isJobLifecycle` rather than enumerated.
+type ViewContext = { data: Record<string, unknown>; payload: unknown; fallbackText: string; subcommand: string };
+
+const STRUCTURED_VIEWS: Record<string, (ctx: ViewContext) => ReactNode> = {
+  help: ({ payload, fallbackText }) => <HelpResultView payload={payload} fallbackText={fallbackText} />,
+  scrape: ({ data }) => <ReadingView payload={data} mode="scrape" />,
+  query: ({ data }) => <RankedResultView title="Knowledge matches" payload={data} rowsKey="results" />,
+  retrieve: ({ data }) => <ReadingView payload={data} mode="retrieve" />,
+  search: ({ data }) => <SearchResultView payload={data} title="Web search" />,
+  research: ({ data }) => <SearchResultView payload={data} title="Research brief" includeSummary />,
+  map: ({ data }) => <UrlListView title="Discovered URLs" payload={data} keys={["urls"]} />,
+  suggest: ({ data }) => <SuggestionView payload={data} />,
+  sources: ({ data }) => <UrlListView title="Indexed sources" payload={data} keys={["urls", "sources"]} />,
+  domains: ({ data }) => <DomainView payload={data} />,
+  doctor: ({ data }) => <DoctorView payload={data} />,
+  crawl: ({ data }) => <JobStartView payload={data} family="crawl" />,
+  embed: ({ data }) => <JobStartView payload={data} family="embed" />,
+  extract: ({ data }) => <JobStartView payload={data} family="extract" />,
+  ingest: ({ data }) => <JobStartView payload={data} family="ingest" />,
+  "ingest-sessions-prepared": ({ data }) => <JobStartView payload={data} family="ingest" />,
+  endpoints: ({ data }) => <EndpointView payload={data} />,
+  brand: ({ data }) => <BrandView payload={data} />,
+  diff: ({ data }) => <DiffView payload={data} />,
+  screenshot: ({ data }) => <ScreenshotView payload={data} />,
+  dedupe: ({ data }) => <DedupeView payload={data} />,
+  "watch-list": ({ data }) => <WatchListView payload={data} />,
+  "watch-create": ({ data }) => <WatchDetailView payload={data} />,
+  "watch-run": ({ data }) => <WatchDetailView payload={data} />,
+};
+
 export function hasStructuredOperationView(subcommand: string): boolean {
-  return (
-    [
-      "query",
-      "scrape",
-      "search",
-      "research",
-      "crawl",
-      "map",
-      "suggest",
-      "sources",
-      "domains",
-      "retrieve",
-      "doctor",
-      "embed",
-      "extract",
-      "ingest",
-      "ingest-sessions-prepared",
-      "endpoints",
-      "brand",
-      "diff",
-      "screenshot",
-      "dedupe",
-      "watch-list",
-      "watch-create",
-      "watch-run",
-      "help",
-    ].includes(subcommand) || isJobLifecycle(subcommand)
-  );
+  return subcommand in STRUCTURED_VIEWS || isJobLifecycle(subcommand);
 }
 
-export function OperationResultView({ payload, subcommand, fallbackText = "" }: OperationResultViewProps) {
+export const OperationResultView = memo(function OperationResultView({
+  payload,
+  subcommand,
+  fallbackText = "",
+}: OperationResultViewProps) {
   const data = unwrapPayload(payload);
-
-  switch (subcommand) {
-    case "help":
-      return <HelpResultView payload={payload} fallbackText={fallbackText} />;
-    case "scrape":
-      return <ReadingView payload={data} mode="scrape" />;
-    case "query":
-      return <RankedResultView title="Knowledge matches" payload={data} rowsKey="results" />;
-    case "retrieve":
-      return <ReadingView payload={data} mode="retrieve" />;
-    case "search":
-      return <SearchResultView payload={data} title="Web search" />;
-    case "research":
-      return <SearchResultView payload={data} title="Research brief" includeSummary />;
-    case "map":
-      return <UrlListView title="Discovered URLs" payload={data} keys={["urls"]} />;
-    case "suggest":
-      return <SuggestionView payload={data} />;
-    case "sources":
-      return <UrlListView title="Indexed sources" payload={data} keys={["urls", "sources"]} />;
-    case "domains":
-      return <DomainView payload={data} />;
-    case "doctor":
-      return <DoctorView payload={data} />;
-    case "crawl":
-      return <JobStartView payload={data} family="crawl" />;
-    case "embed":
-    case "extract":
-    case "ingest":
-    case "ingest-sessions-prepared":
-      return <JobStartView payload={data} family={subcommand.replace("-sessions-prepared", "")} />;
-    case "endpoints":
-      return <EndpointView payload={data} />;
-    case "brand":
-      return <BrandView payload={data} />;
-    case "diff":
-      return <DiffView payload={data} />;
-    case "screenshot":
-      return <ScreenshotView payload={data} />;
-    case "dedupe":
-      return <DedupeView payload={data} />;
-    case "watch-list":
-      return <WatchListView payload={data} />;
-    case "watch-create":
-    case "watch-run":
-      return <WatchDetailView payload={data} />;
-    default:
-      if (isJobLifecycle(subcommand)) return <JobLifecycleView payload={data} subcommand={subcommand} />;
-      return <GenericResultView payload={data} />;
-  }
-}
+  const render = STRUCTURED_VIEWS[subcommand];
+  if (render) return render({ data, payload, fallbackText, subcommand });
+  if (isJobLifecycle(subcommand)) return <JobLifecycleView payload={data} subcommand={subcommand} />;
+  return <GenericResultView payload={data} />;
+});
 
 function SearchResultView({
   payload,
@@ -138,8 +101,8 @@ function SearchResultView({
   includeSummary?: boolean;
 }) {
   const summary = strField(payload, "summary");
-  const rows = firstArray(payload, ["results", "search_results"]);
-  const jobs = firstArray(payload, ["crawl_jobs", "jobs"]);
+  const rows = arrayByKeys(payload, ["results", "search_results"]);
+  const jobs = arrayByKeys(payload, ["crawl_jobs", "jobs"]);
 
   return (
     <div className="output-body operation-view aurora-scrollbar">
@@ -148,9 +111,7 @@ function SearchResultView({
         <section className="operation-section">
           <h3 className="stats-heading">Summary</h3>
           <div className="operation-markdown">
-            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
-              {summary}
-            </Streamdown>
+            <MarkdownBody>{summary}</MarkdownBody>
           </div>
         </section>
       ) : null}
@@ -192,16 +153,14 @@ function ReadingView({
     strField(payload, "text") ??
     strField(payload, "body");
   const readerMarkdown = sanitizeReaderMarkdown(markdown);
-  const chunks = firstArray(payload, ["chunks", "documents", "results"]);
+  const chunks = arrayByKeys(payload, ["chunks", "documents", "results"]);
 
   return (
     <div className="output-body operation-view operation-reader-view aurora-scrollbar">
       {readerMarkdown ? (
         <section className="operation-section operation-reader-section">
           <div className="operation-reader">
-            <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
-              {readerMarkdown}
-            </Streamdown>
+            <MarkdownBody>{readerMarkdown}</MarkdownBody>
           </div>
         </section>
       ) : chunks.length > 0 ? (
@@ -248,7 +207,7 @@ function DomainView({ payload }: { payload: Record<string, unknown> }) {
 }
 
 function DoctorView({ payload }: { payload: Record<string, unknown> }) {
-  const checks = firstArray(payload, ["checks", "findings", "services"]);
+  const checks = arrayByKeys(payload, ["checks", "findings", "services"]);
   const degraded = boolField(payload, "degraded") ?? checks.some((item) => isRecord(item) && isBadStatus(strField(item, "status")));
   return (
     <div className="output-body operation-view aurora-scrollbar">
@@ -301,7 +260,7 @@ function JobStartView({ payload, family }: { payload: Record<string, unknown>; f
         tone={toneForStatus(status)}
         metrics={[
           ["Mode", strField(payload, "execution_mode") ?? "async"],
-          ["Job", jobId ? (shortId(jobId) ?? jobId) : "pending"],
+          ["Job", jobId ? shortId(jobId) : "pending"],
         ]}
       />
       <section className="operation-section">
@@ -316,7 +275,7 @@ function JobStartView({ payload, family }: { payload: Record<string, unknown>; f
 }
 
 function JobLifecycleView({ payload, subcommand }: { payload: Record<string, unknown>; subcommand: string }) {
-  const rows = firstArray(payload, ["jobs", "items"]);
+  const rows = arrayByKeys(payload, ["jobs", "items"]);
   const match = subcommand.match(/^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/);
   const family = strField(payload, "family") ?? strField(payload, "kind") ?? match?.[1] ?? "job";
   const action = match?.[2] ?? "updated";
@@ -338,7 +297,7 @@ function JobLifecycleView({ payload, subcommand }: { payload: Record<string, unk
 }
 
 function EndpointView({ payload }: { payload: Record<string, unknown> }) {
-  const rows = firstArray(payload, ["endpoints", "candidates", "urls"]);
+  const rows = arrayByKeys(payload, ["endpoints", "candidates", "urls"]);
   return (
     <div className="output-body operation-view aurora-scrollbar">
       <ResultSummary metrics={[["Candidates", numField(payload, "total") ?? rows.length], ["View", "Endpoint discovery"]]} />
@@ -350,7 +309,7 @@ function EndpointView({ payload }: { payload: Record<string, unknown> }) {
 function BrandView({ payload }: { payload: Record<string, unknown> }) {
   const colors = arrField(payload, "colors");
   const fonts = arrField(payload, "fonts").filter((item): item is string => typeof item === "string");
-  const assets = firstArray(payload, ["logos", "assets"]);
+  const assets = arrayByKeys(payload, ["logos", "assets"]);
   return (
     <div className="output-body operation-view aurora-scrollbar">
       <ResultSummary metrics={[["Colors", colors.length], ["Fonts", fonts.length], ["View", strField(payload, "name") ?? "Brand identity"]]} />

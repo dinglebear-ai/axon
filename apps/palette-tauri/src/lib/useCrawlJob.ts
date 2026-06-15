@@ -82,7 +82,7 @@ export function useCrawlJob({
       active = false;
       window.clearInterval(id);
     };
-  }, [run.kind, jobId, jobTerminal]);
+  }, [run.kind, jobId, jobTerminal, setRun]);
 
   function minimizeJob() {
     setSettingsOpen(false);

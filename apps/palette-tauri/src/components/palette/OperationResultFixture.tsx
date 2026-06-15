@@ -1,3 +1,18 @@
+// Visual + smoke-test harness for the result-rendering layer. Each entry in `cases`
+// is a (title, action, run) triple fed straight into <OutputPanel>, so every
+// structured view (scrape reader, search/research, doctor, screenshot, job-start,
+// error views, …) can be eyeballed side-by-side in one screen and asserted against
+// in OperationResultView.test.tsx (T-M2). It mounts the real OutputPanel with noop
+// callbacks — no backend, no async — so it doubles as a deterministic fixture for
+// render/sanitization tests.
+//
+// To add a case: pick the `subcommand` of the action you want to exercise (it must
+// exist in `ACTIONS`), then push a new `{ title, action: actionFor("<subcommand>"),
+// run }` object. The `run` is a terminal RunState (kind "success" or "error") whose
+// `result.payload` should mirror the real Axon response shape for that subcommand —
+// copy a real payload and trim it. Set `outputKind` to "markdown" or "code" to match
+// what `outputKindFor(subcommand)` returns. Keep payloads small but representative
+// (include the edge cases you care about: empty arrays, long strings, missing fields).
 import { OutputPanel } from "@/components/palette/OutputPanel";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import type { RunState } from "@/lib/runState";

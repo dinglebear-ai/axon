@@ -2,9 +2,9 @@ import {
   ChevronRight,
   Workflow,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ActionList } from "@/components/palette/ActionList";
+import { ActionList, actionOptionId } from "@/components/palette/ActionList";
 import { CrawlJobView } from "@/components/palette/CrawlJobView";
 import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
 import { OutputPanel } from "@/components/palette/OutputPanel";
@@ -19,13 +19,12 @@ import {
 import { buildHelpRun, helpAction } from "@/lib/actionHelp";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { type PaletteConfig, createAxonClient } from "@/lib/axonClient";
-import { outputKindFor } from "@/lib/format";
+import { MIN_PROGRESS_PCT, outputKindFor } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import {
   argumentFor,
   focusInput,
-  hostLabel,
   looksLikeUrl,
   parseCommand,
   sortActionsByRelevance,
@@ -35,7 +34,9 @@ import {
 import type { RunState } from "@/lib/runState";
 import { useActionRunner } from "@/lib/useActionRunner";
 import { useCrawlJob } from "@/lib/useCrawlJob";
+import { useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
 import { useWindowChrome } from "@/lib/useWindowChrome";
+import { hostLabel } from "@/lib/url";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
@@ -95,43 +96,23 @@ export default function App() {
     return () => window.removeEventListener("blur", onBlur);
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const modifier = event.metaKey || event.ctrlKey;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (settingsOpen) {
-          setSettingsOpen(false);
-        } else if (historyOpen) {
-          setHistoryOpen(false);
-          setBrowseOpen(true);
-        } else if (browseOpen && !query && !modeAction && run.kind === "idle") {
-          setBrowseOpen(false);
-        } else if (modeAction && !query) {
-          setModeAction(null);
-        } else if (query) {
-          setQuery("");
-          setModeAction(null);
-        } else {
-          void invoke("hide_palette");
-        }
-      } else if (modifier && event.key.toLowerCase() === "l") {
-        event.preventDefault();
-        focusInput(true);
-      } else if (modifier && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        void invoke("show_palette").then(() => focusInput(true));
-      } else if (modifier && event.key.toLowerCase() === "c" && "text" in run) {
-        const target = event.target as HTMLElement | null;
-        if (target?.tagName !== "INPUT" && target?.tagName !== "TEXTAREA") {
-          event.preventDefault();
-          void copyOutput(run.text);
-        }
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [browseOpen, historyOpen, modeAction, query, run, settingsOpen]);
+  // R-M1/H3/P-H2 — ref-for-latest-value; the keydown listener binds once.
+  const keyStateRef = useRef({ settingsOpen, historyOpen, browseOpen, query, modeAction, run });
+  keyStateRef.current = { settingsOpen, historyOpen, browseOpen, query, modeAction, run };
+  usePaletteHotkeys(keyStateRef, {
+    closeSettings: () => setSettingsOpen(false),
+    toBrowseFromHistory: () => {
+      setHistoryOpen(false);
+      setBrowseOpen(true);
+    },
+    closeBrowse: () => setBrowseOpen(false),
+    clearMode: () => setModeAction(null),
+    clearQuery: () => {
+      setQuery("");
+      setModeAction(null);
+    },
+    copyOutput: (text) => void copyOutput(text),
+  });
 
   useEffect(() => {
     if (!config) return;
@@ -159,7 +140,17 @@ export default function App() {
       parsed.search,
     ).slice(0, 12);
   }, [parsed.invoked, parsed.search]);
-  const suggestedAction = filtered[Math.min(selected, Math.max(filtered.length - 1, 0))];
+  // R-M3 — reset + clamp selection during render (no reset-on-prop-change effect).
+  const selectionKey = `${parsed.search} ${modeAction?.subcommand ?? ""}`;
+  const prevSelectionKeyRef = useRef(selectionKey);
+  let selectedIndex = selected;
+  if (prevSelectionKeyRef.current !== selectionKey) {
+    prevSelectionKeyRef.current = selectionKey;
+    selectedIndex = 0;
+    if (selected !== 0) setSelected(0);
+  }
+  selectedIndex = Math.min(selectedIndex, Math.max(filtered.length - 1, 0));
+  const suggestedAction = filtered[selectedIndex];
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
@@ -176,10 +167,18 @@ export default function App() {
   const compact = !showContent;
   const showResultsLayout = showOutput || settingsOpen || historyOpen;
   const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
+  // A11Y-C1 — the listbox is only mounted when the action panel is shown AND there
+  // is content to show. The combobox must only reference ids that exist in the DOM,
+  // so gate aria-controls/aria-activedescendant on the listbox actually rendering.
+  const listboxOpen = showContent && showActionPanel;
+  const activeDescendantId =
+    listboxOpen && suggestedAction ? actionOptionId(suggestedAction) : undefined;
 
-  useEffect(() => {
-    setSelected(0);
-  }, [parsed.search, modeAction]);
+  // A11Y-H2 — focus into overlays on open, restore on close. Wrappers use
+  // `display: contents` so they stay transparent to the grid layout.
+  const settingsFocusRef = useFocusReturn<HTMLDivElement>(settingsOpen);
+  const historyFocusRef = useFocusReturn<HTMLDivElement>(historyOpen && !settingsOpen);
+  const outputFocusRef = useFocusReturn<HTMLDivElement>(showOutput && !settingsOpen && !historyOpen);
 
   useWindowChrome({
     jobExpanded,
@@ -321,15 +320,71 @@ export default function App() {
     focusInput(true);
   }
 
+  // P-M2 — stable callbacks for the memoized children (CommandBar/OutputPanel).
+  const onSubmitAction = useCallback((action: PaletteAction) => void submit(action), [submit]);
+  const onReset = useCallback(() => {
+    setQuery("");
+    setModeAction(null);
+    setRun({ kind: "idle" });
+    setHistoryOpen(false);
+    setBrowseOpen(false);
+  }, []);
+  const onToggleSettings = useCallback(() => {
+    setSettingsOpen((open) => {
+      const next = !open;
+      setHistoryOpen(false);
+      if (!next) setBrowseOpen(true);
+      return next;
+    });
+  }, []);
+  const onToggleMaximize = useCallback(() => void invoke("toggle_maximize"), []);
+  const onCopy = useCallback((text: string) => void copyOutput(text), [copyOutput]);
+  const onRetry = useCallback(() => active && void submit(active), [active, submit]);
+  const onFollowUp = useCallback((text: string) => {
+    const askAction = ACTIONS.find((action) => action.subcommand === "ask");
+    if (!askAction) return;
+    setModeAction(askAction);
+    setQuery(text);
+    void submit(askAction, text);
+  }, [submit]);
+  const onHistory = useCallback(() => {
+    setRun({ kind: "idle" });
+    setSettingsOpen(false);
+    setHistoryOpen(true);
+    setBrowseOpen(false);
+  }, []);
+  const onCollapse = useCallback(() => {
+    setRun({ kind: "idle" });
+    setModeAction(null);
+    setQuery("");
+    setHistoryOpen(false);
+    setBrowseOpen(false);
+  }, []);
+  const onTogglePin = useCallback(() => {
+    if (!currentTarget) return;
+    setPinnedTargets((items) => {
+      const next = new Set(items);
+      if (next.has(currentTarget)) next.delete(currentTarget);
+      else next.add(currentTarget);
+      return next;
+    });
+    setHistory((items) =>
+      items.map((item) =>
+        item.target === currentTarget ? { ...item, pinned: !pinnedTargets.has(currentTarget) } : item,
+      ),
+    );
+  }, [currentTarget, pinnedTargets]);
+
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${jobExpanded ? " palette-shell-job" : ""}`}>
-
       <PaletteCommandBar
         active={active}
+        activeDescendantId={activeDescendantId}
         config={config}
         endpointLabel={endpointLabel}
         endpointTone={endpointTone}
         hasQuery={hasQuery}
+        listboxOpen={listboxOpen}
         modeAction={modeAction}
         query={query}
         running={commandRunning}
@@ -341,22 +396,11 @@ export default function App() {
         onHelp={showHelpFor}
         onInputKeyDown={onInputKeyDown}
         onQueryChange={setQuery}
-        onReset={() => {
-          setQuery("");
-          setModeAction(null);
-          setRun({ kind: "idle" });
-          setHistoryOpen(false);
-          setBrowseOpen(false);
-        }}
-        onSubmit={(action) => void submit(action)}
+        onReset={onReset}
+        onSubmit={onSubmitAction}
         onSwitchAction={switchActionMode}
-        onToggleMaximize={() => void invoke("toggle_maximize")}
-        onToggleSettings={() => setSettingsOpen((open) => {
-          const next = !open;
-          setHistoryOpen(false);
-          if (!next) setBrowseOpen(true);
-          return next;
-        })}
+        onToggleMaximize={onToggleMaximize}
+        onToggleSettings={onToggleSettings}
       />
 
       {jobMinimized && run.kind === "job" && (
@@ -365,7 +409,7 @@ export default function App() {
           <Workflow size={14} strokeWidth={1.9} />
           <span>Crawling {run.snapshot.host}</span>
           <span className="idle-tray-bar">
-            <span style={{ width: `${Math.max(2, Math.round(run.snapshot.percent))}%` }} />
+            <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, Math.round(run.snapshot.percent))}%` }} />
           </span>
           <strong>{Math.round(run.snapshot.percent)}%</strong>
           <ChevronRight size={15} />
@@ -373,18 +417,20 @@ export default function App() {
       )}
 
       {settingsOpen && draftConfig && (
-        <SettingsPanel
-          configError={configError}
-          draftConfig={draftConfig}
-          shortcutOptions={shortcutOptions}
-          onChange={setDraftConfig}
-          onClose={() => {
-            setSettingsOpen(false);
-            setHistoryOpen(false);
-            setBrowseOpen(true);
-          }}
-          onSave={() => void saveSettings()}
-        />
+        <div ref={settingsFocusRef} style={{ display: "contents" }}>
+          <SettingsPanel
+            configError={configError}
+            draftConfig={draftConfig}
+            shortcutOptions={shortcutOptions}
+            onChange={setDraftConfig}
+            onClose={() => {
+              setSettingsOpen(false);
+              setHistoryOpen(false);
+              setBrowseOpen(true);
+            }}
+            onSave={() => void saveSettings()}
+          />
+        </div>
       )}
 
       {showContent && !settingsOpen && (
@@ -402,6 +448,7 @@ export default function App() {
         )}
 
         {historyOpen && (
+          <div ref={historyFocusRef} style={{ display: "contents" }}>
           <HistoryPanel
             items={history}
             onClear={() => setHistory([])}
@@ -422,9 +469,11 @@ export default function App() {
               }
             }}
           />
+          </div>
         )}
 
         {showResultsLayout && !historyOpen && run.kind === "job" && (
+          <div ref={outputFocusRef} style={{ display: "contents" }}>
           <CrawlJobView
             snapshot={run.snapshot}
             nowMs={nowMs}
@@ -434,47 +483,25 @@ export default function App() {
             onMinimize={minimizeJob}
             onClose={closeJob}
           />
+          </div>
         )}
 
         {showResultsLayout && !historyOpen && run.kind !== "job" && (
+          <div ref={outputFocusRef} style={{ display: "contents" }}>
           <OutputPanel
             active={active}
             copied={copied}
             outputKind={outputKind}
             run={run}
-            onCopy={(text) => void copyOutput(text)}
-            onRetry={() => active && void submit(active)}
-            onFollowUp={(text) => {
-              const askAction = ACTIONS.find((action) => action.subcommand === "ask");
-              if (!askAction) return;
-              setModeAction(askAction);
-              setQuery(text);
-              void submit(askAction, text);
-            }}
-            onHistory={() => {
-              setRun({ kind: "idle" });
-              setSettingsOpen(false);
-              setHistoryOpen(true);
-              setBrowseOpen(false);
-            }}
-            onCollapse={() => {
-              setRun({ kind: "idle" });
-              setModeAction(null);
-              setQuery("");
-              setHistoryOpen(false);
-              setBrowseOpen(false);
-            }}
-            onTogglePin={() => {
-              if (!currentTarget) return;
-              setPinnedTargets((items) => {
-                const next = new Set(items);
-                next.has(currentTarget) ? next.delete(currentTarget) : next.add(currentTarget);
-                return next;
-              });
-              setHistory((items) => items.map((item) => item.target === currentTarget ? { ...item, pinned: !pinnedTargets.has(currentTarget) } : item));
-            }}
+            onCopy={onCopy}
+            onRetry={onRetry}
+            onFollowUp={onFollowUp}
+            onHistory={onHistory}
+            onCollapse={onCollapse}
+            onTogglePin={onTogglePin}
             pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
           />
+          </div>
         )}
       </main>
       )}

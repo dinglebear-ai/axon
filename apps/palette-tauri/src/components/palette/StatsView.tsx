@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import { arrField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
 
 function fmtInt(value: number | undefined): string {
@@ -32,7 +34,7 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
   );
 }
 
-export function StatsView({ payload }: { payload: unknown }) {
+export const StatsView = memo(function StatsView({ payload }: { payload: unknown }) {
   const stats = unwrapPayload(payload);
   const counts = isRecord(stats.counts) ? stats.counts : {};
   const freshness = isRecord(stats.freshness) ? stats.freshness : {};
@@ -94,4 +96,4 @@ export function StatsView({ payload }: { payload: unknown }) {
       )}
     </div>
   );
-}
+});
