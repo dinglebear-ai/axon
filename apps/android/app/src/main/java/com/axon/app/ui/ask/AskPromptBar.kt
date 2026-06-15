@@ -8,9 +8,10 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -21,10 +22,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -38,7 +41,6 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DataObject
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.InsertDriveFile
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -158,7 +160,6 @@ internal fun AskPromptBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            ModePill(mode = mode, onModeChange = onModeChange, enabled = !loading)
             ToolbarIconButton(
                 icon = Icons.Rounded.AttachFile,
                 description = "Attach files",
@@ -177,75 +178,11 @@ internal fun AskPromptBar(
             SendButton(
                 canSend = canSend,
                 loading = loading,
+                mode = mode,
                 onSend = ::triggerSend,
                 onStop = onStop,
+                onModeChange = onModeChange,
             )
-        }
-    }
-}
-
-/** Visible Ask/Chat toggle — taps open a small menu so the mode is never hidden. */
-@Composable
-private fun ModePill(
-    mode: ConversationMode,
-    onModeChange: (ConversationMode) -> Unit,
-    enabled: Boolean,
-) {
-    val colors = AxonTheme.colors
-    var open by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(999.dp)
-    Box {
-        Row(
-            modifier = Modifier
-                .clip(shape)
-                .background(colors.tint(colors.accentPrimary, 8, colors.control), shape)
-                .border(1.dp, colors.tint(colors.accentPrimary, 18, colors.control), shape)
-                .pressScale(enabled = enabled) { open = true }
-                .padding(start = 11.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(1.dp),
-        ) {
-            Text(
-                mode.label,
-                color = colors.accentStrong,
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = AxonTheme.fonts.body,
-            )
-            Icon(
-                Icons.Rounded.KeyboardArrowDown,
-                contentDescription = "Choose Ask or Chat",
-                tint = colors.accentStrong.copy(alpha = 0.8f),
-                modifier = Modifier.size(15.dp),
-            )
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            ConversationMode.entries.forEach { item ->
-                val active = item == mode
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            item.label,
-                            fontFamily = AxonTheme.fonts.body,
-                            color = if (active) colors.accentStrong else colors.textPrimary,
-                        )
-                    },
-                    onClick = {
-                        onModeChange(item)
-                        open = false
-                    },
-                    trailingIcon = {
-                        if (active) {
-                            Icon(
-                                Icons.Rounded.Check,
-                                contentDescription = null,
-                                tint = colors.accentStrong,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    },
-                )
-            }
         }
     }
 }
@@ -349,20 +286,24 @@ private fun attachmentIcon(name: String): ImageVector =
     }
 
 /**
- * Tap to send; while a response streams it morphs into a stop control. Mode
- * selection now lives in the visible [ModePill], so the send button is a single
- * clear action.
+ * Tap to send; while a response streams it morphs into a stop control. A
+ * long-press opens the Ask/Chat menu, and a corner badge shows the current mode
+ * (cyan "A" for Ask, orange "C" for Chat) so it's always visible.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SendButton(
     canSend: Boolean,
     loading: Boolean,
+    mode: ConversationMode,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    onModeChange: (ConversationMode) -> Unit,
 ) {
     val colors = AxonTheme.colors
     val view = LocalView.current
     val shape = RoundedCornerShape(11.dp)
+    var menuOpen by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressScaleValue by animateFloatAsState(
@@ -391,44 +332,113 @@ private fun SendButton(
         label = "send-icon",
     )
 
-    Box(
-        modifier = Modifier
-            .size(38.dp)
-            .scale(pressScaleValue)
-            .clip(shape)
-            .background(bg, shape)
-            .border(1.dp, border, shape)
-            .clickable(interactionSource = interaction, indication = null) {
-                when {
-                    loading -> {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        onStop()
-                    }
-                    canSend -> {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        onSend()
-                    }
+    Box {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .scale(pressScaleValue)
+                .clip(shape)
+                .background(bg, shape)
+                .border(1.dp, border, shape)
+                .combinedClickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onClick = {
+                        when {
+                            loading -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onStop()
+                            }
+                            canSend -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onSend()
+                            }
+                        }
+                    },
+                    onLongClick = {
+                        if (!loading) {
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            menuOpen = true
+                        }
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Crossfade send <-> stop so cancelling reads as a deliberate state swap.
+            Crossfade(targetState = loading, label = "send-stop") { isLoading ->
+                if (isLoading) {
+                    Icon(
+                        Icons.Rounded.Stop,
+                        contentDescription = "Stop generating",
+                        tint = iconTint,
+                        modifier = Modifier.size(18.dp),
+                    )
+                } else {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send message — long-press to choose Ask or Chat",
+                        tint = iconTint,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        // Crossfade send <-> stop so cancelling reads as a deliberate state swap.
-        Crossfade(targetState = loading, label = "send-stop") { isLoading ->
-            if (isLoading) {
-                Icon(
-                    Icons.Rounded.Stop,
-                    contentDescription = "Stop generating",
-                    tint = iconTint,
-                    modifier = Modifier.size(18.dp),
-                )
-            } else {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send message",
-                    tint = iconTint,
-                    modifier = Modifier.size(18.dp),
+            }
+        }
+        ModeBadge(
+            mode = mode,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 4.dp, y = (-4).dp),
+        )
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            ConversationMode.entries.forEach { item ->
+                val active = item == mode
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            item.label,
+                            fontFamily = AxonTheme.fonts.body,
+                            color = if (active) colors.accentStrong else colors.textPrimary,
+                        )
+                    },
+                    onClick = {
+                        onModeChange(item)
+                        menuOpen = false
+                    },
+                    trailingIcon = {
+                        if (active) {
+                            Icon(
+                                Icons.Rounded.Check,
+                                contentDescription = null,
+                                tint = colors.accentStrong,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    },
                 )
             }
         }
+    }
+}
+
+/** Corner badge showing the active conversation mode on the send button. */
+@Composable
+private fun ModeBadge(mode: ConversationMode, modifier: Modifier = Modifier) {
+    val colors = AxonTheme.colors
+    val tone = if (mode == ConversationMode.Chat) colors.orange else colors.accentStrong
+    Box(
+        modifier = modifier
+            .size(15.dp)
+            .clip(CircleShape)
+            .background(colors.pageBg)
+            .border(1.dp, tone, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = mode.label.take(1),
+            color = tone,
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = AxonTheme.fonts.body,
+        )
     }
 }
