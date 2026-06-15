@@ -1,6 +1,7 @@
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, type Dispatch, type SetStateAction } from "react";
 
 import { ActionIcon } from "@/components/palette/ActionIcon";
+import { Button } from "@/components/ui/aurora/button";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
 import { acceptsDirectUrl, type PaletteAction } from "@/lib/actions";
 import { isAsyncAction } from "@/lib/actionHelp";
@@ -27,6 +28,39 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
     const el = document.querySelector(".action-scroll-viewport .action-row-selected");
     if (el instanceof HTMLElement) el.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [selected]);
+
+  // Delegated, stable click handlers keyed by data-index. Inline per-row arrows
+  // would allocate a fresh closure every keystroke (rows re-render on every
+  // query change), busting the memoized Button. These callbacks only re-create
+  // when their real dependencies change — at which point a re-render is wanted.
+  const handleRowClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const index = Number(event.currentTarget.dataset.index);
+      const action = filtered[index];
+      if (!action) return;
+      setSelected(index);
+      if (parsed.invoked) {
+        onSubmit(action);
+      } else if (action.argMode === "none") {
+        // No-input actions run immediately — no empty argument prompt.
+        onSubmit(action);
+      } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
+        onSubmit(action);
+      } else {
+        onEnterMode(action);
+      }
+    },
+    [filtered, parsed.invoked, parsed.search, setSelected, onSubmit, onEnterMode],
+  );
+
+  const handleHelpClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const index = Number(event.currentTarget.dataset.index);
+      const action = filtered[index];
+      if (action) onHelp(action);
+    },
+    [filtered, onHelp],
+  );
 
   return (
     <section className="action-panel">
@@ -56,22 +90,13 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
                   onFocusCapture={() => setSelected(index)}
                   onPointerEnter={() => setSelected(index)}
                 >
-                  <button
+                  <Button
+                    variant="plain"
+                    size="unstyled"
                     className="action-row-main"
                     type="button"
-                    onClick={() => {
-                      setSelected(index);
-                      if (parsed.invoked) {
-                        onSubmit(action);
-                      } else if (action.argMode === "none") {
-                        // No-input actions run immediately — no empty argument prompt.
-                        onSubmit(action);
-                      } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
-                        onSubmit(action);
-                      } else {
-                        onEnterMode(action);
-                      }
-                    }}
+                    data-index={index}
+                    onClick={handleRowClick}
                   >
                     <ActionIcon action={action} selected={selectedRow} />
                     <span className="action-main">
@@ -85,19 +110,22 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
                       </span>
                       <span className="action-description">{action.description}</span>
                     </span>
-                  </button>
+                  </Button>
                   <span className="action-meta">
                     {selectedRow ? (
                       <>
-                        <button
+                        <Button
+                          variant="plain"
+                          size="unstyled"
                           className="action-help-button"
                           type="button"
-                          onClick={() => onHelp(action)}
+                          data-index={index}
+                          onClick={handleHelpClick}
                           aria-label={`Help for ${action.label}`}
                           title={`Help for ${action.label}`}
                         >
                           ?
-                        </button>
+                        </Button>
                         <span className="action-run-pill">Run <kbd>↵</kbd></span>
                       </>
                     ) : (

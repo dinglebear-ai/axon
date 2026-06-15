@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { AxonMark } from "@/components/palette/AxonMark";
+import { Button } from "@/components/ui/aurora/button";
 import type { PaletteConfig } from "@/lib/axonClient";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
@@ -86,11 +87,13 @@ export function PaletteCommandBar({
       }}
     >
       {showBackButton && (
-        <button className="command-back" type="button" onClick={onBack} aria-label="Back" title="Back">
+        <Button variant="plain" size="unstyled" className="command-back" type="button" onClick={onBack} aria-label="Back" title="Back">
           <ArrowLeft size={17} />
-        </button>
+        </Button>
       )}
-      <button
+      <Button
+        variant="plain"
+        size="unstyled"
         className="axon-brand"
         type="button"
         onClick={onReset}
@@ -100,12 +103,14 @@ export function PaletteCommandBar({
         <AxonMark size={24} />
         <span className="axon-word">Axon</span>
         <span className={`axon-status-dot axon-status-${endpointTone}`} />
-      </button>
+      </Button>
       <span className="axon-divider" aria-hidden="true" />
       <div className="command-input-wrap" onClick={() => focusInput()}>
         {modeAction && ModeIcon ? (
           <div className="command-action-switcher" ref={switcherRef}>
-            <button
+            <Button
+              variant="plain"
+              size="unstyled"
               className={`command-action-trigger command-mode-icon-${modeAction.tone}`}
               type="button"
               onClick={(event) => {
@@ -120,14 +125,16 @@ export function PaletteCommandBar({
               <ModeIcon size={15} strokeWidth={1.9} aria-hidden="true" />
               <span>{actionDisplayMeta(modeAction).label}</span>
               <ChevronDown size={13} strokeWidth={1.8} aria-hidden="true" />
-            </button>
+            </Button>
             {switcherOpen && (
               <div className="command-action-menu" role="menu" aria-label="Switch action">
                 {switcherActions.map((action) => {
                   const Icon = actionIcon(action.subcommand);
                   const meta = actionDisplayMeta(action);
                   return (
-                    <button
+                    <Button
+                      variant="plain"
+                      size="unstyled"
                       key={action.subcommand}
                       className={`command-action-option command-action-option-${action.tone}`}
                       type="button"
@@ -144,7 +151,7 @@ export function PaletteCommandBar({
                         <small>{meta.input} to {meta.output}</small>
                       </span>
                       <kbd>{action.subcommand}</kbd>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -162,8 +169,12 @@ export function PaletteCommandBar({
           aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
         />
       </div>
-      <button
-        className="command-help"
+      <Button
+        variant="plain"
+        size="unstyled"
+        // `.command-help:disabled` owns the disabled look (no opacity change);
+        // neutralize the primitive base's disabled:opacity-45 to stay pixel-identical.
+        className="command-help disabled:opacity-100"
         type="button"
         onClick={() => onHelp(active, active ? undefined : query.trim())}
         disabled={running}
@@ -171,9 +182,13 @@ export function PaletteCommandBar({
         title={active ? `Help for ${active.label}` : "Help"}
       >
         <HelpCircle size={15} />
-      </button>
-      <button
-        className={active && !validation ? `command-submit command-submit-${active.tone}` : "command-submit"}
+      </Button>
+      <Button
+        variant="plain"
+        size="unstyled"
+        // `.command-submit:disabled` owns the disabled look (no opacity change);
+        // neutralize the primitive base's disabled:opacity-45 to stay pixel-identical.
+        className={`${active && !validation ? `command-submit command-submit-${active.tone}` : "command-submit"} disabled:opacity-100`}
         type="button"
         onClick={() => active && onSubmit(active)}
         disabled={submitDisabled}
@@ -181,8 +196,10 @@ export function PaletteCommandBar({
         title={validation || "Run selected action"}
       >
         <Send size={15} />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="plain"
+        size="unstyled"
         className={settingsOpen ? "command-settings command-settings-active" : "command-settings"}
         type="button"
         onClick={onToggleSettings}
@@ -190,7 +207,7 @@ export function PaletteCommandBar({
         title="Settings"
       >
         <Settings size={15} />
-      </button>
+      </Button>
     </section>
   );
 }

@@ -32,3 +32,36 @@ pnpm install --frozen-lockfile : up to date
 pnpm test                      : 14 files, 94 tests PASS
 pnpm typecheck (tsc --noEmit)  : exit 0
 pnpm vite:build                : exit 0
+
+AFTER dab6.3 (button-primitive migration)
+-----------------------------------------
+Captured: 2026-06-15
+Approach: per the dab6.3 REVIEW, context-scoped raw <button>s were replaced with
+<Button variant="plain" size="unstyled" className="<existing-class>">. variant=plain
++ size=unstyled contribute no skin, so the existing CSS class/element-selector stays
+the sole styling source (pixel-identical). No new Button variant was added; no
+styles.css rule became dead, so styles.css was NOT modified.
+
+dist CSS byte size:   159145 bytes  (index-BOE1NSa7.css)
+DELTA vs baseline:    +42 bytes (+0.026%)
+
+Why +42 (not 0): styles.css was NOT modified (no rule became dead — every button
+keeps its existing class/element-selector, so all selectors are still applied). The
++42 bytes is one newly-emitted Tailwind utility, `disabled:opacity-100`, added at
+THREE call sites (command-help, command-submit, crawl Cancel) as a parity fix. The
+vendored Button primitive's CVA base carries `disabled:opacity-45`; those three
+buttons' existing CSS owns the disabled look WITHOUT dimming opacity (or with no
+:disabled rule at all), so the base utility was over-dimming them to 45% — a real
+regression caught by the visual diff (command bar, shots 03/05). `disabled:opacity-100`
+(twMerge-deduped, last-wins over the base) restores the original at-rest appearance.
+The ask Send button needed no fix: its `.ask-compose button:disabled` already uses
+opacity: 0.45, matching the primitive exactly.
+
+CSS deletion proper is the separate dab6.4/.5 work; this slice is structurally a
+near-no-CSS-change refactor (one parity utility), exactly as the REVIEW intended.
+
+VERIFY (all green after migration)
+----------------------------------
+pnpm test                      : 14 files, 94 tests PASS
+pnpm typecheck (tsc --noEmit)  : exit 0
+pnpm vite:build                : exit 0 (built in 2.92s)
