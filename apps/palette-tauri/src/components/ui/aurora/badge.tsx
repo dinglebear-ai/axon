@@ -1,3 +1,5 @@
+// BREAKING: badgeVariants export removed in this version. See badgeVariants deprecation shim below.
+
 import * as React from "react"
 import { cn, devWarn } from "@/lib/utils"
 
@@ -204,7 +206,7 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
         onKeyDown?.(e)
         if (interactive && onClick && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault()
-          e.currentTarget.click()
+          onClick(e as unknown as React.MouseEvent<HTMLSpanElement>)
         }
       },
       [interactive, onClick, onKeyDown]
@@ -236,7 +238,7 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
             "cursor-pointer",
             "transition-[box-shadow,filter,transform] duration-150",
             "hover:brightness-125",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-accent-primary)]",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-focus-ring)]",
           ],
           className
         )}
