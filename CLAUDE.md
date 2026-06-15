@@ -766,43 +766,79 @@ bd close <id>         # Complete work
 
 ### How releases work
 
-Every push to `main` triggers `.github/workflows/auto-tag.yml`, which reads the
-version from `Cargo.toml` and creates a `v{version}` git tag if one doesn't
-already exist. That tag push triggers `.github/workflows/release.yml`, which
-builds `axon` for Linux and Windows, packages release tarballs with SHA256
-checksums, and publishes a GitHub Release with all artifacts attached.
+Releases are **per-component and selective**. Every push to `main` triggers
+`.github/workflows/auto-tag.yml`, which evaluates each releasable component
+independently and only cuts a release for the ones whose shipped code actually
+changed since their last release:
 
-**Implication: merging to `main` with a bumped version automatically cuts a
-release.** If the version has not changed since the last merge (e.g. a follow-up
-docs fix), the tag already exists and no release is cut.
+| Component | Shipping paths | Version source | Tag prefix | Release workflow |
+|-----------|----------------|----------------|-----------|------------------|
+| **cli** (Linux + Windows; web panel bundled in) | `src`, `Cargo.toml`/`Cargo.lock`, `build.rs`, `migrations`, `apps/web`, `rust-toolchain.toml`, `vendor` | `Cargo.toml` `[package]` version | `v` | `release.yml` |
+| **palette** (Linux + Windows) | `apps/palette-tauri` | `apps/palette-tauri/src-tauri/tauri.conf.json` | `palette-v` | `palette-release.yml` |
+| **android** (APK) | `apps/android` | `apps/android/app/build.gradle.kts` `versionName` | `android-v` | `android-release.yml` |
+| **chrome** (extension zip) | `apps/chrome-extension`, `assets` | `apps/chrome-extension/manifest.json` `version` | `chrome-ext-v` | `chrome-extension-release.yml` |
 
-To cut a release manually (e.g. re-release or hotfix without a code change):
+For each component, `auto-tag.yml` diffs that component's shipping paths against
+its most recent tag. If the code changed **and** the version was bumped (the
+computed tag does not yet exist), it waits for `CI` to pass on the commit,
+creates the tag, and dispatches the component's release workflow (which builds,
+packages with SHA256 checksums, and publishes a GitHub Release). The `axon`
+`v*` release remains the repo's "latest"; palette/android/chrome publish with
+`make_latest: false`.
+
+**Implications:**
+
+- A change touching only one component releases only that component — e.g. an
+  `apps/android/**`-only change cuts an Android release and nothing else; it
+  does **not** rebuild the CLI.
+- Dev-only trees (`xtask`, `benches`, `.github`, `docs`, top-level config) are
+  **not** in any component's shipping paths, so a tooling/docs-only merge cuts
+  no release and needs no version bump.
+- If a component's code changed but its version was **not** bumped (the tag
+  already exists), `auto-tag.yml` **fails that component's job** with a message
+  naming the component — nothing ships silently. Other components still release
+  (`fail-fast: false`).
+
+To cut a release manually (e.g. re-release or hotfix without a code change),
+push the component's tag directly:
 
 ```bash
-git tag vX.Y.Z && git push origin vX.Y.Z
+git tag vX.Y.Z         && git push origin vX.Y.Z          # cli
+git tag palette-vX.Y.Z && git push origin palette-vX.Y.Z  # palette
+git tag android-vX.Y   && git push origin android-vX.Y    # android
+git tag chrome-ext-vX.Y.Z && git push origin chrome-ext-vX.Y.Z  # chrome
 ```
 
 ### Version bumping rules
 
-**Every feature branch merge to `main` MUST bump the version in ALL
-version-bearing files.** Bump type is determined by the commit message prefix:
+**Bump ONLY the component(s) whose shipping code you changed** — versions are
+independent per component. Bump type is determined by the commit message prefix:
 
 - `feat!:` or `BREAKING CHANGE` → **major** (X+1.0.0)
 - `feat` or `feat(...)` → **minor** (X.Y+1.0)
 - Everything else (`fix`, `chore`, `refactor`, `test`, `docs`, etc.) → **patch** (X.Y.Z+1)
 
-**Files to update:**
+**CLI component — all of these MUST move together (Cargo.toml is the source of truth):**
 - `Cargo.toml` — `version = "X.Y.Z"` in `[package]` (Cargo.lock follows on next build)
 - `README.md` — version header
 - `CHANGELOG.md` — new entry under the bumped version
 - `apps/web/package.json` + `apps/web/openapi/axon.json` — `"version": "X.Y.Z"`
 
+**Palette component — all three MUST move together:**
+- `apps/palette-tauri/src-tauri/tauri.conf.json`, `apps/palette-tauri/package.json`,
+  `apps/palette-tauri/src-tauri/Cargo.toml`
+
+**Android component:** `apps/android/app/build.gradle.kts` `versionName` (bump
+`versionCode` too). **Chrome component:** `apps/chrome-extension/manifest.json`.
+
 `plugins/axon/.claude-plugin/plugin.json` must **NOT** carry a `version` key —
 `just validate-plugin` (part of `just verify`) hard-fails on it; the plugin is
 versioned by the marketplace, not the manifest.
 
-All files MUST have the same version. Never bump only one file.
-CHANGELOG.md must have an entry for every version bump.
+CHANGELOG.md must have an entry for every CLI version bump.
 
-The pre-push hook (`xtask-check`) enforces version parity across all files and
-will block a push if they are out of sync.
+The pre-push hook (`xtask-check`) enforces **CLI** version parity across
+`Cargo.toml`, `README.md`, `CHANGELOG.md`, `apps/web/package.json`, and
+`apps/web/openapi/axon.json`, and will block a push if they are out of sync.
+The palette/android/chrome release workflows validate that the pushed tag
+matches their own version at release time.

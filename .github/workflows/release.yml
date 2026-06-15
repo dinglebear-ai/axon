@@ -1,9 +1,13 @@
 name: release
 
 # Triggered when you push a version tag (e.g. `git tag v2.0.0 && git push origin v2.0.0`).
-# Builds axon (cross-compiled) + the Tauri axon-palette for Linux + Windows,
-# packages them with SHA256 checksums, and publishes a GitHub Release with all
-# four artifacts attached.
+# Builds the axon CLI for Linux + Windows, packages each with a SHA256 checksum,
+# and publishes a GitHub Release with both artifacts attached.
+#
+# The Tauri axon-palette is released independently — see palette-release.yml
+# (fired by `palette-v*` tags). It is no longer bundled into the axon `v*`
+# release so that a palette-only change does not require a CLI version bump and
+# vice-versa.
 #
 # Manual workflow_dispatch builds everything but skips the Release creation by
 # default (artifacts are still uploaded to the workflow run for inspection).
@@ -25,9 +29,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  WINDOWS_PORTABLE_RUSTFLAGS: >-
-    -C target-cpu=x86-64
-    -C target-feature=-avx512f,-avx512vl,-avx512bw,-avx512dq,-avx512cd,-avx512ifma,-avx512vbmi,-avx512vbmi2,-avx512vnni,-avx512bitalg,-avx512vpopcntdq
 
 jobs:
   axon-linux:
@@ -150,111 +151,9 @@ jobs:
             target/release/axon-windows-x86_64.zip.sha256
           if-no-files-found: error
 
-  palette-linux:
-    name: build axon-palette (linux)
-    runs-on: ubuntu-latest
-    steps:
-      # Full checkout: LFS blobs come down as pointers (lfs: false default) and
-      # are not needed to build.
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.3.0
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/palette-tauri/src-tauri
-          shared-key: release-palette-linux
-      # Tauri on Linux links against WebKitGTK + GTK + libsoup.
-      - name: Install Tauri Linux system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential curl file libayatana-appindicator3-dev librsvg2-dev \
-            libssl-dev libwebkit2gtk-4.1-dev patchelf pkg-config wget
-      - name: Install palette dependencies
-        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
-      # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
-      # (pnpm vite:build) and compiles the portable binary without packaging
-      # installers — matching the single-binary artifact shape the
-      # `axon palette install` flow expects.
-      - name: Build Tauri palette (portable binary)
-        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci
-      - name: Package
-        run: |
-          set -euo pipefail
-          cd apps/palette-tauri/src-tauri/target/release
-          tar -czf axon-palette-linux-x86_64.tar.gz axon-palette-tauri
-          sha256sum axon-palette-linux-x86_64.tar.gz > axon-palette-linux-x86_64.tar.gz.sha256
-      - uses: actions/upload-artifact@v5
-        with:
-          name: axon-palette-linux-x86_64
-          path: |
-            apps/palette-tauri/src-tauri/target/release/axon-palette-linux-x86_64.tar.gz
-            apps/palette-tauri/src-tauri/target/release/axon-palette-linux-x86_64.tar.gz.sha256
-          if-no-files-found: error
-
-  palette-windows:
-    name: build axon-palette (windows)
-    runs-on: windows-latest
-    steps:
-      # Full checkout: LFS blobs come down as pointers (lfs: false default) and
-      # are not needed to build.
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.3.0
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/palette-tauri/src-tauri
-          shared-key: release-palette-windows
-      - name: Install palette dependencies
-        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
-      # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
-      # (pnpm vite:build) and compiles the portable .exe without packaging
-      # installers. The avx512-disabling RUSTFLAGS keep the binary portable
-      # across CPUs; the rustc-wrapper is a bash script that cannot run as a
-      # Windows rustc wrapper, so it is disabled here.
-      - name: Build Tauri palette (portable binary)
-        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci
-        env:
-          RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
-          CARGO_BUILD_RUSTC_WRAPPER: ""
-      - name: Package
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Push-Location apps/palette-tauri/src-tauri/target/release
-          Compress-Archive -Path axon-palette-tauri.exe -DestinationPath axon-palette-windows-x86_64.zip -Force
-          $hash = (Get-FileHash axon-palette-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  axon-palette-windows-x86_64.zip" | Out-File -Encoding ascii axon-palette-windows-x86_64.zip.sha256
-          Pop-Location
-      - uses: actions/upload-artifact@v5
-        with:
-          name: axon-palette-windows-x86_64
-          path: |
-            apps/palette-tauri/src-tauri/target/release/axon-palette-windows-x86_64.zip
-            apps/palette-tauri/src-tauri/target/release/axon-palette-windows-x86_64.zip.sha256
-          if-no-files-found: error
-
   publish:
     name: publish github release
-    needs: [axon-linux, axon-windows, palette-linux, palette-windows]
+    needs: [axon-linux, axon-windows]
     runs-on: ubuntu-latest
     # Create a release on real tag pushes. workflow_dispatch remains a dry-run
     # unless explicitly called with publish=true on a v* tag (used by auto-tag).
@@ -291,9 +190,5 @@ jobs:
             dist/axon-linux-x86_64.tar.gz.sha256
             dist/axon-windows-x86_64.zip
             dist/axon-windows-x86_64.zip.sha256
-            dist/axon-palette-linux-x86_64.tar.gz
-            dist/axon-palette-linux-x86_64.tar.gz.sha256
-            dist/axon-palette-windows-x86_64.zip
-            dist/axon-palette-windows-x86_64.zip.sha256
           generate_release_notes: true
           fail_on_unmatched_files: true
