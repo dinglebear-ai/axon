@@ -87,6 +87,15 @@ services:
       # so ${HOME}/.gemini exists and contains valid credentials. If the directory is
       # absent, Docker will create it as root-owned — run `mkdir -p ~/.gemini` first.
       - ${GEMINI_HOME:-${HOME}/.gemini}:/home/axon/.gemini:ro
+      # Codex auth — ONLY auth.json, so the container keeps its own FRESH codex
+      # config (no host MCP servers/skills/hooks) and merely borrows credentials
+      # for AXON_LLM_BACKEND=codex-app-server. Writable on purpose: codex refreshes
+      # the ChatGPT OAuth token in place; a read-only mount breaks refresh on
+      # expiry. Prefer OPENAI_API_KEY in ~/.axon/.env? Then drop this mount (or
+      # append `:ro` if you only need short-lived access).
+      # Prerequisite: run `codex login` on the host so ${HOME}/.codex/auth.json
+      # exists FIRST — Docker creates a root-owned directory if the file is absent.
+      - ${CODEX_HOME:-${HOME}/.codex}/auth.json:/home/axon/.codex/auth.json
     ports:
       - "${AXON_MCP_HTTP_PUBLISH:-8001}:8001"
     command: ["serve"]
