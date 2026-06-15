@@ -307,6 +307,43 @@ fn config_snapshot_does_not_serialize_process_local_endpoint_urls() {
 }
 
 #[test]
+fn config_snapshot_does_not_replay_docker_chrome_endpoint_urls() {
+    let mut submitted = Config::test_default();
+    submitted.chrome_remote_url = Some("http://axon-chrome:6000".to_string());
+    let mut worker = Config::test_default();
+    worker.chrome_remote_url = Some("http://worker-chrome:6000".to_string());
+
+    let config_json = config_snapshot_json(&submitted).expect("encode snapshot");
+    assert!(!config_json.contains("axon-chrome"));
+
+    let effective = apply_config_snapshot(&worker, &config_json).expect("apply snapshot");
+    assert_eq!(
+        effective.chrome_remote_url.as_deref(),
+        Some("http://worker-chrome:6000")
+    );
+}
+
+#[test]
+fn config_snapshot_rejects_adaptive_max_above_worker_cap() {
+    let mut submitted = Config::test_default();
+    submitted.adaptive_concurrency.enabled = true;
+    submitted.adaptive_concurrency.min = 1;
+    submitted.adaptive_concurrency.max = Some(2048);
+    let mut worker = Config::test_default();
+    worker.crawl_broadcast_buffer_max = 1024;
+
+    let config_json = config_snapshot_json(&submitted).expect("encode snapshot");
+    let err = apply_config_snapshot(&worker, &config_json)
+        .expect_err("adaptive snapshot above worker cap must fail");
+
+    assert!(
+        err.to_string()
+            .contains("workers.adaptive-concurrency.max must be <="),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn config_snapshot_rejects_invalid_llm_backend_values() {
     let worker = Config::test_default();
     let config_json = r#"{

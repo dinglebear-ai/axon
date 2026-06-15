@@ -1,6 +1,6 @@
 use super::{backfill_enabled, build_crawl_result_json, merge_candidates, run_crawl_job};
 use crate::core::config::Config;
-use crate::crawl::engine::{CrawlDiagnostic, CrawlSummary};
+use crate::crawl::engine::{AdaptiveCrawlSnapshot, CrawlDiagnostic, CrawlSummary};
 use crate::jobs::backend::JobPayload;
 use crate::jobs::ops::enqueue_job;
 use crate::jobs::store::open_sqlite_pool;
@@ -208,6 +208,45 @@ fn crawl_result_json_includes_embed_deferred_when_capacity_exceeded() {
         Some("embed queue at capacity: 50/50 pending embed jobs"),
         "capacity-deferred embed must surface a reason in result_json"
     );
+}
+
+#[test]
+fn crawl_result_json_includes_adaptive_concurrency_snapshot() {
+    let mut summary = make_summary();
+    summary.adaptive = Some(AdaptiveCrawlSnapshot {
+        successes: 11,
+        failures: 3,
+        lag_events: 1,
+        syncs: 4,
+        current_target: 2,
+        available_permits: 1,
+    });
+
+    let json = build_crawl_result_json(
+        "https://example.com",
+        Path::new("/tmp/axon-crawl"),
+        Path::new("/tmp/axon-crawl"),
+        &summary,
+        None,
+        None,
+        None,
+    );
+    let adaptive = json
+        .get("adaptive_concurrency")
+        .expect("adaptive telemetry");
+
+    assert_eq!(
+        adaptive.get("current_target").and_then(|v| v.as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        adaptive.get("available_permits").and_then(|v| v.as_u64()),
+        Some(1)
+    );
+    assert_eq!(adaptive.get("successes").and_then(|v| v.as_u64()), Some(11));
+    assert_eq!(adaptive.get("failures").and_then(|v| v.as_u64()), Some(3));
+    assert_eq!(adaptive.get("lag_events").and_then(|v| v.as_u64()), Some(1));
+    assert_eq!(adaptive.get("syncs").and_then(|v| v.as_u64()), Some(4));
 }
 
 #[test]

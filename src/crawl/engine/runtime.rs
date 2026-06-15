@@ -164,10 +164,18 @@ async fn apply_browser_settings(
 
 pub(super) fn chrome_intercept_config(cfg: &Config) -> RequestInterceptConfiguration {
     let mut intercept = RequestInterceptConfiguration::new(true);
+    intercept.set_blacklist_patterns(Some(chrome_intercept_blacklist_patterns()));
     if cfg.chrome_remote_local_policy {
         intercept.set_remote_local_policy(true);
     }
     intercept
+}
+
+fn chrome_intercept_blacklist_patterns() -> Vec<String> {
+    ssrf_blacklist_compact_strings()
+        .iter()
+        .map(ToString::to_string)
+        .collect()
 }
 
 pub(super) fn apply_limit_and_behavior_settings(

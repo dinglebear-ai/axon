@@ -41,7 +41,6 @@ pub(crate) struct AdaptiveCrawlControl {
     failures: Arc<AtomicUsize>,
     lag_events: Arc<AtomicUsize>,
     syncs: Arc<AtomicUsize>,
-    last_target: Arc<AtomicUsize>,
 }
 
 impl AdaptiveCrawlControl {
@@ -73,7 +72,6 @@ impl AdaptiveCrawlControl {
             failures: Arc::new(AtomicUsize::new(0)),
             lag_events: Arc::new(AtomicUsize::new(0)),
             syncs: Arc::new(AtomicUsize::new(0)),
-            last_target: Arc::new(AtomicUsize::new(initial)),
         })
     }
 
@@ -84,7 +82,7 @@ impl AdaptiveCrawlControl {
     pub(crate) fn record_status(&self, status: u16) {
         if status == 429 || status >= 500 {
             self.record_failure();
-        } else {
+        } else if (200..300).contains(&status) {
             self.record_success();
         }
     }
@@ -122,16 +120,30 @@ impl AdaptiveCrawlControl {
         let before = self.controller.current_limit();
         self.controller.record_failure();
         self.failures.fetch_add(1, Ordering::Relaxed);
-        self.sync_if_target_changed(before);
+        if !self.sync_if_target_changed(before) {
+            self.forget_surplus_available_permits();
+        }
     }
 
-    fn sync_if_target_changed(&self, before: usize) {
+    fn sync_if_target_changed(&self, before: usize) -> bool {
         let after = self.controller.current_limit();
         if before == after {
-            return;
+            return false;
         }
         self.semaphore.sync_from(&self.controller);
-        self.last_target.store(after, Ordering::Relaxed);
+        self.syncs.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
+    fn forget_surplus_available_permits(&self) {
+        let target = self.controller.current_limit();
+        let available = self.semaphore.available();
+        if available <= target {
+            return;
+        }
+        self.semaphore
+            .semaphore()
+            .forget_permits(available - target);
         self.syncs.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -163,6 +175,7 @@ pub(crate) fn warnings_for_config(cfg: &Config) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::core::config::AdaptiveConcurrencyConfig;
+    use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
     fn cfg(enabled: bool, min: usize, max: Option<usize>, crawl_limit: Option<usize>) -> Config {
         Config {
@@ -170,6 +183,14 @@ mod tests {
             crawl_concurrency_limit: crawl_limit,
             ..Config::default()
         }
+    }
+
+    async fn acquire_all(semaphore: Arc<Semaphore>, count: usize) -> Vec<OwnedSemaphorePermit> {
+        let mut permits = Vec::with_capacity(count);
+        for _ in 0..count {
+            permits.push(semaphore.clone().acquire_owned().await.unwrap());
+        }
+        permits
     }
 
     #[test]
@@ -224,6 +245,20 @@ mod tests {
     }
 
     #[test]
+    fn non_success_non_pressure_statuses_are_neutral() {
+        let control = AdaptiveCrawlControl::from_config(&cfg(true, 1, Some(8), Some(4)))
+            .expect("adaptive enabled");
+
+        control.record_status(404);
+        control.record_status(302);
+
+        let snapshot = control.snapshot();
+        assert_eq!(snapshot.current_target, 4);
+        assert_eq!(snapshot.successes, 0);
+        assert_eq!(snapshot.failures, 0);
+    }
+
+    #[test]
     fn broadcast_lag_applies_negative_pressure() {
         let control = AdaptiveCrawlControl::from_config(&cfg(true, 1, Some(16), Some(16)))
             .expect("adaptive enabled");
@@ -240,17 +275,13 @@ mod tests {
     async fn shrink_below_in_flight_reduces_target_but_does_not_cancel_or_retroactively_forget() {
         let control = AdaptiveCrawlControl::from_config(&cfg(true, 1, Some(4), Some(4)))
             .expect("adaptive enabled");
-        let semaphore = control.semaphore.semaphore();
-        let p1 = semaphore.clone().acquire_owned().await.unwrap();
-        let p2 = semaphore.clone().acquire_owned().await.unwrap();
-        let p3 = semaphore.clone().acquire_owned().await.unwrap();
-        let p4 = semaphore.clone().acquire_owned().await.unwrap();
+        let permits = acquire_all(control.semaphore.semaphore(), 4).await;
 
         control.record_status(503);
 
         assert_eq!(control.snapshot().current_target, 2);
         assert_eq!(control.snapshot().available_permits, 0);
-        drop((p1, p2, p3, p4));
+        drop(permits);
         assert_eq!(
             control.snapshot().available_permits,
             4,
@@ -258,6 +289,26 @@ mod tests {
              all in-flight permits return after release, so the controller target shrinks \
              immediately but admission may temporarily exceed it until future resize support lands"
         );
+    }
+
+    #[tokio::test]
+    async fn repeated_failure_at_current_target_drains_returned_surplus_permits() {
+        let control = AdaptiveCrawlControl::from_config(&cfg(true, 1, Some(4), Some(4)))
+            .expect("adaptive enabled");
+        let permits = acquire_all(control.semaphore.semaphore(), 4).await;
+
+        control.record_status(503);
+        control.record_status(503);
+        assert_eq!(control.snapshot().current_target, 1);
+
+        drop(permits);
+        assert_eq!(control.snapshot().available_permits, 4);
+
+        control.record_status(503);
+
+        let snapshot = control.snapshot();
+        assert_eq!(snapshot.current_target, 1);
+        assert_eq!(snapshot.available_permits, 1);
     }
 
     #[test]

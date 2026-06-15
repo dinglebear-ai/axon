@@ -18,6 +18,7 @@ use crate::core::config::{Config, RenderMode};
 use crate::core::content::{LadderThresholds, build_selector_config};
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::crawl::manifest::ManifestEntry;
+pub use adaptive::AdaptiveCrawlSnapshot;
 use collector::{CollectorConfig, collect_crawl_pages};
 use dir_ops::prepare_crawl_output_dir;
 pub use dir_ops::update_latest_reflink;
@@ -167,7 +168,7 @@ pub struct CrawlSummary {
     pub rate_limited: Vec<RateLimitHost>,
     /// Max crawl depth from config — the denominator of the DEPTH stat.
     pub depth_max: u32,
-    pub adaptive: Option<adaptive::AdaptiveCrawlSnapshot>,
+    pub adaptive: Option<AdaptiveCrawlSnapshot>,
 }
 
 impl CrawlSummary {

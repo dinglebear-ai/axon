@@ -521,6 +521,7 @@ fn chrome_remote_local_policy_defaults_disabled() {
 
     assert!(intercept.enabled);
     assert!(!intercept.remote_local_policy);
+    assert_chrome_intercept_has_loopback_blacklist(&intercept);
 }
 
 #[test]
@@ -531,6 +532,7 @@ fn chrome_remote_local_policy_can_be_enabled() {
 
     assert!(intercept.enabled);
     assert!(intercept.remote_local_policy);
+    assert_chrome_intercept_has_loopback_blacklist(&intercept);
 }
 
 #[test]
@@ -570,6 +572,19 @@ fn chrome_remote_local_policy_preserves_private_discovered_link_rejection() {
     );
 
     assert!(url.as_ref().is_empty());
+}
+
+fn assert_chrome_intercept_has_loopback_blacklist(
+    intercept: &spider::features::chrome_common::RequestInterceptConfiguration,
+) {
+    let blacklist = intercept
+        .blacklist_patterns
+        .as_ref()
+        .expect("Chrome intercept should carry SSRF blacklist");
+    assert!(
+        blacklist.iter().any(|pattern| pattern.contains("127\\.")),
+        "Chrome intercept blacklist should include loopback protections: {blacklist:?}"
+    );
 }
 
 // --- Junk URL detection tests ---

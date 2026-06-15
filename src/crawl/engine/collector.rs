@@ -5,7 +5,7 @@ mod util;
 
 use chrome_tasks::{apply_thin_page_outcome, drain_chrome_tasks};
 use manifest::write_page_to_manifest;
-use util::{emit_progress, track_waf_block};
+use util::{emit_progress, summary_with_adaptive, track_waf_block};
 
 pub(super) use page::{CollectorConfig, PageOutcome, canonicalize_and_track_page, process_page};
 
@@ -239,7 +239,7 @@ pub(super) async fn collect_crawl_pages(
         summary = write_refetch_results(summary, chrome_results, &col.output_dir).await;
     }
     if let Some(tx) = col.progress_tx.as_ref() {
-        tx.send(summary.clone()).await.ok();
+        tx.send(summary_with_adaptive(&col, &summary)).await.ok();
     }
     Ok((summary, urls))
 }
