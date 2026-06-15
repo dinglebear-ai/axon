@@ -449,6 +449,7 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_CODEX_MODEL",
         "AXON_SYNTHESIS_CODEX_MODEL",
         "AXON_CODEX_COMPLETION_CONCURRENCY",
+        "AXON_CODEX_LOAD_USER_CONFIG",
         "AXON_LLM_BACKEND",
         "AXON_LLM_COMPLETION_CONCURRENCY",
         "AXON_LLM_COMPLETION_TIMEOUT_SECS",
