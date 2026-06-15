@@ -1,5 +1,8 @@
 package com.axon.app.ui.ask
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,9 +24,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,6 +36,9 @@ import com.axon.app.ui.fab.FabLauncher
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tv.tootie.aurora.components.AuroraThinking
 
 @Composable
@@ -45,8 +53,30 @@ fun AskScreen(
     val historyReady by vm.historyReady.collectAsStateWithLifecycle()
     val mode by vm.mode.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
+    var attachment by remember { mutableStateOf<PromptAttachment?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pickAttachment = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                withContext(Dispatchers.IO) { readPromptAttachment(context, uri) }
+                    .onSuccess { attachment = it }
+                    .onFailure {
+                        Toast.makeText(context, it.message ?: "Couldn't attach that file", Toast.LENGTH_SHORT).show()
+                    }
+            }
+        }
+    }
     val listState = rememberLazyListState()
     val reveal = rememberRevealState()
+    val lastAxonIdx = chatItems.indexOfLast { it is ChatItem.AxonMsg }
+    fun copyMessage(value: String) {
+        context.getSystemService(android.content.ClipboardManager::class.java)
+            ?.setPrimaryClip(android.content.ClipData.newPlainText("Axon message", value))
+        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+    }
     val historyPreview = remember(chatItems, history) {
         if (chatItems.isEmpty()) history.take(4).asReversed() else emptyList()
     }
@@ -57,16 +87,6 @@ fun AskScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(AxonTheme.colors.pageBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                AskModeSwitch(
-                    mode = mode,
-                    onModeChange = vm::setMode,
-                    modifier = Modifier
-                        .fillMaxWidth(0.50f)
-                        .widthIn(max = 196.dp)
-                        .padding(top = 8.dp),
-                )
-            }
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -95,7 +115,14 @@ fun AskScreen(
                                         .animateItem()
                                         .revealOnce(reveal, stableChatItemKey(index, item), index, staggerMs = 0),
                                 ) {
-                                    ChatItemContent(item = item, onOpenDocument = onOpenDocument)
+                                    ChatItemContent(
+                                        item = item,
+                                        onOpenDocument = onOpenDocument,
+                                        isLastAxon = index == lastAxonIdx,
+                                        onCopy = ::copyMessage,
+                                        onEdit = { input = it },
+                                        onRegenerate = { vm.regenerateLast() },
+                                    )
                                 }
                             }
                         }
@@ -110,9 +137,19 @@ fun AskScreen(
                                         .animateItem()
                                         .revealOnce(reveal, "history-${item.id}-${item.askedAt}", index, staggerMs = 0),
                                 ) {
-                                    UserBubble(item.query)
+                                    UserBubble(
+                                        item.query,
+                                        timestamp = item.askedAt,
+                                        onEdit = { input = item.query },
+                                        onCopy = { copyMessage(item.query) },
+                                    )
                                     Spacer(Modifier.height(4.dp))
-                                    AxonBubble(item.answer, onOpenDocument = onOpenDocument)
+                                    AxonBubble(
+                                        item.answer,
+                                        onOpenDocument = onOpenDocument,
+                                        timestamp = item.askedAt,
+                                        onCopy = { copyMessage(item.answer) },
+                                    )
                                 }
                             }
                         }
@@ -147,15 +184,21 @@ fun AskScreen(
                     onValueChange = { input = it },
                     loading = uiState is AskUiState.Loading || uiState is AskUiState.Streaming,
                     placeholder = "Ask a follow-up...",
+                    mode = mode,
+                    onModeChange = vm::setMode,
+                    attachmentName = attachment?.name,
+                    onAttachClick = { pickAttachment.launch(arrayOf("*/*")) },
+                    onRemoveAttachment = { attachment = null },
                     modifier = Modifier
-                        .fillMaxWidth(0.90f)
-                        .widthIn(max = 366.dp)
+                        .fillMaxWidth(0.92f)
+                        .widthIn(max = 420.dp)
                         .imePadding()
                         .navigationBarsPadding()
                         .padding(horizontal = 0.dp, vertical = 9.dp),
                     onSend = {
-                        vm.ask(input)
+                        vm.ask(input, attachment = attachment?.content)
                         input = ""
+                        attachment = null
                     },
                 )
             }
@@ -176,13 +219,28 @@ fun AskScreen(
 }
 
 @Composable
-private fun ChatItemContent(item: ChatItem, onOpenDocument: (String) -> Unit) {
+private fun ChatItemContent(
+    item: ChatItem,
+    onOpenDocument: (String) -> Unit,
+    isLastAxon: Boolean,
+    onCopy: (String) -> Unit,
+    onEdit: (String) -> Unit,
+    onRegenerate: () -> Unit,
+) {
     when (item) {
-        is ChatItem.UserMsg -> UserBubble(item.text)
+        is ChatItem.UserMsg -> UserBubble(
+            text = item.text,
+            timestamp = item.timestamp,
+            onEdit = { onEdit(item.text) },
+            onCopy = { onCopy(item.text) },
+        )
         is ChatItem.AxonMsg -> AxonBubble(
             text = item.text,
             isStreaming = item.isStreaming,
             onOpenDocument = onOpenDocument,
+            timestamp = item.timestamp,
+            onCopy = if (item.text.isNotBlank()) { { onCopy(item.text) } } else null,
+            onRegenerate = if (isLastAxon && !item.isStreaming) onRegenerate else null,
         )
         is ChatItem.Activity -> ActivityRailRow(item)
         is ChatItem.ActionResult -> Box(

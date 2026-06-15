@@ -122,11 +122,28 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         val items = _chatItems.value.toMutableList()
         val lastIdx = items.indexOfLast { it is ChatItem.AxonMsg }
         if (lastIdx >= 0) {
-            items[lastIdx] = ChatItem.AxonMsg(text, isStreaming)
+            // copy() keeps the original timestamp so it doesn't reset on each stream flush.
+            items[lastIdx] = (items[lastIdx] as ChatItem.AxonMsg).copy(text = text, isStreaming = isStreaming)
             _chatItems.value = items
         } else {
             _chatItems.value = items + ChatItem.AxonMsg(text, isStreaming)
         }
+    }
+
+    /**
+     * Re-runs the most recent user question, replacing its answer. Drops the old
+     * answer/activities and the stored turn, then [ask] re-appends the question
+     * and streams a fresh response.
+     */
+    fun regenerateLast() {
+        if (askJob?.isActive == true) return
+        val items = _chatItems.value
+        val userIdx = items.indexOfLast { it is ChatItem.UserMsg }
+        if (userIdx < 0) return
+        val query = (items[userIdx] as ChatItem.UserMsg).text
+        _chatItems.value = items.subList(0, userIdx)
+        _turns.value = _turns.value.dropLast(1)
+        ask(query)
     }
 
     private fun appendOrUpdateActivity(phase: String, query: String) {
@@ -246,7 +263,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun ask(query: String) {
+    fun ask(query: String, attachment: String? = null) {
         if (query.isBlank()) return
         val mode = _mode.value
         // Cancel any prior in-flight stream BEFORE launching a new one. Without
@@ -257,15 +274,26 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             appendItem(ChatItem.UserMsg(query))
             appendItem(ChatItem.AxonMsg("", isStreaming = true))
             _uiState.value = AskUiState.Loading
-            val collection = if (mode == ConversationMode.Ask) {
+            // An attached document is fed straight to the LLM via the chat path:
+            // RAG retrieval would embed the whole file as the query and reject it
+            // ("no candidates passed topical overlap"), so attachments bypass it.
+            val useRag = mode == ConversationMode.Ask && attachment.isNullOrBlank()
+            val collection = if (useRag) {
                 container.settingsRepository.settings.first().collection
             } else {
                 null
             }
 
             // Prepend prior turns into the wire query, but keep the raw `query` for UI/history
-            // so we don't nest prior context inside future turns.
-            val effective = buildFollowUpQuery(_turns.value, query)
+            // so we don't nest prior context inside future turns. An attachment's text is
+            // inlined into the current question only — never stored in turns/history, so it
+            // doesn't leak into later follow-ups.
+            val questionWithAttachment = if (!attachment.isNullOrBlank()) {
+                "Attached document:\n\"\"\"\n$attachment\n\"\"\"\n\nUsing the attached document above, answer:\n$query"
+            } else {
+                query
+            }
+            val effective = buildFollowUpQuery(_turns.value, questionWithAttachment)
 
             // Use StringBuilder to avoid O(n²) string concatenation across delta events.
             // Declared inside the launch block — concurrent ask() calls each get their own
@@ -283,7 +311,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             runCatching {
-                val stream = if (mode == ConversationMode.Ask) {
+                val stream = if (useRag) {
                     container.axonRepository.askStream(effective, collection = collection)
                 } else {
                     container.axonRepository.chatStream(effective)
@@ -291,7 +319,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                 stream.collect { event ->
                     when (event) {
                         is AskStreamEvent.Meta -> {
-                            if (mode == ConversationMode.Ask) appendOrUpdateActivity(event.phase, query)
+                            if (useRag) appendOrUpdateActivity(event.phase, query)
                         }
                         is AskStreamEvent.Delta -> {
                             accumulated.append(event.text)
