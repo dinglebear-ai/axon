@@ -1,3 +1,4 @@
+mod adaptive;
 mod endpoint;
 mod errors;
 mod ingest;
@@ -8,7 +9,8 @@ use std::{io, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::core::config::{Config, RenderMode, ScrapeFormat};
-use endpoint::endpoint_snapshot;
+use adaptive::AdaptiveConcurrencySnapshot;
+use endpoint::{snapshot_chrome_remote_url, snapshot_endpoints};
 use errors::{running_in_container, serde_json_error};
 pub(crate) use ingest::{decode_ingest_job_config, ingest_config_json};
 use paths::normalize_container_output_dir;
@@ -42,6 +44,7 @@ struct ConfigSnapshot {
     chrome_user_agent: Option<String>,
     chrome_bootstrap_timeout_ms: Option<u64>,
     chrome_bootstrap_retries: Option<usize>,
+    chrome_remote_local_policy: Option<bool>,
     respect_robots: Option<bool>,
     min_markdown_chars: Option<usize>,
     drop_thin_markdown: Option<bool>,
@@ -58,6 +61,7 @@ struct ConfigSnapshot {
     batch_concurrency: Option<usize>,
     crawl_concurrency_limit: Option<usize>,
     backfill_concurrency_limit: Option<usize>,
+    adaptive_concurrency: Option<AdaptiveConcurrencySnapshot>,
     sitemap_only: Option<bool>,
     delay_ms: Option<u64>,
     request_timeout_ms: Option<u64>,
@@ -151,17 +155,13 @@ impl ConfigSnapshot {
             include_subdomains: Some(cfg.include_subdomains),
             exclude_path_prefix: Some(cfg.exclude_path_prefix.clone()),
             render_mode: Some(cfg.render_mode),
-            chrome_remote_url: match cfg.chrome_remote_url.as_deref() {
-                Some(url) => {
-                    endpoint_snapshot("chrome_remote_url", url, &mut process_fallback_fields)?
-                }
-                None => None,
-            },
+            chrome_remote_url: snapshot_chrome_remote_url(cfg, &mut process_fallback_fields)?,
             chrome_proxy: cfg.chrome_proxy.clone(),
             user_agent: cfg.user_agent.clone(),
             chrome_user_agent: cfg.chrome_user_agent.clone(),
             chrome_bootstrap_timeout_ms: Some(cfg.chrome_bootstrap_timeout_ms),
             chrome_bootstrap_retries: Some(cfg.chrome_bootstrap_retries),
+            chrome_remote_local_policy: Some(cfg.chrome_remote_local_policy),
             respect_robots: Some(cfg.respect_robots),
             min_markdown_chars: Some(cfg.min_markdown_chars),
             drop_thin_markdown: Some(cfg.drop_thin_markdown),
@@ -178,6 +178,7 @@ impl ConfigSnapshot {
             batch_concurrency: Some(cfg.batch_concurrency),
             crawl_concurrency_limit: cfg.crawl_concurrency_limit,
             backfill_concurrency_limit: cfg.backfill_concurrency_limit,
+            adaptive_concurrency: Some((&cfg.adaptive_concurrency).into()),
             sitemap_only: Some(cfg.sitemap_only),
             delay_ms: Some(cfg.delay_ms),
             request_timeout_ms: cfg.request_timeout_ms,
@@ -302,6 +303,7 @@ impl ConfigSnapshot {
             custom_headers,
             chrome_bootstrap_timeout_ms,
             chrome_bootstrap_retries,
+            chrome_remote_local_policy,
             respect_robots,
             min_markdown_chars,
             drop_thin_markdown,
@@ -376,6 +378,9 @@ impl ConfigSnapshot {
             viewport_height,
             quiet,
         );
+        if let Some(value) = self.adaptive_concurrency.take() {
+            cfg.adaptive_concurrency = value.into();
+        }
     }
 
     fn apply_option_fields(
@@ -418,27 +423,6 @@ impl ConfigSnapshot {
             seed_url,
         );
     }
-}
-
-struct EndpointSnapshots {
-    tei_url: Option<String>,
-    qdrant_url: Option<String>,
-    openai_base_url: Option<String>,
-}
-
-fn snapshot_endpoints(
-    cfg: &Config,
-    process_fallback_fields: &mut Vec<String>,
-) -> Result<EndpointSnapshots, String> {
-    Ok(EndpointSnapshots {
-        tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, process_fallback_fields)?,
-        qdrant_url: endpoint_snapshot("qdrant_url", &cfg.qdrant_url, process_fallback_fields)?,
-        openai_base_url: endpoint_snapshot(
-            "openai_base_url",
-            &cfg.openai_base_url,
-            process_fallback_fields,
-        )?,
-    })
 }
 
 fn llm_backend_snapshot(kind: crate::core::llm::LlmBackendKind) -> String {

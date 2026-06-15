@@ -53,6 +53,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 | `time` | Core | Timing/duration tracking for crawl operations |
 | `control` | Core | Runtime crawl control — pause/resume/shutdown; crawl cancellation sends Spider shutdown for the active target |
 | `hedge` | Core | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `src/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
+| `adaptive_concurrency` | Core | Included by Spider's `basic` meta-feature. Axon opts into it only when `[workers.adaptive-concurrency] enabled = true`, keeping controller logic in `src/crawl/engine/adaptive.rs` and attaching the semaphore in `src/crawl/engine.rs`. |
 | `chrome` | Chrome / Browser | `RenderMode::Chrome` and `RenderMode::AutoSwitch` paths in `src/crawl/engine/runtime.rs`. Imports `spider::features::chrome_common::{RequestInterceptConfiguration, ScreenShotConfig, ScreenshotParams, WaitForSelector}` |
 | `chrome_stealth` | Chrome / Browser | Passed to `spider::website::Website` in `configure_website()` in `src/crawl/engine/`. Enables headless detection evasion |
 | `chrome_screenshot` | Chrome / Browser | `ScreenshotParams` usage in `src/crawl/engine/runtime.rs`. Powers screenshot capture during crawls |
@@ -100,6 +101,7 @@ Used in two files for HTML→Markdown content transformation:
 | `serde` | — | Project uses its own serde deps directly |
 | `sync` | — | |
 | `control` | ✅ | Runtime crawl control — pause/resume/shutdown. Crawl cancellation sends Spider shutdown for the active crawl target before returning canceled |
+| `adaptive_concurrency` | ✅ via `basic` | Opt-in runtime crawl concurrency. TOML-only in Axon; 429, 5xx, and broadcast lag reduce target. No arbitrary decrease-factor or sync-interval knobs until Spider honors them. |
 | `full_resources` | — | |
 | `cookies` | — | |
 | `spoof` | — | `chrome_stealth` covers bot-evasion needs |
@@ -160,6 +162,7 @@ Used in two files for HTML→Markdown content transformation:
 | `chrome_remote_cache_disk` | — | |
 | `chrome_remote_cache_mem` | — | |
 | `adblock` | ✅ | Implicit ad/tracker blocking during Chrome renders |
+| remote local policy API | ✅ via `chrome` | `chrome.remote-local-policy` pushes Spider/Chromey's local interception policy to capable remote Chrome engines for Chrome-rendered crawls only. Generic CDP proxies may reject it; standalone `axon screenshot` is not wired in this release. |
 | `real_browser` | — | |
 | `smart` | — | Project implements its own `auto-switch` logic in `engine.rs` |
 

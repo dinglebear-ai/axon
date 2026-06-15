@@ -71,6 +71,120 @@ fn env_wins_over_toml_for_workers_ingest_lanes() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
+fn toml_workers_adaptive_concurrency_parses_min_and_max() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[workers.adaptive-concurrency]\nenabled = true\nmin = 2\nmax = 32"
+    )
+    .unwrap();
+    let mut got = None;
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        got = Some(
+            into_config_via_args(&["status"])
+                .unwrap()
+                .adaptive_concurrency,
+        );
+    });
+    let got = got.expect("config captured");
+    assert!(got.enabled);
+    assert_eq!(got.min, 2);
+    assert_eq!(got.max, Some(32));
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_chrome_remote_local_policy_parses() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[chrome]\nremote-local-policy = true").unwrap();
+    let mut got = false;
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        got = into_config_via_args(&["status"])
+            .unwrap()
+            .chrome_remote_local_policy;
+    });
+    assert!(got);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_workers_adaptive_concurrency_rejects_min_greater_than_max() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[workers.adaptive-concurrency]\nenabled = true\nmin = 33\nmax = 32"
+    )
+    .unwrap();
+    let mut err_msg = String::new();
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        err_msg = into_config_via_args(&["status"]).unwrap_err();
+    });
+    assert!(
+        err_msg.contains("workers.adaptive-concurrency.min must be <= max"),
+        "unexpected error: {err_msg}"
+    );
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_workers_adaptive_concurrency_rejects_max_above_broadcast_cap() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[workers.adaptive-concurrency]\nenabled = true\nmin = 1\nmax = 1025"
+    )
+    .unwrap();
+    let mut err_msg = String::new();
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        err_msg = into_config_via_args(&["status"]).unwrap_err();
+    });
+    assert!(
+        err_msg.contains(
+            "workers.adaptive-concurrency.max must be <= min(crawl-broadcast-buffer-max, 1024)"
+        ),
+        "unexpected error: {err_msg}"
+    );
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_workers_adaptive_concurrency_rejects_unsupported_knobs() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let cases = [
+        "decrease-factor = 0.25",
+        "initial = 8",
+        "sync-interval-ms = 250",
+    ];
+    for extra in cases {
+        let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+        writeln!(f, "[workers.adaptive-concurrency]\nenabled = true\n{extra}").unwrap();
+        let mut err_msg = String::new();
+        with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            err_msg = into_config_via_args(&["status"]).unwrap_err();
+        });
+        assert!(
+            err_msg.contains("unknown field"),
+            "expected unknown-field parse error for {extra}, got: {err_msg}"
+        );
+    }
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
 fn toml_workers_embed_lanes_wins_over_default() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();

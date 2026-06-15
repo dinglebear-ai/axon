@@ -100,7 +100,7 @@ async fn apply_browser_settings(
         // CDP path — primary browser mode. chromiumoxide connects directly via CDP,
         // giving access to stealth, fingerprint, intercept, and network-idle features.
         website
-            .with_chrome_intercept(RequestInterceptConfiguration::new(true))
+            .with_chrome_intercept(chrome_intercept_config(cfg))
             .with_stealth(true)
             .with_fingerprint(true);
         // Dismiss browser dialogs (alert/confirm/prompt) automatically — without this
@@ -162,7 +162,19 @@ async fn apply_browser_settings(
     Ok(website)
 }
 
-fn apply_limit_and_behavior_settings(cfg: &Config, website: &mut Website, start_url: &str) {
+pub(super) fn chrome_intercept_config(cfg: &Config) -> RequestInterceptConfiguration {
+    let mut intercept = RequestInterceptConfiguration::new(true);
+    if cfg.chrome_remote_local_policy {
+        intercept.set_remote_local_policy(true);
+    }
+    intercept
+}
+
+pub(super) fn apply_limit_and_behavior_settings(
+    cfg: &Config,
+    website: &mut Website,
+    start_url: &str,
+) {
     website.with_depth(cfg.max_depth);
     website.with_subdomains(cfg.include_subdomains);
     website.with_tld(false);
@@ -203,7 +215,11 @@ fn apply_limit_and_behavior_settings(cfg: &Config, website: &mut Website, start_
     website.with_blacklist_url(Some(blacklist_patterns));
 }
 
-fn apply_request_and_identity_settings(cfg: &Config, website: &mut Website, start_url: &str) {
+pub(super) fn apply_request_and_identity_settings(
+    cfg: &Config,
+    website: &mut Website,
+    start_url: &str,
+) {
     // Pre-compute the allowed host for cross-domain link rejection.
     // When include_subdomains is false, links to other domains are dropped here
     // before spider even attempts to fetch them — preventing scope explosions

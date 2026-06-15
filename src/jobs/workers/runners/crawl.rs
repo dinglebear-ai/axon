@@ -473,6 +473,12 @@ fn build_crawl_result_json(
             serde_json::Value::String(reason.to_string()),
         );
     }
+    if let (Some(adaptive), Some(obj)) = (summary.adaptive.as_ref(), value.as_object_mut()) {
+        obj.insert(
+            "adaptive_concurrency".to_string(),
+            serde_json::to_value(adaptive).unwrap_or(serde_json::Value::Null),
+        );
+    }
     if let (Some(error), Some(obj)) = (sitemap_backfill_error, value.as_object_mut()) {
         obj.insert(
             "sitemap_backfill_error".to_string(),
