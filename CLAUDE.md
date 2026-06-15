@@ -332,6 +332,10 @@ AXON_SYNTHESIS_CODEX_MODEL=
 # Legacy alias still accepted:
 # AXON_CODEX_MODEL=
 AXON_CODEX_COMPLETION_CONCURRENCY=1
+# Opt-in: load the user's real Codex config (MCP servers, skills, hooks) by
+# running against the real CODEX_HOME + inherited env instead of the isolated
+# stripped home. Default false; surrenders synthesis isolation.
+AXON_CODEX_LOAD_USER_CONFIG=false
 
 # CDP endpoint for headless_browser (axon-chrome management API)
 AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
@@ -451,7 +455,7 @@ When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_
 All LLM operations — `ask`, `summarize`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the backend selected by `AXON_LLM_BACKEND`, dispatched in `src/core/llm.rs` on `LlmBackendKind`:
 - **`gemini-headless`** (default; also accepts `gemini`/`headless`/empty) — Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`, synthesis model override `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL`; legacy alias `AXON_HEADLESS_GEMINI_MODEL`). Implemented in `src/core/llm/headless/` Gemini dispatch.
 - **`openai-compat`** — any OpenAI-compatible endpoint (`src/core/llm/openai_compat.rs`). Requires `AXON_OPENAI_BASE_URL` (the API root — the code appends `/chat/completions` and errors if you include it; include `/v1` when the endpoint serves `/v1/chat/completions`) and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias `AXON_OPENAI_MODEL`); `AXON_OPENAI_API_KEY` is optional (sent as a bearer token when set). llama.cpp and proxy endpoints both work.
-- **`codex-app-server`** — spawns `codex app-server` through the Codex CLI over stdio with an isolated throwaway `CODEX_HOME` and rehomed `HOME`/XDG directories. Configure with `AXON_CODEX_CMD`, optional `AXON_CODEX_HOME`, optional `AXON_SYNTHESIS_CODEX_MODEL`, and `AXON_CODEX_COMPLETION_CONCURRENCY` (default `1`). This is not an OpenAI-compatible HTTP endpoint and does not connect to the desktop Unix socket in this slice.
+- **`codex-app-server`** — spawns `codex app-server` through the Codex CLI over stdio with an isolated throwaway `CODEX_HOME` and rehomed `HOME`/XDG directories. Configure with `AXON_CODEX_CMD`, optional `AXON_CODEX_HOME`, optional `AXON_SYNTHESIS_CODEX_MODEL`, and `AXON_CODEX_COMPLETION_CONCURRENCY` (default `1`). This is not an OpenAI-compatible HTTP endpoint and does not connect to the desktop Unix socket in this slice. **Escape hatch:** `AXON_CODEX_LOAD_USER_CONFIG=true` (default `false`) runs the child against the user's **real** `CODEX_HOME` with the full inherited environment so MCP servers, skills, and hooks load — surrendering the isolation above. Implemented as the passthrough branch in `src/core/llm/codex_app_server.rs` (`spawn_codex_child_passthrough`).
 
 Deterministic and vertical extractors in `src/extract/` and `src/core/content/deterministic.rs` run pure Rust without LLM calls; the LLM is invoked only when deterministic extraction yields nothing (the fallback path). The legacy un-prefixed `OPENAI_BASE_URL` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0 and replaced by the `AXON_LLM_BACKEND` + `AXON_OPENAI_*` / `AXON_SYNTHESIS_*` scheme above. Bare `OPENAI_API_KEY` is still ignored by Axon config, but the Codex app-server backend may forward it only to the isolated child process as an optional auth fallback.
 

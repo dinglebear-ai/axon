@@ -128,6 +128,7 @@ fn into_config_reads_codex_app_server_env_settings() {
             "AXON_SYNTHESIS_CODEX_MODEL",
             "AXON_CODEX_MODEL",
             "AXON_CODEX_COMPLETION_CONCURRENCY",
+            "AXON_CODEX_LOAD_USER_CONFIG",
         ],
         || unsafe {
             env::set_var("AXON_LLM_BACKEND", "codex-app-server");
@@ -136,9 +137,11 @@ fn into_config_reads_codex_app_server_env_settings() {
             env::set_var("AXON_CODEX_MODEL", "legacy-model");
             env::set_var("AXON_SYNTHESIS_CODEX_MODEL", "gpt-5.5");
             env::set_var("AXON_CODEX_COMPLETION_CONCURRENCY", "2");
+            env::set_var("AXON_CODEX_LOAD_USER_CONFIG", "true");
 
             let cfg = into_config_via_args(&["status"]).expect("status config");
             let backend = crate::core::llm::LlmBackendConfig::from_config(&cfg);
+            assert!(backend.codex_load_user_config);
 
             assert_eq!(
                 backend.kind,

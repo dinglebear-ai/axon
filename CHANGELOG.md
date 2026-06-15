@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.13.0] - 2026-06-15
+
+### Added
+
+- **`AXON_CODEX_LOAD_USER_CONFIG`** — opt-in flag (default `false`) for the
+  `codex-app-server` LLM backend. When `true`, Axon runs `codex app-server`
+  against the user's real `CODEX_HOME` with the full inherited environment so
+  MCP servers, skills, and hooks load, instead of the isolated stripped home.
+  Surrenders synthesis isolation; intended as the escape hatch toward
+  tool-enabled (agentic) Codex use. Implemented as a passthrough spawn branch in
+  `src/core/llm/codex_app_server.rs`.
+
 ## [5.12.0] - 2026-06-14
 
 ### Added

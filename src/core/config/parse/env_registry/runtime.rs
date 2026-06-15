@@ -179,6 +179,14 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_CODEX_LOAD_USER_CONFIG",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
         "AXON_SYNTHESIS_OPENAI_MODEL",
         KeepEnv,
         Both,
