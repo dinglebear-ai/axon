@@ -87,7 +87,7 @@ fun FabOpInputCard(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF040A0E).copy(alpha = 0.90f * enter.coerceIn(0f, 1f)))
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.90f * enter.coerceIn(0f, 1f)))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
     ) {
         Box(
@@ -215,7 +215,7 @@ fun FabOpInputCard(
                         Icon(
                             Icons.AutoMirrored.Rounded.Send,
                             contentDescription = "Send",
-                            tint = Color(0xFF06131C).copy(alpha = if (canSend) 1f else 0.55f),
+                            tint = colors.onAccentFg.copy(alpha = if (canSend) 1f else 0.55f),
                             modifier = Modifier.size(15.dp),
                         )
                     }

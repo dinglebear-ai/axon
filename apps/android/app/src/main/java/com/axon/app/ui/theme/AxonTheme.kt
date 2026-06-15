@@ -46,6 +46,13 @@ data class AxonPalette(
     val warn: Color,
     val error: Color,
     val success: Color,
+    // App-specific tokens with no aurora-lib equivalent (theme-invariant: same value in
+    // dark and light so call sites that used the raw literal hold appearance exactly).
+    // onAccentFg: near-black foreground placed on accent/cyan fills (#06131C, distinct
+    //   from pageBg #07131C and accentForeground #051520); reused on send/active glyphs.
+    // iconMuted: dim icon/label tint (#4A6374) for low-emphasis job rows; reused.
+    val onAccentFg: Color,
+    val iconMuted: Color,
     val isDark: Boolean,
 )
 
@@ -84,6 +91,8 @@ val AxonDarkColors = AxonPalette(
     warn = Color(0xFFC6A36B),
     error = Color(0xFFC78490),
     success = Color(0xFF7DD3C7),
+    onAccentFg = Color(0xFF06131C),
+    iconMuted = Color(0xFF4A6374),
     isDark = true,
 )
 
@@ -124,6 +133,8 @@ internal fun auroraDerivedDarkPalette(
     warn = extra.warn, // == #C6A36B (aurora warnBase)
     error = scheme.error, // == #C78490 (aurora errorBase)
     success = extra.success, // == #7DD3C7 (aurora successBase)
+    onAccentFg = Color(0xFF06131C), // app-specific (no aurora token; theme-invariant)
+    iconMuted = Color(0xFF4A6374), // app-specific (no aurora token; theme-invariant)
     isDark = true,
 )
 
@@ -150,6 +161,10 @@ val AxonLightColors = AxonPalette(
     warn = Color(0xFF8A6914),
     error = Color(0xFF9C3545),
     success = Color(0xFF2D7D6E),
+    // Theme-invariant: same value as dark so call sites hold appearance exactly
+    // (these literals never branched on theme).
+    onAccentFg = Color(0xFF06131C),
+    iconMuted = Color(0xFF4A6374),
     isDark = false,
 )
 

@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -185,7 +184,7 @@ private fun CompactSuggestInput(
             Icon(
                 Icons.AutoMirrored.Rounded.Send,
                 contentDescription = "Load suggestions",
-                tint = if (value.isNotBlank()) Color(0xFF06131C) else colors.textMuted,
+                tint = if (value.isNotBlank()) colors.onAccentFg else colors.textMuted,
                 modifier = Modifier.size(14.dp),
             )
         }
