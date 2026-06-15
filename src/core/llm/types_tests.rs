@@ -39,6 +39,7 @@ fn backend_config_accepts_codex_fields() {
         codex_model: "gpt-5.5".to_string(),
         codex_home: Some(PathBuf::from("/home/example/.codex")),
         codex_completion_concurrency: 1,
+        codex_load_user_config: true,
         ..Config::default()
     };
 
@@ -52,6 +53,16 @@ fn backend_config_accepts_codex_fields() {
         Some(PathBuf::from("/home/example/.codex"))
     );
     assert_eq!(backend.completion_concurrency, 1);
+    assert!(backend.codex_load_user_config);
+}
+
+#[test]
+fn backend_config_defaults_load_user_config_to_false() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::CodexAppServer,
+        ..Config::default()
+    };
+    assert!(!LlmBackendConfig::from_config(&cfg).codex_load_user_config);
 }
 
 #[test]

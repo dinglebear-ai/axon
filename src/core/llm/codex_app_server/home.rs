@@ -114,6 +114,15 @@ fn copy_auth(source: &Path, dest: &Path) -> Result<(), BoxError> {
     Ok(())
 }
 
+/// Resolve the user's real `CODEX_HOME` for the passthrough (load-user-config)
+/// spawn path: explicit `AXON_CODEX_HOME` override → `$CODEX_HOME` → `$HOME/.codex`.
+/// Returns `None` when no candidate exists (Codex falls back to its own default).
+pub(super) fn resolve_user_codex_home(
+    config: &LlmBackendConfig,
+) -> Result<Option<PathBuf>, BoxError> {
+    codex_source_home(config)
+}
+
 /// Resolve the source `CODEX_HOME` to copy `auth.json` from: explicit config
 /// override → `$CODEX_HOME` → `$HOME/.codex`. Returns `None` when no candidate
 /// directory exists (env-based auth is still possible).

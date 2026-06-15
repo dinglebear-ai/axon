@@ -47,13 +47,22 @@ where
     F: FnMut(&str) -> Result<(), BoxError> + Send,
 {
     validate_codex_cmd(&req.backend)?;
-    let home = home::prepare_codex_home(&req.backend)?;
     let cwd = tempfile::Builder::new()
         .prefix("axon-codex-cwd-")
         .tempdir()
         .map_err(|err| format!("failed to create isolated codex cwd: {err}"))?;
 
-    let mut child = spawn_codex_child(&req.backend, &home, cwd.path())?;
+    // `_home_guard` owns the throwaway CODEX_HOME for the isolated path and must
+    // stay alive for the child's lifetime. In passthrough mode there is no
+    // throwaway home — the child runs against the user's real CODEX_HOME + env.
+    let (_home_guard, mut child) = if req.backend.codex_load_user_config {
+        let child = spawn_codex_child_passthrough(&req.backend, cwd.path())?;
+        (None, child)
+    } else {
+        let home = home::prepare_codex_home(&req.backend)?;
+        let child = spawn_codex_child(&req.backend, &home, cwd.path())?;
+        (Some(home), child)
+    };
     let mut stdin = child
         .stdin
         .take()
@@ -170,6 +179,35 @@ fn spawn_codex_child(
     command
         .spawn()
         .map_err(|err| format!("failed to spawn codex app-server: {err}").into())
+}
+
+/// Spawn `codex app-server` against the user's real Codex config — inheriting the
+/// full environment so MCP servers, skills, and hooks load. This deliberately
+/// surrenders the isolation of [`spawn_codex_child`]; gated behind
+/// `AXON_CODEX_LOAD_USER_CONFIG`. The process group is still set so cleanup can
+/// SIGKILL the whole tree.
+fn spawn_codex_child_passthrough(
+    backend: &LlmBackendConfig,
+    cwd: &Path,
+) -> Result<Child, BoxError> {
+    let mut command = Command::new(&backend.codex_cmd);
+    command
+        .arg("app-server")
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    // Inherit the ambient environment (PATH, tokens, OPENAI_API_KEY, etc.) so the
+    // user's MCP servers can authenticate. Only pin CODEX_HOME when explicitly
+    // overridden; otherwise Codex resolves its own default home.
+    if let Some(home) = home::resolve_user_codex_home(backend)? {
+        command.env("CODEX_HOME", home);
+    }
+    configure_codex_child_isolation(&mut command);
+    command
+        .spawn()
+        .map_err(|err| format!("failed to spawn codex app-server (load-user-config): {err}").into())
 }
 
 #[cfg(unix)]
