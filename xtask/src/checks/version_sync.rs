@@ -85,8 +85,13 @@ fn check_changelog(content: &str, expected: &str) -> Result<()> {
 }
 
 fn check_json_version(content: &str, expected: &str, path: &str) -> Result<()> {
-    let pattern = format!("\"version\": \"{expected}\"");
-    if content.contains(&pattern) {
+    // Match regardless of whitespace around the colon so a formatting-only
+    // change (pretty `"version": "x"` vs compact/minified `"version":"x"`)
+    // doesn't break the parity gate. Strip all whitespace, then match the
+    // compact form.
+    let compact: String = content.chars().filter(|c| !c.is_whitespace()).collect();
+    let pattern = format!("\"version\":\"{expected}\"");
+    if compact.contains(&pattern) {
         return Ok(());
     }
     bail!(

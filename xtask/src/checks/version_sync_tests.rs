@@ -67,6 +67,13 @@ fn json_version_nested_ok() {
 }
 
 #[test]
+fn json_version_compact_ok() {
+    // Compact JSON with no space after the colon must still match.
+    let json = "{\"name\":\"axon-web\",\"version\":\"5.6.1\"}";
+    assert!(check_json_version(json, "5.6.1", "apps/web/package.json").is_ok());
+}
+
+#[test]
 fn json_version_mismatch_is_error() {
     let json = "{\n  \"version\": \"5.6.0\"\n}";
     assert!(check_json_version(json, "5.6.1", "apps/web/package.json").is_err());
