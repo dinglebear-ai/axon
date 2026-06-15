@@ -68,7 +68,9 @@ FROM debian:bookworm-slim AS runtime
 #   @openai/codex   — the codex-app-server LLM backend (AXON_LLM_BACKEND=codex-app-server).
 #                     Installed in-image so the container has a FRESH codex home
 #                     (no host MCP servers/skills/hooks) — fast by default, and
-#                     MCP-capable only when the container's own ~/.codex is configured.
+#                     MCP-capable only when the container's own codex home is
+#                     configured. docker-compose relocates that home to
+#                     ~/.axon/codex via CODEX_HOME so it persists across recreates.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         libsqlite3-0 \

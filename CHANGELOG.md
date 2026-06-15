@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only when the container's own codex home is configured. The previous host-only
   restriction in `validate_codex_cmd` is removed. Codex child cleanup now sends
   SIGKILL to the process group via the `kill(2)` syscall instead of shelling out
-  to a `kill` binary, so it works in slim images that ship no `procps`.
+  to a `kill` binary, so it works in slim images that ship no `procps`. `ESRCH`
+  (the child already exited) is treated as success, and a cleanup failure on an
+  otherwise-successful turn is logged rather than discarding the completion.
 - **Persistent container codex home** — `docker-compose.prod.yaml` sets
   `CODEX_HOME=/home/axon/.axon/codex`, so the container's codex home (config.toml
   with MCP servers, auth.json, refreshed OAuth tokens, sessions) lives inside the

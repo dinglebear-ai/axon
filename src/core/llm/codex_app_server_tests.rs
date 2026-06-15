@@ -214,6 +214,118 @@ while True:
     assert_process_exits(pid);
 }
 
+// A child that exits on its own right after the turn completes must still yield
+// the answer — cleanup's SIGKILL then races the already-exited process group and
+// gets ESRCH, which must be treated as success (not "cleanup failed").
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_succeeds_when_child_self_exits_after_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("self-exit-codex");
+    std::fs::write(
+        &script,
+        r#"#!/usr/bin/env python3
+import json, sys
+
+def read():
+    line = sys.stdin.readline()
+    if not line:
+        raise SystemExit("stdin closed early")
+    return json.loads(line)
+
+def send(o):
+    print(json.dumps(o, separators=(",", ":")), flush=True)
+
+assert read()["method"] == "initialize"
+send({"id": 0, "result": {"userAgent": "fake"}})
+assert read()["method"] == "initialized"
+assert read()["method"] == "thread/start"
+send({"id": 1, "result": {"thread": {"id": "thr_exit"}, "model": "fake"}})
+assert read()["method"] == "turn/start"
+send({"method": "item/agentMessage/delta", "params": {"delta": "Done"}})
+send({"method": "item/completed", "params": {"item": {"type": "agentMessage", "text": "Done"}}})
+send({"method": "turn/completed", "params": {"turn": {"status": "completed"}}})
+sys.exit(0)
+"#,
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        completion_timeout_secs: 5,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    // Without the ESRCH-as-success fix this returns a bogus "cleanup failed" error.
+    let response = complete_text(req).await.unwrap();
+    assert_eq!(response.text, "Done");
+}
+
+// The passthrough branch (codex_load_user_config = true) must take
+// `spawn_codex_child_passthrough`: pin CODEX_HOME to the resolved override and
+// inherit the ambient env (no HOME/XDG rehoming, unlike the isolated path).
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_passthrough_pins_codex_home_without_rehoming() {
+    let override_home = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("passthrough-codex");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/usr/bin/env python3
+import json, os, sys
+
+# Passthrough pins CODEX_HOME to the override and does NOT rehome HOME/XDG.
+assert os.environ.get("CODEX_HOME") == "{codex_home}", os.environ.get("CODEX_HOME")
+assert os.environ.get("HOME") != os.environ.get("CODEX_HOME"), "HOME must not be rehomed in passthrough"
+
+def read():
+    line = sys.stdin.readline()
+    if not line:
+        raise SystemExit("stdin closed early")
+    return json.loads(line)
+
+def send(o):
+    print(json.dumps(o, separators=(",", ":")), flush=True)
+
+assert read()["method"] == "initialize"
+send({{"id": 0, "result": {{"userAgent": "fake"}}}})
+assert read()["method"] == "initialized"
+assert read()["method"] == "thread/start"
+send({{"id": 1, "result": {{"thread": {{"id": "thr_pt"}}, "model": "fake"}}}})
+assert read()["method"] == "turn/start"
+send({{"method": "item/completed", "params": {{"item": {{"type": "agentMessage", "text": "ok"}}}}}})
+send({{"method": "turn/completed", "params": {{"turn": {{"status": "completed"}}}}}})
+sys.exit(0)
+"#,
+            codex_home = override_home.path().display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        codex_load_user_config: true,
+        codex_home: Some(override_home.path().to_path_buf()),
+        completion_timeout_secs: 5,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    let response = complete_text(req).await.unwrap();
+    assert_eq!(response.text, "ok");
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn codex_completion_timeout_covers_slow_child_before_handshake() {

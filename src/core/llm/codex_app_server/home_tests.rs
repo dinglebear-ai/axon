@@ -196,3 +196,25 @@ fn prepare_codex_home_copies_auth_and_writes_isolated_config() {
     assert!(written.contains("model = \"gpt-5.5\""));
     assert!(written.contains("approval_policy = \"never\""));
 }
+
+#[test]
+fn resolve_user_codex_home_honors_existing_override() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = LlmBackendConfig {
+        codex_home: Some(dir.path().to_path_buf()),
+        ..LlmBackendConfig::default()
+    };
+    assert_eq!(
+        resolve_user_codex_home(&cfg).unwrap(),
+        Some(dir.path().to_path_buf())
+    );
+}
+
+#[test]
+fn resolve_user_codex_home_errors_on_missing_override() {
+    let cfg = LlmBackendConfig {
+        codex_home: Some(std::path::PathBuf::from("/nonexistent/axon-codex-home-xyz")),
+        ..LlmBackendConfig::default()
+    };
+    assert!(resolve_user_codex_home(&cfg).is_err());
+}
