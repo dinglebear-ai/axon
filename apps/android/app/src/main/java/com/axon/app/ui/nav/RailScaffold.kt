@@ -18,13 +18,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Construction
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
@@ -146,8 +146,10 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             AxonTopBar(
                 title = activeOverlay?.title ?: activePage?.title() ?: "Ask",
+                overlayActive = activeOverlay != null,
                 sidebarOpen = sidebarOpen,
                 onToggleSidebar = { sidebarOpen = !sidebarOpen },
+                onCloseOverlay = { activeOverlay = null },
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault.copy(alpha = 0.32f)))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -168,11 +170,6 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
                         is ShellOverlay -> ShellOverlayContent(
                             overlay = target,
                             navController = navController,
-                            onBack = { activeOverlay = null },
-                            onHome = {
-                                activeOverlay = null
-                                activePage = null
-                            },
                         )
                         is DrawerSection -> ShellPageContent(
                             page = target,
@@ -296,113 +293,94 @@ private fun DrawerSection.title(): String = when (this) {
 private fun ShellOverlayContent(
     overlay: ShellOverlay,
     navController: NavController,
-    onBack: () -> Unit,
-    onHome: () -> Unit,
 ) {
     val colors = AxonTheme.colors
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.pageBg),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .background(colors.panelMedium)
-                .border(1.dp, colors.borderDefault)
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "Back",
-                tint = colors.textMuted.copy(alpha = 0.86f),
-                modifier = Modifier
-                    .size(25.dp)
-                    .pressScale(onClick = onBack)
-                    .padding(5.dp),
+        when (overlay) {
+            is ShellOverlay.Knowledge -> KnowledgeScreen(
+                initialTab = overlay.tab,
+                showChrome = false,
+                onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
             )
-            Text(
-                overlay.title,
-                color = colors.textPrimary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.ExtraBold,
-                fontFamily = AxonTheme.fonts.display,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                Icons.Rounded.Close,
-                contentDescription = "Close",
-                tint = colors.textMuted,
-                modifier = Modifier
-                    .size(25.dp)
-                    .pressScale(onClick = onHome)
-                    .padding(5.dp),
-            )
-        }
-        Box(modifier = Modifier.fillMaxSize()) {
-            when (overlay) {
-                is ShellOverlay.Knowledge -> KnowledgeScreen(
-                    initialTab = overlay.tab,
-                    showChrome = false,
-                    onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
-                )
-                ShellOverlay.Settings -> SettingsScreen()
-                is ShellOverlay.Command -> ShellCommandReport(command = overlay.command)
-            }
+            ShellOverlay.Settings -> SettingsScreen()
+            is ShellOverlay.Command -> ShellCommandReport(command = overlay.command)
         }
     }
 }
 
+/**
+ * Single shell header. On a page/home it shows the menu + brand + live status;
+ * inside an overlay it morphs into a focused back/title/close bar — so an
+ * overlay no longer stacks a second redundant header beneath this one.
+ */
 @Composable
 private fun AxonTopBar(
     title: String,
+    overlayActive: Boolean,
     sidebarOpen: Boolean,
     onToggleSidebar: () -> Unit,
+    onCloseOverlay: () -> Unit,
 ) {
     val colors = AxonTheme.colors
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(52.dp)
             .background(colors.navBg)
-            .padding(start = 13.dp, end = 11.dp),
+            .padding(horizontal = 8.dp),
     ) {
+        // Sidebar toggle + brand — present on every screen, overlays included.
         Row(
             modifier = Modifier.align(Alignment.CenterStart),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                Icons.Rounded.Menu,
-                contentDescription = if (sidebarOpen) "Collapse sidebar" else "Open sidebar",
-                tint = colors.textMuted,
+            Box(
                 modifier = Modifier
-                    .size(25.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .pressScale(onClick = onToggleSidebar)
-                    .padding(5.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text("Axon", color = colors.textPrimary.copy(alpha = 0.88f), fontSize = 13.2.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display)
+                    .semantics { contentDescription = if (sidebarOpen) "Collapse sidebar" else "Open sidebar" }
+                    .padding(7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                AxonMarkGlyph(Modifier.fillMaxSize())
+            }
             Spacer(Modifier.width(8.dp))
+            Text("Axon", color = colors.textPrimary.copy(alpha = 0.88f), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display)
+            Spacer(Modifier.width(7.dp))
             AuroraStatusDot(DotState.Done, size = 5.dp)
         }
         Text(
             title,
-            color = colors.textPrimary.copy(alpha = 0.90f),
-            fontSize = 13.2.sp,
+            color = colors.textPrimary.copy(alpha = 0.95f),
+            fontSize = 16.sp,
             fontWeight = FontWeight.ExtraBold,
             fontFamily = AxonTheme.fonts.display,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .align(Alignment.Center)
-                .widthIn(max = 180.dp),
+                .widthIn(max = 200.dp),
         )
-        TopChromeStatus(modifier = Modifier.align(Alignment.CenterEnd))
+        Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+            if (overlayActive) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = "Close",
+                    tint = colors.textMuted,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .pressScale(onClick = onCloseOverlay)
+                        .padding(8.dp),
+                )
+            } else {
+                TopChromeStatus()
+            }
+        }
     }
 }

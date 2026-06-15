@@ -79,7 +79,7 @@ fun KnowledgeScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {

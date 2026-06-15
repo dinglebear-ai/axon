@@ -1,35 +1,57 @@
 package com.axon.app.ui.ask
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DataObject
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.axon.app.ui.common.AuroraStatusDot
+import com.axon.app.ui.common.DotState
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.nav.AxonMarkGlyph
@@ -37,80 +59,129 @@ import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
 import com.axon.app.ui.theme.tint
 import com.axon.app.ui.theme.toneOf
-import tv.tootie.aurora.components.AuroraThinking
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
+import tv.tootie.aurora.components.AuroraAvatar
+import tv.tootie.aurora.components.AuroraAvatarSize
+import tv.tootie.aurora.components.AuroraInlineCitation
+import tv.tootie.aurora.components.AuroraSource
+import tv.tootie.aurora.components.AuroraSources
+import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
+/**
+ * Agent-style tool-call pill (mirrors the Aurora Tool Calls component): a
+ * leading status dot, tool icon, and mono tool name. Collapsed to a compact
+ * pill by default; tap to expand the input/output.
+ */
 @Composable
 fun ActivityRailRow(item: ChatItem.Activity, modifier: Modifier = Modifier) {
     val colors = AxonTheme.colors
-    Row(
+    var expanded by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(if (expanded) 11.dp else 9.dp)
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "tool-chevron",
+    )
+    Column(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(start = 31.dp, top = 2.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 34.dp, top = 4.dp, bottom = 4.dp)
+            .widthIn(max = 322.dp)
+            .clip(shape)
+            .background(colors.tint(colors.accentPrimary, 5, colors.control), shape)
+            .border(1.dp, colors.tint(colors.accentPrimary, 14, colors.control), shape)
+            .clickable(remember { MutableInteractionSource() }, indication = null) { expanded = !expanded }
+            .animateContentSize()
+            .padding(horizontal = 11.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Row(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 12.dp, top = 5.dp, bottom = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .width(2.dp)
-                    .height(22.dp)
-                    .background(colors.borderDefault, RoundedCornerShape(999.dp)),
+            AuroraStatusDot(if (item.done) DotState.Done else DotState.Running, size = 7.dp)
+            Icon(
+                activityIcon(item.name),
+                contentDescription = null,
+                tint = colors.textMuted.copy(alpha = 0.82f),
+                modifier = Modifier.size(13.dp),
             )
-            Icon(Icons.Rounded.Storage, contentDescription = null, tint = colors.accentStrong, modifier = Modifier.size(12.dp))
             Text(
                 item.name,
                 color = colors.textPrimary,
-                fontSize = 10.sp,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.SemiBold,
                 fontFamily = AxonTheme.fonts.mono,
                 maxLines = 1,
             )
-            Text(
-                "(${item.arg})",
-                color = colors.textMuted,
-                fontSize = 10.sp,
-                fontFamily = AxonTheme.fonts.mono,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+            Icon(
+                Icons.Rounded.ExpandMore,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                tint = colors.textMuted.copy(alpha = 0.7f),
+                modifier = Modifier.size(15.dp).graphicsLayer { rotationZ = chevronRotation },
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                modifier = Modifier.padding(end = 2.dp),
-            ) {
-                if (item.done) {
-                    Icon(Icons.Rounded.Check, contentDescription = null, tint = colors.success, modifier = Modifier.size(11.dp))
-                }
-                Text(
-                    item.result,
-                    color = if (item.done) colors.success else colors.textMuted,
-                    fontSize = 10.sp,
-                    fontFamily = AxonTheme.fonts.mono,
-                    maxLines = 1,
-                )
-            }
+        }
+        if (expanded) {
+            ToolKv("input", item.arg, colors.textMuted)
+            ToolKv("output", item.result, if (item.done) colors.success else colors.accentStrong)
         }
     }
 }
 
 @Composable
-fun UserBubble(text: String, modifier: Modifier = Modifier) {
+private fun ToolKv(label: String, value: String, valueColor: Color) {
+    val colors = AxonTheme.colors
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            label,
+            color = colors.textMuted.copy(alpha = 0.58f),
+            fontSize = 10.5.sp,
+            lineHeight = 14.sp,
+            fontFamily = AxonTheme.fonts.mono,
+            modifier = Modifier.width(48.dp),
+        )
+        Text(
+            value.ifBlank { "—" },
+            color = valueColor.copy(alpha = 0.9f),
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            fontFamily = AxonTheme.fonts.mono,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+    }
+}
+
+private fun activityIcon(name: String): ImageVector {
+    val n = name.lowercase()
+    return when {
+        n.contains("retriev") -> Icons.Rounded.Storage
+        n.contains("search") -> Icons.Rounded.Search
+        n.contains("ask") || n.contains("synth") || n.contains("answer") || n.contains("generat") -> Icons.Rounded.AutoAwesome
+        else -> Icons.Rounded.DataObject
+    }
+}
+
+@Composable
+fun UserBubble(
+    text: String,
+    modifier: Modifier = Modifier,
+    timestamp: Long? = null,
+    onEdit: (() -> Unit)? = null,
+    onCopy: (() -> Unit)? = null,
+) {
     val colors = AxonTheme.colors
     val displayText = remember(text) { displayUserText(text) }
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.Top,
-    ) {
+    val shape = RoundedCornerShape(topStart = 15.dp, topEnd = 5.dp, bottomStart = 15.dp, bottomEnd = 15.dp)
+    var revealed by remember { mutableStateOf(false) }
+    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         Row(
-            modifier = Modifier.widthIn(max = 286.dp),
+            modifier = Modifier.widthIn(max = 300.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalAlignment = Alignment.Top,
         ) {
@@ -121,21 +192,28 @@ fun UserBubble(text: String, modifier: Modifier = Modifier) {
                 Text(
                     text = displayText,
                     color = colors.textPrimary,
-                    fontSize = 13.6.sp,
-                    lineHeight = 19.6.sp,
+                    fontSize = 15.sp,
+                    lineHeight = 20.5.sp,
                     fontFamily = AxonTheme.fonts.body,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(topStart = 13.dp, topEnd = 4.dp, bottomStart = 13.dp, bottomEnd = 13.dp))
-                        .background(colors.control.copy(alpha = 0.62f))
-                        .border(
-                            1.dp,
-                            colors.borderDefault.copy(alpha = 0.72f),
-                            RoundedCornerShape(topStart = 13.dp, topEnd = 4.dp, bottomStart = 13.dp, bottomEnd = 13.dp),
-                        )
-                        .padding(horizontal = 11.dp, vertical = 7.dp),
+                        .clip(shape)
+                        .background(colors.tint(colors.accentPrimary, 18, colors.control))
+                        .border(1.dp, colors.tint(colors.accentPrimary, 34, colors.control), shape)
+                        .clickable(remember { MutableInteractionSource() }, indication = null) { revealed = !revealed }
+                        .padding(horizontal = 13.dp, vertical = 9.dp),
                 )
             }
             UserInitials()
+        }
+        if (revealed) {
+            MessageActions(
+                timestamp = timestamp,
+                actions = listOfNotNull(
+                    onEdit?.let { MessageAction(Icons.Rounded.Edit, "Edit message", it) },
+                    onCopy?.let { MessageAction(Icons.Rounded.ContentCopy, "Copy message", it) },
+                ),
+                modifier = Modifier.padding(end = 35.dp),
+            )
         }
     }
 }
@@ -152,9 +230,25 @@ fun AxonBubble(
     isStreaming: Boolean = false,
     modifier: Modifier = Modifier,
     onOpenDocument: (String) -> Unit = {},
+    timestamp: Long? = null,
+    onCopy: (() -> Unit)? = null,
+    onRegenerate: (() -> Unit)? = null,
 ) {
+    val colors = AxonTheme.colors
     val citations = rememberCitations(text)
-    val displayText = remember(text) { humanizeJsonFragmentText(stripCitationText(text)) }
+    val sources = remember(citations) {
+        citations.mapNotNull { c -> c.url?.let { AuroraSource(title = sourceDisplayTitle(it), url = it) } }
+            .toImmutableList()
+    }
+    // Keep inline `[Sn]` markers in the prose when we have sources to back them
+    // (rendered as Aurora inline-citation badges); otherwise strip the dangling
+    // markers so no bare `[S1]` leaks into the text.
+    val displayText = remember(text, sources.isEmpty()) {
+        val base = if (sources.isEmpty()) stripCitationText(text) else stripSourcesBlock(text)
+        humanizeJsonFragmentText(base)
+    }
+    val shape = RoundedCornerShape(topStart = 5.dp, topEnd = 15.dp, bottomStart = 15.dp, bottomEnd = 15.dp)
+    var revealed by remember { mutableStateOf(false) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (isStreaming && text.isEmpty()) {
             Row(
@@ -163,29 +257,45 @@ fun AxonBubble(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 AssistantGutter()
-                AuroraThinking()
+                ThinkingDots()
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                 AssistantGutter()
-                Column(
-                    modifier = Modifier.widthIn(max = 292.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    InlineMarkdownText(displayText, showCaret = isStreaming && displayText.isNotBlank())
-                    if (citations.isNotEmpty()) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(7.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            citations.forEachIndexed { index, citation ->
-                                SourceCitationPill(
-                                    index = index + 1,
-                                    citation = citation,
-                                    onOpenDocument = onOpenDocument,
-                                )
-                            }
+                Column(horizontalAlignment = Alignment.Start) {
+                    Column(
+                        modifier = Modifier
+                            .widthIn(max = 300.dp)
+                            .clip(shape)
+                            .background(colors.panelStrong.copy(alpha = 0.62f))
+                            .border(1.dp, colors.tint(colors.accentPrimary, 11, colors.panelStrong), shape)
+                            .clickable(remember { MutableInteractionSource() }, indication = null) { revealed = !revealed }
+                            .padding(horizontal = 13.dp, vertical = 11.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        InlineMarkdownText(
+                            text = displayText,
+                            sources = sources,
+                            onOpenDocument = onOpenDocument,
+                            showCaret = isStreaming && displayText.isNotBlank(),
+                        )
+                        if (sources.isNotEmpty()) {
+                            AuroraSources(
+                                sources = sources,
+                                onSourceClick = { onOpenDocument(it.url) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
+                    }
+                    if (revealed && !isStreaming) {
+                        MessageActions(
+                            timestamp = timestamp,
+                            actions = listOfNotNull(
+                                onCopy?.let { MessageAction(Icons.Rounded.ContentCopy, "Copy message", it) },
+                                onRegenerate?.let { MessageAction(Icons.Rounded.Autorenew, "Regenerate response", it) },
+                            ),
+                            modifier = Modifier.padding(start = 2.dp),
+                        )
                     }
                 }
             }
@@ -193,24 +303,57 @@ fun AxonBubble(
     }
 }
 
+private data class MessageAction(val icon: ImageVector, val desc: String, val onClick: () -> Unit)
+
+/** Reveal-on-tap footer: timestamp + small action buttons under a message. */
+@Composable
+private fun MessageActions(
+    timestamp: Long?,
+    actions: List<MessageAction>,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AxonTheme.colors
+    Row(
+        modifier = modifier.padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        if (timestamp != null) {
+            Text(
+                text = remember(timestamp) { formatMessageTime(timestamp) },
+                color = colors.textMuted.copy(alpha = 0.6f),
+                fontSize = 10.5.sp,
+                fontFamily = AxonTheme.fonts.mono,
+                modifier = Modifier.padding(end = 5.dp),
+            )
+        }
+        actions.forEach { action ->
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .pressScale(onClick = action.onClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    action.icon,
+                    contentDescription = action.desc,
+                    tint = colors.textMuted.copy(alpha = 0.85f),
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+private fun formatMessageTime(ts: Long): String =
+    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(ts))
+
 @Composable
 private fun UserInitials() {
-    val colors = AxonTheme.colors
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Brush.linearGradient(listOf(colors.accentDeep, colors.accentPrimary))),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            "JM",
-            color = Color(0xFF06131C),
-            fontSize = 10.6.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = AxonTheme.fonts.body,
-        )
-    }
+    // Aurora avatar (cyan, circular initials) — aligned with the design-system
+    // avatar gallery. A two-word name yields the "JM" monogram.
+    AuroraAvatar(name = "Jacob Magar", size = AuroraAvatarSize.Sm)
 }
 
 @Composable
@@ -228,8 +371,49 @@ private fun AssistantGutter() {
     }
 }
 
+/** Wordless "thinking" indicator: three accent dots pulsing in sequence. */
 @Composable
-private fun InlineMarkdownText(text: String, showCaret: Boolean = false) {
+private fun ThinkingDots() {
+    val colors = AxonTheme.colors
+    val transition = rememberInfiniteTransition(label = "thinking")
+    Row(
+        modifier = Modifier.padding(top = 5.dp, bottom = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(3) { index ->
+            val pulse by transition.animateFloat(
+                initialValue = 0.28f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 560, delayMillis = index * 150, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "dot-$index",
+            )
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .graphicsLayer {
+                        alpha = pulse
+                        val s = 0.7f + 0.3f * pulse
+                        scaleX = s
+                        scaleY = s
+                    }
+                    .clip(CircleShape)
+                    .background(colors.accentStrong),
+            )
+        }
+    }
+}
+
+@Composable
+private fun InlineMarkdownText(
+    text: String,
+    sources: ImmutableList<AuroraSource> = persistentListOf(),
+    onOpenDocument: (String) -> Unit = {},
+    showCaret: Boolean = false,
+) {
     val colors = AxonTheme.colors
     val code = colors.toneOf(AxonTone.Rose)
     val parts = remember(text) { text.split('`') }
@@ -249,11 +433,29 @@ private fun InlineMarkdownText(text: String, showCaret: Boolean = false) {
     } else {
         1f
     }
+
+    // Each `[Sn]` whose number maps to a known source becomes an inline Aurora
+    // citation badge; unmatched markers fall through as plain text.
+    val inlineContent = remember(sources) {
+        sources.mapIndexed { i, src ->
+            val n = i + 1
+            "cite_$n" to InlineTextContent(
+                placeholder = Placeholder(
+                    width = if (n >= 10) 2.9.em else 2.2.em,
+                    height = 1.5.em,
+                    placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+                ),
+            ) {
+                AuroraInlineCitation(number = n, onClick = { onOpenDocument(src.url) })
+            }
+        }.toMap()
+    }
+
     Text(
         text = buildAnnotatedString {
             parts.forEachIndexed { index, part ->
                 if (index % 2 == 0) {
-                    append(part)
+                    appendProseWithCitations(part, sources.size)
                 } else {
                     withStyle(
                         SpanStyle(
@@ -273,11 +475,28 @@ private fun InlineMarkdownText(text: String, showCaret: Boolean = false) {
                 }
             }
         },
+        inlineContent = inlineContent,
         color = colors.textPrimary.copy(alpha = 0.92f),
-        fontSize = 13.5.sp,
-        lineHeight = 20.2.sp,
+        fontSize = 14.5.sp,
+        lineHeight = 21.5.sp,
         fontFamily = AxonTheme.fonts.body,
     )
+}
+
+/** Append a prose run, swapping each in-range `[Sn]` marker for an inline-citation placeholder. */
+private fun AnnotatedString.Builder.appendProseWithCitations(part: String, sourceCount: Int) {
+    var cursor = 0
+    inlineCitationMarkerRegex.findAll(part).forEach { match ->
+        append(part.substring(cursor, match.range.first))
+        val n = match.groupValues[1].toIntOrNull()
+        if (n != null && n in 1..sourceCount) {
+            appendInlineContent("cite_$n", match.value)
+        } else {
+            append(match.value)
+        }
+        cursor = match.range.last + 1
+    }
+    append(part.substring(cursor))
 }
 
 @Composable
@@ -297,9 +516,17 @@ internal fun stripCitationText(text: String): String =
         .replace(Regex("\\s*\\[S\\d+\\]"), "")
         .trim()
 
+/** Strip only the trailing sources/metadata block, leaving inline `[Sn]` markers intact. */
+internal fun stripSourcesBlock(text: String): String =
+    text.replace(answerMetadataBlockRegex, "").trim()
+
+private val inlineCitationMarkerRegex = Regex("\\[S(\\d+)\\]")
+
 internal fun extractedCitationLabels(text: String): List<String> {
     return extractedCitations(text).map { it.label }
 }
+
+private val sourceUrlRegex = Regex("https?://[^\\s)\\]\"']+")
 
 private fun extractedCitations(text: String): List<ChatCitation> {
     val markers = Regex("\\[S\\d+\\]")
@@ -307,16 +534,18 @@ private fun extractedCitations(text: String): List<ChatCitation> {
         .map { ChatCitation(label = it.value.removeSurrounding("[", "]"), url = null) }
         .toList()
 
+    // The backend emits sources as `- [S1] https://…` (and older runs as
+    // `- https://…`); pull the URL out of each line regardless of the `[Sn]`
+    // prefix so they stay clickable.
     val urls = answerMetadataBlockRegex.find(text)
         ?.value
         ?.lineSequence()
-        ?.map { it.trim().removePrefix("-").trim() }
-        ?.filter { it.startsWith("http://") || it.startsWith("https://") }
+        ?.mapNotNull { line -> sourceUrlRegex.find(line)?.value?.trimEnd('.', ',', ')', '"', '\'') }
         ?.map { ChatCitation(label = compactSourceLabel(it), url = it) }
         ?.toList()
         ?: emptyList()
 
-    return (urls + markers).distinctBy { it.url ?: it.label }.take(6)
+    return (urls + markers).distinctBy { it.url ?: it.label }.take(8)
 }
 
 private fun compactSourceLabel(url: String): String =
@@ -326,32 +555,8 @@ private fun compactSourceLabel(url: String): String =
         host.removePrefix("www.").substringBeforeLast(".").takeIf { it.isNotBlank() } ?: host
     }.getOrElse { "source" }
 
-@Composable
-private fun SourceCitationPill(
-    index: Int,
-    citation: ChatCitation,
-    onOpenDocument: (String) -> Unit,
-) {
-    val colors = AxonTheme.colors
-    val chip = colors.toneOf(AxonTone.Cyan)
-    val clickModifier = citation.url?.let { url -> Modifier.pressScale { onOpenDocument(url) } } ?: Modifier
-    Row(
-        modifier = Modifier
-            .then(clickModifier)
-            .background(colors.tint(chip.base, 7, colors.control), RoundedCornerShape(999.dp))
-            .border(1.dp, colors.tint(chip.base, 15, colors.control), RoundedCornerShape(999.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("$index", color = chip.fg.copy(alpha = 0.84f), fontSize = 9.6.sp, fontWeight = FontWeight.Bold, fontFamily = AxonTheme.fonts.mono)
-        Text(
-            citation.label,
-            color = colors.textMuted.copy(alpha = 0.78f),
-            fontSize = 9.6.sp,
-            fontFamily = AxonTheme.fonts.mono,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
+/** Carousel-facing title: the last path segment (e.g. `scrape.md`), else the host stem. */
+private fun sourceDisplayTitle(url: String): String =
+    runCatching {
+        URI(url).path.orEmpty().trim('/').split('/').lastOrNull { it.isNotBlank() }
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: compactSourceLabel(url)

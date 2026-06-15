@@ -63,7 +63,7 @@ internal fun KnowledgeResultRow(
                     color = colors.textPrimary,
                     fontSize = 13.7.sp,
                     lineHeight = 18.sp,
-                    fontFamily = AxonTheme.fonts.mono,
+                    fontFamily = AxonTheme.fonts.body,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -84,7 +84,7 @@ internal fun KnowledgeResultRow(
             fontSize = 12.4.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.SemiBold,
-            fontFamily = AxonTheme.fonts.mono,
+            fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -108,17 +108,17 @@ internal fun KnowledgeSourceRow(
             .background(colors.control.copy(alpha = 0.13f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = 0.12f), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp, vertical = 9.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        IconTile(icon = Icons.Rounded.Description, size = 28.dp, radius = 8.dp, iconSize = 14.dp)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        IconTile(icon = Icons.Rounded.Description, size = 44.dp, radius = 12.dp, iconSize = 21.dp)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(
                 title,
                 color = colors.textPrimary,
-                fontSize = 12.4.sp,
-                lineHeight = 15.8.sp,
+                fontSize = 15.5.sp,
+                lineHeight = 20.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = AxonTheme.fonts.body,
                 maxLines = 1,
@@ -128,9 +128,9 @@ internal fun KnowledgeSourceRow(
                 Text(
                     domain,
                     color = colors.accentStrong,
-                    fontSize = 10.2.sp,
-                    lineHeight = 12.8.sp,
-                    fontFamily = AxonTheme.fonts.mono,
+                    fontSize = 12.6.sp,
+                    lineHeight = 16.sp,
+                    fontFamily = AxonTheme.fonts.body,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -138,36 +138,36 @@ internal fun KnowledgeSourceRow(
                 Text(
                     "· $source",
                     color = colors.textMuted,
-                    fontSize = 9.8.sp,
-                    lineHeight = 12.8.sp,
-                    fontFamily = AxonTheme.fonts.mono,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontFamily = AxonTheme.fonts.body,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 chunks.toString(),
                 color = colors.accentStrong,
-                fontSize = 11.2.sp,
-                lineHeight = 14.sp,
+                fontSize = 16.sp,
+                lineHeight = 19.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = AxonTheme.fonts.mono,
+                fontFamily = AxonTheme.fonts.body,
             )
             Text(
                 "chunks",
                 color = colors.textMuted,
-                fontSize = 8.6.sp,
-                lineHeight = 10.8.sp,
-                fontFamily = AxonTheme.fonts.mono,
+                fontSize = 11.sp,
+                lineHeight = 13.sp,
+                fontFamily = AxonTheme.fonts.body,
             )
         }
         Icon(
             imageVector = Icons.Rounded.ChevronRight,
             contentDescription = null,
             tint = colors.textMuted.copy(alpha = 0.72f),
-            modifier = Modifier.size(14.dp),
+            modifier = Modifier.size(18.dp),
         )
     }
 }

@@ -51,8 +51,15 @@ sealed interface AskUiState {
 }
 
 sealed interface ChatItem {
-    data class UserMsg(val text: String) : ChatItem
-    data class AxonMsg(val text: String, val isStreaming: Boolean = false) : ChatItem
+    data class UserMsg(
+        val text: String,
+        val timestamp: Long = System.currentTimeMillis(),
+    ) : ChatItem
+    data class AxonMsg(
+        val text: String,
+        val isStreaming: Boolean = false,
+        val timestamp: Long = System.currentTimeMillis(),
+    ) : ChatItem
     data class Activity(
         val name: String,
         val arg: String,
