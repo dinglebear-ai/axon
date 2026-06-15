@@ -1,5 +1,7 @@
 package com.axon.app.ui.ask
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -44,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,7 +56,6 @@ import androidx.compose.ui.unit.sp
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
-import tv.tootie.aurora.components.AuroraSpinner
 
 @Composable
 internal fun AskPromptBar(
@@ -66,6 +69,7 @@ internal fun AskPromptBar(
     attachmentName: String?,
     onAttachClick: () -> Unit,
     onRemoveAttachment: () -> Unit,
+    onStop: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = AxonTheme.colors
@@ -156,6 +160,7 @@ internal fun AskPromptBar(
                 loading = loading,
                 mode = mode,
                 onSend = ::triggerSend,
+                onStop = onStop,
                 onModeChange = onModeChange,
             )
         }
@@ -218,9 +223,11 @@ private fun SendButton(
     loading: Boolean,
     mode: ConversationMode,
     onSend: () -> Unit,
+    onStop: () -> Unit,
     onModeChange: (ConversationMode) -> Unit,
 ) {
     val colors = AxonTheme.colors
+    val view = LocalView.current
     val shape = RoundedCornerShape(10.dp)
     var menuOpen by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
@@ -231,23 +238,24 @@ private fun SendButton(
         label = "send-scale",
     )
 
+    // Rose fill whenever the button is actionable — ready to send OR streaming
+    // (so the stop affordance is just as prominent as send).
+    val active = canSend || loading
     val spec = tween<androidx.compose.ui.graphics.Color>(durationMillis = 180)
-    // Rose fill when there's something to send — a warm accent against the cool
-    // cyan user avatar.
     val bg by animateColorAsState(
-        targetValue = if (canSend) colors.accentPink.copy(alpha = 0.92f)
+        targetValue = if (active) colors.accentPink.copy(alpha = 0.92f)
         else colors.control.copy(alpha = 0.34f),
         animationSpec = spec,
         label = "send-bg",
     )
     val border by animateColorAsState(
-        targetValue = if (canSend) colors.accentPinkStrong.copy(alpha = 0.55f)
+        targetValue = if (active) colors.accentPinkStrong.copy(alpha = 0.55f)
         else colors.borderDefault.copy(alpha = 0.42f),
         animationSpec = spec,
         label = "send-border",
     )
     val iconTint by animateColorAsState(
-        targetValue = if (canSend) androidx.compose.ui.graphics.Color(0xFF06131C)
+        targetValue = if (active) androidx.compose.ui.graphics.Color(0xFF06131C)
         else colors.textMuted.copy(alpha = 0.72f),
         animationSpec = spec,
         label = "send-icon",
@@ -264,24 +272,44 @@ private fun SendButton(
                 .combinedClickable(
                     interactionSource = interaction,
                     indication = null,
-                    onClick = onSend,
-                    onLongClick = { menuOpen = true },
+                    onClick = {
+                        when {
+                            loading -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onStop()
+                            }
+                            canSend -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onSend()
+                            }
+                        }
+                    },
+                    onLongClick = {
+                        if (!loading) {
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            menuOpen = true
+                        }
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            if (loading) {
-                AuroraSpinner(
-                    contentDescription = "Sending",
-                    size = 15.dp,
-                    color = androidx.compose.ui.graphics.Color(0xFF06131C),
-                )
-            } else {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send message — long-press to choose Ask or Chat",
-                    tint = iconTint,
-                    modifier = Modifier.size(18.dp),
-                )
+            // Crossfade send <-> stop so cancelling reads as a deliberate state swap.
+            Crossfade(targetState = loading, label = "send-stop") { isLoading ->
+                if (isLoading) {
+                    Icon(
+                        Icons.Rounded.Stop,
+                        contentDescription = "Stop generating",
+                        tint = iconTint,
+                        modifier = Modifier.size(18.dp),
+                    )
+                } else {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send message — long-press to choose Ask or Chat",
+                        tint = iconTint,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {

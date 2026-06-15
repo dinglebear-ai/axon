@@ -42,8 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.axon.app.ui.ask.AskScreen
-import com.axon.app.ui.common.AuroraStatusDot
-import com.axon.app.ui.common.DotState
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.jobs.JobsScreen
 import com.axon.app.ui.knowledge.KnowledgeScreen
@@ -349,10 +347,6 @@ private fun AxonTopBar(
             ) {
                 AxonMarkGlyph(Modifier.fillMaxSize())
             }
-            Spacer(Modifier.width(8.dp))
-            Text("Axon", color = colors.textPrimary.copy(alpha = 0.88f), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display)
-            Spacer(Modifier.width(7.dp))
-            AuroraStatusDot(DotState.Done, size = 5.dp)
         }
         Text(
             title,

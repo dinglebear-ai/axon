@@ -1,6 +1,11 @@
 package com.axon.app.ui.ask
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -26,11 +32,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -115,7 +127,11 @@ internal fun AskModeSwitch(
 }
 
 @Composable
-internal fun EmptyAskState(modifier: Modifier = Modifier) {
+internal fun EmptyAskState(
+    modifier: Modifier = Modifier,
+    suggestions: List<String> = emptyList(),
+    onSuggestion: (String) -> Unit = {},
+) {
     val colors = AxonTheme.colors
     // Soft breathing on the badge keeps the empty state feeling alive without
     // pulling focus — the node mark gently brightens and dims.
@@ -154,6 +170,95 @@ internal fun EmptyAskState(modifier: Modifier = Modifier) {
                 color = colors.textPrimary,
                 fontSize = 16.sp,
                 fontFamily = AxonTheme.fonts.display,
+            )
+            if (suggestions.isNotEmpty()) {
+                Text(
+                    "Try asking",
+                    color = colors.textMuted.copy(alpha = 0.7f),
+                    fontSize = 11.5.sp,
+                    fontFamily = AxonTheme.fonts.body,
+                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    suggestions.forEachIndexed { index, prompt ->
+                        SuggestionChip(text = prompt, index = index, onClick = { onSuggestion(prompt) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Tappable starter prompt that fades + rises in, staggered by [index]. */
+@Composable
+private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
+    val colors = AxonTheme.colors
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val anim by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(durationMillis = 360, delayMillis = 140 + index * 90, easing = LinearEasing),
+        label = "chip-in",
+    )
+    val shape = RoundedCornerShape(999.dp)
+    Box(
+        modifier = Modifier
+            .graphicsLayer {
+                alpha = anim
+                translationY = (1f - anim) * 16f
+            }
+            .clip(shape)
+            .background(colors.tint(colors.accentPrimary, 8, colors.control), shape)
+            .border(1.dp, colors.tint(colors.accentPrimary, 20, colors.control), shape)
+            .pressScale(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+    ) {
+        Text(
+            text,
+            color = colors.textPrimary.copy(alpha = 0.9f),
+            fontSize = 13.sp,
+            fontFamily = AxonTheme.fonts.body,
+        )
+    }
+}
+
+/**
+ * Floating "jump to latest" pill — surfaces only when the user has scrolled up
+ * away from the bottom, so they can snap back to the live answer.
+ */
+@Composable
+internal fun JumpToLatest(visible: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = AxonTheme.colors
+    val shape = RoundedCornerShape(999.dp)
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
+        exit = fadeOut(tween(140)) + slideOutVertically(tween(180)) { it / 2 },
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(shape)
+                .background(colors.panelStrong.copy(alpha = 0.95f), shape)
+                .border(1.dp, colors.tint(colors.accentPrimary, 22, colors.panelStrong), shape)
+                .pressScale(onClick = onClick)
+                .padding(start = 11.dp, end = 13.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                Icons.Rounded.KeyboardArrowDown,
+                contentDescription = null,
+                tint = colors.accentStrong,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                "Latest",
+                color = colors.textPrimary.copy(alpha = 0.9f),
+                fontSize = 12.sp,
+                fontFamily = AxonTheme.fonts.body,
             )
         }
     }

@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,6 +73,32 @@ fun AskScreen(
     val listState = rememberLazyListState()
     val reveal = rememberRevealState()
     val lastAxonIdx = chatItems.indexOfLast { it is ChatItem.AxonMsg }
+    // True when the last item is visible — gates stream-follow so we never yank a
+    // user who has scrolled up, and drives the "jump to latest" pill.
+    val streamingLen = (chatItems.lastOrNull() as? ChatItem.AxonMsg)
+        ?.takeIf { it.isStreaming }?.text?.length ?: 0
+    // Sticky "parked at the bottom" flag: disengages only on a real upward drag,
+    // re-engages on reaching the end. Streaming growth alone never unsticks it, so
+    // the answer keeps following — but a user who scrolls up is left alone.
+    var followBottom by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        var prevIndex = listState.firstVisibleItemIndex
+        var prevOffset = listState.firstVisibleItemScrollOffset
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (idx, off) ->
+                if (idx < prevIndex || (idx == prevIndex && off < prevOffset)) followBottom = false
+                if (!listState.canScrollForward) followBottom = true
+                prevIndex = idx
+                prevOffset = off
+            }
+    }
+    val askSuggestions = remember {
+        listOf(
+            "What is Axon and what can it do?",
+            "How do I crawl and index a docs site?",
+            "What embedding model does Axon use?",
+        )
+    }
     fun copyMessage(value: String) {
         context.getSystemService(android.content.ClipboardManager::class.java)
             ?.setPrimaryClip(android.content.ClipData.newPlainText("Axon message", value))
@@ -83,6 +110,13 @@ fun AskScreen(
 
     LaunchedEffect(chatItems.size) {
         if (chatItems.isNotEmpty()) listState.animateScrollToItem(chatItems.size - 1)
+    }
+    // Follow the streamed answer as it grows, pinned to the bottom unless the
+    // user has scrolled away to read earlier turns.
+    LaunchedEffect(streamingLen) {
+        if (streamingLen > 0 && followBottom && chatItems.isNotEmpty()) {
+            listState.scrollToItem(chatItems.lastIndex, Int.MAX_VALUE / 2)
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(AxonTheme.colors.pageBg)) {
@@ -172,6 +206,8 @@ fun AskScreen(
                                     modifier = Modifier
                                         .fillParentMaxHeight()
                                         .fillMaxWidth(),
+                                    suggestions = askSuggestions,
+                                    onSuggestion = { vm.ask(it) },
                                 )
                             }
                         }
@@ -189,6 +225,7 @@ fun AskScreen(
                     attachmentName = attachment?.name,
                     onAttachClick = { pickAttachment.launch(arrayOf("*/*")) },
                     onRemoveAttachment = { attachment = null },
+                    onStop = { vm.stopGeneration() },
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
                         .widthIn(max = 420.dp)
@@ -211,6 +248,17 @@ fun AskScreen(
                     .padding(end = 3.dp, bottom = 88.dp),
             )
         }
+        val lastListIndex = if (chatItems.isNotEmpty()) chatItems.lastIndex else historyPreview.lastIndex
+        JumpToLatest(
+            visible = !followBottom && listState.canScrollForward && lastListIndex >= 0,
+            onClick = {
+                followBottom = true
+                scope.launch { listState.animateScrollToItem(lastListIndex, Int.MAX_VALUE / 2) }
+            },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 92.dp),
+        )
         FabLauncher(
             onOpSubmit = { op, fabInput -> vm.submitFabOp(op, fabInput) },
             onOverlayVisibleChange = onFabOverlayVisibleChange,

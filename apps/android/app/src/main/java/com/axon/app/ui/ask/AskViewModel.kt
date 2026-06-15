@@ -98,6 +98,27 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
     fun clearFollowUp() { _turns.value = emptyList() }
 
+    /**
+     * User-invoked stop: cancel the in-flight stream and freeze whatever partial
+     * answer is already on screen. The last flushed text lives in [_chatItems], so
+     * we just clear the streaming flag (cancelling the coroutine rethrows the
+     * CancellationException, skipping the truncation-fallback in [ask]).
+     */
+    fun stopGeneration() {
+        if (askJob?.isActive != true) return
+        askJob?.cancel()
+        askJob = null
+        val items = _chatItems.value.toMutableList()
+        val lastIdx = items.indexOfLast { it is ChatItem.AxonMsg }
+        if (lastIdx >= 0) {
+            val msg = items[lastIdx] as ChatItem.AxonMsg
+            items[lastIdx] = msg.copy(text = msg.text.ifBlank { "Stopped." }, isStreaming = false)
+            _chatItems.value = items
+        }
+        completeActivities()
+        _uiState.value = AskUiState.Idle
+    }
+
     fun setMode(mode: ConversationMode) {
         if (_mode.value == mode) return
         askJob?.cancel()
