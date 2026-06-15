@@ -347,6 +347,11 @@ pub struct Config {
     /// Max concurrent Codex app-server completions. Env: `AXON_CODEX_COMPLETION_CONCURRENCY`.
     pub codex_completion_concurrency: usize,
 
+    /// Load the user's real Codex config (MCP servers, skills, hooks) instead of
+    /// the isolated, stripped throwaway `CODEX_HOME`. Env: `AXON_CODEX_LOAD_USER_CONFIG`.
+    /// Default `false` — opt-in escape hatch that surrenders synthesis isolation.
+    pub codex_load_user_config: bool,
+
     /// Max concurrent LLM completion requests across the selected backend. Env: `AXON_LLM_COMPLETION_CONCURRENCY`.
     pub llm_completion_concurrency: usize,
 

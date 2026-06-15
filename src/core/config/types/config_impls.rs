@@ -112,6 +112,7 @@ impl Default for Config {
             codex_home: None,
             codex_model: String::new(),
             codex_completion_concurrency: 1,
+            codex_load_user_config: false,
             llm_completion_concurrency: 4,
             llm_completion_timeout_secs: 300,
             openai_base_url: String::new(),

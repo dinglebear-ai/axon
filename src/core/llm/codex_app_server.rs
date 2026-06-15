@@ -24,6 +24,7 @@ use crate::core::llm::headless::common::{
     joined_prompt, read_bounded_stderr, redacted_stderr_tail,
 };
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
+use crate::core::logging::{log_info, log_warn};
 use protocol::{CodexStep, CodexStreamState};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
@@ -47,13 +48,22 @@ where
     F: FnMut(&str) -> Result<(), BoxError> + Send,
 {
     validate_codex_cmd(&req.backend)?;
-    let home = home::prepare_codex_home(&req.backend)?;
     let cwd = tempfile::Builder::new()
         .prefix("axon-codex-cwd-")
         .tempdir()
         .map_err(|err| format!("failed to create isolated codex cwd: {err}"))?;
 
-    let mut child = spawn_codex_child(&req.backend, &home, cwd.path())?;
+    // `_home_guard` owns the throwaway CODEX_HOME for the isolated path and must
+    // stay alive for the child's lifetime. In passthrough mode there is no
+    // throwaway home — the child runs against the user's real CODEX_HOME + env.
+    let (_home_guard, mut child) = if req.backend.codex_load_user_config {
+        let child = spawn_codex_child_passthrough(&req.backend, cwd.path())?;
+        (None, child)
+    } else {
+        let home = home::prepare_codex_home(&req.backend)?;
+        let child = spawn_codex_child(&req.backend, &home, cwd.path())?;
+        (Some(home), child)
+    };
     let mut stdin = child
         .stdin
         .take()
@@ -103,11 +113,24 @@ where
         (Ok(()), Ok(_cleanup)) => state
             .into_response()
             .map_err(|err| format!("{err}{}", stderr_diagnostics_suffix(&stderr_tail)).into()),
-        (Ok(()), Err(cleanup_err)) => Err(format!(
-            "codex app-server completed but cleanup failed: {cleanup_err}{}",
-            stderr_diagnostics_suffix(&stderr_tail)
-        )
-        .into()),
+        // The turn succeeded; a cleanup failure (leaked/zombie child) is an
+        // operational concern, not a reason to throw away a usable answer. Log it
+        // and still return the completion. Only fall back to an error if there is
+        // no answer text to return.
+        (Ok(()), Err(cleanup_err)) => match state.into_response() {
+            Ok(response) => {
+                log_warn(&format!(
+                    "codex app-server turn succeeded but child cleanup failed: {cleanup_err}{}",
+                    stderr_diagnostics_suffix(&stderr_tail)
+                ));
+                Ok(response)
+            }
+            Err(err) => Err(format!(
+                "codex app-server completed but cleanup failed: {cleanup_err}; {err}{}",
+                stderr_diagnostics_suffix(&stderr_tail)
+            )
+            .into()),
+        },
         (Err(err), Ok(cleanup)) => Err(format!(
             "{err}; cleanup: {cleanup}{}",
             stderr_diagnostics_suffix(&stderr_tail)
@@ -172,6 +195,41 @@ fn spawn_codex_child(
         .map_err(|err| format!("failed to spawn codex app-server: {err}").into())
 }
 
+/// Spawn `codex app-server` against the user's real Codex config — inheriting the
+/// full environment so MCP servers, skills, and hooks load. This deliberately
+/// surrenders the isolation of [`spawn_codex_child`]; gated behind
+/// `AXON_CODEX_LOAD_USER_CONFIG`. The process group is still set so cleanup can
+/// SIGKILL the whole tree.
+fn spawn_codex_child_passthrough(
+    backend: &LlmBackendConfig,
+    cwd: &Path,
+) -> Result<Child, BoxError> {
+    let mut command = Command::new(&backend.codex_cmd);
+    command
+        .arg("app-server")
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    // Inherit the ambient environment (PATH, tokens, OPENAI_API_KEY, etc.) so the
+    // user's MCP servers can authenticate. Only pin CODEX_HOME when explicitly
+    // overridden; otherwise Codex resolves its own default home.
+    match home::resolve_user_codex_home(backend)? {
+        Some(home) => {
+            command.env("CODEX_HOME", home);
+        }
+        None => log_info(
+            "codex load-user-config: no CODEX_HOME resolved; relying on Codex's \
+             default home and ambient-environment auth (e.g. OPENAI_API_KEY)",
+        ),
+    }
+    configure_codex_child_isolation(&mut command);
+    command
+        .spawn()
+        .map_err(|err| format!("failed to spawn codex app-server (load-user-config): {err}").into())
+}
+
 #[cfg(unix)]
 fn configure_codex_child_isolation(command: &mut Command) {
     command.process_group(0);
@@ -183,7 +241,7 @@ fn configure_codex_child_isolation(_command: &mut Command) {}
 #[cfg(unix)]
 async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
     let kill_result = match child.id() {
-        Some(pid) => kill_process_group(pid).await,
+        Some(pid) => kill_process_group(pid),
         None => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "codex child pid unavailable",
@@ -213,18 +271,30 @@ async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
 }
 
 #[cfg(unix)]
-async fn kill_process_group(pid: u32) -> Result<(), io::Error> {
-    let status = Command::new("kill")
-        .arg("-KILL")
-        .arg("--")
-        .arg(format!("-{pid}"))
-        .status()
-        .await?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!("kill exited with {status}")))
+#[allow(unsafe_code)]
+fn kill_process_group(pid: u32) -> Result<(), io::Error> {
+    // Send SIGKILL to the child's process group (negative pid) via syscall.
+    // The child is its own group leader (`process_group(0)` at spawn), so this
+    // reaps any app-server grandchildren too. Using libc directly avoids
+    // depending on an external `kill` binary — slim container images
+    // (config/Dockerfile) ship no procps, where shelling out fails with ENOENT.
+    let pgid = i32::try_from(pid).map_err(|_| io::Error::other("codex child pid out of range"))?;
+    // SAFETY: `kill(2)` with a negative pid + SIGKILL is a plain signal send; it
+    // dereferences no memory and cannot trigger UB.
+    let rc = unsafe { libc::kill(-pgid, libc::SIGKILL) };
+    if rc == 0 {
+        return Ok(());
     }
+    let err = io::Error::last_os_error();
+    // ESRCH = no process in the group: the child (and its tree) already exited,
+    // which is exactly the cleanup goal — treat it as success. A persistent
+    // app-server can race-exit between the handshake returning and this signal;
+    // surfacing ESRCH here would otherwise convert a completed turn into a bogus
+    // "cleanup failed" error. Genuine faults (EPERM/EINVAL) still propagate.
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(());
+    }
+    Err(err)
 }
 
 #[cfg(not(unix))]
@@ -248,19 +318,10 @@ fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {
     if program.is_empty() {
         return Err("AXON_CODEX_CMD must not be empty".into());
     }
-    // Only validate explicit paths; bare command names resolve via PATH.
+    // Only validate explicit paths; bare command names resolve via PATH. The
+    // production image installs `@openai/codex` (see config/Dockerfile), so a
+    // bare `codex` resolves in-container too — no host-only restriction.
     if !(program.contains('/') || program.contains('\\')) {
-        if crate::core::config::parse::docker::running_in_container()
-            && matches!(
-                backend.kind,
-                crate::core::llm::LlmBackendKind::CodexAppServer
-            )
-        {
-            return Err(
-                "AXON_LLM_BACKEND=codex-app-server is host-only in the production container unless Codex is installed in the image; set AXON_CODEX_CMD to an executable container path or run this backend from the host"
-                    .into(),
-            );
-        }
         return Ok(());
     }
     let metadata = std::fs::symlink_metadata(Path::new(program))
