@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -90,15 +91,15 @@ internal fun AskPromptBar(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(15.dp)
 
-    // Focus reads as the field "warming up": border brightens and the fill
-    // deepens together rather than snapping on the keyboard appearing.
+    // A solid raised panel so the input reads as a distinct surface instead of
+    // blending into the chat behind it; focus brightens the border.
     val borderColor by animateColorAsState(
-        targetValue = colors.tint(colors.accentPrimary, if (focused) 20 else 6, colors.pageBg),
+        targetValue = colors.tint(colors.accentPrimary, if (focused) 30 else 17, colors.pageBg),
         animationSpec = tween(durationMillis = 200),
         label = "prompt-border",
     )
     val fillAlpha by animateFloatAsState(
-        targetValue = if (focused) 0.16f else 0.10f,
+        targetValue = if (focused) 0.94f else 0.82f,
         animationSpec = tween(durationMillis = 200),
         label = "prompt-fill",
     )
@@ -109,8 +110,9 @@ internal fun AskPromptBar(
 
     Column(
         modifier = modifier
+            .shadow(elevation = 10.dp, shape = shape)
             .clip(shape)
-            .background(colors.panelMedium.copy(alpha = fillAlpha), shape)
+            .background(colors.panelStrong.copy(alpha = fillAlpha), shape)
             .border(width = 1.dp, color = borderColor, shape = shape),
     ) {
         if (attachments.isNotEmpty()) {
