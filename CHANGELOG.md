@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.13.0] - 2026-06-15
+
+### Changed
+
+- **Declaration-driven code chunking (query-capture).** Reworked the code chunker
+  from size-window splitting (`text-splitter` `CodeSplitter`) to declaration-driven
+  chunking, where a named declaration is the chunk unit. A data-driven tree-sitter
+  query registry drives per-language declaration extraction across all 8 grammars
+  (Rust, Python, JS, JSX, TS, TSX, Go, Bash), closing the prior TS/JS parity gap
+  (name-bound arrow-fns, function-expressions, exported consts, enums). Adds an
+  axon-original residual-gap sweep and a zero-declaration whole-file prose fallback
+  so import/glue/barrel files never drop to zero chunks, plus oversized-declaration
+  line-boundary splitting (multibyte-safe). Drives the symbol-less code-chunk
+  fragment rate below 1% (from 5% axon / 11% lab) and eliminates anonymous AST
+  slivers (`() =>`, `;`, `{`) as standalone chunks. No `PAYLOAD_SCHEMA_VERSION`
+  bump — boundary-only change; re-ingest reaps orphans via upsert + stale-tail
+  cleanup. (epic axon_rust-8rpa)
+  - Known follow-up: brace-less JSX-body arrow components in `.tsx`
+    (`const F = () => <jsx/>`) degrade to prose rather than capturing as a
+    declaration (tracked in axon_rust-gnpr; pinned by a parity-matrix test).
+
 ## [5.12.0] - 2026-06-14
 
 ### Added
