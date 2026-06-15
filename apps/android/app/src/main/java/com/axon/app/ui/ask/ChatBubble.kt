@@ -39,6 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -179,8 +181,26 @@ fun UserBubble(
 ) {
     val colors = AxonTheme.colors
     val displayText = remember(text) { displayUserText(text) }
-    val shape = RoundedCornerShape(topStart = 15.dp, topEnd = 5.dp, bottomStart = 15.dp, bottomEnd = 15.dp)
+    val shape = RoundedCornerShape(topStart = 17.dp, topEnd = 6.dp, bottomStart = 17.dp, bottomEnd = 17.dp)
     var revealed by remember { mutableStateOf(false) }
+    // Vertical gradient + top-edge highlight border + a soft cyan glow give the
+    // bubble depth instead of a flat fill.
+    val fillBrush = remember(colors) {
+        Brush.verticalGradient(
+            listOf(
+                colors.tint(colors.accentPrimary, 28, colors.control),
+                colors.tint(colors.accentPrimary, 13, colors.control),
+            ),
+        )
+    }
+    val borderBrush = remember(colors) {
+        Brush.verticalGradient(
+            listOf(
+                colors.tint(colors.accentPrimary, 50, colors.control),
+                colors.tint(colors.accentPrimary, 22, colors.control),
+            ),
+        )
+    }
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         Row(
             modifier = Modifier.widthIn(max = 300.dp),
@@ -198,11 +218,17 @@ fun UserBubble(
                     lineHeight = 20.5.sp,
                     fontFamily = AxonTheme.fonts.body,
                     modifier = Modifier
+                        .shadow(
+                            elevation = 5.dp,
+                            shape = shape,
+                            ambientColor = colors.accentPrimary.copy(alpha = 0.4f),
+                            spotColor = colors.accentPrimary.copy(alpha = 0.5f),
+                        )
                         .clip(shape)
-                        .background(colors.tint(colors.accentPrimary, 18, colors.control))
-                        .border(1.dp, colors.tint(colors.accentPrimary, 34, colors.control), shape)
+                        .background(fillBrush, shape)
+                        .border(1.dp, borderBrush, shape)
                         .clickable(remember { MutableInteractionSource() }, indication = null) { revealed = !revealed }
-                        .padding(horizontal = 13.dp, vertical = 9.dp),
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
             UserInitials()
@@ -254,8 +280,26 @@ fun AxonBubble(
         val base = if (sources.isEmpty()) stripCitationText(text) else stripSourcesBlock(text)
         humanizeJsonFragmentText(base)
     }
-    val shape = RoundedCornerShape(topStart = 5.dp, topEnd = 15.dp, bottomStart = 15.dp, bottomEnd = 15.dp)
+    val shape = RoundedCornerShape(topStart = 6.dp, topEnd = 17.dp, bottomStart = 17.dp, bottomEnd = 17.dp)
     var revealed by remember { mutableStateOf(false) }
+    // Subtle vertical gradient + a brighter top hairline read as a lit glass
+    // panel rather than a flat block.
+    val fillBrush = remember(colors) {
+        Brush.verticalGradient(
+            listOf(
+                colors.panelStrong.copy(alpha = 0.72f),
+                colors.panelMedium.copy(alpha = 0.5f),
+            ),
+        )
+    }
+    val borderBrush = remember(colors) {
+        Brush.verticalGradient(
+            listOf(
+                colors.tint(colors.accentPrimary, 20, colors.panelStrong),
+                colors.tint(colors.accentPrimary, 7, colors.panelStrong),
+            ),
+        )
+    }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (isStreaming && text.isEmpty()) {
             Row(
@@ -273,11 +317,12 @@ fun AxonBubble(
                     Column(
                         modifier = Modifier
                             .widthIn(max = 300.dp)
+                            .shadow(elevation = 4.dp, shape = shape)
                             .clip(shape)
-                            .background(colors.panelStrong.copy(alpha = 0.62f))
-                            .border(1.dp, colors.tint(colors.accentPrimary, 11, colors.panelStrong), shape)
+                            .background(fillBrush, shape)
+                            .border(1.dp, borderBrush, shape)
                             .clickable(remember { MutableInteractionSource() }, indication = null) { revealed = !revealed }
-                            .padding(horizontal = 13.dp, vertical = 11.dp),
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(9.dp),
                     ) {
                         InlineMarkdownText(
