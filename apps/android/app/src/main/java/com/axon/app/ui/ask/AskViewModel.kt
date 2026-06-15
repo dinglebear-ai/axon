@@ -2,6 +2,7 @@ package com.axon.app.ui.ask
 
 import android.app.Application
 import android.os.SystemClock
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+private const val TAG = "AskViewModel"
 private const val FAB_STATUS_INITIAL_DELAY_MS = 1_800L
 private const val FAB_STATUS_POLL_INTERVAL_MS = 2_500L
 private const val FAB_STATUS_MAX_ATTEMPTS = 6
@@ -251,9 +253,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     private fun pollCrawlOnce(jobId: String) {
         viewModelScope.launch {
             delay(FAB_STATUS_INITIAL_DELAY_MS)
+            var everSucceeded = false
             repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
                 val terminal = container.axonRepository.crawlStatus(jobId).fold(
                     onSuccess = { status ->
+                        everSucceeded = true
                         val readableStatus = status.status.replaceFirstChar { it.titlecase() }
                         val pages = status.pagesCrawled
                         updateInjection(jobId) { item ->
@@ -271,18 +275,36 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     onFailure = { false },
                 )
-                if (terminal || attempt == FAB_STATUS_MAX_ATTEMPTS - 1) return@launch
+                if (terminal) return@launch
+                if (attempt == FAB_STATUS_MAX_ATTEMPTS - 1) {
+                    finishStalePoll(jobId, everSucceeded)
+                    return@launch
+                }
                 delay(FAB_STATUS_POLL_INTERVAL_MS)
             }
+        }
+    }
+
+    /**
+     * After the poll loop gives up: if not a single status request ever
+     * succeeded, the chip would otherwise stay frozen on its initial status with
+     * no explanation — surface that the poller couldn't reach the status.
+     */
+    private fun finishStalePoll(jobId: String, everSucceeded: Boolean) {
+        if (everSucceeded) return
+        updateInjection(jobId) { item ->
+            item.copy(detail = "Couldn't reach job status — track it from Jobs.")
         }
     }
 
     private fun pollJobOnce(kind: JobFamily, jobId: String) {
         viewModelScope.launch {
             delay(FAB_STATUS_INITIAL_DELAY_MS)
+            var everSucceeded = false
             repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
                 val terminal = container.axonRepository.getJob(kind, jobId).fold(
                     onSuccess = { job ->
+                        everSucceeded = true
                         val readableStatus = job.status.replaceFirstChar { it.titlecase() }
                         updateInjection(jobId) { item ->
                             item.copy(
@@ -297,7 +319,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     onFailure = { false },
                 )
-                if (terminal || attempt == FAB_STATUS_MAX_ATTEMPTS - 1) return@launch
+                if (terminal) return@launch
+                if (attempt == FAB_STATUS_MAX_ATTEMPTS - 1) {
+                    finishStalePoll(jobId, everSucceeded)
+                    return@launch
+                }
                 delay(FAB_STATUS_POLL_INTERVAL_MS)
             }
         }
@@ -313,7 +339,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
                     submittedAt = System.currentTimeMillis(),
                 ),
             )
-        }
+        }.onFailure { Log.w(TAG, "Failed to record recent $kind job $jobId", it) }
     }
 
     fun ask(query: String, attachment: String? = null) {
