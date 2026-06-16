@@ -102,6 +102,12 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.ext.junit)
+    // Robolectric-backed Compose composition for unit tests (runComposeUiTest).
+    // Lets theme unit tests enter AuroraTheme and read the lib's live ColorScheme /
+    // LocalAuroraColors without an instrumented device.
+    testImplementation(bom)
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.compose.ui.test.manifest)
 
     androidTestImplementation(bom)
     androidTestImplementation(libs.compose.ui.test.junit4)
