@@ -34,6 +34,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.custom_headers = vec!["Authorization: Bearer submitted".to_string()];
     submitted.discover_llms_txt = false;
     submitted.max_llms_txt_urls = 77;
+    submitted.adaptive_concurrency.enabled = true;
+    submitted.adaptive_concurrency.min = 2;
+    submitted.adaptive_concurrency.max = Some(32);
+    submitted.chrome_remote_local_policy = true;
 
     let mut worker = Config::test_default();
     worker.collection = "worker_collection".to_string();
@@ -60,6 +64,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     worker.custom_headers = vec!["Authorization: Bearer worker".to_string()];
     worker.discover_llms_txt = true;
     worker.max_llms_txt_urls = 512;
+    worker.adaptive_concurrency.enabled = false;
+    worker.adaptive_concurrency.min = 1;
+    worker.adaptive_concurrency.max = None;
+    worker.chrome_remote_local_policy = false;
 
     let config_json = match config_snapshot_json(&submitted) {
         Ok(json) => json,
@@ -108,6 +116,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     // matching the sitemap-discovery parity (async crawl is the common override path).
     assert!(!effective.discover_llms_txt);
     assert_eq!(effective.max_llms_txt_urls, 77);
+    assert!(effective.adaptive_concurrency.enabled);
+    assert_eq!(effective.adaptive_concurrency.min, 2);
+    assert_eq!(effective.adaptive_concurrency.max, Some(32));
+    assert!(effective.chrome_remote_local_policy);
 }
 
 #[test]
@@ -292,6 +304,67 @@ fn config_snapshot_does_not_serialize_process_local_endpoint_urls() {
         Some("http://axon-chrome:6000")
     );
     assert_eq!(effective.openai_base_url, "http://worker-openai:8080/v1");
+}
+
+#[test]
+fn config_snapshot_does_not_replay_docker_chrome_endpoint_urls() {
+    let mut submitted = Config::test_default();
+    submitted.chrome_remote_url = Some("http://axon-chrome:6000".to_string());
+    let mut worker = Config::test_default();
+    worker.chrome_remote_url = Some("http://worker-chrome:6000".to_string());
+
+    let config_json = config_snapshot_json(&submitted).expect("encode snapshot");
+    assert!(!config_json.contains("axon-chrome"));
+
+    let effective = apply_config_snapshot(&worker, &config_json).expect("apply snapshot");
+    assert_eq!(
+        effective.chrome_remote_url.as_deref(),
+        Some("http://worker-chrome:6000")
+    );
+}
+
+#[test]
+fn config_snapshot_rejects_adaptive_max_above_worker_cap() {
+    let mut submitted = Config::test_default();
+    submitted.adaptive_concurrency.enabled = true;
+    submitted.adaptive_concurrency.min = 1;
+    submitted.adaptive_concurrency.max = Some(2048);
+    let mut worker = Config::test_default();
+    worker.crawl_broadcast_buffer_max = 1024;
+
+    let config_json = config_snapshot_json(&submitted).expect("encode snapshot");
+    let err = apply_config_snapshot(&worker, &config_json)
+        .expect_err("adaptive snapshot above worker cap must fail");
+
+    assert!(
+        err.to_string()
+            .contains("workers.adaptive-concurrency.max must be <="),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn config_snapshot_resolves_adaptive_default_max_after_option_fields() {
+    let mut submitted = Config::test_default();
+    submitted.crawl_concurrency_limit = Some(64);
+    submitted.adaptive_concurrency.enabled = true;
+    submitted.adaptive_concurrency.min = 2;
+    submitted.adaptive_concurrency.max = None;
+
+    let mut worker = Config::test_default();
+    worker.crawl_concurrency_limit = Some(1);
+    worker.crawl_broadcast_buffer_max = 128;
+
+    let config_json = config_snapshot_json(&submitted).expect("encode snapshot");
+    let effective = apply_config_snapshot(&worker, &config_json).expect("apply snapshot");
+
+    assert_eq!(effective.crawl_concurrency_limit, Some(64));
+    assert_eq!(effective.adaptive_concurrency.min, 2);
+    assert_eq!(
+        effective.adaptive_concurrency.max,
+        Some(64),
+        "adaptive max=None must resolve against the restored snapshot crawl limit, not the worker process default"
+    );
 }
 
 #[test]

@@ -1,5 +1,39 @@
 use spider::url::Url;
 
+use crate::core::config::Config;
+use crate::core::config::parse::is_docker_service_host;
+
+pub(super) struct EndpointSnapshots {
+    pub(super) tei_url: Option<String>,
+    pub(super) qdrant_url: Option<String>,
+    pub(super) openai_base_url: Option<String>,
+}
+
+pub(super) fn snapshot_endpoints(
+    cfg: &Config,
+    process_fallback_fields: &mut Vec<String>,
+) -> Result<EndpointSnapshots, String> {
+    Ok(EndpointSnapshots {
+        tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, process_fallback_fields)?,
+        qdrant_url: endpoint_snapshot("qdrant_url", &cfg.qdrant_url, process_fallback_fields)?,
+        openai_base_url: endpoint_snapshot(
+            "openai_base_url",
+            &cfg.openai_base_url,
+            process_fallback_fields,
+        )?,
+    })
+}
+
+pub(super) fn snapshot_chrome_remote_url(
+    cfg: &Config,
+    process_fallback_fields: &mut Vec<String>,
+) -> Result<Option<String>, String> {
+    match cfg.chrome_remote_url.as_deref() {
+        Some(url) => endpoint_snapshot("chrome_remote_url", url, process_fallback_fields),
+        None => Ok(None),
+    }
+}
+
 pub(super) fn endpoint_snapshot(
     name: &str,
     url: &str,
@@ -36,6 +70,9 @@ fn endpoint_host_is_process_local(url: &Url) -> bool {
         .trim_end_matches(']')
         .to_ascii_lowercase();
     if host == "localhost" {
+        return true;
+    }
+    if is_docker_service_host(&host) {
         return true;
     }
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {

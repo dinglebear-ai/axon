@@ -6,7 +6,7 @@ pub mod overrides;
 mod session_watch;
 pub mod subconfigs;
 
-pub use config::Config;
+pub use config::{AdaptiveConcurrencyConfig, Config};
 pub use enums::{
     ColorChoice, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
     RedditSort, RedditTime, RenderMode, ScrapeFormat,

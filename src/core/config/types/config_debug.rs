@@ -37,6 +37,10 @@ impl fmt::Debug for Config {
                 &self.chrome_bootstrap_timeout_ms,
             )
             .field("chrome_bootstrap_retries", &self.chrome_bootstrap_retries)
+            .field(
+                "chrome_remote_local_policy",
+                &self.chrome_remote_local_policy,
+            )
             .field("respect_robots", &self.respect_robots)
             .field("min_markdown_chars", &self.min_markdown_chars)
             .field("drop_thin_markdown", &self.drop_thin_markdown)
@@ -85,6 +89,7 @@ impl fmt::Debug for Config {
                 "backfill_concurrency_limit",
                 &self.backfill_concurrency_limit,
             )
+            .field("adaptive_concurrency", &self.adaptive_concurrency)
             .field("sitemap_only", &self.sitemap_only)
             .field("delay_ms", &self.delay_ms)
             .field("request_timeout_ms", &self.request_timeout_ms)

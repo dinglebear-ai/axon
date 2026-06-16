@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use spider_transformations::transformation::content::SelectorConfiguration;
 use tokio::sync::mpsc::Sender;
 
+use super::super::adaptive::AdaptiveCrawlControl;
 use super::super::is_excluded_url_path;
 use super::super::{
     CrawlSummary, MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url,
@@ -43,6 +44,7 @@ pub struct CollectorConfig {
     pub max_depth: u32,
     /// Configured retry backoff (`cfg.retry_backoff_ms`) reported on the rate-limit banner.
     pub retry_backoff_ms: u64,
+    pub adaptive: Option<AdaptiveCrawlControl>,
 }
 
 pub enum PageOutcome {

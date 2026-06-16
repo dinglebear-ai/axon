@@ -79,6 +79,21 @@ Guidance:
 - Keep `drop-thin-markdown=true` for higher-quality embedding corpus.
 - Sitemap backfill cap defaults to `512` and is configurable via `scrape.max-sitemaps` in `~/.axon/config.toml` (no CLI flag). Restrict backfill by recency with `--sitemap-since-days <n>`.
 
+### Adaptive Crawl Concurrency
+
+Adaptive crawl concurrency is opt-in via TOML:
+
+```toml
+[workers.adaptive-concurrency]
+enabled = true
+min = 1
+# max = 64
+```
+
+Defaults are unchanged when it is disabled. Adaptive mode applies to the main Spider crawl path; sitemap backfill, standalone screenshots, and other fetch helpers keep their existing fixed limits. HTTP `429`, HTTP `5xx`, and broadcast lag apply negative pressure; successful statuses increase after Spider's fixed success threshold. Spider 2.52.0 halves on failure, so Axon does not expose `decrease-factor`, `sync-interval-ms`, or palette controls for this release.
+
+Shrinking the target limits future admission and does not cancel already in-flight requests. Use adaptive mode with polite crawl settings such as robots, delay, max pages, path budgets, or a URL whitelist.
+
 ## Worker and Queue Tuning
 
 Worker controls:
