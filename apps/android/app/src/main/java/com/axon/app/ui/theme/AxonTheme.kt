@@ -66,8 +66,8 @@ private val AxonOrangeDeepDark = Color(0xFFC96A1C)
 // Canonical dark palette literals. This is the authoritative byte-for-byte record of
 // the dark appearance AND the [LocalAxonColors] static default / preview fallback.
 // At runtime, [AxonTheme] provides a palette DERIVED from the aurora lib instead
-// (see [auroraDerivedDarkPalette]); each derived field is asserted equal to the
-// corresponding literal below so the two never silently diverge on a lib bump.
+// (see [auroraDerivedDarkPalette]); AxonThemeTest asserts that live derived palette
+// equals these literals so the two never silently diverge on a lib bump.
 val AxonDarkColors = AxonPalette(
     pageBg = Color(0xFF07131C),
     navBg = Color(0xFF07111A),
@@ -103,9 +103,9 @@ val AxonDarkColors = AxonPalette(
  * fields are baked (no per-recomposition / per-read recompute).
  *
  * The aurora lib is dark-only, so only the dark palette derives; the orange accent
- * trio is app-specific (Aurora has no orange family) and stays literal. Each derived
- * value is exact-equal to the corresponding [AxonDarkColors] literal — verified
- * against the lib's dark tokens in dab6.7.
+ * trio is app-specific (Aurora has no orange family) and stays literal. The derived
+ * values are guarded against the corresponding [AxonDarkColors] literals by
+ * AxonThemeTest.
  */
 internal fun auroraDerivedDarkPalette(
     scheme: ColorScheme,

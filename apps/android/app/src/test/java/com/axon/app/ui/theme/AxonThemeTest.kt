@@ -1,10 +1,20 @@
 package com.axon.app.ui.theme
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.v2.runComposeUiTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import tv.tootie.aurora.theme.AuroraTheme
 import tv.tootie.aurora.theme.DarkAuroraExtraColors
+import tv.tootie.aurora.theme.LocalAuroraColors
 
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE, sdk = [33])
 class AxonThemeTest {
 
     /**
@@ -24,15 +34,38 @@ class AxonThemeTest {
     }
 
     /**
+     * Lib-drift guard for all dark fields derived from Aurora's public theme
+     * surfaces. This enters the real [AuroraTheme] composition, reads the live
+     * [MaterialTheme.colorScheme] and [LocalAuroraColors], and verifies the derived
+     * Axon palette still matches the canonical dark appearance byte-for-byte.
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `derived dark palette matches live aurora theme`() = runComposeUiTest {
+        var derived: AxonPalette? = null
+
+        setContent {
+            AuroraTheme(darkTheme = true) {
+                derived = auroraDerivedDarkPalette(
+                    scheme = MaterialTheme.colorScheme,
+                    extra = LocalAuroraColors.current,
+                )
+            }
+        }
+
+        runOnIdle {
+            assertEquals(AxonDarkColors, derived)
+        }
+    }
+
+    /**
      * Byte-for-byte consolidation guard for the derive-from-lib refactor (dab6.7/.8/.9).
      *
-     * [AxonDarkColors] is the canonical record of the dark appearance; at runtime
-     * [auroraDerivedDarkPalette] rebuilds every lib-backed field from the aurora lib
-     * and is asserted (inline in AxonTheme.kt) to equal these literals. This test
+     * [AxonDarkColors] is the canonical record of the dark appearance. This test
      * pins all 19 DERIVED dark fields to their exact pre-refactor `Color(0x..)` hex,
-     * so any future change — an axon-side edit to [AxonDarkColors], or a lib token
-     * bump that propagates through the derive path — fails loudly here instead of
-     * silently shifting the UI.
+     * so any future axon-side edit to [AxonDarkColors] fails loudly instead of
+     * silently shifting the UI. The live Aurora-derived path is guarded separately
+     * by `derived dark palette matches live aurora theme`.
      *
      * The 19 derived fields are every field EXCEPT the orange trio (app-specific —
      * Aurora has no orange family) and the two theme-invariant app tokens
