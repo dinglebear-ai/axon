@@ -1,8 +1,10 @@
 export type ArgMode = "none" | "optionalSingle" | "single" | "split";
 type RemoteActionKind = "operation" | "job" | "admin" | "discovery";
 type ActionTone = "info" | "success" | "warn" | "neutral" | "rose" | "violet";
-export type JobFamily = "crawl" | "embed" | "extract" | "ingest";
-export type JobOperation = "list" | "status" | "cancel" | "cleanup" | "clear" | "recover";
+export const JOB_FAMILIES = ["crawl", "embed", "extract", "ingest"] as const;
+export type JobFamily = (typeof JOB_FAMILIES)[number];
+export const JOB_OPERATIONS = ["list", "status", "cancel", "cleanup", "clear", "recover"] as const;
+export type JobOperation = (typeof JOB_OPERATIONS)[number];
 
 export type PaletteSubcommand =
   | "help"
@@ -57,7 +59,7 @@ export interface RemotePaletteAction extends PaletteActionBase {
 
 export type PaletteAction = LocalPaletteAction | RemotePaletteAction;
 
-export const ACTIONS: PaletteAction[] = [
+const STATIC_ACTIONS = [
   {
     label: "Help",
     subcommand: "help",
@@ -358,10 +360,16 @@ export const ACTIONS: PaletteAction[] = [
     example: "ingest-sessions-prepared {\"sessions\":[]}",
     tone: "violet",
   },
-  ...jobLifecycleActions("crawl"),
-  ...jobLifecycleActions("embed"),
-  ...jobLifecycleActions("extract"),
-  ...jobLifecycleActions("ingest"),
+] as const satisfies readonly PaletteAction[];
+
+type StaticSubcommand = Exclude<PaletteSubcommand, `${JobFamily}-${JobOperation}`>;
+type ListedStaticSubcommand = (typeof STATIC_ACTIONS)[number]["subcommand"];
+const _allStaticActionsListed: Exclude<StaticSubcommand, ListedStaticSubcommand> extends never ? true : never = true;
+void _allStaticActionsListed;
+
+export const ACTIONS: PaletteAction[] = [
+  ...STATIC_ACTIONS,
+  ...JOB_FAMILIES.flatMap(jobLifecycleActions),
 ];
 
 function jobLifecycleActions(family: JobFamily): PaletteAction[] {

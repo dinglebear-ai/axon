@@ -30,7 +30,7 @@ import {
   sanitizeReaderMarkdown,
   toneForStatus,
 } from "@/components/palette/OperationResultViewShared";
-import { actionBehavior, type StructuredViewKey } from "@/lib/actionRegistry";
+import { actionBehavior, maybeActionBehavior, type StructuredViewKey } from "@/lib/actionRegistry";
 import { arrField, boolField, isRecord, numField, shortId, strField, titleCase, unwrapPayload } from "@/lib/payload";
 
 const LIST_LIMIT = 18;
@@ -90,7 +90,16 @@ export const OperationResultView = memo(function OperationResultView({
   fallbackText = "",
 }: OperationResultViewProps) {
   const data = unwrapPayload(payload);
-  const viewKey = actionBehavior(subcommand).structuredView;
+  const behavior = maybeActionBehavior(subcommand);
+  if (!behavior) {
+    return (
+      <div className="operation-empty" role="alert">
+        <strong>Unknown palette action</strong>
+        <span>{subcommand}</span>
+      </div>
+    );
+  }
+  const viewKey = behavior.structuredView;
   const render = viewKey ? STRUCTURED_VIEWS[viewKey] : undefined;
   if (render) return render({ data, payload, fallbackText, subcommand });
   return <GenericResultView payload={data} />;

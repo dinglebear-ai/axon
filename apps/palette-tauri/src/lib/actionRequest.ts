@@ -91,13 +91,6 @@ export const dedupeBody: BodyBuilder = (ctx) => ctx.collectionBody;
 export const watchCreateBody: BodyBuilder = (ctx) => watchCreateRequestBody(ctx.words);
 export const ingestSessionsPreparedBody: BodyBuilder = (ctx) => jsonBody(ctx.arg, "prepared sessions request");
 
-const JOB_LIFECYCLE_RE = /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/;
-
-/** Whether a subcommand is one of the 24 `${family}-${operation}` job actions. */
-export function isJobLifecycle(subcommand: string): boolean {
-  return JOB_LIFECYCLE_RE.test(subcommand);
-}
-
 // ---- Shared shaping helpers ---------------------------------------------
 
 export function first(words: string[], field: string): string {
@@ -112,13 +105,26 @@ export function required(words: string[], field: string): string[] {
 
 function ingestTargetBody(target: string): Record<string, unknown> {
   const lower = target.toLowerCase();
-  if (lower.includes("youtube.com/") || lower.includes("youtu.be/")) {
+  const host = targetHost(lower);
+  if (hostMatches(host, "youtube.com") || host === "youtu.be") {
     return { source_type: "youtube", target };
   }
-  if (lower.includes("reddit.com/") || lower.startsWith("/r/") || lower.startsWith("r/")) {
+  if (hostMatches(host, "reddit.com") || lower.startsWith("/r/") || lower.startsWith("r/")) {
     return { source_type: "reddit", target };
   }
   return { source_type: "github", target, include_source: true };
+}
+
+function targetHost(target: string): string | null {
+  try {
+    return new URL(target).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function hostMatches(host: string | null, domain: string): boolean {
+  return host === domain || Boolean(host?.endsWith(`.${domain}`));
 }
 
 function watchCreateRequestBody(words: string[]): Record<string, unknown> {

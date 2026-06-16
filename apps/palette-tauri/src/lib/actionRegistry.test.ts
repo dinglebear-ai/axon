@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ACTION_REGISTRY, actionBehavior, type StructuredViewKey } from "./actionRegistry";
+import { ACTION_REGISTRY, actionBehavior, maybeActionBehavior, type StructuredViewKey } from "./actionRegistry";
 import { ACTIONS, type PaletteSubcommand } from "./actions";
 import { outputKindFor } from "./format";
 import { actionRouteTemplate } from "./axonClient";
@@ -118,11 +118,9 @@ describe("registry-derived shims preserve behavior", () => {
   });
 });
 
-describe("actionBehavior fallback", () => {
-  it("returns a generic code/JSON behavior for unknown subcommands", () => {
-    const behavior = actionBehavior("not-a-real-subcommand");
-    expect(behavior.outputKind).toBe("code");
-    expect(behavior.structuredView).toBeNull();
-    expect(behavior.formatText({ foo: "bar" })).toContain("foo");
+describe("actionBehavior boundaries", () => {
+  it("throws on unknown subcommands instead of silently inventing generic behavior", () => {
+    expect(() => actionBehavior("not-a-real-subcommand")).toThrow("Unknown palette action: not-a-real-subcommand");
+    expect(maybeActionBehavior("not-a-real-subcommand")).toBeNull();
   });
 });

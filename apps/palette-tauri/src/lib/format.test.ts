@@ -75,4 +75,37 @@ describe("formatPayload", () => {
     expect(output).not.toContain("path:");
     expect(output).not.toContain("/home/axon/.axon/output/screenshots/example.png");
   });
+
+  it("formats representative payloads for every moved formatter", () => {
+    const cases: Array<[string, unknown, string[]]> = [
+      ["scrape", { markdown: "# Page body" }, ["# Page body"]],
+      ["retrieve", { content: "stored chunk" }, ["stored chunk"]],
+      ["map", { urls: ["https://example.com/a"] }, ["https://example.com/a"]],
+      ["query", { results: [{ rank: 1, score: 0.925, url: "https://example.com/a", snippet: "hit" }] }, ["1. score 0.925", "hit"]],
+      ["search", { results: [{ title: "Result A", url: "https://example.com/a", snippet: "snippet" }] }, ["1. Result A", "snippet"]],
+      ["suggest", { suggestions: [{ url: "https://example.com/docs", reason: "Relevant docs" }] }, ["https://example.com/docs", "Relevant docs"]],
+      ["sources", { count: 1, urls: ["https://example.com/source"] }, ["1 indexed sources", "https://example.com/source"]],
+      ["domains", { domains: [{ domain: "example.com", count: 2 }] }, ["example.com"]],
+      ["endpoints", { total: 1, endpoints: ["https://example.com/api"] }, ["Endpoint discovery", "1 candidates", "https://example.com/api"]],
+      ["brand", { name: "Aurora", colors: [{ hex: "#29b6f6", usage: "primary", count: 4 }] }, ["Aurora", "#29b6f6 primary (4)"]],
+      ["dedupe", { collection: "docs", removed: 2, scanned: 10 }, ["collection: docs", "removed: 2", "scanned: 10"]],
+      ["watch-list", { watches: [{ name: "Docs", id: "watch-1", enabled: true, every_seconds: 60 }] }, ["Docs (watch-1)", "enabled: true"]],
+      ["watch-create", { name: "Docs", id: "watch-1", enabled: true, every_seconds: 60 }, ["Docs (watch-1)", "every: 60s"]],
+      ["watch-run", { watch_id: "watch-1", artifacts: [{ id: "a1" }] }, ["watch: watch-1", "artifacts: 1"]],
+      ["crawl-list", { jobs: [{ job_id: "job-1", status: "running", url: "https://example.com" }] }, ["job-1", "status: running"]],
+    ];
+
+    for (const [subcommand, payload, fragments] of cases) {
+      const output = formatPayload(subcommand, payload);
+      for (const fragment of fragments) {
+        expect(output, subcommand).toContain(fragment);
+      }
+    }
+  });
+
+  it("keeps string and non-record payload fallbacks stable", () => {
+    expect(formatPayload("status", "plain status")).toBe("plain status");
+    expect(formatPayload("status", 42)).toBe("42");
+    expect(() => formatPayload("serach", { answer: "typo" })).toThrow("Unknown palette action: serach");
+  });
 });

@@ -282,6 +282,27 @@ describe("OperationResultView structured rendering", () => {
     expect(screen.getByText("https://example.com/x")).toBeInTheDocument();
   });
 
+  it("renders retrieved document content", () => {
+    render(<OperationResultView subcommand="retrieve" payload={{ content: "Stored chunk body" }} />);
+    expect(screen.getByText("Stored chunk body")).toBeInTheDocument();
+  });
+
+  it("renders suggested URLs", () => {
+    render(<OperationResultView subcommand="suggest" payload={{ suggestions: [{ title: "Docs", url: "https://example.com/docs", reason: "Relevant" }] }} />);
+    expect(screen.getByText("Suggested URLs")).toBeInTheDocument();
+    expect(screen.getByText("Docs")).toBeInTheDocument();
+  });
+
+  it("renders source and domain lists", () => {
+    render(<OperationResultView subcommand="sources" payload={{ urls: ["https://example.com/source"] }} />);
+    expect(screen.getByText("Indexed sources")).toBeInTheDocument();
+    expect(screen.getByText("https://example.com/source")).toBeInTheDocument();
+
+    render(<OperationResultView subcommand="domains" payload={{ domains: [{ domain: "example.com", count: 2 }] }} />);
+    expect(screen.getByText("Indexed domains")).toBeInTheDocument();
+    expect(screen.getAllByText("example.com").length).toBeGreaterThan(0);
+  });
+
   it("renders a degraded doctor report", () => {
     render(
       <OperationResultView
@@ -300,9 +321,41 @@ describe("OperationResultView structured rendering", () => {
     expect(screen.getByText("abc123def456…")).toBeInTheDocument();
   });
 
+  it("renders job-start heroes for all non-crawl async families", () => {
+    for (const subcommand of ["embed", "extract", "ingest", "ingest-sessions-prepared"]) {
+      render(<OperationResultView subcommand={subcommand} payload={{ execution_mode: "async", result: { job_id: `${subcommand}-job-123`, status: "queued" } }} />);
+    }
+    expect(screen.getAllByText("Status endpoint")).toHaveLength(4);
+    expect(screen.getAllByText(/job queued/i)).toHaveLength(4);
+  });
+
   it("renders a job-lifecycle list view", () => {
     render(<OperationResultView subcommand="crawl-list" payload={{ jobs: [{ job_id: "j1", status: "running", url: "https://example.com" }] }} />);
     expect(screen.getByText("Crawl List")).toBeInTheDocument();
+  });
+
+  it("renders endpoint, brand, and diff detail views", () => {
+    render(<OperationResultView subcommand="endpoints" payload={{ total: 1, endpoints: ["https://example.com/api"] }} />);
+    expect(screen.getByText("Endpoint discovery")).toBeInTheDocument();
+    expect(screen.getAllByText("https://example.com/api").length).toBeGreaterThan(0);
+
+    render(<OperationResultView subcommand="brand" payload={{ name: "Aurora", colors: [{ hex: "#29b6f6", usage: "primary" }], fonts: ["Manrope"] }} />);
+    expect(screen.getByText("Aurora")).toBeInTheDocument();
+    expect(screen.getByText("Manrope")).toBeInTheDocument();
+
+    render(<OperationResultView subcommand="diff" payload={{ status: "changed", url_a: "https://example.com/a", url_b: "https://example.com/b", metadata_changes: [{ field: "title", old: "A", new: "B" }] }} />);
+    expect(screen.getByText("Diff changed")).toBeInTheDocument();
+    expect(screen.getByText("https://example.com/a")).toBeInTheDocument();
+  });
+
+  it("renders watch list and detail views", () => {
+    render(<OperationResultView subcommand="watch-list" payload={{ watches: [{ name: "Docs watch", id: "watch-1" }] }} />);
+    expect(screen.getByText("Watch schedules")).toBeInTheDocument();
+    expect(screen.getByText("Docs watch")).toBeInTheDocument();
+
+    render(<OperationResultView subcommand="watch-run" payload={{ name: "Docs watch", watch_id: "watch-1", artifacts: [{ id: "artifact-1" }] }} />);
+    expect(screen.getByText("Watch ID")).toBeInTheDocument();
+    expect(screen.getByText("watch-1")).toBeInTheDocument();
   });
 
   it("renders dedupe metrics", () => {
@@ -312,6 +365,7 @@ describe("OperationResultView structured rendering", () => {
 
   it("falls back to the generic view for unknown subcommands", () => {
     render(<OperationResultView subcommand="totally-unknown" payload={{ field_one: "value" }} />);
-    expect(screen.getByText("Field One")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Unknown palette action");
+    expect(screen.getByText("totally-unknown")).toBeInTheDocument();
   });
 });

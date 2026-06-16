@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 
 import type { PaletteSubcommand, JobFamily, JobOperation } from "./actions";
+import { JOB_FAMILIES, JOB_OPERATIONS } from "./actions";
 import {
   type ActionRouteTemplate,
   type BodyBuilder,
@@ -166,9 +167,16 @@ export interface ActionBehavior {
 const md: OutputKind = "markdown";
 const code: OutputKind = "code";
 
-/** Helper to declare an entry; binds a record-only formatter through the guard. */
-function entry(behavior: Omit<ActionBehavior, "formatText"> & { formatText: RecordFormatter }): ActionBehavior {
-  return { ...behavior, formatText: recordFormatter(behavior.formatText) };
+type ActionBehaviorInput = Omit<ActionBehavior, "outputIcon"> & { outputIcon?: LucideIcon };
+
+/** Helper to declare an entry; defaults `outputIcon` to `actionIcon`. */
+function behavior(input: ActionBehaviorInput): ActionBehavior {
+  return { ...input, outputIcon: input.outputIcon ?? input.actionIcon };
+}
+
+/** Helper to declare a record-formatting entry; binds the formatter guard. */
+function entry(input: Omit<ActionBehaviorInput, "formatText"> & { formatText: RecordFormatter }): ActionBehavior {
+  return behavior({ ...input, formatText: recordFormatter(input.formatText) });
 }
 
 // Non-lifecycle subcommands. Job-lifecycle entries are generated below so the
@@ -176,22 +184,20 @@ function entry(behavior: Omit<ActionBehavior, "formatText"> & { formatText: Reco
 type StaticSubcommand = Exclude<PaletteSubcommand, `${JobFamily}-${JobOperation}`>;
 
 const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
-  help: {
+  help: behavior({
     route: getRoute("palette://help"),
     buildBody: noBody,
     outputKind: code,
     formatText: formatCompact,
     actionIcon: HelpCircle,
-    outputIcon: HelpCircle,
     structuredView: "help",
-  },
+  }),
   scrape: entry({
     route: postRoute("/v1/scrape"),
     buildBody: scrapeBody,
     outputKind: md,
     formatText: formatScrape,
     actionIcon: FileDown,
-    outputIcon: FileDown,
     structuredView: "scrape",
   }),
   crawl: entry({
@@ -209,7 +215,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatMap,
     actionIcon: MapIcon,
-    outputIcon: MapIcon,
     structuredView: "map",
   }),
   summarize: entry({
@@ -218,7 +223,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: md,
     formatText: formatSummarize,
     actionIcon: BookOpen,
-    outputIcon: BookOpen,
     structuredView: null,
   }),
   ask: entry({
@@ -227,7 +231,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: md,
     formatText: formatAnswer,
     actionIcon: Bot,
-    outputIcon: Bot,
     structuredView: null,
   }),
   chat: entry({
@@ -245,7 +248,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatQuery,
     actionIcon: SearchCheck,
-    outputIcon: SearchCheck,
     structuredView: "query",
   }),
   retrieve: entry({
@@ -254,7 +256,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatRetrieve,
     actionIcon: Database,
-    outputIcon: Database,
     structuredView: "retrieve",
   }),
   suggest: entry({
@@ -263,7 +264,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: md,
     formatText: formatSuggest,
     actionIcon: Sparkles,
-    outputIcon: Sparkles,
     structuredView: "suggest",
   }),
   evaluate: entry({
@@ -272,7 +272,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatEvaluate,
     actionIcon: BarChart3,
-    outputIcon: BarChart3,
     structuredView: null,
   }),
   search: entry({
@@ -281,7 +280,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatSearchLike,
     actionIcon: Globe,
-    outputIcon: Globe,
     structuredView: "search",
   }),
   research: entry({
@@ -290,7 +288,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: md,
     formatText: formatSearchLike,
     actionIcon: Globe,
-    outputIcon: Globe,
     structuredView: "research",
   }),
   embed: entry({
@@ -299,7 +296,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: jobStartFormatter("embed"),
     actionIcon: Layers,
-    outputIcon: Layers,
     structuredView: "embed",
   }),
   extract: entry({
@@ -308,7 +304,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: jobStartFormatter("extract"),
     actionIcon: Braces,
-    outputIcon: Braces,
     structuredView: "extract",
   }),
   ingest: entry({
@@ -317,25 +312,22 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: jobStartFormatter("ingest"),
     actionIcon: PackageOpen,
-    outputIcon: PackageOpen,
     structuredView: "ingest",
   }),
-  status: {
+  status: behavior({
     route: getRoute("/v1/status"),
     buildBody: noBody,
     outputKind: code,
     formatText: formatCompact,
     actionIcon: Activity,
-    outputIcon: Activity,
     structuredView: null,
-  },
+  }),
   sources: entry({
     route: getRoute("/v1/sources"),
     buildBody: noBody,
     outputKind: code,
     formatText: formatSources,
     actionIcon: Boxes,
-    outputIcon: Boxes,
     structuredView: "sources",
   }),
   domains: entry({
@@ -344,25 +336,22 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatDomains,
     actionIcon: Database,
-    outputIcon: Database,
     structuredView: "domains",
   }),
-  stats: {
+  stats: behavior({
     route: getRoute("/v1/stats"),
     buildBody: noBody,
     outputKind: code,
     formatText: formatCompact,
     actionIcon: BarChart3,
-    outputIcon: BarChart3,
     structuredView: null,
-  },
+  }),
   doctor: entry({
     route: getRoute("/v1/doctor"),
     buildBody: noBody,
     outputKind: code,
     formatText: formatCompact,
     actionIcon: Stethoscope,
-    outputIcon: Stethoscope,
     structuredView: "doctor",
   }),
   endpoints: entry({
@@ -371,7 +360,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: md,
     formatText: formatEndpoints,
     actionIcon: HelpCircle,
-    outputIcon: HelpCircle,
     structuredView: "endpoints",
   }),
   brand: entry({
@@ -380,7 +368,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: md,
     formatText: formatBrand,
     actionIcon: Sparkles,
-    outputIcon: Sparkles,
     structuredView: "brand",
   }),
   diff: entry({
@@ -389,7 +376,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: md,
     formatText: formatDiff,
     actionIcon: GitCompare,
-    outputIcon: GitCompare,
     structuredView: "diff",
   }),
   screenshot: entry({
@@ -398,7 +384,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: md,
     formatText: formatScreenshot,
     actionIcon: Camera,
-    outputIcon: Camera,
     structuredView: "screenshot",
   }),
   dedupe: entry({
@@ -407,7 +392,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatDedupe,
     actionIcon: HelpCircle,
-    outputIcon: HelpCircle,
     structuredView: "dedupe",
   }),
   "watch-list": entry({
@@ -416,7 +400,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatWatchList,
     actionIcon: HelpCircle,
-    outputIcon: HelpCircle,
     structuredView: "watch-list",
   }),
   "watch-create": entry({
@@ -425,7 +408,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatWatchCreate,
     actionIcon: HelpCircle,
-    outputIcon: HelpCircle,
     structuredView: "watch-create",
   }),
   "watch-run": entry({
@@ -435,7 +417,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: formatWatchRun,
     actionIcon: HelpCircle,
-    outputIcon: HelpCircle,
     structuredView: "watch-run",
   }),
   "ingest-sessions-prepared": entry({
@@ -444,7 +425,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     outputKind: code,
     formatText: jobStartFormatter("ingest-sessions-prepared"),
     actionIcon: HelpCircle,
-    outputIcon: HelpCircle,
     structuredView: "ingest-sessions-prepared",
   }),
 };
@@ -457,52 +437,62 @@ const JOB_LIFECYCLE_ICONS: Record<JobFamily, LucideIcon> = {
 };
 
 function lifecycleBehavior(family: JobFamily, operation: JobOperation): ActionBehavior {
-  const route: ActionRouteTemplate =
-    operation === "list"
-      ? getRoute(`/v1/${family}`)
-      : operation === "status"
-        ? getRoute(`/v1/${family}/{id}`)
-        : operation === "cancel"
-          ? postRoute(`/v1/${family}/{id}/cancel`)
-          : operation === "cleanup"
-            ? postRoute(`/v1/${family}/cleanup`)
-            : operation === "clear"
-              ? deleteRoute(`/v1/${family}`)
-              : postRoute(`/v1/${family}/recover`);
-
-  // Body is always null for lifecycle ops; `routeFor` performs UUID validation
-  // (status/cancel) — matching the original `jobLifecycleRequest` behavior.
-  const routeFor =
-    operation === "status"
-      ? (ctx: RequestContext) => getRoute(`/v1/${family}/${uuid(first(ctx.words, "job id"))}`)
-      : operation === "cancel"
-        ? (ctx: RequestContext) => postRoute(`/v1/${family}/${uuid(first(ctx.words, "job id"))}/cancel`)
-        : undefined;
-
   const icon = JOB_LIFECYCLE_ICONS[family];
-  const outputIcon: LucideIcon =
-    operation === "cancel"
-      ? X
-      : operation === "cleanup" || operation === "clear" || operation === "recover"
-        ? RotateCw
-        : operation === "list" || operation === "status"
-          ? Activity
-          : icon;
-
   return {
-    route,
+    route: lifecycleRoute(family, operation),
     buildBody: noBody,
-    routeFor,
+    routeFor: lifecycleRouteFor(family, operation),
     outputKind: code,
     formatText: recordFormatter(formatJobLifecycle),
     actionIcon: icon,
-    outputIcon,
+    outputIcon: lifecycleOutputIcon(family, operation),
     structuredView: "job-lifecycle",
   };
 }
 
-const JOB_FAMILIES: JobFamily[] = ["crawl", "embed", "extract", "ingest"];
-const JOB_OPERATIONS: JobOperation[] = ["list", "status", "cancel", "cleanup", "clear", "recover"];
+function lifecycleRoute(family: JobFamily, operation: JobOperation): ActionRouteTemplate {
+  switch (operation) {
+    case "list":
+      return getRoute(`/v1/${family}`);
+    case "status":
+      return getRoute(`/v1/${family}/{id}`);
+    case "cancel":
+      return postRoute(`/v1/${family}/{id}/cancel`);
+    case "cleanup":
+      return postRoute(`/v1/${family}/cleanup`);
+    case "clear":
+      return deleteRoute(`/v1/${family}`);
+    case "recover":
+      return postRoute(`/v1/${family}/recover`);
+  }
+}
+
+function lifecycleRouteFor(family: JobFamily, operation: JobOperation): ActionBehavior["routeFor"] {
+  switch (operation) {
+    case "status":
+      return (ctx) => getRoute(`/v1/${family}/${uuid(first(ctx.words, "job id"))}`);
+    case "cancel":
+      return (ctx) => postRoute(`/v1/${family}/${uuid(first(ctx.words, "job id"))}/cancel`);
+    default:
+      return undefined;
+  }
+}
+
+function lifecycleOutputIcon(family: JobFamily, operation: JobOperation): LucideIcon {
+  switch (operation) {
+    case "cancel":
+      return X;
+    case "cleanup":
+    case "clear":
+    case "recover":
+      return RotateCw;
+    case "list":
+    case "status":
+      return Activity;
+    default:
+      return JOB_LIFECYCLE_ICONS[family];
+  }
+}
 
 function buildLifecycleRegistry(): Record<`${JobFamily}-${JobOperation}`, ActionBehavior> {
   const out = {} as Record<`${JobFamily}-${JobOperation}`, ActionBehavior>;
@@ -520,19 +510,18 @@ export const ACTION_REGISTRY: Record<PaletteSubcommand, ActionBehavior> = {
   ...buildLifecycleRegistry(),
 };
 
-/** Behavior for a subcommand. Falls back to a generic code/JSON entry if the
- * subcommand string is not a known `PaletteSubcommand` (defensive — all callers
- * pass typed subcommands, so this only guards untyped string call sites). */
-export function actionBehavior(subcommand: string): ActionBehavior {
-  return ACTION_REGISTRY[subcommand as PaletteSubcommand] ?? FALLBACK_BEHAVIOR;
+/** Nullable lookup for persisted/loaded data where the subcommand may be stale. */
+export function maybeActionBehavior(subcommand: string): ActionBehavior | null {
+  return ACTION_REGISTRY[subcommand as PaletteSubcommand] ?? null;
 }
 
-const FALLBACK_BEHAVIOR: ActionBehavior = {
-  route: postRoute("/v1/unknown"),
-  buildBody: noBody,
-  outputKind: code,
-  formatText: formatCompact,
-  actionIcon: HelpCircle,
-  outputIcon: HelpCircle,
-  structuredView: null,
-};
+/** Behavior for a subcommand. String call sites are runtime boundaries (history,
+ * URL params, user-visible helpers), so fail loudly instead of silently drifting
+ * to generic JSON or plausible-looking REST routes. */
+export function actionBehavior(subcommand: PaletteSubcommand): ActionBehavior;
+export function actionBehavior(subcommand: string): ActionBehavior;
+export function actionBehavior(subcommand: string): ActionBehavior {
+  const action = maybeActionBehavior(subcommand);
+  if (!action) throw new Error(`Unknown palette action: ${subcommand}`);
+  return action;
+}

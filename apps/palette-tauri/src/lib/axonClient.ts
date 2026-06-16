@@ -138,7 +138,9 @@ function bodyFor(action: RemotePaletteAction, arg: string, config: PaletteConfig
  * subcommand — used by `actionMeta` for display. Delegates to the registry.
  */
 export function actionRouteTemplate(subcommand: string): ActionRouteTemplate {
-  return ACTION_REGISTRY[subcommand as PaletteSubcommand]?.route ?? { method: "POST", path: `/v1/${subcommand}` };
+  const behavior = ACTION_REGISTRY[subcommand as PaletteSubcommand];
+  if (!behavior) throw new Error(`Unknown palette action: ${subcommand}`);
+  return behavior.route;
 }
 
 function tokenFromHeaders(headers: Record<string, string>): string | null {

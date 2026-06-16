@@ -220,10 +220,6 @@ export function arrayByKeys(payload: Record<string, unknown>, keys: string[]): u
   return [];
 }
 
-export function isJobLifecycle(subcommand: string): boolean {
-  return /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/.test(subcommand);
-}
-
 function emptyCopy(kind: EmptyKind): { title: string; body: string } {
   switch (kind) {
     case "results":

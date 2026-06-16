@@ -1,3 +1,11 @@
+import {
+  arrField as arrayField,
+  boolField as booleanField,
+  isRecord,
+  numField as numberField,
+  strField as stringField,
+} from "./payload";
+
 // Per-action text formatters (the fallback / copy text shown when a structured
 // view is not used, and the body the OutputPanel renders for markdown/code
 // runs). These pure functions are bound per subcommand in `actionRegistry.ts`
@@ -81,7 +89,7 @@ export function formatEndpoints(value: Record<string, unknown>): string {
     stringArray(value, "endpoints") ??
     stringArray(value, "urls") ??
     arrayField(value, "candidates")
-      ?.map((item) => (isRecord(item) ? stringField(item, "url") : undefined))
+      .map((item) => (isRecord(item) ? stringField(item, "url") : undefined))
       .filter((item): item is string => Boolean(item)) ??
     [];
   const title = numberField(value, "total") ?? urls.length;
@@ -89,9 +97,9 @@ export function formatEndpoints(value: Record<string, unknown>): string {
 }
 
 export function formatBrand(value: Record<string, unknown>): string {
-  const colors = arrayField(value, "colors") ?? [];
+  const colors = arrayField(value, "colors");
   const fonts = stringArray(value, "fonts") ?? [];
-  const logos = arrayField(value, "logos") ?? [];
+  const logos = arrayField(value, "logos");
   const colorLines = colors.slice(0, SUMMARY_LIMIT).map((item) => {
     if (!isRecord(item)) return compact(item);
     const hex = stringField(item, "hex") ?? "";
@@ -304,37 +312,14 @@ function optionalResultRows(
     .join("\n\n");
 }
 
-function stringField(value: Record<string, unknown>, key: string): string | undefined {
-  const field = value[key];
-  return typeof field === "string" ? field : undefined;
-}
-
-function numberField(value: Record<string, unknown>, key: string): number | undefined {
-  const field = value[key];
-  return typeof field === "number" ? field : undefined;
-}
-
-function booleanField(value: Record<string, unknown>, key: string): boolean | undefined {
-  const field = value[key];
-  return typeof field === "boolean" ? field : undefined;
-}
-
 function recordField(value: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
   const field = value[key];
   return isRecord(field) ? field : undefined;
 }
 
-function arrayField(value: Record<string, unknown>, key: string): unknown[] | undefined {
-  const field = value[key];
-  return Array.isArray(field) ? field : undefined;
-}
-
 function stringArray(value: Record<string, unknown>, key: string): string[] | undefined {
-  return arrayField(value, key)?.filter((item): item is string => typeof item === "string");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  const strings = arrayField(value, key).filter((item): item is string => typeof item === "string");
+  return strings.length ? strings : undefined;
 }
 
 function compact(value: unknown): string {
