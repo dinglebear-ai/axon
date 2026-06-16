@@ -31,6 +31,25 @@ export interface PaletteResult {
   payload: unknown;
 }
 
+/**
+ * Request body the REST layer builds for an action. The `payload` of a
+ * successful response is still key-probed by the result views (the generated
+ * OpenAPI response types are not yet wired — tracked in #177); these aliases
+ * exist so request construction is typed without changing any response shape a
+ * consumer reads.
+ */
+export interface RequestBody {
+  method: HttpMethod;
+  path: string;
+  body: Record<string, unknown> | null;
+}
+
+/** A successful (`ok: true`) REST result. Additive alias over `PaletteResult`. */
+export type SuccessResult = PaletteResult & { ok: true };
+
+/** A failed (`ok: false`) REST result. Additive alias over `PaletteResult`. */
+export type ErrorResult = PaletteResult & { ok: false };
+
 export type HttpMethod = "GET" | "POST" | "DELETE";
 
 export interface Client {
@@ -104,11 +123,7 @@ export function buildActionRequest(
   };
 }
 
-function bodyFor(
-  action: RemotePaletteAction,
-  arg: string,
-  config: PaletteConfig,
-): { method: HttpMethod; path: string; body: Record<string, unknown> | null } {
+function bodyFor(action: RemotePaletteAction, arg: string, config: PaletteConfig): RequestBody {
   const words = wordsFor(action, arg);
   const collection = config.collection.trim();
   const collectionBody = collection ? { collection } : {};
@@ -253,10 +268,7 @@ function jobLifecycleRouteTemplate(subcommand: string): ActionRouteTemplate | nu
   }
 }
 
-function jobLifecycleRequest(
-  subcommand: string,
-  words: string[],
-): { method: HttpMethod; path: string; body: Record<string, unknown> | null } | null {
+function jobLifecycleRequest(subcommand: string, words: string[]): RequestBody | null {
   const match = /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/.exec(subcommand);
   if (!match) return null;
   const [, family, operation] = match;

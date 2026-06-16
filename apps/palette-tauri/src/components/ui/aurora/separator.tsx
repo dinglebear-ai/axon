@@ -1,15 +1,24 @@
 "use client"
 
-import * as React from "react"
+import type * as React from "react"
 import { cn } from "@/lib/utils"
 
 export interface SeparatorProps extends React.HTMLAttributes<HTMLDivElement> {
   orientation?: "horizontal" | "vertical"
   decorative?: boolean
+  ref?: React.Ref<HTMLDivElement>
 }
 
-const Separator = React.forwardRef<HTMLDivElement, SeparatorProps>(
-  ({ className, orientation = "horizontal", decorative = true, style, ...props }, ref) => (
+function Separator({
+  className,
+  orientation = "horizontal",
+  decorative = true,
+  style,
+  ref,
+  ...props
+}: SeparatorProps) {
+  return (
+    // biome-ignore lint/a11y/useAriaPropsSupportedByRole: aria-orientation is only set on the "separator" role path; the decorative "none" path leaves it undefined
     <div
       ref={ref}
       role={decorative ? "none" : "separator"}
@@ -22,7 +31,7 @@ const Separator = React.forwardRef<HTMLDivElement, SeparatorProps>(
       {...props}
     />
   )
-)
+}
 Separator.displayName = "Separator"
 
 export { Separator }

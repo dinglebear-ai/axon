@@ -69,6 +69,9 @@ EXCLUDED_GLOBS = [
     "**/*.test.*",
     "**/*.spec.*",
     "benches/**",
+    # Generated code — produced wholesale by a codegen step, never hand-split.
+    "**/*.gen.ts",
+    "**/axon-api.d.ts",  # `pnpm generate:api` output (openapi-typescript)
 ]
 
 # Stem-based test file patterns (applied to the filename without extension).

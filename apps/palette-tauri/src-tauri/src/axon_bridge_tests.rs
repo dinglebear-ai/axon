@@ -126,11 +126,11 @@ fn validates_saved_server_url_accepts_ipv6() {
     let result = validate_saved_server_url("[::1]:8001");
     // Either accepted with http/https or rejected with a clear message — test
     // that it does not panic and that if accepted the scheme is http or https
-    match result {
-        Ok(url) => assert!(
+    // Rejection is also acceptable — URL parsing of IPv6 without scheme varies.
+    if let Ok(url) = result {
+        assert!(
             url.starts_with("http://") || url.starts_with("https://"),
             "accepted URL must have http(s) scheme: {url}"
-        ),
-        Err(_) => {} // rejection is also acceptable — URL parsing of IPv6 without scheme varies
+        );
     }
 }
