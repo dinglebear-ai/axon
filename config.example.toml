@@ -48,6 +48,12 @@
 # Env: AXON_CHAT_HEADLESS_GEMINI_MODEL
 # chat-gemini-model = ""
 #
+# Optional override for whether the synthesis model should be treated as
+# high-context by the adaptive ask context builder. Leave unset to infer from
+# the active model name.
+# Env: AXON_SYNTHESIS_HIGH_CONTEXT
+# synthesis-high-context = true
+#
 # Codex app-server settings are runtime/bootstrap env-only in this slice:
 # AXON_CODEX_CMD, AXON_CODEX_HOME, AXON_SYNTHESIS_CODEX_MODEL
 # (legacy alias AXON_CODEX_MODEL), and AXON_CODEX_COMPLETION_CONCURRENCY.
@@ -286,6 +292,16 @@
 # Env: AXON_WATCHDOG_SWEEP_SECS
 # watchdog-sweep-secs = 15
 
+[workers.adaptive-concurrency]
+# Off by default. When enabled, Axon replaces the fixed crawl semaphore with
+# Spider's adaptive semaphore for the main Spider crawl path.
+# Failure decrease is fixed at 0.5 in Spider 2.52.0.
+enabled = false
+min = 1
+# max defaults to the resolved crawl concurrency limit. Explicit values are
+# capped by min(crawl-broadcast-buffer-max, 1024).
+# max = 64
+
 [chrome]
 # Custom User-Agent header sent by Chrome. Leave unset to use Spider's default.
 # Env: AXON_CHROME_USER_AGENT
@@ -305,6 +321,10 @@
 
 # Remote Chrome bootstrap probe retries (clamped 0-10).
 # bootstrap-retries = 2
+
+# Push Spider/Chromey's local policy to capable remote Chrome engines.
+# Generic CDP proxies may reject this command.
+remote-local-policy = false
 
 # Log rotation is configured via env var only (not TOML), because
 # init_tracing() runs before Config is built.
