@@ -1,30 +1,12 @@
 import {
   Activity,
-  BarChart3,
-  BookOpen,
-  Bot,
-  Boxes,
-  Braces,
-  Camera,
   Check,
   Copy,
-  Database,
   ExternalLink,
-  FileDown,
-  GitBranch,
-  GitCompare,
-  Globe,
   History,
-  HelpCircle,
-  Layers,
-  Map,
   MoreHorizontal,
   Pin,
-  PackageOpen,
   RotateCw,
-  SearchCheck,
-  Sparkles,
-  Stethoscope,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -40,6 +22,7 @@ import { StatsView } from "@/components/palette/StatsView";
 import { StatusView } from "@/components/palette/StatusView";
 import { Button } from "@/components/ui/aurora/button";
 import { Spinner } from "@/components/ui/aurora/spinner";
+import { actionBehavior } from "@/lib/actionRegistry";
 import type { PaletteAction } from "@/lib/actions";
 import { numField, strField, unwrapPayload } from "@/lib/payload";
 import type { RunState } from "@/lib/runState";
@@ -291,64 +274,7 @@ function statusFor(run: RunState): { label: string; tone: "ok" | "warn" | "error
   return { label: "ready", tone: "neutral" };
 }
 
+/** Output-panel header icon for a subcommand. Derived from the registry. */
 function outputIcon(subcommand: string): LucideIcon {
-  const lifecycle = /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/.exec(subcommand);
-  if (lifecycle) {
-    const [, family, action] = lifecycle;
-    if (action === "cancel") return X;
-    if (action === "cleanup" || action === "clear" || action === "recover") return RotateCw;
-    if (action === "list" || action === "status") return Activity;
-    if (family === "crawl") return GitBranch;
-    if (family === "embed") return Layers;
-    if (family === "extract") return Braces;
-    if (family === "ingest") return PackageOpen;
-  }
-
-  switch (subcommand) {
-    case "scrape":
-      return FileDown;
-    case "crawl":
-      return GitBranch;
-    case "map":
-      return Map;
-    case "summarize":
-      return BookOpen;
-    case "ask":
-      return Bot;
-    case "query":
-      return SearchCheck;
-    case "retrieve":
-      return Database;
-    case "suggest":
-      return Sparkles;
-    case "evaluate":
-      return BarChart3;
-    case "search":
-    case "research":
-      return Globe;
-    case "embed":
-      return Layers;
-    case "extract":
-      return Braces;
-    case "ingest":
-      return PackageOpen;
-    case "status":
-      return Activity;
-    case "sources":
-      return Boxes;
-    case "domains":
-      return Database;
-    case "stats":
-      return BarChart3;
-    case "doctor":
-      return Stethoscope;
-    case "brand":
-      return Sparkles;
-    case "diff":
-      return GitCompare;
-    case "screenshot":
-      return Camera;
-    default:
-      return HelpCircle;
-  }
+  return actionBehavior(subcommand).outputIcon;
 }
