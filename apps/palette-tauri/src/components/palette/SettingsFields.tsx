@@ -9,6 +9,9 @@
 import { ChevronDown, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "@/components/ui/aurora/button";
+import { Input } from "@/components/ui/aurora/input";
+
 export function TextInput({
   value,
   onChange,
@@ -21,7 +24,8 @@ export function TextInput({
   placeholder?: string;
 }) {
   return (
-    <input
+    <Input
+      unstyled
       className={mono ? "settings-input settings-input-mono" : "settings-input"}
       value={value}
       onChange={(event) => onChange(event.target.value)}
@@ -35,7 +39,8 @@ export function SecretInput({ value, onChange, placeholder }: { value: string; o
   return (
     <span className="settings-secret">
       <KeyRound size={12} />
-      <input
+      <Input
+        unstyled
         value={value}
         placeholder={placeholder ?? "unset - secret"}
         type={show ? "text" : "password"}
@@ -47,9 +52,9 @@ export function SecretInput({ value, onChange, placeholder }: { value: string; o
         spellCheck={false}
         data-1p-ignore
       />
-      <button type="button" onClick={() => setShow((visible) => !visible)} aria-label={show ? "Hide secret" : "Reveal secret"}>
+      <Button variant="plain" size="unstyled" type="button" onClick={() => setShow((visible) => !visible)} aria-label={show ? "Hide secret" : "Reveal secret"}>
         {show ? <EyeOff size={13} /> : <Eye size={13} />}
-      </button>
+      </Button>
     </span>
   );
 }
@@ -71,8 +76,8 @@ export function SelectInput({ value, options, onChange }: { value: string; optio
 
 export function MiniToggle({ on, onChange }: { on: boolean; onChange: (value: boolean) => void }) {
   return (
-    <button className={on ? "settings-toggle settings-toggle-on" : "settings-toggle"} type="button" onClick={() => onChange(!on)} aria-pressed={on}>
+    <Button variant="plain" size="unstyled" className={on ? "settings-toggle settings-toggle-on" : "settings-toggle"} type="button" onClick={() => onChange(!on)} aria-pressed={on}>
       <span />
-    </button>
+    </Button>
   );
 }

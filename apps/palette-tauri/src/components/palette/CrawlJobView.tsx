@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef } from "react";
 import { AlertTriangle, Check, Minus, Workflow, X } from "lucide-react";
 
+import { Button } from "@/components/ui/aurora/button";
 import type { CrawlLogEvent, CrawlSnapshot } from "@/lib/crawlJob";
 import { isLive } from "@/lib/crawlJob";
 import { MIN_PROGRESS_PCT } from "@/lib/format";
@@ -44,12 +45,12 @@ export const CrawlJobView = memo(function CrawlJobView({
           </div>
           <span className={`output-status output-status-${status.tone}`}>{status.label}</span>
           <span className="output-tools">
-            <button type="button" onClick={onMinimize} title="Minimize" aria-label="Minimize to tray">
+            <Button variant="plain" size="unstyled" type="button" onClick={onMinimize} title="Minimize" aria-label="Minimize to tray">
               <Minus size={13} />
-            </button>
-            <button type="button" onClick={onClose} title="Close" aria-label="Close job view">
+            </Button>
+            <Button variant="plain" size="unstyled" type="button" onClick={onClose} title="Close" aria-label="Close job view">
               <X size={13} />
-            </button>
+            </Button>
           </span>
         </header>
 
@@ -94,14 +95,16 @@ export const CrawlJobView = memo(function CrawlJobView({
           <CrawlLog events={snapshot.events} phase={snapshot.phase} live={live} />
 
           <div className="running-actions">
-            <button type="button" onClick={onViewPartial}>
+            <Button variant="plain" size="unstyled" type="button" onClick={onViewPartial}>
               <Check size={14} strokeWidth={2.2} />
               View {snapshot.phase === "done" ? "result" : "partial result"}
-            </button>
+            </Button>
+            {/* Cancel: `.running-actions button` has no :disabled rule (no dim
+                originally), so neutralize the primitive's disabled:opacity-45. */}
             {snapshot.phase === "crawling" || snapshot.phase === "pending" || snapshot.phase === "embedding" ? (
-              <button type="button" onClick={onCancel} disabled={canceling}>
+              <Button variant="plain" size="unstyled" type="button" className="disabled:opacity-100" onClick={onCancel} disabled={canceling}>
                 {canceling ? "Canceling…" : "Cancel job"}
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

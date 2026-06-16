@@ -376,7 +376,9 @@ function SettingsTabButton({
 }) {
   const Icon = iconMap[icon] ?? SlidersHorizontal;
   return (
-    <button
+    <Button
+      variant="plain"
+      size="unstyled"
       className={active ? "settings-tab settings-tab-active" : "settings-tab"}
       type="button"
       role="tab"
@@ -389,7 +391,7 @@ function SettingsTabButton({
       <Icon size={13} />
       {label}
       {count != null && <span>{count}</span>}
-    </button>
+    </Button>
   );
 }
 
