@@ -63,8 +63,11 @@ export function usePaletteHotkeys(
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-    // Intentionally bind once: volatile values are read through refs.
-  }, [stateRef.current]);
+    // Bind once: `stateRef`/`actionsRef` are stable ref containers and the
+    // volatile values are read through `.current` inside the handler. Depending
+    // on `stateRef.current` (a fresh object each render) would re-bind the
+    // listener on every keystroke/stream tick — the exact churn P-H2 removed.
+  }, [stateRef, actionsRef]);
 }
 
 // A11Y-H2 — focus management for transient overlays (Settings / History / result

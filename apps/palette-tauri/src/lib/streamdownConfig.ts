@@ -19,6 +19,9 @@ export const STREAMDOWN_CODE_THEMES: [ThemeInput, ThemeInput] = ["one-dark-pro",
 //   - allowedImagePrefixes: [] — no external images at all (relative/asset: still work)
 //   - allowDataImages: false   — no base64 image payloads
 //   - allowedProtocols: ["http","https","mailto"] — drop data:/javascript:/file: etc.
+//   - allowedLinkPrefixes: ["*"] — left permissive ON PURPOSE: the protocol
+//     allowlist above is the real link guard (it already blocks javascript:/data:),
+//     and crawled results legitimately link to arbitrary https hosts.
 // This is defense-in-depth on top of the app CSP (`img-src 'self' asset: data:`),
 // so a future CSP loosening does not silently re-expose the beacon/phishing surface.
 export const STREAMDOWN_REHYPE_PLUGINS: RehypePlugin[] = [

@@ -75,7 +75,7 @@ export const OutputPanel = memo(function OutputPanel({
   // P-M1: the URL regex scans the whole growing buffer; without memoization it ran
   // O(n) per stream token → O(n²) over a stream. Keyed on the text so it only
   // recomputes when the buffer actually changes.
-  const outputUrl = useMemo(() => ("text" in run ? firstUrl(runText) : null), [run, runText]);
+  const outputUrl = useMemo(() => (runText ? firstUrl(runText) : null), [runText]);
   const Icon = active ? outputIcon(active.subcommand) : Activity;
   const status = statusFor(run);
   const conversationMode = active?.subcommand === "ask" || active?.subcommand === "chat";

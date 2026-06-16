@@ -47,7 +47,7 @@ Adding an action currently touches **~9 edit sites** across the codebase — thi
 4. **`src/lib/axonClient.ts`** — handle the new subcommand in `bodyFor` (request body shaping).
 5. **`src/lib/axonClient.ts`** — add the route in `actionRouteTemplate`.
 6. **`src/lib/format.ts`** — classify output in `outputKindFor` and render fallback text in `formatPayload`.
-7. **`src/components/palette/OperationResultView.tsx`** — add to `hasStructuredOperationView` (the allowlist) **and** the matching `case` in the render `switch` (keep these two in sync — they're prone to drift).
+7. **`src/components/palette/OperationResultView.tsx`** — add one entry to the `STRUCTURED_VIEWS` map. Both `hasStructuredOperationView` (the allowlist) and the renderer dispatch derive from that single map, so they can no longer drift (there is no longer a hand-synced `switch`).
 8. **`src/components/palette/OutputPanel.tsx`** — add an icon mapping in `outputIcon`.
 9. **`src/components/palette/ActionIcon.tsx`** — add an icon mapping in `actionIcon`.
 

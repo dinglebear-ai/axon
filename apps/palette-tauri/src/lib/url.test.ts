@@ -32,4 +32,10 @@ describe("firstUrl", () => {
   it("returns null when no URL is present", () => {
     expect(firstUrl("no links here")).toBeNull();
   });
+
+  it("trims closing brackets/parens around the URL (markdown links, arrays)", () => {
+    expect(firstUrl("see (https://x.test/p) here")).toBe("https://x.test/p");
+    expect(firstUrl("[https://x.test/p]")).toBe("https://x.test/p");
+    expect(firstUrl("{https://x.test/p}")).toBe("https://x.test/p");
+  });
 });
