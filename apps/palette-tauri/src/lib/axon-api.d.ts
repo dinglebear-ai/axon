@@ -14,7 +14,7 @@ export interface paths {
         /**
          * Serve an artifact file from the configured output directory.
          * @description The `path` query parameter is validated structurally and via canonicalization
-         *     before any file I/O. Returns:
+         *     before serving the file. Returns:
          *     - `400` for structurally unsafe paths (absolute, `..`, etc.)
          *     - `403` when the resolved path escapes the output root or is a symlink
          *     - `404` when the file does not exist or is not a regular file

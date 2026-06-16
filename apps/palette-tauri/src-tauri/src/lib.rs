@@ -9,7 +9,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, Size, WindowEvent,
+    AppHandle, Emitter, LogicalSize, Manager, Size,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
@@ -18,6 +18,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 mod axon_bridge;
 mod persistence;
 mod stream;
+mod window_events;
 
 use axon_bridge::{BridgeClient, StreamClient};
 use persistence::*;
@@ -460,6 +461,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             toggle_maximize,
             set_blur_dismiss,
             axon_bridge::axon_http_request,
+            axon_bridge::axon_artifact_request,
             axon_http_stream_request
         ])
         .manage(BlurDismiss(AtomicBool::new(true)))
@@ -486,25 +488,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             });
             Ok(())
         })
-        .on_window_event(|window, event| match event {
-            WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close();
-                if let Err(err) = window.hide() {
-                    log_palette_warning("failed to hide main window on close", err);
-                }
-            }
-            WindowEvent::Focused(false) => {
-                let app = window.app_handle();
-                let blur_dismiss = app.state::<BlurDismiss>().0.load(Ordering::Relaxed);
-                if blur_dismiss
-                    && merged_settings_or_default(app).hide_on_blur
-                    && let Err(err) = window.hide()
-                {
-                    log_palette_warning("failed to hide main window on focus loss", err);
-                }
-            }
-            _ => {}
-        })
+        .on_window_event(window_events::handle_window_event)
         .run(tauri::generate_context!())
         .map_err(|err| format!("error while running Axon Palette: {err}").into())
 }
