@@ -1,0 +1,103 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "31 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+          - language: rust
+            build-mode: none
+          - language: java-kotlin
+            build-mode: manual
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Checkout Aurora design system
+        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          repository: ${{ vars.AURORA_REPO }}
+          ref: ${{ vars.AURORA_REF }}
+          path: .aurora-design-system
+          token: ${{ secrets.AURORA_TOKEN || github.token }}
+
+      - name: Export Aurora path
+        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        run: echo "AXON_AURORA_ANDROID_PATH=$GITHUB_WORKSPACE/.aurora-design-system/android" >> "$GITHUB_ENV"
+
+      - name: Set up pnpm for Aurora token generation
+        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Set up Node for Aurora token generation
+        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        uses: actions/setup-node@v5
+        with:
+          node-version: "lts/*"
+          cache: pnpm
+          cache-dependency-path: .aurora-design-system/pnpm-lock.yaml
+
+      - name: Install Aurora token dependencies
+        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        working-directory: .aurora-design-system
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up JDK 17
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        if: matrix.language == 'java-kotlin'
+        uses: android-actions/setup-android@v3
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Build Android app for Java/Kotlin analysis
+        if: matrix.language == 'java-kotlin'
+        run: apps/android/gradlew -p apps/android :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
