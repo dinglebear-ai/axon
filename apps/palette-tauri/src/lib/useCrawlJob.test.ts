@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PaletteAction } from "@/lib/actions";
 import { summarizeCrawl } from "@/lib/crawlJob";
 import type { RunState } from "@/lib/runState";
 import { useCrawlJob } from "@/lib/useCrawlJob";
@@ -36,16 +35,14 @@ function crawlResponse(status: string, pages: number) {
 function setup(initial: RunState) {
   return renderHook(() => {
     const [run, setRun] = useState<RunState>(initial);
-    // Only `setRun` matters for the poll; the rest are inert in these tests.
-    const noop = (_value?: unknown) => undefined;
+    // Only `setRun` matters for the poll; the view-intent callbacks are inert here.
+    const noop = () => undefined;
     const job = useCrawlJob({
       run,
       setRun,
-      setSettingsOpen: noop as Dispatch<SetStateAction<boolean>>,
-      setHistoryOpen: noop as Dispatch<SetStateAction<boolean>>,
-      setBrowseOpen: noop as Dispatch<SetStateAction<boolean>>,
-      setQuery: noop as Dispatch<SetStateAction<string>>,
-      setModeAction: noop as Dispatch<SetStateAction<PaletteAction | null>>,
+      onMinimizeJob: noop,
+      onExpandJob: noop,
+      onCloseJob: noop,
     });
     return { ...job, run };
   });
