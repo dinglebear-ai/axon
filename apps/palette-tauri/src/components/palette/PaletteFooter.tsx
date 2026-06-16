@@ -1,5 +1,7 @@
 import { Settings, X } from "lucide-react";
 
+import { Button } from "@/components/ui/aurora/button";
+import { Kbd } from "@/components/ui/aurora/kbd";
 import { StatusIndicator } from "@/components/ui/aurora/status-indicator";
 import type { PaletteConfig } from "@/lib/axonClient";
 import { hostLabel } from "@/lib/url";
@@ -18,11 +20,11 @@ export function PaletteFooter({ config, configError, onRecent, onSettings, onHid
   return (
     <footer className="palette-footer">
       <span className="palette-footer-hints">
-        <button className="palette-recent" type="button" onClick={onRecent}>↺ recent</button>
-        <span className="palette-hint-group"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-        <span className="palette-hint-group"><kbd>tab</kbd> select</span>
-        <span className="palette-hint-group"><kbd>↵</kbd> run</span>
-        <span className="palette-hint-group"><kbd>esc</kbd> close</span>
+        <Button variant="plain" size="unstyled" className="palette-recent" type="button" onClick={onRecent}>↺ recent</Button>
+        <span className="palette-hint-group"><Kbd unstyled>↑</Kbd><Kbd unstyled>↓</Kbd> navigate</span>
+        <span className="palette-hint-group"><Kbd unstyled>tab</Kbd> select</span>
+        <span className="palette-hint-group"><Kbd unstyled>↵</Kbd> run</span>
+        <span className="palette-hint-group"><Kbd unstyled>esc</Kbd> close</span>
       </span>
       <span className="palette-status" role="group" aria-label="Palette controls">
         {config ? (
@@ -32,12 +34,12 @@ export function PaletteFooter({ config, configError, onRecent, onSettings, onHid
         ) : (
           <StatusIndicator tone="syncing" label="Loading" />
         )}
-        <button className="titlebar-button" type="button" onClick={onSettings} aria-label="Settings">
+        <Button variant="plain" size="unstyled" className="titlebar-button" type="button" onClick={onSettings} aria-label="Settings">
           <Settings size={14} />
-        </button>
-        <button className="titlebar-button" type="button" onClick={onHide} aria-label="Hide palette">
+        </Button>
+        <Button variant="plain" size="unstyled" className="titlebar-button" type="button" onClick={onHide} aria-label="Hide palette">
           <X size={14} />
-        </button>
+        </Button>
       </span>
     </footer>
   );

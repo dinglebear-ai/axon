@@ -1,4 +1,5 @@
 import * as React from "react"
+import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export type InputState = "error" | "warn" | "success"
@@ -30,13 +31,21 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
   size?: InputSize
   /**
    * When true and the input has a value, shows a clear (×) button as the end adornment.
-   * The clear button calls `onClear` if provided, otherwise clears the rendered input.
+   * The clear button calls `onClear` if provided, otherwise fires `onChange` with an
+   * empty synthetic-like event.
    */
   clearable?: boolean
   /** Callback fired when the clear button is clicked. Escape hatch for controlled inputs. */
   onClear?: () => void
-  /** Forwarded ref to the underlying <input> (React 19 ref-as-prop). */
-  ref?: React.Ref<HTMLInputElement>
+  /**
+   * Escape hatch. When true, renders a BARE `<input>` with no wrapper, no inline
+   * style skin, no imperative focus handlers, and no adornment/clear logic — only
+   * `className`, the forwarded `ref`, `type`, and the remaining props are applied,
+   * so the consumer's className/CSS owns 100% of the appearance. The styled path
+   * (default) is unaffected.
+   * @default false
+   */
+  unstyled?: boolean
 }
 
 /** Token map for validation states */
@@ -86,112 +95,38 @@ const sizeFontTokens: Record<InputSize, string> = {
   lg: "var(--aurora-type-control)",
 }
 
-type StateTokens = (typeof STATE_TOKENS)[InputState] | null
-
-/** Apply the focused border + glow ring directly on the element's inline style. */
-function applyFocusStyle(el: HTMLInputElement, tokens: StateTokens) {
-  if (tokens) {
-    el.style.borderColor = tokens.border
-    el.style.boxShadow = stateFocusShadow(tokens.ring)
-  } else {
-    el.style.borderColor = "var(--aurora-border-strong)"
-    el.style.boxShadow = DEFAULT_FOCUS_SHADOW
-  }
-}
-
-/** Restore the resting border + ring (state ring kept, default ring removed). */
-function applyBlurStyle(el: HTMLInputElement, tokens: StateTokens) {
-  if (tokens) {
-    el.style.borderColor = tokens.border
-    el.style.boxShadow = stateRestShadow(tokens.ring)
-  } else {
-    el.style.boxShadow = "none"
-  }
-}
-
-/** Props for the trailing clear (×) button shown when `clearable` + has value. */
-interface ClearButtonProps {
-  inputRef: React.RefObject<HTMLInputElement | null>
-  isControlled: boolean
-  hasOnChange: boolean
-  onClear?: () => void
-  onCleared: () => void
-}
-
-/** Trailing clear button. Extracted from Input to keep its render under the
- *  function-size budget; behavior is identical to the previous inline JSX. */
-function ClearButton({ inputRef, isControlled, hasOnChange, onClear, onCleared }: ClearButtonProps) {
-  return (
-    <button
-      type="button"
-      aria-label="Clear"
-      className={cn(
-        "pointer-events-auto",
-        "flex h-4 w-4 items-center justify-center rounded-full",
-        "text-[var(--aurora-text-muted)] hover:text-[var(--aurora-text-primary)]",
-        "hover:bg-[var(--aurora-hover-bg)]",
-        "transition-colors duration-100",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--aurora-accent-primary)]",
-        "text-[10px] leading-none select-none"
-      )}
-      onMouseDown={(e) => {
-        // Prevent input blur before we fire onChange
-        e.preventDefault()
-      }}
-      onClick={() => {
-        if (onClear) {
-          onClear()
-        } else {
-          const input = inputRef.current
-          if (!input) return
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype,
-            "value"
-          )?.set
-          nativeInputValueSetter?.call(input, "")
-          if (hasOnChange) {
-            input.dispatchEvent(new Event("input", { bubbles: true }))
-          }
-        }
-        // Always update internal state for uncontrolled
-        if (!isControlled) {
-          onCleared()
-        }
-      }}
-    >
-      ×
-    </button>
-  )
-}
-
-function Input({
-  className,
-  type = "text",
-  startAdornment,
-  endAdornment,
-  style,
-  state: stateProp,
-  error,
-  size = "default",
-  clearable,
-  onClear,
-  value,
-  defaultValue,
-  onChange,
-  ref,
-  ...props
-}: InputProps) {
-  {
-    const inputRef = React.useRef<HTMLInputElement>(null)
-    // Merge the internal ref with the forwarded ref via a callback ref — keeps
-    // local imperative access (clear button) while honoring ref-as-prop.
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  (
+    {
+      className,
+      type = "text",
+      startAdornment,
+      endAdornment,
+      style,
+      state: stateProp,
+      error,
+      size = "default",
+      clearable,
+      onClear,
+      value,
+      defaultValue,
+      onChange,
+      unstyled = false,
+      ...props
+    },
+    ref
+  ) => {
+    // Hold a real ref to the underlying <input> so the clear button can drive the
+    // actual DOM element (native value setter + dispatched "input" event) instead
+    // of fabricating a detached element. Merge it with any forwarded ref.
+    const inputRef = React.useRef<HTMLInputElement | null>(null)
     const setRefs = React.useCallback(
       (node: HTMLInputElement | null) => {
         inputRef.current = node
         if (typeof ref === "function") {
           ref(node)
         } else if (ref) {
-          ;(ref as React.RefObject<HTMLInputElement | null>).current = node
+          ;(ref as React.MutableRefObject<HTMLInputElement | null>).current = node
         }
       },
       [ref]
@@ -208,6 +143,26 @@ function Input({
         : ""
     )
 
+    // Escape hatch: bare <input>, consumer CSS owns 100% of appearance. No wrapper,
+    // no inline skin, no imperative focus handlers, no adornment/clear logic. Declared
+    // after the hooks above so the rules-of-hooks invariant holds on every render
+    // (the styled path's ref-merge/clear state is simply unused here; `ref` forwards
+    // directly).
+    if (unstyled) {
+      return (
+        <input
+          ref={ref}
+          type={type}
+          className={className}
+          style={style}
+          value={value}
+          defaultValue={defaultValue}
+          onChange={onChange}
+          {...props}
+        />
+      )
+    }
+
     // Determine whether the input currently has a value
     const isControlled = value !== undefined
     const currentValue = isControlled ? String(value ?? "") : internalValue
@@ -215,13 +170,50 @@ function Input({
 
     // Build the effective end adornment — clear button takes precedence when visible
     const effectiveEndAdornment = showClearButton ? (
-      <ClearButton
-        inputRef={inputRef}
-        isControlled={isControlled}
-        hasOnChange={Boolean(onChange)}
-        onClear={onClear}
-        onCleared={() => setInternalValue("")}
-      />
+      <button
+        type="button"
+        aria-label="Clear"
+        tabIndex={-1}
+        className={cn(
+          "pointer-events-auto",
+          "flex h-4 w-4 items-center justify-center rounded-full",
+          "text-[var(--aurora-text-muted)] hover:text-[var(--aurora-text-primary)]",
+          "hover:bg-[var(--aurora-hover-bg)]",
+          "transition-colors duration-100",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--aurora-focus-ring)]",
+          "select-none"
+        )}
+        onMouseDown={(e) => {
+          // Prevent input blur before we fire onChange
+          e.preventDefault()
+        }}
+        onClick={() => {
+          if (onClear) {
+            onClear()
+          } else if (onChange) {
+            // Drive the REAL <input> element: set its value via the native setter
+            // (bypassing React's value tracker) then dispatch a bubbling "input"
+            // event so React's synthetic onChange fires with the genuine target.
+            // This keeps form-library consumers (react-hook-form, Formik, etc.)
+            // working, unlike fabricating a detached element as event.target.
+            const el = inputRef.current
+            if (el) {
+              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype,
+                "value"
+              )?.set
+              nativeInputValueSetter?.call(el, "")
+              el.dispatchEvent(new Event("input", { bubbles: true }))
+            }
+          }
+          // Always update internal state for uncontrolled
+          if (!isControlled) {
+            setInternalValue("")
+          }
+        }}
+      >
+        <X size={10} strokeWidth={1.8} aria-hidden="true" />
+      </button>
     ) : endAdornment
 
     const hasStart = Boolean(startAdornment)
@@ -246,7 +238,7 @@ function Input({
         : undefined
 
     return (
-      <div className="relative inline-flex w-full items-center">
+      <div className="relative inline-flex w-full min-w-0 items-center">
         {hasStart && (
           <span
             className="pointer-events-none absolute left-3 z-10 flex items-center text-[var(--aurora-text-muted)]"
@@ -263,16 +255,13 @@ function Input({
           defaultValue={defaultValue}
           className={cn(
             // Layout — size-driven
-            "w-full py-2",
+            "w-full min-w-0 py-2",
             sizeClasses[size],
             // Typography
             "font-[var(--aurora-font-sans)]",
             "text-[var(--aurora-text-primary)]",
             "placeholder:text-[var(--aurora-text-muted)]",
-            // Background & border. The default border color is a static
-            // utility; validation-state border color is applied via inline
-            // style.borderColor below (a runtime `border-[${var}]` class would
-            // never be generated by Tailwind v4 static extraction — TW-L1).
+            // Background & border
             "border",
             "border-[var(--aurora-border-strong)]",
             // Rounded
@@ -311,11 +300,23 @@ function Input({
             onChange?.(e)
           }}
           onFocus={(e) => {
-            applyFocusStyle(e.currentTarget, tokens)
+            if (tokens) {
+              e.currentTarget.style.borderColor = tokens.border
+              e.currentTarget.style.boxShadow = stateFocusShadow(tokens.ring)
+            } else {
+              e.currentTarget.style.borderColor = "var(--aurora-border-strong)"
+              e.currentTarget.style.boxShadow = DEFAULT_FOCUS_SHADOW
+            }
             props.onFocus?.(e)
           }}
           onBlur={(e) => {
-            applyBlurStyle(e.currentTarget, tokens)
+            if (tokens) {
+              // Restore resting state ring on blur
+              e.currentTarget.style.borderColor = tokens.border
+              e.currentTarget.style.boxShadow = stateRestShadow(tokens.ring)
+            } else {
+              e.currentTarget.style.boxShadow = "none"
+            }
             props.onBlur?.(e)
           }}
           {...props}
@@ -331,7 +332,7 @@ function Input({
       </div>
     )
   }
-}
+)
 Input.displayName = "Input"
 
 export { Input }

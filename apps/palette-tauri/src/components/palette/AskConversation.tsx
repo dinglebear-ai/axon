@@ -1,5 +1,7 @@
 import { memo, useState } from "react";
 
+import { Button } from "@/components/ui/aurora/button";
+import { Input } from "@/components/ui/aurora/input";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 
 // A read-only question→answer pair rendered with the ask bubble styling. Reused
@@ -79,14 +81,18 @@ export const AskConversation = memo(function AskConversation({
           onFollowUp(value);
         }}
       >
-        <input
+        <Input
+          unstyled
           value={draft}
           disabled={pending}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={pending ? "Waiting for response..." : "Ask a follow-up..."}
           aria-label="Ask a follow-up"
         />
-        <button type="submit" disabled={!canSend}>Send</button>
+        {/* Scoped by `.ask-compose button`. type="submit" MUST be explicit — the
+            Button primitive never defaults it, and this is the app's only submit
+            button, so Enter-to-send would break silently without it. */}
+        <Button variant="plain" size="unstyled" type="submit" disabled={!canSend}>Send</Button>
       </form>
     </div>
   );

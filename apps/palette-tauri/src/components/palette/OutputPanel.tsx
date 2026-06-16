@@ -38,6 +38,7 @@ import { hasStructuredOperationView, OperationResultView } from "@/components/pa
 import { arrayByKeys } from "@/components/palette/OperationResultViewShared";
 import { StatsView } from "@/components/palette/StatsView";
 import { StatusView } from "@/components/palette/StatusView";
+import { Button } from "@/components/ui/aurora/button";
 import { Spinner } from "@/components/ui/aurora/spinner";
 import type { PaletteAction } from "@/lib/actions";
 import { numField, strField, unwrapPayload } from "@/lib/payload";
@@ -115,17 +116,19 @@ export const OutputPanel = memo(function OutputPanel({
           <span className="output-tools">
             {run.kind === "running" || run.kind === "streaming" ? (
               <>
-                <button type="button" onClick={onHistory} title="History" aria-label="Open history" data-tooltip="History">
+                <Button variant="plain" size="unstyled" type="button" onClick={onHistory} title="History" aria-label="Open history" data-tooltip="History">
                   <History size={13} />
-                </button>
-                <button type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output" data-tooltip="Collapse">
+                </Button>
+                <Button variant="plain" size="unstyled" type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output" data-tooltip="Collapse">
                   <X size={13} />
-                </button>
+                </Button>
               </>
             ) : (
               <>
                 {"text" in run && (
-                  <button
+                  <Button
+                    variant="plain"
+                    size="unstyled"
                     type="button"
                     className={copied ? "output-tool-copied" : undefined}
                     onClick={() => onCopy(run.text)}
@@ -134,36 +137,36 @@ export const OutputPanel = memo(function OutputPanel({
                     data-tooltip={copied ? "Copied" : "Copy"}
                   >
                     {copied ? <Check size={13} /> : <Copy size={13} />}
-                  </button>
+                  </Button>
                 )}
                 <details className="output-tool-menu">
                   <summary title="More actions" aria-label="More actions" data-tooltip="More">
                     <MoreHorizontal size={13} />
                   </summary>
                   <div>
-                    <button type="button" onClick={onRetry}>
+                    <Button variant="plain" size="unstyled" type="button" onClick={onRetry}>
                       <RotateCw size={13} />
                       <span>Re-run</span>
-                    </button>
+                    </Button>
                     {outputUrl && (
-                      <button type="button" onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")}>
+                      <Button variant="plain" size="unstyled" type="button" onClick={() => window.open(outputUrl, "_blank", "noopener,noreferrer")}>
                         <ExternalLink size={13} />
                         <span>Open source</span>
-                      </button>
+                      </Button>
                     )}
-                    <button type="button" className={pinned ? "output-tool-active" : undefined} onClick={onTogglePin}>
+                    <Button variant="plain" size="unstyled" type="button" className={pinned ? "output-tool-active" : undefined} onClick={onTogglePin}>
                       <Pin size={13} />
                       <span>{pinned ? "Unpin" : "Pin"}</span>
-                    </button>
-                    <button type="button" onClick={onHistory}>
+                    </Button>
+                    <Button variant="plain" size="unstyled" type="button" onClick={onHistory}>
                       <History size={13} />
                       <span>History</span>
-                    </button>
+                    </Button>
                   </div>
                 </details>
-                <button type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output" data-tooltip="Collapse">
+                <Button variant="plain" size="unstyled" type="button" onClick={onCollapse} title="Collapse" aria-label="Collapse output" data-tooltip="Collapse">
                   <X size={13} />
-                </button>
+                </Button>
               </>
             )}
             {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" /> : null}

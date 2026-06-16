@@ -3,6 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { AxonMark } from "@/components/palette/AxonMark";
+import { Button } from "@/components/ui/aurora/button";
+import { Input } from "@/components/ui/aurora/input";
+import { Kbd } from "@/components/ui/aurora/kbd";
 import type { PaletteConfig } from "@/lib/axonClient";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
@@ -109,11 +112,13 @@ export function PaletteCommandBar({
       }}
     >
       {showBackButton && (
-        <button className="command-back" type="button" onClick={onBack} aria-label="Back" title="Back">
+        <Button variant="plain" size="unstyled" className="command-back" type="button" onClick={onBack} aria-label="Back" title="Back">
           <ArrowLeft size={17} />
-        </button>
+        </Button>
       )}
-      <button
+      <Button
+        variant="plain"
+        size="unstyled"
         className="axon-brand"
         type="button"
         onClick={onReset}
@@ -125,7 +130,7 @@ export function PaletteCommandBar({
         <span className={`axon-status-dot axon-status-${endpointTone}`}>
           <span className="sr-only">{endpointStatusLabel(endpointTone, endpointLabel)}</span>
         </span>
-      </button>
+      </Button>
       <span className="axon-divider" aria-hidden="true" />
       {/* biome-ignore lint/a11y/noStaticElementInteractions: click-to-focus convenience; the real control is the command input within */}
       <div className="command-input-wrap" onClick={() => focusInput()}>
@@ -135,7 +140,9 @@ export function PaletteCommandBar({
           // by keyboard with no custom menu key handling. Escape on the trigger
           // closes it and restores focus to the trigger.
           <div className="command-action-switcher" ref={switcherRef}>
-            <button
+            <Button
+              variant="plain"
+              size="unstyled"
               ref={switcherTriggerRef}
               className={`command-action-trigger command-mode-icon-${modeAction.tone}`}
               type="button"
@@ -158,7 +165,7 @@ export function PaletteCommandBar({
               <ModeIcon size={15} strokeWidth={1.9} aria-hidden="true" />
               <span>{actionDisplayMeta(modeAction).label}</span>
               <ChevronDown size={13} strokeWidth={1.8} aria-hidden="true" />
-            </button>
+            </Button>
             {switcherOpen && (
               // biome-ignore lint/a11y/noStaticElementInteractions: disclosure group; Escape closes it — the switch buttons within are the controls
               <div
@@ -178,7 +185,9 @@ export function PaletteCommandBar({
                   const Icon = actionIcon(action.subcommand);
                   const meta = actionDisplayMeta(action);
                   return (
-                    <button
+                    <Button
+                      variant="plain"
+                      size="unstyled"
                       key={action.subcommand}
                       className={`command-action-option command-action-option-${action.tone}`}
                       type="button"
@@ -193,8 +202,8 @@ export function PaletteCommandBar({
                         <strong>{meta.label}</strong>
                         <small>{meta.input} to {meta.output}</small>
                       </span>
-                      <kbd>{action.subcommand}</kbd>
-                    </button>
+                      <Kbd unstyled>{action.subcommand}</Kbd>
+                    </Button>
                   );
                 })}
               </div>
@@ -203,7 +212,8 @@ export function PaletteCommandBar({
         ) : (
           <Search size={16} strokeWidth={1.65} aria-hidden="true" />
         )}
-        <input
+        <Input
+          unstyled
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onInputKeyDown}
@@ -223,8 +233,12 @@ export function PaletteCommandBar({
           </span>
         )}
       </div>
-      <button
-        className="command-help"
+      <Button
+        variant="plain"
+        size="unstyled"
+        // `.command-help:disabled` owns the disabled look (no opacity change);
+        // neutralize the primitive base's disabled:opacity-45 to stay pixel-identical.
+        className="command-help disabled:opacity-100"
         type="button"
         onClick={() => onHelp(active, active ? undefined : query.trim())}
         disabled={running}
@@ -232,9 +246,13 @@ export function PaletteCommandBar({
         title={active ? `Help for ${active.label}` : "Help"}
       >
         <HelpCircle size={15} />
-      </button>
-      <button
-        className={active && !validation ? `command-submit command-submit-${active.tone}` : "command-submit"}
+      </Button>
+      <Button
+        variant="plain"
+        size="unstyled"
+        // `.command-submit:disabled` owns the disabled look (no opacity change);
+        // neutralize the primitive base's disabled:opacity-45 to stay pixel-identical.
+        className={`${active && !validation ? `command-submit command-submit-${active.tone}` : "command-submit"} disabled:opacity-100`}
         type="button"
         onClick={() => active && onSubmit(active)}
         disabled={submitDisabled}
@@ -242,8 +260,10 @@ export function PaletteCommandBar({
         title={validation || "Run selected action"}
       >
         <Send size={15} />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="plain"
+        size="unstyled"
         className={settingsOpen ? "command-settings command-settings-active" : "command-settings"}
         type="button"
         onClick={onToggleSettings}
@@ -251,7 +271,7 @@ export function PaletteCommandBar({
         title="Settings"
       >
         <Settings size={15} />
-      </button>
+      </Button>
     </section>
   );
 }
