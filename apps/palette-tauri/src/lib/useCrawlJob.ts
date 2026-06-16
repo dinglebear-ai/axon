@@ -1,6 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
-import type { PaletteAction } from "@/lib/actions";
 import { extractEmbedJobId } from "@/lib/appHelpers";
 import { summarizeCrawl } from "@/lib/crawlJob";
 import { formatPayload } from "@/lib/format";
@@ -10,25 +9,27 @@ import type { RunState } from "@/lib/runState";
 interface UseCrawlJobArgs {
   run: RunState;
   setRun: Dispatch<SetStateAction<RunState>>;
-  setSettingsOpen: Dispatch<SetStateAction<boolean>>;
-  setHistoryOpen: Dispatch<SetStateAction<boolean>>;
-  setBrowseOpen: Dispatch<SetStateAction<boolean>>;
-  setQuery: Dispatch<SetStateAction<string>>;
-  setModeAction: Dispatch<SetStateAction<PaletteAction | null>>;
+  // A-M2 — three view intents replace the six raw setters (settings/history/
+  // browse/query/mode) this hook used to drill into App. Each callback carries
+  // its view transition; the rule that minimizing/closing a job clears
+  // settings/history/browse/mode lives in App's reducer, not here. `setRun`
+  // stays because the live poll snapshot IS run state, owned alongside it.
+  onMinimizeJob: () => void;
+  onExpandJob: () => void;
+  onCloseJob: () => void;
 }
 
 // Owns the live crawl-job lifecycle: a ~1Hz poll of the real backend while the
 // job is non-terminal, plus the tray/cancel/view-partial controls. State that is
 // purely job-scoped (nowMs heartbeat, canceling flag) lives here; the shared
-// `run`/panel state is owned by App and threaded in as setters.
+// `run` state is owned by App (threaded in as `setRun`) and the view transitions
+// are dispatched through the intent callbacks.
 export function useCrawlJob({
   run,
   setRun,
-  setSettingsOpen,
-  setHistoryOpen,
-  setBrowseOpen,
-  setQuery,
-  setModeAction,
+  onMinimizeJob,
+  onExpandJob,
+  onCloseJob,
 }: UseCrawlJobArgs) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [canceling, setCanceling] = useState(false);
@@ -104,24 +105,20 @@ export function useCrawlJob({
   }, [run.kind, jobId, jobTerminal, setRun]);
 
   function minimizeJob() {
-    setSettingsOpen(false);
-    setHistoryOpen(false);
-    setBrowseOpen(false);
-    setQuery("");
-    setModeAction(null); // clean command bar (no mode pill / default placeholder) in the tray
+    // View transition (clears settings/history/browse/mode) + query reset live in
+    // App's onMinimizeJob callback; here we only flip the run snapshot to the tray.
+    onMinimizeJob();
     setRun((current) => (current.kind === "job" ? { ...current, minimized: true } : current));
   }
 
   function expandJob() {
-    setBrowseOpen(false);
+    onExpandJob();
     setRun((current) => (current.kind === "job" ? { ...current, minimized: false } : current));
   }
 
   function closeJob() {
+    onCloseJob();
     setRun({ kind: "idle" });
-    setModeAction(null);
-    setQuery("");
-    setBrowseOpen(false);
   }
 
   async function cancelJob() {
