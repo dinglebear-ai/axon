@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "5.15.0"
+    "version": "5.16.0"
   },
   "paths": {
     "/v1/artifacts": {
@@ -19,7 +19,7 @@
           "artifacts"
         ],
         "summary": "Serve an artifact file from the configured output directory.",
-        "description": "The `path` query parameter is validated structurally and via canonicalization\nbefore any file I/O. Returns:\n- `400` for structurally unsafe paths (absolute, `..`, etc.)\n- `403` when the resolved path escapes the output root or is a symlink\n- `404` when the file does not exist or is not a regular file",
+        "description": "The `path` query parameter is validated structurally and via canonicalization\nbefore serving the file. Returns:\n- `400` for structurally unsafe paths (absolute, `..`, etc.)\n- `403` when the resolved path escapes the output root or is a symlink\n- `404` when the file does not exist or is not a regular file",
         "operationId": "serve_artifact_query",
         "parameters": [
           {

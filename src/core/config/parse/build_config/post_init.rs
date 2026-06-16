@@ -66,10 +66,39 @@ pub(super) fn apply(cfg: &mut Config, ctx: PostInit) -> Result<(), String> {
     }
     cfg.crawl_broadcast_buffer_min = ps.broadcast_buffer_min;
     cfg.crawl_broadcast_buffer_max = ps.broadcast_buffer_max;
+    validate_adaptive_concurrency(cfg)?;
 
     // Derive output_dir from the canonical data directory when still at the clap default.
     if !ctx.output_dir_was_explicit && cfg.output_dir == std::path::Path::new(DEFAULT_OUTPUT_DIR) {
         cfg.output_dir = crate::core::paths::axon_data_base_dir().join("output");
     }
+    Ok(())
+}
+
+fn validate_adaptive_concurrency(cfg: &mut Config) -> Result<(), String> {
+    if !cfg.adaptive_concurrency.enabled {
+        return Ok(());
+    }
+
+    let resolved_max = cfg
+        .adaptive_concurrency
+        .max
+        .unwrap_or_else(|| cfg.crawl_concurrency_limit.unwrap_or(1))
+        .max(1);
+    let min = cfg.adaptive_concurrency.min.max(1);
+    let cap = cfg.crawl_broadcast_buffer_max.min(1024);
+
+    if min > resolved_max {
+        return Err("workers.adaptive-concurrency.min must be <= max".to_string());
+    }
+    if resolved_max > cap {
+        return Err(
+            "workers.adaptive-concurrency.max must be <= min(crawl-broadcast-buffer-max, 1024)"
+                .to_string(),
+        );
+    }
+
+    cfg.adaptive_concurrency.min = min;
+    cfg.adaptive_concurrency.max = Some(resolved_max);
     Ok(())
 }

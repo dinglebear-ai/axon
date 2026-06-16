@@ -1,4 +1,4 @@
-import * as React from "react"
+import type * as React from "react"
 import { cn, devWarn } from "@/lib/utils"
 
 export type StatusTone = "online" | "syncing" | "queued" | "degraded" | "offline" | "error" | "automating"

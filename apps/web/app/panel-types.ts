@@ -88,6 +88,7 @@ export type CommandResultView = {
   body?: string;
   raw?: string;
   imageUrl?: string;
+  imageArtifact?: ArtifactHandle;
   artifacts?: ArtifactHandle[];
 };
 

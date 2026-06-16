@@ -13,10 +13,12 @@ import { argumentPlaceholder, focusInput, sortActionsForDisplay } from "@/lib/pa
 
 interface PaletteCommandBarProps {
   active?: PaletteAction;
+  activeDescendantId?: string;
   config: PaletteConfig | null;
   endpointLabel: string;
   endpointTone: string;
   hasQuery: boolean;
+  listboxOpen: boolean;
   modeAction: PaletteAction | null;
   query: string;
   running: boolean;
@@ -35,12 +37,26 @@ interface PaletteCommandBarProps {
   onToggleSettings: () => void;
 }
 
+// Human-readable connection state for the status dot's sr-only label (A11Y-M2).
+function endpointStatusLabel(tone: string, endpointLabel: string): string {
+  switch (tone) {
+    case "error":
+      return "Server: connection error";
+    case "syncing":
+      return `Server: ${endpointLabel}`;
+    default:
+      return `Server: ${endpointLabel}`;
+  }
+}
+
 export function PaletteCommandBar({
   active,
+  activeDescendantId,
   config,
   endpointLabel,
   endpointTone,
   hasQuery,
+  listboxOpen,
   modeAction,
   query,
   running,
@@ -60,6 +76,7 @@ export function PaletteCommandBar({
 }: PaletteCommandBarProps) {
   const ModeIcon = modeAction ? actionIcon(modeAction.subcommand) : null;
   const switcherRef = useRef<HTMLDivElement | null>(null);
+  const switcherTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherActions = useMemo(
     () => sortActionsForDisplay(ACTIONS).filter((action) => action.subcommand !== modeAction?.subcommand),
@@ -78,9 +95,15 @@ export function PaletteCommandBar({
 
   useEffect(() => {
     setSwitcherOpen(false);
-  }, [modeAction?.subcommand]);
+  }, []);
+
+  // A11Y-M2 — surface submit validation as text tied to the input via
+  // aria-describedby (not just a `title` tooltip). The id is referenced only when
+  // there is an active validation message so AT does not announce an empty node.
+  const validationId = "command-validation";
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: command-bar is a layout container; double-click toggles window chrome, not an interactive widget
     <section
       className="command-bar"
       onDoubleClick={(event) => {
@@ -104,23 +127,38 @@ export function PaletteCommandBar({
       >
         <AxonMark size={24} />
         <span className="axon-word">Axon</span>
-        <span className={`axon-status-dot axon-status-${endpointTone}`} />
+        <span className={`axon-status-dot axon-status-${endpointTone}`}>
+          <span className="sr-only">{endpointStatusLabel(endpointTone, endpointLabel)}</span>
+        </span>
       </Button>
       <span className="axon-divider" aria-hidden="true" />
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: click-to-focus convenience; the real control is the command input within */}
       <div className="command-input-wrap" onClick={() => focusInput()}>
         {modeAction && ModeIcon ? (
+          // A11Y-H1 — the action switcher is an `aria-expanded` disclosure of plain
+          // Tab-focusable buttons (not a `role="menu"`), so each item is reachable
+          // by keyboard with no custom menu key handling. Escape on the trigger
+          // closes it and restores focus to the trigger.
           <div className="command-action-switcher" ref={switcherRef}>
             <Button
               variant="plain"
               size="unstyled"
+              ref={switcherTriggerRef}
               className={`command-action-trigger command-mode-icon-${modeAction.tone}`}
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 setSwitcherOpen((open) => !open);
               }}
-              aria-haspopup="menu"
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && switcherOpen) {
+                  event.stopPropagation();
+                  setSwitcherOpen(false);
+                }
+              }}
+              aria-haspopup="true"
               aria-expanded={switcherOpen}
+              aria-controls="command-action-disclosure"
               aria-label={`Switch from ${modeAction.label}`}
               title={`${modeAction.label} mode`}
             >
@@ -129,7 +167,20 @@ export function PaletteCommandBar({
               <ChevronDown size={13} strokeWidth={1.8} aria-hidden="true" />
             </Button>
             {switcherOpen && (
-              <div className="command-action-menu" role="menu" aria-label="Switch action">
+              // biome-ignore lint/a11y/noStaticElementInteractions: disclosure group; Escape closes it — the switch buttons within are the controls
+              <div
+                id="command-action-disclosure"
+                className="command-action-menu"
+                role="group"
+                aria-label="Switch action"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.stopPropagation();
+                    setSwitcherOpen(false);
+                    switcherTriggerRef.current?.focus();
+                  }
+                }}
+              >
                 {switcherActions.map((action) => {
                   const Icon = actionIcon(action.subcommand);
                   const meta = actionDisplayMeta(action);
@@ -140,7 +191,6 @@ export function PaletteCommandBar({
                       key={action.subcommand}
                       className={`command-action-option command-action-option-${action.tone}`}
                       type="button"
-                      role="menuitem"
                       onClick={(event) => {
                         event.stopPropagation();
                         setSwitcherOpen(false);
@@ -169,8 +219,19 @@ export function PaletteCommandBar({
           onKeyDown={onInputKeyDown}
           placeholder={modeAction ? argumentPlaceholder(modeAction) : hasQuery ? active?.example ?? "Search commands" : "Search or run an operation — scrape, crawl, map, ask…"}
           className="command-input"
+          role="combobox"
+          aria-expanded={listboxOpen}
+          aria-controls={listboxOpen ? "palette-action-list" : undefined}
+          aria-activedescendant={listboxOpen ? activeDescendantId : undefined}
+          aria-autocomplete="list"
+          aria-describedby={validation ? validationId : undefined}
           aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
         />
+        {validation && (
+          <span id={validationId} className="sr-only" role="status">
+            {validation}
+          </span>
+        )}
       </div>
       <Button
         variant="plain"

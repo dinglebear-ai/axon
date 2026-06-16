@@ -126,11 +126,55 @@ fn validates_saved_server_url_accepts_ipv6() {
     let result = validate_saved_server_url("[::1]:8001");
     // Either accepted with http/https or rejected with a clear message — test
     // that it does not panic and that if accepted the scheme is http or https
-    match result {
-        Ok(url) => assert!(
+    // Rejection is also acceptable — URL parsing of IPv6 without scheme varies.
+    if let Ok(url) = result {
+        assert!(
             url.starts_with("http://") || url.starts_with("https://"),
             "accepted URL must have http(s) scheme: {url}"
-        ),
-        Err(_) => {} // rejection is also acceptable — URL parsing of IPv6 without scheme varies
+        );
     }
+}
+
+#[test]
+fn artifact_relative_path_validation_rejects_unsafe_values() {
+    assert!(validate_artifact_relative_path("../secret").is_err());
+    assert!(validate_artifact_relative_path("screenshots/%2e/secret").is_err());
+    assert!(validate_artifact_relative_path("screenshots/%2e%2e/secret").is_err());
+    assert!(validate_artifact_relative_path("screenshots%5csecret").is_err());
+    assert!(validate_artifact_relative_path(r"screenshots\\..\\secret").is_err());
+    assert!(validate_artifact_relative_path("C:\\secret").is_err());
+    assert!(validate_artifact_relative_path("screenshots/shot.png\0").is_err());
+    assert!(validate_artifact_relative_path("screenshots/shot.png").is_ok());
+}
+
+#[test]
+fn artifact_url_uses_query_encoding_without_accepting_raw_query_paths() {
+    let url = artifact_url("https://axon.local", "screenshots/foo #1.png").unwrap();
+    assert_eq!(
+        url.as_str(),
+        "https://axon.local/v1/artifacts?path=screenshots%2Ffoo+%231.png"
+    );
+}
+
+#[test]
+fn artifact_content_type_allowlist_is_raster_only() {
+    assert!(is_allowed_artifact_content_type("image/png"));
+    assert!(is_allowed_artifact_content_type(
+        "image/jpeg; charset=binary"
+    ));
+    assert!(!is_allowed_artifact_content_type("image/svg+xml"));
+    assert!(!is_allowed_artifact_content_type("text/html"));
+}
+
+#[test]
+fn artifact_stream_reader_errors_as_soon_as_preview_cap_is_crossed() {
+    let chunks = vec![
+        Ok::<_, String>(vec![1; MAX_ARTIFACT_PREVIEW_BYTES as usize]),
+        Ok(b"x".to_vec()),
+    ];
+    let err = tauri::async_runtime::block_on(read_limited_artifact_stream(
+        futures_util::stream::iter(chunks),
+    ))
+    .expect_err("stream should stop when the cap is exceeded");
+    assert_eq!(err, "artifact is too large to preview");
 }

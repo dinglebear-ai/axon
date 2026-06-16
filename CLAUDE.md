@@ -514,6 +514,7 @@ The compose file sets `context: .` — run `docker compose build` from this dire
 - **`chrome_headless_new`**: Uses `--headless=new` instead of legacy headless. Better DOM fidelity but slightly different rendering behavior on some sites.
 - **`balance`**: NOT enabled — silently throttles concurrency with zero logging. We manage concurrency explicitly via performance profiles.
 - **`glob`**: NOT enabled — glob URL patterns (`{a,b}`, `[0-9]`) change `crawl_establish` to use `is_allowed()` (budget-aware) instead of `is_allowed_default()`. With `with_limit(1)`, the budget check immediately returns `BudgetExceeded` for the FIRST URL, producing 0 pages from Chrome crawls. axon doesn't use URL glob patterns in its CLI, so this feature is excluded. Do NOT add it back.
+- **`adaptive_concurrency`**: Available through Spider's `basic` meta-feature but opt-in in Axon via `[workers.adaptive-concurrency]`. Do not add arbitrary Spider adaptive knobs until Spider actually honors them. Keep Axon controller logic in `src/crawl/engine/adaptive.rs`, not `runtime.rs`.
 - Full flag inventory: [`docs/reference/spider-feature-flags.md`](docs/reference/spider-feature-flags.md)
 
 ### Subprocess stdout vs stderr

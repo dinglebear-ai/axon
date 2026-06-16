@@ -1,6 +1,12 @@
 const SUMMARY_LIMIT = 10;
 const MAX_TEXT_DIFF_CHARS = 12_000;
 
+/**
+ * Minimum visible width (%) for a progress bar so a just-started job still shows
+ * a sliver. Consumed by the App.tsx idle tray and CrawlJobView (`Math.max(MIN_PROGRESS_PCT, pct)`).
+ */
+export const MIN_PROGRESS_PCT = 2;
+
 export type OutputKind = "markdown" | "code";
 
 export function outputKindFor(subcommand: string): OutputKind {
@@ -87,9 +93,6 @@ export function formatPayload(subcommand: string, payload: unknown): string {
       return sourceList(value);
     case "domains":
       return resultRows(value, "domains", (domain) => compact(domain));
-    case "doctor":
-    case "stats":
-    case "status":
     default:
       if (isJobLifecycle(subcommand)) return jobLifecycle(value);
       return compact(value);
@@ -199,15 +202,22 @@ function truncateTextDiff(text: string): string {
 
 function screenshotReport(value: Record<string, unknown>): string {
   const artifact = recordField(value, "artifact_handle");
+  const artifactDisplay = artifact
+    ? (nonEmptyStringField(artifact, "display_path") ?? nonEmptyStringField(artifact, "relative_path"))
+    : undefined;
   return [
     "## Screenshot captured",
     stringField(value, "url") ?? "",
-    stringField(value, "path") ? `path: ${stringField(value, "path")}` : "",
-    artifact && stringField(artifact, "display_path") ? `display: ${stringField(artifact, "display_path")}` : "",
+    artifactDisplay ? `artifact: ${artifactDisplay}` : "",
     numberField(value, "size_bytes") !== undefined ? `bytes: ${numberField(value, "size_bytes")}` : "",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function nonEmptyStringField(value: Record<string, unknown>, key: string): string | undefined {
+  const text = stringField(value, key)?.trim();
+  return text ? text : undefined;
 }
 
 function dedupeReport(value: Record<string, unknown>): string {

@@ -170,6 +170,7 @@ jobs:
           # same reason.
           sparse-checkout: |
             apps/palette-tauri
+            apps/web/openapi
       - uses: pnpm/action-setup@v4
         with:
           version: 11.3.0
@@ -181,6 +182,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/palette-tauri/src-tauri
@@ -193,16 +195,42 @@ jobs:
             libssl-dev libwebkit2gtk-4.1-dev patchelf pkg-config wget
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
+      # CI-L1: these steps deliberately mirror `pnpm verify`
+      # (lint → test → typecheck → vite:build) plus the cargo gates below.
+      # If you change the `verify` script in apps/palette-tauri/package.json,
+      # update these steps to stay in sync (and vice versa).
+      - name: Palette lint (Biome)
+        run: pnpm --dir apps/palette-tauri lint
       - name: Palette TypeScript contract tests
         run: pnpm --dir apps/palette-tauri test
       - name: Palette typecheck
         run: pnpm --dir apps/palette-tauri typecheck
+      # CI-M1: regenerate the OpenAPI-derived client types and fail on drift.
+      # If the axon OpenAPI spec changed without regenerating axon-api.d.ts,
+      # this diff is non-empty and the job fails before stale types can merge.
+      - name: Palette OpenAPI type-drift check
+        run: |
+          pnpm --dir apps/palette-tauri generate:api
+          git diff --exit-code apps/palette-tauri/src/lib/axon-api.d.ts
       - name: Palette Vite build
         run: pnpm --dir apps/palette-tauri vite:build
+      # CI-H3: lint the security-relevant Tauri IPC/network bridge. src-tauri
+      # declares its own [workspace], so the repo-root clippy/fmt jobs never
+      # touch it — these scope explicitly via --manifest-path.
+      - name: Tauri cargo fmt check
+        run: cargo fmt --manifest-path apps/palette-tauri/src-tauri/Cargo.toml -- --check
+      - name: Tauri cargo clippy
+        run: cargo clippy --manifest-path apps/palette-tauri/src-tauri/Cargo.toml --all-targets --locked -- -D warnings
       - name: Tauri cargo check
         run: cargo check --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
       - name: Tauri cargo test
         run: cargo test --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
+      # CI-H1: build the actual desktop binary in CI (no installer bundle) so a
+      # non-building Tauri app is caught here, before any release tag is cut.
+      # Without this the first real desktop build happens only in
+      # palette-release.yml *after* the palette-v* tag is published.
+      - name: Tauri build (no bundle)
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle
 
   windows-check:
     name: windows-check (xtask only)
@@ -343,6 +371,26 @@ jobs:
         run: cargo build --locked --bin axon
       - name: Smoke test generated shell completions
         run: ./scripts/check_shell_completions.sh ./target/debug/axon
+
+  web-panel:
+    name: web-panel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            apps/web
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install web panel dependencies
+        run: npm ci --prefix apps/web
+      - name: Test web panel
+        run: npm --prefix apps/web test
+      - name: Typecheck web panel
+        run: npm --prefix apps/web run lint
 
   mcp-schema-doc-sync:
     name: mcp-schema-doc-sync
@@ -1216,6 +1264,7 @@ jobs:
       - check
       - clippy
       - test
+      - web-panel
       - palette-tauri
       - security
       - release
@@ -1230,6 +1279,7 @@ jobs:
           test "${{ needs.check.result }}" = "success"
           test "${{ needs.clippy.result }}" = "success"
           test "${{ needs.test.result }}" = "success"
+          test "${{ needs.web-panel.result }}" = "success"
           test "${{ needs.palette-tauri.result }}" = "success"
           test "${{ needs.security.result }}" = "success"
           test "${{ needs.release.result }}" = "success"

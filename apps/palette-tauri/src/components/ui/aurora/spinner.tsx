@@ -1,9 +1,10 @@
-import * as React from "react"
+import type * as React from "react"
 import { cn } from "@/lib/utils"
 
 export interface SpinnerProps extends React.HTMLAttributes<HTMLSpanElement> {
   size?: "sm" | "default" | "lg"
   tone?: "cyan" | "rose" | "muted"
+  ref?: React.Ref<HTMLSpanElement>
 }
 
 const sizeMap = {
@@ -18,29 +19,28 @@ const toneMap = {
   muted: "var(--aurora-text-muted)",
 }
 
-const Spinner = React.forwardRef<HTMLSpanElement, SpinnerProps>(
-  ({ className, size = "default", tone = "cyan", style, ...props }, ref) => {
-    const px = sizeMap[size]
-    const color = toneMap[tone]
+function Spinner({ className, size = "default", tone = "cyan", style, ref, ...props }: SpinnerProps) {
+  const px = sizeMap[size]
+  const color = toneMap[tone]
 
-    return (
-      <span
-        ref={ref}
-        aria-label="Loading"
-        className={cn("inline-block animate-spin rounded-full", className)}
-        style={{
-          width: px,
-          height: px,
-          border: `2px solid color-mix(in srgb, ${color} 22%, transparent)`,
-          borderTopColor: color,
-          boxShadow: `0 0 10px color-mix(in srgb, ${color} 20%, transparent)`,
-          ...style,
-        }}
-        {...props}
-      />
-    )
-  }
-)
+  return (
+    <span
+      ref={ref}
+      role="status"
+      aria-label="Loading"
+      className={cn("inline-block animate-spin rounded-full", className)}
+      style={{
+        width: px,
+        height: px,
+        border: `2px solid color-mix(in srgb, ${color} 22%, transparent)`,
+        borderTopColor: color,
+        boxShadow: `0 0 10px color-mix(in srgb, ${color} 20%, transparent)`,
+        ...style,
+      }}
+      {...props}
+    />
+  )
+}
 Spinner.displayName = "Spinner"
 
 export { Spinner }

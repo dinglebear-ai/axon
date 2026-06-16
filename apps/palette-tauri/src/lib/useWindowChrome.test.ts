@@ -1,3 +1,4 @@
+// @vitest-environment node
 // @ts-expect-error Vitest runs this file in Node; the app tsconfig intentionally omits Node globals.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";

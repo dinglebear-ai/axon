@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 
 import { ActionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
@@ -19,49 +19,43 @@ interface ActionListProps {
   onHelp: (action: PaletteAction) => void;
 }
 
+// Stable per-option id shared with the command-bar input's aria-activedescendant
+// so AT announces the highlighted option as the listbox's active descendant.
+export function actionOptionId(action: PaletteAction): string {
+  return `action-${action.subcommand}`;
+}
+
 // The searchable, keyboard-navigable list of palette actions. A row click runs
 // the action directly when a command is invoked or the query is a bare URL the
 // action accepts, otherwise it enters argument mode for that action.
+//
+// A11Y-C1 — the container is a `role="listbox"` (labelled "Actions"); each row is
+// a `role="option"` with `aria-selected` and a stable `id`; each category is a
+// `role="group"` with an `aria-label`, so the section headings live inside a
+// labelled group rather than as bare listbox children. The command-bar input
+// owns the `aria-activedescendant` pointer at the selected option.
 export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, onEnterMode, onHelp }: ActionListProps) {
   // Keyboard nav moves the selection; keep the selected row in view by scrolling
   // the list viewport the minimum amount needed (so arrowing past the fold works).
+  // L3 — track the selected row with a ref instead of a `.action-row-selected`
+  // DOM class query.
+  const selectedRowRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    const el = document.querySelector(".action-scroll-viewport .action-row-selected");
-    if (el instanceof HTMLElement) el.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [selected]);
+    selectedRowRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, []);
 
-  // Delegated, stable click handlers keyed by data-index. Inline per-row arrows
-  // would allocate a fresh closure every keystroke (rows re-render on every
-  // query change), busting the memoized Button. These callbacks only re-create
-  // when their real dependencies change — at which point a re-render is wanted.
-  const handleRowClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      const index = Number(event.currentTarget.dataset.index);
-      const action = filtered[index];
-      if (!action) return;
-      setSelected(index);
-      if (parsed.invoked) {
-        onSubmit(action);
-      } else if (action.argMode === "none") {
-        // No-input actions run immediately — no empty argument prompt.
-        onSubmit(action);
-      } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
-        onSubmit(action);
-      } else {
-        onEnterMode(action);
-      }
-    },
-    [filtered, parsed.invoked, parsed.search, setSelected, onSubmit, onEnterMode],
-  );
-
-  const handleHelpClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      const index = Number(event.currentTarget.dataset.index);
-      const action = filtered[index];
-      if (action) onHelp(action);
-    },
-    [filtered, onHelp],
-  );
+  // Group consecutive actions by category (ACTIONS arrive category-sorted) while
+  // preserving each action's absolute index for selection/keys.
+  const groups: { category: string; items: { action: PaletteAction; index: number }[] }[] = [];
+  filtered.forEach((action, index) => {
+    const category = actionDisplayMeta(action).category;
+    const last = groups[groups.length - 1];
+    if (last && last.category === category) {
+      last.items.push({ action, index });
+    } else {
+      groups.push({ category, items: [{ action, index }] });
+    }
+  });
 
   return (
     <section className="action-panel">
@@ -73,67 +67,104 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
         </span>
       </div>
       <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
-        <div className="action-list">
-          {filtered.map((action, index) => {
-            const meta = actionDisplayMeta(action);
-            const previous = index > 0 ? actionDisplayMeta(filtered[index - 1]) : null;
-            const selectedRow = index === selected;
+        <div id="palette-action-list" role="listbox" aria-label="Actions" className="action-list">
+          {groups.map((group) => {
+            const headingMeta = actionDisplayMeta(group.items[0].action);
+            // Key on the group's first index — a category can recur in
+            // non-consecutive runs under relevance sort, so its name is not unique.
             return (
-              <div className="action-group-item" key={action.subcommand}>
-                {(!previous || previous.category !== meta.category) && (
-                  <div className="action-section-heading">
-                    <span>{meta.category}</span>
-                    <span>{meta.input} → {meta.output}</span>
-                  </div>
-                )}
-                <div
-                  className={selectedRow ? "action-row action-row-selected" : "action-row"}
-                  onFocusCapture={() => setSelected(index)}
-                  onPointerEnter={() => setSelected(index)}
-                >
-                  <Button
-                    variant="plain"
-                    size="unstyled"
-                    className="action-row-main"
-                    type="button"
-                    data-index={index}
-                    onClick={handleRowClick}
-                  >
-                    <ActionIcon action={action} selected={selectedRow} />
-                    <span className="action-main">
-                      <span className="action-title-line">
-                        <span className="action-label">{meta.label}</span>
-                        <span className="action-method">{meta.method}</span>
-                        <span className="action-endpoint">{meta.endpoint}</span>
-                        {isAsyncAction(action) ? (
-                          <span className="action-async">ASYNC</span>
-                        ) : null}
-                      </span>
-                      <span className="action-description">{action.description}</span>
-                    </span>
-                  </Button>
-                  <span className="action-meta">
-                    {selectedRow ? (
-                      <>
+              <div
+                className="action-group"
+                role="presentation"
+                key={`group-${group.items[0].index}`}
+              >
+                <div className="action-section-heading" aria-hidden="true">
+                  <span>{group.category}</span>
+                  <span>{headingMeta.input} → {headingMeta.output}</span>
+                </div>
+                {group.items.map(({ action, index }) => {
+                  const meta = actionDisplayMeta(action);
+                  const selectedRow = index === selected;
+                  // A11Y-C1 — the `.action-row-main` button IS the listbox option
+                  // (role="option"); the `.action-row` is a presentation container so
+                  // the secondary help button sits as a SIBLING of the option, never
+                  // nested inside it (which would be invalid nested-interactive ARIA).
+                  // Options are activated via the combobox/aria-activedescendant, so
+                  // they stay out of the Tab order (tabIndex=-1).
+                  return (
+                    <div className="action-group-item" role="presentation" key={action.subcommand}>
+                      <div
+                        role="presentation"
+                        className={selectedRow ? "action-row action-row-selected" : "action-row"}
+                        onPointerEnter={() => setSelected(index)}
+                      >
                         <Button
                           variant="plain"
                           size="unstyled"
-                          className="action-help-button"
+                          id={actionOptionId(action)}
+                          role="option"
+                          aria-selected={selectedRow}
+                          tabIndex={-1}
+                          ref={selectedRow ? selectedRowRef : undefined}
+                          className="action-row-main"
                           type="button"
-                          data-index={index}
-                          onClick={handleHelpClick}
-                          aria-label={`Help for ${action.label}`}
-                          title={`Help for ${action.label}`}
+                          onFocusCapture={() => setSelected(index)}
+                          onClick={() => {
+                            setSelected(index);
+                            if (parsed.invoked) {
+                              onSubmit(action);
+                            } else if (action.argMode === "none") {
+                              // No-input actions run immediately — no empty argument prompt.
+                              onSubmit(action);
+                            } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
+                              onSubmit(action);
+                            } else {
+                              onEnterMode(action);
+                            }
+                          }}
                         >
-                          ?
+                          <ActionIcon action={action} selected={selectedRow} />
+                          <span className="action-main">
+                            <span className="action-title-line">
+                              <span className="action-label">{meta.label}</span>
+                              <span className="action-method">{meta.method}</span>
+                              <span className="action-endpoint">{meta.endpoint}</span>
+                              {isAsyncAction(action) ? (
+                                <span className="action-async">ASYNC</span>
+                              ) : null}
+                            </span>
+                            <span className="action-description">{action.description}</span>
+                          </span>
                         </Button>
-                        <span className="action-run-pill">Run <Kbd unstyled>↵</Kbd></span>
-                      </>
-                    ) : (
-                      <Kbd unstyled>{action.subcommand}</Kbd>
-                    )}
-                  </span>
-                </div>
+                        {/* Secondary row affordances are a pointer convenience that
+                            duplicate the command-bar Help control and run-on-Enter;
+                            they are hidden from the listbox a11y tree (and kept out
+                            of the Tab order) so the listbox contains only options. */}
+                        <span className="action-meta" aria-hidden="true">
+                          {selectedRow ? (
+                            <>
+                              <Button
+                                variant="plain"
+                                size="unstyled"
+                                className="action-help-button"
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => onHelp(action)}
+                                aria-label={`Help for ${action.label}`}
+                                title={`Help for ${action.label}`}
+                              >
+                                ?
+                              </Button>
+                              <span className="action-run-pill">Run <Kbd unstyled>↵</Kbd></span>
+                            </>
+                          ) : (
+                            <Kbd unstyled>{action.subcommand}</Kbd>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}

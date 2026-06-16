@@ -20,11 +20,19 @@ import com.axon.app.ui.theme.AxonTheme
 enum class ProgressVariant { Cyan, Success, Error, Warn }
 enum class ProgressSize { Sm, Default }
 
+// Gradient ramps: each variant fades from a darker app-specific start stop into a
+// lib-derived end stop. The bright end stops derive from AxonTheme.colors; the dark
+// start stops (and the cyan ramp's lower two) have no exact aurora token (lib
+// accentButton/accentLift are internal/unsurfaced) and stay literal — single-use,
+// appearance held exactly.
+@Composable
 private fun variantColors(v: ProgressVariant): List<Color> = when (v) {
-    ProgressVariant.Cyan    -> listOf(Color(0xFF1DA8E6), Color(0xFF4DC8FA), Color(0xFF67CBFA))
-    ProgressVariant.Success -> listOf(Color(0xFF3A7A74), Color(0xFF7DD3C7))
-    ProgressVariant.Error   -> listOf(Color(0xFF7A3040), Color(0xFFC78490))
-    ProgressVariant.Warn    -> listOf(Color(0xFF7A5E2E), Color(0xFFC6A36B))
+    // 0xFF1DA8E6 == lib accentButton, 0xFF4DC8FA == lib accentLift — both internal in
+    // the lib (not exposed via AuroraExtraColors), so kept literal here.
+    ProgressVariant.Cyan    -> listOf(Color(0xFF1DA8E6), Color(0xFF4DC8FA), AxonTheme.colors.accentStrong)
+    ProgressVariant.Success -> listOf(Color(0xFF3A7A74), AxonTheme.colors.success)
+    ProgressVariant.Error   -> listOf(Color(0xFF7A3040), AxonTheme.colors.error)
+    ProgressVariant.Warn    -> listOf(Color(0xFF7A5E2E), AxonTheme.colors.warn)
 }
 
 @Composable

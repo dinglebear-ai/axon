@@ -3,12 +3,33 @@
 import { readFileSync } from "node:fs";
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTIONS } from "@/lib/actions";
 import { buildHelpRun } from "@/lib/actionHelp";
 import { hasStructuredOperationView, OperationResultView, sanitizeReaderMarkdown } from "./OperationResultView";
+
+const mockLoadArtifactObjectUrl = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/artifactPreview", () => ({
+  loadArtifactObjectUrl: mockLoadArtifactObjectUrl,
+}));
+
+function screenshotWithArtifactHandle() {
+  return {
+    url: "https://example.com",
+    path: "/home/axon/.axon/output/screenshots/example.png",
+    size_bytes: 1024,
+    artifact_handle: {
+      relative_path: "screenshots/example.png",
+      display_path: "screenshots/example.png",
+      kind: "screenshot",
+      bytes: 1024,
+    },
+  };
+}
 
 function action(subcommand: string) {
   const found = ACTIONS.find((candidate) => candidate.subcommand === subcommand);
@@ -17,6 +38,16 @@ function action(subcommand: string) {
 }
 
 describe("OperationResultView routing", () => {
+  beforeEach(() => {
+    mockLoadArtifactObjectUrl.mockReset();
+    mockLoadArtifactObjectUrl.mockResolvedValue("blob:test-shot");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("claims structured views for JSON-heavy Axon operations", () => {
     for (const subcommand of [
       "query",
@@ -118,5 +149,169 @@ describe("OperationResultView routing", () => {
     expect(styles).toContain(".operation-reader-section");
     expect(styles).toContain("max-height: none");
     expect(styles).not.toContain("max-height: min(48vh, 560px)");
+  });
+
+  it("renders screenshot artifact handles without relying on absolute server paths", async () => {
+    render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+
+    const img = await screen.findByRole("img", { name: /screenshot of https:\/\/example.com/i });
+    expect(img).toHaveAttribute("src", "blob:test-shot");
+    expect(mockLoadArtifactObjectUrl).toHaveBeenCalledWith("screenshots/example.png");
+    expect(screen.queryByText("/home/axon/.axon/output/screenshots/example.png")).not.toBeInTheDocument();
+    expect(screen.getByText("screenshots/example.png")).toBeInTheDocument();
+  });
+
+  it("shows a compact artifact preview failure state", async () => {
+    mockLoadArtifactObjectUrl.mockRejectedValueOnce(new Error("artifact fetch failed with 401"));
+    render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+
+    expect(await screen.findByText(/preview unavailable/i)).toBeInTheDocument();
+  });
+
+  it("revokes the object URL and shows an error when the preview image fails to decode", async () => {
+    // Use a raw root (not RTL render) so a manually dispatched `error` event
+    // reliably reaches React's onError handler under React 19.
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => {
+        root.render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+      });
+      // Flush the mocked loadArtifactObjectUrl promise so the <img> renders.
+      await act(async () => {});
+
+      const img = host.querySelector("img");
+      expect(img?.getAttribute("src")).toBe("blob:test-shot");
+
+      await act(async () => {
+        img?.dispatchEvent(new Event("error"));
+      });
+
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test-shot");
+      expect(host.querySelector("img")).toBeNull();
+      expect(host.textContent).toContain("Preview unavailable: image decode failed");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      host.remove();
+    }
+  });
+
+  it("revokes stale artifact object URLs that resolve after unmount", async () => {
+    let resolvePreview: (value: string) => void = () => undefined;
+    mockLoadArtifactObjectUrl.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        resolvePreview = resolve;
+      }),
+    );
+    const { unmount } = render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+
+    unmount();
+    await act(async () => {
+      resolvePreview("blob:late-shot");
+    });
+
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:late-shot");
+  });
+
+  // L4: the allowlist and the dispatch map are now derived from one source, so
+  // every claimed subcommand must actually route to a structured (non-generic) view.
+  it("keeps the allowlist and the renderer map in sync", () => {
+    const structured = [
+      "query",
+      "scrape",
+      "search",
+      "research",
+      "map",
+      "suggest",
+      "sources",
+      "domains",
+      "doctor",
+      "crawl",
+      "embed",
+      "extract",
+      "ingest",
+      "endpoints",
+      "brand",
+      "diff",
+      "screenshot",
+      "dedupe",
+      "watch-list",
+      "watch-create",
+      "watch-run",
+    ];
+    for (const subcommand of structured) {
+      expect(hasStructuredOperationView(subcommand), subcommand).toBe(true);
+    }
+  });
+});
+
+// T-M2: render each structured view from a representative payload and assert it
+// produced its distinctive structured chrome (a hero/summary metric, a row, a
+// figure, …) rather than falling through to the generic JSON dump.
+describe("OperationResultView structured rendering", () => {
+  it("renders ranked query matches", () => {
+    render(
+      <OperationResultView
+        subcommand="query"
+        payload={{ collection: "axon", results: [{ title: "hit one", url: "https://example.com/a", score: 0.91, rank: 1 }] }}
+      />,
+    );
+    expect(screen.getByText("hit one")).toBeInTheDocument();
+    expect(screen.getByText("0.910")).toBeInTheDocument();
+  });
+
+  it("renders web search results with queued crawl jobs", () => {
+    render(
+      <OperationResultView
+        subcommand="search"
+        payload={{
+          results: [{ title: "Result A", url: "https://example.com/a", snippet: "snippet", rank: 1 }],
+          crawl_jobs: [{ job_id: "job-1", status: "queued", url: "https://example.com/a" }],
+        }}
+      />,
+    );
+    expect(screen.getByText("Result A")).toBeInTheDocument();
+    expect(screen.getByText("Queued crawl jobs")).toBeInTheDocument();
+  });
+
+  it("renders discovered URLs for map", () => {
+    render(<OperationResultView subcommand="map" payload={{ urls: ["https://example.com/x"], count: 1 }} />);
+    expect(screen.getByText("https://example.com/x")).toBeInTheDocument();
+  });
+
+  it("renders a degraded doctor report", () => {
+    render(
+      <OperationResultView
+        subcommand="doctor"
+        payload={{ degraded: true, checks: [{ name: "TEI", status: "warn", message: "slow" }] }}
+      />,
+    );
+    expect(screen.getByText("Doctor found issues")).toBeInTheDocument();
+    expect(screen.getByText("TEI")).toBeInTheDocument();
+  });
+
+  it("renders a job-start hero for async families", () => {
+    render(<OperationResultView subcommand="crawl" payload={{ execution_mode: "async", result: { job_id: "abc123def456ghi", status: "queued" } }} />);
+    expect(screen.getByText("Crawl job queued")).toBeInTheDocument();
+    // shortId truncates ids over 12 chars (canonical, with the ellipsis char).
+    expect(screen.getByText("abc123def456…")).toBeInTheDocument();
+  });
+
+  it("renders a job-lifecycle list view", () => {
+    render(<OperationResultView subcommand="crawl-list" payload={{ jobs: [{ job_id: "j1", status: "running", url: "https://example.com" }] }} />);
+    expect(screen.getByText("Crawl List")).toBeInTheDocument();
+  });
+
+  it("renders dedupe metrics", () => {
+    render(<OperationResultView subcommand="dedupe" payload={{ removed: 4, scanned: 100, collection: "axon" }} />);
+    expect(screen.getByText("Dedupe complete")).toBeInTheDocument();
+  });
+
+  it("falls back to the generic view for unknown subcommands", () => {
+    render(<OperationResultView subcommand="totally-unknown" payload={{ field_one: "value" }} />);
+    expect(screen.getByText("Field One")).toBeInTheDocument();
   });
 });

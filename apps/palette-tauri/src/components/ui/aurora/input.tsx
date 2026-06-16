@@ -116,25 +116,6 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     },
     ref
   ) => {
-    // Escape hatch: bare <input>, consumer CSS owns 100% of appearance. No wrapper,
-    // no inline skin, no imperative focus handlers, no adornment/clear logic. The
-    // ref-based clear path only applies to the styled path below, so forward `ref`
-    // directly here.
-    if (unstyled) {
-      return (
-        <input
-          ref={ref}
-          type={type}
-          className={className}
-          style={style}
-          value={value}
-          defaultValue={defaultValue}
-          onChange={onChange}
-          {...props}
-        />
-      )
-    }
-
     // Hold a real ref to the underlying <input> so the clear button can drive the
     // actual DOM element (native value setter + dispatched "input" event) instead
     // of fabricating a detached element. Merge it with any forwarded ref.
@@ -161,6 +142,26 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         ? String(defaultValue)
         : ""
     )
+
+    // Escape hatch: bare <input>, consumer CSS owns 100% of appearance. No wrapper,
+    // no inline skin, no imperative focus handlers, no adornment/clear logic. Declared
+    // after the hooks above so the rules-of-hooks invariant holds on every render
+    // (the styled path's ref-merge/clear state is simply unused here; `ref` forwards
+    // directly).
+    if (unstyled) {
+      return (
+        <input
+          ref={ref}
+          type={type}
+          className={className}
+          style={style}
+          value={value}
+          defaultValue={defaultValue}
+          onChange={onChange}
+          {...props}
+        />
+      )
+    }
 
     // Determine whether the input currently has a value
     const isControlled = value !== undefined

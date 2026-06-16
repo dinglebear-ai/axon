@@ -1,11 +1,12 @@
 {
   "name": "@axon/admin-panel",
-  "version": "5.15.0",
+  "version": "5.16.0",
   "private": true,
   "scripts": {
     "build": "next build",
     "dev": "next dev",
     "lint": "tsc --noEmit",
+    "test": "vitest run",
     "openapi:export": "mkdir -p openapi && cargo run --quiet --manifest-path ../../Cargo.toml --bin axon-openapi > openapi/axon.json",
     "openapi:types": "node scripts/generate-openapi-types.mjs openapi/axon.json lib/generated/axon-api.ts",
     "openapi:generate": "npm run openapi:export && npm run openapi:types",
@@ -20,7 +21,10 @@
   "devDependencies": {
     "@types/node": "25.6.0",
     "@types/react": "19.2.14",
-    "typescript": "^5.8.0"
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9"
   },
   "overrides": {
     "postcss": "^8.5.10"

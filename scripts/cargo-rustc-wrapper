@@ -6,7 +6,6 @@ if [ "$#" -lt 1 ]; then
   exit 2
 fi
 
-repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 rustc="$1"
 shift
 
@@ -87,8 +86,6 @@ case "$out" in
 esac
 
 local_bin="${AXON_RUSTC_WRAPPER_LOCAL_BIN:-$HOME/.local/bin/axon}"
-plugin_bin="${AXON_RUSTC_WRAPPER_PLUGIN_BIN:-$repo/plugins/axon/bin/axon}"
 
-mkdir -p "$(dirname "$local_bin")" "$(dirname "$plugin_bin")"
+mkdir -p "$(dirname "$local_bin")"
 cp -f "$out" "$local_bin"
-cp -f "$out" "$plugin_bin"
