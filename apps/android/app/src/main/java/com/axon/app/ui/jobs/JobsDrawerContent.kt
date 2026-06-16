@@ -28,13 +28,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.JobFamily
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.DrawerSubItem
+import com.axon.app.ui.theme.AxonTheme
 
 private enum class JobsDrawerLevel(val label: String) {
     Crawl("Crawls"),
@@ -66,7 +66,7 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
             Text(
                 selectedLevel?.label ?: "Jobs",
                 style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFFA7BCC9),
+                color = AxonTheme.colors.textMuted,
                 modifier = Modifier.weight(1f),
             )
             if (selectedLevel != null) {
@@ -74,7 +74,7 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back to job queues",
-                        tint = Color(0xFF4A6374),
+                        tint = AxonTheme.colors.iconMuted,
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -83,7 +83,7 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
                 Icon(
                     Icons.Rounded.Refresh,
                     contentDescription = "Refresh",
-                    tint = Color(0xFF4A6374),
+                    tint = AxonTheme.colors.iconMuted,
                     modifier = Modifier.size(16.dp),
                 )
             }

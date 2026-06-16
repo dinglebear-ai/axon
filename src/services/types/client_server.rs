@@ -1,5 +1,6 @@
 use crate::mcp::schema::AxonRequest;
 use crate::services::types::supported_routes;
+use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -229,10 +230,23 @@ fn normalize_relative_path(path: String) -> String {
 }
 
 fn relative_path_is_unsafe(path: &str) -> bool {
-    Path::new(path).components().any(|component| {
+    if path.is_empty() || path.contains('\0') || path.contains('\\') {
+        return true;
+    }
+    let decoded = percent_decode_str(path).decode_utf8_lossy();
+    if decoded.contains(':')
+        || decoded.contains('\\')
+        || decoded
+            .split('/')
+            .any(|segment| segment == "." || segment == "..")
+    {
+        return true;
+    }
+    Path::new(decoded.as_ref()).components().any(|component| {
         matches!(
             component,
-            std::path::Component::ParentDir
+            std::path::Component::CurDir
+                | std::path::Component::ParentDir
                 | std::path::Component::RootDir
                 | std::path::Component::Prefix(_)
         )

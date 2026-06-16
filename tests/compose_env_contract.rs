@@ -430,6 +430,16 @@ fn env_example_only_contains_production_runtime_keys() {
         "TEI_HTTP_PORT",
         "TEI_EMBEDDING_MODEL",
         "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
+        // Qdrant host port mappings + TEI container launch flags — interpolated
+        // as ${VAR:-default} in docker-compose.prod.yaml, so they are compose
+        // runtime config, not application tuning knobs.
+        "QDRANT_HTTP_PORT",
+        "QDRANT_GRPC_PORT",
+        "TEI_MAX_CONCURRENT_REQUESTS",
+        "TEI_MAX_BATCH_TOKENS",
+        "TEI_MAX_BATCH_REQUESTS",
+        "TEI_POOLING",
+        "TEI_TOKENIZATION_WORKERS",
         "NVIDIA_VISIBLE_DEVICES",
         "CUDA_VISIBLE_DEVICES",
         // Chrome + scrape stack

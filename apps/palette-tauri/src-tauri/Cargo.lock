@@ -87,8 +87,10 @@ name = "axon-palette-tauri"
 version = "5.10.1"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "dirs",
  "futures-util",
+ "percent-encoding",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -97,6 +99,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tokio",
  "toml_edit 0.23.10+spec-1.0.0",
+ "url",
  "uuid",
 ]
 

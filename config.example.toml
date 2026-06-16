@@ -439,3 +439,29 @@ remote-local-policy = false
 # serialized.
 # Env: AXON_STRUCTURED_DATA_MAX_BYTES. Default: 65536 (64 KiB). Clamped 1024–16777216.
 # structured-data-max-bytes = 65536
+
+# ── Advanced env-only overrides ─────────────────────────────────────────────
+# These tuning knobs are read directly from the environment and do NOT belong
+# in .env.example (reserved for secrets, service URLs, auth/bootstrap, and
+# Docker Compose interpolation). They are listed here for operator
+# discoverability; they are not TOML keys yet. Set them as env vars when tuning.
+#
+# Embed job filesystem affinity. Compose sets the server container to
+# "axon-container"; host CLI workers normally leave this empty.
+#   AXON_FS_NAMESPACE
+#
+# Qdrant collection memory/latency tradeoffs for newly created collections.
+# Defaults: hnsw-on-disk=false, quantization-always-ram=true.
+#   AXON_QDRANT_HNSW_ON_DISK
+#   AXON_QDRANT_QUANTIZATION_ALWAYS_RAM
+#
+# Source chunking and conditional recrawl circuit breakers. Leave unset unless
+# tuning a known large-corpus edge case.
+#   AXON_MAX_TREE_SITTER_FILE_BYTES
+#   AXON_RESIDUAL_GAP_FLOOR
+#   AXON_ETAG_MAX_MISS_RUNS
+#
+# Embed throughput guards. Leave unset for defaults; raise AXON_TEI_MAX_CONCURRENT
+# only if local TEI reports frequent 429 backpressure.
+#   AXON_TEI_MAX_CONCURRENT
+#   AXON_EMBED_DOC_CONCURRENCY

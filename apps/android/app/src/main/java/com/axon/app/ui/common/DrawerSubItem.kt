@@ -24,7 +24,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.axon.app.ui.theme.AxonColors
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
@@ -39,7 +38,7 @@ fun DrawerSubItem(
     icon: ImageVector,
     label: String,
     detail: String,
-    detailColor: Color = AxonColors.TextMuted,
+    detailColor: Color = AxonTheme.colors.textMuted,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {

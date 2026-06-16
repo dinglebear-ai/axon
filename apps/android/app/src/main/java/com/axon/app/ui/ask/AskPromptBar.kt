@@ -330,7 +330,7 @@ private fun SendButton(
         label = "send-border",
     )
     val iconTint by animateColorAsState(
-        targetValue = if (active) Color(0xFF06131C) else colors.textPrimary.copy(alpha = 0.58f),
+        targetValue = if (active) colors.onAccentFg else colors.textPrimary.copy(alpha = 0.58f),
         animationSpec = spec,
         label = "send-icon",
     )

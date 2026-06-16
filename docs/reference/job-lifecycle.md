@@ -364,7 +364,7 @@ Companion docs:
 
 Legacy refresh and graph job tables are not created by current migrations.
 
-## App UX Contract — Artifact Handles and Terminal Job Results
+## App Artifact UX Contract
 
 This section describes the behavior contract between the server and user-facing apps (desktop palette, web panel command palette). It is separate from the automation/agent API contract, which remains unchanged.
 
@@ -373,7 +373,7 @@ This section describes the behavior contract between the server and user-facing 
 | Consumer | Behavior | Expectations |
 |---|---|---|
 | Automation / agents / CLI | Fire-and-forget or explicit `--wait`; receives 202 with `job_id` + `status_url` | Raw JSON, job IDs, absolute paths all acceptable |
-| Desktop palette / web panel | Always polls to terminal state; renders final metrics and artifacts | No raw paths, no bare job IDs, human-readable output only |
+| Desktop palette / web panel | Renders artifact handles from completed inline results; generalized app job polling is deferred to `axon_rust-gnb6.5` | No raw absolute paths as primary output; authenticated artifact previews only |
 
 ### Accepted-job response (202)
 
@@ -387,7 +387,7 @@ When a crawl/embed/extract/ingest command is submitted to the server, it returns
 }
 ```
 
-The `status_url` field is the polling path for app clients. The desktop polls this URL at 2-second intervals (up to 150 attempts, ~5 min) and waits for a terminal status before rendering results. The web panel command endpoint also waits for a terminal response before returning to the UI.
+The `status_url` field is the polling path for clients that choose to wait. This artifact UX contract does not change job submission semantics: automation-facing REST job submission routes keep returning `202 AcceptedJob`.
 
 ### Terminal job response
 
@@ -410,7 +410,7 @@ Once a job reaches a terminal state, `GET <status_url>` returns:
 
 Terminal statuses: `completed`, `failed`, `canceled`, `cancelled`.
 
-App formatters (the Tauri palette's `apps/palette-tauri/src/lib/{payload,format,crawlJob}.ts`, `formatCommandResponse` in `apps/web/app/page.tsx`) detect the `job` key and branch to the terminal-result rendering path. Zero-value metrics and sub-second elapsed times are omitted. The target URL or ingest source is shown as the final line.
+App formatters (the Tauri palette's `apps/palette-tauri/src/lib/{payload,format,crawlJob}.ts`, `formatCommandResponse` in `apps/web/app/command-format.ts`) detect the `job` key and branch to the terminal-result rendering path when a terminal job response is already available. Zero-value metrics and sub-second elapsed times are omitted. The target URL or ingest source is shown as the final line.
 
 ### Artifact handles
 
@@ -426,18 +426,22 @@ Screenshot commands return an `artifact_handle` alongside the standard response 
 }
 ```
 
-Apps use `relative_path` to construct a safe URL: `/v1/artifacts/<relative_path>`. The absolute server path (e.g. `/home/axon/.axon/screenshots/...`) is **never** shown in the UI. The desktop palette renders the PNG inline; the web panel renders it as a full-width `<img>` in the command result card.
+Artifact handles are the app contract. Absolute `path` fields are debug metadata for the server host and must not be used as a primary UI label or preview source.
+
+Web panel previews fetch `/api/panel/artifact/{relative_path}` with panel auth and render object URLs. REST clients use `GET /v1/artifacts?path=<relative_path>` with normal `axon:read` auth. The Tauri palette fetches raster image bytes through its capped artifact bridge command and renders object URLs.
+
+Only raster image artifacts are previewed inline. Active or ambiguous types such as HTML, SVG, and unknown extensions are served as attachments with `X-Content-Type-Options: nosniff`. JSON, markdown, text, and logs keep accurate passive content types but are still attachments.
 
 ### What must not regress
 
 - App flows must never display raw absolute server paths (`/home/axon/.axon/...`) as primary output.
-- App flows must never stop at a job ID without polling to a terminal state when `status_url` is present.
+- Artifact preview routes must not expose unauthenticated image URLs or accept absolute server paths.
 - Automation API endpoints (`POST /v1/crawl`, `GET /v1/crawl/{id}`, canonical `GET /v1/artifacts?path=...`) must remain available. The legacy slash-capturing artifact path remains a runtime compatibility alias.
 
 ### Coverage
 
 | Behavior | Test file | Run |
 |---|---|---|
-| Accepted-job poll + terminal status handling | `apps/palette-tauri/src/lib/crawlJob.test.ts`, `axonClient.test.ts` | `pnpm --dir apps/palette-tauri test` |
-| Terminal job result + artifact formatting | `apps/palette-tauri/src/lib/format.test.ts`, `components/palette/OperationResultView.test.tsx` | `pnpm --dir apps/palette-tauri test` |
-| Web panel TypeScript types + build | `apps/web/` | `npx tsc --noEmit` + `npm run build` |
+| Artifact bridge + screenshot formatting | `apps/palette-tauri/src-tauri/src/axon_bridge_tests.rs`, `apps/palette-tauri/src/lib/format.test.ts`, `components/palette/OperationResultView.test.tsx` | `cargo test axon_bridge`; `pnpm --dir apps/palette-tauri vitest run ...` |
+| Web panel artifact URLs | `apps/web/app/command-format.test.ts` | `npm --prefix apps/web exec vitest run app/command-format.test.ts` |
+| Web panel TypeScript types | `apps/web/` | `npm --prefix apps/web run lint` |

@@ -86,19 +86,33 @@ pre-push:
   # everything test needs, so the second cargo invocation reuses the cache.
   parallel: false
   commands:
-    version-sync:
+    # lefthook runs serial commands in alphabetical name order, so the numeric
+    # prefixes below pin the sequence: version-sync (cheap, fail fast) →
+    # build-web-assets (compile prerequisite) → clippy → test.
+    1-version-sync:
       # OPS-M3: enforce CLI version parity (Cargo.toml / README / CHANGELOG /
       # apps/web/package.json / apps/web/openapi/axon.json) before a push — same
       # gate CI runs as `check-version-sync`.
       # Runs first (cheap, content-only) so a version mismatch fails fast
-      # before the expensive workspace clippy/test compile. Prefer the
-      # pre-built xtask binary; fall back to `cargo xtask` on a clean target/.
+      # before the web build and the expensive workspace clippy/test compile.
+      # Prefer the pre-built xtask binary; fall back to `cargo xtask` on a clean
+      # target/.
       run: >
         if [ -x "./target/debug/xtask" ]; then
           ./target/debug/xtask check-version-sync;
         else
           cargo xtask check-version-sync;
         fi
+    2-build-web-assets:
+      # build.rs embeds apps/web/out/ (rust-embed) at compile time, so the
+      # clippy/test workspace compile below hard-fails when the Next.js static
+      # export is missing/empty/fallback-only. Build the real panel first so a
+      # push never trips on stale embedded assets. out/ stays gitignored — this
+      # regenerates it from source rather than relying on a committed copy.
+      # Idempotent (Turbopack caches); deps installed once on a fresh checkout.
+      run: >
+        if [ ! -d apps/web/node_modules ]; then npm ci --prefix apps/web; fi &&
+        npm --prefix apps/web run build
     clippy:
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
     test:

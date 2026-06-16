@@ -450,7 +450,7 @@ export default function Page() {
                 <Play aria-hidden="true" className="button-icon" />
                 {commandBusy ? 'Running' : 'Run command'}
               </button>
-              {commandResult && <CommandResultCard result={commandResult} />}
+              {commandResult && <CommandResultCard result={commandResult} panelToken={token} />}
             </div>
           </section>
         </div>
