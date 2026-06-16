@@ -1,8 +1,8 @@
 export type ArgMode = "none" | "optionalSingle" | "single" | "split";
 type RemoteActionKind = "operation" | "job" | "admin" | "discovery";
 type ActionTone = "info" | "success" | "warn" | "neutral" | "rose" | "violet";
-type JobFamily = "crawl" | "embed" | "extract" | "ingest";
-type JobOperation = "list" | "status" | "cancel" | "cleanup" | "clear" | "recover";
+export type JobFamily = "crawl" | "embed" | "extract" | "ingest";
+export type JobOperation = "list" | "status" | "cancel" | "cleanup" | "clear" | "recover";
 
 export type PaletteSubcommand =
   | "help"
