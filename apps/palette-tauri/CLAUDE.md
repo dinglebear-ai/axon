@@ -9,7 +9,7 @@ Contributor guide for `apps/palette-tauri` — the desktop command palette for t
 The frontend is deliberately a **single stateful orchestrator (`src/App.tsx`) over stateless/business-logic helpers**. This is intentional, not tech debt — keep it unless a refactor is explicitly tracked.
 
 - **`src/App.tsx` owns view state and orchestration.** All cross-cutting UI state (`query`, `modeAction`, `selected`, `config`, `run`, the `settingsOpen`/`browseOpen`/`historyOpen` overlay flags, etc.) lives in `useState` flags in `App`. `App` wires user input → action selection → execution → result rendering, and threads state down to presentational components (`PaletteCommandBar`, `ActionList`, `OutputPanel`, `SettingsPanel`, `HistoryPanel`, `PaletteFooter`) via props. Data flows **down** as props; events flow **up** as callbacks. Child components do not own app state.
-- **Business logic lives in `src/lib/*`, not in components.** Pure functions and typed models live under `src/lib/` (e.g. `actions.ts`, `actionMeta.ts`, `actionHelp.ts`, `paletteView.ts`, `format.ts`, `payload.ts`, `url.ts`, `axonClient.ts`, `configModel.ts`, `historyRun.ts`, `runState.ts`). Hooks that encapsulate stateful side effects also live there: `useActionRunner.ts` (request/response + streaming dispatch), `useCrawlJob.ts` (polled crawl-job state), `useWindowChrome.ts` (window sizing). Prefer adding logic to a `src/lib` helper with a unit test over inlining it in a component.
+- **Business logic lives in `src/lib/*`, not in components.** Pure functions and typed models live under `src/lib/` (e.g. `actions.ts`, `actionRegistry.ts` — the per-action behavior source of truth, `actionRequest.ts` — request/route builders, `actionFormat.ts` — text formatters, `actionMeta.ts`, `actionHelp.ts`, `paletteView.ts`, `format.ts`, `payload.ts`, `url.ts`, `axonClient.ts`, `configModel.ts`, `historyRun.ts`, `runState.ts`). Hooks that encapsulate stateful side effects also live there: `useActionRunner.ts` (request/response + streaming dispatch), `useCrawlJob.ts` (polled crawl-job state), `useWindowChrome.ts` (window sizing). Prefer adding logic to a `src/lib` helper with a unit test over inlining it in a component.
 - **Presentational components live in `src/components/`.** `components/palette/*` are app-specific views; `components/ui/aurora/*` and `components/ui/*` are the design-system primitives (see below). Components should be thin renderers over props.
 
 ### The dev/prod invoke seam — `src/lib/invoke.ts`
@@ -39,17 +39,18 @@ Aurora primitives are installed from the `@aurora` shadcn registry (`components.
 
 ## How to add a new palette action
 
-Adding an action currently touches **~9 edit sites** across the codebase — this is the most error-prone task here and there is no `assertNever` guard, so a missed site degrades silently (e.g. a structured view falls back to raw `<pre>`). **This manual checklist is the interim process; consolidating these into a single action-behavior registry is a tracked FOLLOW-UP (A-H1) — do not attempt that refactor inline.** Edit, in order:
+Per-action behavior is consolidated into a single **action-behavior registry** (finding A-H1): `src/lib/actionRegistry.ts` exports `ACTION_REGISTRY: Record<PaletteSubcommand, ActionBehavior>`. Because it is keyed by the full `PaletteSubcommand` union, **a new subcommand fails to type-check until it has a complete behavior entry** — there is no silent degrade to raw `<pre>` JSON. The old scattered dispatch functions (`bodyFor`, `actionRouteTemplate`, `outputKindFor`, `formatPayload`, `outputIcon`, `actionIcon`, `hasStructuredOperationView`) are now thin shims that derive from this registry.
 
-1. **`src/lib/actions.ts`** — add the action entry to the `ACTIONS` array.
-2. **`src/lib/actions.ts`** — add the subcommand to the `PaletteSubcommand` union type.
-3. **`src/lib/actionMeta.ts`** — add display metadata to `ACTION_META`.
-4. **`src/lib/axonClient.ts`** — handle the new subcommand in `bodyFor` (request body shaping).
-5. **`src/lib/axonClient.ts`** — add the route in `actionRouteTemplate`.
-6. **`src/lib/format.ts`** — classify output in `outputKindFor` and render fallback text in `formatPayload`.
-7. **`src/components/palette/OperationResultView.tsx`** — add one entry to the `STRUCTURED_VIEWS` map. Both `hasStructuredOperationView` (the allowlist) and the renderer dispatch derive from that single map, so they can no longer drift (there is no longer a hand-synced `switch`).
-8. **`src/components/palette/OutputPanel.tsx`** — add an icon mapping in `outputIcon`.
-9. **`src/components/palette/ActionIcon.tsx`** — add an icon mapping in `actionIcon`.
+To add an action, edit, in order:
+
+1. **`src/lib/actions.ts`** — add the action entry to the `ACTIONS` array, and add the subcommand to the `PaletteSubcommand` union type. (Job-lifecycle `${family}-${operation}` members are generated, not hand-listed.)
+2. **`src/lib/actionRegistry.ts`** — add one `ActionBehavior` entry to `STATIC_REGISTRY`. This is the single source of truth and carries everything per-action: `route` (method + templated path, e.g. `/v1/foo/{id}`), optional `routeFor` (id-aware route resolver), `buildBody` (request body builder), `outputKind` (`"markdown"`/`"code"`), `formatText` (fallback/copy text formatter), `actionIcon`, `outputIcon`, and `structuredView` (a `StructuredViewKey` or `null`).
+   - Request body/route helpers live in **`src/lib/actionRequest.ts`** — add a new `BodyBuilder` there if the existing ones don't fit, then reference it from the registry entry.
+   - Text formatters live in **`src/lib/actionFormat.ts`** — add a pure `(record) => string` formatter there and bind it via `recordFormatter(...)` in the registry entry.
+3. **`src/lib/actionMeta.ts`** — add display metadata to `ACTION_META` (category/input/output labels for the action detail row). The endpoint + method are derived from the registry; only the human-facing labels live here.
+4. **`src/components/palette/OperationResultView.tsx`** — *only if the action needs a structured view.* Add the new view key to the `StructuredViewKey` union (in `actionRegistry.ts`) and a matching renderer in the `STRUCTURED_VIEWS` map. The map is typed `Record<StructuredViewKey, …>`, so a new key fails to compile until rendered. `hasStructuredOperationView` and the dispatch both derive from `ACTION_REGISTRY[subcommand].structuredView` — they cannot drift. (Top-level views handled directly by `OutputPanel` — evaluate/stats/status — keep `structuredView: null`.)
+
+Icons (`actionIcon`/`outputIcon`) and output classification (`outputKindFor`/`formatPayload`) require **no** component or `format.ts` edits — they read straight from the registry entry. The exhaustiveness + shim-parity tests live in `src/lib/actionRegistry.test.ts`.
 
 ## Result-view fixture harness
 

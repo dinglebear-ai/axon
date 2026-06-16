@@ -44,6 +44,10 @@ function executeTestAction(subcommand: string, arg: string) {
   return executeAction(createAxonClient(config), remoteAction(subcommand), arg, config);
 }
 
+function requestFor(subcommand: string, arg: string) {
+  return buildActionRequest(createAxonClient(config), remoteAction(subcommand), arg, config);
+}
+
 describe("executeAction", () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
@@ -62,6 +66,42 @@ describe("executeAction", () => {
     expect(lastRequestBody()).toEqual({
       source_type: "github",
       target: "owner/repo",
+      include_source: true,
+    });
+  });
+
+  it("classifies ingest targets by parsed hostname, not substring matches", async () => {
+    await executeTestAction("ingest", "https://www.youtube.com/watch?v=abc123");
+    expect(lastRequestBody()).toEqual({
+      source_type: "youtube",
+      target: "https://www.youtube.com/watch?v=abc123",
+    });
+
+    await executeTestAction("ingest", "https://old.reddit.com/r/rust");
+    expect(lastRequestBody()).toEqual({
+      source_type: "reddit",
+      target: "https://old.reddit.com/r/rust",
+    });
+
+    await executeTestAction("ingest", "r/rust");
+    expect(lastRequestBody()).toEqual({
+      source_type: "reddit",
+      target: "r/rust",
+    });
+  });
+
+  it("does not classify deceptive ingest hosts as Reddit or YouTube", async () => {
+    await executeTestAction("ingest", "https://youtube.com.evil.example/watch?v=abc123");
+    expect(lastRequestBody()).toEqual({
+      source_type: "github",
+      target: "https://youtube.com.evil.example/watch?v=abc123",
+      include_source: true,
+    });
+
+    await executeTestAction("ingest", "https://evil.example/reddit.com/r/rust");
+    expect(lastRequestBody()).toEqual({
+      source_type: "github",
+      target: "https://evil.example/reddit.com/r/rust",
       include_source: true,
     });
   });
@@ -142,6 +182,62 @@ describe("executeAction", () => {
       url: "https://example.com",
       full_page: true,
     });
+  });
+
+  it("pins exact route and body contracts for static actions", () => {
+    const cases: Array<[string, string, string, string, unknown]> = [
+      ["doctor", "", "GET", "/v1/doctor", null],
+      ["status", "", "GET", "/v1/status", null],
+      ["sources", "", "GET", "/v1/sources", null],
+      ["domains", "", "GET", "/v1/domains", null],
+      ["stats", "", "GET", "/v1/stats", null],
+      ["watch-list", "", "GET", "/v1/watch", null],
+      ["scrape", "https://example.com/doc", "POST", "/v1/scrape", { url: "https://example.com/doc", collection: "docs" }],
+      ["crawl", "https://example.com/docs", "POST", "/v1/crawl", { urls: ["https://example.com/docs"], collection: "docs" }],
+      ["map", "https://example.com", "POST", "/v1/map", { url: "https://example.com", limit: 100 }],
+      ["summarize", "https://example.com/doc", "POST", "/v1/summarize", { urls: ["https://example.com/doc"] }],
+      ["ask", "what changed?", "POST", "/v1/ask", { query: "what changed?", explain: false, diagnostics: false, collection: "docs" }],
+      ["chat", "plain llm chat", "POST", "/v1/chat", { message: "plain llm chat" }],
+      ["query", "palette routes", "POST", "/v1/query", { query: "palette routes", limit: 7, collection: "docs" }],
+      ["retrieve", "https://example.com/doc", "POST", "/v1/retrieve", { url: "https://example.com/doc", token_budget: 6000, collection: "docs" }],
+      ["suggest", "tauri", "POST", "/v1/suggest", { focus: "tauri" }],
+      ["evaluate", "is RAG better?", "POST", "/v1/evaluate", { question: "is RAG better?" }],
+      ["search", "tauri v2", "POST", "/v1/search", { query: "tauri v2", limit: 7 }],
+      ["research", "qdrant hybrid", "POST", "/v1/research", { query: "qdrant hybrid", limit: 7 }],
+      ["embed", "https://example.com/doc", "POST", "/v1/embed", { input: "https://example.com/doc", collection: "docs" }],
+      ["extract", "https://example.com/pricing", "POST", "/v1/extract", { urls: ["https://example.com/pricing"], collection: "docs" }],
+      ["ingest", "owner/repo", "POST", "/v1/ingest", { source_type: "github", target: "owner/repo", include_source: true }],
+      ["endpoints", "https://example.com", "POST", "/v1/endpoints", { url: "https://example.com" }],
+      ["brand", "https://example.com", "POST", "/v1/brand", { url: "https://example.com" }],
+      ["diff", "https://example.com/a https://example.com/b", "POST", "/v1/diff", { url_a: "https://example.com/a", url_b: "https://example.com/b" }],
+      ["screenshot", "https://example.com", "POST", "/v1/screenshot", { url: "https://example.com", full_page: true }],
+      ["dedupe", "", "POST", "/v1/dedupe", { collection: "docs" }],
+      [
+        "watch-create",
+        "https://example.com/docs 120",
+        "POST",
+        "/v1/watch",
+        { name: "example.com", task_type: "watch", task_payload: { urls: ["https://example.com/docs"], ignore_patterns: [] }, every_seconds: 120, enabled: true },
+      ],
+      ["watch-run", "00000000-0000-4000-8000-000000000000", "POST", "/v1/watch/00000000-0000-4000-8000-000000000000/run", null],
+      ["ingest-sessions-prepared", "{\"sessions\":[]}", "POST", "/v1/ingest/sessions/prepared", { sessions: [] }],
+    ];
+
+    for (const [subcommand, arg, method, path, body] of cases) {
+      expect(requestFor(subcommand, arg), subcommand).toMatchObject({ method, path, body });
+    }
+  });
+
+  it("pins exact route and body contracts for every job lifecycle operation", () => {
+    const id = "00000000-0000-4000-8000-000000000000";
+    for (const family of ["crawl", "embed", "extract", "ingest"]) {
+      expect(requestFor(`${family}-list`, ""), `${family}-list`).toMatchObject({ method: "GET", path: `/v1/${family}`, body: null });
+      expect(requestFor(`${family}-status`, id), `${family}-status`).toMatchObject({ method: "GET", path: `/v1/${family}/${id}`, body: null });
+      expect(requestFor(`${family}-cancel`, id), `${family}-cancel`).toMatchObject({ method: "POST", path: `/v1/${family}/${id}/cancel`, body: null });
+      expect(requestFor(`${family}-cleanup`, ""), `${family}-cleanup`).toMatchObject({ method: "POST", path: `/v1/${family}/cleanup`, body: null });
+      expect(requestFor(`${family}-clear`, ""), `${family}-clear`).toMatchObject({ method: "DELETE", path: `/v1/${family}`, body: null });
+      expect(requestFor(`${family}-recover`, ""), `${family}-recover`).toMatchObject({ method: "POST", path: `/v1/${family}/recover`, body: null });
+    }
   });
 
   it("rejects local actions before request construction", () => {

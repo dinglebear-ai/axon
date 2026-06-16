@@ -27,10 +27,10 @@ import {
   formatDetailValue,
   imagePreviewSrc,
   isBadStatus,
-  isJobLifecycle,
   sanitizeReaderMarkdown,
   toneForStatus,
 } from "@/components/palette/OperationResultViewShared";
+import { actionBehavior, maybeActionBehavior, type StructuredViewKey } from "@/lib/actionRegistry";
 import { arrField, boolField, isRecord, numField, shortId, strField, titleCase, unwrapPayload } from "@/lib/payload";
 
 const LIST_LIMIT = 18;
@@ -42,14 +42,17 @@ interface OperationResultViewProps {
   fallbackText?: string;
 }
 
-// Single source of truth (L4): the allowlist (`hasStructuredOperationView`) and the
-// renderer dispatch are derived from this one map so they cannot drift. Each entry
-// renders the unwrapped `data`; the raw `payload`/`fallbackText` are passed through
-// for the views that need them (help). Job-lifecycle subcommands (crawl-status,
-// embed-list, …) are matched dynamically via `isJobLifecycle` rather than enumerated.
+// Renderer dispatch (A-H1): keyed by the registry's `StructuredViewKey` union, so
+// `Record<StructuredViewKey, …>` forces an entry for every view the registry can
+// reference — a new structured view fails to type-check until it is rendered
+// here. The subcommand → view-key mapping lives in `actionRegistry.ts`
+// (`ActionBehavior.structuredView`); `hasStructuredOperationView` derives from it.
+// Each entry renders the unwrapped `data`; raw `payload`/`fallbackText` are passed
+// through for views that need them (help). Job-lifecycle subcommands all share the
+// single `"job-lifecycle"` key.
 type ViewContext = { data: Record<string, unknown>; payload: unknown; fallbackText: string; subcommand: string };
 
-const STRUCTURED_VIEWS: Record<string, (ctx: ViewContext) => ReactNode> = {
+const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNode> = {
   help: ({ payload, fallbackText }) => <HelpResultView payload={payload} fallbackText={fallbackText} />,
   scrape: ({ data }) => <ReadingView payload={data} mode="scrape" />,
   query: ({ data }) => <RankedResultView title="Knowledge matches" payload={data} rowsKey="results" />,
@@ -74,10 +77,11 @@ const STRUCTURED_VIEWS: Record<string, (ctx: ViewContext) => ReactNode> = {
   "watch-list": ({ data }) => <WatchListView payload={data} />,
   "watch-create": ({ data }) => <WatchDetailView payload={data} />,
   "watch-run": ({ data }) => <WatchDetailView payload={data} />,
+  "job-lifecycle": ({ data, subcommand }) => <JobLifecycleView payload={data} subcommand={subcommand} />,
 };
 
 export function hasStructuredOperationView(subcommand: string): boolean {
-  return subcommand in STRUCTURED_VIEWS || isJobLifecycle(subcommand);
+  return actionBehavior(subcommand).structuredView !== null;
 }
 
 export const OperationResultView = memo(function OperationResultView({
@@ -86,9 +90,18 @@ export const OperationResultView = memo(function OperationResultView({
   fallbackText = "",
 }: OperationResultViewProps) {
   const data = unwrapPayload(payload);
-  const render = STRUCTURED_VIEWS[subcommand];
+  const behavior = maybeActionBehavior(subcommand);
+  if (!behavior) {
+    return (
+      <div className="operation-empty" role="alert">
+        <strong>Unknown palette action</strong>
+        <span>{subcommand}</span>
+      </div>
+    );
+  }
+  const viewKey = behavior.structuredView;
+  const render = viewKey ? STRUCTURED_VIEWS[viewKey] : undefined;
   if (render) return render({ data, payload, fallbackText, subcommand });
-  if (isJobLifecycle(subcommand)) return <JobLifecycleView payload={data} subcommand={subcommand} />;
   return <GenericResultView payload={data} />;
 });
 
