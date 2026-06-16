@@ -265,12 +265,23 @@ pub(super) struct TomlWorkersSection {
     pub crawl_concurrency_limit: Option<usize>,
     /// Override sitemap backfill concurrency. Default comes from performance profile.
     pub backfill_concurrency_limit: Option<usize>,
+    /// Opt-in adaptive Spider crawl concurrency controls.
+    #[serde(default)]
+    pub adaptive_concurrency: TomlAdaptiveConcurrencySection,
     /// Seconds before a running job is considered stale.
     pub watchdog_stale_timeout_secs: Option<i64>,
     /// Additional grace period before a stale job is reclaimed.
     pub watchdog_confirm_secs: Option<i64>,
     /// Seconds between watchdog sweeps.
     pub watchdog_sweep_secs: Option<i64>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlAdaptiveConcurrencySection {
+    pub enabled: Option<bool>,
+    pub min: Option<usize>,
+    pub max: Option<usize>,
 }
 
 #[derive(Deserialize, Default)]
@@ -288,6 +299,8 @@ pub(super) struct TomlChromeSection {
     pub bootstrap_timeout_ms: Option<u64>,
     /// Number of retries for the remote Chrome bootstrap probe. Default 2.
     pub bootstrap_retries: Option<usize>,
+    /// Push Spider/Chromey's local policy to capable remote Chrome engines.
+    pub remote_local_policy: Option<bool>,
 }
 
 /// Load TOML config from the first found path:

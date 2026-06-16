@@ -5,7 +5,7 @@ mod util;
 
 use chrome_tasks::{apply_thin_page_outcome, drain_chrome_tasks};
 use manifest::write_page_to_manifest;
-use util::{emit_progress, track_waf_block};
+use util::{emit_progress, summary_with_adaptive, track_waf_block};
 
 pub(super) use page::{CollectorConfig, PageOutcome, canonicalize_and_track_page, process_page};
 
@@ -136,6 +136,27 @@ async fn apply_page_outcome(
     Ok(false)
 }
 
+fn record_adaptive_content_outcome(
+    col: &CollectorConfig,
+    outcome: &PageOutcome,
+    waf_blocked: bool,
+) {
+    let Some(adaptive) = col.adaptive.as_ref() else {
+        return;
+    };
+    if waf_blocked {
+        adaptive.record_content_failure();
+        return;
+    }
+    match outcome {
+        PageOutcome::Reused { .. } | PageOutcome::Write { .. } => {
+            adaptive.record_content_success();
+        }
+        PageOutcome::Challenged { .. } => adaptive.record_content_failure(),
+        PageOutcome::Thin { .. } | PageOutcome::Empty => {}
+    }
+}
+
 async fn apply_written_page_outcome(
     outcome: &PageOutcome,
     url: &str,
@@ -196,6 +217,9 @@ pub(super) async fn collect_crawl_pages(
         let page = match rx.recv().await {
             Ok(p) => p,
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                if let Some(adaptive) = col.adaptive.as_ref() {
+                    adaptive.record_broadcast_lag(n);
+                }
                 log_warn(&format!(
                     "crawl broadcast lagged: {n} pages dropped — increase subscribe buffer or reduce concurrency"
                 ));
@@ -236,7 +260,7 @@ pub(super) async fn collect_crawl_pages(
         summary = write_refetch_results(summary, chrome_results, &col.output_dir).await;
     }
     if let Some(tx) = col.progress_tx.as_ref() {
-        tx.send(summary.clone()).await.ok();
+        tx.send(summary_with_adaptive(&col, &summary)).await.ok();
     }
     Ok((summary, urls))
 }
@@ -287,6 +311,9 @@ async fn process_received_page(
         summary.note_rate_limited(&host_of(&url), col.retry_backoff_ms);
     }
     if !page.status_code.is_success() {
+        if let Some(adaptive) = col.adaptive.as_ref() {
+            adaptive.record_status(status);
+        }
         crate::core::logging::log_info(&format!(
             "skip: {} (HTTP {})",
             url,
@@ -305,6 +332,7 @@ async fn process_received_page(
         emit_progress(col, summary, last_progress).await;
         return Ok(());
     }
+    let waf_blocked = page.waf_check || page.blocked_crawl;
     track_waf_block(
         page.waf_check,
         page.blocked_crawl,
@@ -315,6 +343,7 @@ async fn process_received_page(
 
     let html_bytes: Vec<u8> = page.get_html_bytes_u8().to_vec();
     let outcome = process_page(&html_bytes, &url, col);
+    record_adaptive_content_outcome(col, &outcome, waf_blocked);
     let _skip = apply_page_outcome(
         outcome,
         html_bytes,
@@ -331,153 +360,5 @@ async fn process_received_page(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::url_utils::MapScope;
-    use super::*;
-    use std::collections::HashMap;
-
-    fn test_collector_config(scope: Option<MapScope>) -> CollectorConfig {
-        CollectorConfig {
-            markdown_dir: std::env::temp_dir(),
-            manifest_path: std::env::temp_dir().join("collector-manifest.jsonl"),
-            min_chars: 10,
-            drop_thin: false,
-            exclude_path_prefix: Vec::new(),
-            include_subdomains: false,
-            start_host: None,
-            scope,
-            progress_tx: None,
-            previous_manifest: Arc::new(HashMap::new()),
-            selector_config: None,
-            chrome_ws_url: None,
-            chrome_timeout_secs: 1,
-            output_dir: std::env::temp_dir(),
-            ladder_thresholds: crate::core::content::LadderThresholds {
-                strategy1: 30,
-                strategy2: 200,
-                body_multiplier: 2.0,
-            },
-            antibot_max_scan_bytes: 150_000,
-            structured_max_bytes: 65_536,
-            max_depth: 5,
-            retry_backoff_ms: 250,
-        }
-    }
-
-    #[test]
-    fn canonicalize_and_track_page_rejects_same_host_root_outside_project_scope() {
-        let col = test_collector_config(Some(MapScope {
-            host: "example.github.io".to_string(),
-            path_prefix: Some("/project".to_string()),
-        }));
-        let mut summary = CrawlSummary::default();
-        let mut urls = HashSet::new();
-        let mut seen = HashSet::new();
-
-        let url = canonicalize_and_track_page(
-            "https://example.github.io/",
-            &col,
-            &mut summary,
-            &mut urls,
-            &mut seen,
-        );
-
-        assert!(url.is_none());
-        assert_eq!(summary.pages_seen, 0);
-        assert!(urls.is_empty());
-    }
-
-    #[test]
-    fn canonicalize_and_track_page_accepts_in_scope_project_page() {
-        let col = test_collector_config(Some(MapScope {
-            host: "example.github.io".to_string(),
-            path_prefix: Some("/project".to_string()),
-        }));
-        let mut summary = CrawlSummary::default();
-        let mut urls = HashSet::new();
-        let mut seen = HashSet::new();
-
-        let url = canonicalize_and_track_page(
-            "https://example.github.io/project/docs/",
-            &col,
-            &mut summary,
-            &mut urls,
-            &mut seen,
-        );
-
-        assert_eq!(
-            url.as_deref(),
-            Some("https://example.github.io/project/docs")
-        );
-        assert_eq!(summary.pages_seen, 1);
-        assert!(urls.contains("https://example.github.io/project/docs"));
-    }
-
-    #[test]
-    fn canonicalize_discovered_link_resolves_relative_links_against_page_url() {
-        let col = test_collector_config(None);
-
-        assert_eq!(
-            canonicalize_discovered_link(
-                "/docs/en/api/messages/",
-                "https://platform.claude.com/docs/en/home",
-                &col,
-            )
-            .as_deref(),
-            Some("https://platform.claude.com/docs/en/api/messages")
-        );
-    }
-
-    #[test]
-    fn canonicalize_discovered_link_rejects_cross_host_links() {
-        let col = test_collector_config(None);
-
-        assert_eq!(
-            canonicalize_discovered_link(
-                "https://example.com/docs/en/api/messages/",
-                "https://platform.claude.com/docs/en/home",
-                &col,
-            ),
-            None
-        );
-    }
-
-    #[test]
-    fn canonicalize_discovered_link_rejects_media_assets_and_junk() {
-        let col = test_collector_config(None);
-
-        assert_eq!(
-            canonicalize_discovered_link(
-                "/assets/logo.png",
-                "https://platform.claude.com/docs/en/home",
-                &col,
-            ),
-            None
-        );
-        assert_eq!(
-            canonicalize_discovered_link(
-                "/$%7BshareBaseUrl%7D/s/$%7BshareId%7D",
-                "https://platform.claude.com/docs/en/home",
-                &col,
-            ),
-            None
-        );
-    }
-
-    #[test]
-    fn canonicalize_discovered_link_counts_subdomain_when_enabled() {
-        let mut col = test_collector_config(None);
-        col.include_subdomains = true;
-        col.start_host = Some("example.com".to_string());
-
-        assert_eq!(
-            canonicalize_discovered_link(
-                "https://docs.example.com/guide/",
-                "https://example.com/docs/en/home",
-                &col,
-            )
-            .as_deref(),
-            Some("https://docs.example.com/guide")
-        );
-    }
-}
+#[path = "collector_tests.rs"]
+mod tests;

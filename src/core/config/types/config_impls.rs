@@ -1,4 +1,4 @@
-use super::config::Config;
+use super::config::{AdaptiveConcurrencyConfig, Config};
 use super::enums::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
     RedditTime, RenderMode, ScrapeFormat,
@@ -35,6 +35,7 @@ impl Default for Config {
             chrome_user_agent: None,
             chrome_bootstrap_timeout_ms: 3_000,
             chrome_bootstrap_retries: 2,
+            chrome_remote_local_policy: false,
             respect_robots: false,
             min_markdown_chars: 200,
             drop_thin_markdown: true,
@@ -74,6 +75,11 @@ impl Default for Config {
             performance_profile: PerformanceProfile::HighStable,
             crawl_concurrency_limit: None,
             backfill_concurrency_limit: None,
+            adaptive_concurrency: AdaptiveConcurrencyConfig {
+                enabled: false,
+                min: 1,
+                max: None,
+            },
             sitemap_only: false,
             delay_ms: 0,
             request_timeout_ms: None,

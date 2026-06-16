@@ -70,7 +70,7 @@ This plan keeps those defaults. Adaptive mode replaces the fixed crawl semaphore
 - `src/core/config/parse/build_config/tests/priority_chain/workers_search.rs`
 - `src/jobs/config_snapshot.rs`
 
-- [ ] **Step 1: Add failing TOML parsing and validation tests**
+- [x] **Step 1: Add failing TOML parsing and validation tests**
 
 Add tests beside the existing workers config tests in `src/core/config/parse/build_config/tests/priority_chain/workers_search.rs`.
 
@@ -91,7 +91,7 @@ cargo test config::parse::build_config_tests::priority_chain::workers_search -- 
 
 Expected before implementation: the new tests fail because the fields do not exist yet.
 
-- [ ] **Step 2: Add the typed config**
+- [x] **Step 2: Add the typed config**
 
 In `src/core/config/types/config.rs`, add:
 
@@ -124,7 +124,7 @@ chrome_remote_local_policy: false,
 
 Add both fields to `src/core/config/types/config_debug.rs`.
 
-- [ ] **Step 3: Parse TOML only**
+- [x] **Step 3: Parse TOML only**
 
 In `src/core/config/parse/toml_config.rs`, add:
 
@@ -153,7 +153,7 @@ pub remote_local_policy: Option<bool>,
 
 In `config_literal.rs`, copy parsed values into `Config`. Do not add global CLI flags in this slice.
 
-- [ ] **Step 4: Validate derived bounds**
+- [x] **Step 4: Validate derived bounds**
 
 In `post_init.rs`, validate only when `cfg.adaptive_concurrency.enabled` is true:
 
@@ -164,7 +164,7 @@ In `post_init.rs`, validate only when `cfg.adaptive_concurrency.enabled` is true
 
 Keep fixed `crawl_concurrency_limit` behavior unchanged when adaptive is disabled.
 
-- [ ] **Step 5: Snapshot and replay config**
+- [x] **Step 5: Snapshot and replay config**
 
 In `src/jobs/config_snapshot.rs`:
 
@@ -188,7 +188,7 @@ cargo test config::parse::build_config_tests::priority_chain::workers_search -- 
 - `src/crawl/engine/runtime.rs`
 - `src/crawl/engine_tests.rs`
 
-- [ ] **Step 1: Write failing runtime tests**
+- [x] **Step 1: Write failing runtime tests**
 
 Add tests in `src/crawl/engine_tests.rs` that construct Chrome render-path websites with `chrome_remote_local_policy = false` and `true`.
 
@@ -199,7 +199,7 @@ Assertions:
 
 If Spider does not expose a direct getter for the policy, test via a narrow helper in `runtime.rs` that builds the `RequestInterceptConfiguration` from `Config` and can be inspected in tests.
 
-- [ ] **Step 2: Wire runtime**
+- [x] **Step 2: Wire runtime**
 
 In `runtime.rs`, replace direct construction with a helper:
 
@@ -215,7 +215,7 @@ fn chrome_intercept_config(cfg: &Config) -> RequestInterceptConfiguration {
 
 Then pass `chrome_intercept_config(cfg)` to `website.with_chrome_intercept(...)`.
 
-- [ ] **Step 3: Document failure mode**
+- [x] **Step 3: Document failure mode**
 
 Docs must state:
 
@@ -240,7 +240,7 @@ cargo test crawl::engine_tests -- --nocapture
 - `src/crawl/engine/collector/types.rs` or equivalent collector config file
 - `src/crawl/engine_tests.rs`
 
-- [ ] **Step 1: Add failing unit tests for adaptive behavior**
+- [x] **Step 1: Add failing unit tests for adaptive behavior**
 
 Create tests in `src/crawl/engine/adaptive.rs` under `#[cfg(test)]`.
 
@@ -254,7 +254,9 @@ Required tests:
 - Shrink convergence: when the controller shrinks below current in-flight permits, new admission is limited only after permits are released. Document this in the test name and assertion.
 - The controller resizes the same semaphore attached to the `Website`, not a detached test semaphore.
 
-- [ ] **Step 2: Implement `AdaptiveCrawlControl`**
+Implementation note: Spider 2.52.0's `AdaptiveSemaphore::set_target()` only forgets permits that are available at resize time. When all permits are in flight, release can temporarily return availability above the shrunken target; the test documents this observed behavior instead of asserting cancellation or retroactive permit forgetting.
+
+- [x] **Step 2: Implement `AdaptiveCrawlControl`**
 
 Add `src/crawl/engine/adaptive.rs`.
 
@@ -284,14 +286,14 @@ Implementation rules:
 - `from_config(cfg: &Config) -> Option<Self>` returns `None` unless enabled.
 - Initial target should be `cfg.crawl_concurrency_limit.unwrap_or(resolved_max).clamp(min, max)`.
 - `attach_to(&self, website: &mut Website)` calls `website.with_adaptive_concurrency(self.semaphore.clone())`.
-- `record_status(status: u16)` treats `status == 429 || status >= 500` as failure; all other statuses are success.
+- `record_status(status: u16)` treats `status == 429 || status >= 500` as pressure. Only `2xx` statuses are success; other `3xx`/`4xx` statuses are neutral.
 - `record_broadcast_lag(dropped: u64)` records at least one failure and at most eight failures per lag event, then syncs.
 - After each recorded outcome, compare previous target to current target and call `self.semaphore.sync_from(&self.controller)` only when the target changed. This avoids a configurable sync interval while keeping runtime behavior responsive.
 - `snapshot()` returns raw counters and current target for logs/tests.
 
 Do not put adaptive controller logic in `runtime.rs`.
 
-- [ ] **Step 3: Attach in the crawl lifecycle**
+- [x] **Step 3: Attach in the crawl lifecycle**
 
 In `src/crawl/engine.rs`:
 
@@ -307,7 +309,7 @@ In `src/crawl/engine.rs`:
 
 Warnings should not fail the crawl in this release.
 
-- [ ] **Step 4: Record collector feedback**
+- [x] **Step 4: Record collector feedback**
 
 In `src/crawl/engine/collector.rs`:
 
@@ -316,7 +318,7 @@ In `src/crawl/engine/collector.rs`:
 - In the `RecvError::Lagged(n)` branch, call `collector_config.adaptive.record_broadcast_lag(n)`.
 - At crawl completion, include adaptive stats in diagnostics/log output. Avoid changing public JSON contracts unless an existing diagnostics field can carry this safely.
 
-- [ ] **Step 5: Add local-server integration coverage**
+- [x] **Step 5: Add local-server integration coverage**
 
 Add an integration-style test using an in-process `axum::Router` or existing local test-server helper.
 
@@ -325,6 +327,8 @@ Scenario:
 - Pages return `200`, `429`, and `503`.
 - Run a bounded HTTP crawl with adaptive enabled, `min = 1`, `max = 8`, and `embed = false`.
 - Assert the crawl completes, the existing 429 warning path still runs, and adaptive stats show at least two failures with target below the starting target.
+
+Implementation note: the first full local HTTP crawl proof using a loopback-resolving host produced zero Spider pages in this worktree, which made the test validate local routing rather than adaptive feedback. The final coverage feeds mocked HTTP pages through `process_received_page`, exercising the same collector status path that records the 429 warning and 5xx adaptive failures while avoiding DNS/SSRF local-network ambiguity.
 
 Run:
 
@@ -343,7 +347,7 @@ cargo test crawl::engine_tests adaptive -- --nocapture
 - `docs/reference/spider-feature-flags.md`
 - `CLAUDE.md`
 
-- [ ] **Step 1: Update sample config**
+- [x] **Step 1: Update sample config**
 
 Add to `config.example.toml`:
 
@@ -365,21 +369,21 @@ remote-local-policy = false
 
 If `[chrome]` already exists, merge the setting into it.
 
-- [ ] **Step 2: Update docs**
+- [x] **Step 2: Update docs**
 
 Document:
 
 - Adaptive concurrency is TOML-only in this release.
 - Default behavior is unchanged.
 - Adaptive mode applies to the main Spider crawl path. Post-crawl sitemap backfill, standalone screenshot, and non-Spider fetch helpers remain governed by their existing fixed limits unless separately wired later.
-- 429 and 5xx responses reduce concurrency; successful statuses increase after Spider's fixed success threshold.
-- Shrink affects future admission and may not cancel already in-flight fetches.
+- 429 and 5xx responses reduce concurrency; 2xx responses increase concurrency after Spider's fixed success threshold. Other 3xx/4xx responses are neutral.
+- Shrink affects future admission and does not cancel already in-flight fetches. Active requests can temporarily exceed the lower target, and returned surplus is drained on later pressure events.
 - Broadcast lag is treated as negative pressure.
 - Operators should pair adaptive mode with polite crawl settings: robots, delay, max pages, path budgets, or whitelist.
 - `decrease-factor`, `sync-interval-ms`, and palette editing are intentionally not supported in this release.
-- Remote-local-policy is Chrome-render-crawl only and may fail on generic CDP proxies.
+- Remote-local-policy is Chrome-render-crawl only, including Chrome thin-page refetches, and may fail on generic CDP proxies. Standalone `axon screenshot` remains out of scope.
 
-- [ ] **Step 3: Update `CLAUDE.md`**
+- [x] **Step 3: Update `CLAUDE.md`**
 
 Add a short gotcha under crawl/performance notes:
 
@@ -393,7 +397,7 @@ Ensure sibling `AGENTS.md` and `GEMINI.md` are symlinks to `CLAUDE.md` if they e
 
 ## Task 5: Verification
 
-- [ ] **Step 1: Focused tests**
+- [x] **Step 1: Focused tests**
 
 Run:
 
@@ -404,7 +408,7 @@ cargo test crawl::engine_tests -- --nocapture
 cargo test crawl::engine::adaptive -- --nocapture
 ```
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 Run:
 
@@ -412,7 +416,7 @@ Run:
 cargo check --all-targets
 ```
 
-- [ ] **Step 3: Runtime smoke**
+- [x] **Step 3: Runtime smoke**
 
 Run:
 

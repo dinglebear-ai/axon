@@ -12,6 +12,21 @@ fn endpoint_snapshot_falls_back_for_process_local_urls() {
 }
 
 #[test]
+fn endpoint_snapshot_falls_back_for_docker_service_hosts() {
+    let mut fallback_fields = Vec::new();
+
+    let snapshot = endpoint_snapshot(
+        "chrome_remote_url",
+        "http://axon-chrome:6000",
+        &mut fallback_fields,
+    )
+    .expect("valid Docker service endpoint");
+
+    assert_eq!(snapshot, None);
+    assert_eq!(fallback_fields, vec!["chrome_remote_url".to_string()]);
+}
+
+#[test]
 fn endpoint_snapshot_rejects_malformed_endpoint_urls() {
     let mut fallback_fields = Vec::new();
 

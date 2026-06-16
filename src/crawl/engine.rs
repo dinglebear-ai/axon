@@ -1,3 +1,4 @@
+mod adaptive;
 mod cdp_render;
 mod collector;
 mod dir_ops;
@@ -15,13 +16,13 @@ mod waf;
 
 use crate::core::config::{Config, RenderMode};
 use crate::core::content::{LadderThresholds, build_selector_config};
-use crate::core::logging::{log_done, log_info};
+use crate::core::logging::{log_done, log_info, log_warn};
 use crate::crawl::manifest::ManifestEntry;
+pub use adaptive::AdaptiveCrawlSnapshot;
 use collector::{CollectorConfig, collect_crawl_pages};
 use dir_ops::prepare_crawl_output_dir;
 pub use dir_ops::update_latest_reflink;
 use runtime::configure_website;
-#[cfg(test)]
 use spider::website::Website;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -167,6 +168,7 @@ pub struct CrawlSummary {
     pub rate_limited: Vec<RateLimitHost>,
     /// Max crawl depth from config — the denominator of the DEPTH stat.
     pub depth_max: u32,
+    pub adaptive: Option<AdaptiveCrawlSnapshot>,
 }
 
 impl CrawlSummary {
@@ -231,6 +233,46 @@ pub fn should_fallback_to_chrome(summary: &CrawlSummary, max_pages: u32, cfg: &C
     summary.markdown_files < (max_pages / 10).max(cfg.auto_switch_min_pages as u32)
 }
 
+fn configure_adaptive_crawl(
+    cfg: &Config,
+    website: &mut Website,
+) -> Option<adaptive::AdaptiveCrawlControl> {
+    let adaptive = adaptive::AdaptiveCrawlControl::from_config(cfg);
+    if let Some(control) = adaptive.as_ref() {
+        for warning in adaptive::warnings_for_config(cfg) {
+            log_warn(&format!("[adaptive-concurrency] {warning}"));
+        }
+        control.attach_to(website);
+    }
+    adaptive
+}
+
+fn record_adaptive_summary(
+    adaptive: &Option<adaptive::AdaptiveCrawlControl>,
+    summary: &mut CrawlSummary,
+) {
+    if let Some(control) = adaptive.as_ref() {
+        let snapshot = control.snapshot();
+        log_info(&format!(
+            "[adaptive-concurrency] crawl stats {}",
+            snapshot.log_summary()
+        ));
+        summary.adaptive = Some(snapshot);
+    }
+}
+
+fn inline_chrome_ws_url(cfg: &Config) -> Option<String> {
+    // AutoSwitch starts with HTTP, but thin pages can still use inline Chrome
+    // re-rendering when the original config requested AutoSwitch.
+    if cfg.chrome_remote_local_policy {
+        log_warn(
+            "[Chrome] inline thin refetch disabled because remote-local-policy requires Spider interception",
+        );
+        return None;
+    }
+    matches!(cfg.render_mode, RenderMode::AutoSwitch).then(|| cfg.chrome_remote_url.clone())?
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "crawl orchestration requires many config/state params"
@@ -246,26 +288,17 @@ pub async fn run_crawl_once(
     crawl_id: Option<&str>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
     log_info(&format!(
-        "crawl start url={} render_mode={:?} max_pages={} max_depth={}",
-        start_url, mode, cfg.max_pages, cfg.max_depth
+        "crawl start url={start_url} render_mode={mode:?} max_pages={} max_depth={}",
+        cfg.max_pages, cfg.max_depth
     ));
     let total_start = Instant::now();
 
-    let markdown_dir = output_dir.join("markdown");
-    let recycling_bin = output_dir.join("markdown.old");
-
-    prepare_crawl_output_dir(output_dir, &markdown_dir, &recycling_bin, cfg)
-        .await
-        .map_err(|e| {
-            format!(
-                "failed to prepare output dir {} for crawl of {start_url}: {e}",
-                output_dir.display()
-            )
-        })?;
+    let (_, recycling_bin) = prepare_crawl_dirs(cfg, start_url, output_dir).await?;
 
     let mut website = runtime::configure_website_with_crawl_id(cfg, start_url, mode, crawl_id)
         .await
         .map_err(|e| format!("failed to configure crawl website for {start_url}: {e}"))?;
+    let adaptive = configure_adaptive_crawl(cfg, &mut website);
 
     // Conditional re-crawl seeding (bead axon_rust-hiyf): load persisted ETag
     // validators and seed spider's per-Website cache before the crawl so unchanged
@@ -288,18 +321,7 @@ pub async fn run_crawl_once(
     let start_host = start_host(start_url);
     let crawl_start = Instant::now();
 
-    // Enable inline Chrome re-rendering when the *config* requests AutoSwitch,
-    // even though `mode` is `Http` for the initial crawl phase (AutoSwitch
-    // always starts with HTTP — `resolve_initial_mode` converts AutoSwitch→Http).
-    // Chrome mode does its own rendering; Http mode with no AutoSwitch intent
-    // has no Chrome target. When cfg.render_mode is AutoSwitch and Chrome is
-    // configured, thin pages are re-rendered immediately while the HTTP crawl
-    // continues — no second pass needed.
-    let inline_chrome_ws_url = if matches!(cfg.render_mode, RenderMode::AutoSwitch) {
-        cfg.chrome_remote_url.clone()
-    } else {
-        None
-    };
+    let inline_chrome_ws_url = inline_chrome_ws_url(cfg);
 
     let join = tokio::spawn(collect_crawl_pages(
         rx,
@@ -323,6 +345,7 @@ pub async fn run_crawl_once(
             structured_max_bytes: cfg.structured_data_max_bytes,
             max_depth: cfg.max_depth as u32,
             retry_backoff_ms: cfg.retry_backoff_ms,
+            adaptive: adaptive.clone(),
         },
     ));
 
@@ -344,17 +367,66 @@ pub async fn run_crawl_once(
         .map_err(|e| format!("collector join failure for {start_url}: {e}"))?
         .map_err(|e| format!("collector failure for {start_url}: {e}"))?;
     summary.elapsed_ms = crawl_start.elapsed().as_millis();
+    record_adaptive_summary(&adaptive, &mut summary);
 
-    // Conditional re-crawl reconciliation + persistence (bead axon_rust-hiyf).
-    // MUST run before the recycling bin is purged below — reconciliation relinks
-    // reused markdown out of markdown.old. `urls` already contains every URL that
-    // arrived in the broadcast (inserted before the status check), so seeded URLs
-    // absent from it are exactly spider's silent 304 skips.
+    reconcile_etag_and_cleanup(
+        cfg,
+        output_dir,
+        &recycling_bin,
+        &previous_manifest,
+        &etag_seeded_urls,
+        &etag_previous_sidecar,
+        &urls,
+        &website,
+        &mut summary,
+    )
+    .await?;
+
+    log_done(&format!(
+        "crawl done url={} pages_fetched={} duration_ms={}",
+        start_url,
+        summary.pages_seen,
+        total_start.elapsed().as_millis()
+    ));
+    Ok((summary, urls))
+}
+
+async fn prepare_crawl_dirs(
+    cfg: &Config,
+    start_url: &str,
+    output_dir: &Path,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), Box<dyn Error>> {
+    let markdown_dir = output_dir.join("markdown");
+    let recycling_bin = output_dir.join("markdown.old");
+    prepare_crawl_output_dir(output_dir, &markdown_dir, &recycling_bin, cfg)
+        .await
+        .map_err(|e| {
+            format!(
+                "failed to prepare output dir {} for crawl of {start_url}: {e}",
+                output_dir.display()
+            )
+        })?;
+    Ok((markdown_dir, recycling_bin))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "post-crawl ETag reconciliation needs crawl state from the completed Website"
+)]
+async fn reconcile_etag_and_cleanup(
+    cfg: &Config,
+    output_dir: &Path,
+    recycling_bin: &Path,
+    previous_manifest: &Arc<HashMap<String, ManifestEntry>>,
+    etag_seeded_urls: &HashSet<String>,
+    etag_previous_sidecar: &HashMap<String, etag::EtagEntry>,
+    urls: &HashSet<String>,
+    website: &Website,
+    summary: &mut CrawlSummary,
+) -> Result<(), Box<dyn Error>> {
+    // MUST run before the recycling bin is purged — reconciliation relinks reused
+    // markdown out of markdown.old for genuine Spider 304 skips.
     if cfg.etag_conditional {
-        // Gate reconciliation on spider's visited set so only genuine 304 skips
-        // (URLs spider actually scheduled + fetched this run) are reused — never
-        // pages that are no longer discovered (PR #153 review; bead axon_rust-hiyf).
-        // Canonicalize into the same key space as `urls`/`previous_manifest`.
         let etag_visited: HashSet<String> = website
             .get_links()
             .iter()
@@ -362,19 +434,19 @@ pub async fn run_crawl_once(
             .collect();
         let reused = etag::reconcile_unmodified(
             output_dir,
-            &previous_manifest,
-            &etag_seeded_urls,
-            &urls,
+            previous_manifest,
+            etag_seeded_urls,
+            urls,
             &etag_visited,
-            &etag_previous_sidecar,
+            etag_previous_sidecar,
         )
         .await;
         summary.reused_pages += reused as u32;
-        etag::persist_next_sidecar(output_dir, &website, &etag_previous_sidecar, &urls).await;
+        etag::persist_next_sidecar(output_dir, website, etag_previous_sidecar, urls).await;
     }
 
-    if dir_ops::path_exists(&recycling_bin).await {
-        tokio::fs::remove_dir_all(&recycling_bin)
+    if dir_ops::path_exists(recycling_bin).await {
+        tokio::fs::remove_dir_all(recycling_bin)
             .await
             .map_err(|e| {
                 format!(
@@ -384,14 +456,7 @@ pub async fn run_crawl_once(
             })?;
         log_info("Purged recycling bin — armory is now synchronized with battlefield.");
     }
-
-    log_done(&format!(
-        "crawl done url={} pages_fetched={} duration_ms={}",
-        start_url,
-        summary.pages_seen,
-        total_start.elapsed().as_millis()
-    ));
-    Ok((summary, urls))
+    Ok(())
 }
 
 /// Crawl only the sitemap — no follow-on main crawl.
@@ -446,6 +511,7 @@ pub async fn run_sitemap_only(
             structured_max_bytes: cfg.structured_data_max_bytes,
             max_depth: cfg.max_depth as u32,
             retry_backoff_ms: cfg.retry_backoff_ms,
+            adaptive: None,
         },
     ));
 
