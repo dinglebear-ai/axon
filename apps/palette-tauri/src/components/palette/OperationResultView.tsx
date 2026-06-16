@@ -8,6 +8,7 @@ import {
   ServerCog,
 } from "lucide-react";
 
+import { AuthenticatedArtifactImage } from "@/components/palette/AuthenticatedArtifactImage";
 import { HelpResultView } from "@/components/palette/HelpResultView";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import {
@@ -361,27 +362,30 @@ function DiffView({ payload }: { payload: Record<string, unknown> }) {
 
 function ScreenshotView({ payload }: { payload: Record<string, unknown> }) {
   const artifact = isRecord(payload.artifact_handle) ? payload.artifact_handle : {};
-  const path = strField(payload, "path") ?? strField(artifact, "display_path");
+  const relativePath = strField(artifact, "relative_path");
+  const artifactDisplay = strField(artifact, "display_path") ?? relativePath;
   const previewSrc =
     imagePreviewSrc(strField(payload, "preview_url")) ??
     imagePreviewSrc(strField(payload, "image_url")) ??
     imagePreviewSrc(strField(payload, "data_url")) ??
-    imagePreviewSrc(strField(artifact, "url")) ??
-    imagePreviewSrc(path);
+    imagePreviewSrc(strField(artifact, "url"));
+  const alt = `Screenshot of ${strField(payload, "url") ?? "captured page"}`;
   return (
     <div className="output-body operation-view aurora-scrollbar">
       <ResultHero icon={<FileImage size={16} />} title="Screenshot captured" tone="violet" metrics={[["Size", formatDetailValue("size_bytes", numField(payload, "size_bytes"))]]} />
       {previewSrc ? (
         <section className="operation-section">
           <figure className="operation-screenshot-preview">
-            <img src={previewSrc} alt={`Screenshot of ${strField(payload, "url") ?? "captured page"}`} />
+            <img src={previewSrc} alt={alt} />
           </figure>
         </section>
+      ) : relativePath ? (
+        <AuthenticatedArtifactImage relativePath={relativePath} alt={alt} />
       ) : null}
       <section className="operation-section">
         <div className="operation-detail-card">
           <DetailLine label="URL" value={strField(payload, "url") ?? "-"} mono />
-          <DetailLine label="Path" value={path ?? "-"} mono />
+          <DetailLine label="Artifact" value={artifactDisplay ?? "-"} mono />
         </div>
       </section>
     </div>

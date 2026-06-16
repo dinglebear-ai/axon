@@ -230,7 +230,7 @@ jobs:
       # Without this the first real desktop build happens only in
       # palette-release.yml *after* the palette-v* tag is published.
       - name: Tauri build (no bundle)
-        run: pnpm --dir apps/palette-tauri tauri build --no-bundle
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle
 
   windows-check:
     name: windows-check (xtask only)
@@ -371,6 +371,26 @@ jobs:
         run: cargo build --locked --bin axon
       - name: Smoke test generated shell completions
         run: ./scripts/check_shell_completions.sh ./target/debug/axon
+
+  web-panel:
+    name: web-panel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            apps/web
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install web panel dependencies
+        run: npm ci --prefix apps/web
+      - name: Test web panel
+        run: npm --prefix apps/web test
+      - name: Typecheck web panel
+        run: npm --prefix apps/web run lint
 
   mcp-schema-doc-sync:
     name: mcp-schema-doc-sync
@@ -1244,6 +1264,7 @@ jobs:
       - check
       - clippy
       - test
+      - web-panel
       - palette-tauri
       - security
       - release
@@ -1258,6 +1279,7 @@ jobs:
           test "${{ needs.check.result }}" = "success"
           test "${{ needs.clippy.result }}" = "success"
           test "${{ needs.test.result }}" = "success"
+          test "${{ needs.web-panel.result }}" = "success"
           test "${{ needs.palette-tauri.result }}" = "success"
           test "${{ needs.security.result }}" = "success"
           test "${{ needs.release.result }}" = "success"

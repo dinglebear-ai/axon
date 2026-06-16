@@ -273,13 +273,17 @@ export function usePanelData() {
         try {
           setCommandResult(formatCommandResponse(JSON.parse(body) as PanelCommandResponse));
         } catch (error) {
+          const contentType = res.headers.get('content-type') ?? 'unknown';
           setCommandResult({
-            ok: true,
-            title: 'Command completed',
+            ok: false,
+            title: 'Command response was invalid',
             subtitle: trimmed,
-            rows: [],
-            body,
-            raw: `Response was not JSON: ${String(error)}`
+            rows: [
+              { label: 'HTTP status', value: String(res.status) },
+              { label: 'Content type', value: contentType }
+            ],
+            body: `Expected JSON but got: ${String(error)}`,
+            raw: body.slice(0, 2000)
           });
         }
       }

@@ -57,4 +57,22 @@ describe("formatPayload", () => {
     expect(output.length).toBeLessThan(12_200);
     expect(output).toContain("[truncated 50 chars from text_diff]");
   });
+
+  it("formats screenshot artifact metadata without exposing absolute server paths", () => {
+    const output = formatPayload("screenshot", {
+      url: "https://example.com",
+      path: "/home/axon/.axon/output/screenshots/example.png",
+      size_bytes: 1024,
+      artifact_handle: {
+        relative_path: "screenshots/example.png",
+        display_path: "screenshots/example.png",
+        kind: "screenshot",
+        bytes: 1024,
+      },
+    });
+
+    expect(output).toContain("artifact: screenshots/example.png");
+    expect(output).not.toContain("path:");
+    expect(output).not.toContain("/home/axon/.axon/output/screenshots/example.png");
+  });
 });
