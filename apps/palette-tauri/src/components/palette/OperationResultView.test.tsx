@@ -3,12 +3,33 @@
 import { readFileSync } from "node:fs";
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTIONS } from "@/lib/actions";
 import { buildHelpRun } from "@/lib/actionHelp";
 import { hasStructuredOperationView, OperationResultView, sanitizeReaderMarkdown } from "./OperationResultView";
+
+const mockLoadArtifactObjectUrl = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/artifactPreview", () => ({
+  loadArtifactObjectUrl: mockLoadArtifactObjectUrl,
+}));
+
+function screenshotWithArtifactHandle() {
+  return {
+    url: "https://example.com",
+    path: "/home/axon/.axon/output/screenshots/example.png",
+    size_bytes: 1024,
+    artifact_handle: {
+      relative_path: "screenshots/example.png",
+      display_path: "screenshots/example.png",
+      kind: "screenshot",
+      bytes: 1024,
+    },
+  };
+}
 
 function action(subcommand: string) {
   const found = ACTIONS.find((candidate) => candidate.subcommand === subcommand);
@@ -17,6 +38,16 @@ function action(subcommand: string) {
 }
 
 describe("OperationResultView routing", () => {
+  beforeEach(() => {
+    mockLoadArtifactObjectUrl.mockReset();
+    mockLoadArtifactObjectUrl.mockResolvedValue("blob:test-shot");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("claims structured views for JSON-heavy Axon operations", () => {
     for (const subcommand of [
       "query",
@@ -118,6 +149,71 @@ describe("OperationResultView routing", () => {
     expect(styles).toContain(".operation-reader-section");
     expect(styles).toContain("max-height: none");
     expect(styles).not.toContain("max-height: min(48vh, 560px)");
+  });
+
+  it("renders screenshot artifact handles without relying on absolute server paths", async () => {
+    render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+
+    const img = await screen.findByRole("img", { name: /screenshot of https:\/\/example.com/i });
+    expect(img).toHaveAttribute("src", "blob:test-shot");
+    expect(mockLoadArtifactObjectUrl).toHaveBeenCalledWith("screenshots/example.png");
+    expect(screen.queryByText("/home/axon/.axon/output/screenshots/example.png")).not.toBeInTheDocument();
+    expect(screen.getByText("screenshots/example.png")).toBeInTheDocument();
+  });
+
+  it("shows a compact artifact preview failure state", async () => {
+    mockLoadArtifactObjectUrl.mockRejectedValueOnce(new Error("artifact fetch failed with 401"));
+    render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+
+    expect(await screen.findByText(/preview unavailable/i)).toBeInTheDocument();
+  });
+
+  it("revokes the object URL and shows an error when the preview image fails to decode", async () => {
+    // Use a raw root (not RTL render) so a manually dispatched `error` event
+    // reliably reaches React's onError handler under React 19.
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => {
+        root.render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+      });
+      // Flush the mocked loadArtifactObjectUrl promise so the <img> renders.
+      await act(async () => {});
+
+      const img = host.querySelector("img");
+      expect(img?.getAttribute("src")).toBe("blob:test-shot");
+
+      await act(async () => {
+        img?.dispatchEvent(new Event("error"));
+      });
+
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test-shot");
+      expect(host.querySelector("img")).toBeNull();
+      expect(host.textContent).toContain("Preview unavailable: image decode failed");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      host.remove();
+    }
+  });
+
+  it("revokes stale artifact object URLs that resolve after unmount", async () => {
+    let resolvePreview: (value: string) => void = () => undefined;
+    mockLoadArtifactObjectUrl.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        resolvePreview = resolve;
+      }),
+    );
+    const { unmount } = render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+
+    unmount();
+    await act(async () => {
+      resolvePreview("blob:late-shot");
+    });
+
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:late-shot");
   });
 
   // L4: the allowlist and the dispatch map are now derived from one source, so

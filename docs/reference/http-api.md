@@ -49,6 +49,14 @@ Header forwarding: `scrape`, `summarize`, `crawl`, and `extract` accept `headers
 
 Domain filters are exact host matches against indexed `payload.domain` values. `example.com` does not include `docs.example.com` unless that exact host is requested.
 
+Artifact download:
+
+- `GET /v1/artifacts?path=<relative_path>` serves files under `output_dir` and requires read auth.
+- Clients must pass the `relative_path` from an `ArtifactHandle`; absolute server paths are not accepted.
+- `GET /v1/artifacts/{relative_path}` is kept as a legacy compatibility route; new clients should use the query form so slash-preserving paths are explicit.
+- Browser apps fetch authenticated bytes and render object URLs; image tags must not point directly at authenticated artifact routes.
+- Only raster image artifacts are inline preview content. HTML, SVG, unknown types, JSON, markdown, text, and logs are served as attachments with `nosniff`.
+
 Async job routes:
 
 - `POST /v1/crawl`, `GET /v1/crawl`, `GET /v1/crawl/{id}`

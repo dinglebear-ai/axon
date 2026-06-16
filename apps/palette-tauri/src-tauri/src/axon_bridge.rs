@@ -1,9 +1,22 @@
+use base64::Engine as _;
+use futures_util::{Stream, StreamExt as _};
+use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use crate::{merged_settings, validate_saved_server_url};
 
 const PALETTE_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+const MAX_ARTIFACT_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_ARTIFACT_ERROR_MESSAGE_BYTES: u64 = 2048;
+const ARTIFACT_TOO_LARGE: &str = "artifact is too large to preview";
+const RASTER_ARTIFACT_CONTENT_TYPES: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "image/avif",
+];
 
 /// A shared `reqwest::Client` held in Tauri `AppState`.
 ///
@@ -83,6 +96,16 @@ pub(crate) struct AxonHttpResult {
     payload: serde_json::Value,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AxonArtifactResult {
+    ok: bool,
+    status: u16,
+    content_type: String,
+    message: Option<String>,
+    body_base64: String,
+}
+
 #[tauri::command]
 pub(crate) async fn axon_http_request(
     app: AppHandle,
@@ -134,6 +157,153 @@ pub(crate) async fn axon_http_request(
         method,
         payload,
     })
+}
+
+#[tauri::command]
+pub(crate) async fn axon_artifact_request(
+    app: AppHandle,
+    bridge: tauri::State<'_, BridgeClient>,
+    relative_path: String,
+) -> Result<AxonArtifactResult, String> {
+    let settings = merged_settings(&app)?;
+    let base_url = validate_saved_server_url(&settings.server_url)?;
+    let url = artifact_url(&base_url, &relative_path)?;
+    let client = (*bridge).client();
+    let mut request = client.get(url).header(
+        reqwest::header::ACCEPT,
+        "image/png, image/jpeg, image/webp, image/gif, image/avif",
+    );
+
+    if let Some(token) = settings
+        .token
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        request = request.bearer_auth(token).header("x-api-key", token);
+    }
+
+    let response = request.send().await.map_err(|err| err.to_string())?;
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+
+    if !status.is_success() {
+        let message = read_limited_text_body(response, MAX_ARTIFACT_ERROR_MESSAGE_BYTES)
+            .await
+            .unwrap_or_default();
+        return Ok(AxonArtifactResult {
+            ok: false,
+            status: status.as_u16(),
+            content_type,
+            message: Some(message).filter(|value| !value.trim().is_empty()),
+            body_base64: String::new(),
+        });
+    }
+    if !is_allowed_artifact_content_type(&content_type) {
+        return Err("artifact content type is not previewable".to_string());
+    }
+    if response.content_length().unwrap_or(0) > MAX_ARTIFACT_PREVIEW_BYTES {
+        return Err(ARTIFACT_TOO_LARGE.to_string());
+    }
+    let bytes = read_limited_artifact_body(response).await?;
+
+    Ok(AxonArtifactResult {
+        ok: true,
+        status: status.as_u16(),
+        content_type,
+        message: None,
+        body_base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+    })
+}
+
+async fn read_limited_artifact_body(response: reqwest::Response) -> Result<Vec<u8>, String> {
+    read_limited_artifact_stream(response.bytes_stream()).await
+}
+
+async fn read_limited_text_body(
+    response: reqwest::Response,
+    max_bytes: u64,
+) -> Result<String, String> {
+    let bytes = read_limited_stream(response.bytes_stream(), max_bytes).await?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+async fn read_limited_artifact_stream<S, B, E>(stream: S) -> Result<Vec<u8>, String>
+where
+    S: Stream<Item = Result<B, E>> + Unpin,
+    B: AsRef<[u8]>,
+    E: std::fmt::Display,
+{
+    read_limited_stream(stream, MAX_ARTIFACT_PREVIEW_BYTES).await
+}
+
+async fn read_limited_stream<S, B, E>(mut stream: S, max_bytes: u64) -> Result<Vec<u8>, String>
+where
+    S: Stream<Item = Result<B, E>> + Unpin,
+    B: AsRef<[u8]>,
+    E: std::fmt::Display,
+{
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|err| err.to_string())?;
+        let chunk = chunk.as_ref();
+        if (body.len() + chunk.len()) as u64 > max_bytes {
+            return Err(ARTIFACT_TOO_LARGE.to_string());
+        }
+        body.extend_from_slice(chunk);
+    }
+    Ok(body)
+}
+
+fn validate_artifact_relative_path(path: &str) -> Result<(), String> {
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.contains('\0')
+        || path.contains('\\')
+        || path.contains(':')
+    {
+        return Err("artifact path must be a safe relative path".to_string());
+    }
+    let decoded = percent_decode_str(path).decode_utf8_lossy();
+    if decoded.contains(':')
+        || decoded.contains('\\')
+        || decoded
+            .split('/')
+            .any(|segment| segment == "." || segment == "..")
+        || decoded.split('/').any(str::is_empty)
+        || std::path::Path::new(decoded.as_ref())
+            .components()
+            .any(|part| {
+                matches!(
+                    part,
+                    std::path::Component::CurDir
+                        | std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+    {
+        return Err("artifact path must be a safe relative path".to_string());
+    }
+    Ok(())
+}
+
+fn artifact_url(base_url: &str, relative_path: &str) -> Result<url::Url, String> {
+    validate_artifact_relative_path(relative_path)?;
+    let mut url = url::Url::parse(base_url).map_err(|err| err.to_string())?;
+    url.set_path("/v1/artifacts");
+    url.query_pairs_mut().append_pair("path", relative_path);
+    Ok(url)
+}
+
+fn is_allowed_artifact_content_type(value: &str) -> bool {
+    let media_type = value.split(';').next().unwrap_or("").trim();
+    RASTER_ARTIFACT_CONTENT_TYPES.contains(&media_type)
 }
 
 fn validate_axon_route(request: &AxonHttpRequest) -> Result<&str, String> {
