@@ -30,9 +30,16 @@ interface UseActionRunnerArgs {
   run: RunState;
   setRun: Dispatch<SetStateAction<RunState>>;
   setHistory: Dispatch<SetStateAction<HistoryItem[]>>;
-  setModeAction: Dispatch<SetStateAction<PaletteAction | null>>;
-  setQuery: Dispatch<SetStateAction<string>>;
-  setBrowseOpen: Dispatch<SetStateAction<boolean>>;
+  // A-M2 — intent callbacks replace the raw setModeAction/setQuery/setBrowseOpen
+  // setter drilling. Each one carries the view transition AND the query reset it
+  // implies; the view-transition rules (which overlays/browse/mode it clears)
+  // live in App's reducer, not here.
+  // `enterModeForRun(action, argument)`: lock in the running action's mode and
+  // seed the command bar with its normalized argument (clears browse).
+  enterModeForRun: (action: PaletteAction, argument: string) => void;
+  // `showHelpRun(action, target)`: the local-help action becomes the active mode
+  // and the command bar shows the help target (clears browse).
+  showHelpRun: (action: PaletteAction, target: string) => void;
   modeAction: PaletteAction | null;
   parsed: ParsedCommand;
   query: string;
@@ -165,9 +172,8 @@ export function useActionRunner({
   run,
   setRun,
   setHistory,
-  setModeAction,
-  setQuery,
-  setBrowseOpen,
+  enterModeForRun,
+  showHelpRun,
   modeAction,
   parsed,
   query,
@@ -405,9 +411,7 @@ export function useActionRunner({
     const unknownTarget = targetToken.trim() && !target ? targetToken.trim() : undefined;
     const helpRun = buildHelpRun(target, unknownTarget);
     setRun(helpRun);
-    setModeAction(localHelpAction);
-    setQuery(rawArgument.trim());
-    setBrowseOpen(false);
+    showHelpRun(localHelpAction, rawArgument.trim());
     pushHistory(localHelpAction, target?.subcommand ?? unknownTarget ?? "catalog", {
       status: helpRun.result.status,
       title: helpRun.title,
@@ -467,9 +471,7 @@ export function useActionRunner({
       return;
     }
 
-    setModeAction(action);
-    setQuery(argument);
-    setBrowseOpen(false);
+    enterModeForRun(action, argument);
 
     if (action.subcommand === "crawl") {
       await submitCrawl(action, argument, client, config);
