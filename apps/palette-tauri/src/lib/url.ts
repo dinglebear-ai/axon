@@ -6,6 +6,10 @@
  * strips any `:port` (so `https://example.com:8080/x` → `example.com`). Falls
  * back to the leading path segment, then the raw input, when the URL cannot be
  * parsed.
+ *
+ * NOTE: this is intentionally distinct from `axonClient.ts`'s `hostName`, which
+ * keeps the port (`.host`) because it builds watch identifiers where the port is
+ * semantically significant. `hostLabel` is display-only; do not merge the two.
  */
 export function hostLabel(url: string): string {
   try {

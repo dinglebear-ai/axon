@@ -42,6 +42,12 @@ export function useCrawlJob({
   useEffect(() => {
     if (run.kind !== "job" || !jobId || jobTerminal) return;
     let active = true;
+    // A single transient poll failure is fine on a 1Hz loop, but if the server
+    // goes away mid-crawl every tick rejects forever and the spinner freezes with
+    // no signal. After STALL_THRESHOLD consecutive failures, surface a visible
+    // "lost contact" failed state (which also stops the poll — failed is terminal).
+    let consecutiveFailures = 0;
+    const STALL_THRESHOLD = 10;
     const getJson = (path: string) =>
       invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
         request: { method: "GET", path, body: null },
@@ -72,8 +78,21 @@ export function useCrawlJob({
           );
           return { ...current, snapshot, subtitle: `job ${jobId}` };
         });
+        consecutiveFailures = 0;
       } catch {
-        /* transient poll failure — keep trying on the next tick */
+        if (!active) return;
+        if (++consecutiveFailures >= STALL_THRESHOLD) {
+          setRun((current) =>
+            current.kind === "job" && current.jobId === jobId
+              ? {
+                  ...current,
+                  subtitle: "lost contact with server",
+                  snapshot: { ...current.snapshot, phase: "failed" },
+                }
+              : current,
+          );
+        }
+        /* otherwise transient — keep trying on the next tick */
       }
     };
     void tick();

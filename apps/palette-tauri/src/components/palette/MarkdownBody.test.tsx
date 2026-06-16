@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { MarkdownBody } from "./MarkdownBody";
+
+// Pre-resolve the lazy chunk once so every render below mounts the real renderer
+// deterministically. Without this, under full-suite parallel load the dynamic
+// import can miss waitFor's default 1s window and the security guard flakes — a
+// non-deterministic XSS regression test is worse than none.
+beforeAll(async () => {
+  await import("./MarkdownBodyInner");
+});
 
 // T-M3: lock in the hardened streamdown pipeline (S-M1/S-M2/S-L1). Crawled/RAG
 // content flows through MarkdownBody, so a regression that loosened sanitize/harden
@@ -15,9 +23,12 @@ async function renderMarkdown(markdown: string): Promise<HTMLElement> {
   // Streamdown never emits that class combo, so wait until the fallback is gone —
   // i.e. the lazy chunk resolved and the real renderer mounted. Asserting on the
   // fallback (which is present synchronously) would test the wrong tree.
-  await waitFor(() => {
-    expect(container.querySelector("pre.output-body.output-code")).toBeNull();
-  });
+  await waitFor(
+    () => {
+      expect(container.querySelector("pre.output-body.output-code")).toBeNull();
+    },
+    { timeout: 5000 },
+  );
   return container;
 }
 

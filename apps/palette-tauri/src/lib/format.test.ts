@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { MIN_PROGRESS_PCT, formatPayload } from "./format";
 
 describe("MIN_PROGRESS_PCT", () => {
-  it("is the shared minimum visible progress-bar width", () => {
-    expect(MIN_PROGRESS_PCT).toBe(2);
+  // The constant exists to floor the rendered bar width so a just-started job still
+  // shows a visible sliver: `Math.max(MIN_PROGRESS_PCT, pct)` (App.tsx, CrawlJobView).
+  it("floors a 0% bar to a visible width but never inflates a real percentage", () => {
+    expect(Math.max(MIN_PROGRESS_PCT, 0)).toBeGreaterThan(0);
+    expect(Math.max(MIN_PROGRESS_PCT, 50)).toBe(50);
   });
 });
 
