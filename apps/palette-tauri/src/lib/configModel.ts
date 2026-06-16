@@ -273,7 +273,7 @@ export const CONFIG_GROUPS: TomlConfigGroup[] = [
 /* default value maps for controlled inputs */
 export const ENV_DEFAULTS = Object.fromEntries(ENV_GROUPS.flatMap((g) => g.vars.map((v) => [v.key, v.def])));
 export const CONFIG_DEFAULTS = Object.fromEntries(
-  CONFIG_GROUPS.flatMap((g) => g.knobs.map((k) => [g.section.replace(/^\[/, "").replace(/\]$/, "") + "." + k.key, k.def])),
+  CONFIG_GROUPS.flatMap((g) => g.knobs.map((k) => [`${g.section.replace(/^\[/, "").replace(/\]$/, "")}.${k.key}`, k.def])),
 );
 
 export const ENV_COUNT = ENV_GROUPS.reduce((n, g) => n + g.vars.length, 0);

@@ -71,7 +71,6 @@ export function actionKindLabel(action: PaletteAction): string {
       return "Job";
     case "local":
       return "Local";
-    case "operation":
     default:
       return "Operation";
   }
@@ -87,7 +86,6 @@ export function actionKindTone(action: PaletteAction): "info" | "success" | "war
       return "violet";
     case "local":
       return "info";
-    case "operation":
     default:
       return "info";
   }

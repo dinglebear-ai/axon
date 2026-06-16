@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { AlertTriangle, Route, ServerCrash } from "lucide-react";
 
 import type { PaletteResult } from "@/lib/axonClient";
@@ -8,14 +9,16 @@ interface ErrorResultViewProps {
   text: string;
 }
 
-export function ErrorResultView({ result, text }: ErrorResultViewProps) {
+export const ErrorResultView = memo(function ErrorResultView({ result, text }: ErrorResultViewProps) {
   const payload = unwrapPayload(result.payload);
   const message = errorMessage(payload, text);
   const kind = strField(payload, "kind") ?? strField(payload, "code") ?? (result.status ? "request_failed" : "client_error");
   const details = detailRows(payload);
 
   return (
-    <div className="output-body operation-view aurora-scrollbar">
+    // T-M1: role="alert" so the failure is announced assertively to screen readers
+    // the moment it replaces the running/streaming output.
+    <div className="output-body operation-view aurora-scrollbar" role="alert">
       <section className="operation-hero operation-hero-error">
         <div className="operation-hero-icon">
           <ServerCrash size={16} />
@@ -72,7 +75,7 @@ export function ErrorResultView({ result, text }: ErrorResultViewProps) {
       </section>
     </div>
   );
-}
+});
 
 function errorMessage(payload: Record<string, unknown>, text: string): string {
   return strField(payload, "message") ?? strField(payload, "error") ?? strField(payload, "detail") ?? text.trim() ?? "The action failed.";

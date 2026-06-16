@@ -29,11 +29,21 @@ const LANGUAGE_ALIASES: Record<string, SupportedLanguage> = {
   py: "python",
 };
 
-const highlighterPromise = createHighlighterCore({
-  themes: [oneDarkPro],
-  langs: [rust, json, bash, toml, yaml, markdown, typescript, python].flat(),
-  engine: createJavaScriptRegexEngine({ forgiving: true }),
-});
+// Lazy: the shiki core (8 grammars + theme + regex engine) is heavy and was
+// previously instantiated at module eval, on the startup critical path (P-H1).
+// A fresh palette launch shows only the command bar + action list, so defer the
+// highlighter build until the first code block actually needs highlighting.
+type Highlighter = Awaited<ReturnType<typeof createHighlighterCore>>;
+let highlighterPromise: Promise<Highlighter> | undefined;
+
+function getHighlighter(): Promise<Highlighter> {
+  highlighterPromise ??= createHighlighterCore({
+    themes: [oneDarkPro],
+    langs: [rust, json, bash, toml, yaml, markdown, typescript, python].flat(),
+    engine: createJavaScriptRegexEngine({ forgiving: true }),
+  });
+  return highlighterPromise;
+}
 
 const highlighted = new Map<string, TokensResult>();
 
@@ -57,7 +67,7 @@ export const limitedCode: CodeHighlighterPlugin = {
     const cached = highlighted.get(key);
     if (cached) return cached;
 
-    highlighterPromise
+    getHighlighter()
       .then((highlighter) => {
         const result = highlighter.codeToTokens(options.code, {
           lang: language,

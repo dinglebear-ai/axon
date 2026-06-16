@@ -20,6 +20,8 @@
 
   /* Primary accent — Aurora cyan */
   --aurora-accent-primary: #29b6f6;
+  /* Text/icon color to sit ON a filled accent surface (dark ink on cyan). */
+  --aurora-on-accent: #06131c;
   --aurora-accent-strong:  #67cbfa;
   --aurora-accent-deep:    #1c7fac;
   --aurora-accent-lift:    #4dc8fa;
@@ -182,6 +184,8 @@
   --aurora-text-primary:   #07131c;
   --aurora-text-muted:     #3d6070;
   --aurora-accent-primary: #0288d1;
+  /* Preserve the historical dark-ink literal used on filled accent CTAs. */
+  --aurora-on-accent: #06131c;
   --aurora-accent-strong:  #0277bd;
   --aurora-accent-deep:    #01579b;
   --aurora-accent-lift:    #1aa6e8;
@@ -273,6 +277,104 @@
   --ring:                 var(--aurora-focus-ring);
   --sidebar:              var(--aurora-nav-bg);
   --sidebar-border:       var(--aurora-border-default);
+}
+
+/* ─── Aurora Button variant skins ───────────────────────────────────────────
+   Per-variant resting/hover/active styling lives here as theme-driven CSS so
+   tailwind-merge can reason about className overrides and consumers can win via
+   selector specificity instead of fighting inline styles with !important
+   (TW-M1 / M7). The TSX layer applies layout + a `data-variant` attribute. */
+.aurora-btn[data-variant="aurora"] {
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 42%, var(--aurora-border-strong));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-primary) 10%, transparent), transparent 58%),
+    var(--aurora-control-surface);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-primary) 16%, transparent),
+    0 0 10px color-mix(in srgb, var(--aurora-accent-primary) 12%, transparent);
+}
+.aurora-btn[data-variant="aurora"]:hover {
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 58%, var(--aurora-border-strong));
+  background: color-mix(in srgb, var(--aurora-accent-primary) 8%, var(--aurora-control-surface));
+}
+.aurora-btn[data-variant="aurora"]:active {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 14%, var(--aurora-control-surface));
+}
+
+.aurora-btn[data-variant="neutral"] {
+  border-color: var(--aurora-border-strong);
+  background: var(--aurora-control-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+.aurora-btn[data-variant="neutral"]:hover {
+  border-color: var(--aurora-border-strong);
+  background: var(--aurora-hover-bg);
+}
+.aurora-btn[data-variant="neutral"]:active {
+  background: color-mix(in srgb, var(--aurora-text-primary) 8%, var(--aurora-hover-bg));
+}
+
+.aurora-btn[data-variant="rose"] {
+  border-color: color-mix(in srgb, var(--aurora-accent-pink) 52%, var(--aurora-border-strong));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-pink) 14%, transparent), transparent 58%),
+    var(--aurora-control-surface);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-pink) 18%, transparent),
+    0 0 13px color-mix(in srgb, var(--aurora-accent-pink) 16%, transparent);
+}
+.aurora-btn[data-variant="rose"]:hover {
+  border-color: color-mix(in srgb, var(--aurora-accent-pink) 68%, var(--aurora-border-strong));
+  background: color-mix(in srgb, var(--aurora-accent-pink) 10%, var(--aurora-control-surface));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-pink) 24%, transparent),
+    0 0 18px color-mix(in srgb, var(--aurora-accent-pink) 24%, transparent);
+}
+.aurora-btn[data-variant="rose"]:active {
+  background: color-mix(in srgb, var(--aurora-accent-pink) 18%, var(--aurora-control-surface));
+}
+
+.aurora-btn[data-variant="violet"] {
+  border-color: color-mix(in srgb, var(--aurora-accent-violet) 42%, var(--aurora-border-strong));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-violet) 10%, transparent), transparent 58%),
+    var(--aurora-control-surface);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-violet) 16%, transparent),
+    0 0 10px color-mix(in srgb, var(--aurora-accent-violet) 12%, transparent);
+}
+.aurora-btn[data-variant="violet"]:hover {
+  border-color: color-mix(in srgb, var(--aurora-accent-violet) 58%, var(--aurora-border-strong));
+  background: color-mix(in srgb, var(--aurora-accent-violet) 10%, var(--aurora-control-surface));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-violet) 24%, transparent),
+    0 0 15px color-mix(in srgb, var(--aurora-accent-violet) 20%, transparent);
+}
+.aurora-btn[data-variant="violet"]:active {
+  background: color-mix(in srgb, var(--aurora-accent-violet) 16%, var(--aurora-control-surface));
+}
+
+.aurora-btn[data-variant="ghost"]:hover {
+  background: var(--aurora-hover-bg);
+}
+
+.aurora-btn[data-variant="destructive"] {
+  border-color: color-mix(in srgb, var(--aurora-error) 42%, var(--aurora-border-strong));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--aurora-error) 9%, transparent), transparent 58%),
+    var(--aurora-control-surface);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 0 0 1px color-mix(in srgb, var(--aurora-error) 14%, transparent);
+}
+.aurora-btn[data-variant="destructive"]:hover {
+  border-color: color-mix(in srgb, var(--aurora-error) 58%, var(--aurora-border-strong));
+  background: color-mix(in srgb, var(--aurora-error) 7%, var(--aurora-control-surface));
 }
 
 /* ─── Page shell utility ─────────────────────────────────────────────────── */
