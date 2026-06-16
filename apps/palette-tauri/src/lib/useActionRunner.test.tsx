@@ -39,18 +39,27 @@ function setup(
   return renderHook(() => {
     const [run, setRun] = useState<RunState>({ kind: "idle" });
     const [history, setHistory] = useState<HistoryItem[]>([]);
+    // A-M2 — the runner now drives the active mode + query through intent
+    // callbacks rather than raw setters. Mirror App's wiring: set the active
+    // mode and seed the query, just as the reducer-backed App does.
     const [modeAction, setModeAction] = useState<PaletteAction | null>(overrides.modeAction ?? null);
     const [input, setQuery] = useState(query);
-    const [, setBrowseOpen] = useState(false);
+    const enterModeForRun = (action: PaletteAction, argument: string) => {
+      setModeAction(action);
+      setQuery(argument);
+    };
+    const showHelpRun = (action: PaletteAction, target: string) => {
+      setModeAction(action);
+      setQuery(target);
+    };
     const runner = useActionRunner({
       client: overrides.client === undefined ? client : overrides.client,
       config: overrides.config === undefined ? config : overrides.config,
       run,
       setRun,
       setHistory,
-      setModeAction,
-      setQuery,
-      setBrowseOpen,
+      enterModeForRun,
+      showHelpRun,
       modeAction,
       parsed,
       query: input,

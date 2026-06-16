@@ -2,7 +2,7 @@ import {
   ChevronRight,
   Workflow,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { ActionList, actionOptionId } from "@/components/palette/ActionList";
 import { CrawlJobView } from "@/components/palette/CrawlJobView";
@@ -31,6 +31,14 @@ import {
   sortActionsForDisplay,
   validationMessage,
 } from "@/lib/paletteView";
+import {
+  INITIAL_VIEW,
+  isBrowseOpen,
+  isHistoryOpen,
+  isSettingsOpen,
+  modeOf,
+  viewReducer,
+} from "@/lib/paletteViewState";
 import type { RunState } from "@/lib/runState";
 import { useActionRunner } from "@/lib/useActionRunner";
 import { useCrawlJob } from "@/lib/useCrawlJob";
@@ -42,20 +50,24 @@ const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shi
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
 
 export default function App() {
+  // A-M1 — the top-level view is a single discriminated union driven by a reducer;
+  // the legacy settingsOpen/browseOpen/historyOpen/modeAction flags derive from it below.
+  const [view, dispatchView] = useReducer(viewReducer, INITIAL_VIEW);
   const [query, setQuery] = useState("");
-  const [modeAction, setModeAction] = useState<PaletteAction | null>(null);
   const [selected, setSelected] = useState(0);
   const [config, setConfig] = useState<PaletteConfig | null>(null);
   const [draftConfig, setDraftConfig] = useState<PaletteConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [browseOpen, setBrowseOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [pinnedTargets, setPinnedTargets] = useState<Set<string>>(() => new Set());
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
+
+  const modeAction = modeOf(view);
+  const settingsOpen = isSettingsOpen(view);
+  const historyOpen = isHistoryOpen(view);
+  const browseOpen = isBrowseOpen(view);
 
   useEffect(() => {
     invoke<PaletteConfig>("load_palette_config")
@@ -83,7 +95,7 @@ export default function App() {
         setShownTick((tick) => tick + 1);
         focusInput(true);
       }),
-      appWindow.listen("palette://open-settings", () => setSettingsOpen(true)),
+      appWindow.listen("palette://open-settings", () => dispatchView({ type: "openSettings" })),
     ];
     return () => {
       void Promise.all(unlisteners).then((items) => items.forEach((unlisten) => unlisten()));
@@ -100,16 +112,13 @@ export default function App() {
   const keyStateRef = useRef({ settingsOpen, historyOpen, browseOpen, query, modeAction, run });
   keyStateRef.current = { settingsOpen, historyOpen, browseOpen, query, modeAction, run };
   usePaletteHotkeys(keyStateRef, {
-    closeSettings: () => setSettingsOpen(false),
-    toBrowseFromHistory: () => {
-      setHistoryOpen(false);
-      setBrowseOpen(true);
-    },
-    closeBrowse: () => setBrowseOpen(false),
-    clearMode: () => setModeAction(null),
+    closeSettings: () => dispatchView({ type: "closeSettings" }),
+    toBrowseFromHistory: () => dispatchView({ type: "closeHistoryToBrowse" }),
+    closeBrowse: () => dispatchView({ type: "closeBrowse" }),
+    clearMode: () => dispatchView({ type: "clearMode" }),
     clearQuery: () => {
       setQuery("");
-      setModeAction(null);
+      dispatchView({ type: "clearMode" });
     },
     copyOutput: (text) => void copyOutput(text),
   });
@@ -193,45 +202,63 @@ export default function App() {
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
 
+  // A-M2 — the runner dispatches view intents + resets orthogonal query/run via
+  // these stable callbacks instead of 5 raw setters; the view rules live in the reducer.
+  const enterModeForRun = useCallback((action: PaletteAction, argument: string) => {
+    dispatchView({ type: "enterModeForRun", action });
+    setQuery(argument);
+  }, []);
+  const showHelpRun = useCallback((action: PaletteAction, target: string) => {
+    dispatchView({ type: "showHelp", action });
+    setQuery(target);
+  }, []);
+
   const { submit } = useActionRunner({
     client,
     config,
     run,
     setRun,
     setHistory,
-    setModeAction,
-    setQuery,
-    setBrowseOpen,
+    enterModeForRun,
+    showHelpRun,
     modeAction,
     parsed,
     query,
   });
 
+  // A-M2 — useCrawlJob's 6 setters collapse to 3 view intents + the query reset
+  // each implies. setRun stays (it owns the live poll snapshot, which is run state).
+  const onMinimizeJob = useCallback(() => {
+    dispatchView({ type: "minimizeJob" });
+    setQuery("");
+  }, []);
+  const onExpandJob = useCallback(() => dispatchView({ type: "expandJob" }), []);
+  const onCloseJob = useCallback(() => {
+    dispatchView({ type: "closeJob" });
+    setQuery("");
+  }, []);
+
   const { nowMs, canceling, cancelJob, viewPartialJob, minimizeJob, expandJob, closeJob } = useCrawlJob({
     run,
     setRun,
-    setSettingsOpen,
-    setHistoryOpen,
-    setBrowseOpen,
-    setQuery,
-    setModeAction,
+    onMinimizeJob,
+    onExpandJob,
+    onCloseJob,
   });
 
   function enterActionMode(action: PaletteAction) {
-    setModeAction(action);
+    dispatchView({ type: "enterMode", action });
     setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
     setSelected(0);
     setRun({ kind: "idle" });
-    setBrowseOpen(false);
     focusInput(true);
   }
 
   function switchActionMode(action: PaletteAction) {
-    setModeAction(action);
+    dispatchView({ type: "switchMode", action });
     if (action.argMode === "none") setQuery("");
     setSelected(0);
     setRun({ kind: "idle" });
-    setBrowseOpen(false);
     focusInput(true);
   }
 
@@ -250,13 +277,10 @@ export default function App() {
       result: helpRun.result,
       when: "just now",
     };
-    setModeAction(localHelpAction);
+    dispatchView({ type: "showHelp", action: localHelpAction });
     setQuery(action?.subcommand ?? cleanUnknownTarget ?? "");
     setRun(helpRun);
     setHistory((items) => [historyItem, ...items].slice(0, 18));
-    setHistoryOpen(false);
-    setSettingsOpen(false);
-    setBrowseOpen(false);
   }
 
   async function saveSettings() {
@@ -266,8 +290,7 @@ export default function App() {
       setConfig(nextConfig);
       setDraftConfig(nextConfig);
       setConfigError(null);
-      setSettingsOpen(false);
-      setBrowseOpen(true);
+      dispatchView({ type: "closeSettings" });
       focusInput(true);
     } catch (err) {
       setConfigError(String(err));
@@ -279,7 +302,7 @@ export default function App() {
       event.preventDefault();
       // Arrow-down is the keyboard affordance to browse all actions without
       // typing (focus alone no longer expands the palette).
-      if (!modeAction) setBrowseOpen(true);
+      if (!modeAction) dispatchView({ type: "openBrowse" });
       setSelected((idx) => Math.min(idx + 1, Math.max(filtered.length - 1, 0)));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
@@ -311,12 +334,9 @@ export default function App() {
     (!client && !canRunLocalAction) || !active || commandRunning || Boolean(validation);
 
   function goBackToBrowse() {
-    setSettingsOpen(false);
-    setHistoryOpen(false);
+    dispatchView({ type: "goToBrowse" });
     setRun({ kind: "idle" });
-    setModeAction(null);
     setQuery("");
-    setBrowseOpen(true);
     focusInput(true);
   }
 
@@ -324,41 +344,28 @@ export default function App() {
   const onSubmitAction = useCallback((action: PaletteAction) => void submit(action), [submit]);
   const onReset = useCallback(() => {
     setQuery("");
-    setModeAction(null);
     setRun({ kind: "idle" });
-    setHistoryOpen(false);
-    setBrowseOpen(false);
+    dispatchView({ type: "reset" });
   }, []);
-  const onToggleSettings = useCallback(() => {
-    setSettingsOpen((open) => {
-      const next = !open;
-      setHistoryOpen(false);
-      if (!next) setBrowseOpen(true);
-      return next;
-    });
-  }, []);
+  const onToggleSettings = useCallback(() => dispatchView({ type: "toggleSettings" }), []);
   const onToggleMaximize = useCallback(() => void invoke("toggle_maximize"), []);
   const onCopy = useCallback((text: string) => void copyOutput(text), [copyOutput]);
   const onRetry = useCallback(() => active && void submit(active), [active, submit]);
   const onFollowUp = useCallback((text: string) => {
     const askAction = ACTIONS.find((action) => action.subcommand === "ask");
     if (!askAction) return;
-    setModeAction(askAction);
+    dispatchView({ type: "enterModeForRun", action: askAction });
     setQuery(text);
     void submit(askAction, text);
   }, [submit]);
   const onHistory = useCallback(() => {
     setRun({ kind: "idle" });
-    setSettingsOpen(false);
-    setHistoryOpen(true);
-    setBrowseOpen(false);
+    dispatchView({ type: "openHistory" });
   }, []);
   const onCollapse = useCallback(() => {
     setRun({ kind: "idle" });
-    setModeAction(null);
     setQuery("");
-    setHistoryOpen(false);
-    setBrowseOpen(false);
+    dispatchView({ type: "collapse" });
   }, []);
   const onTogglePin = useCallback(() => {
     if (!currentTarget) return;
@@ -423,11 +430,7 @@ export default function App() {
             draftConfig={draftConfig}
             shortcutOptions={shortcutOptions}
             onChange={setDraftConfig}
-            onClose={() => {
-              setSettingsOpen(false);
-              setHistoryOpen(false);
-              setBrowseOpen(true);
-            }}
+            onClose={() => dispatchView({ type: "closeSettings" })}
             onSave={() => void saveSettings()}
           />
         </div>
@@ -453,9 +456,7 @@ export default function App() {
             items={history}
             onClear={() => setHistory([])}
             onOpen={(item) => {
-              setHistoryOpen(false);
-              setSettingsOpen(false);
-              setModeAction(item.action);
+              dispatchView({ type: "openHistoryItem", action: item.action });
               setQuery(item.target);
               const historyRun = runStateFromHistory(item);
               if (historyRun) {
@@ -512,11 +513,9 @@ export default function App() {
           configError={configError}
           onRecent={() => {
             setRun({ kind: "idle" });
-            setModeAction(null);
-            setHistoryOpen((open) => !open);
-            setBrowseOpen(false);
+            dispatchView({ type: "toggleHistory" });
           }}
-          onSettings={() => setSettingsOpen((open) => !open)}
+          onSettings={() => dispatchView({ type: "toggleSettings" })}
           onHide={() => void invoke("hide_palette")}
         />
       )}
