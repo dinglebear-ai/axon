@@ -39,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -315,7 +314,7 @@ private fun CompactActionButton(
 ) {
     val colors = AxonTheme.colors
     val bg = if (outlined) colors.pageBg else colors.accentPrimary
-    val fg = if (outlined) colors.textMuted else Color(0xFF06131C)
+    val fg = if (outlined) colors.textMuted else colors.onAccentFg
     Row(
         modifier = modifier
             .height(42.dp)

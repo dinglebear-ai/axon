@@ -11,7 +11,7 @@
 # =============================================================================
 
 # This wrapper preserves local sccache delegation while copying every completed
-# debug/release axon binary into the local PATH and plugin bundle locations.
+# debug/release axon binary into the local PATH.
 [build]
 rustc-wrapper = "scripts/cargo-rustc-wrapper"
 

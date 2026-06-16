@@ -9,7 +9,7 @@ import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import type { Client, PaletteConfig } from "@/lib/axonClient";
 import { parseCommand } from "@/lib/paletteView";
 import type { RunState } from "@/lib/runState";
-import { useActionRunner } from "@/lib/useActionRunner";
+import { reduceStreamEvent, useActionRunner } from "@/lib/useActionRunner";
 
 function action(subcommand: string) {
   const found = ACTIONS.find((candidate) => candidate.subcommand === subcommand);
@@ -104,6 +104,9 @@ describe("useActionRunner local help", () => {
     await act(async () => {
       await rendered.result.current.submit(action("ask"));
     });
+    // The one-shot path now dispatches through useActionState (R-H1); flush the
+    // transition so the terminal RunState has settled before asserting.
+    await act(async () => {});
 
     expect(fetchSpy).toHaveBeenCalledWith(
       "/v1/ask",
@@ -118,5 +121,123 @@ describe("useActionRunner local help", () => {
     expect("result" in rendered.result.current.run ? rendered.result.current.run.result.payload : null).toMatchObject({
       query: "help",
     });
+  });
+});
+
+// ── R-H1: one-shot (useActionState) request/response path ────────────────────
+describe("useActionRunner one-shot useActionState path", () => {
+  it("transitions running → success and records history on a 2xx response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ collection: "axon", points: 42 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const rendered = setup("stats");
+    await act(async () => {
+      await rendered.result.current.submit(action("stats"));
+    });
+    await act(async () => {});
+    expect(rendered.result.current.run.kind).toBe("success");
+    const run = rendered.result.current.run;
+    expect("result" in run ? run.result.status : 0).toBe(200);
+    expect(rendered.result.current.history[0]?.action.subcommand).toBe("stats");
+  });
+
+  it("transitions running → error on a non-2xx response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "boom" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const rendered = setup("stats");
+    await act(async () => {
+      await rendered.result.current.submit(action("stats"));
+    });
+    await act(async () => {});
+    expect(rendered.result.current.run.kind).toBe("error");
+  });
+
+  it("surfaces a fetch rejection as an error RunState with status 0", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
+    const rendered = setup("stats");
+    await act(async () => {
+      await rendered.result.current.submit(action("stats"));
+    });
+    await act(async () => {});
+    const run = rendered.result.current.run;
+    expect(run.kind).toBe("error");
+    expect("result" in run ? run.result.status : -1).toBe(0);
+    expect("text" in run ? run.text : "").toContain("network down");
+  });
+});
+
+// ── A-M5: pressing Enter is never a silent no-op ─────────────────────────────
+describe("useActionRunner A-M5 transient errors", () => {
+  it("surfaces an error RunState when no client/config is configured", async () => {
+    const rendered = setup("stats", { client: null, config: null });
+    await act(async () => {
+      await rendered.result.current.submit(action("stats"));
+    });
+    const run = rendered.result.current.run;
+    expect(run.kind).toBe("error");
+    expect("title" in run ? run.title : "").toContain("unavailable");
+    // No REST attempt is made when the client is missing.
+  });
+
+  it("surfaces a validation error instead of returning silently", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    // `ask` requires an argument; submitting empty should surface a needs-input error.
+    const rendered = setup("ask");
+    await act(async () => {
+      await rendered.result.current.submit(action("ask"), "");
+    });
+    const run = rendered.result.current.run;
+    expect(run.kind).toBe("error");
+    expect("text" in run ? run.text : "").toMatch(/required/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── A-M4 / streaming reducer: no fabricated { status: 200 } ──────────────────
+describe("reduceStreamEvent", () => {
+  const streaming: RunState = {
+    kind: "streaming",
+    title: "Streaming Ask",
+    subtitle: "POST /v1/ask/stream",
+    text: "partial",
+    outputKind: "markdown",
+    requestId: "req-1",
+    path: "/v1/ask/stream",
+    actionLabel: "Ask",
+    prompt: "why",
+  };
+
+  it("appends delta text only for the matching requestId", () => {
+    const next = reduceStreamEvent(streaming, { type: "delta", requestId: "req-1", text: " more" });
+    expect("text" in next ? next.text : "").toBe("partial more");
+    const ignored = reduceStreamEvent(streaming, { type: "delta", requestId: "other", text: "x" });
+    expect(ignored).toBe(streaming);
+  });
+
+  it("produces a success terminal state with status 0 (not a fabricated 200)", () => {
+    const next = reduceStreamEvent(streaming, { type: "done", requestId: "req-1", answer: "final answer" });
+    expect(next.kind).toBe("success");
+    expect("result" in next ? next.result.status : -1).toBe(0);
+    expect("result" in next ? next.result.payload : null).toMatchObject({ answer: "final answer" });
+    expect("text" in next ? next.text : "").toBe("final answer");
+  });
+
+  it("produces an honest error terminal state on a stream error event", () => {
+    const next = reduceStreamEvent(streaming, { type: "error", requestId: "req-1", message: "stream broke" });
+    expect(next.kind).toBe("error");
+    expect("result" in next ? next.result.status : -1).toBe(0);
+    expect("text" in next ? next.text : "").toBe("stream broke");
+  });
+
+  it("leaves non-streaming states untouched", () => {
+    const idle: RunState = { kind: "idle" };
+    expect(reduceStreamEvent(idle, { type: "done", requestId: "req-1" })).toBe(idle);
   });
 });

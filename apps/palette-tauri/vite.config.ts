@@ -1,4 +1,5 @@
-import { defineConfig } from "vite";
+/// <reference types="vitest/config" />
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
@@ -34,6 +35,50 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  build: {
+    // P-H1 / CI-M2: target the Tauri WebView floor. The desktop runtime is
+    // WebKitGTK (Linux/macOS) and WebView2 (Windows), both well past ES2022 —
+    // so we skip downleveling syntax that ships only to legacy browsers.
+    // es2022 matches tsconfig's `target`.
+    target: "es2022",
+    rollupOptions: {
+      output: {
+        // P-H1 / CI-M2: split the heavy syntax-highlighting + markdown rendering
+        // deps out of the main chunk so a cold palette launch (command bar +
+        // action list, no markdown/code yet) does not pay their JS-init before
+        // first interactive paint. Pairs with Lane R's React.lazy on the
+        // markdown body — these chunks then load only when a result renders.
+        manualChunks: {
+          shiki: ["shiki"],
+          streamdown: ["streamdown"],
+        },
+      },
+    },
+  },
+  test: {
+    // CI-M3: shared test infrastructure. setup.ts registers jest-dom +
+    // jest-axe matchers and DOM polyfills that every lane's tests depend on.
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    css: false,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html"],
+      // Coverage is gated on the lib layer only — the already-well-tested pure
+      // helpers/hooks. Component coverage is intentionally not floored here
+      // (jsdom render coverage is noisier and lands across other lanes). Keep
+      // these realistic: a regression-guard floor, not a gold-plated target.
+      include: ["src/lib/**/*.{ts,tsx}"],
+      exclude: ["src/lib/**/*.test.{ts,tsx}", "src/lib/**/*.d.ts"],
+      thresholds: {
+        lines: 60,
+        functions: 60,
+        statements: 60,
+        branches: 50,
+      },
     },
   },
 });

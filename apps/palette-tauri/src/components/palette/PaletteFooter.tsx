@@ -3,8 +3,8 @@ import { Settings, X } from "lucide-react";
 import { Button } from "@/components/ui/aurora/button";
 import { Kbd } from "@/components/ui/aurora/kbd";
 import { StatusIndicator } from "@/components/ui/aurora/status-indicator";
-import { type PaletteConfig } from "@/lib/axonClient";
-import { hostLabel } from "@/lib/paletteView";
+import type { PaletteConfig } from "@/lib/axonClient";
+import { hostLabel } from "@/lib/url";
 
 interface PaletteFooterProps {
   config: PaletteConfig | null;
@@ -26,7 +26,7 @@ export function PaletteFooter({ config, configError, onRecent, onSettings, onHid
         <span className="palette-hint-group"><Kbd unstyled>↵</Kbd> run</span>
         <span className="palette-hint-group"><Kbd unstyled>esc</Kbd> close</span>
       </span>
-      <span className="palette-status" aria-label="Palette controls">
+      <span className="palette-status" role="group" aria-label="Palette controls">
         {config ? (
           <StatusIndicator tone="syncing" label={`${hostLabel(config.serverUrl)} / ${config.collection}`} pulse={false} />
         ) : configError ? (

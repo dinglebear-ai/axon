@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { ActionHelp } from "@/lib/actionHelp";
 
 function isActionHelp(value: unknown): value is ActionHelp {
@@ -32,7 +34,7 @@ export interface HelpResultViewProps {
   fallbackText: string;
 }
 
-export function HelpResultView({ payload, fallbackText }: HelpResultViewProps) {
+export const HelpResultView = memo(function HelpResultView({ payload, fallbackText }: HelpResultViewProps) {
   const body = payloadRecord(payload);
   const target = isActionHelp(body.target) ? body.target : undefined;
   const catalog = Array.isArray(body.catalog) ? body.catalog.filter(isActionHelp) : [];
@@ -113,4 +115,4 @@ export function HelpResultView({ payload, fallbackText }: HelpResultViewProps) {
       ))}
     </div>
   );
-}
+});

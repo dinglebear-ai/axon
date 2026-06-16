@@ -1,59 +1,120 @@
-// L8: Basic component test for SettingsPanel.
+// @vitest-environment jsdom
 //
-// Validates that the SettingsPanel function is exported and accepts the
-// expected props shape.  This catches structural regressions (missing props,
-// renamed exports) without requiring a full DOM render environment.
+// T-H3: behavioral render tests for SettingsPanel. The previous version only
+// asserted `typeof`/`.name` and never mounted the component — it passed while
+// the panel was fully broken. These tests render the real component and drive
+// it with userEvent: type a server URL → assert onChange; click Save → assert
+// onSave; toggle a switch → assert onChange. jest-dom matchers, jest-axe, and
+// DOM polyfills are registered globally via src/test/setup.ts (Lane B).
 
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { connectionFeedback, SettingsPanel } from "./SettingsPanel";
 import type { PaletteConfig } from "@/lib/axonClient";
 
+const baseConfig: PaletteConfig = {
+  serverUrl: "http://127.0.0.1:8001",
+  token: null,
+  shortcut: "Ctrl+Shift+Space",
+  collection: "axon",
+  resultLimit: 10,
+  theme: "system",
+  hideOnBlur: true,
+  openResultsInline: true,
+};
+
+function renderPanel(overrides: Partial<React.ComponentProps<typeof SettingsPanel>> = {}) {
+  const onChange = vi.fn();
+  const onClose = vi.fn();
+  const onSave = vi.fn();
+  render(
+    <SettingsPanel
+      configError={null}
+      draftConfig={baseConfig}
+      shortcutOptions={["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space"]}
+      onChange={onChange}
+      onClose={onClose}
+      onSave={onSave}
+      {...overrides}
+    />,
+  );
+  return { onChange, onClose, onSave };
+}
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
 describe("SettingsPanel", () => {
-  const baseConfig: PaletteConfig = {
-    serverUrl: "http://127.0.0.1:8001",
-    token: null,
-    shortcut: "Ctrl+Shift+Space",
-    collection: "axon",
-    resultLimit: 10,
-    theme: "system",
-    hideOnBlur: true,
-    openResultsInline: true,
-  };
-
-  it("is exported as a function", () => {
-    expect(typeof SettingsPanel).toBe("function");
+  it("renders the connection tab with the server field", () => {
+    renderPanel();
+    expect(screen.getByText("Server")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("http://127.0.0.1:8001")).toBeInTheDocument();
   });
 
-  it("accepts the required props shape without throwing during prop validation", () => {
-    // Construct the props object and verify the types align — if TS compilation
-    // passes and no runtime error occurs when building the arg, the shape is
-    // compatible with what the component declares.
-    const props = {
-      configError: null,
-      draftConfig: baseConfig,
-      shortcutOptions: ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space"] as const,
-      onChange: vi.fn(),
-      onClose: vi.fn(),
-      onSave: vi.fn(),
-    };
-
-    // The SettingsPanel is a React function component.  Calling it directly
-    // with props (not via JSX) lets us verify the props contract without
-    // needing jsdom/react-dom.
-    expect(() => {
-      // Just verify the function exists and accepts these props.
-      // We do NOT call it here to avoid needing a DOM — the import itself
-      // plus the props construction above is the structural assertion.
-      void props;
-    }).not.toThrow();
+  it("calls onChange when the server URL is edited", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderPanel();
+    const input = screen.getByDisplayValue("http://127.0.0.1:8001");
+    await user.type(input, "X");
+    expect(onChange).toHaveBeenCalled();
+    const last = onChange.mock.calls.at(-1)?.[0] as PaletteConfig;
+    expect(last.serverUrl).toBe("http://127.0.0.1:8001X");
   });
 
-  it("save button label is the string 'Save'", () => {
-    // Regression guard: the save button text must not be silently renamed.
-    // This test relies only on the source file being importable without error,
-    // so it complements rather than replaces a full render test.
-    expect(SettingsPanel.name).toBe("SettingsPanel");
+  it("calls onSave when the Save button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderPanel();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onClose when the Close button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderPanel();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onChange when the 'Hide on blur' switch is toggled", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderPanel();
+    // "Hide on blur" is the first pressed MiniToggle in the connection tab.
+    const toggles = screen.getAllByRole("button", { pressed: true });
+    await user.click(toggles[0]);
+    expect(onChange).toHaveBeenCalled();
+    const last = onChange.mock.calls.at(-1)?.[0] as PaletteConfig;
+    expect(last.hideOnBlur).toBe(false);
+  });
+
+  describe("tabs (A11Y-H2)", () => {
+    it("exposes a tablist with three tabs and one selected tabpanel", () => {
+      renderPanel();
+      const tablist = screen.getByRole("tablist", { name: "Settings sections" });
+      const tabs = within(tablist).getAllByRole("tab");
+      expect(tabs).toHaveLength(3);
+
+      const selected = within(tablist).getByRole("tab", { selected: true });
+      expect(selected).toHaveTextContent("Connection");
+      expect(selected).toHaveAttribute("aria-controls", "settings-tabpanel-connection");
+
+      const panel = screen.getByRole("tabpanel");
+      expect(panel).toHaveAttribute("aria-labelledby", "settings-tab-connection");
+    });
+
+    it("roves selection with the ArrowRight key", async () => {
+      const user = userEvent.setup();
+      renderPanel();
+      const connectionTab = screen.getByRole("tab", { name: /Connection/ });
+      connectionTab.focus();
+      await user.keyboard("{ArrowRight}");
+      const envTab = screen.getByRole("tab", { name: /Environment/ });
+      expect(envTab).toHaveAttribute("aria-selected", "true");
+      expect(envTab).toHaveFocus();
+    });
   });
 
   it("describes persisted connection test feedback", () => {
@@ -62,7 +123,6 @@ describe("SettingsPanel", () => {
       label: "Connected",
       detail: "Doctor checks passed",
     });
-
     expect(connectionFeedback({ status: "error", checkedAt: 1, detail: "HTTP 401" })).toEqual({
       tone: "error",
       label: "Connection failed",

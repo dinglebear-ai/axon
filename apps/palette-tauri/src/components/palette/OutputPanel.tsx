@@ -28,20 +28,22 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { Streamdown } from "streamdown";
+import { memo, useMemo } from "react";
 
 import { AskConversation } from "@/components/palette/AskConversation";
 import { ErrorResultView } from "@/components/palette/ErrorResultView";
 import { EvaluateView } from "@/components/palette/EvaluateView";
+import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { hasStructuredOperationView, OperationResultView } from "@/components/palette/OperationResultView";
+import { arrayByKeys } from "@/components/palette/OperationResultViewShared";
 import { StatsView } from "@/components/palette/StatsView";
 import { StatusView } from "@/components/palette/StatusView";
 import { Button } from "@/components/ui/aurora/button";
 import { Spinner } from "@/components/ui/aurora/spinner";
 import type { PaletteAction } from "@/lib/actions";
-import { arrField, numField, strField, unwrapPayload } from "@/lib/payload";
+import { numField, strField, unwrapPayload } from "@/lib/payload";
 import type { RunState } from "@/lib/runState";
-import { STREAMDOWN_CODE_THEMES, STREAMDOWN_PLUGINS } from "@/lib/streamdownConfig";
+import { firstUrl, hostLabel } from "@/lib/url";
 
 interface OutputPanelProps {
   active?: PaletteAction;
@@ -57,7 +59,7 @@ interface OutputPanelProps {
   pinned: boolean;
 }
 
-export function OutputPanel({
+export const OutputPanel = memo(function OutputPanel({
   active,
   copied,
   outputKind,
@@ -70,14 +72,25 @@ export function OutputPanel({
   onTogglePin,
   pinned,
 }: OutputPanelProps) {
-  const outputUrl = "text" in run ? firstUrl(run.text) : null;
+  const runText = "text" in run ? run.text : "";
+  // P-M1: the URL regex scans the whole growing buffer; without memoization it ran
+  // O(n) per stream token → O(n²) over a stream. Keyed on the text so it only
+  // recomputes when the buffer actually changes.
+  const outputUrl = useMemo(() => (runText ? firstUrl(runText) : null), [runText]);
   const Icon = active ? outputIcon(active.subcommand) : Activity;
   const status = statusFor(run);
   const conversationMode = active?.subcommand === "ask" || active?.subcommand === "chat";
-  const headerSummary = readingHeaderSummary(run, active);
+  // P-M1: recomputes the scrape/retrieve reading-header metrics only when the run or
+  // action changes, not on every unrelated parent re-render / stream token.
+  const headerSummary = useMemo(() => readingHeaderSummary(run, active), [run, active]);
 
   return (
     <section className="output-panel">
+      {/* A11Y-C2: terse, polite announcement of run-state transitions for screen
+          readers — NOT the per-token streaming text (which would be a firehose). */}
+      <span className="sr-only" aria-live="polite">
+        {liveStatusMessage(run, active)}
+      </span>
       <div className={`output-state output-${run.kind} output-tone-${active?.tone ?? "neutral"}`}>
         <header className={headerSummary ? "output-header output-header-summary" : "output-header"}>
           <span className="output-op-tile" aria-hidden="true">
@@ -87,7 +100,7 @@ export function OutputPanel({
             <span className="output-title-line">
               <span className="output-title">{headerSummary?.title ?? outputTitle(run)}</span>
               {headerSummary ? (
-                <span className="output-summary-chips" aria-label="Result summary">
+                <span className="output-summary-chips" role="group" aria-label="Result summary">
                   {headerSummary.metrics.map(([label, value]) => (
                     <span key={label}>
                       <strong>{value}</strong>
@@ -178,9 +191,7 @@ export function OutputPanel({
         ) : "text" in run ? (
           outputKind === "markdown" ? (
             <div className="output-body output-markdown">
-              <Streamdown plugins={STREAMDOWN_PLUGINS} shikiTheme={STREAMDOWN_CODE_THEMES}>
-                {run.text}
-              </Streamdown>
+              <MarkdownBody>{run.text}</MarkdownBody>
             </div>
           ) : (
             <pre className="output-body output-code">
@@ -191,6 +202,24 @@ export function OutputPanel({
       </div>
     </section>
   );
+});
+
+// Terse run-state line for the polite aria-live region (A11Y-C2). Deliberately
+// excludes streamed body text — only the transition (running → complete/failed).
+function liveStatusMessage(run: RunState, action: PaletteAction | undefined): string {
+  const label = action?.label ?? action?.subcommand ?? "Action";
+  switch (run.kind) {
+    case "running":
+      return `${label} running.`;
+    case "streaming":
+      return `${label} streaming response.`;
+    case "success":
+      return `${label} complete.`;
+    case "error":
+      return `${label} failed.`;
+    default:
+      return "";
+  }
 }
 
 function outputTitle(run: RunState): string {
@@ -216,7 +245,7 @@ function readingHeaderSummary(
     strField(payload, "output") ??
     strField(payload, "text") ??
     strField(payload, "body");
-  const chunks = firstArray(payload, ["chunks", "documents", "results"]);
+  const chunks = arrayByKeys(payload, ["chunks", "documents", "results"]);
   const url = strField(payload, "url") ?? strField(payload, "source_url");
   const title = strField(payload, "title") ?? strField(payload, "name") ?? outputTitle(run);
   const words = numField(payload, "word_count") ?? estimateWords(markdown);
@@ -231,29 +260,9 @@ function readingHeaderSummary(
   };
 }
 
-function firstArray(payload: Record<string, unknown>, keys: string[]): unknown[] {
-  for (const key of keys) {
-    const value = arrField(payload, key);
-    if (value.length > 0) return value;
-  }
-  return [];
-}
-
 function estimateWords(value: string | undefined): number | undefined {
   const words = value?.trim().split(/\s+/).filter(Boolean).length;
   return words ? words : undefined;
-}
-
-function hostLabel(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url.split("/")[0] || url;
-  }
-}
-
-function firstUrl(value: string): string | null {
-  return value.match(/https?:\/\/[^\s"')\]}]+/i)?.[0] ?? null;
 }
 
 function PendingBody({

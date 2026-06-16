@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { AlertTriangle, Check, Minus, Workflow, X } from "lucide-react";
 
 import { Button } from "@/components/ui/aurora/button";
 import type { CrawlLogEvent, CrawlSnapshot } from "@/lib/crawlJob";
 import { isLive } from "@/lib/crawlJob";
+import { MIN_PROGRESS_PCT } from "@/lib/format";
+import { titleCase } from "@/lib/payload";
 
 interface CrawlJobViewProps {
   snapshot: CrawlSnapshot;
@@ -15,7 +17,7 @@ interface CrawlJobViewProps {
   onClose: () => void;
 }
 
-export function CrawlJobView({
+export const CrawlJobView = memo(function CrawlJobView({
   snapshot,
   nowMs,
   canceling,
@@ -53,10 +55,10 @@ export function CrawlJobView({
         </header>
 
         <div className="running-body">
-          <div className="running-stat-strip" aria-label="Crawl progress stats">
+          <div className="running-stat-strip" role="group" aria-label="Crawl progress stats">
             <Stat label="Fetched" value={fmt(snapshot.fetched)} accent />
             <Stat label="Queued" value={fmt(snapshot.queued)} />
-            <Stat label={titleCase(third.label)} value={third.value} />
+            <Stat label={titleCase(third.label.toLowerCase())} value={third.value} />
             <Stat label="Depth" value={depth} />
           </div>
 
@@ -78,7 +80,7 @@ export function CrawlJobView({
               )}
             </div>
             <div className="running-progress">
-              <span style={{ width: `${Math.max(2, pct)}%` }} />
+              <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, pct)}%` }} />
             </div>
           </div>
 
@@ -109,7 +111,7 @@ export function CrawlJobView({
       </div>
     </section>
   );
-}
+});
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -118,10 +120,6 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
       <strong>{value}</strong>
     </span>
   );
-}
-
-function titleCase(value: string): string {
-  return value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function CrawlLog({
@@ -137,7 +135,7 @@ function CrawlLog({
   useEffect(() => {
     const el = ref.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [events.length]);
+  }, []);
 
   return (
     <div className="running-log" ref={ref}>

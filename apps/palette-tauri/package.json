@@ -1,6 +1,6 @@
 {
   "name": "axon-palette-tauri",
-  "version": "5.9.2",
+  "version": "5.10.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,11 +9,14 @@
     "generate:api": "node scripts/generate-api.mjs",
     "preview": "vite preview",
     "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "vite:dev": "vite --host 127.0.0.1",
     "vite:build": "vite build",
     "fixture:operation-results": "vite --host 127.0.0.1 --open '/?fixture=operation-results'",
-    "verify": "pnpm install --frozen-lockfile && pnpm test && pnpm typecheck && pnpm vite:build"
+    "lint": "biome lint .",
+    "format": "biome format --write . && biome check --write .",
+    "verify": "pnpm install --frozen-lockfile && pnpm lint && pnpm test && pnpm typecheck && pnpm vite:build"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
@@ -30,12 +33,17 @@
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.0",
     "@tauri-apps/cli": "^2.10.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest-axe": "^3.5.9",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.2",
+    "@vitest/coverage-v8": "^4.1.7",
+    "jest-axe": "^10.0.0",
     "jsdom": "^29.1.1",
     "lucide-react": "^1.16.0",
     "openapi-typescript": "^7.13.0",

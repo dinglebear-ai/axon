@@ -423,25 +423,23 @@ pub(crate) fn write_axon_config_values(
 
 /// Write `data` to `path` atomically: write to `<path>.tmp`, then rename.
 ///
-/// On Unix, permissions are set to `0o600` immediately after the file is
-/// created but before any data is written.  Note: a brief window exists
-/// between `open` and `set_permissions` where the file inherits the process
-/// umask.  On Windows no explicit permission change is applied; rely on the
-/// directory ACL to restrict access.
+/// On Unix, the temp file is created with mode `0o600` atomically via
+/// `OpenOptions::mode`, so it is never world-readable even momentarily (no
+/// umask window between `open` and a separate `chmod`).  On Windows no explicit
+/// permission change is applied; rely on the directory ACL to restrict access.
 fn atomic_write(path: &Path, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let tmp = path.with_extension("tmp");
     {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&tmp)?;
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
 
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(fs::Permissions::from_mode(0o600))?;
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
         }
+
+        let mut file = opts.open(&tmp)?;
 
         use std::io::Write;
         file.write_all(data)?;

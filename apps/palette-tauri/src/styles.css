@@ -8,6 +8,112 @@
    generated — which makes code-block lines collapse onto one line. */
 @source "../node_modules/streamdown/dist/*.js";
 
+/* ─── Tailwind v4 @theme bridge (TW-H1) ──────────────────────────────────────
+   Promote the Aurora design tokens (defined as --aurora-* custom properties in
+   aurora.css) into Tailwind's theme namespaces so they become first-class
+   utilities: e.g. `text-text-primary`, `bg-control-surface`,
+   `ring-accent-primary`, `border-border-strong`, `rounded-aurora-1`,
+   `font-aurora-sans`.
+
+   `@theme inline` emits the utilities as `var(--aurora-*)` references (rather
+   than copying a static snapshot of the value), so the .dark/.light theme
+   switch on --aurora-* continues to flow through. This is ADDITIVE: the
+   --aurora-* properties remain the source of truth and every existing
+   `bg-[var(--aurora-*)]` / hand-written CSS usage is untouched. */
+@theme inline {
+  /* Surfaces */
+  --color-page-bg: var(--aurora-page-bg);
+  --color-bg: var(--aurora-bg);
+  --color-nav-bg: var(--aurora-nav-bg);
+  --color-panel-medium: var(--aurora-panel-medium);
+  --color-panel-strong: var(--aurora-panel-strong);
+  --color-control-surface: var(--aurora-control-surface);
+  --color-hover-bg: var(--aurora-hover-bg);
+
+  /* Borders */
+  --color-border-default: var(--aurora-border-default);
+  --color-border-strong: var(--aurora-border-strong);
+
+  /* Text */
+  --color-text-primary: var(--aurora-text-primary);
+  --color-text-muted: var(--aurora-text-muted);
+  --color-on-accent: var(--aurora-on-accent);
+
+  /* Primary accent — cyan */
+  --color-accent-primary: var(--aurora-accent-primary);
+  --color-accent-strong: var(--aurora-accent-strong);
+  --color-accent-deep: var(--aurora-accent-deep);
+  --color-accent-lift: var(--aurora-accent-lift);
+  --color-accent-button: var(--aurora-accent-button);
+  --color-accent-foreground: var(--aurora-accent-foreground);
+
+  /* Secondary accent — rose */
+  --color-accent-pink: var(--aurora-accent-pink);
+  --color-accent-pink-strong: var(--aurora-accent-pink-strong);
+  --color-accent-pink-deep: var(--aurora-accent-pink-deep);
+  --color-accent-pink-button: var(--aurora-accent-pink-button);
+  --color-accent-pink-surface: var(--aurora-accent-pink-surface);
+  --color-accent-pink-border: var(--aurora-accent-pink-border);
+
+  /* Expressive accent — violet */
+  --color-accent-violet: var(--aurora-accent-violet);
+  --color-accent-violet-strong: var(--aurora-accent-violet-strong);
+  --color-accent-violet-deep: var(--aurora-accent-violet-deep);
+  --color-accent-violet-button: var(--aurora-accent-violet-button);
+  --color-accent-violet-surface: var(--aurora-accent-violet-surface);
+  --color-accent-violet-border: var(--aurora-accent-violet-border);
+
+  /* Status families */
+  --color-info: var(--aurora-info);
+  --color-info-surface: var(--aurora-info-surface);
+  --color-info-border: var(--aurora-info-border);
+  --color-info-foreground: var(--aurora-info-foreground);
+
+  --color-success: var(--aurora-success);
+  --color-success-surface: var(--aurora-success-surface);
+  --color-success-border: var(--aurora-success-border);
+  --color-success-foreground: var(--aurora-success-foreground);
+
+  --color-warn: var(--aurora-warn);
+  --color-warn-surface: var(--aurora-warn-surface);
+  --color-warn-border: var(--aurora-warn-border);
+  --color-warn-foreground: var(--aurora-warn-foreground);
+
+  --color-error: var(--aurora-error);
+  --color-error-lift: var(--aurora-error-lift);
+  --color-error-surface: var(--aurora-error-surface);
+  --color-error-border: var(--aurora-error-border);
+  --color-error-foreground: var(--aurora-error-foreground);
+
+  --color-neutral: var(--aurora-neutral);
+  --color-neutral-surface: var(--aurora-neutral-surface);
+  --color-neutral-border: var(--aurora-neutral-border);
+  --color-neutral-foreground: var(--aurora-neutral-foreground);
+
+  /* Code accents */
+  --color-code-type: var(--aurora-code-type);
+  --color-code-function: var(--aurora-code-function);
+
+  /* Interaction surfaces */
+  --color-subtle-bg: var(--aurora-subtle-bg);
+  --color-selected-bg: var(--aurora-selected-bg);
+  --color-pressed-bg: var(--aurora-pressed-bg);
+  --color-disabled-text: var(--aurora-disabled-text);
+  --color-disabled-surface: var(--aurora-disabled-surface);
+  --color-focus-ring: var(--aurora-focus-ring);
+  --color-focus-ring-strong: var(--aurora-focus-ring-strong);
+
+  /* Radii */
+  --radius-aurora-1: var(--aurora-radius-1);
+  --radius-aurora-2: var(--aurora-radius-2);
+  --radius-aurora-3: var(--aurora-radius-3);
+
+  /* Fonts */
+  --font-aurora-display: var(--aurora-font-display);
+  --font-aurora-sans: var(--aurora-font-sans);
+  --font-aurora-mono: var(--aurora-font-mono);
+}
+
 :root,
 .dark {
   --axon-orange: #ff9645;
@@ -382,7 +488,7 @@ textarea {
 }
 
 .command-submit-warn {
-  color: #06131c;
+  color: var(--aurora-on-accent);
   background: var(--axon-orange);
   border-color: var(--axon-orange);
   box-shadow: 0 0 16px color-mix(in srgb, var(--axon-orange) 30%, transparent);
@@ -390,7 +496,7 @@ textarea {
 
 .command-submit-warn:hover:not(:disabled),
 .command-submit-warn:disabled {
-  color: #06131c;
+  color: var(--aurora-on-accent);
   background: var(--axon-orange);
   border-color: var(--axon-orange);
   opacity: 1;
@@ -700,14 +806,11 @@ textarea {
 .settings-field {
   display: flex;
   flex-direction: column;
+  gap: 7px;
 }
 
 .settings-stack {
   gap: 14px;
-}
-
-.settings-field {
-  gap: 7px;
 }
 
 .settings-field-head {
@@ -1073,11 +1176,14 @@ textarea {
   margin-left: auto;
 }
 
+/* Filled-primary CTA override for the Save button. The Aurora <Button> skin is
+   now CSS-driven (.aurora-btn[data-variant]) rather than inline styles, so this
+   higher-specificity selector wins on the cascade without !important (M7). */
 .settings-footer-actions button:last-child {
-  color: #06131c !important;
-  background: var(--aurora-accent-primary) !important;
-  border-color: var(--aurora-accent-primary) !important;
-  box-shadow: 0 0 16px color-mix(in srgb, var(--aurora-accent-primary) 25%, transparent) !important;
+  color: var(--aurora-on-accent);
+  background: var(--aurora-accent-primary);
+  border-color: var(--aurora-accent-primary);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--aurora-accent-primary) 25%, transparent);
 }
 
 .command-input {
@@ -1159,6 +1265,14 @@ textarea {
   color: var(--aurora-text-muted);
 }
 
+/* A11Y-M1 — visible keyboard-focus ring for the command input. The <input>
+   itself has outline:0; surface focus on its wrapper so AT/keyboard users get
+   a WCAG 2.4.7 indicator. :focus-visible avoids a ring on pointer clicks. */
+.command-input-wrap:has(.command-input:focus-visible) {
+  border-radius: 9px;
+  box-shadow: 0 0 0 2px var(--aurora-focus-ring-strong);
+}
+
 /* Active-mode switcher: the selected action sits inside the input and opens a
    compact list of alternate actions without resizing the command bar. */
 .command-action-switcher {
@@ -1203,6 +1317,12 @@ textarea {
   border-color: var(--aurora-border-strong);
 }
 
+/* A11Y-M1 — `all: unset` strips the UA outline; restore a visible focus ring. */
+.command-action-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--aurora-focus-ring-strong);
+}
+
 .command-mode-icon-warn {
   color: var(--axon-orange-strong);
 }
@@ -1236,21 +1356,17 @@ textarea {
     inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
-.command-action-search,
-.command-action-empty {
+.command-action-search {
   display: flex;
   align-items: center;
-  min-height: 30px;
-  padding: 3px 7px;
-  color: var(--aurora-text-muted);
-  font-size: 10px;
-}
-
-.command-action-search {
   justify-content: space-between;
   gap: 8px;
+  min-height: 30px;
   margin-bottom: 2px;
+  padding: 3px 7px;
   border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 62%, transparent);
+  color: var(--aurora-text-muted);
+  font-size: 10px;
 }
 
 .command-action-search span {
@@ -1266,10 +1382,6 @@ textarea {
   overflow: hidden;
   color: var(--aurora-accent-strong);
   text-overflow: ellipsis;
-}
-
-.command-action-empty {
-  justify-content: center;
 }
 
 .command-action-option {
@@ -1374,10 +1486,14 @@ textarea {
 
 .action-panel,
 .output-panel {
+  display: flex;
   min-width: 0;
   min-height: 0;
+  flex-direction: column;
+  gap: 0;
   overflow: hidden;
   padding: 9px 10px;
+  background: var(--aurora-page-bg);
 }
 
 .action-panel {
@@ -1388,13 +1504,6 @@ textarea {
 .palette-suggestions .action-panel {
   height: auto;
   border-right: 0;
-}
-
-.output-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  background: var(--aurora-page-bg);
 }
 
 .output-job-panel {
@@ -1832,76 +1941,6 @@ textarea {
   font-size: 11.5px;
 }
 
-.ask-activity,
-.ask-tool-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 39px;
-  padding-left: 13px;
-  border-left: 2px solid var(--aurora-border-default);
-  color: var(--aurora-text-muted);
-  font-size: 12px;
-}
-
-.ask-activity span:first-child {
-  color: var(--aurora-text-primary);
-  font-weight: 650;
-}
-
-.ask-tool-row {
-  padding-top: 5px;
-  padding-bottom: 5px;
-  font-family: var(--aurora-font-mono);
-}
-
-.ask-tool-row svg {
-  color: var(--aurora-accent-strong);
-}
-
-.ask-tool-row span {
-  color: var(--aurora-text-primary);
-}
-
-.ask-tool-row code {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--aurora-text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ask-tool-row strong {
-  margin-left: auto;
-  color: var(--aurora-success);
-  font-size: 11px;
-}
-
-.ask-code-mini {
-  margin-left: 39px;
-  overflow: hidden;
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 10px;
-}
-
-.ask-code-mini header {
-  padding: 6px 12px;
-  color: var(--aurora-accent-pink-strong);
-  border-bottom: 1px solid var(--aurora-border-default);
-  font-family: var(--aurora-font-mono);
-  font-size: 10.5px;
-}
-
-.ask-code-mini pre {
-  margin: 0;
-  padding: 11px 13px;
-  color: var(--aurora-text-primary);
-  font-family: var(--aurora-font-mono);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
 .ask-compose {
   display: flex;
   align-items: center;
@@ -1943,7 +1982,7 @@ textarea {
 }
 
 .ask-compose button:last-child {
-  color: #06131c;
+  color: var(--aurora-on-accent);
   background: var(--aurora-accent-primary);
   border-color: var(--aurora-accent-primary);
 }
@@ -2169,6 +2208,7 @@ textarea {
 
 .palette-suggestions .action-scroll {
   height: min(338px, calc(100vh - 100px));
+  /* 338px mirrors LIST_CAP in useWindowChrome.ts — keep in sync */
   max-height: min(338px, calc(100vh - 100px));
 }
 
@@ -2393,6 +2433,21 @@ textarea {
   border: 1px solid color-mix(in srgb, var(--aurora-border-default) 42%, transparent);
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* ─── A11Y-M1 — keyboard focus rings on hand-written interactive controls ────
+   The hand-rolled palette controls either reset the UA outline (all: unset,
+   outline: 0) or render on dark surfaces where the default outline is barely
+   perceivable. Give each a consistent, visible :focus-visible ring meeting
+   WCAG 2.4.7. :focus-visible (not :focus) keeps the ring off pointer clicks. */
+.command-submit:focus-visible,
+.command-settings:focus-visible,
+.action-row-main:focus-visible,
+.idle-tray:focus-visible,
+.output-tools button:focus-visible,
+.output-tool-menu summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--aurora-focus-ring-strong);
 }
 
 .output-tool-menu {

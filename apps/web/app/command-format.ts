@@ -41,21 +41,46 @@ export function extractArtifactHandle(result: Record<string, unknown> | null): A
 
 export function extractArtifactHandles(result: Record<string, unknown> | null): ArtifactHandle[] {
   if (!result) return [];
-  const candidates: unknown[] = [];
+  const candidates: Record<string, unknown>[] = [];
   const single = result.artifact_handle;
-  if (single && typeof single === 'object') candidates.push(single);
+  if (single && typeof single === 'object' && !Array.isArray(single)) {
+    candidates.push({ artifact_handle: single });
+  }
   for (const key of ['predicted_artifact_handles', 'output_file_handles', 'artifact_handles']) {
     const arr = result[key];
-    if (Array.isArray(arr)) candidates.push(...arr);
+    if (Array.isArray(arr)) {
+      candidates.push(
+        ...arr
+          .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+          .map((item) => ({ artifact_handle: item }))
+      );
+    }
   }
-  return candidates.filter((item): item is ArtifactHandle =>
-    item !== null &&
-    typeof item === 'object' &&
-    'kind' in (item as object) &&
-    'relative_path' in (item as object) &&
-    typeof (item as ArtifactHandle).relative_path === 'string' &&
-    (item as ArtifactHandle).relative_path.length > 0
-  );
+  return candidates
+    .map((candidate) => extractArtifactHandle(candidate))
+    .filter((handle): handle is ArtifactHandle => handle !== null);
+}
+
+const RASTER_IMAGE_KINDS = new Set(['screenshot', 'image', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/avif']);
+const RASTER_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif']);
+export const MAX_INLINE_ARTIFACT_BYTES = 8 * 1024 * 1024;
+
+export function isPreviewableRasterArtifact(handle: ArtifactHandle): boolean {
+  if (typeof handle.bytes === 'number' && handle.bytes > MAX_INLINE_ARTIFACT_BYTES) return false;
+  const kind = handle.kind.toLowerCase();
+  if (RASTER_IMAGE_KINDS.has(kind)) return true;
+  if (kind.startsWith('image/')) return false;
+  const leaf = handle.relative_path.split('/').pop() ?? '';
+  const extension = leaf.includes('.') ? leaf.split('.').pop()?.toLowerCase() : undefined;
+  return extension ? RASTER_IMAGE_EXTENSIONS.has(extension) : false;
+}
+
+export function panelArtifactUrl(relativePath: string): string {
+  return `/api/panel/artifact/${relativePath.split('/').map(encodeArtifactSegment).join('/')}`;
+}
+
+function encodeArtifactSegment(segment: string): string {
+  return encodeURIComponent(segment).replaceAll('.', '%2E');
 }
 
 export function arrayField(record: Record<string, unknown>, key: string): unknown[] {
@@ -275,7 +300,8 @@ export function formatCommandResponse(response: PanelCommandResponse): CommandRe
   const artifacts = extractArtifactHandles(result);
 
   const handle = extractArtifactHandle(result);
-  const imageUrl = handle ? `/v1/artifacts/${handle.relative_path}` : undefined;
+  const imageArtifact = handle && isPreviewableRasterArtifact(handle) ? handle : undefined;
+  const imageUrl = imageArtifact ? panelArtifactUrl(imageArtifact.relative_path) : undefined;
 
   return {
     ok: true,
@@ -285,6 +311,7 @@ export function formatCommandResponse(response: PanelCommandResponse): CommandRe
     body: commandResultBody(action, result),
     artifacts: artifacts.length > 0 ? artifacts : undefined,
     raw: shouldShowRawResult(action, result) ? JSON.stringify(response.result, null, 2) : undefined,
-    imageUrl
+    imageUrl,
+    imageArtifact
   };
 }
