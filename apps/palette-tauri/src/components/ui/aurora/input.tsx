@@ -1,6 +1,6 @@
 import * as React from "react"
 import { X } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, devWarn } from "@/lib/utils"
 
 export type InputState = "error" | "warn" | "success"
 export type InputSize = "sm" | "default" | "lg"
@@ -119,6 +119,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     // Hold a real ref to the underlying <input> so the clear button can drive the
     // actual DOM element (native value setter + dispatched "input" event) instead
     // of fabricating a detached element. Merge it with any forwarded ref.
+    //
+    // NOTE: All hooks are declared unconditionally at the top of the component,
+    // before the `unstyled` early return. The bare input also reuses `setRefs`, so
+    // the forwarded ref resolves to the real DOM element in both modes.
     const inputRef = React.useRef<HTMLInputElement | null>(null)
     const setRefs = React.useCallback(
       (node: HTMLInputElement | null) => {
@@ -144,14 +148,27 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     )
 
     // Escape hatch: bare <input>, consumer CSS owns 100% of appearance. No wrapper,
-    // no inline skin, no imperative focus handlers, no adornment/clear logic. Declared
-    // after the hooks above so the rules-of-hooks invariant holds on every render
-    // (the styled path's ref-merge/clear state is simply unused here; `ref` forwards
-    // directly).
+    // no inline skin, no imperative focus handlers, no adornment/clear logic. Skin
+    // props are ignored in this mode, so warn if any were passed.
     if (unstyled) {
+      const ignoredSkinProps = [
+        clearable && "clearable",
+        onClear && "onClear",
+        startAdornment !== undefined && "startAdornment",
+        endAdornment !== undefined && "endAdornment",
+        stateProp !== undefined && "state",
+        error !== undefined && "error",
+        size !== "default" && "size",
+      ].filter(Boolean)
+      if (ignoredSkinProps.length > 0) {
+        devWarn(
+          `[Aurora Input] \`unstyled\` is set, so skin props are ignored: ${ignoredSkinProps.join(", ")}. ` +
+            "Remove them or drop `unstyled` to use the styled variant."
+        )
+      }
       return (
         <input
-          ref={ref}
+          ref={setRefs}
           type={type}
           className={className}
           style={style}
@@ -197,14 +214,26 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             // This keeps form-library consumers (react-hook-form, Formik, etc.)
             // working, unlike fabricating a detached element as event.target.
             const el = inputRef.current
-            if (el) {
-              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                window.HTMLInputElement.prototype,
-                "value"
-              )?.set
-              nativeInputValueSetter?.call(el, "")
+            const nativeInputValueSetter = el
+              ? Object.getOwnPropertyDescriptor(
+                  window.HTMLInputElement.prototype,
+                  "value"
+                )?.set
+              : undefined
+            if (el && nativeInputValueSetter) {
+              nativeInputValueSetter.call(el, "")
               el.dispatchEvent(new Event("input", { bubbles: true }))
+            } else {
+              devWarn(
+                "[Aurora Input] Could not resolve the native value setter; clear did not " +
+                  "dispatch an input event. The onChange handler was not notified."
+              )
             }
+          } else if (isControlled) {
+            devWarn(
+              "[Aurora Input] `clearable` clear button on a controlled input has no effect " +
+                "without `onClear` or `onChange`. Provide one to handle the clear."
+            )
           }
           // Always update internal state for uncontrolled
           if (!isControlled) {
