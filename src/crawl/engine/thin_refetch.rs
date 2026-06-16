@@ -50,6 +50,7 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
     if let Some(proxy) = cfg.chrome_proxy.as_deref() {
         website.with_proxies(Some(vec![proxy.to_string()]));
     }
+    website.with_chrome_intercept(super::runtime::chrome_intercept_config(cfg));
     // Wire custom headers so `--header` applies to Chrome re-fetches too.
     if !cfg.custom_headers.is_empty() {
         let map = crate::core::http::parse_custom_headers(&cfg.custom_headers);
@@ -295,4 +296,46 @@ pub(super) async fn write_refetch_results(
     }
 
     summary
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_page_chrome_refetch_uses_remote_policy_and_ssrf_blacklists() {
+        let mut cfg = Config {
+            chrome_remote_local_policy: true,
+            ..Config::default()
+        };
+        cfg.chrome_remote_url = Some("ws://127.0.0.1:9222/devtools/browser/test".to_string());
+
+        let website = build_single_page_website(&cfg, "https://example.com/thin");
+        let intercept = super::super::runtime::chrome_intercept_config(&cfg);
+
+        assert!(intercept.enabled);
+        assert!(intercept.remote_local_policy);
+        assert_has_loopback_pattern(
+            intercept
+                .blacklist_patterns
+                .as_ref()
+                .expect("intercept blacklist"),
+        );
+        assert_has_loopback_pattern(
+            website
+                .configuration
+                .blacklist_url
+                .as_ref()
+                .expect("website blacklist"),
+        );
+    }
+
+    fn assert_has_loopback_pattern(patterns: &[impl ToString]) {
+        assert!(
+            patterns
+                .iter()
+                .any(|pattern| pattern.to_string().contains("127\\.")),
+            "expected loopback SSRF protection in patterns"
+        );
+    }
 }

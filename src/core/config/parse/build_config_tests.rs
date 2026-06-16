@@ -354,6 +354,14 @@ fn chrome_bootstrap_tuning_comes_from_toml() {
 }
 
 #[test]
+fn crawl_cache_defaults_off() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+        .expect("crawl config should parse");
+    assert!(!cfg.cache, "crawl cache must be opt-in");
+}
+
+#[test]
 fn etag_conditional_without_cache_is_rejected() {
     let _guard = ENV_LOCK.lock().unwrap();
     let result = into_config(cli_with_services(&[
@@ -379,10 +387,12 @@ fn etag_conditional_with_cache_true_is_valid() {
     let _guard = ENV_LOCK.lock().unwrap();
     let cfg = into_config(cli_with_services(&[
         "--etag-conditional",
+        "--cache",
+        "true",
         "crawl",
         "https://example.com",
     ]))
-    .expect("--etag-conditional with default --cache true should be valid");
+    .expect("--etag-conditional with explicit --cache true should be valid");
     assert!(cfg.etag_conditional);
     assert!(cfg.cache);
 }

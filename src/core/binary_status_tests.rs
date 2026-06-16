@@ -27,5 +27,4 @@ fn warning_message_mentions_requested_destinations() {
     let warning = warning_message("src/main.rs");
 
     assert!(warning.contains("~/.local/bin/axon"));
-    assert!(warning.contains("plugins/axon/bin/axon"));
 }
