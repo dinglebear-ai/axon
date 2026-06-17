@@ -20,6 +20,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUSTC_WRAPPER: ""
@@ -31,17 +34,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          fetch-depth: 0
           sparse-checkout: |
             src
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
             plugins
             docs
+            migrations
             .github
             tests
             scripts
             config
+            release
             vendor
             .cargo
       - uses: dtolnay/rust-toolchain@stable
@@ -57,25 +67,32 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          fetch-depth: 0
           sparse-checkout: |
             src
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
             plugins
             docs
+            migrations
             .github
             tests
             scripts
             config
+            release
             vendor
             .cargo
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: xtask
-      - name: Verify version parity across Cargo.toml / README / CHANGELOG / plugin.json
-        run: cargo xtask check-version-sync
+      - name: Verify release versions for changed shipping components
+        run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
 
   no-mod-rs:
     name: no-mod-rs
@@ -88,12 +105,18 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
             plugins
             docs
+            migrations
             .github
             tests
             scripts
             config
+            release
             vendor
             .cargo
       - uses: dtolnay/rust-toolchain@stable
@@ -119,6 +142,7 @@ jobs:
             build.rs
             config.example.toml
             deny.toml
+            release/components.toml
             rust-toolchain.toml
             docs/reference/env-matrix.toml
             src
@@ -131,6 +155,7 @@ jobs:
             tests
             scripts
             config
+            release
             vendor
       - uses: taiki-e/install-action@v2
         with:
@@ -143,6 +168,7 @@ jobs:
             .taplo.toml \
             config.example.toml \
             deny.toml \
+            release/components.toml \
             docs/reference/env-matrix.toml \
             rust-toolchain.toml
 
@@ -246,12 +272,18 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
             plugins
             docs
+            migrations
             .github
             tests
             scripts
             config
+            release
             vendor
             .cargo
       - uses: dtolnay/rust-toolchain@stable
@@ -309,6 +341,7 @@ jobs:
             config
             vendor
             .cargo
+            release
       - uses: dtolnay/rust-toolchain@stable
         with:
           # Match rust-toolchain.toml so the Windows target is installed on
@@ -359,6 +392,7 @@ jobs:
             config
             vendor
             .cargo
+            release
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -421,6 +455,7 @@ jobs:
             config
             vendor
             .cargo
+            release
             Cargo.toml
             Cargo.lock
             rust-toolchain.toml
@@ -661,6 +696,11 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
+            migrations
             plugins
             docs
             .github
@@ -669,6 +709,7 @@ jobs:
             config
             vendor
             .cargo
+            release
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -696,6 +737,11 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
+            migrations
             plugins
             docs
             .github
@@ -704,6 +750,7 @@ jobs:
             config
             vendor
             .cargo
+            release
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -726,6 +773,11 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
+            migrations
             plugins
             docs
             .github
@@ -734,6 +786,7 @@ jobs:
             config
             vendor
             .cargo
+            release
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -770,12 +823,18 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
             plugins
             docs
+            migrations
             .github
             tests
             scripts
             config
+            release
             vendor
             .cargo
             .config/nextest.toml

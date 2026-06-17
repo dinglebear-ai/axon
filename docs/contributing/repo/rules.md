@@ -39,17 +39,32 @@ Standards and conventions enforced across the Axon codebase.
 | `feat:` or `feat(...):` | Minor | `0.35.0` -> `0.36.0` |
 | Everything else | Patch | `0.35.0` -> `0.35.1` |
 
-### Version-bearing files
+### Release versioning
 
-All must have the same version (see the root `CLAUDE.md` "Version Bumping" section):
+`release/components.toml` is the source of truth for releasable component
+shipping paths, tag prefixes, release workflows, version sources, and
+version-bearing files.
+
+Release checklist:
+
+1. Identify changed components with `cargo xtask release-plan --base origin/main --head HEAD`.
+2. Bump only those components with `cargo xtask bump-version <component> patch|minor|major`.
+3. Run `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`.
+4. Run `cargo xtask check`.
+
+CLI version-bearing files must have the same version (see the root `CLAUDE.md`
+"Version bumping rules" section):
 
 | File | Field |
 |------|-------|
 | `Cargo.toml` | `version = "X.Y.Z"` in `[package]` |
-| `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` |
 | `apps/web/package.json` | `"version": "X.Y.Z"` |
-| `README.md` | Version header / badge |
-| `CHANGELOG.md` | New entry under `## X.Y.Z` |
+| `apps/web/openapi/axon.json` | `"info.version": "X.Y.Z"` |
+| `README.md` | `Version: X.Y.Z` |
+| `CHANGELOG.md` | New entry under `## [X.Y.Z]` |
+
+`plugins/axon/.claude-plugin/plugin.json` has no `version` key; the plugin is
+versioned by the marketplace, not the manifest.
 
 ## Monolith policy (enforced)
 
