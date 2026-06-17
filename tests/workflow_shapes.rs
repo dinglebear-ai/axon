@@ -121,3 +121,149 @@ fn ci_uses_guard_for_named_cargo_test_filters() {
         }
     }
 }
+
+#[test]
+fn ci_runs_release_version_gate_before_merge() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let version_sync = workflow_job_block(workflow, "version-sync");
+    assert!(
+        version_sync.contains(
+            "cargo xtask check-release-versions --base origin/main --head HEAD --mode pr"
+        ),
+        "CI must run the multi-component release version gate on pull requests"
+    );
+    assert!(
+        version_sync.contains("fetch-depth: 0"),
+        "release version gate needs tags and history"
+    );
+    for path in [
+        "release/components.toml",
+        "apps/android",
+        "apps/chrome-extension",
+        "apps/palette-tauri",
+        "apps/web/openapi/axon.json",
+        "migrations",
+    ] {
+        assert!(
+            sparse_checkout_covers(version_sync, path),
+            "version-sync checkout must include {path}"
+        );
+    }
+}
+
+#[test]
+fn ci_xtask_compiling_jobs_checkout_release_manifest() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    for job_name in ["check", "msrv", "clippy", "test", "windows-check"] {
+        let job = workflow_job_block(workflow, job_name);
+        if job.contains("cargo check --workspace --all-targets")
+            || job.contains("cargo clippy --workspace --all-targets")
+            || job.contains("cargo nextest run --workspace")
+            || job.contains("cargo test -p xtask")
+            || job.contains("cargo check -p xtask")
+        {
+            for path in [
+                "release/components.toml",
+                "apps/android",
+                "apps/chrome-extension",
+                "apps/palette-tauri",
+                "apps/web/openapi/axon.json",
+                "migrations",
+                "assets",
+            ] {
+                assert!(
+                    sparse_checkout_covers(job, path),
+                    "{job_name} compiles xtask tests and must checkout {path}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn auto_tag_uses_validated_xtask_release_plan() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let plan = workflow_job_block(workflow, "plan");
+    let release = workflow_job_block(workflow, "release");
+    assert!(
+        plan.contains("cargo xtask check-release-versions --head HEAD --mode main --json"),
+        "auto-tag must use the validated shared xtask release-version detector"
+    );
+    assert!(
+        plan.contains("fetch-depth: 0"),
+        "auto-tag release planning needs tag history"
+    );
+    assert!(
+        plan.contains(
+            "matrix=$(jq -c '{include: [.[] | select(.changed == true)]}' release-plan.json)"
+        ),
+        "auto-tag matrix must include only changed components"
+    );
+    assert!(
+        release.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#),
+        "auto-tag must skip release job for an empty matrix"
+    );
+    assert!(
+        release.contains("fromJson(needs.plan.outputs.matrix)"),
+        "auto-tag must expand the xtask plan as a matrix"
+    );
+    assert!(
+        release.contains("matrix.candidate_tag") && release.contains("matrix.release_workflow"),
+        "auto-tag must consume tags and workflows from the xtask release plan"
+    );
+    assert!(
+        release
+            .find("Wait for CI to pass on this commit")
+            .expect("CI wait step")
+            < release.find("Create and push tag").expect("tag step"),
+        "auto-tag must wait for CI before creating release tags"
+    );
+    for required in [
+        "if ! runs_json=$(gh run list",
+        "gh run list failed while polling ci.yml",
+        "--branch main",
+        "--event push",
+        ".headSha == $sha",
+        ".event == \"push\"",
+        ".headBranch == \"main\"",
+    ] {
+        assert!(
+            release.contains(required),
+            "auto-tag CI polling must constrain {required}"
+        );
+    }
+}
+
+fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
+    let marker = format!("  {job_name}:");
+    let start = workflow
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing workflow job {job_name}"));
+    let rest = &workflow[start + marker.len()..];
+    let end = rest
+        .lines()
+        .scan(0, |offset, line| {
+            let line_start = *offset;
+            *offset += line.len() + 1;
+            Some((line_start, line))
+        })
+        .skip(1)
+        .find_map(|(offset, line)| {
+            if line.starts_with("  ") && !line.starts_with("    ") {
+                Some(offset)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(rest.len());
+    &rest[..end]
+}
+
+fn sparse_checkout_covers(block: &str, path: &str) -> bool {
+    block.lines().map(str::trim).any(|entry| {
+        entry == path
+            || path
+                .strip_prefix(entry)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    })
+}

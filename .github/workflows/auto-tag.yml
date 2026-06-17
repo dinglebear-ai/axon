@@ -2,15 +2,8 @@ name: auto-tag
 
 # Selective, per-component auto-release detector.
 #
-# On every push to main this evaluates each releasable component independently:
-#
-#   | component | paths that ship in it                          | version source                                   | tag prefix     | release workflow              |
-#   |-----------|------------------------------------------------|--------------------------------------------------|----------------|-------------------------------|
-#   | cli       | src, Cargo.toml/lock, build.rs, migrations,    | Cargo.toml [package] version                     | v              | release.yml                   |
-#   |           | apps/web, rust-toolchain.toml, vendor          |                                                  |                |                               |
-#   | palette   | apps/palette-tauri                             | apps/palette-tauri/src-tauri/tauri.conf.json     | palette-v      | palette-release.yml           |
-#   | android   | apps/android                                   | apps/android/app/build.gradle.kts versionName    | android-v      | android-release.yml           |
-#   | chrome    | apps/chrome-extension, assets                  | apps/chrome-extension/manifest.json version      | chrome-ext-v   | chrome-extension-release.yml  |
+# On every push to main this asks `cargo xtask check-release-versions` for the
+# shared release plan. Component metadata lives in `release/components.toml`.
 #
 # For each component, it diffs the component's shipping paths against that
 # component's most recent tag. If the code changed AND the version was bumped
@@ -21,7 +14,7 @@ name: auto-tag
 #
 # RELEASE GATES (OPS-M1): before a tag is created we (1) verify the new version
 # is a strictly-monotonic bump over that component's highest existing tag, and
-# (2) wait for the `CI` workflow (production-gate aggregation) to succeed for
+# (2) wait for the entire `CI` workflow to succeed for
 # this exact commit. This prevents an accidental version edit or a red CI from
 # auto-publishing a broken public release.
 #
@@ -56,131 +49,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  plan:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: xtask
+      - name: Build release plan
+        id: plan
+        run: |
+          set -euo pipefail
+          cargo xtask check-release-versions --head HEAD --mode main --json > release-plan.json
+          matrix=$(jq -c '{include: [.[] | select(.changed == true)]}' release-plan.json)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          cat release-plan.json
+
   release:
-    name: ${{ matrix.component }}
+    needs: plan
+    if: ${{ needs.plan.outputs.matrix != '{"include":[]}' }}
+    name: ${{ matrix.id }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # `paths` is a space-separated list of git pathspecs (directories
-          # match everything under them) consumed unquoted by `git diff`. Only
-          # paths that change the SHIPPED artifact belong here — dev-only trees
-          # (xtask, benches, .github, docs) are intentionally excluded so a
-          # tooling/docs change never forces a version bump or a rebuild.
-          - component: cli
-            prefix: v
-            paths: "src Cargo.toml Cargo.lock build.rs migrations apps/web rust-toolchain.toml vendor"
-            workflow: release.yml
-          - component: palette
-            prefix: palette-v
-            paths: "apps/palette-tauri"
-            workflow: palette-release.yml
-          - component: android
-            prefix: android-v
-            paths: "apps/android"
-            workflow: android-release.yml
-          - component: chrome
-            prefix: chrome-ext-v
-            paths: "apps/chrome-extension assets"
-            workflow: chrome-extension-release.yml
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
-          # Full history + tags so we can diff against the component's last tag
-          # and verify monotonic bumps without a shallow clone.
           fetch-depth: 0
-
-      - name: Read component version
-        id: version
-        run: |
-          set -euo pipefail
-          # `|| true` keeps a parse miss from aborting under `set -e` so the
-          # explicit empty-check below emits the friendly error instead.
-          case "${{ matrix.component }}" in
-            cli)
-              version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2 || true) ;;
-            palette)
-              version=$(grep -m1 -E '"version"[[:space:]]*:' apps/palette-tauri/src-tauri/tauri.conf.json \
-                | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/' || true) ;;
-            android)
-              version=$(grep -m1 -E '^[[:space:]]*versionName[[:space:]]*=' apps/android/app/build.gradle.kts \
-                | sed -E 's/.*"([^"]+)".*/\1/' || true) ;;
-            chrome)
-              version=$(grep -m1 -E '"version"[[:space:]]*:' apps/chrome-extension/manifest.json \
-                | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/' || true) ;;
-            *)
-              echo "::error::unknown component ${{ matrix.component }}" >&2; exit 1 ;;
-          esac
-          if [ -z "$version" ]; then
-            echo "::error::could not parse version for ${{ matrix.component }}" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=${{ matrix.prefix }}$version" >> "$GITHUB_OUTPUT"
-          echo "${{ matrix.component }} version: $version (tag ${{ matrix.prefix }}$version)"
-
-      - name: Detect changes since last release
-        id: changed
-        run: |
-          set -euo pipefail
-          prefix="${{ matrix.prefix }}"
-          # Highest existing tag for this component (version sort). The glob is
-          # component-specific so `v*` never matches `palette-v*` etc.
-          last_tag=$(git tag -l "${prefix}*" | sort -V | tail -1 || true)
-          if [ -z "$last_tag" ]; then
-            echo "No prior ${prefix}* tag — first ${{ matrix.component }} release; treating as changed."
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "last_tag=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "last_tag=$last_tag" >> "$GITHUB_OUTPUT"
-          # `paths` is intentionally unquoted so each pathspec is a separate arg.
-          if git diff --name-only "$last_tag"..HEAD -- ${{ matrix.paths }} | grep -q .; then
-            echo "Changes detected in ${{ matrix.component }} paths since $last_tag."
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No ${{ matrix.component }} changes since $last_tag — skipping."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Bump enforcement: code changed but the computed tag already exists means
-      # the version was not bumped. Fail loudly rather than ship nothing.
-      - name: Enforce version bump
-        if: steps.changed.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          tag="${{ steps.version.outputs.tag }}"
-          if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
-            echo "::error::${{ matrix.component }} code changed since ${{ steps.changed.outputs.last_tag }} but tag $tag already exists — bump the ${{ matrix.component }} version before merging." >&2
-            exit 1
-          fi
-          echo "Tag $tag does not exist — OK to release."
-
-      # Sanity gate: the new version must sort strictly after the component's
-      # highest existing tag. Blocks accidental downgrades. Skipped on the very
-      # first release (no prior tag). `sort -V` handles 2- and 3-part versions.
-      - name: Verify monotonic version bump
-        if: steps.changed.outputs.changed == 'true' && steps.changed.outputs.last_tag != ''
-        run: |
-          set -euo pipefail
-          prefix="${{ matrix.prefix }}"
-          new="${{ steps.version.outputs.version }}"
-          last="${{ steps.changed.outputs.last_tag }}"
-          last_ver="${last#"$prefix"}"
-          echo "Latest existing tag: $last (v$last_ver); candidate: $new"
-          highest=$(printf '%s\n%s\n' "$last_ver" "$new" | sort -V | tail -1)
-          if [ "$new" = "$last_ver" ] || [ "$highest" != "$new" ]; then
-            echo "::error::${{ matrix.component }} version $new is not a strictly-monotonic bump over $last_ver." >&2
-            exit 1
-          fi
-          echo "OK: $new > $last_ver."
 
       # CI gate: do not cut a public release until the required CI checks for
       # this exact commit have succeeded. auto-tag and CI both fire on the same
       # push, so CI may still be in progress when this runs — hence the poll.
       - name: Wait for CI to pass on this commit
-        if: steps.changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -189,16 +98,22 @@ jobs:
           deadline=$(( $(date +%s) + 1800 ))  # 30 minute cap
           echo "Waiting for CI to succeed for $sha ..."
           while :; do
-            conclusion=$(gh run list \
+            gh_stderr="$(mktemp)"
+            if ! runs_json=$(gh run list \
               --workflow=ci.yml \
               --commit "$sha" \
-              --json databaseId,status,conclusion \
-              --jq '.[0].conclusion' 2>/dev/null || true)
-            status=$(gh run list \
-              --workflow=ci.yml \
-              --commit "$sha" \
-              --json status \
-              --jq '.[0].status' 2>/dev/null || true)
+              --branch main \
+              --event push \
+              --json databaseId,status,conclusion,headSha,event,headBranch 2>"$gh_stderr"); then
+              echo "::error::gh run list failed while polling ci.yml for $sha" >&2
+              cat "$gh_stderr" >&2
+              exit 1
+            fi
+            run_json=$(jq -c --arg sha "$sha" \
+              '[.[] | select(.headSha == $sha and .event == "push" and .headBranch == "main")][0] // null' \
+              <<<"${runs_json:-[]}")
+            conclusion=$(jq -r '.conclusion // ""' <<<"${run_json:-null}")
+            status=$(jq -r '.status // ""' <<<"${run_json:-null}")
             if [ "$conclusion" = "success" ]; then
               echo "CI succeeded for $sha — proceeding to tag."
               break
@@ -216,18 +131,14 @@ jobs:
           done
 
       - name: Create and push tag
-        if: steps.changed.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
-          echo "Pushed tag ${{ steps.version.outputs.tag }}"
+          git tag "${{ matrix.candidate_tag }}"
+          git push origin "${{ matrix.candidate_tag }}"
+          echo "Pushed tag ${{ matrix.candidate_tag }}"
 
-      - name: Dispatch ${{ matrix.workflow }}
-        if: steps.changed.outputs.changed == 'true'
+      - name: Dispatch release workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh workflow run "${{ matrix.workflow }}" --ref "${{ steps.version.outputs.tag }}" -f publish=true
-          echo "Dispatched ${{ matrix.workflow }} for ${{ steps.version.outputs.tag }}"
+        run: gh workflow run "${{ matrix.release_workflow }}" --ref "${{ matrix.candidate_tag }}" -f publish=true

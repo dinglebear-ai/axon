@@ -1,0 +1,65 @@
+schema_version = 1
+
+[[components]]
+id = "cli"
+name = "Axon CLI"
+tag_prefix = "v"
+release_workflow = "release.yml"
+shipping_paths = [
+  "src",
+  "Cargo.toml",
+  "Cargo.lock",
+  "build.rs",
+  "migrations",
+  "apps/web",
+  "rust-toolchain.toml",
+  "vendor",
+]
+version_source = { kind = "cargo_package", path = "Cargo.toml", package = "axon" }
+version_files = [
+  { kind = "cargo_package", path = "Cargo.toml", package = "axon" },
+  { kind = "cargo_lock_package", path = "Cargo.lock", package = "axon" },
+  { kind = "readme_version_line", path = "README.md" },
+  { kind = "changelog_heading", path = "CHANGELOG.md" },
+  { kind = "json_version", path = "apps/web/package.json", json_pointer = "/version" },
+  { kind = "npm_package_lock", path = "apps/web/package-lock.json", package = "@axon/admin-panel" },
+  { kind = "json_version", path = "apps/web/openapi/axon.json", json_pointer = "/info/version" },
+  { kind = "json_no_version", path = "plugins/axon/.claude-plugin/plugin.json" },
+]
+
+[[components]]
+id = "palette"
+name = "Desktop Palette"
+tag_prefix = "palette-v"
+release_workflow = "palette-release.yml"
+shipping_paths = ["apps/palette-tauri"]
+version_source = { kind = "json_version", path = "apps/palette-tauri/src-tauri/tauri.conf.json", json_pointer = "/version" }
+version_files = [
+  { kind = "json_version", path = "apps/palette-tauri/src-tauri/tauri.conf.json", json_pointer = "/version" },
+  { kind = "json_version", path = "apps/palette-tauri/package.json", json_pointer = "/version" },
+  { kind = "cargo_package", path = "apps/palette-tauri/src-tauri/Cargo.toml", package = "axon-palette-tauri" },
+  { kind = "cargo_lock_package", path = "apps/palette-tauri/src-tauri/Cargo.lock", package = "axon-palette-tauri" },
+]
+
+[[components]]
+id = "android"
+name = "Android APK"
+tag_prefix = "android-v"
+release_workflow = "android-release.yml"
+shipping_paths = ["apps/android"]
+version_source = { kind = "gradle_version_name", path = "apps/android/app/build.gradle.kts" }
+version_files = [
+  { kind = "gradle_version_name", path = "apps/android/app/build.gradle.kts" },
+  { kind = "gradle_version_code", path = "apps/android/app/build.gradle.kts" },
+]
+
+[[components]]
+id = "chrome"
+name = "Chrome Extension"
+tag_prefix = "chrome-ext-v"
+release_workflow = "chrome-extension-release.yml"
+shipping_paths = ["apps/chrome-extension", "assets"]
+version_source = { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" }
+version_files = [
+  { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" },
+]

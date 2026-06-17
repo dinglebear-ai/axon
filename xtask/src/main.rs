@@ -26,10 +26,37 @@ enum Command {
     CheckBrokenSymlinks,
     /// Scan staged files for secrets and credentials.
     CheckSecrets,
-    /// Verify the CLI component's version-bearing files (Cargo.toml, README.md,
-    /// CHANGELOG.md, apps/web/package.json, apps/web/openapi/axon.json) carry the
-    /// same version, and that plugin.json carries none.
+    /// Compatibility check for the CLI component's version-bearing files.
+    /// The full multi-component gate is `check-release-versions`.
     CheckVersionSync,
+    /// Verify all releasable components have valid versions and changed shipping paths have bumps.
+    CheckReleaseVersions {
+        #[arg(long)]
+        base: Option<String>,
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+        #[arg(long, value_enum, default_value = "pr")]
+        mode: checks::release_versions::GateMode,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the release plan consumed by GitHub Actions.
+    ReleasePlan {
+        #[arg(long)]
+        base: Option<String>,
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+        #[arg(long, value_enum, default_value = "pr")]
+        mode: checks::release_versions::GateMode,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Bump all version-bearing files for one component.
+    BumpVersion {
+        component: String,
+        #[arg(value_enum)]
+        level: checks::release_versions::BumpLevel,
+    },
 }
 
 fn main() -> Result<()> {
@@ -45,6 +72,31 @@ fn main() -> Result<()> {
         Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
         Command::CheckSecrets => checks::secrets::check(&root),
         Command::CheckVersionSync => checks::version_sync::check(&root),
+        Command::CheckReleaseVersions {
+            base,
+            head,
+            mode,
+            json,
+        } => Ok(checks::release_versions::check(
+            &root,
+            base.as_deref(),
+            &head,
+            mode,
+            json,
+        )?),
+        Command::ReleasePlan {
+            base,
+            head,
+            mode,
+            json,
+        } => {
+            let plans = checks::release_versions::plan(&root, base.as_deref(), &head, mode)?;
+            checks::release_versions::print_plans(&plans, json)?;
+            Ok(())
+        }
+        Command::BumpVersion { component, level } => {
+            Ok(checks::release_versions::bump(&root, &component, level)?)
+        }
     }
 }
 
