@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
+import { StatusIndicator, type StatusTone } from "@/components/ui/aurora/status-indicator";
 import { isTauriRuntime } from "@/lib/invoke";
 import { arrField, isRecord, numField, shortId, strField, titleCase } from "@/lib/payload";
 import { hostLabel } from "@/lib/url";
@@ -204,7 +205,18 @@ export function EmptyResult({ kind = "generic" }: { kind?: EmptyKind }) {
 }
 
 export function StatusDot({ status }: { status: string }) {
-  return <span className={`operation-dot operation-dot-${toneForStatus(status)}`} aria-hidden="true" />;
+  const tone = toneForStatus(status);
+  return (
+    <StatusIndicator
+      tone={statusIndicatorTone(tone)}
+      showLabel={false}
+      pulse={false}
+      className="operation-status-indicator"
+      dotClassName="operation-status-dot"
+      dotStyle={statusDotStyle(tone)}
+      aria-hidden="true"
+    />
+  );
 }
 
 // Returns the first non-empty array found among the given payload keys, in order.
@@ -407,5 +419,33 @@ export function toneForStatus(status: string | undefined): Tone {
       return "error";
     default:
       return "neutral";
+  }
+}
+
+function statusIndicatorTone(tone: Tone): StatusTone {
+  switch (tone) {
+    case "success":
+      return "online";
+    case "warn":
+      return "degraded";
+    case "error":
+      return "error";
+    case "violet":
+      return "automating";
+    default:
+      return "queued";
+  }
+}
+
+function statusDotStyle(tone: Tone): CSSProperties {
+  switch (tone) {
+    case "success":
+      return { boxShadow: "0 0 0 3px var(--aurora-success-surface)" };
+    case "warn":
+      return { boxShadow: "0 0 0 3px var(--aurora-warn-surface)" };
+    case "error":
+      return { boxShadow: "0 0 0 3px var(--aurora-error-surface)" };
+    default:
+      return { boxShadow: "0 0 0 3px var(--aurora-neutral-surface)" };
   }
 }

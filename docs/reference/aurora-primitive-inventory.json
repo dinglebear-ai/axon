@@ -238,20 +238,7 @@
       "stale_bead_links": ["axon_rust-dnu7"]
     }
   ],
-  "web_raw_control_allowlist": [
-    {
-      "row_id": "W-PAL-001",
-      "file_path": "apps/palette-tauri/src/App.tsx",
-      "tag": "button",
-      "reason": "Audited idle-tray app shell composite pending hrqn.3 migration or documented exception."
-    },
-    {
-      "row_id": "W-PAL-002",
-      "file_path": "apps/palette-tauri/src/components/palette/SettingsFields.tsx",
-      "tag": "select",
-      "reason": "Audited settings native select pending NativeSelect migration in hrqn.3."
-    }
-  ],
+  "web_raw_control_allowlist": [],
   "android_reusable_control_allowlist": [
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt", "pattern": "BasicTextField" },
