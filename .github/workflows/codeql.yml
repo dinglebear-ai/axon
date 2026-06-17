@@ -92,6 +92,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          dependency-caching: true
 
       - name: Build Android app for Java/Kotlin analysis
         if: matrix.language == 'java-kotlin'
