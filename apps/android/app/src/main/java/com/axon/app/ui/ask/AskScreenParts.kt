@@ -55,6 +55,7 @@ import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.nav.AxonMarkGlyph
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
+import tv.tootie.aurora.components.AuroraSuggestionChip
 
 @Composable
 internal fun AskModeSwitch(
@@ -194,7 +195,6 @@ internal fun EmptyAskState(
 /** Tappable starter prompt that fades + rises in, staggered by [index]. */
 @Composable
 private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
-    val colors = AxonTheme.colors
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val anim by animateFloatAsState(
@@ -202,26 +202,15 @@ private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
         animationSpec = tween(durationMillis = 360, delayMillis = 140 + index * 90, easing = LinearEasing),
         label = "chip-in",
     )
-    val shape = RoundedCornerShape(999.dp)
-    Box(
+    AuroraSuggestionChip(
+        label = text,
+        onClick = onClick,
         modifier = Modifier
             .graphicsLayer {
                 alpha = anim
                 translationY = (1f - anim) * 16f
-            }
-            .clip(shape)
-            .background(colors.tint(colors.accentPrimary, 8, colors.control), shape)
-            .border(1.dp, colors.tint(colors.accentPrimary, 20, colors.control), shape)
-            .pressScale(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
-    ) {
-        Text(
-            text,
-            color = colors.textPrimary.copy(alpha = 0.9f),
-            fontSize = 13.sp,
-            fontFamily = AxonTheme.fonts.body,
-        )
-    }
+            },
+    )
 }
 
 /**
