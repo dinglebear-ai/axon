@@ -11,6 +11,7 @@ import { OutputPanel } from "@/components/palette/OutputPanel";
 import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
 import { PaletteFooter } from "@/components/palette/PaletteFooter";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
+import { Button } from "@/components/ui/aurora/button";
 import {
   ACTIONS,
   type PaletteAction,
@@ -411,7 +412,7 @@ export default function App() {
       />
 
       {jobMinimized && run.kind === "job" && (
-        <button className="idle-tray" type="button" onClick={expandJob} title="Expand crawl job">
+        <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={expandJob} title="Expand crawl job">
           <span className="idle-tray-dot" />
           <Workflow size={14} strokeWidth={1.9} />
           <span>Crawling {run.snapshot.host}</span>
@@ -420,7 +421,7 @@ export default function App() {
           </span>
           <strong>{Math.round(run.snapshot.percent)}%</strong>
           <ChevronRight size={15} />
-        </button>
+        </Button>
       )}
 
       {settingsOpen && draftConfig && (

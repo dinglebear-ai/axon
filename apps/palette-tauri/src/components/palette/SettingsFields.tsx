@@ -6,11 +6,12 @@
 // here keeps SettingsPanel.tsx under the 500-line monolith cap while preserving
 // the local-only scope.
 
-import { ChevronDown, Eye, EyeOff, KeyRound } from "lucide-react";
+import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
+import { NativeSelect } from "@/components/ui/aurora/native-select";
 
 export function TextInput({
   value,
@@ -61,15 +62,19 @@ export function SecretInput({ value, onChange, placeholder }: { value: string; o
 
 export function SelectInput({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
   return (
-    <span className="settings-select">
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+    <span className="settings-select settings-native-select">
+      <NativeSelect
+        value={value}
+        className="settings-select-control"
+        style={{ height: "34px" }}
+        onChange={(event) => onChange(event.target.value)}
+      >
         {options.map((option) => (
           <option key={option} value={option}>
             {option || "(unset)"}
           </option>
         ))}
-      </select>
-      <ChevronDown size={13} aria-hidden="true" />
+      </NativeSelect>
     </span>
   );
 }
