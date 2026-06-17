@@ -249,6 +249,9 @@ legacy-runtime-check:
 blocking-async-check:
     ./scripts/check_no_blocking_async.sh
 
+primitive-inventory-check:
+    python3 scripts/check_aurora_primitive_inventory.py
+
 validate-plugin:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -281,6 +284,7 @@ runtime-current:
 verify:
     just legacy-runtime-check
     just blocking-async-check
+    just primitive-inventory-check
     just validate-plugin
     just web-check
     just fmt-check
@@ -295,6 +299,7 @@ precommit:
     python3 scripts/check_compose_port_bindings.py --staged
     python3 scripts/enforce_no_legacy_symbols.py
     just legacy-runtime-check
+    just primitive-inventory-check
     if [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged; elif [ -f "scripts/enforce_monoliths.py" ]; then python3 scripts/enforce_monoliths.py --staged; else echo "ERROR: enforce_monoliths.py not found" && exit 1; fi
     just fmt-check
     just clippy
