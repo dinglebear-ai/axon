@@ -21,7 +21,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +33,11 @@ import com.axon.app.data.repository.WatchUi
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
+import tv.tootie.aurora.components.AuroraProgress
+import tv.tootie.aurora.components.AuroraProgressSize
+import tv.tootie.aurora.components.AuroraProgressVariant
+import tv.tootie.aurora.components.AuroraStatusIndicator
+import tv.tootie.aurora.components.AuroraStatusTone
 
 @Composable
 internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier) {
@@ -46,7 +50,7 @@ internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            Box(Modifier.size(7.dp).background(statusTone(job.status, tone), RoundedCornerShape(999.dp)))
+            AuroraStatusIndicator(tone = statusIndicatorTone(job.status), dotOnly = true, dotSize = 7.dp)
             Text(
                 shortTarget(jobDisplayTarget(job)),
                 color = colors.textPrimary,
@@ -131,7 +135,11 @@ internal fun WatchDrillRow(watch: WatchUi, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(8.dp).background(tone, RoundedCornerShape(999.dp)))
+            AuroraStatusIndicator(
+                tone = if (watch.enabled) AuroraStatusTone.Online else AuroraStatusTone.Offline,
+                dotOnly = true,
+                dotSize = 8.dp,
+            )
             Text(
                 watch.name,
                 color = colors.textPrimary,
@@ -317,11 +325,7 @@ internal fun JobIconTile(icon: ImageVector, tone: Color, size: Int = 38) {
 internal fun RunningDots(tone: Color) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         repeat(3) {
-            Box(
-                modifier = Modifier
-                    .size(5.dp)
-                    .background(tone, RoundedCornerShape(999.dp)),
-            )
+            AuroraStatusIndicator(tone = AuroraStatusTone.Syncing, dotOnly = true, dotSize = 5.dp)
         }
     }
 }
@@ -333,22 +337,34 @@ internal fun ProgressBar(progress: Float, tone: Color) {
 
 @Composable
 internal fun ProgressBar(progress: Float, tone: Color, modifier: Modifier) {
+    AuroraProgress(
+        value = progress.coerceIn(0f, 1f),
+        variant = progressVariantForTone(tone),
+        size = AuroraProgressSize.Compact,
+        modifier = modifier,
+        trackColor = AxonTheme.colors.borderDefault.copy(alpha = 0.28f),
+    )
+}
+
+@Composable
+private fun progressVariantForTone(tone: Color): AuroraProgressVariant {
     val colors = AxonTheme.colors
-    val shape = RoundedCornerShape(999.dp)
-    Box(
-        modifier = modifier
-            .height(3.dp)
-            .background(colors.borderDefault.copy(alpha = 0.28f), shape)
-            .padding(0.7.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(progress.coerceIn(0.02f, 1f))
-                .height(2.dp)
-                .clip(shape)
-                .background(Brush.horizontalGradient(listOf(AxonTheme.colors.tint(tone, 55, colors.pageBg), tone))),
-        )
+    return when (tone) {
+        colors.success -> AuroraProgressVariant.Success
+        colors.warn -> AuroraProgressVariant.Warn
+        colors.error -> AuroraProgressVariant.Error
+        colors.accentPink -> AuroraProgressVariant.Rose
+        else -> AuroraProgressVariant.Default
     }
+}
+
+private fun statusIndicatorTone(status: String): AuroraStatusTone = when (status.lowercase()) {
+    "pending", "queued" -> AuroraStatusTone.Queued
+    "running", "processing", "in_progress" -> AuroraStatusTone.Syncing
+    "done", "completed", "success", "succeeded" -> AuroraStatusTone.Online
+    "failed", "error" -> AuroraStatusTone.Error
+    "cancelled", "canceled", "idle" -> AuroraStatusTone.Offline
+    else -> AuroraStatusTone.Degraded
 }
 
 @Composable
