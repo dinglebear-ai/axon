@@ -110,7 +110,8 @@
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsDrawerContent.kt",
-        "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt"
+        "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/common/AxonSensitiveTextField.kt"
       ],
       "symbols": ["ToolbarIconButton", "SendButton", "CompactActionButton", "Material IconButton"],
       "current_primitive_smell": "Icon/action button shapes and size variants are implemented app-locally or with raw Material IconButton.",
@@ -255,6 +256,7 @@
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsDrawerContent.kt", "pattern": "IconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt", "pattern": "IconButton" },
+    { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/common/AxonSensitiveTextField.kt", "pattern": "IconButton" },
     { "row_id": "A-AND-003", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt", "pattern": "SettingsTabButton" },
     { "row_id": "A-AND-003", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskScreenParts.kt", "pattern": "SuggestionChip" },
     { "row_id": "A-AND-003", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/options/forms/AskOptionsForm.kt", "pattern": "SwitchRow" },

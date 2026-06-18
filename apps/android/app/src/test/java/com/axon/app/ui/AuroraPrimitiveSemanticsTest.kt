@@ -87,7 +87,7 @@ class AuroraPrimitiveSemanticsTest {
         }
 
         onNodeWithContentDescription("Ask prompt").assertIsNotEnabled()
-        onAllNodesWithContentDescription("Stop generating").assertCountEquals(2)
+        onAllNodesWithContentDescription("Stop generating").assertCountEquals(1)
         onAllNodesWithContentDescription("Stop generating")[0].assertIsEnabled().performClick()
         runOnIdle { check(stopped) }
     }
@@ -142,7 +142,6 @@ class AuroraPrimitiveSemanticsTest {
                     tabs = listOf("One", "Two").toImmutableList(),
                     selectedIndex = 1,
                     onTabSelected = {},
-                    compact = true,
                 )
             }
         }
