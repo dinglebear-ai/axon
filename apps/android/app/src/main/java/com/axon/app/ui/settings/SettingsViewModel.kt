@@ -1,9 +1,11 @@
 package com.axon.app.ui.settings
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
+import com.axon.app.data.auth.AuthMode
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.ApiToken
 import com.axon.app.data.repository.AxonSettings
@@ -67,6 +69,12 @@ data class ConfigFileUiState(
     val error: String? = null,
 )
 
+data class CollectionListUiState(
+    val collections: List<String> = emptyList(),
+    val loading: Boolean = false,
+    val error: String? = null,
+)
+
 sealed interface TestConnectionState {
     data object Idle : TestConnectionState
     data object Testing : TestConnectionState
@@ -82,6 +90,8 @@ sealed interface SaveState {
     data class Failed(val error: String) : SaveState
 }
 
+enum class OAuthUiStatus { Idle, Starting, SignedIn, Error }
+
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
     private var serverRawEnv: String = ""
@@ -96,44 +106,62 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     private val _saveState = MutableStateFlow<SaveState>(SaveState.Idle)
     val saveState: StateFlow<SaveState> = _saveState.asStateFlow()
 
+    private val _draftAuthMode = MutableStateFlow(AuthMode.Bearer)
+    val draftAuthMode: StateFlow<AuthMode> = _draftAuthMode.asStateFlow()
+
+    private val _oauthStatus = MutableStateFlow(OAuthUiStatus.Idle)
+    val oauthStatus: StateFlow<OAuthUiStatus> = _oauthStatus.asStateFlow()
+
     private val _configFiles = MutableStateFlow(ConfigFileUiState())
     val configFiles: StateFlow<ConfigFileUiState> = _configFiles.asStateFlow()
 
+    private val _collections = MutableStateFlow(CollectionListUiState())
+    val collections: StateFlow<CollectionListUiState> = _collections.asStateFlow()
+
     init {
         container.settingsRepository.settings
-            .onEach { _settings.value = it }
+            .onEach {
+                _settings.value = it
+                _draftAuthMode.value = it.authMode
+                _oauthStatus.value = if (it.authMode == AuthMode.OAuth && container.oauthRepository.isSignedIn()) {
+                    OAuthUiStatus.SignedIn
+                } else {
+                    OAuthUiStatus.Idle
+                }
+            }
             .launchIn(viewModelScope)
         refreshConfigFiles()
+        refreshCollections()
     }
 
-    fun saveConnection(serverUrl: String, token: String, panelToken: String, collection: String) {
+    fun saveConnection(serverUrl: String, token: String, collection: String) {
         viewModelScope.launch {
             _saveState.value = SaveState.Saving
             runCatching {
                 val trimmedServerUrl = serverUrl.trim()
                 val trimmedToken = token.trim()
-                val trimmedPanelPassword = panelToken.trim()
                 validateAxonServerUrl(trimmedServerUrl)
-                val resolvedPanelToken = if (trimmedPanelPassword.isBlank()) {
-                    ""
-                } else {
-                    AxonClient(trimmedServerUrl, trimmedToken)
-                        .panelLogin(trimmedPanelPassword)
-                        .getOrThrow()
-                }
                 val updated = AxonSettings(
                     serverUrl = ServerUrl(trimmedServerUrl),
                     token = ApiToken(trimmedToken),
-                    panelToken = ApiToken(resolvedPanelToken),
                     collection = collection.trim(),
+                    authMode = when (_draftAuthMode.value) {
+                        AuthMode.OAuth -> {
+                            if (!container.oauthRepository.isSignedIn()) {
+                                throw IllegalStateException("Sign in with OAuth before saving OAuth mode.")
+                            }
+                            AuthMode.OAuth
+                        }
+                        AuthMode.Bearer -> AuthMode.Bearer
+                    },
                 )
                 container.settingsRepository.save(updated)
-                container.axonClient.updateConfig(updated.serverUrl.value, updated.token.value)
-                container.axonClient.updatePanelToken(updated.panelToken.value)
+                container.applySettings(updated.serverUrl.value, updated.token.value, updated.authMode)
             }.fold(
                 onSuccess = {
                     _saveState.value = SaveState.Saved
                     refreshConfigFiles()
+                    refreshCollections()
                 },
                 onFailure = { cause ->
                     _saveState.value = SaveState.Failed(
@@ -141,6 +169,68 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 },
             )
+        }
+    }
+
+    fun setDraftAuthMode(mode: AuthMode) {
+        _draftAuthMode.value = mode
+    }
+
+    suspend fun beginOAuthSignIn(serverUrl: String): Result<Intent> = runCatching {
+        if (_oauthStatus.value == OAuthUiStatus.Starting) error("OAuth sign-in already in progress")
+        _oauthStatus.value = OAuthUiStatus.Starting
+        val trimmedServerUrl = serverUrl.trim()
+        validateAxonServerUrl(trimmedServerUrl)
+        container.oauthRepository.createAuthorizationRequest(trimmedServerUrl)
+    }.onFailure {
+        _oauthStatus.value = OAuthUiStatus.Error
+        _saveState.value = SaveState.Failed(it.message ?: "OAuth sign-in failed")
+    }
+
+    fun completeOAuthSignIn(intent: Intent?) {
+        viewModelScope.launch {
+            if (intent == null) {
+                _oauthStatus.value = OAuthUiStatus.Error
+                _saveState.value = SaveState.Failed("OAuth sign-in was cancelled")
+                return@launch
+            }
+            container.oauthRepository.handleAuthorizationResponse(intent).fold(
+                onSuccess = {
+                    val updated = _settings.value.copy(authMode = AuthMode.OAuth)
+                    container.settingsRepository.save(updated)
+                    container.applySettings(updated.serverUrl.value, updated.token.value, updated.authMode)
+                    _settings.value = updated
+                    _draftAuthMode.value = AuthMode.OAuth
+                    _oauthStatus.value = OAuthUiStatus.SignedIn
+                    _saveState.value = SaveState.Saved
+                },
+                onFailure = { cause ->
+                    _oauthStatus.value = OAuthUiStatus.Error
+                    _saveState.value = SaveState.Failed(cause.message ?: "OAuth sign-in failed")
+                },
+            )
+        }
+    }
+
+    fun cancelOAuthSignIn() {
+        _oauthStatus.value = OAuthUiStatus.Error
+        _saveState.value = SaveState.Failed("OAuth sign-in was cancelled")
+    }
+
+    fun signOutOAuth() {
+        viewModelScope.launch {
+            val cleared = container.oauthRepository.signOut()
+            if (!cleared) {
+                _saveState.value = SaveState.Failed("Could not clear OAuth credentials")
+                return@launch
+            }
+            val updated = _settings.value.copy(authMode = AuthMode.Bearer)
+            container.settingsRepository.save(updated)
+            container.applySettings(updated.serverUrl.value, updated.token.value, updated.authMode)
+            _settings.value = updated
+            _draftAuthMode.value = AuthMode.Bearer
+            _oauthStatus.value = OAuthUiStatus.Idle
+            _saveState.value = SaveState.Saved
         }
     }
 
@@ -179,6 +269,24 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                     _configFiles.value = _configFiles.value.copy(
                         loading = false,
                         error = cause.message ?: "Could not load server config files",
+                    )
+                },
+            )
+        }
+    }
+
+    fun refreshCollections() {
+        viewModelScope.launch {
+            _collections.value = _collections.value.copy(loading = true, error = null)
+            container.axonClient.panelCollections().fold(
+                onSuccess = { response ->
+                    _collections.value = CollectionListUiState(
+                        collections = response.collections.distinct().sorted(),
+                    )
+                },
+                onFailure = { cause ->
+                    _collections.value = CollectionListUiState(
+                        error = cause.message ?: "Could not load Qdrant collections",
                     )
                 },
             )

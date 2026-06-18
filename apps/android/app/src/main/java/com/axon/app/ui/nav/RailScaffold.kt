@@ -19,14 +19,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Construction
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.TaskAlt
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,16 +41,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.axon.app.ui.ask.AskScreen
+import com.axon.app.ui.ask.AskViewModel
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.jobs.JobsScreen
 import com.axon.app.ui.knowledge.KnowledgeScreen
 import com.axon.app.ui.knowledge.KnowledgeTab
-import com.axon.app.ui.management.ManagementDrawerContent
 import com.axon.app.ui.sessions.SessionsDrawerContent
 import com.axon.app.ui.settings.SettingsScreen
 import com.axon.app.ui.status.TopChromeStatus
-import com.axon.app.ui.setup.SetupDrawerContent
 import com.axon.app.ui.theme.AxonTheme
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 sealed interface ShellOverlay {
     val title: String
@@ -59,26 +58,6 @@ sealed interface ShellOverlay {
     data class Knowledge(val tab: KnowledgeTab) : ShellOverlay {
         override val title: String = tab.title
     }
-
-    data object Settings : ShellOverlay {
-        override val title: String = "Config"
-    }
-
-    data class Command(val command: ShellCommand) : ShellOverlay {
-        override val title: String = command.title
-    }
-}
-
-enum class ShellCommand(val title: String, val endpoint: String, val summary: String) {
-    Dedupe("Dedupe", "dedupe", "merge duplicate vectors"),
-    Monitor("Monitor", "monitor", "live job + resource monitor"),
-    Sync("Sync", "sync", "sitemap backfill + re-embed"),
-    Stack("Stack", "stack", "compose service status"),
-    Preflight("Preflight", "preflight", "prerequisites + readiness"),
-    Setup("Setup", "setup", "init + compose up + preflight"),
-    Smoke("Smoke", "smoke", "TEI prewarm + crawl/ask proof"),
-    Doctor("Doctor", "doctor", "service health"),
-    Debug("Debug", "debug", "env + paths + versions"),
 }
 
 /** Sentinel for the default "Ask" home page (no active drawer section). */
@@ -90,6 +69,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
     var activeOverlay by remember { mutableStateOf<ShellOverlay?>(null) }
     var sidebarOpen by remember { mutableStateOf(false) }
     val colors = AxonTheme.colors
+    val askVm: AskViewModel = viewModel()
 
     val sidebarItems = remember {
         listOf(
@@ -97,8 +77,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
             SidebarItem("Sessions", "sessions", Icons.Rounded.History),
             SidebarItem("Jobs", "jobs", Icons.Rounded.TaskAlt),
             SidebarItem("Knowledge", "knowledge", Icons.Rounded.Hub),
-            SidebarItem("Management", "management", Icons.Rounded.Tune),
-            SidebarItem("Setup", "setup", Icons.Rounded.Construction),
+            SidebarItem("Settings", "settings", Icons.Rounded.Settings),
         )
     }
     fun selectedValue(): String = when (activePage) {
@@ -106,8 +85,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
         DrawerSection.Sessions -> "sessions"
         DrawerSection.Jobs -> "jobs"
         DrawerSection.Knowledge -> "knowledge"
-        DrawerSection.Management -> "management"
-        DrawerSection.Setup -> "setup"
+        DrawerSection.Settings -> "settings"
     }
     fun selectSidebarValue(value: String) {
         activeOverlay = null
@@ -115,8 +93,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
             "sessions" -> DrawerSection.Sessions
             "jobs" -> DrawerSection.Jobs
             "knowledge" -> DrawerSection.Knowledge
-            "management" -> DrawerSection.Management
-            "setup" -> DrawerSection.Setup
+            "settings" -> DrawerSection.Settings
             else -> null
         }
         sidebarOpen = false
@@ -172,11 +149,15 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
                         is DrawerSection -> ShellPageContent(
                             page = target,
                             navController = navController,
+                            askVm = askVm,
+                            onShowAsk = { activePage = null },
                             onOpenOverlay = ::openOverlay,
                         )
                         else -> ShellPageContent(
                             page = null,
                             navController = navController,
+                            askVm = askVm,
+                            onShowAsk = { activePage = null },
                             onOpenOverlay = ::openOverlay,
                         )
                     }
@@ -236,34 +217,29 @@ private fun BoxScope.ShellSidebarOverlay(
 private fun ShellPageContent(
     page: DrawerSection?,
     navController: NavController,
+    askVm: AskViewModel,
+    onShowAsk: () -> Unit,
     onOpenOverlay: (ShellOverlay) -> Unit,
 ) {
     when (page) {
-        null -> AskScreen(onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) })
-        DrawerSection.Sessions -> PageSurface { SessionsDrawerContent() }
+        null -> AskScreen(
+            onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
+            vm = askVm,
+        )
+        DrawerSection.Sessions -> PageSurface {
+            SessionsDrawerContent(
+                onSelect = { sessionId ->
+                    if (sessionId == "new") askVm.startNewSession() else askVm.loadSession(sessionId)
+                    onShowAsk()
+                },
+            )
+        }
         DrawerSection.Jobs -> JobsScreen()
         DrawerSection.Knowledge -> KnowledgeScreen(
             onOpenTab = { tab -> onOpenOverlay(ShellOverlay.Knowledge(tab)) },
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
         )
-        DrawerSection.Management -> PageSurface {
-            ManagementDrawerContent(
-                onOpenDedupe = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Dedupe)) },
-                onOpenMonitor = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Monitor)) },
-                onOpenSync = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Sync)) },
-                onOpenStack = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Stack)) },
-                onOpenSettings = { onOpenOverlay(ShellOverlay.Settings) },
-            )
-        }
-        DrawerSection.Setup -> PageSurface {
-            SetupDrawerContent(
-                onOpenPreflight = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Preflight)) },
-                onOpenSetup = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Setup)) },
-                onOpenSmoke = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Smoke)) },
-                onOpenDoctor = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Doctor)) },
-                onOpenDebug = { onOpenOverlay(ShellOverlay.Command(ShellCommand.Debug)) },
-            )
-        }
+        DrawerSection.Settings -> SettingsScreen()
     }
 }
 
@@ -283,8 +259,7 @@ private fun DrawerSection.title(): String = when (this) {
     DrawerSection.Sessions -> "Sessions"
     DrawerSection.Jobs -> "Jobs"
     DrawerSection.Knowledge -> "Knowledge"
-    DrawerSection.Management -> "Management"
-    DrawerSection.Setup -> "Setup"
+    DrawerSection.Settings -> "Settings"
 }
 
 @Composable
@@ -304,8 +279,6 @@ private fun ShellOverlayContent(
                 showChrome = false,
                 onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
             )
-            ShellOverlay.Settings -> SettingsScreen()
-            is ShellOverlay.Command -> ShellCommandReport(command = overlay.command)
         }
     }
 }

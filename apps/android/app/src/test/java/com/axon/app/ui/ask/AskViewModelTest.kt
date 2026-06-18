@@ -37,6 +37,28 @@ class FollowUpQueryBuilderTest {
         assertTrue(!out.contains("Q: q1"))
         assertTrue(!out.contains("Q: q2"))
     }
+
+    @Test fun `operation context is included in next effective prompt with axon skill hint`() {
+        val turn = AskTurn(
+            operationContextQuestion("Crawl"),
+            operationContextAnswer(
+                opLabel = "Crawl",
+                target = "https://example.com",
+                status = "Completed",
+                endpoint = "POST /v1/crawl",
+                jobId = "job-123",
+                summary = "12 pages crawled",
+                detail = "Crawl completed from mobile.",
+            ),
+        )
+        val out = buildFollowUpQuery(prior = listOf(turn), question = "what did it find?")
+
+        assertTrue(out.contains("Q: Axon mobile operation: Crawl"))
+        assertTrue(out.contains("Target: https://example.com"))
+        assertTrue(out.contains("Job ID: job-123"))
+        assertTrue(out.contains("load the axon or axon:using-axon skill"))
+        assertTrue(out.endsWith("what did it find?"))
+    }
 }
 
 class FabIngestSourceInferenceTest {

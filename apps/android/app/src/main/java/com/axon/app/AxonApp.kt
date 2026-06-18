@@ -2,6 +2,7 @@ package com.axon.app
 
 import android.app.Application
 import android.util.Log
+import com.axon.app.data.auth.AuthMode
 import com.axon.app.data.repository.DEFAULT_SERVER_URL
 import com.axon.app.di.AppContainer
 import kotlinx.coroutines.CoroutineScope
@@ -33,9 +34,9 @@ class AxonApp : Application() {
             // shows a permanent spinner with no recovery path.
             val s = runCatching { container.settingsRepository.settings.first() }.getOrNull()
             if (s != null) {
-                container.applySettings(s.serverUrl.value, s.token.value, s.panelToken.value)
+                container.applySettings(s.serverUrl.value, s.token.value, s.authMode)
             } else {
-                container.applySettings(DEFAULT_SERVER_URL, "")
+                container.applySettings(DEFAULT_SERVER_URL, "", AuthMode.Bearer)
             }
         }
     }

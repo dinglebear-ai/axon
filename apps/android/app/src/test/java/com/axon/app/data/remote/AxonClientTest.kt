@@ -1,5 +1,7 @@
 package com.axon.app.data.remote
 
+import com.axon.app.data.auth.AuthConfig
+import com.axon.app.data.auth.OAuthTokenSource
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.toList
 import okhttp3.mockwebserver.MockResponse
@@ -16,6 +18,13 @@ class AxonClientTest {
 
     private lateinit var server: MockWebServer
     private lateinit var client: AxonClient
+
+    private class FakeOAuthTokenSource(
+        private val token: String = "oauth-access-token",
+    ) : OAuthTokenSource {
+        override suspend fun freshAccessToken(): Result<String> = Result.success(token)
+        override fun isSignedIn(): Boolean = true
+    }
 
     @Before
     fun setUp() {
@@ -143,27 +152,7 @@ class AxonClientTest {
     }
 
     @Test
-    fun `panelLogin posts password and returns panel token`() = runBlocking {
-        server.enqueue(
-            MockResponse()
-                .setBody("""{"ok":true,"token":"panel-token"}""")
-                .addHeader("Content-Type", "application/json"),
-        )
-
-        val result = client.panelLogin("panel-password")
-
-        assertTrue(result.isSuccess)
-        assertEquals("panel-token", result.getOrThrow())
-        val req = server.takeRequest()
-        assertEquals("/api/panel/login", req.path)
-        assertEquals("POST", req.method)
-        assertEquals(null, req.getHeader("Authorization"))
-        assertTrue(req.body.readUtf8().contains("panel-password"))
-    }
-
-    @Test
-    fun `panelEnv sends stored panel token header`() = runBlocking {
-        client.updatePanelToken("panel-token")
+    fun `panelEnv sends api bearer token header`() = runBlocking {
         server.enqueue(
             MockResponse()
                 .setBody("""{"path":"~/.axon/.env","raw_env":"QDRANT_URL=http://qdrant","restart_required":false}""")
@@ -176,12 +165,13 @@ class AxonClientTest {
         assertEquals("QDRANT_URL=http://qdrant", result.getOrThrow().rawEnv)
         val req = server.takeRequest()
         assertEquals("/api/panel/env", req.path)
-        assertEquals("Bearer panel-token", req.getHeader("Authorization"))
-        assertEquals("panel-token", req.getHeader("x-axon-panel-token"))
+        assertEquals("Bearer test-token", req.getHeader("Authorization"))
+        assertEquals("test-token", req.getHeader("x-api-key"))
+        assertEquals(null, req.getHeader("x-axon-panel-token"))
     }
 
     @Test
-    fun `panelEnv fails locally when panel token is unset`() = runBlocking {
+    fun `panelEnv no longer requires separate panel token`() = runBlocking {
         server.enqueue(
             MockResponse()
                 .setBody("""{"path":"~/.axon/.env","raw_env":"QDRANT_URL=http://qdrant","restart_required":false}""")
@@ -190,29 +180,14 @@ class AxonClientTest {
 
         val result = client.panelEnv()
 
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Panel unlock required"))
-        assertEquals(0, server.requestCount)
+        assertTrue(result.isSuccess)
+        val req = server.takeRequest()
+        assertEquals("/api/panel/env", req.path)
+        assertEquals("Bearer test-token", req.getHeader("Authorization"))
     }
 
     @Test
-    fun `savePanelEnv fails locally when panel token is unset`() = runBlocking {
-        server.enqueue(
-            MockResponse()
-                .setBody("""{"ok":true,"message":"saved","restart_required":true}""")
-                .addHeader("Content-Type", "application/json"),
-        )
-
-        val result = client.savePanelEnv("GITHUB_TOKEN=secret\n")
-
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Panel unlock required"))
-        assertEquals(0, server.requestCount)
-    }
-
-    @Test
-    fun `savePanelEnv sends stored panel token header`() = runBlocking {
-        client.updatePanelToken("panel-token")
+    fun `savePanelEnv sends request with api bearer token`() = runBlocking {
         server.enqueue(
             MockResponse()
                 .setBody("""{"ok":true,"message":"saved","restart_required":true}""")
@@ -225,8 +200,9 @@ class AxonClientTest {
         val req = server.takeRequest()
         assertEquals("/api/panel/env", req.path)
         assertEquals("PUT", req.method)
-        assertEquals("Bearer panel-token", req.getHeader("Authorization"))
-        assertEquals("panel-token", req.getHeader("x-axon-panel-token"))
+        assertEquals("Bearer test-token", req.getHeader("Authorization"))
+        assertEquals("test-token", req.getHeader("x-api-key"))
+        assertEquals(null, req.getHeader("x-axon-panel-token"))
     }
 
     // ── Non-2xx HTTP status ───────────────────────────────────────────────────
@@ -434,5 +410,63 @@ class AxonClientTest {
         val req = server.takeRequest()
         assertEquals("Bearer test-token", req.getHeader("Authorization"))
         assertEquals("test-token", req.getHeader("x-api-key"))
+    }
+
+    @Test
+    fun `rest request uses oauth bearer and no x api key`() = runBlocking {
+        client.updateConfig(server.url("/").toString().trimEnd('/'), AuthConfig.OAuth(FakeOAuthTokenSource()))
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"query":"q","answer":"a","timing_ms":null}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        client.ask(AskRequest(query = "q"))
+
+        val req = server.takeRequest()
+        assertEquals("Bearer oauth-access-token", req.getHeader("Authorization"))
+        assertEquals(null, req.getHeader("x-api-key"))
+    }
+
+    @Test
+    fun `sse request uses oauth bearer and no x api key`() = runBlocking {
+        client.updateConfig(server.url("/").toString().trimEnd('/'), AuthConfig.OAuth(FakeOAuthTokenSource()))
+        server.enqueue(
+            MockResponse()
+                .setBody("data: {\"type\":\"done\",\"answer\":\"ok\"}\n\n")
+                .addHeader("Content-Type", "text/event-stream"),
+        )
+
+        client.askStream(AskRequest(query = "ping")).toList()
+
+        val req = server.takeRequest()
+        assertEquals("Bearer oauth-access-token", req.getHeader("Authorization"))
+        assertEquals(null, req.getHeader("x-api-key"))
+    }
+
+    @Test
+    fun `panel route rejects oauth auth config before sending request`() = runBlocking {
+        client.updateConfig(server.url("/").toString().trimEnd('/'), AuthConfig.OAuth(FakeOAuthTokenSource()))
+
+        val result = client.panelEnv()
+
+        assertTrue(result.isFailure)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `bearer route still sends authorization and x api key`() = runBlocking {
+        client.updateConfig(server.url("/").toString().trimEnd('/'), AuthConfig.Bearer("static-token"))
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"query":"q","answer":"a","timing_ms":null}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        client.ask(AskRequest(query = "q"))
+
+        val req = server.takeRequest()
+        assertEquals("Bearer static-token", req.getHeader("Authorization"))
+        assertEquals("static-token", req.getHeader("x-api-key"))
     }
 }

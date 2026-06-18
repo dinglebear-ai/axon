@@ -29,6 +29,31 @@ internal fun buildFollowUpQuery(prior: List<AskTurn>, question: String): String 
     return "$rendered\n\n$question"
 }
 
+internal fun operationContextQuestion(opLabel: String): String =
+    "Axon mobile operation: $opLabel"
+
+internal fun operationContextAnswer(
+    opLabel: String,
+    target: String,
+    status: String,
+    endpoint: String,
+    jobId: String? = null,
+    summary: String? = null,
+    detail: String? = null,
+): String {
+    val lines = mutableListOf(
+        "Operation: $opLabel",
+        "Target: $target",
+        "Status: $status",
+        "Endpoint: $endpoint",
+        "Agent instruction: This content/job was produced by Axon. When answering follow-up questions about it, use the Axon knowledge base and load the axon or axon:using-axon skill if available.",
+    )
+    jobId?.takeIf { it.isNotBlank() }?.let { lines += "Job ID: $it" }
+    summary?.takeIf { it.isNotBlank() }?.let { lines += "Summary: $it" }
+    detail?.takeIf { it.isNotBlank() }?.let { lines += "Detail: $it" }
+    return lines.joinToString("\n")
+}
+
 internal fun resolvedDoneAnswer(doneAnswer: String, accumulatedAnswer: String): String =
     doneAnswer.ifBlank { accumulatedAnswer }
 

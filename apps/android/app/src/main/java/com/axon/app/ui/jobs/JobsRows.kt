@@ -36,12 +36,13 @@ import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
 @Composable
-internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier) {
+internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val colors = AxonTheme.colors
     val tone = jobTone(job.kind)
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 18.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -65,7 +66,7 @@ internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier) {
                 fontFamily = AxonTheme.fonts.mono,
             )
         }
-        if (job.status.lowercase() !in setOf("idle")) {
+        if (isActiveJobStatus(job.status)) {
             ProgressBar(progressForJob(job), tone, modifier = Modifier.width(166.dp).padding(start = 14.dp))
         }
         Text(

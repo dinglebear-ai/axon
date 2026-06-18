@@ -4,6 +4,5 @@ sealed interface DrawerSection {
     data object Sessions   : DrawerSection
     data object Jobs       : DrawerSection
     data object Knowledge  : DrawerSection
-    data object Management : DrawerSection
-    data object Setup      : DrawerSection
+    data object Settings   : DrawerSection
 }

@@ -1,6 +1,10 @@
 package com.axon.app.di
 
 import android.content.Context
+import com.axon.app.data.auth.AuthConfig
+import com.axon.app.data.auth.AuthMode
+import com.axon.app.data.auth.OAuthRepository
+import com.axon.app.data.auth.OAuthStateStore
 import com.axon.app.data.local.AppDatabase
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.AxonRepository
@@ -23,7 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * Lifecycle:
  * 1. [AppContainer] is created synchronously in [AxonApp.onCreate].
- * 2. [axonClient] is constructed with an empty token — [hasToken] returns false until step 3.
+ * 2. [axonClient] is constructed with an empty bearer token — auth is unusable until step 3.
  * 3. The Application reads the first DataStore emission and calls [applySettings], which
  *    pushes real credentials into the client and sets [isReady] = true.
  * 4. The splash/gate composable observes [isReady] and blocks the UI until step 3 completes,
@@ -37,6 +41,8 @@ class AppContainer(context: Context) {
     val modeOptionsRepository = ModeOptionsRepository(context, encryptedHeadersStore)
     val modeOptionsApplicator: ModeOptionsApplicator = modeOptionsRepository
     val database = AppDatabase.build(context)
+    private val oauthStateStore by lazy { OAuthStateStore(context) }
+    val oauthRepository by lazy { OAuthRepository(context, oauthStateStore) }
 
     val axonClient = AxonClient(
         baseUrl = DEFAULT_SERVER_URL,
@@ -56,9 +62,12 @@ class AppContainer(context: Context) {
     val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
 
     /** Called once at app start after the first DataStore settings emission is read. */
-    fun applySettings(serverUrl: String, token: String, panelToken: String = "") {
-        axonClient.updateConfig(serverUrl.trimEnd('/'), token)
-        axonClient.updatePanelToken(panelToken)
+    fun applySettings(serverUrl: String, token: String, authMode: AuthMode) {
+        val auth = when (authMode) {
+            AuthMode.Bearer -> AuthConfig.Bearer(token)
+            AuthMode.OAuth -> AuthConfig.OAuth(oauthRepository)
+        }
+        axonClient.updateConfig(serverUrl.trimEnd('/'), auth)
         _isReady.value = true
     }
 }

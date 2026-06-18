@@ -1,5 +1,7 @@
 use super::state::AppState;
+use crate::mcp::auth::configured_mcp_http_token;
 use axum::http::HeaderMap;
+use subtle::ConstantTimeEq;
 
 /// Log a startup warning when `AXON_MCP_HTTP_TOKEN` is set but resolves to
 /// empty/whitespace — the operator clearly meant to enable auth, and
@@ -17,7 +19,7 @@ pub(crate) fn warn_if_ask_token_set_but_empty() {
 }
 
 pub fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
-    headers
+    let Some(token) = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
@@ -26,6 +28,21 @@ pub fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
                 .get("x-axon-panel-token")
                 .and_then(|v| v.to_str().ok())
         })
-        .map(|token| state.panel.password.verify(token))
+        .or_else(|| headers.get("x-api-key").and_then(|v| v.to_str().ok()))
+    else {
+        return false;
+    };
+
+    state.panel.password.verify(token) || verify_configured_api_token(token)
+}
+
+fn verify_configured_api_token(candidate: &str) -> bool {
+    configured_mcp_http_token()
+        .map(|expected| {
+            expected
+                .as_bytes()
+                .ct_eq(candidate.trim().as_bytes())
+                .into()
+        })
         .unwrap_or(false)
 }

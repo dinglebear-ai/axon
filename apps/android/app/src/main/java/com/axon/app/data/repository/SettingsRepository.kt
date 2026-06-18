@@ -6,6 +6,9 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.axon.app.data.auth.AuthMode
+import com.axon.app.data.auth.authModeFromWireValue
+import com.axon.app.data.auth.toWireValue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -20,6 +23,7 @@ internal val Context.settingsDataStore: DataStore<Preferences> by preferencesDat
 
 private val KEY_SERVER_URL  = stringPreferencesKey("server_url")
 private val KEY_COLLECTION  = stringPreferencesKey("collection")
+private val KEY_AUTH_MODE = stringPreferencesKey("auth_mode")
 // KEY_TOKEN is no longer the source of truth for the token — kept only so the
 // idempotent migration helper can find legacy plaintext copies and clear them.
 internal val LEGACY_KEY_TOKEN: Preferences.Key<String> = stringPreferencesKey("token")
@@ -44,8 +48,8 @@ value class ApiToken(val value: String) {
 data class AxonSettings(
     val serverUrl: ServerUrl = ServerUrl(DEFAULT_SERVER_URL),
     val token: ApiToken = ApiToken(""),
-    val panelToken: ApiToken = ApiToken(""),
     val collection: String = DEFAULT_COLLECTION,
+    val authMode: AuthMode = AuthMode.Bearer,
 )
 
 /**
@@ -60,12 +64,10 @@ data class AxonSettings(
 class SettingsRepository(
     private val context: Context,
     private val encrypted: EncryptedTokenStore = EncryptedTokenStore(context),
-    private val encryptedPanel: EncryptedTokenStore = EncryptedTokenStore(context, "panel_token"),
 ) {
     // Seed the mirror with whatever the encrypted store currently has. Subsequent
     // writes via save()/clearToken() update both the store and this StateFlow.
     private val tokenMirror = MutableStateFlow(encrypted.read().orEmpty())
-    private val panelTokenMirror = MutableStateFlow(encryptedPanel.read().orEmpty())
 
     val settings: Flow<AxonSettings> = context.settingsDataStore.data
         .map { prefs ->
@@ -74,17 +76,15 @@ class SettingsRepository(
             // default at the call site rather than letting the value class throw.
             val rawUrl = prefs[KEY_SERVER_URL]?.takeIf { it.isNotBlank() } ?: DEFAULT_SERVER_URL
             val collection = prefs[KEY_COLLECTION] ?: DEFAULT_COLLECTION
-            rawUrl to collection
+            val authMode = authModeFromWireValue(prefs[KEY_AUTH_MODE])
+            Triple(rawUrl, collection, authMode)
         }
-        .combine(tokenMirror) { (rawUrl, collection), token ->
-            Triple(rawUrl, collection, token)
-        }
-        .combine(panelTokenMirror) { (rawUrl, collection, token), panelToken ->
+        .combine(tokenMirror) { (rawUrl, collection, authMode), token ->
             AxonSettings(
                 serverUrl  = ServerUrl(rawUrl),
                 token      = ApiToken(token),
-                panelToken = ApiToken(panelToken),
                 collection = collection,
+                authMode   = authMode,
             )
         }
 
@@ -98,6 +98,7 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs ->
             prefs[KEY_SERVER_URL]  = settings.serverUrl.value
             prefs[KEY_COLLECTION]  = settings.collection
+            prefs[KEY_AUTH_MODE] = settings.authMode.toWireValue()
             // Defensive: ensure any lingering legacy plaintext token entry is removed.
             prefs.remove(LEGACY_KEY_TOKEN)
         }
@@ -110,17 +111,7 @@ class SettingsRepository(
             android.util.Log.w("SettingsRepository", "token store write failed; UI mirror NOT updated")
             throw IllegalStateException("Could not securely store credentials. Please try again.")
         }
-        val panelOk = if (settings.panelToken.value.isBlank()) {
-            encryptedPanel.clear()
-        } else {
-            encryptedPanel.write(settings.panelToken.value)
-        }
-        if (!panelOk) {
-            android.util.Log.w("SettingsRepository", "panel token store write failed; UI mirror NOT updated")
-            throw IllegalStateException("Could not securely store panel token. Please try again.")
-        }
         tokenMirror.value = settings.token.value
-        panelTokenMirror.value = settings.panelToken.value
     }
 
     suspend fun clearToken() {

@@ -19,7 +19,7 @@ import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
-private enum class RailGlyph { History, Jobs, Hub, Sliders, Wrench }
+private enum class RailGlyph { History, Jobs, Hub, Sliders }
 
 private data class SectionDef(val section: DrawerSection, val icon: RailGlyph, val label: String)
 
@@ -27,10 +27,9 @@ private val TopSections = listOf(
     SectionDef(DrawerSection.Sessions,   RailGlyph.History, "Sess"),
     SectionDef(DrawerSection.Jobs,       RailGlyph.Jobs,    "Jobs"),
     SectionDef(DrawerSection.Knowledge,  RailGlyph.Hub,     "Know"),
-    SectionDef(DrawerSection.Management, RailGlyph.Sliders, "Mana"),
 )
 private val BottomSections = listOf(
-    SectionDef(DrawerSection.Setup, RailGlyph.Wrench, "Setu"),
+    SectionDef(DrawerSection.Settings, RailGlyph.Sliders, "Sett"),
 )
 
 @Composable
@@ -152,19 +151,6 @@ private fun RailGlyphIcon(icon: RailGlyph, color: Color, modifier: Modifier = Mo
                 drawLine(color, p(0.17f, 0.70f), p(0.83f, 0.70f), stroke, StrokeCap.Round)
                 drawCircle(color, s * 0.105f, p(0.38f, 0.30f), style = Stroke(width = stroke))
                 drawCircle(color, s * 0.105f, p(0.64f, 0.70f), style = Stroke(width = stroke))
-            }
-            RailGlyph.Wrench -> {
-                drawLine(color, p(0.31f, 0.75f), p(0.68f, 0.38f), stroke, StrokeCap.Round)
-                drawArc(
-                    color = color,
-                    startAngle = -140f,
-                    sweepAngle = 250f,
-                    useCenter = false,
-                    topLeft = p(0.48f, 0.12f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.36f, h * 0.36f),
-                    style = Stroke(width = stroke, cap = StrokeCap.Round),
-                )
-                drawCircle(color, s * 0.09f, p(0.27f, 0.79f), style = Stroke(width = stroke))
             }
         }
     }

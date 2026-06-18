@@ -17,6 +17,7 @@ import com.axon.app.data.remote.SourcesRequest
 import com.axon.app.data.remote.ResearchHit
 import com.axon.app.data.remote.models.EmbedRequest
 import com.axon.app.data.remote.models.ExtractRequest
+import com.axon.app.data.remote.models.MobileSessionDto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -78,12 +79,16 @@ import kotlinx.serialization.json.intOrNull
     val kind: JobFamily? = null,
     val id: String,
     val status: String,
+    val createdAt: String? = null,
+    val startedAt: String? = null,
+    val updatedAt: String? = null,
+    val finishedAt: String? = null,
     val url: String?,
     val sourceType: String?,
     val target: String?,
     val errorText: String?,
     val resultJson: kotlinx.serialization.json.JsonElement?,
-    val finishedAt: String?,
+    val configJson: kotlinx.serialization.json.JsonElement? = null,
 )
 
 @Stable data class SuggestHitUi(val url: String, val reason: String?)
@@ -107,12 +112,12 @@ class AxonRepository(
     private val applicator: ModeOptionsApplicator,
 ) {
 
-    // Short-circuits with a failure when no token is configured; otherwise runs [block].
-    private suspend inline fun <T> withToken(block: () -> Result<T>): Result<T> =
-        if (client.hasToken()) block()
-        else Result.failure(IllegalStateException("No API token configured. Go to Settings to add your token."))
+    // Short-circuits with a failure when no usable auth is configured; otherwise runs [block].
+    private suspend inline fun <T> withAuth(block: () -> Result<T>): Result<T> =
+        if (client.hasUsableAuth()) block()
+        else Result.failure(IllegalStateException("Axon is not authenticated. Go to Settings to sign in or add a bearer token."))
 
-    suspend fun ask(query: String, collection: String? = null): Result<AskResultUi> = withToken {
+    suspend fun ask(query: String, collection: String? = null): Result<AskResultUi> = withAuth {
         val req = applicator.apply(AskRequest(query = query, collection = collection))
         client.ask(req).map { r ->
             AskResultUi(query = r.query, answer = r.answer, timingMs = r.timingMs?.totalMs)
@@ -125,8 +130,8 @@ class AxonRepository(
      * Mode options are applied via [applicator] before the request is sent.
      */
     fun askStream(query: String, collection: String? = null): Flow<AskStreamEvent> = flow {
-        if (!client.hasToken()) {
-            emit(AskStreamEvent.Error("No API token configured. Go to Settings to add your token."))
+        if (!client.hasUsableAuth()) {
+            emit(AskStreamEvent.Error("Axon is not authenticated. Go to Settings to sign in or add a bearer token."))
             return@flow
         }
         val req = applicator.apply(AskRequest(query = query, collection = collection))
@@ -134,14 +139,14 @@ class AxonRepository(
     }
 
     fun chatStream(message: String): Flow<AskStreamEvent> = flow {
-        if (!client.hasToken()) {
-            emit(AskStreamEvent.Error("No API token configured. Go to Settings to add your token."))
+        if (!client.hasUsableAuth()) {
+            emit(AskStreamEvent.Error("Axon is not authenticated. Go to Settings to sign in or add a bearer token."))
             return@flow
         }
         emitAll(client.chatStream(ChatRequest(message = message)))
     }
 
-    suspend fun query(query: String, limit: Int = 10, collection: String? = null): Result<List<QueryHitUi>> = withToken {
+    suspend fun query(query: String, limit: Int = 10, collection: String? = null): Result<List<QueryHitUi>> = withAuth {
         val req = applicator.apply(QueryRequest(query = query, limit = limit, collection = collection))
         client.query(req).map { r ->
             r.results.map { h ->
@@ -161,7 +166,7 @@ class AxonRepository(
         collection: String? = null,
         tokenBudget: Int = DEFAULT_RETRIEVE_TOKEN_BUDGET,
         maxPoints: Int = DEFAULT_RETRIEVE_MAX_POINTS,
-    ): Result<RetrieveResultUi> = withToken {
+    ): Result<RetrieveResultUi> = withAuth {
         require(tokenBudget > 0) { "tokenBudget must be positive, got $tokenBudget" }
         require(maxPoints > 0) { "maxPoints must be positive, got $maxPoints" }
         client.retrieve(
@@ -187,7 +192,7 @@ class AxonRepository(
         }
     }
 
-    suspend fun sources(limit: Int = 50, offset: Int = 0, collection: String? = null): Result<List<SourceEntryUi>> = withToken {
+    suspend fun sources(limit: Int = 50, offset: Int = 0, collection: String? = null): Result<List<SourceEntryUi>> = withAuth {
         client.sources(SourcesRequest(limit = limit, offset = offset, collection = collection)).mapCatching { r ->
             var parseFailures = 0
             val entries = r.urls.mapNotNull { element ->
@@ -217,21 +222,21 @@ class AxonRepository(
         }
     }
 
-    suspend fun scrape(url: String): Result<ScrapeResultUi> = withToken {
+    suspend fun scrape(url: String): Result<ScrapeResultUi> = withAuth {
         val req = applicator.apply(ScrapeRequest(url = url))
         client.scrape(req).map { r ->
             ScrapeResultUi(url = r.url, markdown = r.markdown)
         }
     }
 
-    suspend fun map(url: String): Result<MapResultUi> = withToken {
+    suspend fun map(url: String): Result<MapResultUi> = withAuth {
         val req = applicator.apply(MapRequest(url = url))
         client.map(req).map { r ->
             MapResultUi(url = r.url, total = r.total, urls = r.urls)
         }
     }
 
-    suspend fun research(query: String): Result<ResearchResultUi> = withToken {
+    suspend fun research(query: String): Result<ResearchResultUi> = withAuth {
         val req = applicator.apply(ResearchRequest(query = query))
         client.research(req).map { r ->
             ResearchResultUi(
@@ -242,12 +247,12 @@ class AxonRepository(
         }
     }
 
-    suspend fun crawlSubmit(url: String, maxPages: Int? = null): Result<String> = withToken {
+    suspend fun crawlSubmit(url: String, maxPages: Int? = null): Result<String> = withAuth {
         val req = applicator.apply(CrawlRequest(urls = listOf(url), maxPages = maxPages))
         client.crawlSubmit(req).map { it.jobId }
     }
 
-    suspend fun crawlStatus(jobId: String): Result<CrawlStatusUi> = withToken {
+    suspend fun crawlStatus(jobId: String): Result<CrawlStatusUi> = withAuth {
         client.crawlStatus(jobId).map { r ->
             CrawlStatusUi(
                 jobId = r.jobId.ifBlank { jobId },
@@ -274,16 +279,32 @@ class AxonRepository(
 
     fun recentHistory(): Flow<List<AskHistoryEntry>> = askHistoryDao.recent()
 
+    suspend fun listMobileSessions(): Result<List<MobileSessionDto>> = withAuth {
+        client.listMobileSessions()
+    }
+
+    suspend fun getMobileSession(id: String): Result<MobileSessionDto> = withAuth {
+        client.getMobileSession(id)
+    }
+
+    suspend fun upsertMobileSession(session: MobileSessionDto): Result<MobileSessionDto> = withAuth {
+        client.upsertMobileSession(session)
+    }
+
+    suspend fun deleteMobileSession(id: String): Result<Boolean> = withAuth {
+        client.deleteMobileSession(id)
+    }
+
     // ── Phase 2 wrappers ───────────────────────────────────────────────────
 
-    suspend fun summarize(urls: List<String>, collection: String? = null): Result<SummarizeResultUi> = withToken {
+    suspend fun summarize(urls: List<String>, collection: String? = null): Result<SummarizeResultUi> = withAuth {
         val req = applicator.apply(
             com.axon.app.data.remote.models.SummarizeRequest(urls = urls, collection = collection)
         )
         client.summarize(req).map { r -> SummarizeResultUi(r.urls, r.summary, r.contextChars, r.contextTruncated) }
     }
 
-    suspend fun searchWeb(query: String): Result<SearchWebResultUi> = withToken {
+    suspend fun searchWeb(query: String): Result<SearchWebResultUi> = withAuth {
         val req = applicator.apply(com.axon.app.data.remote.models.SearchWebRequest(query = query))
         client.searchWeb(req).map { r ->
             val statusObject = runCatching { r.autoCrawlStatus?.jsonObject }.getOrNull()
@@ -299,32 +320,32 @@ class AxonRepository(
         }
     }
 
-    suspend fun ingestStart(sourceType: String, target: String): Result<String> = withToken {
+    suspend fun ingestStart(sourceType: String, target: String): Result<String> = withAuth {
         val req = applicator.apply(
             com.axon.app.data.remote.models.IngestRequest(sourceType = sourceType, target = target)
         )
         client.ingestStart(req).map { it.jobId }
     }
 
-    suspend fun extractStart(url: String, prompt: String? = null): Result<String> = withToken {
+    suspend fun extractStart(url: String, prompt: String? = null): Result<String> = withAuth {
         client.extractStart(ExtractRequest(urls = listOf(url), prompt = prompt?.takeIf { it.isNotBlank() })).map { it.jobId }
     }
 
-    suspend fun embedStart(input: String, collection: String? = null): Result<String> = withToken {
+    suspend fun embedStart(input: String, collection: String? = null): Result<String> = withAuth {
         client.embedStart(EmbedRequest(input = input, collection = collection)).map { it.jobId }
     }
 
-    suspend fun getJob(kind: JobFamily, id: String): Result<JobUi> = withToken {
+    suspend fun getJob(kind: JobFamily, id: String): Result<JobUi> = withAuth {
         val clientKind = kind.toClientKind()
         client.getJob(clientKind, id).map { it.toJobUi(kind) }
     }
 
-    suspend fun listJobs(kind: JobFamily): Result<List<JobUi>> = withToken {
+    suspend fun listJobs(kind: JobFamily): Result<List<JobUi>> = withAuth {
         val clientKind = kind.toClientKind()
         client.listJobs(clientKind).map { list -> list.map { it.toJobUi(kind) } }
     }
 
-    suspend fun listWatches(): Result<List<WatchUi>> = withToken {
+    suspend fun listWatches(): Result<List<WatchUi>> = withAuth {
         client.listWatches().map { watches ->
             watches.map {
                 WatchUi(
@@ -339,30 +360,34 @@ class AxonRepository(
         }
     }
 
-    suspend fun cancelJob(kind: JobFamily, id: String): Result<Boolean> = withToken {
+    suspend fun artifactText(relativePath: String): Result<String> = withAuth {
+        client.artifactText(relativePath)
+    }
+
+    suspend fun cancelJob(kind: JobFamily, id: String): Result<Boolean> = withAuth {
         client.cancelJob(kind.toClientKind(), id).map { it.canceled }
     }
 
-    suspend fun statusPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+    suspend fun statusPayload(): Result<kotlinx.serialization.json.JsonElement> = withAuth {
         client.status().map { it.payload }
     }
 
-    suspend fun statsPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+    suspend fun statsPayload(): Result<kotlinx.serialization.json.JsonElement> = withAuth {
         client.stats().map { it.payload }
     }
 
-    suspend fun doctorPayload(): Result<kotlinx.serialization.json.JsonElement> = withToken {
+    suspend fun doctorPayload(): Result<kotlinx.serialization.json.JsonElement> = withAuth {
         client.doctor().map { it.payload }
     }
 
-    suspend fun suggest(focus: String?, collection: String? = null): Result<List<SuggestHitUi>> = withToken {
+    suspend fun suggest(focus: String?, collection: String? = null): Result<List<SuggestHitUi>> = withAuth {
         client.suggest(focus = focus, collection = collection).map { r ->
             val hits = r.suggestions.ifEmpty { r.urls }
             hits.map { SuggestHitUi(it.url, it.reason) }
         }
     }
 
-    suspend fun domains(limit: Int = 100, offset: Int = 0): Result<List<DomainFacetUi>> = withToken {
+    suspend fun domains(limit: Int = 100, offset: Int = 0): Result<List<DomainFacetUi>> = withAuth {
         client.domains(limit = limit, offset = offset).map { r ->
             r.domains.map { DomainFacetUi(it.domain, it.vectors) }
         }
