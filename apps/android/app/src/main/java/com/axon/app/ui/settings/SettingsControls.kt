@@ -56,23 +56,23 @@ internal fun SettingsActionDock(
             .background(colors.navBg.copy(alpha = 0.98f))
             .border(1.dp, colors.borderDefault.copy(alpha = 0.28f))
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         feedback?.let { (message, kind) ->
             SettingsFeedbackBanner(
                 message = message,
                 kind = kind,
                 modifier = Modifier
-                    .fillMaxWidth(0.92f)
+                    .fillMaxWidth(0.96f)
                     .widthIn(max = 420.dp),
             )
         }
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .fillMaxWidth(0.96f)
                 .widthIn(max = 420.dp),
         ) {
             CompactActionButton(
@@ -115,13 +115,13 @@ internal fun SettingsFeedbackBanner(
             .clip(RoundedCornerShape(8.dp))
             .background(colors.tint(tone, 7, colors.panelStrong).copy(alpha = 0.99f), RoundedCornerShape(8.dp))
             .border(1.dp, tone.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 11.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(horizontal = 13.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .height(28.dp)
+                .height(32.dp)
                 .widthIn(min = 3.dp, max = 3.dp)
                 .background(tone, RoundedCornerShape(99.dp)),
         )
@@ -136,8 +136,8 @@ internal fun SettingsFeedbackBanner(
         Text(
             message,
             color = colors.textPrimary,
-            fontSize = 13.sp,
-            lineHeight = 17.5.sp,
+            fontSize = 13.6.sp,
+            lineHeight = 18.4.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 4,
@@ -155,8 +155,8 @@ internal fun CompactSettingField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     val colors = AxonTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text(label, color = colors.textMuted.copy(alpha = 0.8f), fontSize = 10.8.sp, fontFamily = AxonTheme.fonts.body)
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(label, color = colors.textMuted.copy(alpha = 0.84f), fontSize = 12.sp, fontFamily = AxonTheme.fonts.body)
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -164,20 +164,20 @@ internal fun CompactSettingField(
             visualTransformation = visualTransformation,
             textStyle = TextStyle(
                 color = colors.textPrimary,
-                fontSize = 11.8.sp,
+                fontSize = 13.sp,
                 fontFamily = AxonTheme.fonts.mono,
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp)
+                .height(50.dp)
                 .background(colors.control.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                 .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 14.dp),
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.weight(1f)) {
                         if (value.isBlank()) {
-                            Text("unset", color = colors.textMuted, fontSize = 11.8.sp, fontFamily = AxonTheme.fonts.mono)
+                            Text("unset", color = colors.textMuted, fontSize = 13.sp, fontFamily = AxonTheme.fonts.mono)
                         }
                         inner()
                     }
@@ -201,22 +201,22 @@ internal fun CompactActionButton(
     val fg = if (outlined) colors.textMuted else Color.White
     Row(
         modifier = modifier
-            .height(44.dp)
+            .height(50.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (enabled) bg else colors.control, RoundedCornerShape(8.dp))
             .border(1.dp, if (outlined) colors.borderStrong.copy(alpha = 0.56f) else colors.accentPrimary, RoundedCornerShape(8.dp))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 14.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         icon?.let {
-            Icon(it, contentDescription = null, tint = fg, modifier = Modifier.size(14.dp).padding(end = 6.dp))
+            Icon(it, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp).padding(end = 6.dp))
         }
         Text(
             label,
             color = fg,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,

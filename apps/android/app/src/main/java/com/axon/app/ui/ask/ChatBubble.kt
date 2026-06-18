@@ -146,8 +146,8 @@ fun UserBubble(
     val glowAlpha by animateFloatAsState(if (revealed) 0.62f else 0.45f, label = "ub-glow")
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         Row(
-            modifier = Modifier.widthIn(max = 300.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.widthIn(max = 328.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.Top,
         ) {
             Column(
@@ -157,8 +157,8 @@ fun UserBubble(
                 Text(
                     text = displayText,
                     color = colors.textPrimary,
-                    fontSize = 15.sp,
-                    lineHeight = 20.5.sp,
+                    fontSize = 15.6.sp,
+                    lineHeight = 21.8.sp,
                     fontFamily = AxonTheme.fonts.body,
                     modifier = Modifier
                         .shadow(
@@ -179,7 +179,7 @@ fun UserBubble(
                                 revealed = true
                             },
                         )
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
             if (showAvatar) UserInitials() else Spacer(Modifier.width(24.dp))
@@ -269,12 +269,12 @@ fun AxonBubble(
                 ThinkingDots()
             }
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.Top) {
                 if (showAvatar) AssistantGutter() else Spacer(Modifier.width(26.dp))
                 Column(horizontalAlignment = Alignment.Start) {
                     Column(
                         modifier = Modifier
-                            .widthIn(max = 300.dp)
+                            .widthIn(max = 328.dp)
                             .shadow(elevation = elevation, shape = shape)
                             .clip(shape)
                             .background(fillBrush, shape)
@@ -288,8 +288,8 @@ fun AxonBubble(
                                     revealed = true
                                 },
                             )
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(11.dp),
                     ) {
                         InlineMarkdownText(
                             text = displayText,

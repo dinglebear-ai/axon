@@ -208,7 +208,7 @@ internal fun InlineMarkdownText(
                             color = code.fg,
                             background = colors.tint(code.base, 9, colors.control),
                             fontFamily = AxonTheme.fonts.mono,
-                            fontSize = 12.4.sp,
+                            fontSize = 13.sp,
                         ),
                     ) {
                         append(part)
@@ -223,8 +223,8 @@ internal fun InlineMarkdownText(
         },
         inlineContent = inlineContent,
         color = colors.textPrimary.copy(alpha = 0.92f),
-        fontSize = 14.5.sp,
-        lineHeight = 21.5.sp,
+        fontSize = 15.4.sp,
+        lineHeight = 22.6.sp,
         fontFamily = AxonTheme.fonts.body,
     )
 }

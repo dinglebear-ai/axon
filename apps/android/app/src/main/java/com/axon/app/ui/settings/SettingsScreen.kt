@@ -91,15 +91,15 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 12.dp)
-                .padding(bottom = 12.dp),
+                .padding(horizontal = 14.dp, vertical = 16.dp)
+                .padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
-                    .fillMaxWidth(0.92f)
+                    .fillMaxWidth(0.96f)
                     .widthIn(max = 420.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(AxonTheme.colors.panelMedium.copy(alpha = 0.42f), RoundedCornerShape(10.dp))
@@ -137,7 +137,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     onRefreshCollections = vm::refreshCollections,
                     connection = connection,
                     modifier = Modifier
-                        .fillMaxWidth(0.92f)
+                        .fillMaxWidth(0.96f)
                         .widthIn(max = 420.dp),
                 )
                 SettingsTab.Env -> ConfigGroupsTab(
@@ -152,7 +152,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     searchQuery = settingsSearch,
                     onSearchQueryChange = { settingsSearch = it },
                     modifier = Modifier
-                        .fillMaxWidth(0.92f)
+                        .fillMaxWidth(0.96f)
                         .widthIn(max = 560.dp),
                 )
                 SettingsTab.Config -> ConfigGroupsTab(
@@ -167,7 +167,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     searchQuery = settingsSearch,
                     onSearchQueryChange = { settingsSearch = it },
                     modifier = Modifier
-                        .fillMaxWidth(0.92f)
+                        .fillMaxWidth(0.96f)
                         .widthIn(max = 560.dp),
                 )
             }
@@ -207,16 +207,16 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             .background(if (selected) colors.tint(colors.accentPrimary, 10, colors.pageBg) else colors.control.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
             .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 28, colors.pageBg) else colors.borderDefault.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .height(44.dp)
-            .padding(horizontal = 9.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            .height(48.dp)
+            .padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(tab.icon, contentDescription = null, tint = if (selected) colors.accentStrong else colors.textMuted.copy(alpha = 0.72f), modifier = Modifier.size(15.dp))
         Text(
             tab.shortLabel,
             color = if (selected) colors.accentStrong else colors.textMuted,
-            fontSize = 11.1.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
@@ -229,10 +229,10 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
                     .clip(RoundedCornerShape(999.dp))
                     .background(colors.control.copy(alpha = if (selected) 0.34f else 0.18f))
                     .border(1.dp, colors.borderDefault.copy(alpha = if (selected) 0.18f else 0.08f), RoundedCornerShape(999.dp))
-                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
                 color = colors.textMuted.copy(alpha = 0.78f),
-                fontSize = 8.7.sp,
-                lineHeight = 9.sp,
+                fontSize = 9.2.sp,
+                lineHeight = 10.sp,
                 fontFamily = AxonTheme.fonts.mono,
             )
         }

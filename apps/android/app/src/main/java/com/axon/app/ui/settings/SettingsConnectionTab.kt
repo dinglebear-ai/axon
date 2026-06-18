@@ -56,7 +56,7 @@ internal fun ConnectionTab(
     connection: TestConnectionState,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionLabel("Connection")
         CompactSettingField("Server", serverUrl, onServerUrl)
         if (serverUrl.startsWith("http://")) {
@@ -101,9 +101,9 @@ internal fun ConnectionTab(
 @Composable
 private fun AuthModeSelector(authMode: AuthMode, onAuthMode: (AuthMode) -> Unit) {
     val colors = AxonTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text("Auth", color = colors.textMuted.copy(alpha = 0.8f), fontSize = 10.8.sp, fontFamily = AxonTheme.fonts.body)
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text("Auth", color = colors.textMuted.copy(alpha = 0.84f), fontSize = 12.sp, fontFamily = AxonTheme.fonts.body)
+        Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
             AuthModeButton("Bearer", selected = authMode == AuthMode.Bearer, modifier = Modifier.weight(1f)) {
                 onAuthMode(AuthMode.Bearer)
             }
@@ -119,19 +119,19 @@ private fun AuthModeButton(label: String, selected: Boolean, modifier: Modifier 
     val colors = AxonTheme.colors
     Row(
         modifier = modifier
-            .height(38.dp)
+            .height(48.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) colors.tint(colors.accentPrimary, 11, colors.pageBg) else colors.control.copy(alpha = 0.36f), RoundedCornerShape(8.dp))
             .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 28, colors.pageBg) else colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             label,
             color = if (selected) colors.accentStrong else colors.textMuted,
-            fontSize = 11.5.sp,
+            fontSize = 12.6.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
@@ -146,7 +146,7 @@ private fun OAuthControls(
     onBeginOAuth: () -> Unit,
     onSignOut: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         when (status) {
             OAuthUiStatus.SignedIn -> SettingsFeedbackBanner(
                 message = "Signed in",
@@ -162,7 +162,7 @@ private fun OAuthControls(
             )
             OAuthUiStatus.Idle -> Unit
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             if (status == OAuthUiStatus.SignedIn) {
                 CompactActionButton(
                     label = "Sign out",
@@ -195,21 +195,21 @@ private fun CollectionDropdownField(
 ) {
     val colors = AxonTheme.colors
     var expanded by remember { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Collection", color = colors.textMuted.copy(alpha = 0.8f), fontSize = 10.8.sp, fontFamily = AxonTheme.fonts.body)
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("Collection", color = colors.textMuted.copy(alpha = 0.84f), fontSize = 12.sp, fontFamily = AxonTheme.fonts.body)
             if (collections.loading) {
-                Text("loading", color = colors.accentStrong, fontSize = 9.sp, fontFamily = AxonTheme.fonts.mono)
+                Text("loading", color = colors.accentStrong, fontSize = 10.sp, fontFamily = AxonTheme.fonts.mono)
             }
             collections.error?.let {
-                Text("could not load", color = colors.warn, fontSize = 9.sp, fontFamily = AxonTheme.fonts.mono)
+                Text("could not load", color = colors.warn, fontSize = 10.sp, fontFamily = AxonTheme.fonts.mono)
             }
         }
         Box {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .height(50.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(colors.control.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
@@ -217,14 +217,14 @@ private fun CollectionDropdownField(
                         expanded = true
                         if (collections.collections.isEmpty() && !collections.loading) onRefreshCollections()
                     }
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
                     collection.ifBlank { "unset" },
                     color = if (collection.isBlank()) colors.textMuted else colors.textPrimary,
-                    fontSize = 11.8.sp,
+                    fontSize = 13.sp,
                     fontFamily = AxonTheme.fonts.mono,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
