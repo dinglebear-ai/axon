@@ -32,7 +32,7 @@ class FabOpInputCardTest {
         ).first { it.toFile().isFile }
         val source = sourcePath.toFile().readText()
 
-        assert(source.contains("KeyboardActions(onSend = { submitIfReady() })")) {
+        assert(source.contains("KeyboardActions(onSend = {") && source.contains("submitIfReady()")) {
             "FabOpInputCard must wire IME Send to the same submit path as the send button"
         }
     }

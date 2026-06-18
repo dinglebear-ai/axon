@@ -62,6 +62,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -140,6 +142,7 @@ internal fun AskPromptBar(
                 .fillMaxWidth()
                 .heightIn(min = 22.dp)
                 .padding(start = 14.dp, end = 14.dp, top = 12.dp)
+                .semantics { contentDescription = "Ask prompt" }
                 .onFocusChanged { focused = it.isFocused },
             decorationBox = { inner ->
                 Box {
@@ -343,6 +346,7 @@ private fun SendButton(
                 .clip(shape)
                 .background(bg, shape)
                 .border(1.dp, border, shape)
+                .semantics { contentDescription = if (loading) "Stop generating" else "Send message" }
                 .combinedClickable(
                     interactionSource = interaction,
                     indication = null,
@@ -372,14 +376,14 @@ private fun SendButton(
                 if (isLoading) {
                     Icon(
                         Icons.Rounded.Stop,
-                        contentDescription = "Stop generating",
+                        contentDescription = null,
                         tint = iconTint,
                         modifier = Modifier.size(18.dp),
                     )
                 } else {
                     Icon(
                         Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send message — long-press to choose Ask or Chat",
+                        contentDescription = null,
                         tint = iconTint,
                         modifier = Modifier.size(18.dp),
                     )
