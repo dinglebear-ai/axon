@@ -153,7 +153,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     onSearchQueryChange = { settingsSearch = it },
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
-                        .widthIn(max = 420.dp),
+                        .widthIn(max = 560.dp),
                 )
                 SettingsTab.Config -> ConfigGroupsTab(
                     path = files.configPath,
@@ -168,7 +168,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     onSearchQueryChange = { settingsSearch = it },
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
-                        .widthIn(max = 420.dp),
+                        .widthIn(max = 560.dp),
                 )
             }
         }

@@ -158,6 +158,16 @@ pub async fn panel_collections(
             .into_response();
     }
 
+    qdrant_collections_response(&cfg).await
+}
+
+pub async fn collections(
+    State((_state, cfg)): State<(AppState, Arc<Config>)>,
+) -> impl IntoResponse {
+    qdrant_collections_response(&cfg).await
+}
+
+async fn qdrant_collections_response(cfg: &Config) -> axum::response::Response {
     let url = format!("{}/collections", cfg.qdrant_url.trim_end_matches('/'));
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(5))

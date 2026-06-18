@@ -78,7 +78,7 @@ internal fun ConfigGroupsTab(
     val filteredGroups = remember(groups, values, searchQuery) {
         filterGroups(groups, values, keyFor, searchQuery)
     }
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(11.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
         SettingsSearchField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
@@ -86,7 +86,7 @@ internal fun ConfigGroupsTab(
         Text(
             configPathSummary(path, groups, filteredGroups, searchQuery),
             color = AxonTheme.colors.textMuted,
-            fontSize = 10.sp,
+            fontSize = 10.8.sp,
             fontFamily = AxonTheme.fonts.mono,
         )
         if (loading) AuroraStatusIndicator(tone = AuroraStatusTone.Syncing, label = "Loading real file values...")
@@ -124,13 +124,13 @@ private fun SettingsSearchField(value: String, onValueChange: (String) -> Unit) 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(46.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(colors.control.copy(alpha = 0.46f), RoundedCornerShape(9.dp))
             .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), RoundedCornerShape(9.dp))
-            .padding(horizontal = 11.dp),
+            .padding(horizontal = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Icon(Icons.Rounded.Search, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(15.dp))
         BasicTextField(
@@ -139,14 +139,14 @@ private fun SettingsSearchField(value: String, onValueChange: (String) -> Unit) 
             singleLine = true,
             textStyle = TextStyle(
                 color = colors.textPrimary,
-                fontSize = 11.3.sp,
+                fontSize = 12.sp,
                 fontFamily = AxonTheme.fonts.body,
             ),
             modifier = Modifier.weight(1f),
             decorationBox = { inner ->
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (value.isBlank()) {
-                        Text("Search settings", color = colors.textMuted, fontSize = 11.3.sp, fontFamily = AxonTheme.fonts.body)
+                        Text("Search settings", color = colors.textMuted, fontSize = 12.sp, fontFamily = AxonTheme.fonts.body)
                     }
                     inner()
                 }
@@ -165,8 +165,8 @@ private fun ConfigAccessNotice(message: String, warn: Boolean) {
             .clip(RoundedCornerShape(8.dp))
             .background(colors.tint(tone, 5, colors.pageBg), RoundedCornerShape(8.dp))
             .border(1.dp, colors.tint(tone, 22, colors.pageBg), RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
@@ -178,8 +178,8 @@ private fun ConfigAccessNotice(message: String, warn: Boolean) {
         Text(
             humanizeJsonFragmentText(message),
             color = colors.textPrimary,
-            fontSize = 9.8.sp,
-            lineHeight = 13.3.sp,
+            fontSize = 10.8.sp,
+            lineHeight = 14.8.sp,
             fontFamily = AxonTheme.fonts.body,
             modifier = Modifier.weight(1f),
         )
@@ -188,16 +188,16 @@ private fun ConfigAccessNotice(message: String, warn: Boolean) {
 
 @Composable
 private fun SettingGroupCard(group: SettingGroup, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             BoxIcon(group.icon)
             group.section?.let {
-                Text(it, color = AxonTheme.colors.accentStrong, fontSize = 9.5.sp, fontFamily = AxonTheme.fonts.mono)
+                Text(it, color = AxonTheme.colors.accentStrong, fontSize = 10.sp, fontFamily = AxonTheme.fonts.mono)
             }
-            Text(group.label, color = AxonTheme.colors.textPrimary, fontSize = 11.7.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display, modifier = Modifier.weight(1f))
-            Text("${group.fields.size} ${if (group.section == null) "vars" else "knobs"}", color = AxonTheme.colors.textMuted, fontSize = 9.5.sp, fontFamily = AxonTheme.fonts.mono)
+            Text(group.label, color = AxonTheme.colors.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display, modifier = Modifier.weight(1f))
+            Text("${group.fields.size} ${if (group.section == null) "vars" else "knobs"}", color = AxonTheme.colors.textMuted, fontSize = 10.sp, fontFamily = AxonTheme.fonts.mono)
         }
-        Text(group.note, color = AxonTheme.colors.textMuted.copy(alpha = 0.78f), fontSize = 10.1.sp, lineHeight = 13.9.sp, fontFamily = AxonTheme.fonts.body)
+        Text(group.note, color = AxonTheme.colors.textMuted.copy(alpha = 0.82f), fontSize = 10.9.sp, lineHeight = 15.2.sp, fontFamily = AxonTheme.fonts.body)
         content()
     }
 }
@@ -208,16 +208,16 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.control.copy(alpha = 0.035f), RoundedCornerShape(8.dp))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 11.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .background(colors.panelMedium.copy(alpha = 0.38f), RoundedCornerShape(8.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 13.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 field.key,
                 color = colors.textPrimary,
-                fontSize = if (field.env == null) 10.1.sp else 10.4.sp,
+                fontSize = if (field.env == null) 10.8.sp else 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = AxonTheme.fonts.mono,
                 modifier = Modifier.weight(1f),
@@ -273,12 +273,12 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(38.dp)
-            .background(colors.control.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
-            .padding(start = if (secret) 9.dp else 10.dp, end = if (secret) 5.dp else 10.dp),
+            .height(48.dp)
+            .background(colors.pageBg.copy(alpha = 0.92f), RoundedCornerShape(8.dp))
+            .border(1.dp, colors.borderStrong.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .padding(start = if (secret) 12.dp else 14.dp, end = if (secret) 6.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         if (secret) {
             Icon(Icons.Rounded.Key, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(12.dp))
@@ -290,14 +290,25 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
             visualTransformation = if (secret && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
             textStyle = TextStyle(
                 color = colors.textPrimary,
-                fontSize = 10.9.sp,
+                fontSize = 12.sp,
                 fontFamily = AxonTheme.fonts.mono,
             ),
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f, fill = true)
+                .fillMaxWidth(),
             decorationBox = { inner ->
-                Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 1.dp),
+                ) {
                     if (value.isBlank()) {
-                        Text(placeholder, color = colors.textMuted, fontSize = 10.9.sp, fontFamily = AxonTheme.fonts.mono)
+                        Text(
+                            placeholder,
+                            color = colors.textMuted.copy(alpha = 0.72f),
+                            fontSize = 12.sp,
+                            fontFamily = AxonTheme.fonts.mono,
+                        )
                     }
                     inner()
                 }
@@ -336,7 +347,9 @@ private fun configPathSummary(
 
 private fun configAccessMessage(error: String): String =
     if (error.contains("Panel unlock required") || error.contains("401")) {
-        "Axon API token required. Save the bearer token on Connection to load live file values."
+        "Config file access is locked. The saved token was not accepted for panel config access, so catalog defaults are shown."
+    } else if (error.contains("OAuth app tokens are not used for panel routes")) {
+        "Config file access needs a panel-compatible token. OAuth still works for regular Axon actions."
     } else {
         "Could not load live file values. Catalog defaults are shown for now. $error"
     }

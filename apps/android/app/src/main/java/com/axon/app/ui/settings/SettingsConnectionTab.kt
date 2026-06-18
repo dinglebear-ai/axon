@@ -202,7 +202,7 @@ private fun CollectionDropdownField(
                 Text("loading", color = colors.accentStrong, fontSize = 9.sp, fontFamily = AxonTheme.fonts.mono)
             }
             collections.error?.let {
-                Text("bearer token required", color = colors.warn, fontSize = 9.sp, fontFamily = AxonTheme.fonts.mono)
+                Text("could not load", color = colors.warn, fontSize = 9.sp, fontFamily = AxonTheme.fonts.mono)
             }
         }
         Box {

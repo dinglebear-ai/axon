@@ -86,7 +86,7 @@ class OAuthRepositoryTest {
         val authUri = request.toUri().toString()
         assertTrue(authUri.contains("axon%3Aread") || authUri.contains("axon:read"))
         assertTrue(authUri.contains("axon%3Awrite") || authUri.contains("axon:write"))
-        assertTrue(authUri.contains("offline_access"))
+        assertFalse(authUri.contains("offline_access"))
         assertEquals("com.axon.app://oauth2redirect", request.redirectUri.toString())
         assertNotNull(store.read())
         assertEquals(request.state, store.readPendingState())
@@ -267,7 +267,7 @@ class OAuthRepositoryTest {
                   "refresh_token": "$refreshToken",
                   "expires_in": $expiresIn,
                   "token_type": "Bearer",
-                  "scope": "axon:read axon:write offline_access"
+                  "scope": "axon:read axon:write"
                 }
             """.trimIndent(),
         )

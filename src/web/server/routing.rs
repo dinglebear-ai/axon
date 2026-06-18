@@ -68,6 +68,7 @@ fn read_routes() -> Router<ServeState> {
         .route("/v1/stats", get(handlers::discovery::stats))
         .route("/v1/status", get(handlers::discovery::status))
         .route("/v1/doctor", get(handlers::discovery::doctor))
+        .route("/v1/collections", get(handlers::collections))
         .route(
             "/v1/mobile/sessions",
             get(handlers::mobile_sessions::list_mobile_sessions),

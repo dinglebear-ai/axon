@@ -39,7 +39,7 @@ pub use auth::{login, panel_state};
 pub use chat::v1_chat;
 pub use chat_stream::v1_chat_stream;
 pub use config::{
-    get_config, get_env_config, ops, panel_artifact, panel_collections, panel_command,
+    collections, get_config, get_env_config, ops, panel_artifact, panel_collections, panel_command,
     panel_doctor, panel_status, save_config, save_env_config,
 };
 pub use setup::setup_targets;
