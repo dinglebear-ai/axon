@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(name = "xtask", about = "Axon repository maintenance checks")]
@@ -57,6 +58,29 @@ enum Command {
         #[arg(value_enum)]
         level: checks::release_versions::BumpLevel,
     },
+    /// Benchmark embedding a local corpus through axon, TEI, and Qdrant.
+    BenchEmbed {
+        /// File or directory to embed.
+        corpus: PathBuf,
+        /// Axon binary to execute. Defaults to target/debug/axon, then PATH.
+        #[arg(long)]
+        axon_bin: Option<PathBuf>,
+        /// Qdrant collection name. Defaults to a timestamped throwaway collection.
+        #[arg(long)]
+        collection: Option<String>,
+        /// Qdrant base URL. Defaults to QDRANT_URL / AXON_QDRANT_URL from env or ~/.axon/.env.
+        #[arg(long)]
+        qdrant_url: Option<String>,
+        /// TEI base URL for metrics. Defaults to TEI_URL from env or ~/.axon/.env.
+        #[arg(long)]
+        tei_url: Option<String>,
+        /// Keep the benchmark collection instead of deleting it.
+        #[arg(long)]
+        keep_collection: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -97,7 +121,28 @@ fn main() -> Result<()> {
         Command::BumpVersion { component, level } => {
             Ok(checks::release_versions::bump(&root, &component, level)?)
         }
+        Command::BenchEmbed {
+            corpus,
+            axon_bin,
+            collection,
+            qdrant_url,
+            tei_url,
+            keep_collection,
+            json,
+        } => bench_embed::run(
+            &root,
+            bench_embed::BenchEmbedArgs {
+                corpus,
+                axon_bin,
+                collection,
+                qdrant_url,
+                tei_url,
+                keep_collection,
+                json,
+            },
+        ),
     }
 }
 
+mod bench_embed;
 mod checks;

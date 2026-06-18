@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VLLM_HOME="${VLLM_HOME:-$HOME/.axon/vllm-test}"
+VLLM_BIN="${VLLM_BIN:-$VLLM_HOME/.venv/bin/vllm}"
+VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen3-Embedding-0.6B}"
+VLLM_SERVED_MODEL_NAME="${VLLM_SERVED_MODEL_NAME:-axon-qwen3-embedding}"
+VLLM_HOST="${VLLM_HOST:-127.0.0.1}"
+VLLM_PORT="${VLLM_PORT:-8010}"
+VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-8192}"
+VLLM_GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.75}"
+VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-256}"
+VLLM_MAX_NUM_BATCHED_TOKENS="${VLLM_MAX_NUM_BATCHED_TOKENS:-65536}"
+VLLM_LOG="${VLLM_LOG:-$VLLM_HOME/logs/qwen-embed-server.log}"
+VLLM_PID="${VLLM_PID:-$VLLM_HOME/qwen-embed-server.pid}"
+
+is_running() {
+  [[ -s "$VLLM_PID" ]] && kill -0 "$(cat "$VLLM_PID")" 2>/dev/null
+}
+
+wait_ready() {
+  for _ in $(seq 1 90); do
+    if curl -fsS "http://$VLLM_HOST:$VLLM_PORT/v1/models" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+start() {
+  if is_running; then
+    echo "vLLM already running: pid $(cat "$VLLM_PID")"
+    return 0
+  fi
+
+  if [[ ! -x "$VLLM_BIN" ]]; then
+    echo "vLLM binary not found: $VLLM_BIN" >&2
+    exit 1
+  fi
+
+  mkdir -p "$(dirname "$VLLM_LOG")"
+  : > "$VLLM_LOG"
+
+  local -a extra_args=()
+  if [[ -n "$VLLM_MAX_NUM_SEQS" ]]; then
+    extra_args+=(--max-num-seqs "$VLLM_MAX_NUM_SEQS")
+  fi
+  if [[ -n "$VLLM_MAX_NUM_BATCHED_TOKENS" ]]; then
+    extra_args+=(--max-num-batched-tokens "$VLLM_MAX_NUM_BATCHED_TOKENS")
+  fi
+
+  setsid bash -lc \
+    'pid=$1; shift; echo $$ > "$pid"; exec env VLLM_WORKER_MULTIPROC_METHOD=spawn HF_HOME="$HOME/.cache/huggingface" "$@"' \
+    bash "$VLLM_PID" "$VLLM_BIN" serve "$VLLM_MODEL" --runner pooling --convert embed --trust-remote-code --dtype auto --max-model-len "$VLLM_MAX_MODEL_LEN" --gpu-memory-utilization "$VLLM_GPU_MEMORY_UTILIZATION" --served-model-name "$VLLM_SERVED_MODEL_NAME" --host "$VLLM_HOST" --port "$VLLM_PORT" "${extra_args[@]}" \
+    > "$VLLM_LOG" 2>&1 < /dev/null &
+
+  if wait_ready; then
+    echo "vLLM ready: http://$VLLM_HOST:$VLLM_PORT model=$VLLM_SERVED_MODEL_NAME pid=$(cat "$VLLM_PID")"
+  else
+    echo "vLLM did not become ready; tailing log:" >&2
+    tail -120 "$VLLM_LOG" >&2 || true
+    exit 1
+  fi
+}
+
+stop() {
+  if ! is_running; then
+    echo "vLLM not running"
+    return 0
+  fi
+
+  kill "$(cat "$VLLM_PID")" 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    is_running || break
+    sleep 1
+  done
+  if is_running; then
+    kill -9 "$(cat "$VLLM_PID")" 2>/dev/null || true
+  fi
+  rm -f "$VLLM_PID"
+  echo "vLLM stopped"
+}
+
+status() {
+  if is_running; then
+    ps -p "$(cat "$VLLM_PID")" -o pid,etime,stat,cmd
+    curl -fsS "http://$VLLM_HOST:$VLLM_PORT/v1/models" || true
+    echo
+  else
+    echo "vLLM not running"
+    return 1
+  fi
+}
+
+smoke() {
+  curl -fsS "http://$VLLM_HOST:$VLLM_PORT/v1/embeddings" \
+    -H 'Content-Type: application/json' \
+    -d "{\"model\":\"$VLLM_SERVED_MODEL_NAME\",\"input\":[\"hello world\",\"chunking benchmark smoke test\"]}" \
+    | jq '{model, object, count:(.data|length), dims:(.data[0].embedding|length), usage}'
+}
+
+case "${1:-status}" in
+  start) start ;;
+  stop) stop ;;
+  restart) stop; start ;;
+  status) status ;;
+  smoke) smoke ;;
+  logs) tail -f "$VLLM_LOG" ;;
+  *) echo "usage: $0 {start|stop|restart|status|smoke|logs}" >&2; exit 2 ;;
+esac

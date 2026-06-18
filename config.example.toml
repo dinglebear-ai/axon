@@ -203,8 +203,12 @@
 # request-timeout-ms = 30000
 
 # Default batch size sent to TEI; auto-splits on HTTP 413.
+# For Qwen3-Embedding-0.6B on a 12GB RTX 4070, measured docs chunks worked best
+# around 128 inputs/request with AXON_TEI_MAX_IN_FLIGHT_INPUTS=320. Larger
+# 192/256-item batches reduced request count but gave back the wall-time win to
+# heavier per-batch inference shape.
 # Env: TEI_MAX_CLIENT_BATCH_SIZE
-# max-client-batch-size = 64
+# max-client-batch-size = 128
 
 # Env-only embed throughput/volume controls. These are intentionally listed
 # here for operator discoverability, but are not TOML keys yet.
@@ -228,6 +232,27 @@
 #
 # AXON_EMBED_DEDUPE_EXACT_CHUNKS=true
 #   Drop exact duplicate chunks within one logical document before embedding.
+#
+# OpenAI-compatible embedding endpoints, including vLLM served at a `/v1`
+# TEI_URL, use separate client-side defaults so native TEI tuning is not
+# overloaded for a different scheduler shape:
+#
+# AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE=32
+#   Client batch size for OpenAI-compatible `/v1/embeddings` endpoints
+#   (clamped 1-256).
+#
+# AXON_OPENAI_EMBED_MAX_CONCURRENT=32
+#   Process-wide max concurrent client requests to OpenAI-compatible embedding
+#   endpoints (clamped 1-64).
+#
+# AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS=512
+#   Weighted cap on total input chunks currently submitted to OpenAI-compatible
+#   embedding endpoints (clamped 1-4096).
+#
+# AXON_OPENAI_EMBED_POOL_MAX_INPUTS=1024
+#   Cross-document pool size for one OpenAI-compatible embedding wave before
+#   rebuilding Qdrant points (clamped 64-65536). On RTX 4070 + vLLM + Qwen3 0.6B,
+#   1024 kept the GPU full without the long queue latency seen at 2048.
 
 [workers]
 # Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
@@ -246,9 +271,11 @@
 # Env: AXON_QUEUE_SUMMARY_SECS
 # queue-summary-secs = 30
 
-# Buffered Qdrant points before flush (clamped 128-16384).
+# Buffered Qdrant points before pipeline flush (clamped 128-16384). Each flush
+# is still split into AXON_QDRANT_UPSERT_BATCH_SIZE requests and sent with
+# AXON_QDRANT_UPSERT_PARALLELISM.
 # Env: AXON_QDRANT_POINT_BUFFER
-# qdrant-point-buffer = 256
+# qdrant-point-buffer = 1024
 
 # Crawl queue cap — reject new jobs above this count (0 = unlimited).
 # Env: AXON_MAX_PENDING_CRAWL_JOBS
@@ -461,7 +488,26 @@ remote-local-policy = false
 #   AXON_RESIDUAL_GAP_FLOOR
 #   AXON_ETAG_MAX_MISS_RUNS
 #
-# Embed throughput guards. Leave unset for defaults; raise AXON_TEI_MAX_CONCURRENT
-# only if local TEI reports frequent 429 backpressure.
+# Embed throughput guards. Leave unset for defaults. On the RTX 4070/Qwen
+# profile, prefer raising TEI_MAX_BATCH_REQUESTS server-side before raising
+# AXON_TEI_MAX_CONCURRENT; docs chunks saturated near 200 chunks/sec and larger
+# client fanout mainly increased queue latency.
 #   AXON_TEI_MAX_CONCURRENT
-#   AXON_EMBED_DOC_CONCURRENCY
+#   AXON_TEI_MAX_IN_FLIGHT_INPUTS
+#   AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE
+#   AXON_OPENAI_EMBED_MAX_CONCURRENT
+#   AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS
+#   AXON_OPENAI_EMBED_POOL_MAX_INPUTS
+#   AXON_EMBED_POOL_MAX_INPUTS
+#   AXON_MARKDOWN_CHUNK_MIN_CHARS
+#   AXON_MARKDOWN_CHUNK_MAX_CHARS
+#   AXON_CHUNK_OVERLAP_CHARS
+#   AXON_QDRANT_UPSERT_BATCH_SIZE
+#   AXON_QDRANT_UPSERT_PARALLELISM
+#   AXON_QDRANT_BULK_LOAD
+#   AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB
+#   AXON_QDRANT_INDEXING_THRESHOLD_KB
+#   AXON_QDRANT_HNSW_M
+#   AXON_QDRANT_HNSW_EF_CONSTRUCT
+#   AXON_QDRANT_PAYLOAD_INDEX_PROFILE
+#   AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM

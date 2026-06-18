@@ -8,15 +8,10 @@ use crate::core::logging::{log_debug, log_warn};
 use crate::vector::ops::qdrant::PAYLOAD_SCHEMA_VERSION;
 use chrono::Utc;
 use std::error::Error;
-use std::future::Future;
-use std::pin::Pin;
 use std::time::Duration;
 use uuid::Uuid;
 
-// Aliases used for futures that must be Send to work in FuturesUnordered across await points.
 pub(super) type SendError = Box<dyn Error + Send + Sync>;
-pub(super) type DocFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<EmbeddedDoc, SendError>> + Send + 'a>>;
 
 /// Named result of embedding one `PreparedDoc` through the TEI pipeline.
 ///
@@ -28,6 +23,11 @@ pub(super) struct EmbeddedDoc {
     pub(super) chunk_count: usize,
     pub(super) points: Vec<serde_json::Value>,
     pub(super) local_legacy_fragment_url: Option<String>,
+}
+
+pub(super) struct DocEmbeddingPlan {
+    pub(super) doc: PreparedDoc,
+    pub(super) embed_texts: Vec<String>,
 }
 
 /// Qdrant payload fields owned by the pipeline that `doc.extra` must never overwrite.
@@ -110,11 +110,9 @@ pub(crate) fn drop_blank_chunks_aligned(
     }
 }
 
-async fn embed_prepared_doc(
-    cfg: &Config,
+pub(super) fn prepare_doc_for_embedding(
     mut doc: PreparedDoc,
-    mode: VectorMode,
-) -> Result<EmbeddedDoc, SendError> {
+) -> Result<DocEmbeddingPlan, SendError> {
     drop_blank_chunks_aligned(&mut doc.chunks, &mut doc.chunk_extra);
     if doc.chunks.is_empty() {
         return Err(format!("all chunks empty for {}", doc.url).into());
@@ -136,9 +134,15 @@ async fn embed_prepared_doc(
             _ => format!("{}\n\n{}", doc.url, chunk),
         })
         .collect();
-    let vectors = tei_embed_kind(cfg, EmbedKind::Document, &embed_texts)
-        .await
-        .map_err(|e| -> SendError { format!("TEI embed for {}: {e}", doc.url).into() })?;
+    Ok(DocEmbeddingPlan { doc, embed_texts })
+}
+
+pub(super) fn build_embedded_doc_from_vectors(
+    mut doc: PreparedDoc,
+    vectors: Vec<Vec<f32>>,
+    cfg: &Config,
+    mode: VectorMode,
+) -> Result<EmbeddedDoc, SendError> {
     if vectors.is_empty() {
         return Err(format!("TEI returned no vectors for {}", doc.url).into());
     }
@@ -238,6 +242,19 @@ async fn embed_prepared_doc(
         points,
         local_legacy_fragment_url,
     })
+}
+
+async fn embed_prepared_doc(
+    cfg: &Config,
+    doc: PreparedDoc,
+    mode: VectorMode,
+) -> Result<EmbeddedDoc, SendError> {
+    let plan = prepare_doc_for_embedding(doc)?;
+    let url = plan.doc.url.clone();
+    let vectors = tei_embed_kind(cfg, EmbedKind::Document, &plan.embed_texts)
+        .await
+        .map_err(|e| -> SendError { format!("TEI embed for {url}: {e}").into() })?;
+    build_embedded_doc_from_vectors(plan.doc, vectors, cfg, mode)
 }
 
 pub(super) async fn embed_prepared_doc_with_timeout(

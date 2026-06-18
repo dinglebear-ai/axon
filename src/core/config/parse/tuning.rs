@@ -382,9 +382,9 @@ fn tei_max_client_batch_size(toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "TEI_MAX_CLIENT_BATCH_SIZE",
         toml.tei.max_client_batch_size,
-        64,
-        1,
         128,
+        1,
+        256,
     )
 }
 
@@ -420,7 +420,7 @@ fn qdrant_point_buffer(toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "AXON_QDRANT_POINT_BUFFER",
         toml.workers.qdrant_point_buffer,
-        256,
+        1024,
         128,
         16_384,
     )

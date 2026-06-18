@@ -144,7 +144,7 @@ section {
   width: 34px;
   height: 34px;
   border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 34%, var(--aurora-border-default));
-  border-radius: 10px;
+  border-radius: 8px;
   background:
     radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--aurora-accent-primary) 18%, transparent), transparent 54%),
     color-mix(in srgb, var(--aurora-control-surface) 88%, var(--aurora-accent-primary) 12%);
@@ -235,7 +235,7 @@ h1 {
 .chat-panel,
 .crawl-panel {
   border: 1px solid var(--aurora-border-default);
-  border-radius: 18px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-primary) 4%, transparent), transparent 46%),
     var(--aurora-panel-medium);
@@ -356,7 +356,7 @@ h1 {
   gap: 9px;
   min-height: 44px;
   border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 40%, var(--aurora-border-default));
-  border-radius: 14px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--aurora-control-surface) 88%, var(--aurora-accent-primary) 12%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.055),
@@ -405,7 +405,7 @@ h1 {
 .send-button {
   min-height: 30px;
   border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 48%, var(--aurora-border-strong));
-  border-radius: 10px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-primary) 18%, transparent), transparent 58%),
     var(--aurora-control-surface);
@@ -504,7 +504,7 @@ h2 {
   gap: 4px;
   min-height: 48px;
   border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 42%, var(--aurora-border-strong));
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 9px 11px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-primary) 10%, transparent), transparent 58%),
@@ -616,7 +616,7 @@ h2 {
 
 .link-button {
   border: 1px solid var(--aurora-border-default);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--aurora-control-surface);
   color: var(--aurora-accent-strong);
   cursor: pointer;
@@ -667,7 +667,7 @@ textarea {
   height: 148px;
   resize: vertical;
   border: 1px solid var(--aurora-border-default);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 9px;
   background: var(--aurora-control-surface);
   color: var(--aurora-text-primary);
@@ -716,7 +716,7 @@ textarea {
   min-height: 180px;
   overflow: auto;
   border: 1px solid color-mix(in srgb, var(--aurora-accent-violet) 18%, var(--aurora-border-default));
-  border-radius: 12px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-violet) 6%, transparent), transparent 38%),
     color-mix(in srgb, var(--aurora-control-surface) 91%, var(--aurora-accent-violet) 9%);
@@ -740,7 +740,7 @@ textarea {
   gap: 5px;
   max-width: 94%;
   border: 1px solid var(--aurora-border-default);
-  border-radius: 10px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.026), transparent 42%),
     var(--aurora-control-surface);
@@ -958,7 +958,7 @@ textarea {
   display: grid;
   gap: 9px;
   border: 1px solid color-mix(in srgb, var(--aurora-accent-violet) 26%, var(--aurora-border-default));
-  border-radius: 14px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--aurora-control-surface) 86%, var(--aurora-accent-violet) 14%);
   padding: 10px;
 }
@@ -994,7 +994,7 @@ textarea {
   justify-self: end;
   min-height: 32px;
   border: 1px solid color-mix(in srgb, var(--aurora-accent-violet) 58%, var(--aurora-border-strong));
-  border-radius: 10px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-violet) 24%, transparent), transparent 58%),
     var(--aurora-control-surface);
@@ -1035,7 +1035,7 @@ input {
   min-height: 30px;
   width: 100%;
   border: 1px solid var(--aurora-border-default);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 6px 8px;
   background: var(--aurora-control-surface);
   color: var(--aurora-text-primary);
@@ -1054,7 +1054,7 @@ input[type="checkbox"] {
   gap: 10px;
   align-items: start;
   border: 1px solid var(--aurora-border-default);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--aurora-control-surface);
   cursor: pointer;
   padding: 11px;
@@ -1104,7 +1104,7 @@ input::placeholder {
   max-width: min(320px, calc(100vw - 28px));
   margin: 0;
   border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 34%, var(--aurora-border-default));
-  border-radius: 12px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--aurora-accent-primary) 10%, transparent), transparent 58%),
     var(--aurora-panel-strong);

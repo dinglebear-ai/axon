@@ -277,7 +277,7 @@ Quantization: scalar int8, quantile 0.99, always_ram = false.
 
 ### Upsert
 
-Points are upserted in batches of `AXON_QDRANT_UPSERT_BATCH_SIZE` (default 256, max 4096)
+Points are upserted in batches of `AXON_QDRANT_UPSERT_BATCH_SIZE` (default 1024, max 4096)
 using `PUT /collections/{name}/points?wait=true`. Each batch retries up to 3 times with
 exponential backoff (500ms, 1s, 2s). Point IDs are deterministic. Most sources derive IDs
 from `(url, chunk_index)`, while stable record sources may provide explicit IDs; memory uses

@@ -543,11 +543,12 @@ async fn collection_init_revalidates_cached_unnamed_when_hybrid_enabled() {
     let key = collection_mode_cache_key(&cfg);
     cache_vector_mode_key(&key, VectorMode::Unnamed);
 
-    let mode = collection_init_or_cached(&cfg, 4)
+    let init = collection_init_or_cached(&cfg, 4)
         .await
         .expect("cached unnamed mode must be re-probed successfully");
 
-    assert_eq!(mode, VectorMode::Named);
+    assert_eq!(init.mode, VectorMode::Named);
+    assert!(!init.created_now);
     assert_eq!(cached_vector_mode_key(&key), Some(VectorMode::Named));
     assert_eq!(
         get_mock.calls_async().await,
@@ -764,4 +765,69 @@ async fn ensure_collection_sends_full_create_body_with_hnsw_and_quantization() {
         "full body test must succeed: {:?}",
         result.err()
     );
+}
+
+#[allow(unsafe_code)]
+#[tokio::test]
+#[serial_test::serial]
+async fn ensure_collection_bulk_load_sets_high_indexing_threshold_on_create() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/bulk_body_col");
+            then.status(404);
+        })
+        .await;
+
+    let put_mock = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/bulk_body_col")
+                .json_body_includes(r#"{"optimizers_config":{"indexing_threshold":123456}}"#);
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path_matches(regex::Regex::new("/collections/bulk_body_col/index").unwrap());
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    let saved_bulk = std::env::var("AXON_QDRANT_BULK_LOAD").ok();
+    let saved_threshold = std::env::var("AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB").ok();
+    unsafe {
+        std::env::set_var("AXON_QDRANT_BULK_LOAD", "true");
+        std::env::set_var("AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB", "123456");
+    }
+
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "bulk_body_col".to_string();
+
+    let result = collection_init_or_cached(&cfg, 4).await;
+
+    unsafe {
+        match saved_bulk {
+            Some(v) => std::env::set_var("AXON_QDRANT_BULK_LOAD", v),
+            None => std::env::remove_var("AXON_QDRANT_BULK_LOAD"),
+        }
+        match saved_threshold {
+            Some(v) => std::env::set_var("AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB", v),
+            None => std::env::remove_var("AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB"),
+        }
+    }
+
+    put_mock.assert_async().await;
+    let init = result.expect("collection init must succeed");
+    assert_eq!(init.mode, VectorMode::Named);
+    assert!(init.created_now);
+    assert!(init.restore_indexing_threshold);
 }

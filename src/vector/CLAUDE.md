@@ -64,7 +64,7 @@ The diagram is intentionally complete — every named function in this CLAUDE.md
 On **429 and any 5xx**, `tei_embed()` retries up to **5 times** (6 total attempts) with exponential backoff starting at 1s (1, 2, 4, 8, 16s) + jitter. Override with `TEI_MAX_RETRIES` env var. The default is tuned so worst-case retry budget (~213s) fits inside the 300s doc timeout.
 
 ### Pipeline Resilience
-`run_embed_pipeline()` in `tei/pipeline.rs` processes docs concurrently with per-doc timeouts. Individual doc failures (TEI timeout, transport error) are **logged and skipped inside the batch** so independent docs can still finish; `EmbedSummary.docs_failed` reports how many failed. Public callers that require all-or-nothing behavior call `EmbedSummary::require_success(context)` after the pipeline returns. Scrape, REST sync, and ingest paths use this to turn partial embedding into an error.
+`run_embed_pipeline()` in `tei/pipeline.rs` embeds the first document serially to resolve vector mode, then pools chunks from the remaining documents into bounded TEI groups (`AXON_EMBED_POOL_MAX_INPUTS`, default 512). Prep failures for individual documents are **logged and skipped inside the batch** so independent docs can still finish; TEI group failures abort the pipeline rather than silently dropping documents. `EmbedSummary.docs_failed` reports how many documents failed during preparation. Public callers that require all-or-nothing behavior call `EmbedSummary::require_success(context)` after the pipeline returns. Scrape, REST sync, and ingest paths use this to turn partial embedding into an error.
 
 The pipeline uses **upsert-first** (deterministic UUID v5 point IDs overwrite existing) then **stale-tail cleanup** after successful upsert — no data is deleted until the replacement is safely stored. Stale-tail and local legacy-fragment cleanup failures are returned as errors; they are not swallowed after upsert.
 
@@ -226,6 +226,7 @@ All TEI, Qdrant, and sparse tests run without live services (`httpmock` for netw
 | Var | Default | Effect |
 |-----|---------|--------|
 | `TEI_MAX_CLIENT_BATCH_SIZE` | 64 (max 128) | Batch size before auto-split on 413 |
+| `AXON_EMBED_POOL_MAX_INPUTS` | 512 | Max chunk inputs pooled into one pipeline TEI group before `tei_embed()` applies client-side sub-batching |
 | `AXON_COLLECTION` | `axon` | Qdrant collection name. Validated at dispatch: `[A-Za-z0-9_.-]`, 1–255 chars, no leading/trailing dot, no `..`. |
 | `AXON_HYBRID_SEARCH` | `true` | Master switch for hybrid RRF search on Named collections. `false` forces dense-only on every query (used by `axon evaluate --no-hybrid-search` for A/B comparison). |
 | `AXON_HYBRID_CANDIDATES` | `100` | Prefetch window per arm (dense + sparse) before RRF fusion for `query`. Maps to `cfg.hybrid_search_candidates`. |

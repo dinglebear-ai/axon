@@ -141,6 +141,37 @@ fn chunk_text_whitespace_only_short_returns_single_chunk() {
     assert_eq!(chunks[0], text);
 }
 
+#[test]
+#[serial_test::serial]
+#[allow(unsafe_code)]
+fn chunk_text_respects_runtime_chunk_size_override() {
+    let saved_max = std::env::var("AXON_MARKDOWN_CHUNK_MAX_CHARS").ok();
+    let saved_overlap = std::env::var("AXON_CHUNK_OVERLAP_CHARS").ok();
+    unsafe {
+        std::env::set_var("AXON_MARKDOWN_CHUNK_MAX_CHARS", "512");
+        std::env::set_var("AXON_CHUNK_OVERLAP_CHARS", "64");
+    }
+
+    let chunks = chunk_text(&make_text(1200));
+
+    unsafe {
+        match saved_max {
+            Some(value) => std::env::set_var("AXON_MARKDOWN_CHUNK_MAX_CHARS", value),
+            None => std::env::remove_var("AXON_MARKDOWN_CHUNK_MAX_CHARS"),
+        }
+        match saved_overlap {
+            Some(value) => std::env::set_var("AXON_CHUNK_OVERLAP_CHARS", value),
+            None => std::env::remove_var("AXON_CHUNK_OVERLAP_CHARS"),
+        }
+    }
+
+    assert!(chunks.len() >= 3, "512-char chunks should split 1200 chars");
+    assert!(
+        chunks.iter().all(|chunk| chunk.chars().count() <= 512),
+        "all chunks should respect the override: {chunks:?}"
+    );
+}
+
 // ── chunk_markdown ───────────────────────────────────────────────────────
 
 #[test]
@@ -242,6 +273,71 @@ fn chunk_with_heading_context_does_not_duplicate_existing_breadcrumb() {
         1
     );
     assert_eq!(with_context, chunk);
+}
+
+#[test]
+fn chunk_with_heading_context_does_not_repeat_heading_that_opens_chunk() {
+    let chunk = "## Setting Up Multitenancy\n\nTenant-specific setup details";
+
+    let with_context =
+        chunk_with_heading_context(chunk, vec!["# Admin Guide", "## Setting Up Multitenancy"]);
+
+    assert!(
+        with_context.starts_with("# Admin Guide\n\n## Setting Up Multitenancy"),
+        "ancestor context should be kept without duplicating the opening heading: {with_context:?}"
+    );
+    assert_eq!(with_context.matches("Setting Up Multitenancy").count(), 1);
+}
+
+#[test]
+fn chunk_with_heading_context_keeps_only_missing_ancestors_for_nested_heading() {
+    let chunk = "### Role Mapping\n\nMap each role to a tenant boundary.";
+
+    let with_context = chunk_with_heading_context(
+        chunk,
+        vec![
+            "# Admin Guide",
+            "## Setting Up Multitenancy",
+            "### Role Mapping",
+        ],
+    );
+
+    assert!(
+        with_context.starts_with("# Admin Guide\n## Setting Up Multitenancy\n\n### Role Mapping"),
+        "missing ancestors should be prepended before the existing nested heading: {with_context:?}"
+    );
+    assert_eq!(with_context.matches("Role Mapping").count(), 1);
+}
+
+#[test]
+fn chunk_with_heading_context_normalizes_outer_fence_wrapping_fenced_code() {
+    let chunk = "```\n```rust\nfn main() {}\n```\n```\n";
+
+    let with_context = chunk_with_heading_context(chunk, Vec::new());
+
+    assert_eq!(with_context, "````\n```rust\nfn main() {}\n```\n````\n");
+}
+
+#[test]
+fn chunk_with_heading_context_collapses_empty_anchor_headings() {
+    let chunk = "##\n[\u{200b}\n](#keystroke-syntax)\nKeystroke syntax\n\nBody";
+
+    let with_context = chunk_with_heading_context(chunk, Vec::new());
+
+    assert_eq!(with_context, "## Keystroke syntax\n\nBody");
+    assert!(!with_context.contains("[\u{200b}"));
+}
+
+#[test]
+fn chunk_with_heading_context_unwraps_single_backtick_fence_layer() {
+    let chunk = "```\n`return {\nhookSpecificOutput: true\n}\n`\n```\n";
+
+    let with_context = chunk_with_heading_context(chunk, Vec::new());
+
+    assert_eq!(
+        with_context,
+        "```\nreturn {\nhookSpecificOutput: true\n}\n```\n"
+    );
 }
 
 #[test]

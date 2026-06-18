@@ -118,6 +118,22 @@ TEI behavior:
 - retry on transient overload (`429` or any `5xx`) with exponential backoff
 - client batch sizing via `tei.max-client-batch-size` in `~/.axon/config.toml`
 
+Measured RTX 4070 + `Qwen/Qwen3-Embedding-0.6B` docs-chunk profile:
+
+- use `TEI_MAX_BATCH_TOKENS=163840`; `327680` failed TEI warmup with CUDA OOM
+- use `TEI_MAX_BATCH_REQUESTS=512` to avoid false overloads when multiple real
+  docs batches are in flight
+- keep Axon's client batch around `TEI_MAX_CLIENT_BATCH_SIZE=128`; on the
+  `code.claude.com` docs corpus this reduced TEI calls to 37 and was faster
+  than 96, 192, and 256
+- keep `AXON_EMBED_POOL_MAX_INPUTS=512` for docs-style corpora so small files
+  are pooled before TEI client-side sub-batching
+- `AXON_TEI_MAX_CONCURRENT=8` is a reasonable single-process ceiling when the
+  server batch-request budget is `512`
+- `AXON_TEI_MAX_IN_FLIGHT_INPUTS=320` caps `batch_size * request_concurrency`,
+  so small batches can use more request concurrency without large batches
+  stampeding into TEI overload
+
 Embed pipeline controls:
 
 - `workers.embed-doc-timeout-secs` in `~/.axon/config.toml`
@@ -126,7 +142,23 @@ Qdrant controls:
 
 - `search.collection` in `~/.axon/config.toml`
 - `QDRANT_URL`
-- upsert batching via `AXON_QDRANT_UPSERT_BATCH_SIZE` (default: `256` when unset)
+- `workers.qdrant-point-buffer=1024` batches points before each pipeline flush
+- upsert batching via `AXON_QDRANT_UPSERT_BATCH_SIZE` (default: `1024` when unset)
+- upsert fanout via `AXON_QDRANT_UPSERT_PARALLELISM` (default: `1` when unset).
+  Qdrant's generic bulk-upload guidance suggests `64-256` point batches with
+  `2-4` parallel streams; on the local `code.claude.com` docs corpus,
+  `1024/1` measured faster, so treat `256/2-4` as a large-import tuning profile
+  to validate with `bench-embed`
+- fresh-collection bulk indexing profile via `AXON_QDRANT_BULK_LOAD=true`:
+  Axon creates the collection with `AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB`
+  (default `10485760`) and restores `AXON_QDRANT_INDEXING_THRESHOLD_KB`
+  (default `20000`) after the embed pipeline finishes
+- HNSW build cost for new collections via `AXON_QDRANT_HNSW_M` and
+  `AXON_QDRANT_HNSW_EF_CONSTRUCT`; lower values can speed indexing but must be
+  validated with exact-vs-approx recall before becoming a quality default
+- fresh payload-index cost via `AXON_QDRANT_PAYLOAD_INDEX_PROFILE=core`, which
+  creates only URL/domain/source/schema/time indexes for docs-style collections;
+  keep `full` for mixed code/package/social collections unless evaluated
 
 ## Ask/RAG Tuning
 

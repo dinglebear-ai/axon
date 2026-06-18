@@ -2,10 +2,10 @@
 
 An unpacked **Manifest V3** Chrome extension that brings Axon to the page you're
 on. The **side panel** is an Aurora-styled launcher: browse the full Axon action
-surface (scrape, crawl, ingest, search, query, ask, …), run an action against the
+surface (scrape, crawl, extract, search, query, ask, …), run an action against the
 current tab, and read the result inline. Right-click **context menus** ("Scrape
-with Axon", "Ingest this page", "Ask Axon about *selection*") pre-fill and run an
-action straight from the page.
+with Axon (copy markdown)", "Crawl this page with Axon", "Ask Axon about
+*selection*") pre-fill and run an action straight from the page.
 
 The toolbar **popup** keeps the older command-line chat surface for quick CLI-style
 commands; both talk to the same Axon `/v1/*` HTTP API.
@@ -28,7 +28,7 @@ so everything ships in the package.)
 For a distributable ZIP (sharing or Chrome Web Store upload):
 
 ```bash
-./package.sh   # -> dist/axon-page-scraper-<version>.zip
+./package.sh   # -> dist/axon-<version>.zip
 # or: just package-extension
 ```
 
@@ -44,12 +44,12 @@ The extension is released independently of the main axon `v*` releases, on its
 own tag. Bump `version` in `manifest.json`, then push a matching tag:
 
 ```bash
-git tag chrome-ext-v0.2.0   # must match manifest.json's "version"
-git push origin chrome-ext-v0.2.0
+git tag chrome-ext-v0.2.1   # must match manifest.json's "version"
+git push origin chrome-ext-v0.2.1
 ```
 
 The `chrome-extension-release` workflow builds the zip, checksums it, and
-publishes a GitHub Release with `axon-page-scraper-<version>.zip` +
+publishes a GitHub Release with `axon-<version>.zip` +
 `.sha256` attached. The tag version must match `manifest.json` or the workflow
 fails. A manual **Run workflow** (workflow_dispatch) builds the zip as a run
 artifact without creating a release (dry-run).
@@ -61,7 +61,7 @@ Recreated from the Aurora design handoff (`Axon Extension.html`):
 - **Brand strip** — Axon mark + a server status dot (green online / red offline)
   + the configured host + a Settings button.
 - **This page** card — the current tab URL with quick actions: **Scrape**,
-  **Ingest**, **Endpoints**.
+  **Crawl**, **Extract**.
 - **Action browse** — every action grouped by family (Fetch & Read · Crawl &
   Ingest · Search & Discover · Reason · System), color-coded by tone
   (cyan = read, orange = async jobs, rose = LLM). `ASYNC` badges mark lifecycle
@@ -77,14 +77,32 @@ page), shared with the popup.
 
 ## Context menus
 
-Right-click a page (or selection) to run Axon without opening the panel first:
+Right-click a page (or selection) to run Axon:
 
-- **Scrape with Axon** (`page`, `link`) → `scrape` the page/link URL.
-- **Ingest this page into Axon** (`page`) → `ingest` the page URL.
+- **Scrape with Axon (copy markdown)** (`page`, `link`) → `scrape` the page/link URL and copy markdown.
+- **Crawl this page with Axon** (`page`) → `crawl` the page URL.
 - **Ask Axon about "…"** (`selection`) → `ask` with the selected text.
 
-The background worker opens the side panel and forwards the intent
-(`{ type: 'axon-intent', op, arg }`); the launcher pre-fills and runs it.
+Scrape and Crawl run directly from the background worker. Scrape uses a bundled
+offscreen document for the clipboard write, so no side panel or popup has to
+open. Both actions flash the extension badge and show a Chrome notification.
+Ask opens the side panel because the response needs a visible reading surface.
+
+## Agent OS regression
+
+Run the end-to-end Windows/Chrome smoke test from the repo root:
+
+```bash
+scripts/test-chrome-extension-agent-os.sh
+```
+
+The harness packages the current extension, serves the zip plus local Axon config
+to `agent-os`, installs the latest Windows `axon.exe`, loads the extension into
+Chrome, configures it, runs the installed Scrape/Crawl handlers, then verifies
+clipboard markdown and `axon status`/`crawl list` output. The native Chrome
+context menu itself is not clicked because Windows-MCP cannot currently select
+Chrome's native right-click menu reliably; the test invokes the exact extension
+background handlers that the context menu dispatches.
 
 ## Popup actions (toolbar)
 

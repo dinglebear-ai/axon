@@ -225,7 +225,7 @@ fn toml_tei_max_client_batch_size_wins_over_default() {
     assert_eq!(
         cfg.unwrap().tei_max_client_batch_size,
         96,
-        "TOML tei.max-client-batch-size=96 should override the default (64)"
+        "TOML tei.max-client-batch-size=96 should match or override the default"
     );
 }
 
@@ -343,7 +343,7 @@ fn toml_tei_max_client_batch_size_clamps_out_of_range() {
     }
     assert_eq!(
         cfg.unwrap().tei_max_client_batch_size,
-        128,
-        "out-of-range TOML max-client-batch-size=500 should clamp to 128 (upper bound)"
+        256,
+        "out-of-range TOML max-client-batch-size=500 should clamp to 256 (upper bound)"
     );
 }

@@ -131,7 +131,7 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 
 | Service | Image | Exposed Port | Purpose |
 |---------|-------|-------------|---------|
-| `axon-qdrant` | qdrant/qdrant:v1.13.1 | 53333, 53334 (gRPC) | Vector store |
+| `axon-qdrant` | qdrant/qdrant:v1.18.2 | 53333, 53334 (gRPC) | Vector store |
 | `axon-tei` | ghcr.io/huggingface/text-embeddings-inference | 52000 | Embedding generation |
 | `axon-chrome` | config/chrome/Dockerfile | 6000, 9222/9223 (CDP) | Headless browser |
 

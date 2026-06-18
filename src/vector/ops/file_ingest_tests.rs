@@ -65,6 +65,92 @@ async fn allowlist_excludes_non_source_when_include_source_false() {
     assert_eq!(with_src.len(), 2);
 }
 
+#[tokio::test]
+async fn allowlist_skips_generated_bulk_but_keeps_useful_configs() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    tokio::fs::create_dir_all(root.join("apps/web/openapi"))
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(root.join("apps/web/lib/generated"))
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(root.join("docs/reference/actions"))
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(root.join(".github/workflows"))
+        .await
+        .unwrap();
+
+    tokio::fs::write(root.join("package.json"), "{\"name\":\"demo\"}")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join("config.example.toml"), "name = \"demo\"")
+        .await
+        .unwrap();
+    tokio::fs::write(
+        root.join("docker-compose.yaml"),
+        "services:\n  app:\n    image: demo\n",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(root.join(".github/workflows/ci.yml"), "name: ci\n")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join("apps/web/openapi/axon.json"), "{\"paths\":{}}")
+        .await
+        .unwrap();
+    tokio::fs::write(
+        root.join("apps/web/lib/generated/axon-api.ts"),
+        "export type Api = {};",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(root.join("docs/reference/actions/README.md"), "# Actions")
+        .await
+        .unwrap();
+
+    let files = collect_files(
+        root,
+        SelectionPolicy::Allowlist {
+            include_source: true,
+        },
+    )
+    .await
+    .unwrap();
+    let rels: Vec<String> = files
+        .iter()
+        .map(|p| {
+            p.strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+
+    for expected in [
+        ".github/workflows/ci.yml",
+        "config.example.toml",
+        "docker-compose.yaml",
+        "package.json",
+    ] {
+        assert!(
+            rels.iter().any(|rel| rel == expected),
+            "expected useful config file to be collected: {expected}; got {rels:?}"
+        );
+    }
+    for skipped in [
+        "apps/web/openapi/axon.json",
+        "apps/web/lib/generated/axon-api.ts",
+        "docs/reference/actions/README.md",
+    ] {
+        assert!(
+            !rels.iter().any(|rel| rel == skipped),
+            "expected generated bulk file to be skipped: {skipped}; got {rels:?}"
+        );
+    }
+}
+
 #[test]
 fn chunk_file_uses_ast_for_rust_and_sets_symbol() {
     let src = "fn alpha() {\n    let _ = 1;\n}\n\nfn beta() {\n    let _ = 2;\n}\n";

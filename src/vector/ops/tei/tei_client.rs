@@ -90,12 +90,47 @@ pub(crate) async fn tei_embed_kind(
     tei_embed_typed(cfg, &typed).await
 }
 
+pub(crate) fn is_openai_compatible_embedding_url(cfg: &Config) -> bool {
+    cfg.tei_url.trim_end_matches('/').ends_with("/v1")
+}
+
 /// Global process-wide limit on concurrent in-flight TEI /embed requests.
 /// Prevents thundering-herd TCP saturation when multiple embed workers run in parallel.
 /// Each permit covers one batch sent to TEI; the permit is held until the response returns.
 /// Tunable via AXON_TEI_MAX_CONCURRENT (default 8, range 1–64).
 static TEI_CONCURRENCY: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64)));
+
+/// Weighted process-wide limit on total input chunks currently submitted to TEI.
+///
+/// TEI's overload boundary is closer to `batch_size * request_concurrency` than
+/// raw request count. This limiter lets small batches use higher request
+/// concurrency while preventing large batches from stampeding past the server's
+/// `max_batch_requests` budget.
+static TEI_IN_FLIGHT_INPUT_LIMIT: LazyLock<usize> =
+    LazyLock::new(|| env_usize_clamped("AXON_TEI_MAX_IN_FLIGHT_INPUTS", 320, 1, 4096));
+static TEI_IN_FLIGHT_INPUTS: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(*TEI_IN_FLIGHT_INPUT_LIMIT));
+
+/// OpenAI-compatible embedding servers such as vLLM do better with smaller
+/// client request batches and higher request fanout than TEI's native `/embed`
+/// endpoint on the same workload.
+static OPENAI_EMBED_CONCURRENCY: LazyLock<Semaphore> = LazyLock::new(|| {
+    Semaphore::new(env_usize_clamped(
+        "AXON_OPENAI_EMBED_MAX_CONCURRENT",
+        32,
+        1,
+        64,
+    ))
+});
+static OPENAI_EMBED_IN_FLIGHT_INPUT_LIMIT: LazyLock<usize> =
+    LazyLock::new(|| env_usize_clamped("AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS", 512, 1, 4096));
+static OPENAI_EMBED_IN_FLIGHT_INPUTS: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(*OPENAI_EMBED_IN_FLIGHT_INPUT_LIMIT));
+
+fn tei_in_flight_input_permits(chunk_len: usize, limit: usize) -> u32 {
+    chunk_len.clamp(1, limit) as u32
+}
 
 fn retry_delay(attempt: usize) -> Duration {
     // saturating_sub: attempt is always >= 1 at all call sites (loop from 1),
@@ -127,6 +162,128 @@ struct EmbedReq<'a> {
     inputs: &'a [String],
 }
 
+#[derive(Debug, Clone)]
+enum EmbedBackend {
+    Tei { url: String },
+    OpenAiCompat { url: String, model: String },
+}
+
+impl EmbedBackend {
+    fn from_config(cfg: &Config) -> Self {
+        let base = cfg.tei_url.trim_end_matches('/');
+        if base.ends_with("/v1") {
+            let model = std::env::var("AXON_OPENAI_EMBEDDING_MODEL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    std::env::var("VLLM_SERVED_MODEL_NAME")
+                        .ok()
+                        .filter(|value| !value.trim().is_empty())
+                })
+                .unwrap_or_else(|| "axon-qwen3-embedding".to_string());
+            return Self::OpenAiCompat {
+                url: format!("{base}/embeddings"),
+                model,
+            };
+        }
+        Self::Tei {
+            url: format!("{base}/embed"),
+        }
+    }
+
+    fn url(&self) -> &str {
+        match self {
+            Self::Tei { url } | Self::OpenAiCompat { url, .. } => url,
+        }
+    }
+
+    fn is_openai_compat(&self) -> bool {
+        matches!(self, Self::OpenAiCompat { .. })
+    }
+
+    fn request_body<'a>(&'a self, inputs: &'a [String]) -> EmbedRequestBody<'a> {
+        match self {
+            Self::Tei { .. } => EmbedRequestBody::Tei(EmbedReq { inputs }),
+            Self::OpenAiCompat { model, .. } => EmbedRequestBody::OpenAiCompat(OpenAiEmbedReq {
+                model,
+                input: inputs,
+            }),
+        }
+    }
+
+    async fn decode_vectors(
+        &self,
+        resp: reqwest::Response,
+    ) -> Result<Vec<Vec<f32>>, reqwest::Error> {
+        match self {
+            Self::Tei { .. } => resp.json::<Vec<Vec<f32>>>().await,
+            Self::OpenAiCompat { .. } => {
+                let payload = resp.json::<OpenAiEmbedResp>().await?;
+                Ok(payload
+                    .data
+                    .into_iter()
+                    .map(|item| item.embedding)
+                    .collect())
+            }
+        }
+    }
+}
+
+fn embed_limiters(backend: &EmbedBackend) -> (&'static Semaphore, &'static Semaphore, usize) {
+    if backend.is_openai_compat() {
+        (
+            &OPENAI_EMBED_CONCURRENCY,
+            &OPENAI_EMBED_IN_FLIGHT_INPUTS,
+            *OPENAI_EMBED_IN_FLIGHT_INPUT_LIMIT,
+        )
+    } else {
+        (
+            &TEI_CONCURRENCY,
+            &TEI_IN_FLIGHT_INPUTS,
+            *TEI_IN_FLIGHT_INPUT_LIMIT,
+        )
+    }
+}
+
+fn embed_split_concurrency(backend: &EmbedBackend) -> usize {
+    if backend.is_openai_compat() {
+        env_usize_clamped("AXON_OPENAI_EMBED_MAX_CONCURRENT", 32, 1, 64)
+    } else {
+        env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64)
+    }
+}
+
+fn embed_client_batch_size(cfg: &Config, backend: &EmbedBackend) -> usize {
+    if backend.is_openai_compat() {
+        env_usize_clamped("AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE", 32, 1, 256)
+    } else {
+        cfg.tei_max_client_batch_size.clamp(1, 256)
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+enum EmbedRequestBody<'a> {
+    Tei(EmbedReq<'a>),
+    OpenAiCompat(OpenAiEmbedReq<'a>),
+}
+
+#[derive(serde::Serialize)]
+struct OpenAiEmbedReq<'a> {
+    model: &'a str,
+    input: &'a [String],
+}
+
+#[derive(serde::Deserialize)]
+struct OpenAiEmbedResp {
+    data: Vec<OpenAiEmbedding>,
+}
+
+#[derive(serde::Deserialize)]
+struct OpenAiEmbedding {
+    embedding: Vec<f32>,
+}
+
 /// Logs a retry warning and sleeps for the backoff delay.
 /// Returns `true` if the caller should `continue` to the next attempt, `false` if exhausted.
 async fn log_retry_and_sleep(
@@ -151,21 +308,28 @@ async fn log_retry_and_sleep(
 
 async fn send_chunk_with_retries(
     client: &reqwest::Client,
-    embed_url: &str,
+    backend: &EmbedBackend,
     chunk: &[String],
     max_attempts: usize,
     request_timeout_ms: u64,
 ) -> Result<ChunkOutcome, Box<dyn Error>> {
     // Build the request body once before the retry loop — avoids reconstructing a
     // serde_json::Value on every attempt. Borrows `chunk` for the function lifetime. (P-M3)
-    let body = EmbedReq { inputs: chunk };
+    let body = backend.request_body(chunk);
+    let embed_url = backend.url();
     for attempt in 1..=max_attempts {
         // Acquire the concurrency permit just before the HTTP request and drop
         // it immediately after the response completes.  Previously the permit
         // was held across retry backoff sleeps, meaning a transient 429/503
         // would hold a semaphore slot for up to 16s+ of backoff, exhausting
         // the global concurrency limit and stalling unrelated embed requests.
-        let permit = TEI_CONCURRENCY
+        let (request_limiter, input_limiter, input_limit) = embed_limiters(backend);
+        let input_permits = tei_in_flight_input_permits(chunk.len(), input_limit);
+        let input_permit = input_limiter
+            .acquire_many(input_permits)
+            .await
+            .map_err(|e| -> Box<dyn Error> { format!("TEI input semaphore closed: {e}").into() })?;
+        let permit = request_limiter
             .acquire()
             .await
             .map_err(|e| -> Box<dyn Error> { format!("TEI semaphore closed: {e}").into() })?;
@@ -180,6 +344,7 @@ async fn send_chunk_with_retries(
             Err(err) => {
                 // Release permit before sleeping on backoff.
                 drop(permit);
+                drop(input_permit);
                 if log_retry_and_sleep(
                     attempt,
                     max_attempts,
@@ -199,9 +364,10 @@ async fn send_chunk_with_retries(
         };
         let status = resp.status();
         if status.is_success() {
-            let result = resp.json::<Vec<Vec<f32>>>().await;
+            let result = backend.decode_vectors(resp).await;
             // Release permit after response body is consumed.
             drop(permit);
+            drop(input_permit);
             match result {
                 Ok(v) => return Ok(ChunkOutcome::Vectors(v)),
                 Err(err) => {
@@ -233,6 +399,7 @@ async fn send_chunk_with_retries(
             .await
             .unwrap_or_else(|_| "<response body unavailable>".to_string());
         drop(permit);
+        drop(input_permit);
         // 413 = payload too large; 422 with "batch size" body = TEI batch limit exceeded.
         // Both mean "chunk is too big for the server" — split and retry.
         let is_batch_too_large = (status == StatusCode::PAYLOAD_TOO_LARGE)
@@ -270,15 +437,15 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
     }
     let client = internal_service_http_client()?;
 
-    let batch_size = cfg.tei_max_client_batch_size.clamp(1, 128);
-    let embed_url = format!("{}/embed", cfg.tei_url.trim_end_matches('/'));
+    let backend = EmbedBackend::from_config(cfg);
+    let batch_size = embed_client_batch_size(cfg, &backend);
     // tei_max_retries is the number of RETRY attempts after the initial request,
     // so total attempts = retries + 1. Default 5 retries → 6 attempts max.
     // .max(1) on the sum ensures at least one request even if a future config
     // shape allowed retries to underflow.
     let max_attempts = cfg.tei_max_retries.saturating_add(1).max(1);
     let request_timeout_ms = cfg.tei_request_timeout_ms.clamp(1000, 300_000);
-    let safe_embed_url = redact_url_for_log(&embed_url);
+    let safe_embed_url = redact_url_for_log(backend.url());
 
     log_debug(&format!(
         "tei_embed start chunk_count={} url={}",
@@ -314,16 +481,16 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
     use futures_util::stream::{FuturesUnordered, StreamExt};
 
     // Concurrency for the split-drain fan-out. Bounded so a deep split cascade
-    // cannot itself become a thundering herd; the global TEI_CONCURRENCY
+    // cannot itself become a thundering herd; the backend-specific request
     // semaphore in send_chunk_with_retries remains the hard ceiling on
-    // in-flight requests to TEI. Reuse the same knob for consistency.
-    let split_concurrency = env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64);
+    // in-flight requests to the embedding server.
+    let split_concurrency = embed_split_concurrency(&backend);
 
     // Bind `Copy` references once so each spawned future captures only cheap
     // copies (the `&'static` client, a `&str` view of the URL) under `async
     // move` — capturing `&embed_url` directly would try to move the owned
     // `String` into the first future.
-    let embed_url_ref: &str = &embed_url;
+    let backend_ref = &backend;
 
     // Work queue of (offset, sub-slice) pairs still to embed.
     let mut pending: VecDeque<(usize, &[String])> = initial.into_iter().collect();
@@ -337,7 +504,7 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
             in_flight.push(async move {
                 let outcome = send_chunk_with_retries(
                     client,
-                    embed_url_ref,
+                    backend_ref,
                     chunk,
                     max_attempts,
                     request_timeout_ms,

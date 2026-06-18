@@ -48,6 +48,41 @@ async fn ensure_payload_indexes_fires_one_put_per_field() {
     );
 }
 
+#[allow(unsafe_code)]
+#[tokio::test]
+#[serial_test::serial]
+async fn ensure_payload_indexes_core_profile_only_fires_core_fields() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(PUT).path("/collections/test_col/index");
+            then.status(200).json_body(ok_body());
+        })
+        .await;
+
+    let saved_profile = std::env::var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE").ok();
+    unsafe {
+        std::env::set_var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE", "core");
+    }
+
+    let cfg = make_cfg(server.base_url());
+    let result = ensure_payload_indexes(&cfg, None).await;
+
+    unsafe {
+        match saved_profile {
+            Some(v) => std::env::set_var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE", v),
+            None => std::env::remove_var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE"),
+        }
+    }
+
+    result.expect("should succeed");
+    assert_eq!(
+        mock.calls_async().await,
+        CORE_KEYWORD_INDEX_FIELDS.len() + CORE_TYPED_FIELDS.len(),
+        "core profile should only PUT the core keyword and typed fields"
+    );
+}
+
 #[tokio::test]
 async fn ensure_payload_indexes_skips_fields_already_in_payload_schema() {
     let server = MockServer::start_async().await;

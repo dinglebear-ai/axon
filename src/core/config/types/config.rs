@@ -562,7 +562,7 @@ pub struct Config {
     pub tei_request_timeout_ms: u64,
 
     /// Default client-side batch size for TEI embed requests (auto-splits on HTTP 413).
-    /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `tei.max-client-batch-size`. Clamped 1–128. Default: 64.
+    /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `tei.max-client-batch-size`. Clamped 1–128. Default: 96.
     pub tei_max_client_batch_size: usize,
 
     /// Parallel ingest worker lanes.
@@ -582,7 +582,7 @@ pub struct Config {
     pub queue_summary_secs: u64,
 
     /// Buffered Qdrant points before flush.
-    /// Env: `AXON_QDRANT_POINT_BUFFER`. TOML: `workers.qdrant-point-buffer`. Clamped 128–16384. Default: 256.
+    /// Env: `AXON_QDRANT_POINT_BUFFER`. TOML: `workers.qdrant-point-buffer`. Clamped 128–16384. Default: 1024.
     pub qdrant_point_buffer: usize,
 
     /// Crawl queue cap (0 = unlimited).

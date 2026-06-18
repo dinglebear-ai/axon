@@ -59,7 +59,7 @@ Infrastructure runs via Docker Compose. No manual installation needed:
 
 | Service | Docker image | Host port | Purpose |
 |---------|-------------|-----------|---------|
-| Qdrant | qdrant/qdrant:v1.13.1 | 53333 | Vector store |
+| Qdrant | qdrant/qdrant:v1.18.2 | 53333 | Vector store |
 | TEI | ghcr.io/huggingface/text-embeddings-inference:89-1.9 | 52000 | Embedding generation |
 | Chrome | Custom (`config/chrome/`) | 6000 | Headless browser |
 

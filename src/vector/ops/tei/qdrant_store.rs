@@ -1,7 +1,7 @@
 use crate::core::config::Config;
 use crate::core::http::internal_service_http_client;
 use crate::core::logging::{log_debug, log_info, log_warn};
-use crate::vector::ops::qdrant::qdrant_base;
+use crate::vector::ops::qdrant::{env_usize_clamped, qdrant_base};
 use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::error::Error;
@@ -26,6 +26,13 @@ pub(crate) use upsert::qdrant_upsert;
 pub(crate) enum VectorMode {
     Unnamed,
     Named,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct CollectionInitResult {
+    pub(super) mode: VectorMode,
+    pub(super) created_now: bool,
+    pub(super) restore_indexing_threshold: bool,
 }
 
 /// Process-lifetime cache for collection vector schema.
@@ -140,21 +147,25 @@ pub(crate) fn clear_collection_mode_cache(name: &str) {
 pub(super) async fn collection_init_or_cached(
     cfg: &Config,
     dim: usize,
-) -> Result<VectorMode, Box<dyn Error>> {
+) -> Result<CollectionInitResult, Box<dyn Error>> {
     let cache_key = collection_mode_cache_key(cfg);
     if let Some(mode) = cached_vector_mode_key(&cache_key) {
         if cached_vector_mode_is_authoritative(cfg, &cache_key, mode) {
-            return Ok(mode);
+            return Ok(CollectionInitResult {
+                mode,
+                created_now: false,
+                restore_indexing_threshold: false,
+            });
         }
         log_info(&format!(
             "qdrant collection_mode_cache_revalidate collection={} cached_mode={:?} reason=hybrid_enabled",
             cfg.collection, mode
         ));
     }
-    let mode = ensure_collection(cfg, dim).await?;
-    cache_vector_mode_key(&cache_key, mode);
+    let init = ensure_collection_result(cfg, dim).await?;
+    cache_vector_mode_key(&cache_key, init.mode);
     record_probe_time(&cache_key);
-    Ok(mode)
+    Ok(init)
 }
 
 /// Return the `VectorMode` for `cfg.collection` by inspecting the live Qdrant schema.
@@ -317,6 +328,40 @@ fn memory_settings() -> (bool, bool) {
     (hnsw_on_disk, always_ram)
 }
 
+fn hnsw_build_settings() -> (usize, usize) {
+    let m = env_usize_clamped("AXON_QDRANT_HNSW_M", 32, 8, 64);
+    let ef_construct = env_usize_clamped("AXON_QDRANT_HNSW_EF_CONSTRUCT", 256, 64, 512);
+    (m, ef_construct)
+}
+
+fn env_bool(key: &str, default: bool) -> bool {
+    std::env::var(key).ok().map_or(default, |v| {
+        matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
+fn bulk_indexing_thresholds() -> Option<(usize, usize)> {
+    if !env_bool("AXON_QDRANT_BULK_LOAD", false) {
+        return None;
+    }
+    let bulk = env_usize_clamped(
+        "AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB",
+        10_485_760,
+        20_000,
+        1_073_741_824,
+    );
+    let restore = env_usize_clamped(
+        "AXON_QDRANT_INDEXING_THRESHOLD_KB",
+        20_000,
+        1,
+        1_073_741_824,
+    );
+    Some((bulk, restore))
+}
+
 /// Ensure the collection exists and is configured with the right vector schema.
 ///
 /// Returns the `VectorMode` that describes the collection after this call.
@@ -326,10 +371,18 @@ fn memory_settings() -> (bool, bool) {
 /// | Does not exist | Create with named `dense` + `bm42` sparse | `Named` |
 /// | Exists, named `dense` | Ensure sparse; PATCH sparse/memory if needed | `Named` |
 /// | Exists, unnamed dense | Log warning; leave unchanged | `Unnamed` |
+#[cfg(test)]
 pub(crate) async fn ensure_collection(
     cfg: &Config,
     dim: usize,
 ) -> Result<VectorMode, Box<dyn Error>> {
+    Ok(ensure_collection_result(cfg, dim).await?.mode)
+}
+
+async fn ensure_collection_result(
+    cfg: &Config,
+    dim: usize,
+) -> Result<CollectionInitResult, Box<dyn Error>> {
     let client = internal_service_http_client()?;
     let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
 
@@ -364,7 +417,11 @@ pub(crate) async fn ensure_collection(
             cfg.collection, mode
         ));
         ensure_payload_indexes(cfg, Some(&body)).await?;
-        return Ok(mode);
+        return Ok(CollectionInitResult {
+            mode,
+            created_now: false,
+            restore_indexing_threshold: false,
+        });
     } else if get_status != StatusCode::NOT_FOUND {
         // 500, 401, 403, etc. -- do not silently fall through to collection creation.
         let body = get_resp.text().await.unwrap_or_default();
@@ -376,7 +433,9 @@ pub(crate) async fn ensure_collection(
     }
 
     let (hnsw_on_disk, always_ram) = memory_settings();
-    let create = serde_json::json!({
+    let (hnsw_m, hnsw_ef_construct) = hnsw_build_settings();
+    let bulk_thresholds = bulk_indexing_thresholds();
+    let mut create = serde_json::json!({
         // Memory-bounded large-collection recipe: keep the raw f32 vectors on
         // disk (they're only needed for rescore), but pin the small int8
         // quantized vectors AND the HNSW graph in RAM so search never pays a
@@ -395,8 +454,8 @@ pub(crate) async fn ensure_collection(
             "bm42": {"modifier": "idf"}
         },
         "hnsw_config": {
-            "m": 32,
-            "ef_construct": 256,
+            "m": hnsw_m,
+            "ef_construct": hnsw_ef_construct,
             "on_disk": hnsw_on_disk
         },
         "quantization_config": {
@@ -407,19 +466,63 @@ pub(crate) async fn ensure_collection(
             }
         }
     });
+    if let Some((bulk_threshold, _restore_threshold)) = bulk_thresholds {
+        create["optimizers_config"] = serde_json::json!({
+            "indexing_threshold": bulk_threshold
+        });
+    }
     let resp = client.put(&url).json(&create).send().await?;
-    if resp.status() != StatusCode::CONFLICT {
+    let status = resp.status();
+    let created_now = status != StatusCode::CONFLICT;
+    if created_now {
         resp.error_for_status()?;
     }
     // Collection schema changed -- bump generation so any cached doc-chunk
     // entries from a prior incarnation become unreachable. (axon_rust-pmc)
     crate::vector::cache::bump_generation(&cfg.collection);
+    if created_now {
+        log_info(&format!(
+            "qdrant collection_created collection={} mode=Named hnsw_m={hnsw_m} hnsw_ef_construct={hnsw_ef_construct} hnsw_on_disk={hnsw_on_disk} always_ram={always_ram} bulk_indexing_threshold_kb={}",
+            cfg.collection,
+            bulk_thresholds
+                .map(|(threshold, _)| threshold)
+                .unwrap_or(20_000)
+        ));
+    } else {
+        log_info(&format!(
+            "qdrant collection_create_conflict collection={} mode=Named",
+            cfg.collection
+        ));
+    }
+    ensure_payload_indexes(cfg, None).await?;
+    Ok(CollectionInitResult {
+        mode: VectorMode::Named,
+        created_now,
+        restore_indexing_threshold: created_now && bulk_thresholds.is_some(),
+    })
+}
+
+pub(super) async fn restore_bulk_indexing_threshold_after_load(
+    cfg: &Config,
+) -> Result<(), Box<dyn Error>> {
+    let Some((_bulk_threshold, restore_threshold)) = bulk_indexing_thresholds() else {
+        return Ok(());
+    };
+    let client = internal_service_http_client()?;
+    let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
+    client
+        .patch(&url)
+        .json(&serde_json::json!({
+            "optimizers_config": {"indexing_threshold": restore_threshold}
+        }))
+        .send()
+        .await?
+        .error_for_status()?;
     log_info(&format!(
-        "qdrant collection_created collection={} mode=Named hnsw_on_disk={hnsw_on_disk} always_ram={always_ram}",
+        "qdrant collection_restored_indexing_threshold collection={} indexing_threshold_kb={restore_threshold}",
         cfg.collection
     ));
-    ensure_payload_indexes(cfg, None).await?;
-    Ok(VectorMode::Named)
+    Ok(())
 }
 
 /// PATCH an existing Named collection to add the `bm42` sparse vector config.

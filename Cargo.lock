@@ -4963,6 +4963,7 @@ dependencies = [
  "cookie",
  "cookie_store",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",
@@ -8390,7 +8391,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "dotenvy",
  "regex",
+ "reqwest 0.13.4",
  "semver",
  "serde",
  "serde_json",

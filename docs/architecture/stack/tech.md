@@ -34,7 +34,7 @@
 | Service | Image/Version | Purpose |
 |---------|--------------|---------|
 | SQLite | (embedded) | Job persistence, metadata storage |
-| Qdrant | v1.13.1 | Vector database (dense + sparse search) |
+| Qdrant | v1.18.2 | Vector database (dense + sparse search) |
 | TEI | ghcr.io/huggingface/text-embeddings-inference:89-1.9 | Text embedding generation |
 | Chrome | Custom Dockerfile | Headless browser for JavaScript rendering |
 
