@@ -110,7 +110,7 @@ class OAuthRepository(
         val result = runCatching {
             val state = loadedState()
             state.update(response, exception)
-            val tokenResponse = performTokenRequest(response.createTokenExchangeRequest())
+            val tokenResponse = performTokenRequest(response.createTokenExchangeRequest(), clientAuthenticationFor(state))
             state.update(tokenResponse, null)
             persistOrThrow(state)
             authState = state
@@ -129,7 +129,7 @@ class OAuthRepository(
                 val state = loadedState()
                 val before = state.jsonSerializeString()
                 if (state.needsTokenRefresh) {
-                    val refreshResponse = performTokenRequest(state.createTokenRefreshRequest())
+                    val refreshResponse = performTokenRequest(state.createTokenRefreshRequest(), clientAuthenticationFor(state))
                     state.update(refreshResponse, null)
                 }
                 val token = state.accessToken
@@ -239,15 +239,28 @@ class OAuthRepository(
                 )
             }
 
-    private fun performTokenRequest(tokenRequest: TokenRequest): TokenResponse {
+    private fun performTokenRequest(
+        tokenRequest: TokenRequest,
+        clientAuthentication: ClientAuthentication,
+    ): TokenResponse {
+        val requestParams = LinkedHashMap(tokenRequest.getRequestParameters())
+        clientAuthentication.getRequestParameters(tokenRequest.clientId).orEmpty().forEach { (name, value) ->
+            requestParams[name] = value
+        }
         val form = FormBody.Builder().apply {
-            tokenRequest.getRequestParameters().forEach { (name, value) -> add(name, value) }
+            requestParams.forEach { (name, value) -> add(name, value) }
         }.build()
+        val request = Request.Builder()
+            .url(tokenRequest.configuration.tokenEndpoint.toString())
+            .post(form)
+            .apply {
+                clientAuthentication.getRequestHeaders(tokenRequest.clientId).orEmpty().forEach { (name, value) ->
+                    header(name, value)
+                }
+            }
+            .build()
         val raw = executeHttp(
-            Request.Builder()
-                .url(tokenRequest.configuration.tokenEndpoint.toString())
-                .post(form)
-                .build(),
+            request,
             "OAuth token request failed; please sign in again",
         )
         return TokenResponse.Builder(tokenRequest)

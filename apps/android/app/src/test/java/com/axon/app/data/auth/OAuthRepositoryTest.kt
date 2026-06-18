@@ -105,6 +105,12 @@ class OAuthRepositoryTest {
         val result = repo.handleAuthorizationResponse(callbackIntent(request))
 
         assertTrue(result.isSuccess)
+        val tokenExchange = server.takeRequest()
+        val tokenExchangeBody = tokenExchange.body.readUtf8()
+        assertEquals("/token", tokenExchange.path)
+        assertTrue(tokenExchangeBody.contains("grant_type=authorization_code"))
+        assertTrue(tokenExchangeBody.contains("code=auth-code"))
+        assertTrue(tokenExchangeBody.contains("client_id=android-client"))
         assertEquals("access-after-recreate", AuthState.jsonDeserialize(checkNotNull(store.read())).accessToken)
         assertNull(store.readPendingState())
     }
@@ -154,7 +160,9 @@ class OAuthRepositoryTest {
 
         assertTrue(results.all { it.getOrNull() == "fresh-access" })
         val refresh = server.takeRequest()
-        assertTrue(refresh.body.readUtf8().contains("grant_type=refresh_token"))
+        val refreshBody = refresh.body.readUtf8()
+        assertTrue(refreshBody.contains("grant_type=refresh_token"))
+        assertTrue(refreshBody.contains("client_id=android-client"))
         assertEquals(4, server.requestCount)
     }
 
