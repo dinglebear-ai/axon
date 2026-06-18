@@ -64,17 +64,19 @@ class OAuthRepository(
             )
                 .setScope(AXON_OAUTH_SCOPE)
                 .build()
+            val requestState = request.state ?: error("OAuth authorization request did not include state")
             mutex.withLock {
                 val state = AuthState(serviceConfig).also { it.update(registration) }
                 persistOrThrow(state)
                 authState = state
-                pendingAuthorizationState = request.state
+                pendingAuthorizationState = requestState
+                persistPendingStateOrThrow(requestState)
             }
             authorizationIntentFor(request)
         }.onFailure {
             mutex.withLock {
                 signInInFlight = false
-                pendingAuthorizationState = null
+                clearPendingAuthorizationState()
             }
         }.getOrThrow()
     }
@@ -82,11 +84,13 @@ class OAuthRepository(
     suspend fun handleAuthorizationResponse(intent: Intent): Result<Unit> = withContext(Dispatchers.IO) {
         val response = AuthorizationResponse.fromIntent(intent)
         val exception = AuthorizationException.fromIntent(intent)
-        val expectedState = mutex.withLock { pendingAuthorizationState.takeIf { signInInFlight } }
+        val expectedState = mutex.withLock {
+            pendingAuthorizationState ?: stateStore.readPendingState()
+        }
         if (response == null) {
             mutex.withLock {
                 signInInFlight = false
-                pendingAuthorizationState = null
+                clearPendingAuthorizationState()
             }
             return@withContext Result.failure(
                 exception?.let {
@@ -99,7 +103,7 @@ class OAuthRepository(
         if (expectedState == null || expectedState != response.state) {
             mutex.withLock {
                 signInInFlight = false
-                pendingAuthorizationState = null
+                clearPendingAuthorizationState()
             }
             return@withContext Result.failure(IllegalStateException("OAuth callback state was invalid; please sign in again"))
         }
@@ -114,7 +118,7 @@ class OAuthRepository(
         }
         mutex.withLock {
             signInInFlight = false
-            pendingAuthorizationState = null
+            clearPendingAuthorizationState()
         }
         result
     }
@@ -143,11 +147,20 @@ class OAuthRepository(
         }
     }
 
-    fun signOut(): Boolean {
-        authState = AuthState()
-        signInInFlight = false
-        pendingAuthorizationState = null
-        return stateStore.clear()
+    suspend fun cancelSignIn(): Boolean = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            signInInFlight = false
+            clearPendingAuthorizationState()
+        }
+    }
+
+    suspend fun signOut(): Boolean = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            authState = AuthState()
+            signInInFlight = false
+            pendingAuthorizationState = null
+            stateStore.clear()
+        }
     }
 
     fun dispose() {
@@ -165,6 +178,17 @@ class OAuthRepository(
         if (!stateStore.write(state.jsonSerializeString())) {
             throw IllegalStateException("Could not securely store OAuth credentials")
         }
+    }
+
+    private fun persistPendingStateOrThrow(state: String) {
+        if (!stateStore.writePendingState(state)) {
+            throw IllegalStateException("Could not securely store OAuth pending state")
+        }
+    }
+
+    private fun clearPendingAuthorizationState(): Boolean {
+        pendingAuthorizationState = null
+        return stateStore.clearPendingState()
     }
 
     private suspend fun discover(baseUrl: String): AuthorizationServiceConfiguration =

@@ -2,8 +2,13 @@ package com.axon.app.ui.ask
 
 import com.axon.app.data.remote.models.MobileChatItemDto
 import com.axon.app.data.remote.models.MobileSessionDto
+import com.axon.app.ui.fab.FabOp
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.UUID
 
@@ -44,14 +49,67 @@ internal fun restoredTurns(items: List<ChatItem>): List<AskTurn> {
     return turns.takeLast(MAX_FOLLOW_UP_TURNS)
 }
 
+private fun axonMessage(text: String?, timestamp: Long): ChatItem.AxonMsg? =
+    text?.let { ChatItem.AxonMsg(it, isStreaming = false, timestamp = timestamp) }
+
 internal fun MobileChatItemDto.toChatItem(): ChatItem? = when (kind) {
     "user" -> text?.let { ChatItem.UserMsg(it, timestamp = timestamp) }
-    "axon" -> text?.let { ChatItem.AxonMsg(it, isStreaming = false, timestamp = timestamp) }
-    "activity", "action_result", "injection" -> text?.let {
-        ChatItem.AxonMsg(it, isStreaming = false, timestamp = timestamp)
-    }
-    else -> text?.let { ChatItem.AxonMsg(it, isStreaming = false, timestamp = timestamp) }
+    "axon" -> axonMessage(text, timestamp)
+    "activity" -> payload.activityItem()
+    "action_result" -> payload.actionResultItem()
+    "injection" -> payload.injectionItem()
+    else -> null
 }
+
+private fun JsonObject.activityItem(): ChatItem.Activity? {
+    val name = stringPayload("name") ?: return null
+    return ChatItem.Activity(
+        name = name,
+        arg = stringPayload("arg").orEmpty(),
+        result = stringPayload("result").orEmpty(),
+        done = booleanPayload("done") == true,
+    )
+}
+
+private fun JsonObject.actionResultItem(): ChatItem.ActionResult? {
+    val op = opPayload() ?: return null
+    return ChatItem.ActionResult(
+        op = op,
+        target = stringPayload("target").orEmpty(),
+        status = stringPayload("status").orEmpty(),
+        endpoint = stringPayload("endpoint").orEmpty(),
+        summary = stringPayload("summary").orEmpty(),
+        body = stringPayload("body").orEmpty(),
+    )
+}
+
+private fun JsonObject.injectionItem(): ChatItem.Injection? {
+    val op = opPayload() ?: return null
+    return ChatItem.Injection(
+        op = op,
+        target = stringPayload("target").orEmpty(),
+        jobId = stringPayload("job_id"),
+        pageCount = intPayload("page_count"),
+        chunkCount = intPayload("chunk_count"),
+        status = stringPayload("status").orEmpty(),
+        endpoint = stringPayload("endpoint").orEmpty(),
+        detail = stringPayload("detail").orEmpty(),
+    )
+}
+
+private fun JsonObject.opPayload(): FabOp? =
+    stringPayload("op")?.let { raw ->
+        FabOp.entries.firstOrNull { it.name == raw }
+    }
+
+private fun JsonObject.stringPayload(key: String): String? =
+    this[key]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+
+private fun JsonObject.intPayload(key: String): Int? =
+    this[key]?.jsonPrimitive?.intOrNull
+
+private fun JsonObject.booleanPayload(key: String): Boolean? =
+    this[key]?.jsonPrimitive?.booleanOrNull
 
 private fun ChatItem.toMobileDto(defaultTimestamp: Long): MobileChatItemDto = when (this) {
     is ChatItem.UserMsg -> MobileChatItemDto(
@@ -95,6 +153,8 @@ private fun ChatItem.toMobileDto(defaultTimestamp: Long): MobileChatItemDto = wh
             put("target", target)
             put("status", status)
             put("endpoint", endpoint)
+            put("summary", summary)
+            put("body", body)
         },
     )
     is ChatItem.Injection -> MobileChatItemDto(
@@ -116,6 +176,7 @@ private fun ChatItem.toMobileDto(defaultTimestamp: Long): MobileChatItemDto = wh
             chunkCount?.let { put("chunk_count", it) }
             put("status", status)
             put("endpoint", endpoint)
+            put("detail", detail)
         },
     )
 }

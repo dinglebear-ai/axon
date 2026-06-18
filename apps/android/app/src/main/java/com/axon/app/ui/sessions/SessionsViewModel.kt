@@ -1,6 +1,7 @@
 package com.axon.app.ui.sessions
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+private const val TAG = "SessionsViewModel"
+
 class SessionsViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
     private val database = container.database
@@ -25,6 +28,9 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
     val sessions: StateFlow<List<Session>> = _sessions.asStateFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
     val recentAsks: StateFlow<List<AskHistoryEntry>> = askHistoryDao.recent()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -34,12 +40,17 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refresh() {
         viewModelScope.launch {
-            val remote = repository.listMobileSessions().getOrNull()
-            if (remote != null) {
-                _sessions.value = remote.map { it.toLocalSession() }
-            } else {
-                _sessions.value = dao.allSessions().first()
-            }
+            repository.listMobileSessions().fold(
+                onSuccess = { remote ->
+                    _error.value = null
+                    _sessions.value = remote.map { it.toLocalSession() }
+                },
+                onFailure = { cause ->
+                    Log.w(TAG, "Failed to load mobile sessions", cause)
+                    _error.value = cause.message ?: "Could not load synced sessions"
+                    _sessions.value = dao.allSessions().first()
+                },
+            )
         }
     }
 
@@ -49,8 +60,17 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
             repository.getMobileSession(sessionId)
                 .map { it.copy(pinnedAt = ts, updatedAt = ts) }
                 .mapCatching { repository.upsertMobileSession(it).getOrThrow() }
-                .onSuccess { refresh() }
-            dao.pin(sessionId, ts)
+                .fold(
+                    onSuccess = {
+                        dao.pin(sessionId, ts)
+                        _error.value = null
+                        refresh()
+                    },
+                    onFailure = { cause ->
+                        Log.w(TAG, "Failed to pin mobile session $sessionId", cause)
+                        _error.value = cause.message ?: "Could not pin synced session"
+                    },
+                )
         }
     }
 
@@ -59,16 +79,33 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
             repository.getMobileSession(sessionId)
                 .map { it.copy(pinnedAt = null, updatedAt = System.currentTimeMillis()) }
                 .mapCatching { repository.upsertMobileSession(it).getOrThrow() }
-                .onSuccess { refresh() }
-            dao.unpin(sessionId)
+                .fold(
+                    onSuccess = {
+                        dao.unpin(sessionId)
+                        _error.value = null
+                        refresh()
+                    },
+                    onFailure = { cause ->
+                        Log.w(TAG, "Failed to unpin mobile session $sessionId", cause)
+                        _error.value = cause.message ?: "Could not unpin synced session"
+                    },
+                )
         }
     }
 
     fun delete(session: Session) {
         viewModelScope.launch {
-            repository.deleteMobileSession(session.id)
-            dao.delete(session)
-            refresh()
+            repository.deleteMobileSession(session.id).fold(
+                onSuccess = {
+                    dao.delete(session)
+                    _error.value = null
+                    refresh()
+                },
+                onFailure = { cause ->
+                    Log.w(TAG, "Failed to delete mobile session ${session.id}", cause)
+                    _error.value = cause.message ?: "Could not delete synced session"
+                },
+            )
         }
     }
 }

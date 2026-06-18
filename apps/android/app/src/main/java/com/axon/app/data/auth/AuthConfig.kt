@@ -9,7 +9,7 @@ interface OAuthTokenSource {
 
 sealed interface AuthConfig {
     data class Bearer(val token: String) : AuthConfig
-    data class OAuth(val tokenSource: OAuthTokenSource) : AuthConfig
+    data class OAuth(val tokenSource: OAuthTokenSource, val serverUrl: String) : AuthConfig
 }
 
 fun AuthConfig.hasUsableAuth(): Boolean = when (this) {

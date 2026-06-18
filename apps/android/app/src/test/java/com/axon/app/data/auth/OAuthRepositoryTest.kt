@@ -59,12 +59,14 @@ class OAuthRepositoryTest {
     }
 
     @Test
-    fun `signOut clears persisted auth state`() {
+    fun `signOut clears persisted auth state`() = runBlocking {
         assertTrue(store.write("""{"config":{}}"""))
+        assertTrue(store.writePendingState("pending"))
 
         assertTrue(repo.signOut())
         assertFalse(repo.isSignedIn())
         assertNull(store.read())
+        assertNull(store.readPendingState())
     }
 
     @Test
@@ -87,6 +89,24 @@ class OAuthRepositoryTest {
         assertTrue(authUri.contains("offline_access"))
         assertEquals("com.axon.app://oauth2redirect", request.redirectUri.toString())
         assertNotNull(store.read())
+        assertEquals(request.state, store.readPendingState())
+    }
+
+    @Test
+    fun `authorization callback survives repository recreation`() = runBlocking {
+        enqueueDiscoveryAndRegistration()
+        val request = authorizationRequestFrom(repo.createAuthorizationRequest(baseUrl()))
+        server.takeRequest()
+        server.takeRequest()
+        repo.dispose()
+        repo = OAuthRepository(context, store)
+        server.enqueue(tokenResponse("access-after-recreate", "refresh-after-recreate"))
+
+        val result = repo.handleAuthorizationResponse(callbackIntent(request))
+
+        assertTrue(result.isSuccess)
+        assertEquals("access-after-recreate", AuthState.jsonDeserialize(checkNotNull(store.read())).accessToken)
+        assertNull(store.readPendingState())
     }
 
     @Test
@@ -280,6 +300,7 @@ class OAuthRepositoryTest {
         private val failWrites: Boolean = false,
     ) : OAuthStateStore(context) {
         private var value: String? = null
+        private var pendingValue: String? = null
 
         override fun read(): String? = value
 
@@ -289,8 +310,22 @@ class OAuthRepositoryTest {
             return true
         }
 
+        override fun readPendingState(): String? = pendingValue
+
+        override fun writePendingState(state: String): Boolean {
+            if (failWrites) return false
+            pendingValue = state
+            return true
+        }
+
+        override fun clearPendingState(): Boolean {
+            pendingValue = null
+            return true
+        }
+
         override fun clear(): Boolean {
             value = null
+            pendingValue = null
             return true
         }
     }

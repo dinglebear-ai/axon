@@ -21,6 +21,7 @@ use axum::{
     response::IntoResponse,
 };
 use std::sync::Arc;
+use std::time::Duration;
 
 pub async fn get_config(
     State((state, _)): State<(AppState, Arc<Config>)>,
@@ -158,7 +159,20 @@ pub async fn panel_collections(
     }
 
     let url = format!("{}/collections", cfg.qdrant_url.trim_end_matches('/'));
-    match reqwest::Client::new().get(url).send().await {
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    {
+        Ok(client) => client,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to build qdrant metadata client: {err}"),
+            )
+                .into_response();
+        }
+    };
+    match client.get(url).send().await {
         Ok(resp) if resp.status().is_success() => match resp.json::<serde_json::Value>().await {
             Ok(value) => {
                 let mut collections = value

@@ -419,7 +419,7 @@ class AxonClient(
         java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
     private suspend fun authRequest(builder: Request.Builder, panelRoute: Boolean = false): Request.Builder {
-        val (_, auth) = config.get()
+        val (currentBaseUrl, auth) = config.get()
         if (panelRoute && auth is AuthConfig.OAuth) {
             throw MissingAuthException("Server config requires bearer/panel-compatible auth; OAuth app tokens are not used for panel routes")
         }
@@ -427,9 +427,16 @@ class AxonClient(
             is AuthConfig.Bearer -> {
                 val token = auth.token.trim()
                 if (token.isBlank()) throw MissingAuthException("No Axon authentication configured")
-                mapOf("Authorization" to "Bearer $token", "x-api-key" to token)
+                if (panelRoute) {
+                    mapOf("x-axon-panel-token" to token)
+                } else {
+                    mapOf("Authorization" to "Bearer $token", "x-api-key" to token)
+                }
             }
             is AuthConfig.OAuth -> {
+                if (auth.serverUrl.trimEnd('/') != currentBaseUrl.trimEnd('/')) {
+                    throw MissingAuthException("OAuth credentials belong to a different Axon server; sign in again for this server")
+                }
                 val token = auth.tokenSource.freshAccessToken().getOrThrow()
                 mapOf("Authorization" to "Bearer $token")
             }

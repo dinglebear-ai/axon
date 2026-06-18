@@ -100,9 +100,10 @@ internal fun parseCrawlManifestUrls(manifestJsonl: String): List<String> =
 
 internal fun progressFromResult(result: JsonElement?): Float? {
     val obj = result as? JsonObject ?: return null
-    val done = firstMetric(obj, "done", "fetched", "pages_crawled", "pages", "processed", "completed")
-    val total = firstMetric(obj, "total", "queued", "page_count", "pages_total", "expected", "count")
-    if (done == null || total == null || total <= 0L) return null
+    val done = firstMetric(obj, "done", "fetched", "pages_crawled", "pages", "processed", "completed") ?: return null
+    val total = firstMetric(obj, "total", "page_count", "pages_total", "expected", "count")
+        ?: firstMetric(obj, "queued")?.let(done::plus)
+    if (total == null || total <= 0L) return null
     return (done.toFloat() / total.toFloat()).coerceIn(0.02f, 1f)
 }
 

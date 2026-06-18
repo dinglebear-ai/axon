@@ -113,6 +113,13 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
                     .send()
                     .await
             }
+            "PUT" => {
+                client
+                    .put(format!("{base}{path}"))
+                    .json(&serde_json::json!({}))
+                    .send()
+                    .await
+            }
             _ => unreachable!("unexpected test method"),
         }
         .unwrap_or_else(|err| panic!("{method} {path} failed: {err}"));
@@ -225,6 +232,8 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
         "/v1/watch",
         "/v1/watch/{id}/run",
         "/v1/memory",
+        "/v1/mobile/sessions",
+        "/v1/mobile/sessions/{id}",
     ] {
         assert!(
             paths.contains_key(path),
@@ -233,6 +242,131 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
     }
 
     stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn mobile_session_routes_round_trip_and_reject_stale_updates() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+    let id = "session_test";
+    let session = serde_json::json!({
+        "session": {
+            "id": id,
+            "title": "Hello",
+            "first_message_preview": "Hello",
+            "turn_count": 1,
+            "injected_op_count": 0,
+            "created_at": 1000,
+            "updated_at": 2000,
+            "items": [
+                {
+                    "kind": "user",
+                    "text": "Hello",
+                    "payload": {},
+                    "timestamp": 1000
+                }
+            ]
+        }
+    });
+
+    let put = client
+        .put(format!("{base}/v1/mobile/sessions/{id}"))
+        .header("authorization", "Bearer secret")
+        .json(&session)
+        .send()
+        .await
+        .expect("put mobile session");
+    assert_eq!(put.status(), StatusCode::OK);
+
+    let get = client
+        .get(format!("{base}/v1/mobile/sessions/{id}"))
+        .header("authorization", "Bearer secret")
+        .send()
+        .await
+        .expect("get mobile session");
+    assert_eq!(get.status(), StatusCode::OK);
+    let detail: serde_json::Value = get.json().await.expect("detail json");
+    assert_eq!(detail["session"]["id"], id);
+
+    let list = client
+        .get(format!("{base}/v1/mobile/sessions"))
+        .header("authorization", "Bearer secret")
+        .send()
+        .await
+        .expect("list mobile sessions");
+    assert_eq!(list.status(), StatusCode::OK);
+    let list_body: serde_json::Value = list.json().await.expect("list json");
+    assert!(
+        list_body["sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|session| { session["id"] == id })
+    );
+
+    let stale = serde_json::json!({
+        "session": {
+            "id": id,
+            "title": "Stale",
+            "first_message_preview": "Stale",
+            "turn_count": 1,
+            "injected_op_count": 0,
+            "created_at": 1000,
+            "updated_at": 1500,
+            "items": [
+                {
+                    "kind": "user",
+                    "text": "Stale",
+                    "payload": {},
+                    "timestamp": 1000
+                }
+            ]
+        }
+    });
+    let stale_response = client
+        .put(format!("{base}/v1/mobile/sessions/{id}"))
+        .header("authorization", "Bearer secret")
+        .json(&stale)
+        .send()
+        .await
+        .expect("stale put mobile session");
+    assert_eq!(stale_response.status(), StatusCode::CONFLICT);
+
+    let delete = client
+        .delete(format!("{base}/v1/mobile/sessions/{id}"))
+        .header("authorization", "Bearer secret")
+        .send()
+        .await
+        .expect("delete mobile session");
+    assert_eq!(delete.status(), StatusCode::OK);
+
+    let missing = client
+        .get(format!("{base}/v1/mobile/sessions/{id}"))
+        .header("authorization", "Bearer secret")
+        .send()
+        .await
+        .expect("get deleted mobile session");
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+
+    stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn loopback_dev_can_read_empty_mobile_session_list_without_auth_extension() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
+    let response = reqwest::Client::new()
+        .get(format!("{base}/v1/mobile/sessions"))
+        .send()
+        .await
+        .expect("loopback mobile sessions request");
+
+    stop(shutdown, handle).await;
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -247,6 +381,7 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let embed_cancel = format!("/v1/embed/{job_id}/cancel");
     let extract_cancel = format!("/v1/extract/{job_id}/cancel");
     let ingest_cancel = format!("/v1/ingest/{job_id}/cancel");
+    let mobile_session = "/v1/mobile/sessions/test_session";
     let routes = [
         ("POST", "/v1/dedupe"),
         ("POST", "/v1/watch"),
@@ -272,6 +407,8 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
         ("DELETE", "/v1/ingest"),
         ("POST", "/v1/ingest/recover"),
         ("POST", "/v1/memory"),
+        ("PUT", mobile_session),
+        ("DELETE", mobile_session),
     ];
 
     for (method, path) in routes {
@@ -280,6 +417,13 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
             "POST" => {
                 client
                     .post(format!("{base}{path}"))
+                    .json(&serde_json::json!({}))
+                    .send()
+                    .await
+            }
+            "PUT" => {
+                client
+                    .put(format!("{base}{path}"))
                     .json(&serde_json::json!({}))
                     .send()
                     .await
