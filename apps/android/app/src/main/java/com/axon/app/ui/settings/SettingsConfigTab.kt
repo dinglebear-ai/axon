@@ -222,8 +222,8 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
                 fontFamily = AxonTheme.fonts.mono,
                 modifier = Modifier.weight(1f),
             )
-            field.env?.let { Badge("env", colors.accentStrong) }
-            Badge(if (explicit) "set" else "default", if (explicit) colors.success else colors.textMuted)
+            if (field.env != null) Badge("env", colors.accentStrong, compact = true)
+            Badge(if (explicit) "set" else "default", if (explicit) colors.success else colors.textMuted, compact = !explicit)
             if (field.kind == SettingKind.Bool) {
                 MiniToggle(value.equals("true", ignoreCase = true)) { onChange(it.toString()) }
             }
@@ -235,7 +235,7 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
                 onValueChange = onChange,
             )
         }
-        Text(field.desc, color = colors.textMuted.copy(alpha = 0.76f), fontSize = 9.9.sp, lineHeight = 13.5.sp, fontFamily = AxonTheme.fonts.body)
+        Text(field.desc, color = colors.textMuted.copy(alpha = 0.78f), fontSize = 10.2.sp, lineHeight = 14.sp, fontFamily = AxonTheme.fonts.body)
     }
 }
 
@@ -360,17 +360,17 @@ internal fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun Badge(text: String, color: Color = AxonTheme.colors.textMuted) {
+private fun Badge(text: String, color: Color = AxonTheme.colors.textMuted, compact: Boolean = false) {
     val colors = AxonTheme.colors
     Text(
         text.uppercase(),
         color = color,
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(colors.tint(color, 9, colors.panelMedium), RoundedCornerShape(999.dp))
-            .border(1.dp, color.copy(alpha = 0.32f), RoundedCornerShape(999.dp))
-            .padding(horizontal = 7.dp, vertical = 3.dp),
-        fontSize = 8.sp,
+            .background(colors.tint(color, if (compact) 4 else 9, colors.panelMedium), RoundedCornerShape(999.dp))
+            .border(1.dp, color.copy(alpha = if (compact) 0.2f else 0.32f), RoundedCornerShape(999.dp))
+            .padding(horizontal = if (compact) 6.dp else 7.dp, vertical = if (compact) 2.dp else 3.dp),
+        fontSize = if (compact) 7.4.sp else 8.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = AxonTheme.fonts.body,
     )
