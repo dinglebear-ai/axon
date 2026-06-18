@@ -88,6 +88,7 @@
         "apps/android/app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/knowledge/sections/SuggestSection.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsConfigTab.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt"
       ],
       "symbols": ["BasicTextField compact prompt/settings fields"],
@@ -105,6 +106,8 @@
       "platform": "android",
       "file_paths": [
         "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsConnectionTab.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsDrawerContent.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt"
@@ -148,9 +151,9 @@
         "apps/android/app/src/main/java/com/axon/app/ui/common/AuroraStatusDot.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsRows.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsScreen.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobDetailScreen.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/ask/ChatBubble.kt",
-        "apps/android/app/src/main/java/com/axon/app/ui/ask/InjectionCard.kt",
-        "apps/android/app/src/main/java/com/axon/app/ui/nav/ShellCommandReport.kt"
+        "apps/android/app/src/main/java/com/axon/app/ui/ask/InjectionCard.kt"
       ],
       "symbols": ["AuroraProgressBar", "AuroraStatusDot", "JobsRows.ProgressBar"],
       "current_primitive_smell": "Progress and dot-only status primitives are carried in Axon despite matching reusable Aurora status/progress roles.",
@@ -243,9 +246,12 @@
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/knowledge/sections/SuggestSection.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsConfigTab.kt", "pattern": "BasicTextField" },
+    { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "ToolbarIconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "SendButton" },
+    { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsConnectionTab.kt", "pattern": "CompactActionButton" },
+    { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsDrawerContent.kt", "pattern": "IconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt", "pattern": "IconButton" },
@@ -259,9 +265,9 @@
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/common/AuroraStatusDot.kt", "pattern": "AuroraStatusDot" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsRows.kt", "pattern": "ProgressBar" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsScreen.kt", "pattern": "ProgressBar" },
+    { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobDetailScreen.kt", "pattern": "ProgressBar" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/ChatBubble.kt", "pattern": "AuroraStatusDot" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/InjectionCard.kt", "pattern": "AuroraProgressBar" },
-    { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/nav/ShellCommandReport.kt", "pattern": "AuroraStatusDot" },
     { "row_id": "A-AND-005", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/nav/RailScaffold.kt", "pattern": "Sidebar" }
   ],
   "stale_bead_recommendations": [
