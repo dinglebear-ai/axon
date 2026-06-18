@@ -152,7 +152,7 @@
     ]);
   }
   function footer() {
-    return el("div", { class: "ext-foot" }, [Icon("command", 12), el("span", null, "⌘⇧Space to open · right-click any page to Scrape / Ingest / Ask")]);
+    return el("div", { class: "ext-foot" }, [Icon("command", 12), el("span", null, "Right-click: Scrape+copy / Crawl / Ask")]);
   }
 
   /* ── browse view ── */
@@ -168,8 +168,8 @@
       el("div", { class: "ext-taburl", title: url }, url ? [dom, el("span", { class: "dim" }, rest)] : [el("span", { class: "dim" }, "Open an http:// or https:// tab")]),
       el("div", { class: "ext-quick" }, [
         quickBtn("scrape", "Scrape", "scrape"),
-        quickBtn("ingest", "Ingest", "box"),
-        quickBtn("endpoints", "Endpoints", "plug"),
+        quickBtn("crawl", "Crawl", "crawl"),
+        quickBtn("extract", "Extract", "braces"),
       ]),
     ]);
     scroll.appendChild(tabCard);
@@ -248,16 +248,47 @@
       // refresh header status badge
       refreshResultBadge();
       body.textContent = "";
+      if (op.id === "scrape") {
+        const markdown = scrapeMarkdownFromRaw(raw);
+        if (markdown) {
+          body.appendChild(scrapeActionBar(markdown, state.copyAfterRun));
+        }
+      }
       body.appendChild(ActionBody(op, raw, tones, {
         onOpenDoc: (u) => openDoc(u),
         onAct: (kind, u) => openAction(OP_BY_ID[kind], u),
       }));
+      state.copyAfterRun = false;
     } catch (error) {
       state.lastStatus = (error && error.status) || 0; // 0 = transport/network error
       refreshResultBadge();
       body.textContent = "";
       body.appendChild(errorCard(op, error));
     }
+  }
+  function scrapeMarkdownFromRaw(raw) {
+    const payload = raw && typeof raw === "object" && raw.payload && typeof raw.payload === "object" ? raw.payload : {};
+    return raw?.markdown || payload.markdown || raw?.content || payload.content || raw?.output || "";
+  }
+  function scrapeActionBar(markdown, shouldCopy) {
+    const status = el("span", { class: "ext-copy-status" }, shouldCopy ? "copying..." : "markdown ready");
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(markdown);
+        status.textContent = "copied";
+        status.classList.add("is-ok");
+      } catch {
+        status.textContent = "copy failed";
+        status.classList.add("is-error");
+      }
+    };
+    const bar = el("div", { class: "ext-scrape-actions" }, [
+      el("span", { class: "ext-scrape-label" }, [Icon("scrape", 13), "Scraped markdown"]),
+      status,
+      el("button", { class: "ext-copybtn", type: "button", onclick: copy }, [Icon("copy", 13), "Copy"]),
+    ]);
+    if (shouldCopy) setTimeout(copy, 0);
+    return bar;
   }
   function refreshResultBadge() {
     // update just the header badge in place to reflect the latest HTTP status
@@ -326,9 +357,10 @@
   }
 
   /* ── context-menu intents ── */
-  const INTENT_OPS = new Set(["scrape", "ingest", "ask"]); // ops the context menu may trigger
+  const INTENT_OPS = new Set(["scrape", "crawl", "ask"]); // ops the context menu may trigger
   function applyIntent(intent) {
     if (!intent || !INTENT_OPS.has(intent.op)) return;
+    state.copyAfterRun = intent.op === "scrape" && intent.copy === true;
     openAction(OP_BY_ID[intent.op], intent.arg || undefined);
   }
   async function consumePendingIntent() {

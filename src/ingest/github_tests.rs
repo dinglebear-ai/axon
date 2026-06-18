@@ -33,6 +33,41 @@ fn source_path_rejects_lock_files() {
 }
 
 #[test]
+fn source_path_rejects_generated_bulk_assets() {
+    for path in [
+        "apps/web/openapi/axon.json",
+        "apps/web/openapi/axon.yaml",
+        "openapi.json",
+        "swagger.yml",
+        "apps/web/lib/generated/axon-api.ts",
+        "packages/sdk/generated/client.js",
+        "schemas/generated/actions.json",
+    ] {
+        assert!(
+            !is_indexable_source_path(path),
+            "expected generated bulk asset to be skipped: {path}"
+        );
+    }
+}
+
+#[test]
+fn source_path_keeps_useful_small_config_files() {
+    for path in [
+        "package.json",
+        "config.example.toml",
+        "docker-compose.yaml",
+        ".github/workflows/ci.yml",
+        "src/config/settings.json",
+        "src/api/client.ts",
+    ] {
+        assert!(
+            is_indexable_source_path(path),
+            "expected useful config/source file to remain indexable: {path}"
+        );
+    }
+}
+
+#[test]
 fn source_path_rejects_binary_and_image_files() {
     assert!(!is_indexable_source_path("assets/logo.png"));
     assert!(!is_indexable_source_path("icon.svg"));
@@ -53,6 +88,13 @@ fn doc_path_accepts_markdown() {
     assert!(is_indexable_doc_path("README.md"));
     assert!(is_indexable_doc_path("docs/guide.md"));
     assert!(is_indexable_doc_path("CONTRIBUTING.md"));
+}
+
+#[test]
+fn doc_path_rejects_generated_action_catalogs() {
+    assert!(!is_indexable_doc_path("docs/reference/actions/README.md"));
+    assert!(!is_indexable_doc_path("docs/reference/actions/extract.md"));
+    assert!(is_indexable_doc_path("docs/reference/mcp/overview.md"));
 }
 
 #[test]

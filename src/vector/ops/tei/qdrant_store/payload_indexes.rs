@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::core::http::internal_service_http_client;
 use crate::vector::ops::qdrant::qdrant_base;
+use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 use std::future::Future;
 use std::time::Duration;
@@ -53,7 +54,43 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "yt_channel",
 ];
 
+const CORE_KEYWORD_INDEX_FIELDS: &[&str] = &[
+    "url",
+    "domain",
+    "source_type",
+    "seed_url",
+    "extractor_name",
+    "chunk_content_kind",
+];
+
+const CORE_TYPED_FIELDS: &[(&str, &str)] = &[
+    ("chunk_index", "integer"),
+    ("payload_schema_version", "integer"),
+    ("scraped_at", "datetime"),
+];
+
 const MAX_INDEX_ATTEMPTS: u32 = 3;
+
+fn payload_index_profile() -> &'static str {
+    match std::env::var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE")
+        .unwrap_or_else(|_| "full".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "core" | "minimal" => "core",
+        _ => "full",
+    }
+}
+
+fn payload_index_parallelism() -> usize {
+    crate::vector::ops::qdrant::env_usize_clamped(
+        "AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM",
+        16,
+        1,
+        64,
+    )
+}
 
 /// PUT a single payload-index request with up to MAX_INDEX_ATTEMPTS attempts.
 ///
@@ -123,11 +160,24 @@ pub(super) async fn ensure_payload_indexes(
         cfg.collection
     );
 
-    // keyword(N) + integer(11) + datetime(1) + bool(6)
+    let profile = payload_index_profile();
+    let keyword_fields = if profile == "core" {
+        CORE_KEYWORD_INDEX_FIELDS
+    } else {
+        KEYWORD_INDEX_FIELDS
+    };
+    let typed_fields = if profile == "core" {
+        CORE_TYPED_FIELDS
+    } else {
+        FULL_TYPED_FIELDS
+    };
+
+    // keyword(N) + typed(N)
     let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(KEYWORD_INDEX_FIELDS.len() + 18);
 
-    for field in KEYWORD_INDEX_FIELDS {
-        if existing.contains(*field) {
+    for field in keyword_fields {
+        let field = *field;
+        if existing.contains(field) {
             continue;
         }
         let url = index_url.clone();
@@ -142,7 +192,7 @@ pub(super) async fn ensure_payload_indexes(
         }));
     }
 
-    push_non_keyword_indexes(&mut futures, &index_url, &existing);
+    push_non_keyword_indexes(&mut futures, &index_url, &existing, typed_fields);
 
     if futures.is_empty() {
         return Ok(());
@@ -150,9 +200,13 @@ pub(super) async fn ensure_payload_indexes(
     tracing::debug!(
         missing = futures.len(),
         existing = existing.len(),
+        profile,
         "qdrant payload indexes: asserting missing fields"
     );
-    let results = futures_util::future::join_all(futures).await;
+    let results = stream::iter(futures)
+        .buffer_unordered(payload_index_parallelism())
+        .collect::<Vec<_>>()
+        .await;
     let failed = results.iter().filter(|r| r.is_err()).count();
     if failed > 0 {
         tracing::warn!(
@@ -170,6 +224,7 @@ fn push_non_keyword_indexes<'a>(
     futures: &mut Vec<IndexFut<'a>>,
     index_url: &str,
     existing: &std::collections::HashSet<String>,
+    typed_fields: &'static [(&'static str, &'static str)],
 ) {
     let client = match internal_service_http_client() {
         Ok(c) => c,
@@ -178,27 +233,7 @@ fn push_non_keyword_indexes<'a>(
             return;
         }
     };
-    let typed_fields = [
-        ("chunk_index", "integer"),
-        ("git_number", "integer"),
-        ("git_comment_count", "integer"),
-        ("git_repo_stars", "integer"),
-        ("git_repo_forks", "integer"),
-        ("git_repo_open_issues", "integer"),
-        ("so_question_id", "integer"),
-        ("payload_schema_version", "integer"),
-        ("code_file_size_bytes", "integer"),
-        ("code_line_start", "integer"),
-        ("code_line_end", "integer"),
-        ("scraped_at", "datetime"),
-        ("git_repo_is_fork", "bool"),
-        ("git_repo_is_archived", "bool"),
-        ("git_repo_is_private", "bool"),
-        ("git_is_pr", "bool"),
-        ("git_is_draft", "bool"),
-        ("code_is_test", "bool"),
-    ];
-    for (field, schema) in typed_fields {
+    for &(field, schema) in typed_fields {
         if existing.contains(field) {
             continue;
         }
@@ -214,6 +249,27 @@ fn push_non_keyword_indexes<'a>(
         }));
     }
 }
+
+const FULL_TYPED_FIELDS: &[(&str, &str)] = &[
+    ("chunk_index", "integer"),
+    ("git_number", "integer"),
+    ("git_comment_count", "integer"),
+    ("git_repo_stars", "integer"),
+    ("git_repo_forks", "integer"),
+    ("git_repo_open_issues", "integer"),
+    ("so_question_id", "integer"),
+    ("payload_schema_version", "integer"),
+    ("code_file_size_bytes", "integer"),
+    ("code_line_start", "integer"),
+    ("code_line_end", "integer"),
+    ("scraped_at", "datetime"),
+    ("git_repo_is_fork", "bool"),
+    ("git_repo_is_archived", "bool"),
+    ("git_repo_is_private", "bool"),
+    ("git_is_pr", "bool"),
+    ("git_is_draft", "bool"),
+    ("code_is_test", "bool"),
+];
 
 #[cfg(test)]
 #[path = "payload_indexes_tests.rs"]

@@ -1139,7 +1139,7 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
-key = "AXON_EMBED_DOC_CONCURRENCY"
+key = "AXON_EMBED_POOL_MAX_INPUTS"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "docs"]
@@ -1148,7 +1148,7 @@ url_or_path = false
 container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
-reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+reason = "Non-secret embed pooling tuning knob; migrate to config.toml once a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_EMBED_PREP_CONCURRENCY"
@@ -1730,13 +1730,109 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 key = "AXON_QDRANT_UPSERT_BATCH_SIZE"
 classification = "keep-env"
 runtime_placement = "both"
-surfaces = ["src"]
+surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_QDRANT_UPSERT_PARALLELISM"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret Qdrant write-path tuning knob. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_QDRANT_BULK_LOAD"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fresh-collection bulk-load profile; intentionally env-only until operator policy and crash recovery semantics are finalized."
+
+[[env]]
+key = "AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Temporary Qdrant indexing threshold used only when AXON_QDRANT_BULK_LOAD is enabled."
+
+[[env]]
+key = "AXON_QDRANT_INDEXING_THRESHOLD_KB"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Restored Qdrant indexing threshold after AXON_QDRANT_BULK_LOAD embed pipelines finish."
+
+[[env]]
+key = "AXON_QDRANT_HNSW_M"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fresh-collection HNSW graph connectivity tuning. Must be quality-tested before changing defaults."
+
+[[env]]
+key = "AXON_QDRANT_HNSW_EF_CONSTRUCT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fresh-collection HNSW build-effort tuning. Must be quality-tested before changing defaults."
+
+[[env]]
+key = "AXON_QDRANT_PAYLOAD_INDEX_PROFILE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fresh collection payload-index set selector; core profile is useful for docs-only benchmark/import workflows."
+
+[[env]]
+key = "AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Payload-index creation fanout tuning for collection initialization."
 
 [[env]]
 key = "AXON_REPO_ROOT"

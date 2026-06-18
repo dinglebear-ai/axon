@@ -9,6 +9,14 @@ pub(super) enum PostUpsertCleanup {
     LocalLegacyFragments { file_url: String },
 }
 
+pub(super) struct BootstrapResult {
+    pub(super) mode: VectorMode,
+    pub(super) chunks_embedded: usize,
+    pub(super) docs_failed: usize,
+    pub(super) skip_stale_tail_cleanup: bool,
+    pub(super) restore_indexing_threshold: bool,
+}
+
 /// Rebuild Unnamed-format points into Named format by adding BM42 sparse vectors.
 ///
 /// The first doc in a pipeline is embedded before the collection mode is known.
@@ -75,7 +83,7 @@ pub(super) async fn bootstrap_first_doc(
     doc_timeout_secs: u64,
     pending_points: &mut Vec<serde_json::Value>,
     cleanup_queue: &mut Vec<PostUpsertCleanup>,
-) -> Result<(VectorMode, usize, usize), SendError> {
+) -> Result<BootstrapResult, SendError> {
     match embed_prepared_doc_with_timeout(cfg, doc, doc_timeout_secs, VectorMode::Unnamed).await {
         Ok(EmbeddedDoc {
             dim,
@@ -84,9 +92,10 @@ pub(super) async fn bootstrap_first_doc(
             points,
             local_legacy_fragment_url,
         }) => {
-            let mode = qdrant_store::collection_init_or_cached(cfg, dim)
+            let init = qdrant_store::collection_init_or_cached(cfg, dim)
                 .await
                 .map_err(|e| -> SendError { format!("collection init/cache: {e}").into() })?;
+            let mode = init.mode;
             let chunks = if mode == VectorMode::Named {
                 let rebuilt = rebuild_points_as_named(points)?;
                 let n = rebuilt.len();
@@ -97,14 +106,22 @@ pub(super) async fn bootstrap_first_doc(
                 pending_points.extend(points);
                 n
             };
-            cleanup_queue.push(PostUpsertCleanup::StaleTail {
-                url,
-                new_chunk_count: chunk_count,
-            });
-            if let Some(url) = local_legacy_fragment_url {
-                cleanup_queue.push(PostUpsertCleanup::LocalLegacyFragments { file_url: url });
+            if !init.created_now {
+                cleanup_queue.push(PostUpsertCleanup::StaleTail {
+                    url,
+                    new_chunk_count: chunk_count,
+                });
+                if let Some(url) = local_legacy_fragment_url {
+                    cleanup_queue.push(PostUpsertCleanup::LocalLegacyFragments { file_url: url });
+                }
             }
-            Ok((mode, chunks, 0))
+            Ok(BootstrapResult {
+                mode,
+                chunks_embedded: chunks,
+                docs_failed: 0,
+                skip_stale_tail_cleanup: init.created_now,
+                restore_indexing_threshold: init.restore_indexing_threshold,
+            })
         }
         Err(e) => {
             log_warn(&format!("embed_pipeline first_doc_failed: {e}"));
@@ -121,9 +138,21 @@ pub(super) async fn bootstrap_first_doc(
                     VectorMode::Unnamed
                 }
             };
-            Ok((mode, 0, 1))
+            Ok(BootstrapResult {
+                mode,
+                chunks_embedded: 0,
+                docs_failed: 1,
+                skip_stale_tail_cleanup: false,
+                restore_indexing_threshold: false,
+            })
         }
     }
+}
+
+pub(super) async fn restore_indexing_threshold_after_load(cfg: &Config) -> Result<(), SendError> {
+    qdrant_store::restore_bulk_indexing_threshold_after_load(cfg)
+        .await
+        .map_err(|e| -> SendError { format!("qdrant restore indexing threshold: {e}").into() })
 }
 
 pub(super) async fn flush_and_cleanup(

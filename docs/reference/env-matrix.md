@@ -185,6 +185,15 @@ These env vars are being migrated to `config.toml`. Env override is retained tem
 | `AXON_EMBED_DOC_TIMEOUT_SECS` | move-toml | not-runtime | `workers.embed-doc-timeout-secs` | migration.rs |
 | `AXON_QUEUE_SUMMARY_SECS` | move-toml | not-runtime | `workers.queue-summary-secs` | migration.rs |
 | `AXON_QDRANT_POINT_BUFFER` | move-toml | not-runtime | `workers.qdrant-point-buffer` | migration.rs |
+| `AXON_QDRANT_UPSERT_BATCH_SIZE` | keep-env | both |  | env-matrix.toml |
+| `AXON_QDRANT_UPSERT_PARALLELISM` | keep-env | both |  | env-matrix.toml |
+| `AXON_QDRANT_BULK_LOAD` | keep-env | both |  | env-matrix.toml |
+| `AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB` | keep-env | both |  | env-matrix.toml |
+| `AXON_QDRANT_INDEXING_THRESHOLD_KB` | keep-env | both |  | env-matrix.toml |
+| `AXON_QDRANT_HNSW_M` | keep-env | both |  | env-matrix.toml |
+| `AXON_QDRANT_HNSW_EF_CONSTRUCT` | keep-env | both |  | env-matrix.toml |
+| `AXON_QDRANT_PAYLOAD_INDEX_PROFILE` | keep-env | both |  | env-matrix.toml |
+| `AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM` | keep-env | both |  | env-matrix.toml |
 | `AXON_MAX_PENDING_CRAWL_JOBS` | move-toml | not-runtime | `workers.max-pending-crawl-jobs` | migration.rs |
 | `AXON_MAX_PENDING_EMBED_JOBS` | move-toml | not-runtime | `workers.max-pending-embed-jobs` | migration.rs |
 | `AXON_MAX_PENDING_EXTRACT_JOBS` | move-toml | not-runtime | `workers.max-pending-extract-jobs` | migration.rs |
@@ -307,7 +316,6 @@ Keys in live env but not in .env.example (stale or operator-specific):
 - `CHROME_URL` — stale alias; delete from live .env
 - `OPENAI_BASE_URL` / `OPENAI_MODEL` — removed in 3.0.0; no longer registered in migration.rs (classified `external/test-only`, read only by scripts/tests). Remove them from any existing `~/.axon/.env` manually. (Note: the new `AXON_OPENAI_*` keys are the live OpenAI-compatible backend vars — distinct from these.) `OPENAI_API_KEY` is still ignored by Axon config, but may be forwarded to the isolated Codex child as an auth fallback for `AXON_LLM_BACKEND=codex-app-server`.
 - `TEI_MAX_BATCH_REQUESTS`, `TEI_MAX_BATCH_TOKENS`, `TEI_MAX_CONCURRENT_REQUESTS` — compose-env server args; already in registry
-- `TEI_TOKENIZATION_WORKERS` — observed live compose-env server arg; not yet registered
 
 Keys in .env.example but not in live env (user hasn't set them):
 - `AXON_IMAGE` — compose override; optional

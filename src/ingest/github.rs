@@ -75,6 +75,10 @@ pub fn is_indexable_source_path(path: &str) -> bool {
         return false;
     }
 
+    if is_generated_bulk_path(path) {
+        return false;
+    }
+
     // Reject lock files by name suffix
     if path.ends_with(".lock") || path.ends_with("-lock.json") || path.ends_with(".lock.json") {
         return false;
@@ -99,8 +103,46 @@ pub fn is_indexable_source_path(path: &str) -> bool {
 
 /// Returns true if a file path should always be indexed (markdown/docs), regardless of --include-source.
 pub fn is_indexable_doc_path(path: &str) -> bool {
+    if is_generated_bulk_path(path) {
+        return false;
+    }
     let accepted = [".md", ".mdx", ".rst", ".txt", ".adoc"];
     accepted.iter().any(|ext| path.ends_with(ext))
+}
+
+fn is_generated_bulk_path(path: &str) -> bool {
+    let normalized = path.replace('\\', "/");
+    let lower = normalized.to_ascii_lowercase();
+    let filename = lower.rsplit('/').next().unwrap_or(lower.as_str());
+    let ext = filename.rsplit_once('.').map(|(_, ext)| ext).unwrap_or("");
+
+    if matches!(
+        filename,
+        "openapi.json"
+            | "openapi.yaml"
+            | "openapi.yml"
+            | "swagger.json"
+            | "swagger.yaml"
+            | "swagger.yml"
+    ) {
+        return true;
+    }
+
+    if matches!(ext, "json" | "yaml" | "yml")
+        && (lower.contains("/openapi/") || lower.contains("/swagger/"))
+    {
+        return true;
+    }
+
+    if lower.starts_with("docs/reference/actions/") || lower.contains("/docs/reference/actions/") {
+        return true;
+    }
+
+    let generated_segment = lower.starts_with("generated/")
+        || lower.contains("/generated/")
+        || lower.starts_with("gen/")
+        || lower.contains("/gen/");
+    generated_segment && matches!(ext, "json" | "yaml" | "yml" | "ts" | "tsx" | "js" | "jsx")
 }
 
 /// Parse an "owner/repo" string into (owner, repo) parts.

@@ -170,7 +170,7 @@ summary.require_success("new ingest source embed")?;
 ```
 
 ### Pipeline behavior
-1. Documents processed concurrently (`AXON_EMBED_DOC_CONCURRENCY`)
+1. Documents prepared concurrently, then embedded as pooled chunk groups (`AXON_EMBED_POOL_MAX_INPUTS`)
 2. Per-doc TEI embedding with auto-split on 413 and retry on 429/503
 3. **Upsert-first** — deterministic UUID v5 point IDs overwrite existing chunks
 4. **Stale-tail cleanup** — orphan chunks with `chunk_index >= new_count` deleted after upsert

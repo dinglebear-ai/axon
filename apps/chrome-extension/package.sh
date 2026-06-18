@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Package the Axon Page Scraper Chrome extension into a distributable ZIP.
+# Package the Axon Chrome extension into a distributable ZIP.
 #
 # The `assets/` entry in this directory is a symlink into the monorepo's
 # top-level `assets/`. Chrome's "Load unpacked" follows that symlink locally,
@@ -9,7 +9,7 @@
 # actually referenced by the manifest/HTML/JS as real files, and zips them.
 #
 # Usage:
-#   ./package.sh            # -> dist/axon-page-scraper-<version>.zip
+#   ./package.sh            # -> dist/axon-<version>.zip
 #
 set -euo pipefail
 
@@ -26,7 +26,7 @@ if [[ -z "$version" ]]; then
 fi
 
 out_dir="$here/dist"
-out_zip="$out_dir/axon-page-scraper-${version}.zip"
+out_zip="$out_dir/axon-${version}.zip"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 

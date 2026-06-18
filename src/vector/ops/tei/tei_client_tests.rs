@@ -1,4 +1,4 @@
-use super::{is_retryable_status, redact_url_for_log, retry_delay};
+use super::{is_retryable_status, redact_url_for_log, retry_delay, tei_in_flight_input_permits};
 use reqwest::StatusCode;
 
 #[test]
@@ -58,6 +58,14 @@ fn is_retryable_status_413_is_not_retryable() {
 #[test]
 fn is_retryable_status_422_is_not_retryable() {
     assert!(!is_retryable_status(StatusCode::UNPROCESSABLE_ENTITY));
+}
+
+#[test]
+fn tei_in_flight_input_permits_are_weighted_by_chunk_count() {
+    assert_eq!(tei_in_flight_input_permits(0, 512), 1);
+    assert_eq!(tei_in_flight_input_permits(32, 512), 32);
+    assert_eq!(tei_in_flight_input_permits(64, 512), 64);
+    assert_eq!(tei_in_flight_input_permits(1024, 512), 512);
 }
 
 // T-C1: retry_delay safety — attempt=0 must not panic (saturating_sub guard). (Q-L5)

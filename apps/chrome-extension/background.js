@@ -94,6 +94,16 @@ async function postAxon(config, path, body) {
     const text = await response.text();
     throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
   }
+
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function isScrapableUrl(url) {
@@ -166,30 +176,35 @@ function setupSidePanelAction() {
     .catch(() => {});
 }
 
-// Right-click menus → open the side panel and forward a pre-filled action
-// intent ({ op, arg }) that the launcher runs. Mirrors the design handoff
-// ("Scrape with Axon", "Ingest this page", "Ask Axon about <selection>").
+// Right-click menus. Page actions run in the background; Ask opens the side
+// panel because the answer needs a visible reading surface.
 function setupContextMenus() {
   if (!chrome.contextMenus?.create) {
     return;
   }
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: "axon-scrape", title: "Scrape with Axon", contexts: ["page", "link"] });
-    chrome.contextMenus.create({ id: "axon-ingest", title: "Ingest this page into Axon", contexts: ["page"] });
+    chrome.contextMenus.create({ id: "axon-scrape", title: "Scrape with Axon (copy markdown)", contexts: ["page", "link"] });
+    chrome.contextMenus.create({ id: "axon-crawl", title: "Crawl this page with Axon", contexts: ["page"] });
     chrome.contextMenus.create({ id: "axon-ask", title: 'Ask Axon about "%s"', contexts: ["selection"] });
   });
 }
 
 chrome.contextMenus?.onClicked?.addListener(async (info, tab) => {
-  const intent =
-    info.menuItemId === "axon-scrape" ? { op: "scrape", arg: info.linkUrl || info.pageUrl || tab?.url || "" }
-    : info.menuItemId === "axon-ingest" ? { op: "ingest", arg: info.pageUrl || tab?.url || "" }
-    : info.menuItemId === "axon-ask" ? { op: "ask", arg: info.selectionText || "" }
-    : null;
-
-  if (!intent) {
+  if (info.menuItemId === "axon-scrape") {
+    await scrapeAndCopyFromContext(info.linkUrl || info.pageUrl || tab?.url || "", tab);
     return;
   }
+
+  if (info.menuItemId === "axon-crawl") {
+    await crawlFromContext(info.pageUrl || tab?.url || "", tab);
+    return;
+  }
+
+  if (info.menuItemId !== "axon-ask") {
+    return;
+  }
+
+  const intent = { op: "ask", arg: info.selectionText || "" };
 
   // Stash the intent so a freshly-opened panel can pick it up on load,
   // then nudge any already-open panel via runtime message.
@@ -207,3 +222,147 @@ chrome.contextMenus?.onClicked?.addListener(async (info, tab) => {
 
   chrome.runtime.sendMessage({ type: "axon-intent", ...intent }).catch(() => {});
 });
+
+async function scrapeAndCopyFromContext(url, tab) {
+  if (!isScrapableUrl(url)) {
+    await flashContextError(tab);
+    return;
+  }
+
+  await setContextBadge(tab, "SCR", "#0e7490");
+  try {
+    const raw = await postAxon(await loadConfig(), "/v1/scrape", { url, embed: false });
+    const markdown = scrapeMarkdownFromRaw(raw);
+    if (!markdown) {
+      throw new Error("Scrape response did not include markdown.");
+    }
+    await copyTextOffscreen(markdown);
+    await chrome.storage.local.set({
+      lastContextAction: {
+        action: "scrape",
+        ok: true,
+        url,
+        copied_chars: markdown.length,
+        at: new Date().toISOString()
+      }
+    });
+    await setContextBadge(tab, "CPY", "#247a6b");
+    await notifyContextAction("Axon copied markdown", `${formatUrlHost(url)} scraped and copied to clipboard.`);
+  } catch (error) {
+    await chrome.storage.local.set({
+      lastContextAction: {
+        action: "scrape",
+        ok: false,
+        url,
+        at: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error)
+      }
+    });
+    await flashContextError(tab);
+    await notifyContextAction("Axon scrape failed", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function crawlFromContext(url, tab) {
+  if (!isScrapableUrl(url)) {
+    await flashContextError(tab);
+    return;
+  }
+
+  await setContextBadge(tab, "CRL", "#c96a1c");
+  try {
+    const raw = await postAxon(await loadConfig(), "/v1/crawl", { urls: [url] });
+    await chrome.storage.local.set({
+      lastContextAction: {
+        action: "crawl",
+        ok: true,
+        url,
+        job_id: raw?.job_id || raw?.jobId || raw?.id || raw?.payload?.job_id || "",
+        at: new Date().toISOString()
+      }
+    });
+    await setContextBadge(tab, "JOB", "#247a6b");
+    await notifyContextAction("Axon crawl queued", `${formatUrlHost(url)} is crawling${raw?.job_id ? ` (${raw.job_id})` : ""}.`);
+  } catch (error) {
+    await chrome.storage.local.set({
+      lastContextAction: {
+        action: "crawl",
+        ok: false,
+        url,
+        at: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error)
+      }
+    });
+    await flashContextError(tab);
+    await notifyContextAction("Axon crawl failed", error instanceof Error ? error.message : String(error));
+  }
+}
+
+function scrapeMarkdownFromRaw(raw) {
+  const payload = raw && typeof raw === "object" && raw.payload && typeof raw.payload === "object" ? raw.payload : {};
+  return raw?.markdown || payload.markdown || raw?.content || payload.content || raw?.output || "";
+}
+
+async function copyTextOffscreen(text) {
+  if (!chrome.offscreen?.createDocument) {
+    throw new Error("Chrome offscreen documents are required for background clipboard writes.");
+  }
+
+  if (!chrome.offscreen.hasDocument || !(await chrome.offscreen.hasDocument())) {
+    try {
+      await chrome.offscreen.createDocument({
+        url: chrome.runtime.getURL("offscreen.html"),
+        reasons: [chrome.offscreen.Reason.CLIPBOARD],
+        justification: "Copy scraped markdown from the context menu."
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Only a single offscreen document/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+
+  const response = await chrome.runtime.sendMessage({
+    target: "axon-offscreen",
+    type: "copy-text",
+    text
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error || "Clipboard copy failed.");
+  }
+}
+
+async function setContextBadge(tab, text, color) {
+  if (tab?.id != null) {
+    await flashBadge(tab.id, text, color);
+  }
+}
+
+async function flashContextError(tab) {
+  await setContextBadge(tab, "ERR", "#8f4b5c");
+}
+
+async function notifyContextAction(title, message) {
+  if (!chrome.notifications?.create) {
+    return;
+  }
+  try {
+    await chrome.notifications.create({
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("assets/png/axon-icon-128.png"),
+      title,
+      message: String(message || "").slice(0, 240)
+    });
+  } catch {
+    // Badge + lastContextAction are still available if notifications are blocked.
+  }
+}
+
+function formatUrlHost(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "Page";
+  }
+}

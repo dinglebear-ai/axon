@@ -824,7 +824,7 @@ Remediation of the 10 surviving findings from the four-PR code review of
 
 - **Chrome extension packaging.** `apps/chrome-extension/package.sh` (and the
   `just package-extension` target) builds a distributable
-  `dist/axon-page-scraper-<version>.zip`. The `assets/` directory in the
+  `dist/axon-<version>.zip`. The `assets/` directory in the
   extension is a symlink into the repo's top-level `assets/`; the script copies
   only the referenced icons as real files (no symlinks, as required by the
   Chrome Web Store) and omits dev-only files. The version is read from

@@ -99,7 +99,7 @@ loopback-bound host ports:
 
 | Service | Image | Test port |
 |---------|-------|-----------|
-| `axon-qdrant` | `qdrant/qdrant:v1.13.1` | `53333` (HTTP), `53334` (gRPC) |
+| `axon-qdrant` | `qdrant/qdrant:v1.18.2` | `53333` (HTTP), `53334` (gRPC) |
 | `axon-tei` | `ghcr.io/huggingface/text-embeddings-inference:89-1.9` | `52000` (HTTP) |
 | `axon-chrome` | local Chrome image | `6000`, `9222`, `9223` |
 

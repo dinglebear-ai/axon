@@ -66,7 +66,7 @@ jobs:
 
           ./apps/chrome-extension/package.sh
           dist="apps/chrome-extension/dist"
-          name="axon-page-scraper-${version}.zip"
+          name="axon-${version}.zip"
           # Checksum the bare filename (cd into dist first) so `sha256sum -c`
           # works wherever a downloader saves the zip + .sha256 side by side.
           ( cd "$dist" && sha256sum "$name" > "$name.sha256" )
@@ -75,7 +75,7 @@ jobs:
 
       - uses: actions/upload-artifact@v5
         with:
-          name: axon-page-scraper
+          name: axon
           path: |
             apps/chrome-extension/dist/*.zip
             apps/chrome-extension/dist/*.zip.sha256
@@ -97,13 +97,13 @@ jobs:
           # independently, so auto-notes diff against an unrelated axon v* tag and
           # dump the whole axon PR history into the extension's notes.
           body: |
-            Axon Page Scraper — Chrome extension v${{ steps.build.outputs.version }}.
+            Axon — Chrome extension v${{ steps.build.outputs.version }}.
 
-            **Install:** download `axon-page-scraper-${{ steps.build.outputs.version }}.zip`, unzip, and
+            **Install:** download `axon-${{ steps.build.outputs.version }}.zip`, unzip, and
             load it via `chrome://extensions` → Developer mode → Load unpacked — or upload the zip to the
             Chrome Web Store.
 
-            **Verify:** `sha256sum -c axon-page-scraper-${{ steps.build.outputs.version }}.zip.sha256`
+            **Verify:** `sha256sum -c axon-${{ steps.build.outputs.version }}.zip.sha256`
 
             See `apps/chrome-extension/README.md` for configuration.
           files: |

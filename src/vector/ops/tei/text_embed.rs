@@ -10,9 +10,9 @@ mod tests;
 /// Embed a batch of pre-prepared documents through the unified concurrent pipeline.
 ///
 /// Each `PreparedDoc` must already be chunked. The pipeline processes documents
-/// concurrently (AXON_EMBED_DOC_CONCURRENCY), one TEI call per document, and
-/// batches Qdrant upserts at 256 points. This is the single entry point for all
-/// ingest sources and the crawl path.
+/// as pooled chunk groups (`AXON_EMBED_POOL_MAX_INPUTS`) so TEI receives fuller
+/// batches while Qdrant payloads remain document-scoped. This is the single entry
+/// point for all ingest sources and the crawl path.
 pub(crate) async fn embed_prepared_docs(
     cfg: &Config,
     docs: Vec<PreparedDoc>,
