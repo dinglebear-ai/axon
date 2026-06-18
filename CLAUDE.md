@@ -3,6 +3,15 @@ Last Modified: 2026-06-11
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
+## Long-Lived Branches
+
+- `marketplace-no-mcp` is an intentional long-lived marketplace variant branch,
+  not stale cleanup. It keeps Axon's plugin/skill surface available while
+  removing bundled MCP server registration for environments where Axon is
+  already connected through the Labby gateway.
+- Do not merge `marketplace-no-mcp` into `main` by default, and do not delete it
+  as stale unless Jacob explicitly retires the no-MCP marketplace variant.
+
 ## Quick Start
 
 > **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime.
