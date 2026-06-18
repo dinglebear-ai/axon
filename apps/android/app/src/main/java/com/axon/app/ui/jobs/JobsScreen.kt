@@ -258,18 +258,18 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
             .background(colors.control.copy(alpha = 0.06f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = 0.12f), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 17.dp, vertical = 16.dp),
+            .padding(horizontal = 18.dp, vertical = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(15.dp),
     ) {
-        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(20.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(22.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     row.title,
                     color = colors.textPrimary,
-                    fontSize = 14.2.sp,
-                    lineHeight = 18.8.sp,
+                    fontSize = 15.2.sp,
+                    lineHeight = 20.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = AxonTheme.fonts.body,
                     maxLines = 1,
@@ -282,14 +282,14 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
             Text(
                 row.detail,
                 color = colors.textMuted.copy(alpha = 0.82f),
-                fontSize = 11.5.sp,
-                lineHeight = 15.2.sp,
+                fontSize = 12.4.sp,
+                lineHeight = 16.4.sp,
                 fontFamily = AxonTheme.fonts.mono,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             row.progress?.let { progress ->
-                ProgressBar(progress, row.tone, modifier = Modifier.width(132.dp))
+                ProgressBar(progress, row.tone, modifier = Modifier.width(156.dp))
             }
         }
         Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.76f), modifier = Modifier.size(18.dp))
@@ -308,8 +308,8 @@ private fun StatusCount(count: Int, tone: Color) {
         Text(
             count.toString(),
             color = if (count > 0) colors.tint(tone, 75, colors.textPrimary) else colors.textMuted,
-            fontSize = 10.2.sp,
-            lineHeight = 12.8.sp,
+            fontSize = 11.2.sp,
+            lineHeight = 14.sp,
             fontFamily = AxonTheme.fonts.mono,
         )
     }
@@ -320,8 +320,8 @@ private fun FailedCount(count: Int) {
     Text(
         "$count×",
         color = AxonTheme.colors.error,
-        fontSize = 10.2.sp,
-        lineHeight = 12.8.sp,
+        fontSize = 11.2.sp,
+        lineHeight = 14.sp,
         fontFamily = AxonTheme.fonts.mono,
     )
 }

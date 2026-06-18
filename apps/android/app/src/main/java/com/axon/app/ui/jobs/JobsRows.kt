@@ -43,16 +43,16 @@ internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier, onClick: (()
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 18.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 18.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            Box(Modifier.size(7.dp).background(statusTone(job.status, tone), RoundedCornerShape(999.dp)))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(8.dp).background(statusTone(job.status, tone), RoundedCornerShape(999.dp)))
             Text(
                 shortTarget(jobDisplayTarget(job)),
                 color = colors.textPrimary,
-                fontSize = 12.4.sp,
-                lineHeight = 15.8.sp,
+                fontSize = 13.2.sp,
+                lineHeight = 17.sp,
                 fontFamily = AxonTheme.fonts.mono,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -61,34 +61,34 @@ internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier, onClick: (()
             Text(
                 statusLabel(job.status),
                 color = colors.textMuted.copy(alpha = 0.84f),
-                fontSize = 10.2.sp,
-                lineHeight = 12.8.sp,
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
                 fontFamily = AxonTheme.fonts.mono,
             )
         }
         if (isActiveJobStatus(job.status)) {
-            ProgressBar(progressForJob(job), tone, modifier = Modifier.width(166.dp).padding(start = 14.dp))
+            ProgressBar(progressForJob(job), tone, modifier = Modifier.width(184.dp).padding(start = 16.dp))
         }
         Text(
             jobProgressLabel(job),
             color = colors.textMuted.copy(alpha = 0.78f),
-            fontSize = 10.5.sp,
-            lineHeight = 13.4.sp,
+            fontSize = 11.4.sp,
+            lineHeight = 15.sp,
             fontFamily = AxonTheme.fonts.mono,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 14.dp),
+            modifier = Modifier.padding(start = 16.dp),
         )
         job.errorText?.takeIf { it.isNotBlank() }?.let { error ->
             Text(
                 humanizeJsonFragmentText(error),
                 color = colors.error,
-                fontSize = 10.5.sp,
-                lineHeight = 13.4.sp,
+                fontSize = 11.4.sp,
+                lineHeight = 15.sp,
                 fontFamily = AxonTheme.fonts.body,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 14.dp),
+                modifier = Modifier.padding(start = 16.dp),
             )
         }
         Box(

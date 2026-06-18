@@ -78,7 +78,7 @@ internal fun ConfigGroupsTab(
     val filteredGroups = remember(groups, values, searchQuery) {
         filterGroups(groups, values, keyFor, searchQuery)
     }
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(18.dp)) {
         SettingsSearchField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
@@ -86,7 +86,7 @@ internal fun ConfigGroupsTab(
         Text(
             configPathSummary(path, groups, filteredGroups, searchQuery),
             color = AxonTheme.colors.textMuted,
-            fontSize = 10.8.sp,
+            fontSize = 11.8.sp,
             fontFamily = AxonTheme.fonts.mono,
         )
         if (loading) AuroraStatusIndicator(tone = AuroraStatusTone.Syncing, label = "Loading real file values...")
@@ -110,7 +110,7 @@ internal fun ConfigGroupsTab(
             Text(
                 "No settings match \"$searchQuery\"",
                 color = AxonTheme.colors.textMuted,
-                fontSize = 11.sp,
+                fontSize = 12.2.sp,
                 fontFamily = AxonTheme.fonts.body,
                 modifier = Modifier.padding(vertical = 24.dp),
             )
@@ -124,29 +124,29 @@ private fun SettingsSearchField(value: String, onValueChange: (String) -> Unit) 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(46.dp)
+            .height(52.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(colors.control.copy(alpha = 0.46f), RoundedCornerShape(9.dp))
             .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), RoundedCornerShape(9.dp))
-            .padding(horizontal = 13.dp),
+            .padding(horizontal = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(Icons.Rounded.Search, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(15.dp))
+        Icon(Icons.Rounded.Search, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(17.dp))
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
             textStyle = TextStyle(
                 color = colors.textPrimary,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 fontFamily = AxonTheme.fonts.body,
             ),
             modifier = Modifier.weight(1f),
             decorationBox = { inner ->
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (value.isBlank()) {
-                        Text("Search settings", color = colors.textMuted, fontSize = 12.sp, fontFamily = AxonTheme.fonts.body)
+                        Text("Search settings", color = colors.textMuted, fontSize = 13.sp, fontFamily = AxonTheme.fonts.body)
                     }
                     inner()
                 }
@@ -165,7 +165,7 @@ private fun ConfigAccessNotice(message: String, warn: Boolean) {
             .clip(RoundedCornerShape(8.dp))
             .background(colors.tint(tone, 5, colors.pageBg), RoundedCornerShape(8.dp))
             .border(1.dp, colors.tint(tone, 22, colors.pageBg), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top,
     ) {
@@ -173,13 +173,13 @@ private fun ConfigAccessNotice(message: String, warn: Boolean) {
             Icons.Rounded.WarningAmber,
             contentDescription = null,
             tint = tone,
-            modifier = Modifier.size(15.dp).padding(top = 1.dp),
+            modifier = Modifier.size(17.dp).padding(top = 1.dp),
         )
         Text(
             humanizeJsonFragmentText(message),
             color = colors.textPrimary,
-            fontSize = 10.8.sp,
-            lineHeight = 14.8.sp,
+            fontSize = 12.sp,
+            lineHeight = 16.5.sp,
             fontFamily = AxonTheme.fonts.body,
             modifier = Modifier.weight(1f),
         )
@@ -188,16 +188,16 @@ private fun ConfigAccessNotice(message: String, warn: Boolean) {
 
 @Composable
 private fun SettingGroupCard(group: SettingGroup, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BoxIcon(group.icon)
             group.section?.let {
-                Text(it, color = AxonTheme.colors.accentStrong, fontSize = 10.sp, fontFamily = AxonTheme.fonts.mono)
+                Text(it, color = AxonTheme.colors.accentStrong, fontSize = 11.sp, fontFamily = AxonTheme.fonts.mono)
             }
-            Text(group.label, color = AxonTheme.colors.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display, modifier = Modifier.weight(1f))
-            Text("${group.fields.size} ${if (group.section == null) "vars" else "knobs"}", color = AxonTheme.colors.textMuted, fontSize = 10.sp, fontFamily = AxonTheme.fonts.mono)
+            Text(group.label, color = AxonTheme.colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AxonTheme.fonts.display, modifier = Modifier.weight(1f))
+            Text("${group.fields.size} ${if (group.section == null) "vars" else "knobs"}", color = AxonTheme.colors.textMuted, fontSize = 10.8.sp, fontFamily = AxonTheme.fonts.mono)
         }
-        Text(group.note, color = AxonTheme.colors.textMuted.copy(alpha = 0.82f), fontSize = 10.9.sp, lineHeight = 15.2.sp, fontFamily = AxonTheme.fonts.body)
+        Text(group.note, color = AxonTheme.colors.textMuted.copy(alpha = 0.84f), fontSize = 12.sp, lineHeight = 16.8.sp, fontFamily = AxonTheme.fonts.body)
         content()
     }
 }
@@ -210,14 +210,14 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
             .fillMaxWidth()
             .background(colors.panelMedium.copy(alpha = 0.38f), RoundedCornerShape(8.dp))
             .border(1.dp, colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 13.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 15.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 field.key,
                 color = colors.textPrimary,
-                fontSize = if (field.env == null) 10.8.sp else 11.sp,
+                fontSize = if (field.env == null) 12.sp else 12.2.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = AxonTheme.fonts.mono,
                 modifier = Modifier.weight(1f),
@@ -235,7 +235,7 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
                 onValueChange = onChange,
             )
         }
-        Text(field.desc, color = colors.textMuted.copy(alpha = 0.78f), fontSize = 10.2.sp, lineHeight = 14.sp, fontFamily = AxonTheme.fonts.body)
+        Text(field.desc, color = colors.textMuted.copy(alpha = 0.8f), fontSize = 11.4.sp, lineHeight = 16.sp, fontFamily = AxonTheme.fonts.body)
     }
 }
 
@@ -244,16 +244,16 @@ private fun MiniToggle(on: Boolean, onChange: (Boolean) -> Unit) {
     val colors = AxonTheme.colors
     Box(
         modifier = Modifier
-            .width(38.dp)
-            .height(20.dp)
+            .width(44.dp)
+            .height(24.dp)
             .background(if (on) colors.accentDeep else colors.control, RoundedCornerShape(999.dp))
             .border(1.dp, if (on) colors.accentPrimary else colors.borderDefault, RoundedCornerShape(999.dp))
             .clickable { onChange(!on) },
     ) {
         Box(
             modifier = Modifier
-                .offset(x = if (on) 18.dp else 2.dp, y = 2.dp)
-                .size(14.dp)
+                .offset(x = if (on) 20.dp else 3.dp, y = 3.dp)
+                .size(18.dp)
                 .background(if (on) colors.accentStrong else colors.textMuted, RoundedCornerShape(999.dp)),
         )
     }
@@ -273,15 +273,15 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(54.dp)
             .background(colors.pageBg.copy(alpha = 0.92f), RoundedCornerShape(8.dp))
             .border(1.dp, colors.borderStrong.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-            .padding(start = if (secret) 12.dp else 14.dp, end = if (secret) 6.dp else 14.dp),
+            .padding(start = if (secret) 14.dp else 16.dp, end = if (secret) 8.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         if (secret) {
-            Icon(Icons.Rounded.Key, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(12.dp))
+            Icon(Icons.Rounded.Key, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(14.dp))
         }
         BasicTextField(
             value = value,
@@ -290,7 +290,7 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
             visualTransformation = if (secret && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
             textStyle = TextStyle(
                 color = colors.textPrimary,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 fontFamily = AxonTheme.fonts.mono,
             ),
             modifier = Modifier
@@ -306,7 +306,7 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
                         Text(
                             placeholder,
                             color = colors.textMuted.copy(alpha = 0.72f),
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             fontFamily = AxonTheme.fonts.mono,
                         )
                     }
@@ -320,7 +320,7 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
                 contentDescription = null,
                 tint = if (reveal) colors.accentStrong else colors.textMuted,
                 modifier = Modifier
-                    .size(30.dp)
+                    .size(34.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { reveal = !reveal }
                     .padding(8.dp),
@@ -356,7 +356,7 @@ private fun configAccessMessage(error: String): String =
 
 @Composable
 internal fun SectionLabel(text: String) {
-    Text(text.uppercase(), color = AxonTheme.colors.accentStrong, fontSize = 9.2.sp, fontWeight = FontWeight.Bold, fontFamily = AxonTheme.fonts.mono)
+    Text(text.uppercase(), color = AxonTheme.colors.accentStrong, fontSize = 10.4.sp, fontWeight = FontWeight.Bold, fontFamily = AxonTheme.fonts.mono)
 }
 
 @Composable
@@ -369,8 +369,8 @@ private fun Badge(text: String, color: Color = AxonTheme.colors.textMuted, compa
             .clip(RoundedCornerShape(999.dp))
             .background(colors.tint(color, if (compact) 4 else 9, colors.panelMedium), RoundedCornerShape(999.dp))
             .border(1.dp, color.copy(alpha = if (compact) 0.2f else 0.32f), RoundedCornerShape(999.dp))
-            .padding(horizontal = if (compact) 6.dp else 7.dp, vertical = if (compact) 2.dp else 3.dp),
-        fontSize = if (compact) 7.4.sp else 8.sp,
+            .padding(horizontal = if (compact) 7.dp else 8.dp, vertical = if (compact) 3.dp else 4.dp),
+        fontSize = if (compact) 8.2.sp else 9.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = AxonTheme.fonts.body,
     )

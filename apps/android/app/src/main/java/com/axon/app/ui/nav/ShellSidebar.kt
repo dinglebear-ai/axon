@@ -45,7 +45,7 @@ internal data class SidebarItem(
     val icon: ImageVector,
 )
 
-internal val SidebarSheetWidth = 184.dp
+internal val SidebarSheetWidth = 204.dp
 
 @Composable
 internal fun AxonSidebarSheet(
@@ -61,13 +61,13 @@ internal fun AxonSidebarSheet(
             .fillMaxHeight()
             .background(colors.panelStrong)
             .border(width = 1.dp, color = colors.borderDefault)
-            .padding(horizontal = 9.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+            .padding(horizontal = 11.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(42.dp)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -76,7 +76,7 @@ internal fun AxonSidebarSheet(
             Text(
                 "Axon",
                 color = colors.textPrimary,
-                fontSize = 15.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = AxonTheme.fonts.display,
             )
@@ -137,12 +137,12 @@ private fun AxonSidebarRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(48.dp)
             .clip(shape)
             .background(rowBg, shape)
             .border(1.dp, rowBorder, shape)
             .pressScale(onClick = onClick)
-            .padding(horizontal = 9.dp),
+            .padding(horizontal = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -157,12 +157,12 @@ private fun AxonSidebarRow(
             imageVector = item.icon,
             contentDescription = item.label,
             tint = iconTint,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(20.dp),
         )
         Text(
             text = item.label,
             color = labelColor,
-            fontSize = 12.4.sp,
+            fontSize = 13.4.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
