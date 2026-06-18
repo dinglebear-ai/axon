@@ -17,7 +17,7 @@ use axum::{
     http::{HeaderValue, Method, Request, StatusCode, header},
     middleware,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use lab_auth::AuthContext;
 use std::sync::Arc;
@@ -68,6 +68,15 @@ fn read_routes() -> Router<ServeState> {
         .route("/v1/stats", get(handlers::discovery::stats))
         .route("/v1/status", get(handlers::discovery::status))
         .route("/v1/doctor", get(handlers::discovery::doctor))
+        .route("/v1/collections", get(handlers::collections))
+        .route(
+            "/v1/mobile/sessions",
+            get(handlers::mobile_sessions::list_mobile_sessions),
+        )
+        .route(
+            "/v1/mobile/sessions/{id}",
+            get(handlers::mobile_sessions::get_mobile_session),
+        )
         .route("/v1/query", post(handlers::rag::query))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
         .route("/v1/map", post(handlers::exploration::map))
@@ -140,6 +149,11 @@ fn large_write_routes(service_context: &Arc<ServiceContext>) -> Router<ServeStat
             "/v1/ingest/sessions/prepared",
             handlers::async_jobs::prepared_sessions_router(Arc::clone(service_context)),
         )
+        .route(
+            "/v1/mobile/sessions/{id}",
+            put(handlers::mobile_sessions::upsert_mobile_session)
+                .delete(handlers::mobile_sessions::delete_mobile_session),
+        )
         .layer(DefaultBodyLimit::max(96 * 1024 * 1024))
 }
 
@@ -160,6 +174,7 @@ fn panel_routes() -> Router<ServeState> {
         .route("/api/panel/doctor", get(handlers::panel_doctor))
         .route("/api/panel/command", post(handlers::panel_command))
         .route("/api/panel/ops", get(handlers::ops))
+        .route("/api/panel/collections", get(handlers::panel_collections))
         .route(
             "/api/panel/stack",
             get(super::super::panel_stack::stack_status),
@@ -292,6 +307,9 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST && path == "/v1/memory" {
         return true;
     }
+    if is_mobile_session_write(method, path) {
+        return true;
+    }
 
     for prefix in ["/v1/crawl", "/v1/embed", "/v1/extract", "/v1/ingest"] {
         if path == prefix {
@@ -313,6 +331,13 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
         }
     }
     false
+}
+
+fn is_mobile_session_write(method: &Method, path: &str) -> bool {
+    (*method == Method::PUT || *method == Method::DELETE)
+        && path
+            .strip_prefix("/v1/mobile/sessions/")
+            .is_some_and(|id| !id.is_empty())
 }
 
 async fn require_read_scope(

@@ -17,15 +17,12 @@ pub(crate) fn warn_if_ask_token_set_but_empty() {
 }
 
 pub fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
-    headers
-        .get("authorization")
+    let Some(token) = headers
+        .get("x-axon-panel-token")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .or_else(|| {
-            headers
-                .get("x-axon-panel-token")
-                .and_then(|v| v.to_str().ok())
-        })
-        .map(|token| state.panel.password.verify(token))
-        .unwrap_or(false)
+    else {
+        return false;
+    };
+
+    state.panel.password.verify(token)
 }

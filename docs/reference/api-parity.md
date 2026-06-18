@@ -26,6 +26,7 @@ Status meanings:
 | `GET /api-docs/openapi.json` | OpenAPI contract | none | Source for generated TypeScript client types. |
 | `GET /v1/capabilities` | client/server capability metadata | axon:read or axon:write | Advertises `supported_routes` for direct REST. |
 | `POST /v1/actions` | removed legacy action envelope | none | Always returns 404 with direct REST migration text. |
+| `/v1/mobile/sessions*` | Android mobile chat session sync | axon:read or axon:write | Client/server-only surface for authenticated mobile session persistence. |
 | `/api/panel/*` | web panel operations | panel token / local policy | Panel-only, excluded from parity accounting unless promoted to `/v1`. |
 
 ## Route Parity Matrix
@@ -111,6 +112,10 @@ POST /v1/search
 POST /v1/research
 POST /v1/research/stream
 POST /v1/memory
+GET /v1/mobile/sessions
+GET /v1/mobile/sessions/{id}
+PUT /v1/mobile/sessions/{id}
+DELETE /v1/mobile/sessions/{id}
 POST /v1/crawl
 GET /v1/crawl
 GET /v1/crawl/{id}

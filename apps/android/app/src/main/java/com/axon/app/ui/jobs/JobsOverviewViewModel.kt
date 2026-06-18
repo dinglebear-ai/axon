@@ -56,6 +56,17 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { refreshNow() }
     }
 
+    suspend fun crawledPagesFor(job: JobUi): Result<List<String>> {
+        if (job.kind != JobFamily.Crawl) return Result.success(emptyList())
+        val inline = crawledPageUrlsFromResult(job.resultJson)
+        if (inline.isNotEmpty()) return Result.success(inline)
+        val manifestPath = crawlManifestArtifactPath(job.resultJson)
+            ?: return Result.success(emptyList())
+        return repo.artifactText(manifestPath).map { manifest ->
+            parseCrawlManifestUrls(manifest)
+        }
+    }
+
     private suspend fun refreshNow() {
         refreshCoordinator.refresh {
             loadOverview()
@@ -110,6 +121,5 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
             target = target,
             errorText = null,
             resultJson = null,
-            finishedAt = null,
         )
 }

@@ -38,8 +38,6 @@ import androidx.compose.ui.unit.sp
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
-import tv.tootie.aurora.components.AuroraSidebarRow
-import tv.tootie.aurora.components.AuroraSidebarRowItem
 
 internal data class SidebarItem(
     val label: String,
@@ -47,7 +45,7 @@ internal data class SidebarItem(
     val icon: ImageVector,
 )
 
-internal val SidebarSheetWidth = 196.dp
+internal val SidebarSheetWidth = 204.dp
 
 @Composable
 internal fun AxonSidebarSheet(
@@ -63,13 +61,13 @@ internal fun AxonSidebarSheet(
             .fillMaxHeight()
             .background(colors.panelStrong)
             .border(width = 1.dp, color = colors.borderDefault)
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 11.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(42.dp)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -78,20 +76,99 @@ internal fun AxonSidebarSheet(
             Text(
                 "Axon",
                 color = colors.textPrimary,
-                fontSize = 15.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = AxonTheme.fonts.display,
             )
         }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(1.dp))
         items.forEach { item ->
-            AuroraSidebarRow(
-                item = AuroraSidebarRowItem(label = item.label, value = item.value, icon = item.icon),
+            AxonSidebarRow(
+                item = item,
                 selected = item.value == selected,
                 onClick = { onSelect(item.value) },
-                modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
+
+@Composable
+private fun AxonSidebarRow(
+    item: SidebarItem,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = AxonTheme.colors
+    val shape = RoundedCornerShape(11.dp)
+    // Cross-fade every selection-dependent surface so the active row settles in
+    // rather than snapping — keeps the rail feeling physical, not stateful.
+    val colorSpec = tween<androidx.compose.ui.graphics.Color>(durationMillis = 220)
+    val rowBg by animateColorAsState(
+        targetValue = if (selected) colors.tint(colors.accentPrimary, 11, colors.panelStrong)
+        else colors.control.copy(alpha = 0.32f),
+        animationSpec = colorSpec,
+        label = "row-bg",
+    )
+    val rowBorder by animateColorAsState(
+        targetValue = if (selected) colors.tint(colors.accentPrimary, 28, colors.panelStrong)
+        else colors.borderDefault.copy(alpha = 0.55f),
+        animationSpec = colorSpec,
+        label = "row-border",
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) colors.accentStrong else colors.textMuted,
+        animationSpec = colorSpec,
+        label = "row-icon",
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (selected) colors.textPrimary else colors.textMuted,
+        animationSpec = colorSpec,
+        label = "row-label",
+    )
+    // The accent rail grows from a hairline to full height on selection.
+    val indicatorHeight by animateDpAsState(
+        targetValue = if (selected) 22.dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "row-indicator",
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(shape)
+            .background(rowBg, shape)
+            .border(1.dp, rowBorder, shape)
+            .pressScale(onClick = onClick)
+            .padding(horizontal = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(indicatorHeight)
+                .clip(RoundedCornerShape(999.dp))
+                .background(colors.accentPrimary),
+        )
+        Icon(
+            imageVector = item.icon,
+            contentDescription = item.label,
+            tint = iconTint,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = item.label,
+            color = labelColor,
+            fontSize = 13.4.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = AxonTheme.fonts.body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

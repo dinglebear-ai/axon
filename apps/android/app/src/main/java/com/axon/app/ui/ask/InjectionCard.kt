@@ -76,16 +76,22 @@ fun InjectionCard(
                 Icon(icon, contentDescription = null, tint = warm.fg.copy(alpha = 0.84f), modifier = Modifier.size(16.dp))
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    op.label,
-                    color = colors.textPrimary.copy(alpha = 0.90f),
-                    fontSize = 14.6.sp,
-                    lineHeight = 18.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontFamily = AxonTheme.fonts.display,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Text(
+                        op.label,
+                        color = colors.textPrimary.copy(alpha = 0.90f),
+                        fontSize = 14.6.sp,
+                        lineHeight = 18.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = AxonTheme.fonts.display,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    JobStatusPill(injectionStatusLabel(item))
+                }
                 Text(
                     item.endpoint,
                     color = colors.textMuted.copy(alpha = 0.58f),
@@ -96,7 +102,6 @@ fun InjectionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            JobStatusPill(injectionStatusLabel(item))
         }
         Text(
             text = injectionNarrative(item),
@@ -220,25 +225,15 @@ private fun JobStatusPill(status: String) {
         isDone -> Icons.Rounded.CheckCircle
         else -> Icons.Rounded.Pending
     }
-    Row(
+    Box(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
             .background(colors.tint(tintColor, 8, colors.panelStrong))
             .border(1.dp, colors.tint(tintColor, 15, colors.panelStrong), RoundedCornerShape(999.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .size(21.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = tintColor.copy(alpha = 0.82f), modifier = Modifier.size(11.dp))
-        Text(
-            status,
-            color = tintColor.copy(alpha = 0.84f),
-            fontSize = 9.8.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = AxonTheme.fonts.mono,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Icon(icon, contentDescription = status, tint = tintColor.copy(alpha = 0.86f), modifier = Modifier.size(12.dp))
     }
 }
 

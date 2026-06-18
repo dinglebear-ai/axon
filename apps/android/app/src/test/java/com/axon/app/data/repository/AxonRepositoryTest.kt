@@ -63,55 +63,55 @@ class AxonRepositoryTest {
         server.shutdown()
     }
 
-    // ── withToken guard ───────────────────────────────────────────────────────
+    // ── withAuth guard ───────────────────────────────────────────────────────
 
     /**
-     * The `withToken` helper is private+inline. We exercise it by constructing
+     * The `withAuth` helper is private+inline. We exercise it by constructing
      * a repository whose client has no token and asserting every public suspend
      * function returns failure with the expected message.
      */
     @Test
-    fun `ask returns failure with no-token message when client has no token`() = runBlocking {
+    fun `ask returns failure with no-auth message when client has no token`() = runBlocking {
         val emptyRepo = repoWithNoToken()
         val result = emptyRepo.ask("what is axon?")
         assertTrue(result.isFailure)
         val msg = result.exceptionOrNull()?.message.orEmpty()
         assertTrue(
-            "expected no-token message, got: $msg",
-            msg.contains("No API token configured"),
+            "expected no-auth message, got: $msg",
+            msg.contains("Axon is not authenticated"),
         )
     }
 
     @Test
-    fun `query returns failure with no-token message when client has no token`() = runBlocking {
+    fun `query returns failure with no-auth message when client has no token`() = runBlocking {
         val emptyRepo = repoWithNoToken()
         val result = emptyRepo.query("axon")
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("No API token configured"))
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Axon is not authenticated"))
     }
 
     @Test
-    fun `sources returns failure with no-token message when client has no token`() = runBlocking {
+    fun `sources returns failure with no-auth message when client has no token`() = runBlocking {
         val emptyRepo = repoWithNoToken()
         val result = emptyRepo.sources()
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("No API token configured"))
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Axon is not authenticated"))
     }
 
     @Test
-    fun `scrape returns failure with no-token message when client has no token`() = runBlocking {
+    fun `scrape returns failure with no-auth message when client has no token`() = runBlocking {
         val emptyRepo = repoWithNoToken()
         val result = emptyRepo.scrape("https://example.com")
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("No API token configured"))
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Axon is not authenticated"))
     }
 
     @Test
-    fun `crawlSubmit returns failure with no-token message when client has no token`() = runBlocking {
+    fun `crawlSubmit returns failure with no-auth message when client has no token`() = runBlocking {
         val emptyRepo = repoWithNoToken()
         val result = emptyRepo.crawlSubmit("https://example.com")
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("No API token configured"))
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Axon is not authenticated"))
     }
 
     // ── ask happy path ────────────────────────────────────────────────────────
@@ -365,11 +365,11 @@ class AxonRepositoryTest {
     }
 
     @Test
-    fun `retrieve returns failure with no-token message when client has no token`() = runBlocking {
+    fun `retrieve returns failure with no-auth message when client has no token`() = runBlocking {
         val emptyRepo = repoWithNoToken()
         val result = emptyRepo.retrieve("https://x.com")
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("No API token configured"))
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Axon is not authenticated"))
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

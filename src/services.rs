@@ -18,6 +18,7 @@ pub mod jobs;
 pub mod map;
 pub mod memory;
 pub mod migrate;
+pub mod mobile_sessions;
 pub mod query;
 pub mod refresh;
 pub mod runtime;

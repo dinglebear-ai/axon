@@ -229,6 +229,30 @@ const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
+        method: "GET",
+        path: "/v1/mobile/sessions",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/mobile/sessions/{id}",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "PUT",
+        path: "/v1/mobile/sessions/{id}",
+        auth: RestRouteAuth::Write,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "DELETE",
+        path: "/v1/mobile/sessions/{id}",
+        auth: RestRouteAuth::Write,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "POST",
         path: "/v1/crawl",
         auth: RestRouteAuth::Write,

@@ -117,7 +117,7 @@ class IngestViewModelTest {
     @Test fun `checkStatus emits Status with returned job`() = runTest(dispatcher) {
         val job = JobUi(
             id = "job-1", status = "completed", url = null, sourceType = "github",
-            target = "https://github.com/x", errorText = null, resultJson = null, finishedAt = null,
+            target = "https://github.com/x", errorText = null, resultJson = null,
         )
         val vm = TestIngestViewModel(
             submitResult = Result.success("job-1"),
@@ -132,7 +132,7 @@ class IngestViewModelTest {
     @Test fun `cancel calls repo cancel then checkStatus and emits Status`() = runTest(dispatcher) {
         val job = JobUi(
             id = "job-1", status = "canceled", url = null, sourceType = "github",
-            target = "https://github.com/x", errorText = null, resultJson = null, finishedAt = null,
+            target = "https://github.com/x", errorText = null, resultJson = null,
         )
         val vm = TestIngestViewModel(
             submitResult = Result.success("job-1"),

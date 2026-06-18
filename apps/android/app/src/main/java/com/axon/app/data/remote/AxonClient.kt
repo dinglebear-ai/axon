@@ -19,6 +19,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.axon.app.data.auth.AuthConfig
+import com.axon.app.data.auth.MissingAuthException
+import com.axon.app.data.auth.hasUsableAuth
 import com.axon.app.data.remote.models.AcceptedJob
 import com.axon.app.data.remote.models.CancelResponse
 import com.axon.app.data.remote.models.DoctorResponse
@@ -28,10 +31,13 @@ import com.axon.app.data.remote.models.ExtractRequest
 import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.JobDetailResponse
 import com.axon.app.data.remote.models.JobListResponse
+import com.axon.app.data.remote.models.DeleteMobileSessionResponse
+import com.axon.app.data.remote.models.MobileSessionDetailResponse
+import com.axon.app.data.remote.models.MobileSessionDto
+import com.axon.app.data.remote.models.MobileSessionListResponse
 import com.axon.app.data.remote.models.PanelConfigResponse
+import com.axon.app.data.remote.models.PanelCollectionsResponse
 import com.axon.app.data.remote.models.PanelEnvResponse
-import com.axon.app.data.remote.models.PanelLoginRequest
-import com.axon.app.data.remote.models.PanelLoginResponse
 import com.axon.app.data.remote.models.SavePanelConfigRequest
 import com.axon.app.data.remote.models.SavePanelConfigResponse
 import com.axon.app.data.remote.models.SavePanelEnvRequest
@@ -43,6 +49,8 @@ import com.axon.app.data.remote.models.SuggestRequest
 import com.axon.app.data.remote.models.SuggestResponse
 import com.axon.app.data.remote.models.SummarizeRequest
 import com.axon.app.data.remote.models.SummarizeResponse
+import com.axon.app.data.remote.models.UpsertMobileSessionRequest
+import com.axon.app.data.remote.models.UpsertMobileSessionResponse
 import com.axon.app.data.remote.models.WatchDef
 import com.axon.app.data.remote.models.WatchListResponse
 import okhttp3.ConnectionPool
@@ -53,6 +61,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.net.URLEncoder
 
 // ── Timeout constants ─────────────────────────────────────────────────────────
 
@@ -86,9 +95,8 @@ class AxonClient(
     baseUrl: String,
     token: String,
 ) {
-    // Thread-safe config: both baseUrl and token updated atomically together.
-    private val config = AtomicReference(baseUrl.trimEnd('/') to token)
-    private val panelToken = AtomicReference("")
+    // Thread-safe config: both baseUrl and auth mode updated atomically together.
+    private val config = AtomicReference<Pair<String, AuthConfig>>(baseUrl.trimEnd('/') to AuthConfig.Bearer(token))
 
     // R7: share a single ConnectionPool + Dispatcher across http/httpLong/httpStream
     // so concurrent fan-out (e.g. polling multiple job kinds) doesn't starve on
@@ -126,14 +134,16 @@ class AxonClient(
         .build()
 
     fun updateConfig(newBaseUrl: String, newToken: String) {
-        config.set(newBaseUrl.trimEnd('/') to newToken)
+        updateConfig(newBaseUrl, AuthConfig.Bearer(newToken))
     }
 
-    fun updatePanelToken(newPanelToken: String) {
-        panelToken.set(newPanelToken)
+    fun updateConfig(newBaseUrl: String, authConfig: AuthConfig) {
+        config.set(newBaseUrl.trimEnd('/') to authConfig)
     }
 
-    fun hasToken(): Boolean = config.get().second.isNotBlank()
+    fun hasToken(): Boolean = hasUsableAuth()
+
+    fun hasUsableAuth(): Boolean = config.get().second.hasUsableAuth()
 
     /**
      * Checks server reachability. Returns [Result.success] on HTTP 2xx,
@@ -183,13 +193,17 @@ class AxonClient(
     private inline fun <reified T> streamCompletion(path: String, request: T): Flow<AskStreamEvent> = flow {
         val bodyBytes = json.encodeToString(request).toRequestBody(JSON_MEDIA_TYPE)
         // Capture atomically once — avoids a TOCTOU race if updateConfig() is called mid-stream.
-        val (baseUrl, token) = config.get()
-        val req = Request.Builder()
-            .url("$baseUrl$path")
-            .post(bodyBytes)
-            .header("Authorization", "Bearer $token")
-            .header("x-api-key", token)
-            .build()
+        val requestBuilder = runCatching {
+            authRequest(
+                Request.Builder()
+                    .url("${baseUrl()}$path")
+                    .post(bodyBytes),
+            )
+        }.getOrElse {
+            emit(AskStreamEvent.Error(it.message ?: "No Axon authentication configured"))
+            return@flow
+        }
+        val req = requestBuilder.build()
 
         // Capture the Call before execute() so we can cancel it from
         // invokeOnCompletion. Without this, BufferedReader.readLine() below blocks
@@ -335,7 +349,9 @@ class AxonClient(
     /** POST /v1/{kind}/{id}/cancel. */
     suspend fun cancelJob(kind: JobKind, id: String): Result<CancelResponse> = withContext(Dispatchers.IO) {
         val body = "{}".toRequestBody(JSON_MEDIA_TYPE)
-        val builder = authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}/cancel").post(body))
+        val builder = runCatching {
+            authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}/cancel").post(body))
+        }.getOrElse { return@withContext Result.failure(it) }
         execute(http, builder)
     }
 
@@ -353,22 +369,36 @@ class AxonClient(
         get<WatchListResponse>("/v1/watch?limit=$limit").map { it.watches }
     }
 
+    suspend fun listMobileSessions(): Result<List<MobileSessionDto>> = withContext(Dispatchers.IO) {
+        get<MobileSessionListResponse>("/v1/mobile/sessions").map { it.sessions }
+    }
+
+    suspend fun getMobileSession(id: String): Result<MobileSessionDto> = withContext(Dispatchers.IO) {
+        get<MobileSessionDetailResponse>("/v1/mobile/sessions/${encodePathSegment(id)}").map { it.session }
+    }
+
+    suspend fun upsertMobileSession(session: MobileSessionDto): Result<MobileSessionDto> = withContext(Dispatchers.IO) {
+        put<UpsertMobileSessionRequest, UpsertMobileSessionResponse>(
+            "/v1/mobile/sessions/${encodePathSegment(session.id)}",
+            UpsertMobileSessionRequest(session),
+        ).map { it.session }
+    }
+
+    suspend fun deleteMobileSession(id: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        delete<DeleteMobileSessionResponse>("/v1/mobile/sessions/${encodePathSegment(id)}").map { it.ok }
+    }
+
+    suspend fun artifactText(relativePath: String): Result<String> = withContext(Dispatchers.IO) {
+        val encodedPath = URLEncoder.encode(relativePath, "UTF-8").replace("+", "%20")
+        getText("/v1/artifacts?path=$encodedPath")
+    }
+
     suspend fun panelConfig(): Result<PanelConfigResponse> = withContext(Dispatchers.IO) {
         get("/api/panel/config")
     }
 
     suspend fun panelEnv(): Result<PanelEnvResponse> = withContext(Dispatchers.IO) {
         get("/api/panel/env")
-    }
-
-    suspend fun panelLogin(password: String): Result<String> = withContext(Dispatchers.IO) {
-        post<PanelLoginRequest, PanelLoginResponse>(
-            "/api/panel/login",
-            PanelLoginRequest(password),
-        ).mapCatching { response ->
-            response.token?.takeIf { response.ok && it.isNotBlank() }
-                ?: error("Panel password rejected")
-        }
     }
 
     suspend fun savePanelConfig(rawToml: String): Result<SavePanelConfigResponse> = withContext(Dispatchers.IO) {
@@ -379,61 +409,111 @@ class AxonClient(
         put("/api/panel/env", SavePanelEnvRequest(rawEnv))
     }
 
+    suspend fun panelCollections(): Result<PanelCollectionsResponse> = withContext(Dispatchers.IO) {
+        get("/api/panel/collections")
+    }
+
+    suspend fun collections(): Result<PanelCollectionsResponse> = withContext(Dispatchers.IO) {
+        get("/v1/collections")
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun encodePathSegment(s: String): String =
         java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
-    private fun authRequest(builder: Request.Builder): Request.Builder {
-        val (_, token) = config.get()
-        return builder.withApiAuth(token)
+    private suspend fun authRequest(builder: Request.Builder, panelRoute: Boolean = false): Request.Builder {
+        val (currentBaseUrl, auth) = config.get()
+        if (panelRoute && auth is AuthConfig.OAuth) {
+            throw MissingAuthException("Server config requires bearer/panel-compatible auth; OAuth app tokens are not used for panel routes")
+        }
+        val headers = when (auth) {
+            is AuthConfig.Bearer -> {
+                val token = auth.token.trim()
+                if (token.isBlank()) throw MissingAuthException("No Axon authentication configured")
+                if (panelRoute) {
+                    mapOf("x-axon-panel-token" to token)
+                } else {
+                    mapOf("Authorization" to "Bearer $token", "x-api-key" to token)
+                }
+            }
+            is AuthConfig.OAuth -> {
+                if (auth.serverUrl.trimEnd('/') != currentBaseUrl.trimEnd('/')) {
+                    throw MissingAuthException("OAuth credentials belong to a different Axon server; sign in again for this server")
+                }
+                val token = auth.tokenSource.freshAccessToken().getOrThrow()
+                mapOf("Authorization" to "Bearer $token")
+            }
+        }
+        headers.forEach { (name, value) -> builder.header(name, value) }
+        return builder
     }
 
-    private fun panelAuthRequest(builder: Request.Builder, token: String): Request.Builder =
-        builder.withPanelAuth(token)
-
-    private inline fun <reified B, reified R> put(path: String, body: B): Result<R> {
+    private suspend inline fun <reified B, reified R> put(path: String, body: B): Result<R> {
         val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
-        val builder = if (path.startsWith("/api/panel/")) {
-            val token = requirePanelToken(panelToken.get()).getOrElse { return Result.failure(it) }
-            panelAuthRequest(Request.Builder().url("${baseUrl()}$path").put(bodyBytes), token)
-        } else {
-            authRequest(Request.Builder().url("${baseUrl()}$path").put(bodyBytes))
-        }
+        val builder = runCatching {
+            authRequest(
+                Request.Builder().url("${baseUrl()}$path").put(bodyBytes),
+                panelRoute = path.startsWith("/api/panel/"),
+            )
+        }.getOrElse { return Result.failure(it) }
         return execute(http, builder)
     }
 
-    private inline fun <reified R> get(path: String): Result<R> {
-        val builder = if (path.startsWith("/api/panel/")) {
-            val token = requirePanelToken(panelToken.get()).getOrElse { return Result.failure(it) }
-            panelAuthRequest(Request.Builder().url("${baseUrl()}$path").get(), token)
-        } else {
-            authRequest(Request.Builder().url("${baseUrl()}$path").get())
-        }
+    private suspend inline fun <reified R> get(path: String): Result<R> {
+        val builder = runCatching {
+            authRequest(
+                Request.Builder().url("${baseUrl()}$path").get(),
+                panelRoute = path.startsWith("/api/panel/"),
+            )
+        }.getOrElse { return Result.failure(it) }
         return execute(http, builder)
     }
 
-    private inline fun <reified R> getWith(client: OkHttpClient, path: String): Result<R> {
-        val builder = authRequest(Request.Builder().url("${baseUrl()}$path").get())
+    private suspend inline fun <reified R> delete(path: String): Result<R> {
+        val builder = runCatching {
+            authRequest(
+                Request.Builder().url("${baseUrl()}$path").delete(),
+                panelRoute = path.startsWith("/api/panel/"),
+            )
+        }.getOrElse { return Result.failure(it) }
+        return execute(http, builder)
+    }
+
+    private suspend fun getText(path: String): Result<String> {
+        val builder = runCatching {
+            authRequest(
+                Request.Builder().url("${baseUrl()}$path").get(),
+                panelRoute = path.startsWith("/api/panel/"),
+            )
+        }.getOrElse { return Result.failure(it) }
+        return executeText(http, builder)
+    }
+
+    private suspend inline fun <reified R> getWith(client: OkHttpClient, path: String): Result<R> {
+        val builder = runCatching {
+            authRequest(
+                Request.Builder().url("${baseUrl()}$path").get(),
+                panelRoute = path.startsWith("/api/panel/"),
+            )
+        }.getOrElse { return Result.failure(it) }
         return execute(client, builder)
     }
 
     private fun baseUrl(): String = config.get().first
 
-    private inline fun <reified B, reified R> post(path: String, body: B): Result<R> =
+    private suspend inline fun <reified B, reified R> post(path: String, body: B): Result<R> =
         postWith(http, path, body)
 
-    private inline fun <reified B, reified R> postWith(client: OkHttpClient, path: String, body: B): Result<R> {
+    private suspend inline fun <reified B, reified R> postWith(client: OkHttpClient, path: String, body: B): Result<R> {
         val bodyBytes = json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE)
         val request = Request.Builder().url("${baseUrl()}$path").post(bodyBytes)
-        val builder = when {
-            path == "/api/panel/login" -> request
-            path.startsWith("/api/panel/") -> {
-                val token = requirePanelToken(panelToken.get()).getOrElse { return Result.failure(it) }
-                panelAuthRequest(request, token)
+        val builder = runCatching {
+            when {
+                path == "/api/panel/login" -> request
+                else -> authRequest(request, panelRoute = path.startsWith("/api/panel/"))
             }
-            else -> authRequest(request)
-        }
+        }.getOrElse { return Result.failure(it) }
         return execute(client, builder)
     }
 
@@ -452,6 +532,21 @@ class AxonClient(
             // One-line logcat breadcrumb for any non-cancellation failure (HTTP error,
             // decode mismatch, transport error). Body is truncated upstream; method+path
             // is enough to grep when triaging field reports.
+            Log.w(TAG, "${built.method} ${built.url.encodedPath} failed: ${t.message}")
+        }
+    }
+
+    private fun executeText(client: OkHttpClient, builder: Request.Builder): Result<String> {
+        val built = builder.build()
+        return runCatching {
+            client.newCall(built).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    error(httpErrorMessage(resp.code, resp.body?.string(), resp.message))
+                }
+                resp.body?.string() ?: error("Empty response body")
+            }
+        }.onFailure { t ->
+            if (t is CancellationException) throw t
             Log.w(TAG, "${built.method} ${built.url.encodedPath} failed: ${t.message}")
         }
     }

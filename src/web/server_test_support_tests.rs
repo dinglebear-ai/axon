@@ -192,6 +192,7 @@ pub(super) async fn stop(shutdown: oneshot::Sender<()>, handle: tokio::task::Joi
 #[tokio::test]
 #[serial]
 async fn panel_artifact_requires_panel_token_and_serves_png() {
+    let _guard = EnvGuard::set(Some("api-secret"));
     let temp = tempfile::tempdir().unwrap();
     let screenshot_dir = temp.path().join("screenshots");
     std::fs::create_dir_all(&screenshot_dir).unwrap();
@@ -211,6 +212,14 @@ async fn panel_artifact_requires_panel_token_and_serves_png() {
         .await
         .expect("unauthorized request");
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+    let bearer_rejected = client
+        .get(format!("{base}/api/panel/artifact/screenshots/shot.png"))
+        .header("authorization", "Bearer api-secret")
+        .send()
+        .await
+        .expect("bearer rejected request");
+    assert_eq!(bearer_rejected.status(), StatusCode::UNAUTHORIZED);
 
     let authorized = client
         .get(format!("{base}/api/panel/artifact/screenshots/shot.png"))

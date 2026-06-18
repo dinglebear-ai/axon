@@ -17,6 +17,7 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Work
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
@@ -34,8 +35,6 @@ import com.axon.app.data.repository.JobFamily
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.DrawerSubItem
 import com.axon.app.ui.theme.AxonTheme
-import tv.tootie.aurora.components.AuroraIconButton
-import tv.tootie.aurora.components.AuroraIconButtonSize
 
 private enum class JobsDrawerLevel(val label: String) {
     Crawl("Crawls"),
@@ -71,19 +70,23 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
                 modifier = Modifier.weight(1f),
             )
             if (selectedLevel != null) {
-                AuroraIconButton(
-                    onClick = { selectedLevel = null },
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Back to job queues",
-                    size = AuroraIconButtonSize.Compact,
+                IconButton(onClick = { selectedLevel = null }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Back to job queues",
+                        tint = AxonTheme.colors.iconMuted,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            IconButton(onClick = { vm.refresh() }, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Rounded.Refresh,
+                    contentDescription = "Refresh",
+                    tint = AxonTheme.colors.iconMuted,
+                    modifier = Modifier.size(16.dp),
                 )
             }
-            AuroraIconButton(
-                onClick = { vm.refresh() },
-                imageVector = Icons.Rounded.Refresh,
-                contentDescription = "Refresh",
-                size = AuroraIconButtonSize.Compact,
-            )
         }
 
         when {

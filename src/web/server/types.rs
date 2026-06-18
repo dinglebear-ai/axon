@@ -85,3 +85,8 @@ pub(super) struct OpsResponse {
     pub(super) collection: String,
     pub(super) mcp_http_url: String,
 }
+
+#[derive(Serialize)]
+pub(super) struct PanelCollectionsResponse {
+    pub(super) collections: Vec<String>,
+}

@@ -1,6 +1,7 @@
 package com.axon.app.ui.settings
 
 import app.cash.turbine.test
+import com.axon.app.data.auth.AuthMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,6 +88,38 @@ class SettingsViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `setDraftAuthMode does not persist oauth before successful sign in`() = runTest(dispatcher) {
+        val vm = TestSettingsViewModel()
+
+        vm.setDraftAuthMode(AuthMode.OAuth)
+
+        assertEquals(AuthMode.OAuth, vm.draftAuthMode.value)
+        assertEquals(AuthMode.Bearer, vm.persistedAuthMode.value)
+    }
+
+    @Test
+    fun `cancelOAuthSignIn shows failure and keeps bearer mode`() = runTest(dispatcher) {
+        val vm = TestSettingsViewModel()
+
+        vm.cancelOAuthSignIn()
+
+        assertTrue(vm.saveState.value is SaveState.Failed)
+        assertEquals(AuthMode.Bearer, vm.draftAuthMode.value)
+    }
+
+    @Test
+    fun `signOutOAuth does not switch mode when encrypted clear fails`() = runTest(dispatcher) {
+        val vm = TestSettingsViewModel(oauthClearResult = false)
+        vm.setDraftAuthMode(AuthMode.OAuth)
+
+        vm.signOutOAuth()
+
+        assertTrue(vm.saveState.value is SaveState.Failed)
+        assertEquals(AuthMode.OAuth, vm.draftAuthMode.value)
+        assertEquals(AuthMode.Bearer, vm.persistedAuthMode.value)
+    }
 }
 
 class SettingsSecurityHelpersTest {
@@ -158,12 +191,37 @@ class SettingsSecurityHelpersTest {
 private class TestSettingsViewModel(
     private val saveResult: Result<Unit> = Result.success(Unit),
     private val pingResult: Result<Unit> = Result.success(Unit),
+    private val oauthClearResult: Boolean = true,
 ) {
     private val _saveState = MutableStateFlow<SaveState>(SaveState.Idle)
     val saveState = _saveState.asStateFlow()
 
     private val _connection = MutableStateFlow<TestConnectionState>(TestConnectionState.Idle)
     val connection = _connection.asStateFlow()
+
+    private val _draftAuthMode = MutableStateFlow(AuthMode.Bearer)
+    val draftAuthMode = _draftAuthMode.asStateFlow()
+
+    private val _persistedAuthMode = MutableStateFlow(AuthMode.Bearer)
+    val persistedAuthMode = _persistedAuthMode.asStateFlow()
+
+    fun setDraftAuthMode(mode: AuthMode) {
+        _draftAuthMode.value = mode
+    }
+
+    fun cancelOAuthSignIn() {
+        _saveState.value = SaveState.Failed("OAuth sign-in was cancelled")
+    }
+
+    fun signOutOAuth() {
+        if (!oauthClearResult) {
+            _saveState.value = SaveState.Failed("Could not clear OAuth credentials")
+            return
+        }
+        _persistedAuthMode.value = AuthMode.Bearer
+        _draftAuthMode.value = AuthMode.Bearer
+        _saveState.value = SaveState.Saved
+    }
 
     fun save(serverUrl: String, @Suppress("UNUSED_PARAMETER") token: String, @Suppress("UNUSED_PARAMETER") collection: String) {
         _saveState.value = SaveState.Saving

@@ -34,7 +34,7 @@ fun JsonElement.humanRows(maxRows: Int = 160): List<HumanJsonRow> {
                     .forEach { (key, value) -> visit(key, value, depth + if (label.isNotBlank()) 1 else 0) }
             }
             is JsonArray -> {
-                rows += HumanJsonRow(humanLabel(label), "${element.size} items", depth)
+                rows += HumanJsonRow(humanLabel(label).ifBlank { "Items" }, "${element.size} items", depth)
                 element.take(24).forEachIndexed { index, value -> visit("Item ${index + 1}", value, depth + 1) }
             }
             is JsonPrimitive -> rows += HumanJsonRow(humanLabel(label), humanValue(element), depth)
@@ -131,8 +131,9 @@ fun humanizeJsonText(text: String, maxRows: Int = 24): String {
     if (!trimmed.looksLikeJsonPayload()) return text
 
     return runCatching {
-        humanJsonParser.parseToJsonElement(trimmed)
-            .humanRows(maxRows = maxRows)
+        val parsed = humanJsonParser.parseToJsonElement(trimmed)
+        if (parsed.isCitationOnlyArray()) return text
+        parsed.humanRows(maxRows = maxRows)
             .joinToString("\n") { row ->
                 val indent = "  ".repeat(row.depth.coerceAtMost(3))
                 "$indent${row.label}: ${row.value}"
@@ -150,6 +151,10 @@ fun humanizeJsonFragmentText(text: String, maxRows: Int = 24): String {
     val end = span!!.last + 1
     val payload = trimmed.substring(start, end).trim()
     val suffix = trimmed.drop(end).trimStart()
+    val parsedPayload = runCatching { humanJsonParser.parseToJsonElement(payload) }.getOrNull()
+    if (parsedPayload.isCitationOnlyArray()) {
+        return text
+    }
     val humanPayload = humanizeJsonText(payload, maxRows)
     if (humanPayload == payload) return text
 
@@ -161,6 +166,15 @@ fun humanizeJsonFragmentText(text: String, maxRows: Int = 24): String {
             append('\n')
             append(suffix)
         }
+    }
+}
+
+private fun JsonElement?.isCitationOnlyArray(): Boolean {
+    val array = this as? JsonArray ?: return false
+    if (array.isEmpty()) return false
+    return array.all { element ->
+        val value = (element as? JsonPrimitive)?.contentOrNull ?: return@all false
+        value.matches(Regex("S\\d+"))
     }
 }
 
