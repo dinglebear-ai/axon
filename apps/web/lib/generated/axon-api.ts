@@ -38,6 +38,9 @@ export type components = {
         "DedupeRequest": {
             "collection"?: string | null;
         };
+        "DeleteMobileSessionResponse": {
+            "ok": boolean;
+        };
         "DiffResult": {
             "links_added": components['schemas']['LinkEntry'][];
             "links_removed": components['schemas']['LinkEntry'][];
@@ -127,6 +130,39 @@ export type components = {
             "field": string;
             "new"?: string | null;
             "old"?: string | null;
+        };
+        "MobileChatItem": {
+            "kind": string;
+            "payload"?: Record<string, unknown>;
+            "text"?: string | null;
+            "timestamp": number;
+        };
+        "MobileSession": {
+            "created_at": number;
+            "first_message_preview": string;
+            "id": string;
+            "injected_op_count": number;
+            "items"?: components['schemas']['MobileChatItem'][];
+            "pinned_at"?: number | null;
+            "title": string;
+            "turn_count": number;
+            "updated_at": number;
+        };
+        "MobileSessionDetailResponse": {
+            "session": components['schemas']['MobileSession'];
+        };
+        "MobileSessionListResponse": {
+            "sessions": components['schemas']['MobileSessionSummary'][];
+        };
+        "MobileSessionSummary": {
+            "created_at": number;
+            "first_message_preview": string;
+            "id": string;
+            "injected_op_count": number;
+            "pinned_at"?: number | null;
+            "title": string;
+            "turn_count": number;
+            "updated_at": number;
         };
         "PreparedSessionDoc": {
             "extra"?: unknown;
@@ -331,6 +367,13 @@ export type components = {
             "supported_routes": string[];
             "version": string;
         };
+        "UpsertMobileSessionRequest": {
+            "session": components['schemas']['MobileSession'];
+        };
+        "UpsertMobileSessionResponse": {
+            "ok": boolean;
+            "session": components['schemas']['MobileSession'];
+        };
         "WatchDefCreateRequest": {
             "enabled"?: boolean | null;
             "every_seconds": number;
@@ -379,6 +422,8 @@ export type paths = {
     "/v1/ingest/{id}/cancel": { post: operations["cancel_ingest_job"] };
     "/v1/map": { post: operations["map"] };
     "/v1/memory": { post: operations["memory"] };
+    "/v1/mobile/sessions": { get: operations["list_mobile_sessions"] };
+    "/v1/mobile/sessions/{id}": { get: operations["get_mobile_session"]; put: operations["upsert_mobile_session"]; delete: operations["delete_mobile_session"] };
     "/v1/query": { post: operations["query"] };
     "/v1/research": { post: operations["research"] };
     "/v1/research/stream": { post: operations["research_stream"] };
@@ -441,6 +486,10 @@ export type operations = {
     "cancel_ingest_job": { method: "post"; path: "/v1/ingest/{id}/cancel"; operationId: "cancel_ingest_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "map": { method: "post"; path: "/v1/map"; operationId: "map"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMapRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "memory": { method: "post"; path: "/v1/memory"; operationId: "memory"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "list_mobile_sessions": { method: "get"; path: "/v1/mobile/sessions"; operationId: "list_mobile_sessions"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['MobileSessionListResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "500": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "get_mobile_session": { method: "get"; path: "/v1/mobile/sessions/{id}"; operationId: "get_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['MobileSessionDetailResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "upsert_mobile_session": { method: "put"; path: "/v1/mobile/sessions/{id}"; operationId: "upsert_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: components['schemas']['UpsertMobileSessionRequest']; responses: { "200": components['schemas']['UpsertMobileSessionResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "delete_mobile_session": { method: "delete"; path: "/v1/mobile/sessions/{id}"; operationId: "delete_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['DeleteMobileSessionResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "500": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "query": { method: "post"; path: "/v1/query"; operationId: "query"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestQueryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research": { method: "post"; path: "/v1/research"; operationId: "research"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "504": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research_stream": { method: "post"; path: "/v1/research/stream"; operationId: "research_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
