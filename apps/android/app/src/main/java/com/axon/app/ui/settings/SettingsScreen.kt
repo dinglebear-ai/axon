@@ -1,34 +1,22 @@
 package com.axon.app.ui.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Slideshow
-import androidx.compose.material.icons.rounded.Visibility
-import androidx.compose.material.icons.rounded.VisibilityOff
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,25 +25,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.ui.common.AxonSensitiveTextField
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
-import com.axon.app.ui.theme.tint
+import kotlinx.collections.immutable.toImmutableList
+import tv.tootie.aurora.components.AuroraButton
+import tv.tootie.aurora.components.AuroraButtonVariant
 import tv.tootie.aurora.components.AuroraCallout
 import tv.tootie.aurora.components.AuroraCalloutVariant
 import tv.tootie.aurora.components.AuroraStatusIndicator
 import tv.tootie.aurora.components.AuroraStatusTone
+import tv.tootie.aurora.components.AuroraTabs
+import tv.tootie.aurora.components.AuroraTextField
 
 private enum class SettingsTab(val label: String, val shortLabel: String, val icon: ImageVector) {
     Connection("Connection", "Conn", Icons.Rounded.Link),
@@ -75,11 +65,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     var token by remember(settings.token) { mutableStateOf(settings.token.value) }
     var panelToken by remember(settings.panelToken) { mutableStateOf(settings.panelToken.value) }
     var collection by remember(settings.collection) { mutableStateOf(settings.collection) }
-    val saveLabel = when (tab) {
-        SettingsTab.Connection -> "Save"
-        SettingsTab.Env -> "Save"
-        SettingsTab.Config -> "Save"
-    }
+    val saveLabel = "Save"
     val canSaveTab = when (tab) {
         SettingsTab.Connection -> true
         SettingsTab.Env -> !files.loading && files.error == null && files.envDirty.isNotEmpty()
@@ -95,18 +81,15 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        AuroraTabs(
+            tabs = SettingsTab.entries.map { it.shortLabel }.toImmutableList(),
+            selectedIndex = SettingsTab.entries.indexOf(tab),
+            onTabSelected = { index -> tab = SettingsTab.entries[index] },
             modifier = Modifier
                 .fillMaxWidth(0.90f)
                 .widthIn(max = 380.dp),
-        ) {
-            SettingsTab.entries.forEach { entry ->
-                SettingsTabButton(entry, selected = tab == entry, modifier = Modifier.weight(1f)) {
-                    tab = entry
-                }
-            }
-        }
+            compact = true,
+        )
 
         when (tab) {
             SettingsTab.Connection -> ConnectionTab(
@@ -157,8 +140,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 .fillMaxWidth(0.90f)
                 .widthIn(max = 380.dp),
         ) {
-            CompactActionButton(
-                label = if (saveState is SaveState.Saving) "Saving..." else saveLabel,
+            AuroraButton(
                 onClick = {
                     when (tab) {
                         SettingsTab.Connection -> vm.saveConnection(serverUrl, token, panelToken, collection)
@@ -168,16 +150,26 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 },
                 modifier = Modifier.weight(1f),
                 enabled = saveState !is SaveState.Saving && canSaveTab,
-            )
-            CompactActionButton(
-                label = if (tab == SettingsTab.Connection) "Test" else "Reload",
+                loading = saveState is SaveState.Saving,
+            ) {
+                Text(if (saveState is SaveState.Saving) "Saving..." else saveLabel)
+            }
+            AuroraButton(
                 onClick = {
                     if (tab == SettingsTab.Connection) vm.testConnection(serverUrl, token) else vm.refreshConfigFiles()
                 },
                 modifier = Modifier.weight(1f),
-                outlined = true,
-                icon = if (tab == SettingsTab.Connection) Icons.Rounded.Check else Icons.Rounded.Refresh,
-            )
+                variant = AuroraButtonVariant.Outlined,
+                leadingIcon = {
+                    Icon(
+                        if (tab == SettingsTab.Connection) Icons.Rounded.Check else Icons.Rounded.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                    )
+                },
+            ) {
+                Text(if (tab == SettingsTab.Connection) "Test" else "Reload")
+            }
         }
 
         when (val s = saveState) {
@@ -190,41 +182,6 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 variant = AuroraCalloutVariant.Error,
             )
             else -> {}
-        }
-    }
-}
-
-@Composable
-private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val colors = AxonTheme.colors
-    val count = when (tab) {
-        SettingsTab.Connection -> null
-        SettingsTab.Env -> AxonSettingsCatalog.envGroups.sumOf { it.fields.size }
-        SettingsTab.Config -> AxonSettingsCatalog.configGroups.sumOf { it.fields.size }
-    }
-    Row(
-        modifier = modifier
-            .background(if (selected) colors.tint(colors.accentPrimary, 5, colors.pageBg) else colors.control.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
-            .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 22, colors.pageBg) else colors.borderDefault.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .height(42.dp)
-            .padding(horizontal = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(tab.icon, contentDescription = null, tint = if (selected) colors.accentStrong else colors.textMuted.copy(alpha = 0.72f), modifier = Modifier.size(14.dp))
-        Text(
-            tab.shortLabel,
-            color = if (selected) colors.accentStrong else colors.textMuted,
-            fontSize = 11.4.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = AxonTheme.fonts.body,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        count?.let {
-            Text(it.toString(), color = colors.textMuted.copy(alpha = 0.72f), fontSize = 9.5.sp, fontFamily = AxonTheme.fonts.mono)
         }
     }
 }
@@ -251,8 +208,8 @@ private fun ConnectionTab(
                 variant = AuroraCalloutVariant.Warn,
             )
         }
-        CompactSettingField("Bearer token", token, onToken, visualTransformation = PasswordVisualTransformation())
-        CompactSettingField("Panel password", panelToken, onPanelToken, visualTransformation = PasswordVisualTransformation())
+        CompactSettingField("Bearer token", token, onToken, sensitive = true)
+        CompactSettingField("Panel password", panelToken, onPanelToken, sensitive = true)
         CompactSettingField("Collection", collection, onCollection)
         when (val c = connection) {
             is TestConnectionState.Testing -> AuroraStatusIndicator(tone = AuroraStatusTone.Syncing, label = "Testing...")
@@ -269,75 +226,34 @@ private fun CompactSettingField(
     value: String,
     onValueChange: (String) -> Unit,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    sensitive: Boolean = false,
 ) {
     val colors = AxonTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(label, color = colors.textMuted.copy(alpha = 0.8f), fontSize = 10.8.sp, fontFamily = AxonTheme.fonts.body)
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            visualTransformation = visualTransformation,
-            textStyle = TextStyle(
-                color = colors.textPrimary,
-                fontSize = 11.8.sp,
-                fontFamily = AxonTheme.fonts.mono,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .background(colors.control.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 12.dp),
-            decorationBox = { inner ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (value.isBlank()) {
-                            Text("unset", color = colors.textMuted, fontSize = 11.8.sp, fontFamily = AxonTheme.fonts.mono)
-                        }
-                        inner()
-                    }
-                }
-            },
-        )
-    }
-}
-
-@Composable
-private fun CompactActionButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    outlined: Boolean = false,
-    icon: ImageVector? = null,
-) {
-    val colors = AxonTheme.colors
-    val bg = if (outlined) colors.pageBg else colors.accentPrimary
-    val fg = if (outlined) colors.textMuted else colors.onAccentFg
-    Row(
-        modifier = modifier
-            .height(42.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (enabled) bg else colors.control, RoundedCornerShape(8.dp))
-            .border(1.dp, if (outlined) colors.borderStrong.copy(alpha = 0.56f) else colors.accentPrimary, RoundedCornerShape(8.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        icon?.let {
-            Icon(it, contentDescription = null, tint = fg, modifier = Modifier.size(14.dp).padding(end = 6.dp))
+        if (sensitive) {
+            AxonSensitiveTextField(
+                value = value,
+                onValueChange = onValueChange,
+                compact = true,
+                placeholder = "unset",
+                revealContentDescription = "Show $label",
+                hideContentDescription = "Hide $label",
+                contentDescription = label,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            AuroraTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                compact = true,
+                label = null,
+                placeholder = "unset",
+                contentDescription = label,
+                visualTransformation = visualTransformation,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
-        Text(
-            label,
-            color = fg,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = AxonTheme.fonts.body,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
-

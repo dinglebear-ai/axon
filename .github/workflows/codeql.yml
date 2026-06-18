@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+env:
+  AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
+  AURORA_REF: ${{ vars.AURORA_REF || (github.event_name == 'pull_request' && 'codex/axon-hrqn-primitives' || 'main') }}
+
 jobs:
   analyze:
     name: analyze (${{ matrix.language }})
@@ -40,27 +44,27 @@ jobs:
           persist-credentials: false
 
       - name: Checkout Aurora design system
-        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        if: matrix.language == 'java-kotlin'
         uses: actions/checkout@v5
         with:
           persist-credentials: false
-          repository: ${{ vars.AURORA_REPO }}
-          ref: ${{ vars.AURORA_REF }}
+          repository: ${{ env.AURORA_REPO }}
+          ref: ${{ env.AURORA_REF }}
           path: .aurora-design-system
           token: ${{ secrets.AURORA_TOKEN || github.token }}
 
       - name: Export Aurora path
-        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        if: matrix.language == 'java-kotlin'
         run: echo "AXON_AURORA_ANDROID_PATH=$GITHUB_WORKSPACE/.aurora-design-system/android" >> "$GITHUB_ENV"
 
       - name: Set up pnpm for Aurora token generation
-        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        if: matrix.language == 'java-kotlin'
         uses: pnpm/action-setup@v4
         with:
           version: 10.33.2
 
       - name: Set up Node for Aurora token generation
-        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        if: matrix.language == 'java-kotlin'
         uses: actions/setup-node@v5
         with:
           node-version: "lts/*"
@@ -68,7 +72,7 @@ jobs:
           cache-dependency-path: .aurora-design-system/pnpm-lock.yaml
 
       - name: Install Aurora token dependencies
-        if: matrix.language == 'java-kotlin' && vars.AURORA_REPO != ''
+        if: matrix.language == 'java-kotlin'
         working-directory: .aurora-design-system
         run: pnpm install --frozen-lockfile
 

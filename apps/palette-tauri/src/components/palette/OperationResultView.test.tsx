@@ -275,6 +275,8 @@ describe("OperationResultView structured rendering", () => {
     );
     expect(screen.getByText("Result A")).toBeInTheDocument();
     expect(screen.getByText("Queued crawl jobs")).toBeInTheDocument();
+    expect(document.querySelector(".operation-status-dot")).toBeInTheDocument();
+    expect(document.querySelector(".operation-dot")).not.toBeInTheDocument();
   });
 
   it("renders discovered URLs for map", () => {
