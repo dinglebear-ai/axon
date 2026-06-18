@@ -16,6 +16,7 @@ android {
         targetSdk = 35
         versionCode = 6
         versionName = "1.3.2"
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.axon.app"
     }
 
     buildTypes {
@@ -94,6 +95,7 @@ dependencies {
 
     // Security
     implementation(libs.security.crypto)
+    implementation(libs.appauth)
 
     // Tests
     testImplementation(libs.junit)

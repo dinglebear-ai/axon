@@ -28,7 +28,7 @@ import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
 /**
- * Shared drawer sub-item row used by Management and Setup drawer sections.
+ * Shared drawer sub-item row used by nested drawer sections.
  *
  * When [onClick] is non-null and [trailing] is null, a chevron is rendered automatically.
  * Pass an explicit [trailing] composable for badges or other custom decorations.

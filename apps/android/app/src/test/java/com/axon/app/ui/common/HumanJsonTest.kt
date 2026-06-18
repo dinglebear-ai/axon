@@ -53,6 +53,38 @@ class HumanJsonTest {
     }
 
     @Test
+    fun `humanizeJsonText labels top level arrays`() {
+        val rendered = humanizeJsonText("""["alpha"]""")
+
+        assertTrue(rendered.contains("Items: 1 items"))
+        assertFalse(rendered.contains("\n: 1 items"))
+        assertFalse(rendered.startsWith(":"))
+    }
+
+    @Test
+    fun `humanizeJsonFragmentText leaves citation markers alone`() {
+        val rendered = humanizeJsonFragmentText(
+            """
+            The dense vector comes from TEI [S6].
+            It is stored in Qdrant.
+            """.trimIndent(),
+        )
+
+        assertTrue(rendered.contains("The dense vector comes from TEI [S6]."))
+        assertTrue(rendered.contains("It is stored in Qdrant."))
+        assertTrue(rendered.contains("[S6]"))
+        assertFalse(rendered.contains("items"))
+        assertFalse(rendered.contains("Item 1"))
+    }
+
+    @Test
+    fun `humanizeJsonText leaves citation marker unchanged`() {
+        val rendered = humanizeJsonText("[S6]")
+
+        assertTrue(rendered == "[S6]")
+    }
+
+    @Test
     fun `doctorServiceSummary formats nested services as readable stack rows`() {
         val rendered = kotlinx.serialization.json.Json.parseToJsonElement(
             """

@@ -224,9 +224,9 @@ val AxonBodyFont = FontFamily(
 )
 
 val AxonMonoFont = FontFamily(
-    Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
-    Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
-    Font(R.font.jetbrains_mono_semibold, FontWeight.SemiBold),
+    Font(R.font.noto_sans_regular, FontWeight.Normal),
+    Font(R.font.noto_sans_medium, FontWeight.Medium),
+    Font(R.font.noto_sans_semibold, FontWeight.SemiBold),
 )
 
 @Immutable
@@ -257,11 +257,11 @@ private val AxonMaterialTypography = Typography(
 private val LocalAxonColors = staticCompositionLocalOf { AxonDarkColors }
 private val LocalAxonDimens = staticCompositionLocalOf { AxonDimens() }
 private val LocalAxonFonts = staticCompositionLocalOf {
-    AxonFonts(
-        display = FontFamily.Default,
-        body = FontFamily.Default,
-        mono = FontFamily.Monospace,
-    )
+        AxonFonts(
+            display = FontFamily.Default,
+            body = FontFamily.Default,
+            mono = FontFamily.Default,
+        )
 }
 
 object AxonTheme {

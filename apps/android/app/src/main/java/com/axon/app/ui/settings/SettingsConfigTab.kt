@@ -17,8 +17,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Article
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Cached
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.DataObject
 import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.QuestionAnswer
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -33,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -55,11 +71,20 @@ internal fun ConfigGroupsTab(
     explicit: Set<String>,
     keyFor: (SettingGroup, SettingField) -> String,
     onChange: (String, String) -> Unit,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val filteredGroups = remember(groups, values, searchQuery) {
+        filterGroups(groups, values, keyFor, searchQuery)
+    }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(11.dp)) {
+        SettingsSearchField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+        )
         Text(
-            configPathSummary(path, groups),
+            configPathSummary(path, groups, filteredGroups, searchQuery),
             color = AxonTheme.colors.textMuted,
             fontSize = 10.sp,
             fontFamily = AxonTheme.fonts.mono,
@@ -68,7 +93,7 @@ internal fun ConfigGroupsTab(
         error?.let {
             ConfigAccessNotice(configAccessMessage(it), warn = it.contains("401"))
         }
-        groups.forEach { group ->
+        filteredGroups.forEach { group ->
             SettingGroupCard(group = group) {
                 group.fields.forEach { field ->
                     val key = keyFor(group, field)
@@ -81,6 +106,52 @@ internal fun ConfigGroupsTab(
                 }
             }
         }
+        if (filteredGroups.isEmpty()) {
+            Text(
+                "No settings match \"$searchQuery\"",
+                color = AxonTheme.colors.textMuted,
+                fontSize = 11.sp,
+                fontFamily = AxonTheme.fonts.body,
+                modifier = Modifier.padding(vertical = 24.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSearchField(value: String, onValueChange: (String) -> Unit) {
+    val colors = AxonTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(colors.control.copy(alpha = 0.46f), RoundedCornerShape(9.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), RoundedCornerShape(9.dp))
+            .padding(horizontal = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Rounded.Search, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(15.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(
+                color = colors.textPrimary,
+                fontSize = 11.3.sp,
+                fontFamily = AxonTheme.fonts.body,
+            ),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (value.isBlank()) {
+                        Text("Search settings", color = colors.textMuted, fontSize = 11.3.sp, fontFamily = AxonTheme.fonts.body)
+                    }
+                    inner()
+                }
+            },
+        )
     }
 }
 
@@ -119,7 +190,7 @@ private fun ConfigAccessNotice(message: String, warn: Boolean) {
 private fun SettingGroupCard(group: SettingGroup, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            BoxIcon()
+            BoxIcon(group.icon)
             group.section?.let {
                 Text(it, color = AxonTheme.colors.accentStrong, fontSize = 9.5.sp, fontFamily = AxonTheme.fonts.mono)
             }
@@ -151,7 +222,7 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
                 fontFamily = AxonTheme.fonts.mono,
                 modifier = Modifier.weight(1f),
             )
-            field.env?.let { Badge("env") }
+            field.env?.let { Badge("env", colors.accentStrong) }
             Badge(if (explicit) "set" else "default", if (explicit) colors.success else colors.textMuted)
             if (field.kind == SettingKind.Bool) {
                 MiniToggle(value.equals("true", ignoreCase = true)) { onChange(it.toString()) }
@@ -247,18 +318,25 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
     }
 }
 
-private fun configPathSummary(path: String, groups: List<SettingGroup>): String {
+private fun configPathSummary(
+    path: String,
+    groups: List<SettingGroup>,
+    filteredGroups: List<SettingGroup>,
+    query: String,
+): String {
     val count = groups.sumOf { it.fields.size }
-    return if (groups.any { it.section != null }) {
+    val filteredCount = filteredGroups.sumOf { it.fields.size }
+    val base = if (groups.any { it.section != null }) {
         "$path · $count knobs · env overrides each"
     } else {
         "$path · $count vars"
     }
+    return if (query.isBlank()) base else "$base · showing $filteredCount"
 }
 
 private fun configAccessMessage(error: String): String =
     if (error.contains("Panel unlock required") || error.contains("401")) {
-        "Panel unlock required. Save the panel password on Connection to load live file values."
+        "Axon API token required. Save the bearer token on Connection to load live file values."
     } else {
         "Could not load live file values. Catalog defaults are shown for now. $error"
     }
@@ -270,19 +348,23 @@ internal fun SectionLabel(text: String) {
 
 @Composable
 private fun Badge(text: String, color: Color = AxonTheme.colors.textMuted) {
+    val colors = AxonTheme.colors
     Text(
-        text,
+        text.uppercase(),
         color = color,
         modifier = Modifier
-            .border(1.dp, AxonTheme.colors.borderDefault.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 4.dp, vertical = 1.dp),
-        fontSize = 8.2.sp,
-        fontFamily = AxonTheme.fonts.mono,
+            .clip(RoundedCornerShape(999.dp))
+            .background(colors.tint(color, 9, colors.panelMedium), RoundedCornerShape(999.dp))
+            .border(1.dp, color.copy(alpha = 0.32f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        fontSize = 8.sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = AxonTheme.fonts.body,
     )
 }
 
 @Composable
-private fun BoxIcon() {
+private fun BoxIcon(iconName: String) {
     val colors = AxonTheme.colors
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
@@ -291,6 +373,51 @@ private fun BoxIcon() {
             .padding(3.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Rounded.Settings, contentDescription = null, tint = colors.accentStrong, modifier = Modifier.size(18.dp))
+        Icon(groupIcon(iconName), contentDescription = null, tint = colors.accentStrong, modifier = Modifier.size(18.dp))
+    }
+}
+
+private fun groupIcon(name: String): ImageVector = when (name) {
+    "server", "database" -> Icons.Rounded.Storage
+    "shield" -> Icons.Rounded.Security
+    "key" -> Icons.Rounded.Key
+    "brain" -> Icons.Rounded.Psychology
+    "globe" -> Icons.Rounded.Public
+    "file" -> Icons.AutoMirrored.Rounded.Article
+    "layers" -> Icons.Rounded.Layers
+    "search" -> Icons.Rounded.Search
+    "ask" -> Icons.Rounded.QuestionAnswer
+    "zap" -> Icons.Rounded.Bolt
+    "activity" -> Icons.Rounded.Memory
+    "scrape" -> Icons.Rounded.TravelExplore
+    "braces" -> Icons.Rounded.Code
+    "clock" -> Icons.Rounded.Schedule
+    "cache" -> Icons.Rounded.Cached
+    "payload" -> Icons.Rounded.DataObject
+    else -> Icons.Rounded.Settings
+}
+
+private fun filterGroups(
+    groups: List<SettingGroup>,
+    values: Map<String, String>,
+    keyFor: (SettingGroup, SettingField) -> String,
+    rawQuery: String,
+): List<SettingGroup> {
+    val query = rawQuery.trim().lowercase()
+    if (query.isBlank()) return groups
+    return groups.mapNotNull { group ->
+        val groupMatches = listOfNotNull(group.id, group.section, group.label, group.note, group.icon)
+            .any { it.lowercase().contains(query) }
+        val fields = group.fields.filter { field ->
+            val key = keyFor(group, field)
+            groupMatches || listOf(
+                field.key,
+                field.desc,
+                field.env.orEmpty(),
+                field.defaultValue,
+                values[key].orEmpty(),
+            ).any { it.lowercase().contains(query) }
+        }
+        if (fields.isEmpty()) null else group.copy(fields = fields)
     }
 }
