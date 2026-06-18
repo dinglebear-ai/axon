@@ -29,6 +29,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
+private const val CRAWL_PAGE_PREVIEW_LIMIT = 200
+
 @Composable
 internal fun JobDetailScreen(
     job: JobUi,
@@ -95,11 +97,23 @@ private fun CrawlPagesSection(
         loading -> listOf("Status" to "Loading crawled pages...")
         error != null -> listOf("Error" to error)
         pages.isEmpty() -> listOf("Pages" to "No page list is available for this crawl yet.")
-        else -> pages.mapIndexed { index, url -> "#${index + 1}" to url }
+        else -> crawlPageRows(pages)
     }
     JobDetailSection(
         title = if (pages.isEmpty()) "Pages Crawled" else "Pages Crawled (${pages.size})",
         rows = rows,
+    )
+}
+
+private fun crawlPageRows(pages: List<String>): List<Pair<String, String>> {
+    val pageRows = pages
+        .take(CRAWL_PAGE_PREVIEW_LIMIT)
+        .mapIndexed { index, url -> "#${index + 1}" to url }
+
+    if (pages.size <= CRAWL_PAGE_PREVIEW_LIMIT) return pageRows
+
+    return pageRows + (
+        "More" to "Showing first $CRAWL_PAGE_PREVIEW_LIMIT of ${pages.size} crawled pages."
     )
 }
 

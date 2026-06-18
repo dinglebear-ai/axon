@@ -96,6 +96,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
     private var serverRawEnv: String = ""
     private var serverRawConfig: String = ""
+    private var pendingOAuthServerUrl: String? = null
 
     private val _settings = MutableStateFlow(AxonSettings())
     val settings: StateFlow<AxonSettings> = _settings.asStateFlow()
@@ -181,8 +182,10 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         _oauthStatus.value = OAuthUiStatus.Starting
         val trimmedServerUrl = serverUrl.trim()
         validateAxonServerUrl(trimmedServerUrl)
+        pendingOAuthServerUrl = trimmedServerUrl.trimEnd('/')
         container.oauthRepository.createAuthorizationRequest(trimmedServerUrl)
     }.onFailure {
+        pendingOAuthServerUrl = null
         _oauthStatus.value = OAuthUiStatus.Error
         _saveState.value = SaveState.Failed(it.message ?: "OAuth sign-in failed")
     }
@@ -190,21 +193,27 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun completeOAuthSignIn(intent: Intent?) {
         viewModelScope.launch {
             if (intent == null) {
-                _oauthStatus.value = OAuthUiStatus.Error
-                _saveState.value = SaveState.Failed("OAuth sign-in was cancelled")
+                cancelOAuthSignInInternal()
                 return@launch
             }
             container.oauthRepository.handleAuthorizationResponse(intent).fold(
                 onSuccess = {
-                    val updated = _settings.value.copy(authMode = AuthMode.OAuth)
+                    val signedInServerUrl = pendingOAuthServerUrl
+                        ?: _settings.value.serverUrl.value.trim().trimEnd('/')
+                    val updated = _settings.value.copy(
+                        serverUrl = ServerUrl(signedInServerUrl),
+                        authMode = AuthMode.OAuth,
+                    )
                     container.settingsRepository.save(updated)
                     container.applySettings(updated.serverUrl.value, updated.token.value, updated.authMode)
                     _settings.value = updated
                     _draftAuthMode.value = AuthMode.OAuth
                     _oauthStatus.value = OAuthUiStatus.SignedIn
                     _saveState.value = SaveState.Saved
+                    pendingOAuthServerUrl = null
                 },
                 onFailure = { cause ->
+                    pendingOAuthServerUrl = null
                     _oauthStatus.value = OAuthUiStatus.Error
                     _saveState.value = SaveState.Failed(cause.message ?: "OAuth sign-in failed")
                 },
@@ -213,8 +222,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancelOAuthSignIn() {
-        _oauthStatus.value = OAuthUiStatus.Error
-        _saveState.value = SaveState.Failed("OAuth sign-in was cancelled")
+        viewModelScope.launch {
+            cancelOAuthSignInInternal()
+        }
     }
 
     fun signOutOAuth() {
@@ -339,7 +349,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                     current.envDirty,
                     AxonSettingsCatalog.envSecretKeys,
                 )
-                val rawEnv = patchEnvText(serverRawEnv.ifBlank { current.rawEnv }, current.envValues, dirtyKeys)
+                val latestEnv = latestRawEnvForSave(current.rawEnv)
+                val rawEnv = patchEnvText(latestEnv, current.envValues, dirtyKeys)
                 val envSave = container.axonClient.savePanelEnv(rawEnv)
                 if (!envSave.isSuccess) {
                     throw envSave.exceptionOrNull()
@@ -374,7 +385,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                     current.configDirty,
                     AxonSettingsCatalog.configSecretKeys,
                 )
-                val rawToml = patchConfigTomlText(serverRawConfig.ifBlank { current.rawConfig }, current.configValues, dirtyKeys)
+                val latestConfig = latestRawConfigForSave(current.rawConfig)
+                val rawToml = patchConfigTomlText(latestConfig, current.configValues, dirtyKeys)
                 val configSave = container.axonClient.savePanelConfig(rawToml)
                 if (!configSave.isSuccess) {
                     throw configSave.exceptionOrNull()
@@ -407,6 +419,25 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         current.error?.let { throw IllegalStateException(it) }
         return current
     }
+
+    private suspend fun cancelOAuthSignInInternal() {
+        container.oauthRepository.cancelSignIn()
+        pendingOAuthServerUrl = null
+        _oauthStatus.value = OAuthUiStatus.Error
+        _saveState.value = SaveState.Failed("OAuth sign-in was cancelled")
+    }
+
+    private suspend fun latestRawEnvForSave(fallbackRawEnv: String): String =
+        container.axonClient.panelEnv()
+            .getOrNull()
+            ?.rawEnv
+            ?: serverRawEnv.ifBlank { fallbackRawEnv }
+
+    private suspend fun latestRawConfigForSave(fallbackRawConfig: String): String =
+        container.axonClient.panelConfig()
+            .getOrNull()
+            ?.rawToml
+            ?: serverRawConfig.ifBlank { fallbackRawConfig }
 
     fun testConnection(serverUrl: String, token: String) {
         viewModelScope.launch {

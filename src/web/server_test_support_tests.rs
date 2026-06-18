@@ -213,20 +213,13 @@ async fn panel_artifact_requires_panel_token_and_serves_png() {
         .expect("unauthorized request");
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
 
-    let bearer_authorized = client
+    let bearer_rejected = client
         .get(format!("{base}/api/panel/artifact/screenshots/shot.png"))
         .header("authorization", "Bearer api-secret")
         .send()
         .await
-        .expect("bearer authorized request");
-    assert_eq!(bearer_authorized.status(), StatusCode::OK);
-    assert_eq!(
-        bearer_authorized
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .unwrap(),
-        "image/png"
-    );
+        .expect("bearer rejected request");
+    assert_eq!(bearer_rejected.status(), StatusCode::UNAUTHORIZED);
 
     let authorized = client
         .get(format!("{base}/api/panel/artifact/screenshots/shot.png"))

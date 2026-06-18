@@ -59,6 +59,7 @@ fun SessionsDrawerContent(
 ) {
     val sessions by vm.sessions.collectAsStateWithLifecycle()
     val recentAsks by vm.recentAsks.collectAsStateWithLifecycle()
+    val syncError by vm.error.collectAsStateWithLifecycle()
     val reveal = rememberRevealState()
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -71,6 +72,11 @@ fun SessionsDrawerContent(
         ) {
             item {
                 NewSessionRow(onClick = { onSelect("new") })
+            }
+            syncError?.let { message ->
+                item {
+                    SessionSyncErrorRow(message)
+                }
             }
             when {
                 sessions.isNotEmpty() -> {
@@ -105,6 +111,24 @@ fun SessionsDrawerContent(
             }
         }
     }
+}
+
+@Composable
+private fun SessionSyncErrorRow(message: String) {
+    val colors = AxonTheme.colors
+    Text(
+        message,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.error.copy(alpha = 0.08f))
+            .border(1.dp, colors.error.copy(alpha = 0.24f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        color = colors.error.copy(alpha = 0.9f),
+        fontSize = 11.2.sp,
+        lineHeight = 14.8.sp,
+        fontFamily = AxonTheme.fonts.body,
+    )
 }
 
 @Composable

@@ -48,6 +48,10 @@ use super::{handlers, openapi_jobs, routing};
         handlers::exploration::research,
         handlers::exploration::exploration_stream::research_stream,
         handlers::memory::memory,
+        handlers::mobile_sessions::list_mobile_sessions,
+        handlers::mobile_sessions::get_mobile_session,
+        handlers::mobile_sessions::upsert_mobile_session,
+        handlers::mobile_sessions::delete_mobile_session,
         handlers::async_jobs::start_crawl,
         handlers::async_jobs::start_embed,
         handlers::async_jobs::start_extract,
@@ -105,6 +109,14 @@ use super::{handlers, openapi_jobs, routing};
         crate::services::client_contract::RestMemorySubaction,
         crate::services::client_contract::RestMemoryNodeType,
         crate::services::client_contract::RestMemoryEdgeType,
+        crate::services::mobile_sessions::MobileChatItem,
+        crate::services::mobile_sessions::MobileSession,
+        crate::services::mobile_sessions::MobileSessionSummary,
+        crate::services::mobile_sessions::MobileSessionListResponse,
+        crate::services::mobile_sessions::MobileSessionDetailResponse,
+        crate::services::mobile_sessions::UpsertMobileSessionRequest,
+        crate::services::mobile_sessions::UpsertMobileSessionResponse,
+        crate::services::mobile_sessions::DeleteMobileSessionResponse,
         crate::services::types::BrandResult,
         crate::services::types::BrandColor,
         crate::services::types::ColorUsage,
@@ -142,7 +154,8 @@ use super::{handlers, openapi_jobs, routing};
         (name = "jobs", description = "Async crawl, embed, extract, and ingest job endpoints"),
         (name = "admin", description = "Administrative mutation endpoints"),
         (name = "watch", description = "Scheduled watch definitions and runs"),
-        (name = "memory", description = "Persistent agent memory endpoints")
+        (name = "memory", description = "Persistent agent memory endpoints"),
+        (name = "mobile", description = "Mobile app session synchronization endpoints")
     )
 )]
 struct ApiDoc;
@@ -223,6 +236,7 @@ fn operation_mut<'a>(
     match method {
         "GET" => path_item.get.as_mut(),
         "POST" => path_item.post.as_mut(),
+        "PUT" => path_item.put.as_mut(),
         "DELETE" => path_item.delete.as_mut(),
         _ => None,
     }

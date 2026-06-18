@@ -306,6 +306,9 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST && path == "/v1/memory" {
         return true;
     }
+    if is_mobile_session_write(method, path) {
+        return true;
+    }
 
     for prefix in ["/v1/crawl", "/v1/embed", "/v1/extract", "/v1/ingest"] {
         if path == prefix {
@@ -327,6 +330,13 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
         }
     }
     false
+}
+
+fn is_mobile_session_write(method: &Method, path: &str) -> bool {
+    (*method == Method::PUT || *method == Method::DELETE)
+        && path
+            .strip_prefix("/v1/mobile/sessions/")
+            .is_some_and(|id| !id.is_empty())
 }
 
 async fn require_read_scope(

@@ -22,6 +22,7 @@ private const val TAG = "AskViewModel"
 private const val FAB_STATUS_INITIAL_DELAY_MS = 1_800L
 private const val FAB_STATUS_POLL_INTERVAL_MS = 2_500L
 private const val FAB_STATUS_MAX_ATTEMPTS = 6
+private const val MOBILE_SESSION_SAVE_DEBOUNCE_MS = 350L
 private val FAB_TERMINAL_STATUSES = setOf("completed", "complete", "failed", "error", "cancelled", "canceled")
 
 private fun JobFamily.toFabOp(): com.axon.app.ui.fab.FabOp = when (this) {
@@ -84,6 +85,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     private var currentSessionId: String = newSessionId()
     private var createdAtMs: Long = System.currentTimeMillis()
     private var restoringSession = false
+    private var persistSessionJob: Job? = null
 
     /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
     fun clearFollowUp() {
@@ -92,8 +94,7 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startNewSession() {
-        askJob?.cancel()
-        askJob = null
+        cancelActiveSessionJobs()
         currentSessionId = newSessionId()
         createdAtMs = System.currentTimeMillis()
         restoringSession = true
@@ -112,9 +113,14 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
-            val session = container.axonRepository.getMobileSession(sessionId).getOrNull() ?: return@launch
-            askJob?.cancel()
-            askJob = null
+            val session = container.axonRepository.getMobileSession(sessionId).getOrElse { cause ->
+                Log.w(TAG, "Failed to load mobile session $sessionId", cause)
+                _uiState.value = AskUiState.Error(
+                    cause.message ?: "Could not load this chat session. Check your connection and sign in again.",
+                )
+                return@launch
+            }
+            cancelActiveSessionJobs()
             restoringSession = true
             currentSessionId = session.id
             createdAtMs = session.createdAt
@@ -417,17 +423,33 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun persistCurrentSession() {
         if (restoringSession) return
-        val items = _chatItems.value
-        if (items.isEmpty()) return
-        val now = System.currentTimeMillis()
-        val session = buildMobileSessionDto(
-            sessionId = currentSessionId,
-            createdAt = createdAtMs,
-            updatedAt = now,
-            items = items,
-        )
-        viewModelScope.launch {
-            container.axonRepository.upsertMobileSession(session)
+        persistSessionJob?.cancel()
+        persistSessionJob = viewModelScope.launch {
+            delay(MOBILE_SESSION_SAVE_DEBOUNCE_MS)
+            val items = _chatItems.value
+            if (items.isEmpty()) return@launch
+            val now = System.currentTimeMillis()
+            val session = buildMobileSessionDto(
+                sessionId = currentSessionId,
+                createdAt = createdAtMs,
+                updatedAt = now,
+                items = items,
+            )
+            container.axonRepository.upsertMobileSession(session).onFailure { cause ->
+                Log.w(TAG, "Failed to save mobile session ${session.id}", cause)
+                if (_uiState.value is AskUiState.Idle) {
+                    _uiState.value = AskUiState.Error(
+                        cause.message ?: "Could not save this chat session. Check your connection and sign in again.",
+                    )
+                }
+            }
         }
+    }
+
+    private fun cancelActiveSessionJobs() {
+        askJob?.cancel()
+        persistSessionJob?.cancel()
+        askJob = null
+        persistSessionJob = null
     }
 }

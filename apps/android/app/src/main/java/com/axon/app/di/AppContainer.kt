@@ -63,11 +63,12 @@ class AppContainer(context: Context) {
 
     /** Called once at app start after the first DataStore settings emission is read. */
     fun applySettings(serverUrl: String, token: String, authMode: AuthMode) {
+        val normalizedServerUrl = serverUrl.trimEnd('/')
         val auth = when (authMode) {
             AuthMode.Bearer -> AuthConfig.Bearer(token)
-            AuthMode.OAuth -> AuthConfig.OAuth(oauthRepository)
+            AuthMode.OAuth -> AuthConfig.OAuth(oauthRepository, normalizedServerUrl)
         }
-        axonClient.updateConfig(serverUrl.trimEnd('/'), auth)
+        axonClient.updateConfig(normalizedServerUrl, auth)
         _isReady.value = true
     }
 }

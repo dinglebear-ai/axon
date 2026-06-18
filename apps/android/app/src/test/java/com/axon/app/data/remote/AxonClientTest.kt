@@ -152,7 +152,7 @@ class AxonClientTest {
     }
 
     @Test
-    fun `panelEnv sends api bearer token header`() = runBlocking {
+    fun `panelEnv requests panel env endpoint with configured auth headers`() = runBlocking {
         server.enqueue(
             MockResponse()
                 .setBody("""{"path":"~/.axon/.env","raw_env":"QDRANT_URL=http://qdrant","restart_required":false}""")
@@ -165,25 +165,9 @@ class AxonClientTest {
         assertEquals("QDRANT_URL=http://qdrant", result.getOrThrow().rawEnv)
         val req = server.takeRequest()
         assertEquals("/api/panel/env", req.path)
-        assertEquals("Bearer test-token", req.getHeader("Authorization"))
-        assertEquals("test-token", req.getHeader("x-api-key"))
-        assertEquals(null, req.getHeader("x-axon-panel-token"))
-    }
-
-    @Test
-    fun `panelEnv no longer requires separate panel token`() = runBlocking {
-        server.enqueue(
-            MockResponse()
-                .setBody("""{"path":"~/.axon/.env","raw_env":"QDRANT_URL=http://qdrant","restart_required":false}""")
-                .addHeader("Content-Type", "application/json"),
-        )
-
-        val result = client.panelEnv()
-
-        assertTrue(result.isSuccess)
-        val req = server.takeRequest()
-        assertEquals("/api/panel/env", req.path)
-        assertEquals("Bearer test-token", req.getHeader("Authorization"))
+        assertEquals(null, req.getHeader("Authorization"))
+        assertEquals(null, req.getHeader("x-api-key"))
+        assertEquals("test-token", req.getHeader("x-axon-panel-token"))
     }
 
     @Test
@@ -200,9 +184,9 @@ class AxonClientTest {
         val req = server.takeRequest()
         assertEquals("/api/panel/env", req.path)
         assertEquals("PUT", req.method)
-        assertEquals("Bearer test-token", req.getHeader("Authorization"))
-        assertEquals("test-token", req.getHeader("x-api-key"))
-        assertEquals(null, req.getHeader("x-axon-panel-token"))
+        assertEquals(null, req.getHeader("Authorization"))
+        assertEquals(null, req.getHeader("x-api-key"))
+        assertEquals("test-token", req.getHeader("x-axon-panel-token"))
     }
 
     // ── Non-2xx HTTP status ───────────────────────────────────────────────────
@@ -414,7 +398,8 @@ class AxonClientTest {
 
     @Test
     fun `rest request uses oauth bearer and no x api key`() = runBlocking {
-        client.updateConfig(server.url("/").toString().trimEnd('/'), AuthConfig.OAuth(FakeOAuthTokenSource()))
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        client.updateConfig(baseUrl, AuthConfig.OAuth(FakeOAuthTokenSource(), baseUrl))
         server.enqueue(
             MockResponse()
                 .setBody("""{"query":"q","answer":"a","timing_ms":null}""")
@@ -430,7 +415,8 @@ class AxonClientTest {
 
     @Test
     fun `sse request uses oauth bearer and no x api key`() = runBlocking {
-        client.updateConfig(server.url("/").toString().trimEnd('/'), AuthConfig.OAuth(FakeOAuthTokenSource()))
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        client.updateConfig(baseUrl, AuthConfig.OAuth(FakeOAuthTokenSource(), baseUrl))
         server.enqueue(
             MockResponse()
                 .setBody("data: {\"type\":\"done\",\"answer\":\"ok\"}\n\n")
@@ -446,12 +432,33 @@ class AxonClientTest {
 
     @Test
     fun `panel route rejects oauth auth config before sending request`() = runBlocking {
-        client.updateConfig(server.url("/").toString().trimEnd('/'), AuthConfig.OAuth(FakeOAuthTokenSource()))
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        client.updateConfig(baseUrl, AuthConfig.OAuth(FakeOAuthTokenSource(), baseUrl))
 
         val result = client.panelEnv()
 
         assertTrue(result.isFailure)
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `oauth credentials are rejected when base url changes`() = runBlocking {
+        val oauthServerUrl = server.url("/").toString().trimEnd('/')
+        val differentServer = MockWebServer()
+        differentServer.start()
+        try {
+            client.updateConfig(
+                differentServer.url("/").toString().trimEnd('/'),
+                AuthConfig.OAuth(FakeOAuthTokenSource(), oauthServerUrl),
+            )
+
+            val result = client.ask(AskRequest(query = "q"))
+
+            assertTrue(result.isFailure)
+            assertEquals(0, differentServer.requestCount)
+        } finally {
+            differentServer.shutdown()
+        }
     }
 
     @Test
