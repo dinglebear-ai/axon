@@ -169,6 +169,17 @@ fn crawl_completed_progress(
         format!("{elapsed_ms}ms")
     };
     let mut summary = format!("{docs} docs · {time}");
+    if metrics
+        .get("coverage_status")
+        .and_then(|v| v.as_str())
+        .is_some_and(|status| status == "partial")
+    {
+        if let Some(reason) = metrics.get("coverage_reason").and_then(|v| v.as_str()) {
+            summary.push_str(&format!(" · partial ({reason})"));
+        } else {
+            summary.push_str(" · partial");
+        }
+    }
     if let Some(embed_id) = metrics.get("embed_job_id").and_then(|v| v.as_str()) {
         if let Some(embed_job) = embed_jobs_by_id.get(embed_id) {
             summary.push_str(&format!(" · embed {}", embed_job.status));

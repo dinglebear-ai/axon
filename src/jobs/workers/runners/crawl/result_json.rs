@@ -3,19 +3,28 @@
 /// `embed_deferred` key is only present when the embed enqueue was rejected
 /// (typically due to the embed queue cap) — its presence signals that markdown
 /// is on disk but not yet indexed.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "keeps the persisted crawl result contract explicit at the call site"
+)]
 pub(super) fn build_crawl_result_json(
     url: &str,
     worker_output_dir: &std::path::Path,
     caller_output_dir: &std::path::Path,
+    max_pages: u32,
     summary: &crate::crawl::engine::CrawlSummary,
     embed_job_id: Option<&str>,
     embed_deferred: Option<&str>,
     sitemap_backfill_error: Option<&str>,
 ) -> serde_json::Value {
+    let coverage = coverage_status(max_pages, summary);
     let mut value = serde_json::json!({
         "url": url,
         "output_dir": caller_output_dir,
         "output_path": caller_output_dir.join("markdown"),
+        "coverage_status": coverage.status,
+        "coverage_reason": coverage.reason,
+        "coverage_limit_pages": max_pages,
         "pages_crawled": summary.pages_seen,
         "md_created": summary.markdown_files,
         "pages_discovered": summary.pages_discovered,
@@ -70,6 +79,25 @@ pub(super) fn build_crawl_result_json(
     value
 }
 
+struct CoverageStatus {
+    status: &'static str,
+    reason: Option<&'static str>,
+}
+
+fn coverage_status(max_pages: u32, summary: &crate::crawl::engine::CrawlSummary) -> CoverageStatus {
+    if max_pages > 0 && summary.pages_seen >= max_pages {
+        CoverageStatus {
+            status: "partial",
+            reason: Some("max_pages_limit"),
+        }
+    } else {
+        CoverageStatus {
+            status: "complete_or_exhausted",
+            reason: None,
+        }
+    }
+}
+
 fn diagnostic_counts_json(summary: &crate::crawl::engine::CrawlSummary) -> serde_json::Value {
     let mut counts = serde_json::Map::new();
     for diagnostic in &summary.diagnostics {
@@ -82,4 +110,52 @@ fn diagnostic_counts_json(summary: &crate::crawl::engine::CrawlSummary) -> serde
         counts.insert(key, serde_json::Value::from(next));
     }
     serde_json::Value::Object(counts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crawl::engine::CrawlSummary;
+
+    #[test]
+    fn coverage_is_partial_when_page_cap_is_hit() {
+        let summary = CrawlSummary {
+            pages_seen: 100,
+            pages_discovered: 150,
+            ..CrawlSummary::default()
+        };
+
+        let coverage = coverage_status(100, &summary);
+
+        assert_eq!(coverage.status, "partial");
+        assert_eq!(coverage.reason, Some("max_pages_limit"));
+    }
+
+    #[test]
+    fn coverage_is_not_partial_for_uncapped_crawl() {
+        let summary = CrawlSummary {
+            pages_seen: 100,
+            pages_discovered: 150,
+            ..CrawlSummary::default()
+        };
+
+        let coverage = coverage_status(0, &summary);
+
+        assert_eq!(coverage.status, "complete_or_exhausted");
+        assert_eq!(coverage.reason, None);
+    }
+
+    #[test]
+    fn coverage_is_not_partial_when_site_exhausts_before_cap() {
+        let summary = CrawlSummary {
+            pages_seen: 12,
+            pages_discovered: 12,
+            ..CrawlSummary::default()
+        };
+
+        let coverage = coverage_status(100, &summary);
+
+        assert_eq!(coverage.status, "complete_or_exhausted");
+        assert_eq!(coverage.reason, None);
+    }
 }
