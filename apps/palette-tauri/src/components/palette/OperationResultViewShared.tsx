@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
+import { StatusIndicator, type StatusTone } from "@/components/ui/aurora/status-indicator";
 import { isTauriRuntime } from "@/lib/invoke";
 import { arrField, isRecord, numField, shortId, strField, titleCase } from "@/lib/payload";
 import { hostLabel } from "@/lib/url";
@@ -204,7 +205,19 @@ export function EmptyResult({ kind = "generic" }: { kind?: EmptyKind }) {
 }
 
 export function StatusDot({ status }: { status: string }) {
-  return <span className={`operation-dot operation-dot-${toneForStatus(status)}`} aria-hidden="true" />;
+  const tone = toneForStatus(status);
+  const presentation = statusPresentation(tone);
+  return (
+    <StatusIndicator
+      tone={presentation.indicatorTone}
+      showLabel={false}
+      pulse={false}
+      className="operation-status-indicator"
+      dotClassName="operation-status-dot"
+      dotStyle={presentation.dotStyle}
+      aria-hidden="true"
+    />
+  );
 }
 
 // Returns the first non-empty array found among the given payload keys, in order.
@@ -407,5 +420,20 @@ export function toneForStatus(status: string | undefined): Tone {
       return "error";
     default:
       return "neutral";
+  }
+}
+
+function statusPresentation(tone: Tone): { indicatorTone: StatusTone; dotStyle: CSSProperties } {
+  switch (tone) {
+    case "success":
+      return { indicatorTone: "online", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-success-surface)" } };
+    case "warn":
+      return { indicatorTone: "degraded", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-warn-surface)" } };
+    case "error":
+      return { indicatorTone: "error", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-error-surface)" } };
+    case "violet":
+      return { indicatorTone: "automating", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-neutral-surface)" } };
+    default:
+      return { indicatorTone: "queued", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-neutral-surface)" } };
   }
 }

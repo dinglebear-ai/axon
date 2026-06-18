@@ -94,6 +94,20 @@ jobs:
       - name: Verify release versions for changed shipping components
         run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
 
+  aurora-primitive-inventory:
+    name: aurora-primitive-inventory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            apps/android
+            apps/palette-tauri
+            docs/reference/aurora-primitive-inventory.json
+            scripts/check_aurora_primitive_inventory.py
+      - name: Check Aurora primitive inventory guard
+        run: python3 scripts/check_aurora_primitive_inventory.py
+
   no-mod-rs:
     name: no-mod-rs
     runs-on: ubuntu-latest
@@ -1319,6 +1333,7 @@ jobs:
       - monolith
       - no-mod-rs
       - version-sync
+      - aurora-primitive-inventory
       - fmt
       - check
       - clippy
@@ -1334,6 +1349,7 @@ jobs:
           test "${{ needs.monolith.result }}" = "success"
           test "${{ needs.no-mod-rs.result }}" = "success"
           test "${{ needs.version-sync.result }}" = "success"
+          test "${{ needs.aurora-primitive-inventory.result }}" = "success"
           test "${{ needs.fmt.result }}" = "success"
           test "${{ needs.check.result }}" = "success"
           test "${{ needs.clippy.result }}" = "success"

@@ -22,9 +22,22 @@ export interface StatusIndicatorProps extends React.HTMLAttributes<HTMLSpanEleme
   tone?: StatusTone
   label?: React.ReactNode
   pulse?: boolean
+  showLabel?: boolean
+  dotClassName?: string
+  dotStyle?: React.CSSProperties
 }
 
-function StatusIndicator({ className, tone = "online", label, pulse, style, ...props }: StatusIndicatorProps) {
+function StatusIndicator({
+  className,
+  tone = "online",
+  label,
+  pulse,
+  showLabel = true,
+  dotClassName,
+  dotStyle,
+  style,
+  ...props
+}: StatusIndicatorProps) {
   const safeTone = Object.hasOwn(toneColor, tone) ? tone : "online"
   if (tone !== safeTone) {
     devWarn(`[Aurora StatusIndicator] Unknown tone "${tone}". Valid values: ${Object.keys(toneColor).join(", ")}. Falling back to "online".`)
@@ -50,10 +63,10 @@ function StatusIndicator({ className, tone = "online", label, pulse, style, ...p
     >
       <span
         aria-hidden="true"
-        className={cn("size-2 rounded-full", resolvedPulse && "animate-pulse")}
-        style={{ background: color, boxShadow: shadow }}
+        className={cn("size-2 rounded-full", resolvedPulse && "animate-pulse", dotClassName)}
+        style={{ background: color, boxShadow: shadow, ...dotStyle }}
       />
-      {label ?? safeTone}
+      {showLabel ? label ?? safeTone : null}
     </span>
   )
 }

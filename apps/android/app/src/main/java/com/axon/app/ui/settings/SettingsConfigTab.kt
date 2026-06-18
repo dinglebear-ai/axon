@@ -2,48 +2,37 @@ package com.axon.app.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Visibility
-import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.axon.app.ui.common.AxonSensitiveTextField
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 import tv.tootie.aurora.components.AuroraStatusIndicator
 import tv.tootie.aurora.components.AuroraStatusTone
+import tv.tootie.aurora.components.AuroraSwitch
+import tv.tootie.aurora.components.AuroraTextField
 
 @Composable
 internal fun ConfigGroupsTab(
@@ -154,7 +143,11 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
             field.env?.let { Badge("env") }
             Badge(if (explicit) "set" else "default", if (explicit) colors.success else colors.textMuted)
             if (field.kind == SettingKind.Bool) {
-                MiniToggle(value.equals("true", ignoreCase = true)) { onChange(it.toString()) }
+                AuroraSwitch(
+                    checked = value.equals("true", ignoreCase = true),
+                    onCheckedChange = { onChange(it.toString()) },
+                    contentDescription = field.key,
+                )
             }
         }
         if (field.kind != SettingKind.Bool) {
@@ -169,28 +162,7 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
 }
 
 @Composable
-private fun MiniToggle(on: Boolean, onChange: (Boolean) -> Unit) {
-    val colors = AxonTheme.colors
-    Box(
-        modifier = Modifier
-            .width(38.dp)
-            .height(20.dp)
-            .background(if (on) colors.accentDeep else colors.control, RoundedCornerShape(999.dp))
-            .border(1.dp, if (on) colors.accentPrimary else colors.borderDefault, RoundedCornerShape(999.dp))
-            .clickable { onChange(!on) },
-    ) {
-        Box(
-            modifier = Modifier
-                .offset(x = if (on) 18.dp else 2.dp, y = 2.dp)
-                .size(14.dp)
-                .background(if (on) colors.accentStrong else colors.textMuted, RoundedCornerShape(999.dp)),
-        )
-    }
-}
-
-@Composable
 private fun CompactKnobInput(field: SettingField, value: String, onValueChange: (String) -> Unit) {
-    var reveal by remember { mutableStateOf(false) }
     val secret = field.kind == SettingKind.Secret
     val placeholder = when {
         secret -> "unset · secret"
@@ -198,52 +170,39 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
         field.defaultValue.isBlank() -> "unset"
         else -> field.defaultValue
     }
-    val colors = AxonTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(38.dp)
-            .background(colors.control.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
-            .padding(start = if (secret) 9.dp else 10.dp, end = if (secret) 5.dp else 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        if (secret) {
-            Icon(Icons.Rounded.Key, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(12.dp))
-        }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            visualTransformation = if (secret && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
-            textStyle = TextStyle(
-                color = colors.textPrimary,
-                fontSize = 10.9.sp,
-                fontFamily = AxonTheme.fonts.mono,
-            ),
-            modifier = Modifier.weight(1f),
-            decorationBox = { inner ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (value.isBlank()) {
-                        Text(placeholder, color = colors.textMuted, fontSize = 10.9.sp, fontFamily = AxonTheme.fonts.mono)
-                    }
-                    inner()
-                }
-            },
-        )
-        if (secret) {
+    val leadingIcon: (@Composable () -> Unit)? = if (secret) {
+        {
             Icon(
-                if (reveal) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                Icons.Rounded.Key,
                 contentDescription = null,
-                tint = if (reveal) colors.accentStrong else colors.textMuted,
-                modifier = Modifier
-                    .size(30.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { reveal = !reveal }
-                    .padding(8.dp),
+                tint = AxonTheme.colors.textMuted,
+                modifier = Modifier.size(12.dp),
             )
         }
+    } else null
+    if (secret) {
+        AxonSensitiveTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = placeholder,
+            compact = true,
+            revealContentDescription = "Show ${field.key}",
+            hideContentDescription = "Hide ${field.key}",
+            contentDescription = field.key,
+            leadingIcon = leadingIcon,
+        )
+    } else {
+        AuroraTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = placeholder,
+            singleLine = true,
+            compact = true,
+            contentDescription = field.key,
+            leadingIcon = leadingIcon,
+        )
     }
 }
 
