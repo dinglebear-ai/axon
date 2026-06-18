@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -32,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,7 +52,6 @@ import com.axon.app.ui.knowledge.KnowledgeViewModel
 import com.axon.app.ui.nav.LocalOpenDocument
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
-import tv.tootie.aurora.components.AuroraPromptInput
 
 /**
  * Suggest tab — optional focus query, lists `/v1/suggest` hits as tappable rows.
@@ -130,18 +132,61 @@ private fun CompactSuggestInput(
     onSend: () -> Unit,
     placeholder: String,
 ) {
-    AuroraPromptInput(
-        value = value,
-        onValueChange = onValueChange,
-        onSend = onSend,
-        placeholder = placeholder,
-        compact = true,
-        maxLines = 1,
-        hasSendableContent = true,
-        textFieldContentDescription = "Suggestion focus",
-        sendContentDescription = "Load suggestions",
+    val colors = AxonTheme.colors
+    val shape = RoundedCornerShape(10.dp)
+    Row(
         modifier = Modifier
             .fillMaxWidth(0.84f)
             .widthIn(max = 350.dp)
-    )
+            .height(38.dp)
+            .clip(shape)
+            .background(colors.control.copy(alpha = 0.42f), shape)
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.72f), shape)
+            .padding(start = 10.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(
+                color = colors.textPrimary,
+                fontSize = 10.8.sp,
+                fontFamily = AxonTheme.fonts.body,
+            ),
+            cursorBrush = SolidColor(colors.accentStrong),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { onSend() }),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isBlank()) {
+                        Text(
+                            placeholder,
+                            color = colors.textMuted,
+                            fontSize = 10.8.sp,
+                            fontFamily = AxonTheme.fonts.body,
+                        )
+                    }
+                    inner()
+                }
+            },
+        )
+        Box(
+            modifier = Modifier
+                .size(26.dp)
+                .pressScale(onClick = onSend)
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (value.isNotBlank()) colors.accentPrimary else colors.tint(colors.accentPrimary, 20, colors.control)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Rounded.Send,
+                contentDescription = "Load suggestions",
+                tint = if (value.isNotBlank()) colors.onAccentFg else colors.textMuted,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
 }

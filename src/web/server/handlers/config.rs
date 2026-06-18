@@ -1,9 +1,9 @@
 use super::super::HttpError;
 use super::super::state::AppState;
 use super::super::types::{
-    ConfigResponse, EnvConfigResponse, OpsResponse, PanelCommandRequest, PanelCommandResponse,
-    PanelDoctorResponse, PanelStatusResponse, SaveConfigRequest, SaveConfigResponse,
-    SaveEnvConfigRequest,
+    ConfigResponse, EnvConfigResponse, OpsResponse, PanelCollectionsResponse, PanelCommandRequest,
+    PanelCommandResponse, PanelDoctorResponse, PanelStatusResponse, SaveConfigRequest,
+    SaveConfigResponse, SaveEnvConfigRequest,
 };
 use super::super::utils::authorized;
 use crate::core::config::Config;
@@ -21,6 +21,7 @@ use axum::{
     response::IntoResponse,
 };
 use std::sync::Arc;
+use std::time::Duration;
 
 pub async fn get_config(
     State((state, _)): State<(AppState, Arc<Config>)>,
@@ -146,6 +147,73 @@ pub async fn ops(
         mcp_http_url: format!("http://{}:{}/mcp", cfg.mcp_http_host, cfg.mcp_http_port),
     })
     .into_response()
+}
+
+pub async fn panel_collections(
+    State((state, cfg)): State<(AppState, Arc<Config>)>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if !authorized(&state, &headers) {
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
+    }
+
+    qdrant_collections_response(&cfg).await
+}
+
+pub async fn collections(
+    State((_state, cfg)): State<(AppState, Arc<Config>)>,
+) -> impl IntoResponse {
+    qdrant_collections_response(&cfg).await
+}
+
+async fn qdrant_collections_response(cfg: &Config) -> axum::response::Response {
+    let url = format!("{}/collections", cfg.qdrant_url.trim_end_matches('/'));
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    {
+        Ok(client) => client,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to build qdrant metadata client: {err}"),
+            )
+                .into_response();
+        }
+    };
+    match client.get(url).send().await {
+        Ok(resp) if resp.status().is_success() => match resp.json::<serde_json::Value>().await {
+            Ok(value) => {
+                let mut collections = value
+                    .get("result")
+                    .and_then(|v| v.get("collections"))
+                    .and_then(|v| v.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|entry| entry.get("name").and_then(|name| name.as_str()))
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>();
+                collections.sort();
+                Json(PanelCollectionsResponse { collections }).into_response()
+            }
+            Err(err) => (
+                StatusCode::BAD_GATEWAY,
+                format!("qdrant returned invalid collections response: {err}"),
+            )
+                .into_response(),
+        },
+        Ok(resp) => (
+            StatusCode::BAD_GATEWAY,
+            format!("qdrant collections request failed: {}", resp.status()),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::BAD_GATEWAY,
+            format!("qdrant collections request failed: {err}"),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn panel_status(

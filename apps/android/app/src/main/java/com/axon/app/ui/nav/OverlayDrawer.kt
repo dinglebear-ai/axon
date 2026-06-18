@@ -11,7 +11,6 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.TaskAlt
-import androidx.compose.material.icons.rounded.Construction
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -74,8 +73,7 @@ private fun DrawerHeader(section: DrawerSection, onDismiss: () -> Unit) {
         DrawerSection.Sessions -> "Sessions" to Icons.Rounded.History
         DrawerSection.Jobs -> "Jobs" to Icons.Rounded.TaskAlt
         DrawerSection.Knowledge -> "Knowledge" to Icons.Rounded.Hub
-        DrawerSection.Management -> "Management" to Icons.Rounded.Settings
-        DrawerSection.Setup -> "Setup" to Icons.Rounded.Construction
+        DrawerSection.Settings -> "Settings" to Icons.Rounded.Settings
     }
     Row(
         modifier = Modifier

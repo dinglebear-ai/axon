@@ -17,6 +17,7 @@ turbine = "1.1.0"
 # 1.1.0 keeps androidx.security.crypto.MasterKey while moving off the old alpha
 # used before AndroidX published a stable security-crypto 1.1 line.
 securityCrypto = "1.1.0"
+appauth = "0.11.1"
 robolectric = "4.13"
 androidxTestExtJunit = "1.2.1"
 androidxTestEspresso = "3.6.1"
@@ -52,6 +53,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+appauth = { group = "net.openid", name = "appauth", version.ref = "appauth" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
