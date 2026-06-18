@@ -58,7 +58,7 @@ All global flags apply. Key flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--wait <bool>` | `false` | `false`: enqueue crawl jobs and return. `true`: run crawl inline and block. |
-| `--max-pages <n>` | `0` | Page cap (`0` = uncapped). |
+| `--max-pages <n>` | `2000` | Page cap. Set `0` explicitly for uncapped. |
 | `--max-depth <n>` | `10` | Maximum crawl depth. |
 | `--render-mode <mode>` | `auto-switch` | `http`, `chrome`, `auto-switch`. |
 | `--include-subdomains <bool>` | `false` | Include subdomains under the same parent domain. |

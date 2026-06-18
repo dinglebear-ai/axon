@@ -292,6 +292,9 @@ async fn process_received_page(
     if let Some(links) = page.page_links.as_ref() {
         link_count = Some(links.len() as u32);
         for link in links.iter() {
+            if discovered.len() >= col.max_tracked_discovered_urls {
+                break;
+            }
             if let Some(canon) = canonicalize_discovered_link(link.as_ref(), &url, col) {
                 discovered.insert(canon);
             }

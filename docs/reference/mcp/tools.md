@@ -297,7 +297,7 @@ Start parameters:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `urls` | string[] | -- | Seed URLs (required) |
-| `max_pages` | u32 | 0 (uncapped) | Page limit |
+| `max_pages` | u32 | 2000 for crawl; 0 only when explicit | Page limit |
 | `max_depth` | usize | 10 | Max crawl depth |
 | `include_subdomains` | bool | `false` | Include subdomains |
 | `respect_robots` | bool | `false` | Honor robots.txt |

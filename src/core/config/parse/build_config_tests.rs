@@ -66,7 +66,7 @@ pub(super) fn into_config_via_args(extra: &[&str]) -> Result<Config, String> {
 }
 
 #[test]
-fn extract_defaults_to_single_page_but_explicit_zero_stays_uncapped() {
+fn extract_and_crawl_defaults_are_bounded_but_explicit_zero_stays_uncapped() {
     let _guard = ENV_LOCK.lock().unwrap();
 
     let default_extract = into_config_via_args(&["extract", "https://example.com/page"])
@@ -80,7 +80,15 @@ fn extract_defaults_to_single_page_but_explicit_zero_stays_uncapped() {
 
     let default_crawl =
         into_config_via_args(&["crawl", "https://example.com"]).expect("crawl config should parse");
-    assert_eq!(default_crawl.max_pages, 0);
+    assert_eq!(
+        default_crawl.max_pages,
+        super::config_literal::DEFAULT_CRAWL_MAX_PAGES
+    );
+
+    let explicit_uncapped_crawl =
+        into_config_via_args(&["--max-pages", "0", "crawl", "https://example.com"])
+            .expect("crawl config with explicit max-pages should parse");
+    assert_eq!(explicit_uncapped_crawl.max_pages, 0);
 }
 
 /// Save/restore env vars around a test body so panics don't leak state.

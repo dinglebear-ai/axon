@@ -6,7 +6,7 @@ pub(in crate::core::config) const DEFAULT_OUTPUT_DIR: &str = ".cache/axon-rust/o
 
 #[derive(Debug, Args)]
 pub(in crate::core::config) struct GlobalArgs {
-    /// Maximum pages to crawl per job (0 = unlimited; extract defaults to 1 when omitted)
+    /// Maximum pages to crawl per job (crawl defaults to 2000; 0 = unlimited)
     #[arg(global = true, long)]
     pub(in crate::core::config) max_pages: Option<u32>,
 

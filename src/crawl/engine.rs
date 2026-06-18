@@ -51,6 +51,7 @@ pub use waf::{WafDiagnostics, build_waf_diagnostics};
 
 pub const MAX_CRAWL_DIAGNOSTICS: usize = 100;
 const LEGACY_CRAWL_BROADCAST_BUFFER_MAX: usize = 16_384;
+pub(crate) const MAX_TRACKED_DISCOVERED_URLS: usize = 50_000;
 
 pub(crate) fn crawl_subscribe_buffer_size(cfg: &Config) -> usize {
     let min = cfg.crawl_broadcast_buffer_min.max(1);
@@ -346,6 +347,7 @@ pub async fn run_crawl_once(
             max_depth: cfg.max_depth as u32,
             retry_backoff_ms: cfg.retry_backoff_ms,
             adaptive: adaptive.clone(),
+            max_tracked_discovered_urls: MAX_TRACKED_DISCOVERED_URLS,
         },
     ));
 
@@ -358,7 +360,8 @@ pub async fn run_crawl_once(
 
     match mode {
         RenderMode::Http => website.crawl_raw().await,
-        RenderMode::Chrome | RenderMode::AutoSwitch => website.crawl().await,
+        RenderMode::Chrome => website.crawl().await,
+        RenderMode::AutoSwitch => website.crawl_raw().await,
     }
     website.unsubscribe();
 
@@ -512,6 +515,7 @@ pub async fn run_sitemap_only(
             max_depth: cfg.max_depth as u32,
             retry_backoff_ms: cfg.retry_backoff_ms,
             adaptive: None,
+            max_tracked_discovered_urls: MAX_TRACKED_DISCOVERED_URLS,
         },
     ));
 

@@ -113,7 +113,7 @@ docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps
 
 ### Crawl safety
 
-- Default `--max-pages 0` is uncapped; set an explicit `--max-pages` for broad or untrusted crawls
+- Default crawl `--max-pages` is bounded at 2000; use path budgets or explicit `--max-pages 0` only for intentional deep crawls
 - `AXON_MAX_PENDING_CRAWL_JOBS` caps the queue to prevent runaway crawls
 - Auto path-prefix scoping limits crawl scope on deep URLs
 - `--respect-robots` defaults to `false` -- legal implications acknowledged
