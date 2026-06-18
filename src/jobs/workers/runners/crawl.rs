@@ -129,6 +129,7 @@ pub async fn run_crawl_job(
         &url,
         &job_output_dir,
         &caller_output_dir,
+        effective_cfg.max_pages,
         &summary,
         embed_job_id.as_deref(),
         embed_deferred.as_deref(),
@@ -342,8 +343,17 @@ fn print_crawl_completion(
         return;
     }
 
+    let coverage = if effective_cfg.max_pages > 0 && summary.pages_seen >= effective_cfg.max_pages {
+        format!(
+            " coverage=partial:max_pages_limit({})",
+            effective_cfg.max_pages
+        )
+    } else {
+        String::new()
+    };
+
     eprintln!(
-        "{} crawl completed {} pages={} markdown={} thin={} errors={} elapsed={} job={} output={}",
+        "{} crawl completed {} pages={} markdown={} thin={} errors={} elapsed={}{} job={} output={}",
         symbol_for_status("completed"),
         accent(url),
         summary.pages_seen,
@@ -351,6 +361,7 @@ fn print_crawl_completion(
         summary.thin_pages,
         summary.error_pages,
         format_elapsed_ms(summary.elapsed_ms),
+        coverage,
         id,
         job_output_dir.join("markdown").display()
     );
