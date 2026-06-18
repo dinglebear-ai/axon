@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 private const val TAG = "SessionsViewModel"
 
@@ -47,7 +48,7 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
                 },
                 onFailure = { cause ->
                     Log.w(TAG, "Failed to load mobile sessions", cause)
-                    _error.value = cause.message ?: "Could not load synced sessions"
+                    _error.value = sessionSyncMessage(cause)
                     _sessions.value = dao.allSessions().first()
                 },
             )
@@ -68,7 +69,7 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     onFailure = { cause ->
                         Log.w(TAG, "Failed to pin mobile session $sessionId", cause)
-                        _error.value = cause.message ?: "Could not pin synced session"
+                        _error.value = sessionSyncMessage(cause, "Could not pin synced session")
                     },
                 )
         }
@@ -87,7 +88,7 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     onFailure = { cause ->
                         Log.w(TAG, "Failed to unpin mobile session $sessionId", cause)
-                        _error.value = cause.message ?: "Could not unpin synced session"
+                        _error.value = sessionSyncMessage(cause, "Could not unpin synced session")
                     },
                 )
         }
@@ -103,7 +104,7 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
                 },
                 onFailure = { cause ->
                     Log.w(TAG, "Failed to delete mobile session ${session.id}", cause)
-                    _error.value = cause.message ?: "Could not delete synced session"
+                    _error.value = sessionSyncMessage(cause, "Could not delete synced session")
                 },
             )
         }
@@ -121,3 +122,16 @@ private fun MobileSessionDto.toLocalSession(): Session =
         updatedAt = updatedAt,
         pinnedAt = pinnedAt,
     )
+
+private fun sessionSyncMessage(cause: Throwable, fallback: String = "Could not sync sessions"): String {
+    val message = cause.message.orEmpty()
+    val lower = message.lowercase(Locale.US)
+    return when {
+        "<!doctype html" in lower || "<html" in lower || "expected start of the object" in lower ->
+            "$fallback. The server returned a web page instead of the mobile sessions API."
+        "401" in lower || "unauthorized" in lower ->
+            "$fallback. Check your saved Axon auth in Settings."
+        message.isBlank() -> fallback
+        else -> message.lineSequence().firstOrNull()?.take(140) ?: fallback
+    }
+}

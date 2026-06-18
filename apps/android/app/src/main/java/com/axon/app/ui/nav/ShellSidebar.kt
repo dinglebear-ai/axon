@@ -45,7 +45,7 @@ internal data class SidebarItem(
     val icon: ImageVector,
 )
 
-internal val SidebarSheetWidth = 196.dp
+internal val SidebarSheetWidth = 184.dp
 
 @Composable
 internal fun AxonSidebarSheet(
@@ -61,8 +61,8 @@ internal fun AxonSidebarSheet(
             .fillMaxHeight()
             .background(colors.panelStrong)
             .border(width = 1.dp, color = colors.borderDefault)
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 9.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Row(
             modifier = Modifier
@@ -81,7 +81,7 @@ internal fun AxonSidebarSheet(
                 fontFamily = AxonTheme.fonts.display,
             )
         }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(1.dp))
         items.forEach { item ->
             AxonSidebarRow(
                 item = item,
@@ -99,7 +99,7 @@ private fun AxonSidebarRow(
     onClick: () -> Unit,
 ) {
     val colors = AxonTheme.colors
-    val shape = RoundedCornerShape(13.dp)
+    val shape = RoundedCornerShape(11.dp)
     // Cross-fade every selection-dependent surface so the active row settles in
     // rather than snapping — keeps the rail feeling physical, not stateful.
     val colorSpec = tween<androidx.compose.ui.graphics.Color>(durationMillis = 220)
@@ -137,14 +137,14 @@ private fun AxonSidebarRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(46.dp)
+            .height(42.dp)
             .clip(shape)
             .background(rowBg, shape)
             .border(1.dp, rowBorder, shape)
             .pressScale(onClick = onClick)
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
             modifier = Modifier
@@ -162,7 +162,7 @@ private fun AxonSidebarRow(
         Text(
             text = item.label,
             color = labelColor,
-            fontSize = 13.sp,
+            fontSize = 12.4.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
