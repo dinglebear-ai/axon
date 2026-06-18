@@ -175,7 +175,10 @@ fn render_status_jobs_from_slices(
         |job| {
             job.target
                 .as_deref()
-                .map(|target| metrics::display_embed_input(target, &crawl_url_map).into_owned())
+                .map(|target| {
+                    metrics::display_embed_input(target, job.config_json.as_ref(), &crawl_url_map)
+                        .into_owned()
+                })
                 .unwrap_or_else(|| job.id.to_string())
         },
         |job| embed_progress_summary(job, embed_doc_totals.get(&job.id.to_string()).copied()),

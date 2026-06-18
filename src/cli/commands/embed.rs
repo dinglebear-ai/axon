@@ -43,7 +43,11 @@ pub(crate) fn render_embed_list(
             "Error",
         ],
         |job| {
-            let target = display_embed_input(job.target.as_deref().unwrap_or(""), &empty_crawl_map);
+            let target = display_embed_input(
+                job.target.as_deref().unwrap_or(""),
+                job.config_json.as_ref(),
+                &empty_crawl_map,
+            );
             let collection = collection_from_config(
                 job.config_json.as_ref().unwrap_or(&serde_json::Value::Null),
             )

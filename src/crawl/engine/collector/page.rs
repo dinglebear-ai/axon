@@ -45,6 +45,9 @@ pub struct CollectorConfig {
     /// Configured retry backoff (`cfg.retry_backoff_ms`) reported on the rate-limit banner.
     pub retry_backoff_ms: u64,
     pub adaptive: Option<AdaptiveCrawlControl>,
+    /// Memory guard for live discovered-link accounting. Spider still enforces
+    /// the real crawl limit; this only bounds Axon's status/backlog set.
+    pub max_tracked_discovered_urls: usize,
 }
 
 pub enum PageOutcome {

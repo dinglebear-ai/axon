@@ -31,6 +31,7 @@ fn test_collector_config(scope: Option<MapScope>) -> CollectorConfig {
         max_depth: 5,
         retry_backoff_ms: 250,
         adaptive: None,
+        max_tracked_discovered_urls: crate::crawl::engine::MAX_TRACKED_DISCOVERED_URLS,
     }
 }
 

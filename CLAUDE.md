@@ -115,7 +115,7 @@ All flags are `--global` (usable with any subcommand).
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--max-pages <n>` | u32 | `0` | Page cap for crawl (0 = uncapped, default). |
+| `--max-pages <n>` | u32 | `2000` for `crawl`, `1` for omitted `extract` | Page cap. Set `0` explicitly for an uncapped crawl. |
 | `--max-depth <n>` | usize | `10` | Maximum crawl depth from start URL. |
 | `--budget <PATH=N>` | string | — | Per-path page cap (repeatable), e.g. `--budget /blog=100 --budget '*=1000'`. `*` applies to all paths. Unset = no budget. Wired to spider's `with_budget`. |
 | `--etag-conditional` | flag | `false` | Conditional re-crawl: seed spider's ETag cache from a persisted `etag.json` sidecar so unchanged pages return 304 and are reused from the previous run instead of re-fetched. Independent of `--cache`. 304 skips are reconciled back into the manifest as `changed=false` entries, gated on spider's visited set so deleted/undiscovered pages are not resurrected. |

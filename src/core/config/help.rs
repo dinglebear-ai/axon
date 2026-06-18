@@ -96,7 +96,7 @@ const EMBED_OPTIONS: &[(&str, &str)] = &[
 const WEB_OPTIONS: &[(&str, &str)] = &[
     (
         "--max-pages <n>",
-        "Maximum pages to crawl (extract defaults to 1 when omitted)",
+        "Maximum pages to crawl (crawl default 2000; 0 = uncapped)",
     ),
     ("--max-depth <n>", "Maximum crawl depth"),
     (
@@ -248,7 +248,7 @@ fn print_top_level_help() {
     );
     row(
         "--max-pages <n>",
-        "crawl page limit (0 = uncapped; extract default 1)",
+        "crawl page limit (default 2000; 0 = uncapped)",
     );
     row(
         "--url-glob <pattern[,..]>",

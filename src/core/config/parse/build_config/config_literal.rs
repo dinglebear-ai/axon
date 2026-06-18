@@ -18,6 +18,8 @@ use super::command_dispatch::DispatchOutput;
 use crate::core::logging::log_warn;
 use std::env;
 
+pub(crate) const DEFAULT_CRAWL_MAX_PAGES: u32 = 2_000;
+
 /// Inputs required by the assemblers below. Shared so each helper takes a
 /// single tuple rather than five separate parameters.
 pub(super) struct LiteralInputs<'a> {
@@ -73,10 +75,13 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.train_best_rank = inputs.dispatched.train_best_rank;
     cfg.train_notes = inputs.dispatched.train_notes.clone();
     cfg.doctor_diagnose = inputs.dispatched.doctor_diagnose;
-    // `extract` defaults to the exact single-page path when omitted, while
-    // explicit `--max-pages 0` keeps the shared uncapped crawl semantics.
+    // `extract` defaults to the exact single-page path when omitted. `crawl`
+    // defaults to a bounded site crawl so accidental origin seeds cannot build
+    // unbounded in-memory frontiers; explicit `--max-pages 0` keeps the shared
+    // uncapped crawl semantics for intentional deep crawls.
     cfg.max_pages = match (inputs.dispatched.command, g.max_pages) {
         (CommandKind::Extract, None) => 1,
+        (CommandKind::Crawl, None) => DEFAULT_CRAWL_MAX_PAGES,
         (_, max_pages) => max_pages.unwrap_or(0),
     };
     cfg.max_depth = g.max_depth;
