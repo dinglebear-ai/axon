@@ -171,6 +171,25 @@ class AxonClientTest {
     }
 
     @Test
+    fun `collections uses read scoped api auth`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"collections":["axon","axon_sessions"]}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        val result = client.collections()
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("axon", "axon_sessions"), result.getOrThrow().collections)
+        val req = server.takeRequest()
+        assertEquals("/v1/collections", req.path)
+        assertEquals("Bearer test-token", req.getHeader("Authorization"))
+        assertEquals("test-token", req.getHeader("x-api-key"))
+        assertEquals(null, req.getHeader("x-axon-panel-token"))
+    }
+
+    @Test
     fun `savePanelEnv sends request with api bearer token`() = runBlocking {
         server.enqueue(
             MockResponse()

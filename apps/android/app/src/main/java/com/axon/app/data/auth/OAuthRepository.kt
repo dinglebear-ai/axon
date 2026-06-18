@@ -31,7 +31,7 @@ import org.json.JSONObject
 import java.io.IOException
 
 private val AXON_OAUTH_REDIRECT_URI: Uri = Uri.parse("com.axon.app://oauth2redirect")
-private const val AXON_OAUTH_SCOPE = "axon:read axon:write offline_access"
+private const val AXON_OAUTH_SCOPE = "axon:read axon:write"
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
 class OAuthRepository(

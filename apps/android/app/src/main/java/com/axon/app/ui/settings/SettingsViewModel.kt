@@ -288,7 +288,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshCollections() {
         viewModelScope.launch {
             _collections.value = _collections.value.copy(loading = true, error = null)
-            container.axonClient.panelCollections().fold(
+            container.axonClient.collections().recoverCatching {
+                container.axonClient.panelCollections().getOrThrow()
+            }.fold(
                 onSuccess = { response ->
                     _collections.value = CollectionListUiState(
                         collections = response.collections.distinct().sorted(),

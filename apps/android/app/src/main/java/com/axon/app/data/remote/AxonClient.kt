@@ -413,6 +413,10 @@ class AxonClient(
         get("/api/panel/collections")
     }
 
+    suspend fun collections(): Result<PanelCollectionsResponse> = withContext(Dispatchers.IO) {
+        get("/v1/collections")
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun encodePathSegment(s: String): String =
