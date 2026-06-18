@@ -113,19 +113,32 @@ internal fun SettingsFeedbackBanner(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(colors.tint(tone, 14, colors.pageBg).copy(alpha = 0.98f), RoundedCornerShape(8.dp))
-            .border(1.dp, tone.copy(alpha = 0.68f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .background(colors.tint(tone, 7, colors.panelStrong).copy(alpha = 0.99f), RoundedCornerShape(8.dp))
+            .border(1.dp, tone.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 11.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = tone, modifier = Modifier.size(15.dp))
+        Box(
+            modifier = Modifier
+                .height(28.dp)
+                .widthIn(min = 3.dp, max = 3.dp)
+                .background(tone, RoundedCornerShape(99.dp)),
+        )
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .background(tone.copy(alpha = 0.18f), RoundedCornerShape(99.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = tone, modifier = Modifier.size(14.dp))
+        }
         Text(
             message,
             color = colors.textPrimary,
-            fontSize = 12.2.sp,
-            lineHeight = 16.4.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+            lineHeight = 17.5.sp,
+            fontWeight = FontWeight.Bold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 4,
             overflow = TextOverflow.Ellipsis,
