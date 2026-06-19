@@ -6,9 +6,39 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      compose: ${{ steps.classify.outputs.compose }}
+      docker: ${{ steps.classify.outputs.docker }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+      - name: Resolve changed files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA" > changed-files.txt
+          else
+            : > changed-files.txt
+          fi
+          cat changed-files.txt
+      - name: Classify changed paths
+        id: classify
+        run: python3 scripts/ci/changed_paths.py --event "${{ github.event_name }}" --changed-files changed-files.txt --output "$GITHUB_OUTPUT"
+
   compose-config:
     name: compose-config
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.compose == 'true' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -44,6 +74,8 @@ jobs:
   image-build-smoke:
     name: image-build-smoke
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.docker == 'true' }}
     steps:
       # Full checkout: Dockerfile runs cargo build inside the container,
       # so the entire source tree must be in the Docker build context.
