@@ -2,6 +2,96 @@ use super::*;
 use uuid::Uuid;
 
 #[tokio::test]
+async fn migration_0013_moves_only_active_result_json_to_progress_json() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(":memory:")
+        .await
+        .expect("pool");
+
+    for table in [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs",
+    ] {
+        sqlx::query(&format!(
+            "CREATE TABLE {table} (
+                id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                result_json TEXT
+            )"
+        ))
+        .execute(&pool)
+        .await
+        .expect("create pre-0013 table");
+
+        sqlx::query(&format!(
+            "INSERT INTO {table} (id, status, result_json) VALUES ('active', 'running', ?)"
+        ))
+        .bind(r#"{"lifecycle_progress":0.7,"pages_crawled":14}"#)
+        .execute(&pool)
+        .await
+        .expect("insert active row");
+
+        sqlx::query(&format!(
+            "INSERT INTO {table} (id, status, result_json) VALUES ('done', 'completed', ?)"
+        ))
+        .bind(r#"{"pages_crawled":20,"coverage_status":"complete"}"#)
+        .execute(&pool)
+        .await
+        .expect("insert completed row");
+    }
+
+    for statement in include_str!("migrations/0013_add_job_progress_json.sql")
+        .split(';')
+        .map(str::trim)
+        .filter(|statement| !statement.is_empty())
+    {
+        sqlx::query(statement)
+            .execute(&pool)
+            .await
+            .expect("run migration statement");
+    }
+
+    for table in [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs",
+    ] {
+        let (active_progress, active_result): (Option<String>, Option<String>) = sqlx::query_as(
+            &format!("SELECT progress_json, result_json FROM {table} WHERE id = 'active'"),
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("active row");
+        assert_eq!(
+            active_progress.as_deref(),
+            Some(r#"{"lifecycle_progress":0.7,"pages_crawled":14}"#),
+            "{table} should preserve active progress"
+        );
+        assert_eq!(
+            active_result, None,
+            "{table} should clear active terminal result"
+        );
+
+        let (done_progress, done_result): (Option<String>, Option<String>) = sqlx::query_as(
+            &format!("SELECT progress_json, result_json FROM {table} WHERE id = 'done'"),
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("completed row");
+        assert_eq!(done_progress, None, "{table} should not invent progress");
+        assert_eq!(
+            done_result.as_deref(),
+            Some(r#"{"pages_crawled":20,"coverage_status":"complete"}"#),
+            "{table} should preserve terminal result"
+        );
+    }
+}
+
+#[tokio::test]
 async fn reclaim_stale_running_jobs_only_reclaims_stale_running_rows() {
     let pool = open_sqlite_pool(":memory:").await.expect("pool");
     let stale_id = Uuid::new_v4().to_string();

@@ -2,8 +2,7 @@ package com.axon.app.data.repository
 
 import android.content.Context
 import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.axon.app.data.security.SecurePrefsFactory
 
 /**
  * Encrypted storage for the bearer token. Tolerates AndroidKeyStore invalidation
@@ -22,13 +21,7 @@ class EncryptedTokenStore(
 
     private val prefs by lazy {
         runCatching {
-            EncryptedSharedPreferences.create(
-                context,
-                FILE,
-                MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
+            SecurePrefsFactory.create(context, FILE)
         }.getOrElse { t ->
             // Master key invalidated or shared-prefs file corrupted (e.g. AEADBadTagException
             // raised during EncryptedSharedPreferences.create()). Delete the file and surface

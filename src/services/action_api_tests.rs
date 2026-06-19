@@ -3,9 +3,9 @@ use crate::core::config::Config;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
 use crate::mcp::schema::{
     AskRequest, BrandRequest, CrawlRequest, CrawlSubaction, DedupeRequest, DiffRequest,
-    ElicitDemoRequest, EndpointsRequest, EvaluateRequest, MemoryRequest, MemorySubaction,
-    MigrateRequest, QueryRequest, ResearchRequest, ScreenshotRequest, StatusRequest,
-    SuggestRequest,
+    ElicitDemoRequest, EndpointsRequest, EvaluateRequest, ExtractRequest, ExtractSubaction,
+    MemoryRequest, MemorySubaction, MigrateRequest, QueryRequest, ResearchRequest,
+    ScreenshotRequest, StatusRequest, SuggestRequest,
 };
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::types::ServiceJob;
@@ -97,6 +97,120 @@ fn test_context() -> ServiceContext {
     ServiceContext::from_runtime(Arc::new(Config::default()), Arc::new(EmptyRuntime))
 }
 
+struct StatusRuntime {
+    job: ServiceJob,
+}
+
+#[async_trait]
+impl ServiceJobRuntime for StatusRuntime {
+    fn mode_name(&self) -> &'static str {
+        "test"
+    }
+
+    async fn enqueue(&self, _payload: JobPayload) -> BackendResult<Uuid> {
+        Err("not implemented".into())
+    }
+
+    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+        Err("not implemented".into())
+    }
+
+    async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+        Ok(None)
+    }
+
+    async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+        Ok(false)
+    }
+
+    async fn list_jobs(
+        &self,
+        _kind: JobKind,
+        _limit: i64,
+        _offset: i64,
+    ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
+        Ok(vec![self.job.clone()])
+    }
+
+    async fn job_status(
+        &self,
+        _kind: JobKind,
+        _id: Uuid,
+    ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
+        Ok(Some(self.job.clone()))
+    }
+
+    async fn cancel_job(
+        &self,
+        _kind: JobKind,
+        _id: Uuid,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(false)
+    }
+
+    async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+
+    async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+
+    async fn recover_jobs(
+        &self,
+        _kind: JobKind,
+        _stale_threshold_ms: i64,
+    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+
+    async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+        Ok(1)
+    }
+
+    async fn count_jobs_by_status(
+        &self,
+        _kind: JobKind,
+    ) -> Result<
+        std::collections::HashMap<crate::jobs::status::JobStatus, i64>,
+        Box<dyn Error + Send + Sync>,
+    > {
+        Ok(std::collections::HashMap::new())
+    }
+}
+
+fn service_job(
+    status: &str,
+    progress_json: Option<serde_json::Value>,
+    result_json: Option<serde_json::Value>,
+) -> ServiceJob {
+    let now = chrono::Utc::now();
+    ServiceJob {
+        id: Uuid::new_v4(),
+        status: status.to_string(),
+        created_at: now,
+        updated_at: now,
+        started_at: Some(now),
+        finished_at: None,
+        error_text: None,
+        url: None,
+        source_type: None,
+        target: None,
+        urls_json: Some(serde_json::json!(["https://example.com"])),
+        progress_json,
+        result_json,
+        config_json: None,
+        attempt_count: 1,
+        active_attempt_id: Some("attempt-1".to_string()),
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    }
+}
+
+fn test_context_with_job(job: ServiceJob) -> ServiceContext {
+    ServiceContext::from_runtime(Arc::new(Config::default()), Arc::new(StatusRuntime { job }))
+}
+
 #[tokio::test]
 async fn services_action_api_dispatches_status() {
     let result = dispatch_action(
@@ -148,6 +262,46 @@ async fn services_action_api_dispatches_crawl_list_lifecycle() {
     assert_eq!(result["limit"], 5);
     assert_eq!(result["offset"], 2);
     assert_eq!(result["jobs"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn services_action_api_extract_status_hides_active_terminal_result() {
+    let job = service_job(
+        "running",
+        Some(serde_json::json!({
+            "lifecycle_progress": 0.42,
+            "phase": "extracting",
+            "pages_crawled": 7
+        })),
+        Some(serde_json::json!({
+            "extract_result": {
+                "title": "stale previous attempt"
+            }
+        })),
+    );
+    let job_id = job.id.to_string();
+
+    let result = dispatch_action(
+        &test_context_with_job(job),
+        AxonRequest::Extract(ExtractRequest {
+            subaction: Some(ExtractSubaction::Status),
+            urls: None,
+            prompt: None,
+            max_pages: None,
+            render_mode: None,
+            embed: None,
+            job_id: Some(job_id),
+            limit: None,
+            offset: None,
+            response_mode: None,
+        }),
+    )
+    .await
+    .expect("extract status dispatch");
+
+    assert_eq!(result["job"]["status"], "running");
+    assert_eq!(result["job"]["metrics"]["pages_crawled"], 7);
+    assert!(result.get("extract_result").is_none());
 }
 
 // ── required_scope invariant tests ────────────────────────────────────────────
