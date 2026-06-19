@@ -34,7 +34,7 @@ fun TopChromeStatus(
     val dot = when (state) {
         ConnectionState.Checking -> colors.accentStrong
         ConnectionState.Online -> colors.success
-        ConnectionState.Offline -> colors.error
+        ConnectionState.Offline -> colors.textMuted
     }
     val label = when (state) {
         ConnectionState.Checking -> "Checking"
@@ -62,7 +62,7 @@ fun TopChromeStatus(
         )
         Text(
             label,
-            color = if (state == ConnectionState.Offline) colors.textPrimary.copy(alpha = 0.88f) else colors.textMuted.copy(alpha = 0.86f),
+            color = colors.textMuted.copy(alpha = if (state == ConnectionState.Offline) 0.94f else 0.86f),
             fontSize = 11.2.sp,
             lineHeight = 14.sp,
             fontFamily = AxonTheme.fonts.body,

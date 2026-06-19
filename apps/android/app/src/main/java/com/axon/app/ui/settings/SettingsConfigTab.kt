@@ -36,7 +36,6 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,6 +54,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
@@ -92,7 +93,11 @@ internal fun ConfigGroupsTab(
         )
         if (loading) AuroraStatusIndicator(tone = AuroraStatusTone.Syncing, label = "Loading real file values...")
         error?.let {
-            ConfigAccessNotice(configAccessMessage(it), warn = it.contains("401"))
+            AppNoticeBanner(
+                message = humanizeJsonFragmentText(configAccessMessage(it)),
+                tone = if (it.contains("401") || it.contains("Panel unlock required")) NoticeTone.Warn else NoticeTone.Error,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         filteredGroups.forEach { group ->
             SettingGroupCard(group = group) {
@@ -158,37 +163,6 @@ private fun SettingsSearchField(value: String, onValueChange: (String) -> Unit) 
 }
 
 @Composable
-private fun ConfigAccessNotice(message: String, warn: Boolean) {
-    val colors = AxonTheme.colors
-    val tone = if (warn) colors.warn else colors.error
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(colors.tint(tone, 3, colors.pageBg), RoundedCornerShape(8.dp))
-            .border(1.dp, colors.tint(tone, 15, colors.pageBg), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 9.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Icon(
-            Icons.Rounded.WarningAmber,
-            contentDescription = null,
-            tint = tone,
-            modifier = Modifier.size(17.dp).padding(top = 1.dp),
-        )
-        Text(
-            humanizeJsonFragmentText(message),
-            color = colors.textPrimary,
-            fontSize = 11.8.sp,
-            lineHeight = 16.sp,
-            fontFamily = AxonTheme.fonts.body,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
 private fun SettingGroupCard(group: SettingGroup, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -210,8 +184,8 @@ private fun SettingEditor(field: SettingField, value: String, explicit: Boolean,
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.panelMedium.copy(alpha = 0.24f), RoundedCornerShape(8.dp))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+            .background(colors.panelMedium.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.075f), RoundedCornerShape(8.dp))
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(13.dp),
     ) {
@@ -277,8 +251,8 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
-            .background(colors.pageBg.copy(alpha = 0.92f), RoundedCornerShape(8.dp))
-            .border(1.dp, colors.borderStrong.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .background(colors.pageBg.copy(alpha = 0.82f), RoundedCornerShape(8.dp))
+            .border(1.dp, colors.borderStrong.copy(alpha = 0.34f), RoundedCornerShape(8.dp))
             .padding(start = if (secret) 14.dp else 16.dp, end = if (secret) 8.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -372,7 +346,7 @@ private fun Badge(text: String, color: Color = AxonTheme.colors.textMuted, compa
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
             .background(colors.tint(color, if (compact) 2 else 5, colors.panelMedium), RoundedCornerShape(999.dp))
-            .border(1.dp, color.copy(alpha = if (compact) 0.12f else 0.22f), RoundedCornerShape(999.dp))
+            .border(1.dp, color.copy(alpha = if (compact) 0.09f else 0.18f), RoundedCornerShape(999.dp))
             .padding(horizontal = if (compact) 6.dp else 7.dp, vertical = if (compact) 2.dp else 3.dp),
         fontSize = if (compact) 8.sp else 8.6.sp,
         fontWeight = FontWeight.SemiBold,
@@ -386,7 +360,7 @@ private fun BoxIcon(iconName: String) {
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
             .background(colors.tint(colors.accentPrimary, 12, colors.control), RoundedCornerShape(9.dp))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.16f), RoundedCornerShape(7.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.10f), RoundedCornerShape(7.dp))
             .padding(3.dp),
         contentAlignment = Alignment.Center,
     ) {

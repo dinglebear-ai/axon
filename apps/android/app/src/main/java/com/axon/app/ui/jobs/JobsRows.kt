@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.data.repository.WatchUi
+import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
@@ -384,9 +386,9 @@ internal fun EmptyJobsCard(title: String, subtitle: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.control.copy(alpha = 0.04f), RoundedCornerShape(10.dp))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
-            .padding(horizontal = 14.dp, vertical = 13.dp),
+            .background(colors.control.copy(alpha = 0.025f), RoundedCornerShape(9.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.07f), RoundedCornerShape(9.dp))
+            .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Text(title, color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = AxonTheme.fonts.display)
@@ -396,16 +398,9 @@ internal fun EmptyJobsCard(title: String, subtitle: String) {
 
 @Composable
 internal fun JobsErrorCard(message: String) {
-    val colors = AxonTheme.colors
-    Text(
-        humanizeJsonFragmentText(message),
-        color = colors.error,
-        fontSize = 12.sp,
-        fontFamily = AxonTheme.fonts.body,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.control, RoundedCornerShape(13.dp))
-            .border(1.dp, colors.error.copy(alpha = 0.45f), RoundedCornerShape(13.dp))
-            .padding(13.dp),
+    AppNoticeBanner(
+        message = humanizeJsonFragmentText(message),
+        tone = NoticeTone.Error,
+        modifier = Modifier.fillMaxWidth(),
     )
 }

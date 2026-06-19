@@ -104,9 +104,9 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     .fillMaxWidth(0.96f)
                     .widthIn(max = 420.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(AxonTheme.colors.panelMedium.copy(alpha = 0.42f), RoundedCornerShape(10.dp))
-                    .border(1.dp, AxonTheme.colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
-                    .padding(4.dp),
+                    .background(AxonTheme.colors.panelMedium.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
+                    .border(1.dp, AxonTheme.colors.borderDefault.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                    .padding(3.dp),
             ) {
                 SettingsTab.entries.forEach { entry ->
                     SettingsTabButton(entry, selected = tab == entry, modifier = Modifier.weight(1f)) {
@@ -206,11 +206,11 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) colors.tint(colors.accentPrimary, 10, colors.pageBg) else colors.control.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
-            .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 28, colors.pageBg) else colors.borderDefault.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
+            .background(if (selected) colors.tint(colors.accentPrimary, 7, colors.pageBg) else colors.control.copy(alpha = 0.01f), RoundedCornerShape(8.dp))
+            .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 20, colors.pageBg) else colors.borderDefault.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-                    .height(54.dp)
-                    .padding(horizontal = 8.dp),
+            .height(46.dp)
+            .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
