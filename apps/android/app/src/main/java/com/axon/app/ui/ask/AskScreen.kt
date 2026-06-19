@@ -155,9 +155,9 @@ fun AskScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
-                        .fillMaxWidth(0.94f)
-                        .widthIn(max = 430.dp),
-                    contentPadding = PaddingValues(start = 8.dp, top = 18.dp, end = 8.dp, bottom = 148.dp),
+                        .fillMaxWidth()
+                        .widthIn(max = 460.dp),
+                    contentPadding = PaddingValues(start = 6.dp, top = 12.dp, end = 6.dp, bottom = 148.dp),
                 ) {
                     when {
                         chatItems.isNotEmpty() -> {
@@ -264,11 +264,11 @@ fun AskScreen(
                     onRemoveAttachment = { idx -> attachments = attachments.filterIndexed { i, _ -> i != idx } },
                     onStop = { vm.stopGeneration() },
                     modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .widthIn(max = 420.dp)
+                        .fillMaxWidth()
+                        .widthIn(max = 460.dp)
                         .imePadding()
                         .navigationBarsPadding()
-                        .padding(horizontal = 0.dp, vertical = 12.dp),
+                        .padding(horizontal = 6.dp, vertical = 12.dp),
                     onSend = {
                         vm.ask(input, attachment = combinedAttachmentText(attachments))
                         input = ""

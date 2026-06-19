@@ -231,32 +231,18 @@ private fun ShellPageContent(
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
             vm = askVm,
         )
-        DrawerSection.Sessions -> PageSurface {
-            SessionsDrawerContent(
-                onSelect = { sessionId ->
-                    if (sessionId == "new") askVm.startNewSession() else askVm.loadSession(sessionId)
-                    onShowAsk()
-                },
-            )
-        }
+        DrawerSection.Sessions -> SessionsDrawerContent(
+            onSelect = { sessionId ->
+                if (sessionId == "new") askVm.startNewSession() else askVm.loadSession(sessionId)
+                onShowAsk()
+            },
+        )
         DrawerSection.Jobs -> JobsScreen()
         DrawerSection.Knowledge -> KnowledgeScreen(
             onOpenTab = { tab -> onOpenOverlay(ShellOverlay.Knowledge(tab)) },
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
         )
         DrawerSection.Settings -> SettingsScreen()
-    }
-}
-
-@Composable
-private fun PageSurface(content: @Composable () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AxonTheme.colors.pageBg)
-            .padding(10.dp),
-    ) {
-        content()
     }
 }
 

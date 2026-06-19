@@ -67,9 +67,9 @@ fun SessionsDrawerContent(
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
             modifier = Modifier
-                .fillMaxWidth(0.86f)
-                .widthIn(max = 372.dp)
-                .padding(top = 15.dp),
+                .fillMaxWidth()
+                .widthIn(max = 460.dp)
+                .padding(start = 6.dp, top = 10.dp, end = 6.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             item {

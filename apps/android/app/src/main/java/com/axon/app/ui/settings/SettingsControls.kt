@@ -65,15 +65,15 @@ internal fun SettingsActionDock(
                 message = message,
                 kind = kind,
                 modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .widthIn(max = 420.dp),
+                    .fillMaxWidth()
+                    .widthIn(max = 460.dp),
             )
         }
         Row(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .widthIn(max = 420.dp),
+                .fillMaxWidth()
+                .widthIn(max = 460.dp),
         ) {
             CompactActionButton(
                 label = primaryLabel,

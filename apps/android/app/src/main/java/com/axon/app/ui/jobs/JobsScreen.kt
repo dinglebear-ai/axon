@@ -89,18 +89,18 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                 crawledPagesLoading = crawledPagesLoading,
                 crawledPagesError = crawledPagesError,
                 modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .widthIn(max = 460.dp)
-                    .padding(top = 20.dp),
+                    .fillMaxWidth()
+                    .widthIn(max = 520.dp)
+                    .padding(start = 6.dp, top = 10.dp, end = 6.dp),
                 onBack = { selectedJob = null },
             )
         } else {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .widthIn(max = 460.dp)
-                    .padding(top = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .fillMaxWidth()
+                    .widthIn(max = 520.dp)
+                    .padding(start = 6.dp, top = 10.dp, end = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (val selected = drill) {
                     null -> {

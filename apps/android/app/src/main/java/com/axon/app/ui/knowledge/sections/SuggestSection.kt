@@ -85,7 +85,7 @@ fun SuggestSection(vm: KnowledgeViewModel) {
         when (val s = state) {
             Resource.Idle, Resource.Loading -> LoadingContent(
                 label = "Loading suggestions…",
-                modifier = Modifier.fillMaxWidth(0.84f).widthIn(max = 350.dp),
+                modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp),
             )
             is Resource.Error -> ErrorContent(
                 message = s.message,
@@ -103,7 +103,7 @@ fun SuggestSection(vm: KnowledgeViewModel) {
                 } else {
                     val reveal = rememberRevealState()
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth(0.84f).widthIn(max = 350.dp),
+                        modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         itemsIndexed(hits, key = { _, it -> it.url }) { index, hit ->
@@ -136,8 +136,8 @@ private fun CompactSuggestInput(
     val shape = RoundedCornerShape(10.dp)
     Row(
         modifier = Modifier
-            .fillMaxWidth(0.84f)
-            .widthIn(max = 350.dp)
+            .fillMaxWidth()
+            .widthIn(max = 440.dp)
             .height(38.dp)
             .clip(shape)
             .background(colors.control.copy(alpha = 0.42f), shape)
