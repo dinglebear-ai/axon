@@ -81,7 +81,7 @@ if [ "$crate_type" != "bin" ] || [ "$is_test" -eq 1 ] || [ -z "$out" ] || [ ! -x
 fi
 
 case "$crate_name" in
-  axon|axon-palette-tauri) ;;
+  axon|axon-palette-tauri|axon_palette_tauri) ;;
   *) exit 0 ;;
 esac
 
@@ -110,7 +110,7 @@ esac
 
 case "$crate_name" in
   axon) artifact_base="axon" ;;
-  axon-palette-tauri) artifact_base="axon-palette" ;;
+  axon-palette-tauri|axon_palette_tauri) artifact_base="axon-palette" ;;
 esac
 
 ext=""
@@ -127,7 +127,13 @@ fi
 bin_dir="${AXON_ARTIFACT_BIN_DIR:-$repo_root/bin}"
 mkdir -p "$bin_dir"
 cp -f "$out" "$bin_dir/$artifact_name"
-chmod 755 "$bin_dir/$artifact_name" 2>/dev/null || true
+if [ "$ext" != ".exe" ]; then
+  chmod 755 "$bin_dir/$artifact_name"
+else
+  chmod 755 "$bin_dir/$artifact_name" 2>/dev/null || {
+    echo "warning: copied Windows artifact but could not chmod $bin_dir/$artifact_name" >&2
+  }
+fi
 
 if [ "$crate_name" != "axon" ]; then
   exit 0

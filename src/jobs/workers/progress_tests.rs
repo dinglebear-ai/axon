@@ -32,6 +32,7 @@ async fn crawl_progress_persister_includes_adaptive_concurrency_snapshot() {
     );
     tx.send(CrawlSummary {
         pages_seen: 2,
+        pages_discovered: 4,
         adaptive: Some(AdaptiveCrawlSnapshot {
             successes: 10,
             failures: 1,
@@ -57,6 +58,8 @@ async fn crawl_progress_persister_includes_adaptive_concurrency_snapshot() {
         serde_json::from_str(progress_json.as_deref().expect("stored progress json"))
             .expect("valid json");
 
+    assert_eq!(value["phase"], "crawling");
+    assert_eq!(value["lifecycle_progress"], serde_json::json!(0.5));
     assert_eq!(value["pages_crawled"], 2);
     assert_eq!(value["adaptive_concurrency"]["current_target"], 5);
     assert_eq!(value["adaptive_concurrency"]["available_permits"], 4);

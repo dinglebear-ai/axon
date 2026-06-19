@@ -161,6 +161,11 @@ jobs:
       - name: Run Android unit tests and lint
         run: apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:lintDebug --no-daemon --stacktrace
 
+      - name: Build Android debug APK artifact
+        run: |
+          apps/android/gradlew -p apps/android :app:copyDebugApkToRepoBin --no-daemon --stacktrace
+          test -s bin/axon-android-debug.apk
+
   no-mod-rs:
     name: no-mod-rs
     runs-on: ubuntu-latest
@@ -324,6 +329,10 @@ jobs:
       # palette-release.yml *after* the palette-v* tag is published.
       - name: Tauri build (no bundle)
         run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle
+      - name: Copy Tauri artifact to bin
+        run: |
+          node apps/palette-tauri/scripts/copy-artifacts.mjs
+          test -s bin/axon-palette-release
 
   windows-check:
     name: windows-check (xtask only)

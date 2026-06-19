@@ -50,7 +50,9 @@ internal fun progressForStatus(status: String): Float = when (status.lowercase()
 internal fun progressForJob(job: JobUi): Float {
     if (isCompletedJobStatus(job.status)) return 1f
     val fromProgress = lifecycleProgressFromProgress(job.progressJson)
-    return fromProgress ?: progressForStatus(job.status)
+    return fromProgress
+        ?: lifecycleProgressFromCounters(job.progressJson)
+        ?: progressForStatus(job.status)
 }
 
 internal fun progressForJobDetail(job: JobUi): Float =
@@ -121,6 +123,17 @@ internal fun lifecycleProgressFromProgress(progress: JsonElement?): Float? {
     return value.coerceIn(0.02f, 1f)
 }
 
+internal fun lifecycleProgressFromCounters(progress: JsonElement?): Float? {
+    val obj = progress as? JsonObject ?: return null
+    ratioMetric(obj, "pages_crawled", "pages_discovered")?.let { return it }
+    ratioMetric(obj, "docs_embedded", "docs_total")?.let { return it }
+    ratioMetric(obj, "docs_completed", "docs_total")?.let { return it }
+    ratioMetric(obj, "files_done", "files_total")?.let { return it }
+    ratioMetric(obj, "videos_done", "videos_total")?.let { return it }
+    ratioMetric(obj, "tasks_done", "tasks_total")?.let { return it }
+    return null
+}
+
 internal fun coverageSummary(job: JobUi): String? {
     val result = job.resultJson as? JsonObject ?: return null
     val summary = topLevelString(result, "coverage_summary")
@@ -160,6 +173,13 @@ private fun topLevelMetric(obj: JsonObject, vararg keys: String): Long? {
         if (value != null) return value
     }
     return null
+}
+
+private fun ratioMetric(obj: JsonObject, doneKey: String, totalKey: String): Float? {
+    val done = topLevelMetric(obj, doneKey) ?: return null
+    val total = topLevelMetric(obj, totalKey) ?: return null
+    if (total <= 0L) return null
+    return (done.toFloat() / total.toFloat()).coerceIn(0.02f, 0.98f)
 }
 
 private val crawlPageArrayKeys = setOf(

@@ -258,18 +258,8 @@ fn job_status_from_row(row: JobStatusDbRow) -> JobStatusRow {
         started_at: row.started_at.map(ms_to_dt),
         finished_at: row.finished_at.map(ms_to_dt),
         error_text: row.error_text,
-        progress_json: row.progress_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt progress_json in job status row, using None");
-                None
-            })
-        }),
-        result_json: row.result_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt result_json in job status row, using None");
-                None
-            })
-        }),
+        progress_json: parse_optional_json("progress_json", row.progress_json),
+        result_json: parse_optional_json("result_json", row.result_json),
         attempt_count: row.attempt_count,
         active_attempt_id: row.active_attempt_id,
         last_reclaimed_at: row.last_reclaimed_at.map(ms_to_dt),
@@ -362,35 +352,28 @@ fn service_job_from_row(row: ServiceJobRow) -> ServiceJob {
         url: row.url,
         source_type: row.source_type,
         target: row.target,
-        urls_json: row.urls_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt urls_json in service job row, using None");
-                None
-            })
-        }),
-        progress_json: row.progress_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt progress_json in service job row, using None");
-                None
-            })
-        }),
-        result_json: row.result_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt result_json in service job row, using None");
-                None
-            })
-        }),
-        config_json: row.config_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt config_json in service job row, using None");
-                None
-            })
-        }),
+        urls_json: parse_optional_json("urls_json", row.urls_json),
+        progress_json: parse_optional_json("progress_json", row.progress_json),
+        result_json: parse_optional_json("result_json", row.result_json),
+        config_json: parse_optional_json("config_json", row.config_json),
         attempt_count: row.attempt_count,
         active_attempt_id: row.active_attempt_id,
         last_reclaimed_at: row.last_reclaimed_at.map(ms_to_dt),
         last_reclaimed_reason: row.last_reclaimed_reason,
     }
+}
+
+fn parse_optional_json(field: &'static str, raw: Option<String>) -> Option<serde_json::Value> {
+    raw.map(|json| {
+        serde_json::from_str(&json).unwrap_or_else(|e| {
+            tracing::warn!(field, error = %e, "corrupt job JSON field");
+            serde_json::json!({
+                "degraded": true,
+                "field": field,
+                "error": "corrupt job JSON"
+            })
+        })
+    })
 }
 
 pub async fn list_service_jobs(

@@ -203,10 +203,10 @@ pub fn build_status_payload_with_errors(
     errors: &[String],
 ) -> serde_json::Value {
     serde_json::json!({
-        "local_crawl_jobs": crawl_jobs,
-        "local_extract_jobs": extract_jobs,
-        "local_embed_jobs": embed_jobs,
-        "local_ingest_jobs": ingest_jobs,
+        "local_crawl_jobs": wire_jobs(crawl_jobs),
+        "local_extract_jobs": wire_jobs(extract_jobs),
+        "local_embed_jobs": wire_jobs(embed_jobs),
+        "local_ingest_jobs": wire_jobs(ingest_jobs),
         "totals": {
             "crawl": totals.crawl,
             "extract": totals.extract,
@@ -216,6 +216,10 @@ pub fn build_status_payload_with_errors(
         "degraded": !errors.is_empty(),
         "errors": errors,
     })
+}
+
+fn wire_jobs(jobs: &[ServiceJob]) -> Vec<serde_json::Value> {
+    jobs.iter().map(ServiceJob::wire_json_compat).collect()
 }
 
 #[cfg(test)]

@@ -106,6 +106,34 @@ async fn list_service_jobs_prioritizes_running_crawl_rows_over_newer_pending_row
 }
 
 #[tokio::test]
+async fn corrupt_service_job_json_surfaces_degraded_marker() {
+    let pool = open_sqlite_pool(":memory:").await.unwrap();
+    let id = Uuid::new_v4();
+
+    sqlx::query(
+        "INSERT INTO axon_crawl_jobs (id, status, url, config_json, progress_json, created_at, updated_at, started_at) \
+         VALUES (?, 'running', 'https://broken.example', '{}', '{nope', ?, ?, ?)",
+    )
+    .bind(id.to_string())
+    .bind(1_000_i64)
+    .bind(1_000_i64)
+    .bind(1_000_i64)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let job = service_job(&pool, JobKind::Crawl, id)
+        .await
+        .unwrap()
+        .expect("job");
+    let progress = job.progress_json.expect("degraded progress marker");
+
+    assert_eq!(progress["degraded"], true);
+    assert_eq!(progress["field"], "progress_json");
+    assert_eq!(progress["error"], "corrupt job JSON");
+}
+
+#[tokio::test]
 async fn list_ingest_service_jobs_applies_source_filter_before_limit() {
     let pool = open_sqlite_pool(":memory:").await.unwrap();
     let now = now_ms();

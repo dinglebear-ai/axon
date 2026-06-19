@@ -17,6 +17,8 @@ pub(super) fn spawn_crawl_progress_persister(
     let task = tokio::spawn(async move {
         while let Some(summary) = rx.recv().await {
             let mut progress = serde_json::json!({
+                "phase": "crawling",
+                "lifecycle_progress": active_ratio(summary.pages_seen as f64, summary.pages_discovered as f64),
                 "output_dir": output_dir,
                 "output_path": output_dir.join("markdown"),
                 "pages_crawled": summary.pages_seen,
@@ -66,6 +68,8 @@ pub(super) fn spawn_embed_progress_persister(
     let task = tokio::spawn(async move {
         while let Some(progress) = rx.recv().await {
             let json = serde_json::json!({
+                "phase": "embedding",
+                "lifecycle_progress": active_ratio(progress.docs_completed as f64, progress.docs_total as f64),
                 "docs_total": progress.docs_total,
                 "docs_embedded": progress.docs_completed,
                 "chunks_embedded": progress.chunks_embedded,
@@ -84,6 +88,13 @@ pub(super) fn spawn_embed_progress_persister(
         }
     });
     (tx, task)
+}
+
+fn active_ratio(done: f64, total: f64) -> f64 {
+    if total <= 0.0 {
+        return 0.02;
+    }
+    ((done / total).clamp(0.02, 0.98) * 100.0).round() / 100.0
 }
 
 #[cfg(test)]

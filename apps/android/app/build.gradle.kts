@@ -123,13 +123,24 @@ val repoBinDir = rootProject.layout.projectDirectory.dir("../../bin")
 
 fun registerApkArtifactCopy(variant: String) {
     val capitalized = variant.replaceFirstChar { it.uppercaseChar() }
-    val copyTask = tasks.register<Copy>("copy${capitalized}ApkToRepoBin") {
+    val copyTask = tasks.register("copy${capitalized}ApkToRepoBin") {
         dependsOn("assemble$capitalized")
-        from(layout.buildDirectory.dir("outputs/apk/$variant")) {
-            include("*.apk")
-            rename { "axon-android-$variant.apk" }
+        doLast {
+            val apkDir = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
+            val apks = apkDir
+                .listFiles { file -> file.isFile && file.extension == "apk" }
+                ?.toList()
+                .orEmpty()
+            require(apks.size == 1) {
+                "Expected exactly one $variant APK in ${apkDir.absolutePath}, found ${apks.size}: ${apks.joinToString { it.name }}"
+            }
+            val dest = repoBinDir.file("axon-android-$variant.apk").asFile
+            dest.parentFile.mkdirs()
+            apks.single().copyTo(dest, overwrite = true)
+            require(dest.isFile && dest.length() > 0) {
+                "Copied $variant APK to ${dest.absolutePath}, but the file is missing or empty"
+            }
         }
-        into(repoBinDir)
     }
     tasks.matching { it.name == "assemble$capitalized" }.configureEach {
         finalizedBy(copyTask)

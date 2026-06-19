@@ -96,11 +96,11 @@ copy_exe() {
   [[ -f "$src" ]] || die "built executable not found: $src"
   mkdir -p "$remote_repo/bin"
   cp -f "$src" "$remote_repo/bin/$artifact_name"
-  chmod 755 "$remote_repo/bin/$artifact_name" 2>/dev/null || true
+  chmod 755 "$remote_repo/bin/$artifact_name" 2>/dev/null || log "Warning: could not chmod $remote_repo/bin/$artifact_name"
   log "Copied $src -> $remote_repo/bin/$artifact_name"
   mkdir -p "$desktop"
   cp -f "$src" "$desktop/$dest_name"
-  chmod 755 "$desktop/$dest_name" 2>/dev/null || true
+  chmod 755 "$desktop/$dest_name" 2>/dev/null || log "Warning: could not chmod $desktop/$dest_name"
   log "Copied $src -> $desktop/$dest_name"
 }
 

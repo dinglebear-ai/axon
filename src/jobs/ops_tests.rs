@@ -546,14 +546,19 @@ async fn mark_failed_sets_error_text() {
         .await
         .expect("fail");
 
-    let row: (String, String) =
-        sqlx::query_as("SELECT status, error_text FROM axon_crawl_jobs WHERE id = ?")
-            .bind(id.to_string())
-            .fetch_one(&pool)
-            .await
-            .expect("fetch");
+    let row: (String, String, String) = sqlx::query_as(
+        "SELECT status, error_text, progress_json FROM axon_crawl_jobs WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("fetch");
     assert_eq!(row.0, "failed");
     assert_eq!(row.1, "connection timeout");
+    let progress: serde_json::Value = serde_json::from_str(&row.2).expect("progress json");
+    assert_eq!(progress["phase"], "failed");
+    assert_eq!(progress["lifecycle_progress"], serde_json::json!(1.0));
+    assert_eq!(progress["error"], "connection timeout");
 }
 
 #[tokio::test]
@@ -608,14 +613,18 @@ async fn cancel_row_sets_finished_at() {
     let canceled = cancel_row(&pool, JobKind::Crawl, id).await.expect("cancel");
     assert!(canceled);
 
-    let row: (String, Option<i64>) =
-        sqlx::query_as("SELECT status, finished_at FROM axon_crawl_jobs WHERE id = ?")
-            .bind(id.to_string())
-            .fetch_one(&pool)
-            .await
-            .expect("fetch");
+    let row: (String, Option<i64>, String) = sqlx::query_as(
+        "SELECT status, finished_at, progress_json FROM axon_crawl_jobs WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("fetch");
     assert_eq!(row.0, "canceled");
     assert!(row.1.is_some());
+    let progress: serde_json::Value = serde_json::from_str(&row.2).expect("progress json");
+    assert_eq!(progress["phase"], "canceled");
+    assert_eq!(progress["lifecycle_progress"], serde_json::json!(1.0));
 }
 
 #[tokio::test]

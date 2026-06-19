@@ -46,6 +46,12 @@ if (existsSync(bundleRoot)) {
   }
 }
 
+if (copied === 0) {
+  const checked = knownExecutables.map((artifact) => artifact.source).join(", ");
+  console.error(`error: no palette artifacts found after build; checked ${checked} and ${bundleRoot}`);
+  process.exit(1);
+}
+
 console.log(`Copied ${copied} palette artifact(s) to ${binDir}`);
 
 function* walk(dir) {

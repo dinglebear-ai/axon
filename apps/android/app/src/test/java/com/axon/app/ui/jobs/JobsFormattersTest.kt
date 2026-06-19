@@ -82,6 +82,39 @@ class JobsFormattersTest {
     }
 
     @Test
+    fun `running crawl progress falls back to live counters from server payload`() {
+        val job = JobUi(
+            id = "job-1",
+            status = "running",
+            url = "https://example.com",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            progressJson = Json.parseToJsonElement("""{"phase":"crawling","pages_crawled":44,"pages_discovered":100}"""),
+            resultJson = null,
+        )
+
+        assertEquals(0.44f, progressForJob(job), 0.0001f)
+        assertEquals("44 pages", pagesCrawledMetric(job))
+    }
+
+    @Test
+    fun `running embed progress falls back to live counters from server payload`() {
+        val job = JobUi(
+            id = "job-1",
+            status = "running",
+            url = null,
+            sourceType = null,
+            target = "docs",
+            errorText = null,
+            progressJson = Json.parseToJsonElement("""{"phase":"embedding","docs_embedded":3,"docs_total":4,"chunks_embedded":12}"""),
+            resultJson = null,
+        )
+
+        assertEquals(0.75f, progressForJob(job), 0.0001f)
+    }
+
+    @Test
     fun `requeued previous attempt progress is not shown as current metrics`() {
         val job = JobUi(
             id = "job-1",
