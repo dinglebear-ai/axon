@@ -9,9 +9,7 @@ plugins {
 
 val axonOpenApiSpec = rootProject.layout.projectDirectory.file("../../apps/web/openapi/axon.json")
 val axonOpenApiOutput = layout.buildDirectory.dir("generated/openapi")
-val androidTempFilePatchPattern =
-    Regex("""java\.nio\.file\.Files\.createTempFile\(([^)]*)\)\.toFile\(\)""")
-val androidTempFileReplacement = "java.io.File.createTempFile($1)"
+val axonOpenApiTemplates = rootProject.layout.projectDirectory.dir("openapi-templates")
 
 android {
     namespace = "com.axon.app"
@@ -77,6 +75,7 @@ openApiGenerate {
     library.set("jvm-okhttp4")
     inputSpec.set(axonOpenApiSpec.asFile.absolutePath)
     outputDir.set(axonOpenApiOutput.get().asFile.absolutePath)
+    templateDir.set(axonOpenApiTemplates.asFile.absolutePath)
     apiPackage.set("com.axon.app.generated.api")
     modelPackage.set("com.axon.app.generated.model")
     invokerPackage.set("com.axon.app.generated.invoker")
@@ -100,29 +99,11 @@ openApiGenerate {
 
 tasks.named("openApiGenerate") {
     inputs.file(axonOpenApiSpec)
+    inputs.dir(axonOpenApiTemplates)
     outputs.dir(axonOpenApiOutput)
     doFirst {
         require(axonOpenApiSpec.asFile.isFile) {
             "Missing OpenAPI spec at ${axonOpenApiSpec.asFile.absolutePath}; run `cargo xtask check-openapi-drift` from repo root."
-        }
-    }
-    doLast {
-        val apiClient = axonOpenApiOutput.get()
-            .file("src/main/kotlin/org/openapitools/client/infrastructure/ApiClient.kt")
-            .asFile
-        if (apiClient.isFile) {
-            val before = apiClient.readText()
-            val matches = androidTempFilePatchPattern.findAll(before).toList()
-            require(matches.size == 1) {
-                "Generated ApiClient.kt should contain exactly one Android-incompatible java.nio temp-file call; found ${matches.size}."
-            }
-            val after = before.replace(androidTempFilePatchPattern, androidTempFileReplacement)
-            require(!androidTempFilePatchPattern.containsMatchIn(after) && after.contains("java.io.File.createTempFile(")) {
-                "Generated ApiClient.kt temp-file patch did not apply cleanly."
-            }
-            apiClient.writeText(after)
-        } else {
-            error("Generated ApiClient.kt not found at ${apiClient.absolutePath}; OpenAPI generator layout changed.")
         }
     }
 }

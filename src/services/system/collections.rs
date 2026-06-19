@@ -53,3 +53,88 @@ pub fn map_collections_payload(value: &serde_json::Value) -> CollectionsResult {
     collections.sort();
     CollectionsResult { collections }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::Method::GET;
+    use httpmock::MockServer;
+
+    fn cfg_for_qdrant(url: String) -> Config {
+        Config {
+            qdrant_url: url,
+            ..Config::default()
+        }
+    }
+
+    #[test]
+    fn map_collections_payload_sorts_and_ignores_invalid_entries() {
+        let payload = serde_json::json!({
+            "result": {
+                "collections": [
+                    { "name": "zeta" },
+                    { "name": 42 },
+                    { "other": "ignored" },
+                    { "name": "axon" }
+                ]
+            }
+        });
+
+        let result = map_collections_payload(&payload);
+
+        assert_eq!(result.collections, vec!["axon", "zeta"]);
+    }
+
+    #[tokio::test]
+    async fn collections_fetches_qdrant_names() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/collections");
+            then.status(200).json_body(serde_json::json!({
+                "result": {
+                    "collections": [
+                        { "name": "docs" },
+                        { "name": "axon" }
+                    ]
+                }
+            }));
+        });
+        let cfg = cfg_for_qdrant(server.base_url());
+
+        let result = collections(&cfg).await.expect("collections result");
+
+        mock.assert();
+        assert_eq!(result.collections, vec!["axon", "docs"]);
+    }
+
+    #[tokio::test]
+    async fn collections_maps_non_success_status() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/collections");
+            then.status(503).body("not today");
+        });
+        let cfg = cfg_for_qdrant(server.base_url());
+
+        let err = collections(&cfg).await.expect_err("status error");
+
+        assert!(matches!(
+            err,
+            CollectionsError::Status(reqwest::StatusCode::SERVICE_UNAVAILABLE)
+        ));
+    }
+
+    #[tokio::test]
+    async fn collections_maps_invalid_json() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/collections");
+            then.status(200).body("not json");
+        });
+        let cfg = cfg_for_qdrant(server.base_url());
+
+        let err = collections(&cfg).await.expect_err("invalid json error");
+
+        assert!(matches!(err, CollectionsError::InvalidResponse(_)));
+    }
+}

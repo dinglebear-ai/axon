@@ -189,16 +189,18 @@ async fn collections_response(cfg: &Config) -> Result<PanelCollectionsResponse, 
         Ok(result) => Ok(PanelCollectionsResponse {
             collections: result.collections,
         }),
-        Err(system::CollectionsError::ClientBuild(err)) => Err(HttpError::new(
+        Err(error) => Err(collections_error_to_http(error)),
+    }
+}
+
+fn collections_error_to_http(error: system::CollectionsError) -> HttpError {
+    match error {
+        system::CollectionsError::ClientBuild(err) => HttpError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal",
             err.to_string(),
-        )),
-        Err(err) => Err(HttpError::new(
-            StatusCode::BAD_GATEWAY,
-            "bad_gateway",
-            err.to_string(),
-        )),
+        ),
+        err => HttpError::new(StatusCode::BAD_GATEWAY, "bad_gateway", err.to_string()),
     }
 }
 
@@ -440,5 +442,21 @@ pub async fn panel_artifact(
     match super::artifacts::serve_artifact_from_path(&cfg, rel_path).await {
         Ok(response) => response,
         Err(err) => err.into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collections_status_errors_map_to_bad_gateway() {
+        let error = collections_error_to_http(system::CollectionsError::Status(
+            StatusCode::SERVICE_UNAVAILABLE,
+        ));
+
+        assert_eq!(error.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(error.kind(), "bad_gateway");
+        assert!(error.message().contains("503"));
     }
 }
