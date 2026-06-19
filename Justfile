@@ -45,10 +45,10 @@ web-build:
 
 web-check:
     cd apps/web && npm run lint
-    ./scripts/check_openapi_drift.sh
+    cargo xtask check-openapi-drift
 
 openapi-check:
-    ./scripts/check_openapi_drift.sh
+    cargo xtask check-openapi-drift
 
 # Package the Chrome extension into dist/axon-page-scraper-<version>.zip
 package-extension:
