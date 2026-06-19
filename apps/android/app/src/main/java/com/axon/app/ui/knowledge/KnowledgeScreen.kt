@@ -37,10 +37,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.knowledge.sections.DomainsSection
 import com.axon.app.ui.knowledge.sections.SourcesSection
 import com.axon.app.ui.knowledge.sections.StatsSection
 import com.axon.app.ui.knowledge.sections.SuggestSection
+import com.axon.app.ui.common.Resource
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
@@ -79,11 +82,17 @@ fun KnowledgeScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 10.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (showChrome) {
+            val unavailable = listOf(suggest, sources, domains, stats).count { it is Resource.Error }
+            if (unavailable > 0) {
+                KnowledgeNotice("$unavailable knowledge ${if (unavailable == 1) "view needs" else "views need"} authentication or a reachable Axon server.")
+            }
             KnowledgeMenu(
                 selected = selected,
                 onSelect = { index ->
@@ -119,8 +128,8 @@ private fun KnowledgeMenu(
     Column(
         verticalArrangement = Arrangement.spacedBy(7.dp),
         modifier = Modifier
-            .fillMaxWidth(0.88f)
-            .widthIn(max = 360.dp),
+            .fillMaxWidth()
+            .widthIn(max = 440.dp),
     ) {
         KnowledgeMenuRow(
             icon = Icons.Rounded.AutoAwesome,
@@ -154,6 +163,17 @@ private fun KnowledgeMenu(
 }
 
 @Composable
+private fun KnowledgeNotice(message: String) {
+    AppNoticeBanner(
+        message = message,
+        tone = NoticeTone.Warn,
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 440.dp),
+    )
+}
+
+@Composable
 private fun KnowledgeMenuRow(
     icon: ImageVector,
     label: String,
@@ -167,8 +187,8 @@ private fun KnowledgeMenuRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(if (selected) colors.tint(colors.accentPrimary, 3, colors.pageBg) else colors.control.copy(alpha = 0.025f), shape)
-            .border(1.dp, if (selected) colors.borderStrong.copy(alpha = 0.22f) else colors.borderDefault.copy(alpha = 0.06f), shape)
+            .background(if (selected) colors.tint(colors.accentPrimary, 4, colors.pageBg) else colors.control.copy(alpha = 0.12f), shape)
+            .border(1.dp, if (selected) colors.borderStrong.copy(alpha = 0.22f) else colors.borderDefault.copy(alpha = 0.08f), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -201,15 +221,11 @@ private fun KnowledgeMenuRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .size(5.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(colors.accentPrimary.copy(alpha = 0.9f)),
-            )
-        } else {
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.60f), modifier = Modifier.size(15.dp))
-        }
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = if (selected) colors.accentStrong.copy(alpha = 0.8f) else colors.textMuted.copy(alpha = 0.60f),
+            modifier = Modifier.size(15.dp),
+        )
     }
 }

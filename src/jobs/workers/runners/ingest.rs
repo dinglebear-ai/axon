@@ -9,7 +9,7 @@ use crate::jobs::backend::{JobKind, lift_err};
 use crate::jobs::config_snapshot::decode_ingest_job_config;
 use crate::jobs::ingest::IngestSource;
 use crate::jobs::ingest::types::{source_type_label, target_label};
-use crate::jobs::ops::update_result_json_for_attempt;
+use crate::jobs::ops::update_progress_json_for_attempt;
 use crate::services::types::IngestResult;
 
 use super::JobResult;
@@ -33,10 +33,8 @@ pub async fn run_ingest_job(
         return Ok(None);
     };
 
-    let (source, mut effective_cfg) = decode_ingest_job_config(cfg, &config_json).map_err(|e| {
-        let preview: String = config_json.chars().take(120).collect();
-        format!("ingest job {id}: malformed config_json: {e} (preview: {preview:?})")
-    })?;
+    let (source, mut effective_cfg) = decode_ingest_job_config(cfg, &config_json)
+        .map_err(|e| format!("ingest job {id}: malformed config_json: {e}"))?;
 
     let attempt_id: Option<String> =
         sqlx::query_scalar("SELECT active_attempt_id FROM axon_ingest_jobs WHERE id=?")
@@ -80,7 +78,7 @@ pub async fn run_ingest_job(
     }
 
     let progress_json: Option<String> =
-        sqlx::query_scalar("SELECT result_json FROM axon_ingest_jobs WHERE id=?")
+        sqlx::query_scalar("SELECT progress_json FROM axon_ingest_jobs WHERE id=?")
             .bind(id.to_string())
             .fetch_optional(pool)
             .await?
@@ -336,7 +334,7 @@ fn spawn_ingest_progress_persister(
         let mut current = serde_json::Value::Object(serde_json::Map::new());
         while let Some(progress) = rx.recv().await {
             merge_progress(&mut current, progress, id, &source_type, &target);
-            if let Err(e) = update_result_json_for_attempt(
+            if let Err(e) = update_progress_json_for_attempt(
                 &pool,
                 JobKind::Ingest,
                 id,

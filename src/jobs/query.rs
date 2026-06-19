@@ -8,20 +8,22 @@ use crate::services::types::ServiceJob;
 
 use super::store::now_ms;
 
-type JobStatusRowTuple = (
-    String,
-    String,
-    i64,
-    i64,
-    Option<i64>,
-    Option<i64>,
-    Option<String>,
-    Option<String>,
-    i64,
-    Option<String>,
-    Option<i64>,
-    Option<String>,
-);
+#[derive(sqlx::FromRow)]
+struct JobStatusDbRow {
+    id: String,
+    status: String,
+    created_at: i64,
+    updated_at: i64,
+    started_at: Option<i64>,
+    finished_at: Option<i64>,
+    error_text: Option<String>,
+    progress_json: Option<String>,
+    result_json: Option<String>,
+    attempt_count: i64,
+    active_attempt_id: Option<String>,
+    last_reclaimed_at: Option<i64>,
+    last_reclaimed_reason: Option<String>,
+}
 
 pub(crate) fn ms_to_dt(ms: i64) -> DateTime<Utc> {
     DateTime::from_timestamp_millis(ms).unwrap_or_else(|| {
@@ -231,8 +233,8 @@ pub async fn job_status_row(
     id: Uuid,
 ) -> Result<Option<JobStatusRow>, sqlx::Error> {
     let table = kind.table_name();
-    let row: Option<JobStatusRowTuple> = sqlx::query_as(&format!(
-        "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, result_json, \
+    let row: Option<JobStatusDbRow> = sqlx::query_as(&format!(
+        "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, progress_json, result_json, \
          attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
          FROM {} WHERE id = ?",
         table
@@ -241,45 +243,28 @@ pub async fn job_status_row(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(
-        |(
-            id,
-            status,
-            created_at,
-            updated_at,
-            started_at,
-            finished_at,
-            error_text,
-            result_json,
-            attempt_count,
-            active_attempt_id,
-            last_reclaimed_at,
-            last_reclaimed_reason,
-        )| {
-            JobStatusRow {
-                id: Uuid::parse_str(&id).unwrap_or_else(|e| {
-                    tracing::warn!(raw = %id, error = %e, "corrupt UUID in job status row, using nil");
-                    Uuid::nil()
-                }),
-                status: JobStatus::from_str(&status),
-                created_at: ms_to_dt(created_at),
-                updated_at: ms_to_dt(updated_at),
-                started_at: started_at.map(ms_to_dt),
-                finished_at: finished_at.map(ms_to_dt),
-                error_text,
-                result_json: result_json.and_then(|s| {
-                    serde_json::from_str(&s).unwrap_or_else(|e| {
-                        tracing::warn!(error = %e, "corrupt result_json in job status row, using None");
-                        None
-                    })
-                }),
-                attempt_count,
-                active_attempt_id,
-                last_reclaimed_at: last_reclaimed_at.map(ms_to_dt),
-                last_reclaimed_reason,
-            }
-        },
-    ))
+    Ok(row.map(job_status_from_row))
+}
+
+fn job_status_from_row(row: JobStatusDbRow) -> JobStatusRow {
+    JobStatusRow {
+        id: Uuid::parse_str(&row.id).unwrap_or_else(|e| {
+            tracing::warn!(raw = %row.id, error = %e, "corrupt UUID in job status row, using nil");
+            Uuid::nil()
+        }),
+        status: JobStatus::from_str(&row.status),
+        created_at: ms_to_dt(row.created_at),
+        updated_at: ms_to_dt(row.updated_at),
+        started_at: row.started_at.map(ms_to_dt),
+        finished_at: row.finished_at.map(ms_to_dt),
+        error_text: row.error_text,
+        progress_json: parse_optional_json("progress_json", row.progress_json),
+        result_json: parse_optional_json("result_json", row.result_json),
+        attempt_count: row.attempt_count,
+        active_attempt_id: row.active_attempt_id,
+        last_reclaimed_at: row.last_reclaimed_at.map(ms_to_dt),
+        last_reclaimed_reason: row.last_reclaimed_reason,
+    }
 }
 
 /// Get the error_text for a job.
@@ -312,6 +297,7 @@ struct ServiceJobRow {
     source_type: Option<String>,
     target: Option<String>,
     urls_json: Option<String>,
+    progress_json: Option<String>,
     result_json: Option<String>,
     config_json: Option<String>,
     attempt_count: i64,
@@ -326,25 +312,25 @@ fn service_select_from(kind: JobKind) -> &'static str {
     match kind {
         JobKind::Crawl => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json, \
+             url, NULL as source_type, NULL as target, NULL as urls_json, progress_json, result_json, config_json, \
              attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
              FROM axon_crawl_jobs"
         }
         JobKind::Embed => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, input_text as target, NULL as urls_json, result_json, config_json, \
+             NULL as url, NULL as source_type, input_text as target, NULL as urls_json, progress_json, result_json, config_json, \
              attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
              FROM axon_embed_jobs"
         }
         JobKind::Extract => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, NULL as target, urls_json, result_json, config_json, \
+             NULL as url, NULL as source_type, NULL as target, urls_json, progress_json, result_json, config_json, \
              attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
              FROM axon_extract_jobs"
         }
         JobKind::Ingest => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, source_type, target, NULL as urls_json, result_json, config_json, \
+             NULL as url, source_type, target, NULL as urls_json, progress_json, result_json, config_json, \
              attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
              FROM axon_ingest_jobs"
         }
@@ -366,29 +352,28 @@ fn service_job_from_row(row: ServiceJobRow) -> ServiceJob {
         url: row.url,
         source_type: row.source_type,
         target: row.target,
-        urls_json: row.urls_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt urls_json in service job row, using None");
-                None
-            })
-        }),
-        result_json: row.result_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt result_json in service job row, using None");
-                None
-            })
-        }),
-        config_json: row.config_json.and_then(|s| {
-            serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "corrupt config_json in service job row, using None");
-                None
-            })
-        }),
+        urls_json: parse_optional_json("urls_json", row.urls_json),
+        progress_json: parse_optional_json("progress_json", row.progress_json),
+        result_json: parse_optional_json("result_json", row.result_json),
+        config_json: parse_optional_json("config_json", row.config_json),
         attempt_count: row.attempt_count,
         active_attempt_id: row.active_attempt_id,
         last_reclaimed_at: row.last_reclaimed_at.map(ms_to_dt),
         last_reclaimed_reason: row.last_reclaimed_reason,
     }
+}
+
+fn parse_optional_json(field: &'static str, raw: Option<String>) -> Option<serde_json::Value> {
+    raw.map(|json| {
+        serde_json::from_str(&json).unwrap_or_else(|e| {
+            tracing::warn!(field, error = %e, "corrupt job JSON field");
+            serde_json::json!({
+                "degraded": true,
+                "field": field,
+                "error": "corrupt job JSON"
+            })
+        })
+    })
 }
 
 pub async fn list_service_jobs(
@@ -432,7 +417,7 @@ pub async fn list_ingest_service_jobs(
 ) -> Result<Vec<ServiceJob>, sqlx::Error> {
     let rows: Vec<ServiceJobRow> = sqlx::query_as(
         "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-         NULL as url, source_type, target, NULL as urls_json, result_json, config_json, \
+         NULL as url, source_type, target, NULL as urls_json, progress_json, result_json, config_json, \
          attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
          FROM axon_ingest_jobs \
          WHERE (?1 IS NULL OR source_type = ?1) \

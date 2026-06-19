@@ -20,8 +20,9 @@ name: android-release
 # Required configuration (Settings → Secrets and variables → Actions)
 # ---------------------------------------------------------------------------
 # Signing (release-keystore secrets). When ALL four are present the APK is
-# signed and verified; when absent the job ships an UNSIGNED APK (clearly named
-# `*-unsigned.apk`, which cannot be installed until signed):
+# signed and verified. Publishing a GitHub Release requires all four secrets;
+# manual dry-runs may still produce a clearly named `*-unsigned.apk` artifact
+# for inspection.
 #   ANDROID_KEYSTORE_BASE64   base64 of the release keystore (.jks/.keystore)
 #                             e.g. `base64 -w0 release.jks`
 #   ANDROID_KEYSTORE_PASSWORD keystore (store) password
@@ -48,7 +49,7 @@ permissions:
 
 env:
   AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
-  AURORA_REF: ${{ vars.AURORA_REF || 'main' }}
+  AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
 jobs:
   build:
@@ -140,6 +141,14 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PUBLISH_REQUESTED: >-
+            ${{
+              startsWith(github.ref, 'refs/tags/android-v') &&
+              (
+                github.event_name == 'push' ||
+                (github.event_name == 'workflow_dispatch' && inputs.publish)
+              )
+            }}
         run: |
           set -euo pipefail
           version="${{ steps.version.outputs.version }}"
@@ -160,11 +169,22 @@ jobs:
           bt="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           echo "Using build-tools at $bt"
 
-          out="axon-android-${version}.apk"
+          mkdir -p bin
+          signing_ready=false
           if [[ -n "${ANDROID_KEYSTORE_BASE64:-}" \
                 && -n "${ANDROID_KEYSTORE_PASSWORD:-}" \
                 && -n "${ANDROID_KEY_ALIAS:-}" \
                 && -n "${ANDROID_KEY_PASSWORD:-}" ]]; then
+            signing_ready=true
+          fi
+
+          if [[ "$PUBLISH_REQUESTED" == "true" && "$signing_ready" != "true" ]]; then
+            echo "::error::Android release publishing requires ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD" >&2
+            exit 1
+          fi
+
+          out="bin/axon-android-${version}.apk"
+          if [[ "$signing_ready" == "true" ]]; then
             echo "Signing release APK"
             ks="$RUNNER_TEMP/release-keystore.jks"
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$ks"
@@ -181,7 +201,7 @@ jobs:
             signed=true
           else
             echo "::warning::no signing secrets configured — shipping UNSIGNED APK (cannot be installed until signed)"
-            out="axon-android-${version}-unsigned.apk"
+            out="bin/axon-android-${version}-unsigned.apk"
             "$bt/zipalign" -p -f 4 "$unsigned" "$out"
             signed=false
           fi

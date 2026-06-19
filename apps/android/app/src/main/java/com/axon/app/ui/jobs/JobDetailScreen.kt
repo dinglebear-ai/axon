@@ -158,6 +158,9 @@ private fun JobDetailHero(job: JobUi) {
         if (shouldShowJobDetailProgress(job.status)) {
             ProgressBar(progressForJobDetail(job), tone)
         }
+        coverageSummary(job)?.let { summary ->
+            CoverageChip(summary, tone)
+        }
     }
 }
 

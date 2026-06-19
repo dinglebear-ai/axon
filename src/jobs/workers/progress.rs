@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 
 use crate::crawl::engine::CrawlSummary;
 use crate::jobs::backend::JobKind;
-use crate::jobs::ops::update_result_json_for_attempt;
+use crate::jobs::ops::update_progress_json_for_attempt;
 use crate::vector::ops::tei::EmbedProgress;
 
 pub(super) fn spawn_crawl_progress_persister(
@@ -17,6 +17,8 @@ pub(super) fn spawn_crawl_progress_persister(
     let task = tokio::spawn(async move {
         while let Some(summary) = rx.recv().await {
             let mut progress = serde_json::json!({
+                "phase": "crawling",
+                "lifecycle_progress": active_ratio(summary.pages_seen as f64, summary.pages_discovered as f64),
                 "output_dir": output_dir,
                 "output_path": output_dir.join("markdown"),
                 "pages_crawled": summary.pages_seen,
@@ -40,7 +42,7 @@ pub(super) fn spawn_crawl_progress_persister(
                     serde_json::to_value(adaptive).unwrap_or(serde_json::Value::Null),
                 );
             }
-            if let Err(e) = update_result_json_for_attempt(
+            if let Err(e) = update_progress_json_for_attempt(
                 &pool,
                 JobKind::Crawl,
                 id,
@@ -66,11 +68,13 @@ pub(super) fn spawn_embed_progress_persister(
     let task = tokio::spawn(async move {
         while let Some(progress) = rx.recv().await {
             let json = serde_json::json!({
+                "phase": "embedding",
+                "lifecycle_progress": active_ratio(progress.docs_completed as f64, progress.docs_total as f64),
                 "docs_total": progress.docs_total,
                 "docs_embedded": progress.docs_completed,
                 "chunks_embedded": progress.chunks_embedded,
             });
-            if let Err(e) = update_result_json_for_attempt(
+            if let Err(e) = update_progress_json_for_attempt(
                 &pool,
                 JobKind::Embed,
                 id,
@@ -84,6 +88,16 @@ pub(super) fn spawn_embed_progress_persister(
         }
     });
     (tx, task)
+}
+
+fn active_ratio(done: f64, total: f64) -> f64 {
+    if total <= 0.0 {
+        return 0.02;
+    }
+    if done <= 0.0 {
+        return 0.0;
+    }
+    ((done / total).clamp(0.02, 0.98) * 100.0).round() / 100.0
 }
 
 #[cfg(test)]

@@ -18,13 +18,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +36,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -49,13 +53,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.nav.AxonMarkGlyph
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
-import tv.tootie.aurora.components.AuroraSuggestionChip
 
 @Composable
 internal fun AskModeSwitch(
@@ -71,7 +75,7 @@ internal fun AskModeSwitch(
 
     BoxWithConstraints(
         modifier = modifier
-            .height(30.dp)
+            .height(36.dp)
             .clip(shape)
             .background(colors.control.copy(alpha = 0.58f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = 0.56f), shape)
@@ -117,7 +121,8 @@ internal fun AskModeSwitch(
                     Text(
                         item.label,
                         color = labelColor,
-                        fontSize = 10.6.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = AxonTheme.fonts.body,
                     )
@@ -151,7 +156,7 @@ internal fun EmptyAskState(
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            modifier = Modifier.widthIn(max = 292.dp),
+            modifier = Modifier.widthIn(max = 340.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
@@ -167,21 +172,23 @@ internal fun EmptyAskState(
                 AxonMarkGlyph(Modifier.size(34.dp))
             }
             Text(
-                "No active conversation",
-                color = colors.textPrimary,
-                fontSize = 16.sp,
+            "No active conversation",
+            color = colors.textPrimary,
+                fontSize = 17.sp,
+                lineHeight = 23.sp,
                 fontFamily = AxonTheme.fonts.display,
             )
             if (suggestions.isNotEmpty()) {
                 Text(
-                    "Try asking",
+                    "Start with",
                     color = colors.textMuted.copy(alpha = 0.7f),
-                    fontSize = 11.5.sp,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
                     fontFamily = AxonTheme.fonts.body,
                 )
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     suggestions.forEachIndexed { index, prompt ->
                         SuggestionChip(text = prompt, index = index, onClick = { onSuggestion(prompt) })
@@ -195,6 +202,7 @@ internal fun EmptyAskState(
 /** Tappable starter prompt that fades + rises in, staggered by [index]. */
 @Composable
 private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
+    val colors = AxonTheme.colors
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val anim by animateFloatAsState(
@@ -202,15 +210,38 @@ private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
         animationSpec = tween(durationMillis = 360, delayMillis = 140 + index * 90, easing = LinearEasing),
         label = "chip-in",
     )
-    AuroraSuggestionChip(
-        label = text,
-        onClick = onClick,
+    Row(
         modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.control.copy(alpha = 0.025f), RoundedCornerShape(10.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.055f), RoundedCornerShape(10.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
             .graphicsLayer {
                 alpha = anim
                 translationY = (1f - anim) * 16f
             },
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text,
+            color = colors.textMuted.copy(alpha = 0.94f),
+            fontSize = 13.6.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = AxonTheme.fonts.body,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = colors.textMuted.copy(alpha = 0.56f),
+            modifier = Modifier.size(15.dp),
+        )
+    }
 }
 
 /**

@@ -100,23 +100,25 @@ internal fun <T : Any> rememberPersistedState(
     repo: ModeOptionsRepository,
 ): androidx.compose.runtime.MutableState<T> {
     val scope = rememberCoroutineScope()
-    var state by remember(key) { mutableStateOf(default) }
+    val state = remember(key) { mutableStateOf(default) }
     val resetVersion by repo.resetVersion.collectAsState()
     LaunchedEffect(key, resetVersion) {
         runCatching {
             val stored = repo.read(key)
-            state = stored ?: default
+            state.value = stored ?: default
         }
     }
-    return object : androidx.compose.runtime.MutableState<T> {
-        override var value: T
-            get() = state
-            set(newValue) {
-                state = newValue
-                scope.launch { repo.write(key, newValue) }
-            }
-        override fun component1(): T = value
-        override fun component2(): (T) -> Unit = { value = it }
+    return remember(key, repo, scope, state) {
+        object : androidx.compose.runtime.MutableState<T> {
+            override var value: T
+                get() = state.value
+                set(newValue) {
+                    state.value = newValue
+                    scope.launch { repo.write(key, newValue) }
+                }
+            override fun component1(): T = value
+            override fun component2(): (T) -> Unit = { value = it }
+        }
     }
 }
 
@@ -127,20 +129,21 @@ internal fun <T : Any> rememberOptionalPersistedState(
     repo: ModeOptionsRepository,
 ): androidx.compose.runtime.MutableState<T?> {
     val scope = rememberCoroutineScope()
-    var state by remember(key) { mutableStateOf<T?>(null) }
+    val state = remember(key) { mutableStateOf<T?>(null) }
     val resetVersion by repo.resetVersion.collectAsState()
     LaunchedEffect(key, resetVersion) {
-        runCatching { state = repo.read(key) }
+        runCatching { state.value = repo.read(key) }
     }
-    return object : androidx.compose.runtime.MutableState<T?> {
-        override var value: T?
-            get() = state
-            set(newValue) {
-                state = newValue
-                scope.launch { repo.write(key, newValue) }
-            }
-        override fun component1(): T? = value
-        override fun component2(): (T?) -> Unit = { value = it }
+    return remember(key, repo, scope, state) {
+        object : androidx.compose.runtime.MutableState<T?> {
+            override var value: T?
+                get() = state.value
+                set(newValue) {
+                    state.value = newValue
+                    scope.launch { repo.write(key, newValue) }
+                }
+            override fun component1(): T? = value
+            override fun component2(): (T?) -> Unit = { value = it }
+        }
     }
 }
-

@@ -161,11 +161,16 @@ pub async fn dispatch_extract(
                 req.job_id,
             )
             .await?;
-            if let Some(result_json) = payload
-                .get("job")
-                .and_then(|job| job.get("result_json"))
-                .filter(|value| !value.is_null())
-                .cloned()
+            let terminal_result = payload.get("job").and_then(|job| {
+                let status = job.get("status").and_then(serde_json::Value::as_str)?;
+                if crate::jobs::status::JobStatus::from_str(status).is_active() {
+                    return None;
+                }
+                job.get("result_json")
+                    .filter(|value| !value.is_null())
+                    .cloned()
+            });
+            if let Some(result_json) = terminal_result
                 && let Some(object) = payload.as_object_mut()
             {
                 object.insert("extract_result".to_string(), result_json);

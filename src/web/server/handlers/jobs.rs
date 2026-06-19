@@ -62,6 +62,7 @@ pub(crate) async fn list_jobs(
     let jobs = services::jobs::list_jobs(&state.service_context, state.kind, limit, offset)
         .await
         .map_err(HttpError::from_box)?;
+    let jobs: Vec<_> = jobs.iter().map(|job| job.wire_json_compat()).collect();
     Ok(Json(json!({
         "jobs": jobs,
         "limit": limit,
@@ -90,7 +91,7 @@ pub(crate) async fn job_status(
             format!("job not found: {id}"),
         ));
     };
-    Ok(Json(json!({ "job": job })))
+    Ok(Json(json!({ "job": job.wire_json_compat() })))
 }
 
 #[utoipa::path(
