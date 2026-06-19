@@ -60,6 +60,12 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    sourceSets {
+        getByName("main") {
+            java.srcDir(layout.buildDirectory.dir("generated/openapi/src/main/kotlin"))
+        }
+    }
 }
 
 openApiGenerate {
@@ -101,6 +107,14 @@ tasks.named("openApiGenerate") {
 tasks.register("verifyOpenApiGeneratedClient") {
     dependsOn("openApiGenerate")
     dependsOn("testDebugUnitTest")
+}
+
+tasks.matching { it.name == "compileDebugKotlin" || it.name == "compileReleaseKotlin" }.configureEach {
+    dependsOn("openApiGenerate")
+}
+
+tasks.matching { it.name == "kspDebugKotlin" || it.name == "kspReleaseKotlin" }.configureEach {
+    dependsOn("openApiGenerate")
 }
 
 ksp {
