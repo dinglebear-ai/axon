@@ -204,12 +204,13 @@ private fun jobOverviewRows(
         val failedCount = jobs.count { it.status.lowercase() in setOf("failed", "error") }
         val running = activeJobs.firstOrNull()
         val representative = running ?: jobs.firstOrNull()
+        val aggregateProgress = aggregateProgressForJobs(activeJobs)
         return JobOverviewRowModel(
             key = kind.name,
             title = kind.drillTitle(),
             detail = representative?.let { job ->
                 val suffix = when {
-                    activeJobs.size > 1 -> "${activeJobs.size} active ${kind.drillTitle().lowercase()} · avg ${(aggregateProgressForJobs(activeJobs).orZeroPercent() * 100).toInt()}%"
+                    activeJobs.size > 1 -> "${activeJobs.size} active ${kind.drillTitle().lowercase()} · avg ${((aggregateProgress ?: 0f) * 100).toInt()}%"
                     running != null -> jobProgressLabel(job)
                     job.status.lowercase() in setOf("done", "completed", "success") -> "latest · ${jobProgressLabel(job)}"
                     else -> jobProgressLabel(job)
@@ -219,7 +220,7 @@ private fun jobOverviewRows(
                 ?: "No ${kind.label().lowercase()} jobs",
             runningCount = runningCount,
             failedCount = failedCount,
-            progress = aggregateProgressForJobs(activeJobs),
+            progress = aggregateProgress,
             icon = iconForKind(kind),
             tone = when (kind) {
                 JobFamily.Crawl -> colors.accentPrimary
@@ -248,8 +249,6 @@ private fun jobOverviewRows(
         ),
     )
 }
-
-private fun Float?.orZeroPercent(): Float = this ?: 0f
 
 @Composable
 private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifier, onClick: () -> Unit) {

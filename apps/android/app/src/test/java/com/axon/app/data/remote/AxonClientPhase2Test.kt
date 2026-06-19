@@ -5,6 +5,8 @@ import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.SearchWebRequest
 import com.axon.app.data.remote.models.SummarizeRequest
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -85,6 +87,23 @@ class AxonClientPhase2Test {
         val r = client.listJobs(AxonClient.JobKind.Ingest)
         assertTrue(r.isSuccess)
         assertEquals("j", r.getOrThrow()[0].id)
+    }
+
+    @Test fun `listJobs decodes progress json`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """{"jobs":[{"id":"j","status":"running","progress_json":{"lifecycle_progress":0.42,"pages_crawled":42}}],"limit":25,"offset":0}"""
+                )
+                .addHeader("Content-Type", "application/json")
+        )
+
+        val r = client.listJobs(AxonClient.JobKind.Crawl)
+
+        assertTrue(r.isSuccess)
+        val progress = r.getOrThrow()[0].progressJson!!.jsonObject
+        assertEquals("0.42", progress["lifecycle_progress"]!!.jsonPrimitive.content)
+        assertEquals("42", progress["pages_crawled"]!!.jsonPrimitive.content)
     }
 
     @Test fun `listWatches GETs v1 watch and decodes watch envelope`() = runBlocking {

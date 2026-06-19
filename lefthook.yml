@@ -113,6 +113,15 @@ pre-push:
       run: >
         if [ ! -d apps/web/node_modules ]; then npm ci --prefix apps/web; fi &&
         npm --prefix apps/web run build
+    android:
+      glob: "apps/android/**/*"
+      run: >
+        export AXON_AURORA_ANDROID_PATH="${AXON_AURORA_ANDROID_PATH:-/home/jmagar/workspace/aurora-design-system/android}" &&
+        if [ ! -d "$AXON_AURORA_ANDROID_PATH" ]; then
+          echo "AXON_AURORA_ANDROID_PATH does not point at an Aurora Android checkout: $AXON_AURORA_ANDROID_PATH" >&2;
+          exit 1;
+        fi &&
+        apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:lintDebug --no-daemon
     clippy:
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
     test:

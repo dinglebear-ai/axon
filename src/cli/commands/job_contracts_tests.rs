@@ -3,6 +3,7 @@ use crate::jobs::crawl::CrawlJob;
 use crate::jobs::embed::EmbedJob;
 use crate::jobs::extract::ExtractJob;
 use crate::jobs::ingest::IngestJob;
+use crate::services::types::ServiceJob;
 use chrono::{TimeZone, Utc};
 use uuid::Uuid;
 
@@ -75,6 +76,29 @@ fn test_embed_job() -> EmbedJob {
 fn serialize_list(entries: Vec<JobSummaryEntry>) -> serde_json::Value {
     let serialized = serde_json::to_string(&entries).expect("serialize");
     serde_json::from_str(&serialized).expect("parse")
+}
+
+fn test_service_job(status: &str) -> ServiceJob {
+    ServiceJob {
+        id: Uuid::parse_str("55555555-5555-5555-5555-555555555555").expect("valid uuid"),
+        status: status.to_string(),
+        created_at: test_ts(),
+        updated_at: test_ts(),
+        started_at: Some(test_ts()),
+        finished_at: None,
+        error_text: None,
+        url: Some("https://example.com".to_string()),
+        source_type: None,
+        target: None,
+        urls_json: None,
+        progress_json: None,
+        result_json: None,
+        config_json: None,
+        attempt_count: 1,
+        active_attempt_id: Some("attempt-1".to_string()),
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    }
 }
 
 #[test]
@@ -165,6 +189,52 @@ fn embed_status_contract_includes_input_and_metrics() {
     assert_eq!(
         json["result_json"],
         serde_json::json!({"chunks_embedded": 7, "source": "rust"})
+    );
+}
+
+#[test]
+fn service_running_metrics_alias_uses_progress_json() {
+    let mut job = test_service_job("running");
+    job.progress_json = Some(serde_json::json!({
+        "phase": "crawling",
+        "lifecycle_progress": 0.42,
+        "pages_crawled": 42
+    }));
+    let json = serde_json::to_value(JobStatusResponse::from_service_job(&job)).expect("serialize");
+
+    assert_eq!(
+        json["metrics"],
+        serde_json::json!({
+            "phase": "crawling",
+            "lifecycle_progress": 0.42,
+            "pages_crawled": 42
+        })
+    );
+    assert_eq!(json["result_json"], serde_json::Value::Null);
+}
+
+#[test]
+fn service_completed_metrics_alias_uses_result_json() {
+    let mut job = test_service_job("completed");
+    job.finished_at = Some(test_ts());
+    job.active_attempt_id = None;
+    job.progress_json = Some(serde_json::json!({
+        "phase": "completed",
+        "lifecycle_progress": 1.0
+    }));
+    job.result_json = Some(serde_json::json!({
+        "coverage_status": "partial",
+        "pages_crawled": 42
+    }));
+    let json = serde_json::to_value(JobStatusResponse::from_service_job(&job)).expect("serialize");
+
+    assert_eq!(
+        json["metrics"],
+        serde_json::json!({"coverage_status": "partial", "pages_crawled": 42})
+    );
+    assert_eq!(
+        json["progress_json"],
+        serde_json::json!({"phase": "completed", "lifecycle_progress": 1.0})
     );
 }
 

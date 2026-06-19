@@ -50,20 +50,22 @@ internal fun progressForStatus(status: String): Float = when (status.lowercase()
 internal fun progressForJob(job: JobUi): Float {
     if (isCompletedJobStatus(job.status)) return 1f
     val fromProgress = lifecycleProgressFromProgress(job.progressJson)
-    val fromLegacyResult = progressFromResult(job.resultJson)
-    return fromProgress ?: fromLegacyResult ?: progressForStatus(job.status)
+    return fromProgress ?: progressForStatus(job.status)
 }
 
 internal fun progressForJobDetail(job: JobUi): Float =
     if (isCompletedJobStatus(job.status)) 1f else progressForJob(job)
 
 internal fun aggregateProgressForJobs(jobs: List<JobUi>): Float? {
-    if (jobs.isEmpty()) return null
-    return jobs
-        .map(::progressForJob)
-        .average()
-        .toFloat()
-        .coerceIn(0.02f, 1f)
+    var count = 0
+    var sum = 0f
+    for (job in jobs) {
+        if (!isActiveJobStatus(job.status)) continue
+        sum += progressForJob(job)
+        count++
+    }
+    if (count == 0) return null
+    return (sum / count).coerceIn(0.02f, 1f)
 }
 
 internal fun crawledPageUrlsFromResult(result: JsonElement?): List<String> {
@@ -109,15 +111,6 @@ internal fun parseCrawlManifestUrls(manifestJsonl: String): List<String> =
         .distinct()
         .toList()
 
-internal fun progressFromResult(result: JsonElement?): Float? {
-    val obj = result as? JsonObject ?: return null
-    val done = firstMetric(obj, "done", "fetched", "pages_crawled", "pages", "processed", "completed") ?: return null
-    val total = firstMetric(obj, "total", "page_count", "pages_total", "expected", "count")
-        ?: firstMetric(obj, "queued")?.let(done::plus)
-    if (total == null || total <= 0L) return null
-    return (done.toFloat() / total.toFloat()).coerceIn(0.02f, 1f)
-}
-
 internal fun lifecycleProgressFromProgress(progress: JsonElement?): Float? {
     val obj = progress as? JsonObject ?: return null
     val value = obj["lifecycle_progress"]
@@ -129,45 +122,30 @@ internal fun lifecycleProgressFromProgress(progress: JsonElement?): Float? {
 }
 
 internal fun coverageSummary(job: JobUi): String? {
-    val progress = job.progressJson as? JsonObject
-    firstString(progress ?: JsonObject(emptyMap()), "coverage_summary")?.let { return it }
     val result = job.resultJson as? JsonObject ?: return null
-    firstString(result, "coverage_summary")?.let { return it }
-    val rawStatus = firstString(result, "coverage_status")?.lowercase()
-    val rawReason = firstString(result, "coverage_reason")?.lowercase()
-    val errors = firstMetric(result, "error_pages", "errors") ?: 0L
+    val summary = topLevelString(result, "coverage_summary")
+    val rawStatus = topLevelString(result, "coverage_status")?.lowercase()
+    val rawReason = topLevelString(result, "coverage_reason")?.lowercase()
+    val errors = topLevelMetric(result, "error_pages", "errors") ?: 0L
     return when {
-        rawReason in setOf("max_pages_limit", "max_pages", "page_limit") -> "max pages hit"
-        rawStatus in setOf("complete", "completed", "complete_or_exhausted", "exhausted") -> {
-            if (errors > 0) "complete · $errors errors" else "complete"
+        rawReason in MAX_PAGE_LIMIT_REASONS -> "max pages hit"
+        rawStatus in COMPLETE_COVERAGE_STATUSES -> {
+            if (errors > 0) "complete · $errors errors" else summary ?: "complete"
         }
         rawStatus == "partial" -> if (errors > 0) "partial · $errors errors" else "partial"
         rawStatus == "failed" -> "failed"
         errors > 0 -> "$errors errors"
-        else -> null
+        else -> summary
     }
 }
 
 internal fun pagesCrawledMetric(job: JobUi): String? {
     val value = (job.progressJson as? JsonObject)?.let {
-        firstMetric(it, "pages_crawled", "pages_seen", "pages_processed")
+        topLevelMetric(it, "pages_crawled", "pages_seen", "pages_processed")
     } ?: (job.resultJson as? JsonObject)?.let {
-        firstMetric(it, "pages_crawled", "pages_seen", "pages_processed", "md_created")
+        topLevelMetric(it, "pages_crawled", "pages_seen", "pages_processed", "md_created")
     } ?: return null
     return "%,d %s".format(value, if (value == 1L) "page" else "pages")
-}
-
-internal fun firstMetric(obj: JsonObject, vararg keys: String): Long? {
-    for (key in keys) {
-        val value = obj[key]?.let { primitiveLong(it) }
-        if (value != null) return value
-    }
-    for ((_, child) in obj) {
-        val nested = child as? JsonObject ?: continue
-        val value = firstMetric(nested, *keys)
-        if (value != null) return value
-    }
-    return null
 }
 
 internal fun primitiveLong(element: JsonElement): Long? =
@@ -175,6 +153,14 @@ internal fun primitiveLong(element: JsonElement): Long? =
 
 internal fun primitiveFloat(element: JsonElement): Float? =
     (element as? JsonPrimitive)?.contentOrNull?.toFloatOrNull()
+
+private fun topLevelMetric(obj: JsonObject, vararg keys: String): Long? {
+    for (key in keys) {
+        val value = obj[key]?.let { primitiveLong(it) }
+        if (value != null) return value
+    }
+    return null
+}
 
 private val crawlPageArrayKeys = setOf(
     "urls",
@@ -188,6 +174,9 @@ private val crawlPageArrayKeys = setOf(
     "events",
     "diagnostics",
 )
+
+private val MAX_PAGE_LIMIT_REASONS = setOf("max_pages_limit", "max_pages", "page_limit")
+private val COMPLETE_COVERAGE_STATUSES = setOf("complete", "completed", "complete_or_exhausted", "exhausted")
 
 private fun pageUrlFromElement(element: JsonElement): String? =
     when (element) {
@@ -219,6 +208,17 @@ private fun firstString(obj: JsonObject, vararg keys: String): String? {
         val nested = child as? JsonObject ?: continue
         val value = firstString(nested, *keys)
         if (value != null) return value
+    }
+    return null
+}
+
+private fun topLevelString(obj: JsonObject, vararg keys: String): String? {
+    for (key in keys) {
+        val value = obj[key]
+        if (value is JsonPrimitive) {
+            val content = value.contentOrNull?.takeIf { it.isNotBlank() }
+            if (content != null) return content
+        }
     }
     return null
 }

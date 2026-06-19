@@ -82,6 +82,51 @@ class JobsFormattersTest {
     }
 
     @Test
+    fun `requeued previous attempt progress is not shown as current metrics`() {
+        val job = JobUi(
+            id = "job-1",
+            status = "pending",
+            url = "https://example.com",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            progressJson = Json.parseToJsonElement(
+                """
+                {
+                  "phase": "requeued",
+                  "lifecycle_progress": 0.0,
+                  "previous_attempt_progress": {
+                    "pages_crawled": 33,
+                    "coverage_summary": "partial"
+                  }
+                }
+                """.trimIndent()
+            ),
+            resultJson = null,
+        )
+
+        assertEquals(0.02f, progressForJob(job), 0.0001f)
+        assertEquals(null, pagesCrawledMetric(job))
+        assertEquals(null, coverageSummary(job))
+    }
+
+    @Test
+    fun `malformed lifecycle progress falls back to status baseline`() {
+        val job = JobUi(
+            id = "job-1",
+            status = "running",
+            url = "https://example.com",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            progressJson = Json.parseToJsonElement("""{"lifecycle_progress":"not-a-number"}"""),
+            resultJson = Json.parseToJsonElement("""{"pages_crawled":70,"pages_total":100}"""),
+        )
+
+        assertEquals(progressForStatus("running"), progressForJob(job), 0.0001f)
+    }
+
+    @Test
     fun `coverage summary is separate from lifecycle progress`() {
         val job = JobUi(
             id = "job-1",
