@@ -14,6 +14,7 @@ kotlinx-serialization = "1.7.3"
 kotlinx-collections-immutable = "0.3.8"
 openapi-generator = "7.16.0"
 moshi = "1.15.2"
+desugar-jdk-libs = "2.1.5"
 junit = "4.13.2"
 turbine = "1.1.0"
 # 1.1.0 keeps androidx.security.crypto.MasterKey while moving off the old alpha
@@ -54,6 +55,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-collections-immutable = { group = "org.jetbrains.kotlinx", name = "kotlinx-collections-immutable", version.ref = "kotlinx-collections-immutable" }
 moshi = { group = "com.squareup.moshi", name = "moshi", version.ref = "moshi" }
 moshi-kotlin = { group = "com.squareup.moshi", name = "moshi-kotlin", version.ref = "moshi" }
+desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }

@@ -934,7 +934,7 @@ Append this section to this plan after the task list:
 - Extract SSE into `AxonStreamClient` only after generated JSON migration is stable.
 ```
 
-- [ ] **Step 3: Commit docs**
+- [x] **Step 3: Commit docs**
 
 Run:
 
@@ -956,7 +956,7 @@ Expected: commit succeeds.
 - Consumes: all previous tasks.
 - Produces: green worktree ready for PR and review.
 
-- [ ] **Step 1: Run full relevant verification**
+- [x] **Step 1: Run full relevant verification**
 
 Run:
 
@@ -972,7 +972,7 @@ git diff --check
 
 Expected: all commands pass. If `lintDebug` reports pre-existing unrelated issues, fix them inside this worktree because `vibin:work-it` owns the worktree until green.
 
-- [ ] **Step 2: Confirm generated output remains untracked**
+- [x] **Step 2: Confirm generated output remains untracked**
 
 Run:
 
@@ -982,7 +982,7 @@ git status --short -- apps/android/app/build/generated/openapi
 
 Expected: no output.
 
-- [ ] **Step 3: Confirm branch status**
+- [x] **Step 3: Confirm branch status**
 
 Run:
 

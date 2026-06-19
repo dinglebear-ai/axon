@@ -108,15 +108,17 @@ internal fun <T : Any> rememberPersistedState(
             state = stored ?: default
         }
     }
-    return object : androidx.compose.runtime.MutableState<T> {
-        override var value: T
-            get() = state
-            set(newValue) {
-                state = newValue
-                scope.launch { repo.write(key, newValue) }
-            }
-        override fun component1(): T = value
-        override fun component2(): (T) -> Unit = { value = it }
+    return remember(key, repo, scope) {
+        object : androidx.compose.runtime.MutableState<T> {
+            override var value: T
+                get() = state
+                set(newValue) {
+                    state = newValue
+                    scope.launch { repo.write(key, newValue) }
+                }
+            override fun component1(): T = value
+            override fun component2(): (T) -> Unit = { value = it }
+        }
     }
 }
 
@@ -132,15 +134,16 @@ internal fun <T : Any> rememberOptionalPersistedState(
     LaunchedEffect(key, resetVersion) {
         runCatching { state = repo.read(key) }
     }
-    return object : androidx.compose.runtime.MutableState<T?> {
-        override var value: T?
-            get() = state
-            set(newValue) {
-                state = newValue
-                scope.launch { repo.write(key, newValue) }
-            }
-        override fun component1(): T? = value
-        override fun component2(): (T?) -> Unit = { value = it }
+    return remember(key, repo, scope) {
+        object : androidx.compose.runtime.MutableState<T?> {
+            override var value: T?
+                get() = state
+                set(newValue) {
+                    state = newValue
+                    scope.launch { repo.write(key, newValue) }
+                }
+            override fun component1(): T? = value
+            override fun component2(): (T?) -> Unit = { value = it }
+        }
     }
 }
-
