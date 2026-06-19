@@ -82,8 +82,14 @@ fn android_routes(root: &Path) -> Result<BTreeSet<Route>> {
         let path = root.join(relative);
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        for found in route_pattern.find_iter(&content) {
-            let method = android_route_method(relative, &content, found.start(), found.end())?;
+        let content_without_comments = strip_kotlin_comments_preserving_offsets(&content);
+        for found in route_pattern.find_iter(&content_without_comments) {
+            let method = android_route_method(
+                relative,
+                &content_without_comments,
+                found.start(),
+                found.end(),
+            )?;
             for path in normalize_android_route(found.as_str()) {
                 routes.insert(Route {
                     method: method.clone(),
@@ -127,7 +133,9 @@ fn android_route_method(relative: &str, content: &str, start: usize, end: usize)
         ),
         (
             "GET",
-            vec!["gettext(", "get<", "get(", ".get(", " get ", "get /v1"],
+            vec![
+                "gettext(", "getwith<", "getwith(", "get<", "get(", ".get(", " get ", "get /v1",
+            ],
         ),
     ];
 
@@ -187,6 +195,70 @@ fn normalize_android_route(raw: &str) -> Vec<String> {
     }
 
     vec![path]
+}
+
+fn strip_kotlin_comments_preserving_offsets(content: &str) -> String {
+    let bytes = content.as_bytes();
+    let mut output = bytes.to_vec();
+    let mut index = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    while index < bytes.len() {
+        let current = bytes[index];
+
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if current == b'\\' {
+                escaped = true;
+            } else if current == b'"' {
+                in_string = false;
+            }
+            index += 1;
+            continue;
+        }
+
+        if current == b'"' {
+            in_string = true;
+            index += 1;
+            continue;
+        }
+
+        if current == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            output[index] = b' ';
+            output[index + 1] = b' ';
+            index += 2;
+            while index < bytes.len() && bytes[index] != b'\n' {
+                output[index] = b' ';
+                index += 1;
+            }
+            continue;
+        }
+
+        if current == b'/' && bytes.get(index + 1) == Some(&b'*') {
+            output[index] = b' ';
+            output[index + 1] = b' ';
+            index += 2;
+            while index < bytes.len() {
+                if bytes[index] == b'*' && bytes.get(index + 1) == Some(&b'/') {
+                    output[index] = b' ';
+                    output[index + 1] = b' ';
+                    index += 2;
+                    break;
+                }
+                if bytes[index] != b'\n' {
+                    output[index] = b' ';
+                }
+                index += 1;
+            }
+            continue;
+        }
+
+        index += 1;
+    }
+
+    String::from_utf8(output).expect("comment stripping preserves utf-8")
 }
 
 fn check_routes(
@@ -261,6 +333,24 @@ mod tests {
         assert!(ANDROID_ROUTE_SOURCES.contains(
             &"apps/android/app/src/main/java/com/axon/app/data/remote/GeneratedAxonApi.kt"
         ));
+    }
+
+    #[test]
+    fn strips_comment_only_routes_without_losing_real_routes() {
+        let content = r#"
+            // GET /v1/comment-only
+            val route = "GET /v1/real-route"
+            /*
+             * POST /v1/block-comment
+             */
+        "#;
+
+        let stripped = strip_kotlin_comments_preserving_offsets(content);
+
+        assert!(!stripped.contains("/v1/comment-only"));
+        assert!(!stripped.contains("/v1/block-comment"));
+        assert!(stripped.contains("GET /v1/real-route"));
+        assert_eq!(stripped.len(), content.len());
     }
 
     #[test]

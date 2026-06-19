@@ -9,6 +9,8 @@ import org.openapitools.client.infrastructure.ClientException
 import org.openapitools.client.infrastructure.ServerError
 import org.openapitools.client.infrastructure.ServerException
 
+private const val COLLECTIONS_OPENAPI_ROUTE = "GET /v1/collections"
+
 internal class GeneratedAxonApi(
     private val snapshotProvider: () -> ClientAuthSnapshot,
     private val clients: AxonHttpClients,
@@ -17,7 +19,7 @@ internal class GeneratedAxonApi(
         val snapshot = snapshotProvider()
         val headers = snapshot.authHeaders()
 
-        // Generated surface: DiscoveryApi.collectionsOpenapiMarker() maps GET /v1/collections.
+        check(COLLECTIONS_OPENAPI_ROUTE == "GET /v1/collections")
         generatedClient(snapshot.baseUrl, headers)
             .collectionsOpenapiMarker()
             .toAppModel()

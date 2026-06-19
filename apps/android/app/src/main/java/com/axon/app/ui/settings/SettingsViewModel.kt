@@ -2,6 +2,7 @@ package com.axon.app.ui.settings
 
 import android.app.Application
 import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
@@ -19,6 +20,8 @@ import kotlinx.coroutines.launch
 import java.net.URI
 
 internal const val REDACTED_SECRET_VALUE = "••••••••"
+
+private const val TAG = "SettingsViewModel"
 
 private val CLEARTEXT_TAILNET_SUFFIXES = setOf(
     "manatee-triceratops.ts.net",
@@ -288,7 +291,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshCollections() {
         viewModelScope.launch {
             _collections.value = _collections.value.copy(loading = true, error = null)
-            container.axonClient.collections().recoverCatching {
+            container.axonClient.collections().recoverCatching { cause ->
+                Log.w(TAG, "generated collections route failed; falling back to panel endpoint", cause)
                 container.axonClient.panelCollections().getOrThrow()
             }.fold(
                 onSuccess = { response ->
