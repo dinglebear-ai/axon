@@ -7,8 +7,9 @@ trap 'rm -rf "$tmp"' EXIT
 
 export HOME="$tmp/home"
 export AXON_RUSTC_WRAPPER_LOCAL_BIN="$HOME/.local/bin/axon"
+export AXON_ARTIFACT_BIN_DIR="$tmp/bin"
 export AXON_RUSTC_WRAPPER_NO_SCCACHE=1
-mkdir -p "$HOME/.local/bin" "$tmp/target/debug/deps"
+mkdir -p "$HOME/.local/bin" "$AXON_ARTIFACT_BIN_DIR" "$tmp/target/debug/deps"
 
 fake_rustc="$tmp/fake-rustc"
 cat >"$fake_rustc" <<'SH'
@@ -62,8 +63,10 @@ out="$tmp/target/debug/deps/axon-123"
   -o "$out"
 
 cmp "$out" "$HOME/.local/bin/axon"
+cmp "$out" "$AXON_ARTIFACT_BIN_DIR/axon-debug"
 
 rm -f "$HOME/.local/bin/axon"
+rm -f "$AXON_ARTIFACT_BIN_DIR/axon-debug"
 "$repo/scripts/cargo-rustc-wrapper" "$fake_rustc" \
   --crate-name axon \
   --crate-type bin \
@@ -72,6 +75,7 @@ rm -f "$HOME/.local/bin/axon"
   -o "$out"
 
 test ! -e "$HOME/.local/bin/axon"
+test ! -e "$AXON_ARTIFACT_BIN_DIR/axon-debug"
 
 rm -f "$HOME/.local/bin/axon"
 (
@@ -84,8 +88,10 @@ rm -f "$HOME/.local/bin/axon"
 )
 
 cmp "$tmp/target/release/deps/axon-456" "$HOME/.local/bin/axon"
+cmp "$tmp/target/release/deps/axon-456" "$AXON_ARTIFACT_BIN_DIR/axon-release"
 
 rm -f "$HOME/.local/bin/axon"
+rm -f "$AXON_ARTIFACT_BIN_DIR/axon-release"
 "$repo/scripts/cargo-rustc-wrapper" "$fake_rustc" \
   --crate-name axon \
   --crate-type bin \
@@ -94,5 +100,32 @@ rm -f "$HOME/.local/bin/axon"
   -C extra-filename=-789
 
 cmp "$tmp/target/debug/deps/axon-789" "$HOME/.local/bin/axon"
+cmp "$tmp/target/debug/deps/axon-789" "$AXON_ARTIFACT_BIN_DIR/axon-debug"
+
+rm -f "$HOME/.local/bin/axon" "$AXON_ARTIFACT_BIN_DIR/axon-debug"
+(
+  cd "$tmp"
+  "$repo/scripts/cargo-rustc-wrapper" "$fake_rustc" \
+    --crate-name axon \
+    --crate-type bin \
+    src/main.rs \
+    -o target/release-fast/deps/axon-fast
+)
+
+cmp "$tmp/target/release-fast/deps/axon-fast" "$AXON_ARTIFACT_BIN_DIR/axon-fast-release"
+
+rm -f "$HOME/.local/bin/axon" "$AXON_ARTIFACT_BIN_DIR/axon-fast-release"
+(
+  cd "$tmp"
+  "$repo/scripts/cargo-rustc-wrapper" "$fake_rustc" \
+    --crate-name axon-palette-tauri \
+    --crate-type bin \
+    src/main.rs \
+    -o target/x86_64-pc-windows-gnu/release/deps/axon-palette-tauri.exe
+)
+
+cmp "$tmp/target/x86_64-pc-windows-gnu/release/deps/axon-palette-tauri.exe" \
+  "$AXON_ARTIFACT_BIN_DIR/axon-palette-x86_64-pc-windows-gnu-release.exe"
+test ! -e "$HOME/.local/bin/axon"
 
 echo "cargo rustc wrapper install behavior ok"

@@ -118,3 +118,23 @@ dependencies {
     androidTestImplementation(libs.mockwebserver)
     debugImplementation(libs.compose.ui.test.manifest)
 }
+
+val repoBinDir = rootProject.layout.projectDirectory.dir("../../bin")
+
+fun registerApkArtifactCopy(variant: String) {
+    val capitalized = variant.replaceFirstChar { it.uppercaseChar() }
+    val copyTask = tasks.register<Copy>("copy${capitalized}ApkToRepoBin") {
+        dependsOn("assemble$capitalized")
+        from(layout.buildDirectory.dir("outputs/apk/$variant")) {
+            include("*.apk")
+            rename { "axon-android-$variant.apk" }
+        }
+        into(repoBinDir)
+    }
+    tasks.matching { it.name == "assemble$capitalized" }.configureEach {
+        finalizedBy(copyTask)
+    }
+}
+
+registerApkArtifactCopy("debug")
+registerApkArtifactCopy("release")
