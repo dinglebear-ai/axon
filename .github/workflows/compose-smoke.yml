@@ -16,23 +16,27 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
-      - name: Resolve changed files
+      - name: Prepare trusted changed path classifier
+        run: |
+          set -euo pipefail
+          classifier="scripts/ci/changed_paths.py"
+          trusted="/tmp/axon-changed-paths.py"
+          if [[ "${{ github.event_name }}" == "pull_request" ]] \
+            && git show "${{ github.event.pull_request.base.sha }}:$classifier" > "$trusted" 2>/dev/null; then
+            chmod +x "$trusted"
+          else
+            cp "$classifier" "$trusted"
+            chmod +x "$trusted"
+          fi
+          echo "AXON_CHANGED_PATHS=$trusted" >> "$GITHUB_ENV"
+      - name: Classify changed paths
+        id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA" > changed-files.txt
-          else
-            : > changed-files.txt
-          fi
-          cat changed-files.txt
-      - name: Classify changed paths
-        id: classify
-        run: python3 scripts/ci/changed_paths.py --event "${{ github.event_name }}" --changed-files changed-files.txt --output "$GITHUB_OUTPUT"
+        run: python3 "$AXON_CHANGED_PATHS" --event "$EVENT_NAME" --output "$GITHUB_OUTPUT" --write-changed-files changed-files.txt
 
   compose-config:
     name: compose-config
@@ -91,3 +95,27 @@ jobs:
           tags: axon:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  compose-smoke-gate:
+    name: compose-smoke-gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - changes
+      - compose-config
+      - image-build-smoke
+    steps:
+      - name: verify compose smoke jobs passed or were intentionally skipped
+        run: |
+          set -euo pipefail
+          require_success_or_skipped() {
+            local name="$1"
+            local result="$2"
+            case "$result" in
+              success|skipped) printf '%s=%s\n' "$name" "$result" ;;
+              *) echo "::error::$name concluded $result" >&2; exit 1 ;;
+            esac
+          }
+          require_success_or_skipped changes "${{ needs.changes.result }}"
+          require_success_or_skipped compose-config "${{ needs.compose-config.result }}"
+          require_success_or_skipped image-build-smoke "${{ needs.image-build-smoke.result }}"

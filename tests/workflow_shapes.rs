@@ -328,12 +328,18 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "test",
         "security",
         "mcp-smoke",
+        "rag-changes",
+        "live-rag-pr",
         "release",
         "release-smoke",
     ] {
         assert!(
             gate.contains(&format!("- {job}")),
             "ci-gate must need {job}"
+        );
+        assert!(
+            gate.contains(&format!("require_success_or_skipped {job}")),
+            "ci-gate must verify {job}"
         );
     }
 }
@@ -343,9 +349,18 @@ fn compose_and_docker_workflows_use_changed_path_classifier() {
     let compose = include_str!("../.github/workflows/compose-smoke.yml");
     let docker = include_str!("../.github/workflows/docker-image.yml");
     assert!(compose.contains("scripts/ci/changed_paths.py"));
+    assert!(compose.contains("AXON_CHANGED_PATHS"));
+    assert!(compose.contains("github.event.pull_request.base.sha"));
+    assert!(compose.contains("git show \"${{ github.event.pull_request.base.sha }}:$classifier\""));
+    assert!(compose.contains("python3 \"$AXON_CHANGED_PATHS\""));
     assert!(compose.contains("needs.changes.outputs.compose == 'true'"));
     assert!(compose.contains("needs.changes.outputs.docker == 'true'"));
+    assert!(compose.contains("compose-smoke-gate:"));
+    assert!(compose.contains("require_success_or_skipped compose-config"));
+    assert!(compose.contains("require_success_or_skipped image-build-smoke"));
     assert!(docker.contains("scripts/ci/changed_paths.py"));
+    assert!(docker.contains("AXON_CHANGED_PATHS"));
+    assert!(docker.contains("python3 \"$AXON_CHANGED_PATHS\""));
     assert!(docker.contains("needs.changes.outputs.docker == 'true'"));
     assert!(docker.contains("startsWith(github.ref, 'refs/tags/v')"));
 }
@@ -354,12 +369,39 @@ fn compose_and_docker_workflows_use_changed_path_classifier() {
 fn codeql_workflow_routes_language_matrix_by_changed_paths() {
     let workflow = include_str!("../.github/workflows/codeql.yml");
     assert!(workflow.contains("scripts/ci/changed_paths.py"));
+    assert!(workflow.contains("AXON_CHANGED_PATHS"));
+    assert!(workflow.contains("github.event.pull_request.base.sha"));
+    assert!(
+        workflow.contains("git show \"${{ github.event.pull_request.base.sha }}:$classifier\"")
+    );
+    assert!(workflow.contains("python3 \"$AXON_CHANGED_PATHS\""));
+    assert!(
+        !workflow.contains("source changed-paths.out"),
+        "CodeQL must not source classifier output as shell"
+    );
     assert!(workflow.contains("codeql_actions"));
     assert!(workflow.contains("codeql_javascript_typescript"));
     assert!(workflow.contains("codeql_python"));
     assert!(workflow.contains("codeql_rust"));
     assert!(workflow.contains("codeql_java_kotlin"));
     assert!(workflow.contains("fromJson(needs.changes.outputs.matrix)"));
+    assert!(workflow.contains("codeql-gate:"));
+    assert!(workflow.contains("require_success_or_skipped analyze"));
+}
+
+#[test]
+fn ci_workflow_runs_changed_path_classifier_from_trusted_base_when_available() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    assert!(workflow.contains("AXON_CHANGED_PATHS"));
+    assert!(workflow.contains("github.event.pull_request.base.sha"));
+    assert!(
+        workflow.contains("git show \"${{ github.event.pull_request.base.sha }}:$classifier\"")
+    );
+    assert!(workflow.contains("python3 \"$AXON_CHANGED_PATHS\""));
+    assert!(
+        !workflow.contains("python3 scripts/ci/changed_paths.py"),
+        "CI should call the prepared trusted classifier path"
+    );
 }
 
 fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
