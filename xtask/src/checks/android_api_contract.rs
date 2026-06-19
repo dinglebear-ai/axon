@@ -75,102 +75,44 @@ fn is_openapi_method(method: &str) -> bool {
 }
 
 fn android_routes(root: &Path) -> Result<BTreeSet<Route>> {
-    let route_pattern = Regex::new(r#"/v1[^"'\s]*"#).context("valid Android route regex")?;
     let mut routes = BTreeSet::new();
 
     for relative in ANDROID_ROUTE_SOURCES {
         let path = root.join(relative);
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        let content_without_comments = strip_kotlin_comments_preserving_offsets(&content);
-        for found in route_pattern.find_iter(&content_without_comments) {
-            let method = android_route_method(
-                relative,
-                &content_without_comments,
-                found.start(),
-                found.end(),
-            )?;
-            for path in normalize_android_route(found.as_str()) {
-                routes.insert(Route {
-                    method: method.clone(),
-                    path,
-                });
-            }
-        }
+        routes.extend(android_routes_from_content(&content)?);
     }
 
     Ok(routes)
 }
 
-fn android_route_method(relative: &str, content: &str, start: usize, end: usize) -> Result<String> {
-    if relative.ends_with("OperationMode.kt") {
-        return Ok("POST".to_string());
+fn android_routes_from_content(content: &str) -> Result<BTreeSet<Route>> {
+    let route_pattern = Regex::new(
+        r#"openApiRoute\(\s*"(?P<method>GET|POST|PUT|DELETE|PATCH)"\s*,\s*"(?P<path>/v1[^"]*)""#,
+    )
+    .context("valid Android explicit route regex")?;
+    let mut routes = BTreeSet::new();
+    let content_without_comments = strip_kotlin_comments_preserving_offsets(content);
+
+    for found in route_pattern.captures_iter(&content_without_comments) {
+        let method = found
+            .name("method")
+            .expect("route regex captures method")
+            .as_str();
+        let path = found
+            .name("path")
+            .expect("route regex captures path")
+            .as_str();
+        for path in normalize_android_route(path) {
+            routes.insert(Route {
+                method: method.to_string(),
+                path,
+            });
+        }
     }
 
-    let context_start = floor_char_boundary(content, start.saturating_sub(180));
-    let context_end = ceil_char_boundary(content, (end + 180).min(content.len()));
-    let context = &content[context_start..context_end];
-    let lower = context.to_lowercase();
-    let route_offset = start - context_start;
-
-    let candidates = [
-        (
-            "DELETE",
-            vec!["delete<", ".delete(", " delete ", "delete /v1"],
-        ),
-        ("PUT", vec!["put<", ".put(", " put ", "put /v1"]),
-        (
-            "POST",
-            vec![
-                "streamcompletion(",
-                "postwith(",
-                "post<",
-                "post(",
-                ".post(",
-                " post ",
-                "post /v1",
-            ],
-        ),
-        (
-            "GET",
-            vec![
-                "gettext(", "getwith<", "getwith(", "get<", "get(", ".get(", " get ", "get /v1",
-            ],
-        ),
-    ];
-
-    candidates
-        .iter()
-        .filter_map(|(method, needles)| {
-            needles
-                .iter()
-                .flat_map(|needle| lower.match_indices(needle).map(|(index, _)| index))
-                .map(|index| index.abs_diff(route_offset))
-                .min()
-                .map(|distance| (distance, *method))
-        })
-        .min_by_key(|(distance, _)| *distance)
-        .map(|(_, method)| method.to_string())
-        .with_context(|| {
-            format!(
-                "could not infer Android HTTP method for {}",
-                &content[start..end]
-            )
-        })
-}
-
-fn floor_char_boundary(content: &str, mut index: usize) -> usize {
-    while index > 0 && !content.is_char_boundary(index) {
-        index -= 1;
-    }
-    index
-}
-
-fn ceil_char_boundary(content: &str, mut index: usize) -> usize {
-    while index < content.len() && !content.is_char_boundary(index) {
-        index += 1;
-    }
-    index
+    Ok(routes)
 }
 
 fn normalize_android_route(raw: &str) -> Vec<String> {
@@ -179,18 +121,15 @@ fn normalize_android_route(raw: &str) -> Vec<String> {
         .next()
         .unwrap_or(raw)
         .trim_end_matches(['.', ',', ';', ':']);
-    if path.contains("{kind}") {
-        return Vec::new();
-    }
     let path = path
         .replace("${encodePathSegment(jobId)}", "{id}")
         .replace("${encodePathSegment(id)}", "{id}")
         .replace("${encodePathSegment(session.id)}", "{id}");
 
-    if path.contains("${kind.path}") {
+    if path.contains("${kind.path}") || path.contains("{kind}") {
         return JOB_KINDS
             .iter()
-            .map(|kind| path.replace("${kind.path}", kind))
+            .map(|kind| path.replace("${kind.path}", kind).replace("{kind}", kind))
             .collect();
     }
 
@@ -326,6 +265,15 @@ mod tests {
                 "/v1/ingest/{id}/cancel",
             ]
         );
+        assert_eq!(
+            normalize_android_route("/v1/{kind}/{id}"),
+            vec![
+                "/v1/crawl/{id}",
+                "/v1/embed/{id}",
+                "/v1/extract/{id}",
+                "/v1/ingest/{id}",
+            ]
+        );
     }
 
     #[test]
@@ -338,10 +286,10 @@ mod tests {
     #[test]
     fn strips_comment_only_routes_without_losing_real_routes() {
         let content = r#"
-            // GET /v1/comment-only
-            val route = "GET /v1/real-route"
+            // openApiRoute("GET", "/v1/comment-only")
+            val route = openApiRoute("GET", "/v1/real-route")
             /*
-             * POST /v1/block-comment
+             * openApiRoute("POST", "/v1/block-comment")
              */
         "#;
 
@@ -349,8 +297,32 @@ mod tests {
 
         assert!(!stripped.contains("/v1/comment-only"));
         assert!(!stripped.contains("/v1/block-comment"));
-        assert!(stripped.contains("GET /v1/real-route"));
+        assert!(stripped.contains("/v1/real-route"));
         assert_eq!(stripped.len(), content.len());
+    }
+
+    #[test]
+    fn parses_only_explicit_openapi_route_markers() {
+        let content = r#"
+            post("/v1/unmarked", request)
+            openApiRoute("GET", "/v1/sources", "/v1/sources?limit=25")
+            openApiRoute("POST", "/v1/{kind}/{id}/cancel", "/v1/${kind.path}/${encodePathSegment(id)}/cancel")
+        "#;
+
+        let routes = android_routes_from_content(content).expect("routes");
+
+        assert!(!routes.contains(&Route {
+            method: "POST".to_string(),
+            path: "/v1/unmarked".to_string(),
+        }));
+        assert!(routes.contains(&Route {
+            method: "GET".to_string(),
+            path: "/v1/sources".to_string(),
+        }));
+        assert!(routes.contains(&Route {
+            method: "POST".to_string(),
+            path: "/v1/crawl/{id}/cancel".to_string(),
+        }));
     }
 
     #[test]

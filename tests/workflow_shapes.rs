@@ -217,8 +217,9 @@ fn ci_runs_android_generated_openapi_client_tests() {
     );
     assert!(
         job.contains("repository: jmagar/aurora-design-system")
+            && job.contains("ref: 8748eb6434b3bbe4c75f25bfff71950b7efc051b")
             && job.contains("AXON_AURORA_ANDROID_PATH"),
-        "android OpenAPI client verification must provide the Aurora composite build path"
+        "android OpenAPI client verification must pin and provide the Aurora composite build path"
     );
 }
 

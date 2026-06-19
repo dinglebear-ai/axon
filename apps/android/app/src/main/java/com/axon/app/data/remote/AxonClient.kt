@@ -30,10 +30,7 @@ import com.axon.app.data.remote.models.ExtractRequest
 import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.JobDetailResponse
 import com.axon.app.data.remote.models.JobListResponse
-import com.axon.app.data.remote.models.DeleteMobileSessionResponse
-import com.axon.app.data.remote.models.MobileSessionDetailResponse
 import com.axon.app.data.remote.models.MobileSessionDto
-import com.axon.app.data.remote.models.MobileSessionListResponse
 import com.axon.app.data.remote.models.PanelConfigResponse
 import com.axon.app.data.remote.models.PanelCollectionsResponse
 import com.axon.app.data.remote.models.PanelEnvResponse
@@ -48,8 +45,6 @@ import com.axon.app.data.remote.models.SuggestRequest
 import com.axon.app.data.remote.models.SuggestResponse
 import com.axon.app.data.remote.models.SummarizeRequest
 import com.axon.app.data.remote.models.SummarizeResponse
-import com.axon.app.data.remote.models.UpsertMobileSessionRequest
-import com.axon.app.data.remote.models.UpsertMobileSessionResponse
 import com.axon.app.data.remote.models.WatchDef
 import com.axon.app.data.remote.models.WatchListResponse
 import okhttp3.MediaType.Companion.toMediaType
@@ -120,11 +115,11 @@ class AxonClient(
     }
 
     suspend fun ask(request: AskRequest): Result<AskResponse> = withContext(Dispatchers.IO) {
-        post("/v1/ask", request)
+        post(openApiRoute("POST", "/v1/ask"), request)
     }
 
     suspend fun chat(request: ChatRequest): Result<ChatResponse> = withContext(Dispatchers.IO) {
-        post("/v1/chat", request)
+        post(openApiRoute("POST", "/v1/chat"), request)
     }
 
     /**
@@ -136,11 +131,11 @@ class AxonClient(
      * regular request timeouts on [http].
      */
     fun askStream(request: AskRequest): Flow<AskStreamEvent> = flow {
-        emitAll(streamCompletion("/v1/ask/stream", request))
+        emitAll(streamCompletion(openApiRoute("POST", "/v1/ask/stream"), request))
     }.flowOn(Dispatchers.IO)
 
     fun chatStream(request: ChatRequest): Flow<AskStreamEvent> = flow {
-        emitAll(streamCompletion("/v1/chat/stream", request))
+        emitAll(streamCompletion(openApiRoute("POST", "/v1/chat/stream"), request))
     }.flowOn(Dispatchers.IO)
 
     private inline fun <reified T> streamCompletion(path: String, request: T): Flow<AskStreamEvent> = flow {
@@ -217,42 +212,44 @@ class AxonClient(
     }
 
     suspend fun query(request: QueryRequest): Result<QueryResponse> = withContext(Dispatchers.IO) {
-        post("/v1/query", request)
+        post(openApiRoute("POST", "/v1/query"), request)
     }
 
     suspend fun retrieve(request: RetrieveRequest): Result<RetrieveResponse> = withContext(Dispatchers.IO) {
         // Retrieve can return large assembled documents; use the longer-timeout client.
-        postWith(httpLong, "/v1/retrieve", request)
+        postWith(httpLong, openApiRoute("POST", "/v1/retrieve"), request)
     }
 
     suspend fun sources(request: SourcesRequest = SourcesRequest()): Result<SourcesResponse> =
         withContext(Dispatchers.IO) {
-            get("/v1/sources?limit=${request.limit}&offset=${request.offset}")
+            get(openApiRoute("GET", "/v1/sources", "/v1/sources?limit=${request.limit}&offset=${request.offset}"))
         }
 
     suspend fun stats(): Result<StatsResponse> = withContext(Dispatchers.IO) {
-        get("/v1/stats")
+        get(openApiRoute("GET", "/v1/stats"))
     }
 
     suspend fun scrape(request: ScrapeRequest): Result<ScrapeResponse> = withContext(Dispatchers.IO) {
-        post("/v1/scrape", request)
+        post(openApiRoute("POST", "/v1/scrape"), request)
     }
 
     suspend fun map(request: MapRequest): Result<MapResponse> = withContext(Dispatchers.IO) {
-        post("/v1/map", request)
+        post(openApiRoute("POST", "/v1/map"), request)
     }
 
     suspend fun research(request: ResearchRequest): Result<ResearchResponse> = withContext(Dispatchers.IO) {
-        postWith(httpLong, "/v1/research", request)
+        postWith(httpLong, openApiRoute("POST", "/v1/research"), request)
     }
 
     suspend fun crawlSubmit(request: CrawlRequest): Result<CrawlJobResponse> = withContext(Dispatchers.IO) {
-        post("/v1/crawl", request)
+        post(openApiRoute("POST", "/v1/crawl"), request)
     }
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusResponse> = withContext(Dispatchers.IO) {
         // The server wraps the job in {"job": {...}}; decode the envelope and unwrap.
-        get<CrawlStatusWrapper>("/v1/crawl/${encodePathSegment(jobId)}").map { it.job }
+        get<CrawlStatusWrapper>(
+            openApiRoute("GET", "/v1/crawl/{id}", "/v1/crawl/${encodePathSegment(jobId)}"),
+        ).map { it.job }
     }
 
     // ── Phase 2 endpoints ──────────────────────────────────────────────────────
@@ -263,87 +260,90 @@ class AxonClient(
 
     /** /v1/summarize — Gemini-backed, can take minutes. Use httpLong. */
     suspend fun summarize(req: SummarizeRequest): Result<SummarizeResponse> = withContext(Dispatchers.IO) {
-        postWith(httpLong, "/v1/summarize", req)
+        postWith(httpLong, openApiRoute("POST", "/v1/summarize"), req)
     }
 
     /** /v1/search — Tavily web search; auto-enqueues crawl jobs server-side. */
     suspend fun searchWeb(req: SearchWebRequest): Result<SearchWebResponse> = withContext(Dispatchers.IO) {
-        post("/v1/search", req)
+        post(openApiRoute("POST", "/v1/search"), req)
     }
 
     /** POST /v1/ingest — submits an async ingest job. */
     suspend fun ingestStart(req: IngestRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
-        post("/v1/ingest", req)
+        post(openApiRoute("POST", "/v1/ingest"), req)
     }
 
     /** POST /v1/extract — submits an async structured extraction job. */
     suspend fun extractStart(req: ExtractRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
-        post("/v1/extract", req)
+        post(openApiRoute("POST", "/v1/extract"), req)
     }
 
     /** POST /v1/embed — submits an async embedding job. */
     suspend fun embedStart(req: EmbedRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
-        post("/v1/embed", req)
+        post(openApiRoute("POST", "/v1/embed"), req)
     }
 
     /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
     suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
         getWith<JobDetailResponse>(
             httpLong,
-            "/v1/${kind.path}/${encodePathSegment(id)}",
+            openApiRoute("GET", "/v1/{kind}/{id}", "/v1/${kind.path}/${encodePathSegment(id)}"),
         ).map { it.job }
     }
 
     /** GET /v1/{kind} — list jobs of one kind. Server wraps in {"jobs":[...],"limit":N,"offset":N}. */
     suspend fun listJobs(kind: JobKind, limit: Int = 25, offset: Int = 0): Result<List<ServiceJob>> = withContext(Dispatchers.IO) {
-        get<JobListResponse>("/v1/${kind.path}?limit=$limit&offset=$offset").map { it.jobs }
+        get<JobListResponse>(
+            openApiRoute("GET", "/v1/{kind}", "/v1/${kind.path}?limit=$limit&offset=$offset"),
+        ).map { it.jobs }
     }
 
     /** POST /v1/{kind}/{id}/cancel. */
     suspend fun cancelJob(kind: JobKind, id: String): Result<CancelResponse> = withContext(Dispatchers.IO) {
         val body = "{}".toRequestBody(JSON_MEDIA_TYPE)
         val builder = runCatching {
-            authRequest(Request.Builder().url("${baseUrl()}/v1/${kind.path}/${encodePathSegment(id)}/cancel").post(body))
+            authRequest(
+                Request.Builder()
+                    .url("${baseUrl()}${openApiRoute("POST", "/v1/{kind}/{id}/cancel", "/v1/${kind.path}/${encodePathSegment(id)}/cancel")}")
+                    .post(body),
+            )
         }.getOrElse { return@withContext Result.failure(it) }
         execute(http, builder)
     }
 
-    suspend fun status(): Result<StatusSummary> = withContext(Dispatchers.IO) { get("/v1/status") }
+    suspend fun status(): Result<StatusSummary> = withContext(Dispatchers.IO) { get(openApiRoute("GET", "/v1/status")) }
 
-    suspend fun doctor(): Result<DoctorResponse> = withContext(Dispatchers.IO) { get("/v1/doctor") }
+    suspend fun doctor(): Result<DoctorResponse> = withContext(Dispatchers.IO) { get(openApiRoute("GET", "/v1/doctor")) }
 
     suspend fun suggest(focus: String? = null, collection: String? = null): Result<SuggestResponse> =
-        withContext(Dispatchers.IO) { post("/v1/suggest", SuggestRequest(focus = focus, collection = collection)) }
+        withContext(Dispatchers.IO) { post(openApiRoute("POST", "/v1/suggest"), SuggestRequest(focus = focus, collection = collection)) }
 
     suspend fun domains(limit: Int = 100, offset: Int = 0): Result<DomainsResponse> =
-        withContext(Dispatchers.IO) { get("/v1/domains?limit=$limit&offset=$offset") }
+        withContext(Dispatchers.IO) { get(openApiRoute("GET", "/v1/domains", "/v1/domains?limit=$limit&offset=$offset")) }
 
     suspend fun listWatches(limit: Int = 25): Result<List<WatchDef>> = withContext(Dispatchers.IO) {
-        get<WatchListResponse>("/v1/watch?limit=$limit").map { it.watches }
+        get<WatchListResponse>(openApiRoute("GET", "/v1/watch", "/v1/watch?limit=$limit")).map { it.watches }
     }
 
     suspend fun listMobileSessions(): Result<List<MobileSessionDto>> = withContext(Dispatchers.IO) {
-        get<MobileSessionListResponse>("/v1/mobile/sessions").map { it.sessions }
+        generatedApi.listMobileSessions()
     }
 
     suspend fun getMobileSession(id: String): Result<MobileSessionDto> = withContext(Dispatchers.IO) {
-        get<MobileSessionDetailResponse>("/v1/mobile/sessions/${encodePathSegment(id)}").map { it.session }
+        generatedApi.getMobileSession(id)
     }
 
     suspend fun upsertMobileSession(session: MobileSessionDto): Result<MobileSessionDto> = withContext(Dispatchers.IO) {
-        put<UpsertMobileSessionRequest, UpsertMobileSessionResponse>(
-            "/v1/mobile/sessions/${encodePathSegment(session.id)}",
-            UpsertMobileSessionRequest(session),
-        ).map { it.session }
+        generatedApi.upsertMobileSession(session)
     }
 
     suspend fun deleteMobileSession(id: String): Result<Boolean> = withContext(Dispatchers.IO) {
-        delete<DeleteMobileSessionResponse>("/v1/mobile/sessions/${encodePathSegment(id)}").map { it.ok }
+        generatedApi.deleteMobileSession(id)
     }
 
     suspend fun artifactText(relativePath: String): Result<String> = withContext(Dispatchers.IO) {
         val encodedPath = URLEncoder.encode(relativePath, "UTF-8").replace("+", "%20")
-        getText("/v1/artifacts?path=$encodedPath")
+        getText(openApiRoute("GET", "/v1/artifacts", "/v1/artifacts?path=$encodedPath"))
     }
 
     suspend fun panelConfig(): Result<PanelConfigResponse> = withContext(Dispatchers.IO) {
@@ -432,6 +432,13 @@ class AxonClient(
     }
 
     private fun baseUrl(): String = config.get().first
+
+    private fun openApiRoute(method: String, template: String, resolved: String = template): String {
+        require(method == "GET" || method == "POST" || method == "PUT" || method == "DELETE")
+        require(template.startsWith("/v1/"))
+        require(resolved.startsWith("/v1/"))
+        return resolved
+    }
 
     private suspend inline fun <reified B, reified R> post(path: String, body: B): Result<R> =
         postWith(http, path, body)

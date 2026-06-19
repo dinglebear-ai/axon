@@ -120,6 +120,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: jmagar/aurora-design-system
+          ref: 8748eb6434b3bbe4c75f25bfff71950b7efc051b
           path: aurora-design-system
           sparse-checkout: |
             android
