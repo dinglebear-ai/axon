@@ -164,6 +164,9 @@ export type components = {
             "turn_count": number;
             "updated_at": number;
         };
+        "PanelCollectionsResponse": {
+            "collections": string[];
+        };
         "PreparedSessionDoc": {
             "extra"?: unknown;
             "session_date"?: string | null;
@@ -393,6 +396,7 @@ export type paths = {
     "/v1/capabilities": { get: operations["v1_capabilities"] };
     "/v1/chat": { post: operations["v1_chat"] };
     "/v1/chat/stream": { post: operations["v1_chat_stream"] };
+    "/v1/collections": { get: operations["collections_openapi_marker"] };
     "/v1/crawl": { get: operations["list_jobs"]; post: operations["start_crawl"]; delete: operations["clear_jobs"] };
     "/v1/crawl/cleanup": { post: operations["cleanup_jobs"] };
     "/v1/crawl/recover": { post: operations["recover_jobs"] };
@@ -449,6 +453,7 @@ export type operations = {
     "v1_capabilities": { method: "get"; path: "/v1/capabilities"; operationId: "v1_capabilities"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['ServerInfo']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "v1_chat": { method: "post"; path: "/v1/chat"; operationId: "v1_chat"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestChatRequest']; responses: { "200": components['schemas']['RestChatResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "v1_chat_stream": { method: "post"; path: "/v1/chat/stream"; operationId: "v1_chat_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestChatRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "collections_openapi_marker": { method: "get"; path: "/v1/collections"; operationId: "collections_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['PanelCollectionsResponse']; "502": components['schemas']['ErrorBody'] }; security: never };
     "list_jobs": { method: "get"; path: "/v1/crawl"; operationId: "list_jobs"; parameters: { query: { "limit"?: number; "offset"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "start_crawl": { method: "post"; path: "/v1/crawl"; operationId: "start_crawl"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestCrawlRequest']; responses: { "202": components['schemas']['AcceptedJob']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "clear_jobs": { method: "delete"; path: "/v1/crawl"; operationId: "clear_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

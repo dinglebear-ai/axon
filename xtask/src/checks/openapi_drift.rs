@@ -33,6 +33,7 @@ pub fn check(root: &Path) -> Result<()> {
     let drifted = generated_artifact_drift(root)?;
     if drifted.is_empty() {
         println!("OK: OpenAPI generated artifacts are in sync.");
+        super::android_api_contract::check_against_openapi(root)?;
         return Ok(());
     }
 

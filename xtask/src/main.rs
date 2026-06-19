@@ -32,6 +32,8 @@ enum Command {
     CheckVersionSync,
     /// Regenerate and verify all tracked OpenAPI artifacts.
     CheckOpenapiDrift,
+    /// Verify Android's handwritten /v1 client routes are present in OpenAPI.
+    CheckAndroidApiContract,
     /// Verify all releasable components have valid versions and changed shipping paths have bumps.
     CheckReleaseVersions {
         #[arg(long)]
@@ -99,6 +101,7 @@ fn main() -> Result<()> {
         Command::CheckSecrets => checks::secrets::check(&root),
         Command::CheckVersionSync => checks::version_sync::check(&root),
         Command::CheckOpenapiDrift => checks::openapi_drift::check(&root),
+        Command::CheckAndroidApiContract => checks::android_api_contract::check(&root),
         Command::CheckReleaseVersions {
             base,
             head,
