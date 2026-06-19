@@ -350,6 +350,18 @@ fn compose_and_docker_workflows_use_changed_path_classifier() {
     assert!(docker.contains("startsWith(github.ref, 'refs/tags/v')"));
 }
 
+#[test]
+fn codeql_workflow_routes_language_matrix_by_changed_paths() {
+    let workflow = include_str!("../.github/workflows/codeql.yml");
+    assert!(workflow.contains("scripts/ci/changed_paths.py"));
+    assert!(workflow.contains("codeql_actions"));
+    assert!(workflow.contains("codeql_javascript_typescript"));
+    assert!(workflow.contains("codeql_python"));
+    assert!(workflow.contains("codeql_rust"));
+    assert!(workflow.contains("codeql_java_kotlin"));
+    assert!(workflow.contains("fromJson(needs.changes.outputs.matrix)"));
+}
+
 fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
     let marker = format!("  {job_name}:");
     let start = workflow
