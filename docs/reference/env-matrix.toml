@@ -311,6 +311,30 @@ compatibility = "advanced"
 reason = "Host-side cargo rustc wrapper switch used by wrapper tests to bypass sccache."
 
 [[env]]
+key = "AXON_ARTIFACT_BIN_DIR"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Host-side build-script and wrapper test override for copied binary artifact destinations; not Axon runtime config."
+
+[[env]]
+key = "AXON_AURORA_ANDROID_PATH"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["tests"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test-only override used by workflow shape guards to locate the sibling Aurora Android project."
+
+[[env]]
 key = "GEMINI_FLASH_MODEL"
 classification = "external/test-only"
 runtime_placement = "not-runtime"
