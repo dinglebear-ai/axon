@@ -15,17 +15,21 @@ internal class GeneratedAxonApi(
     private val snapshotProvider: () -> ClientAuthSnapshot,
     private val clients: AxonHttpClients,
 ) {
-    suspend fun collections(): Result<PanelCollectionsResponse> = runCatching {
-        val snapshot = snapshotProvider()
-        val headers = snapshot.authHeaders()
+    suspend fun collections(): Result<PanelCollectionsResponse> {
+        var sensitiveValues = emptyList<String>()
+        return runCatching {
+            val snapshot = snapshotProvider()
+            val headers = snapshot.authHeaders()
+            sensitiveValues = headers.sensitiveHeaderValues()
 
-        check(COLLECTIONS_OPENAPI_ROUTE == "GET /v1/collections")
-        generatedClient(snapshot.baseUrl, headers)
-            .collectionsOpenapiMarker()
-            .toAppModel()
-    }.recoverCatching { error ->
-        if (error is CancellationException) throw error
-        throw error.toAppFailure()
+            check(COLLECTIONS_OPENAPI_ROUTE == "GET /v1/collections")
+            generatedClient(snapshot.baseUrl, headers)
+                .collectionsOpenapiMarker()
+                .toAppModel()
+        }.recoverCatching { error ->
+            if (error is CancellationException) throw error
+            throw error.toAppFailure(sensitiveValues)
+        }
     }
 
     private fun generatedClient(baseUrl: String, headers: Map<String, String>): DiscoveryApi {
@@ -40,13 +44,14 @@ internal class GeneratedAxonApi(
         return DiscoveryApi(basePath = baseUrl, client = authenticated)
     }
 
-    private fun Throwable.toAppFailure(): Throwable =
+    private fun Throwable.toAppFailure(sensitiveValues: Collection<String>): Throwable =
         when (this) {
             is ClientException -> IllegalStateException(
                 redactedHttpError(
                     statusCode,
                     (response as? ClientError<*>)?.body?.toString(),
                     message.orEmpty(),
+                    sensitiveValues,
                 )
             )
             is ServerException -> IllegalStateException(
@@ -54,21 +59,41 @@ internal class GeneratedAxonApi(
                     statusCode,
                     (response as? ServerError<*>)?.body?.toString(),
                     message.orEmpty(),
+                    sensitiveValues,
                 )
             )
             else -> this
         }
 
-    private fun redactedHttpError(code: Int, body: String?, message: String): String =
-        httpErrorMessage(code, body?.redactSensitiveTokens(), message).redactSensitiveTokens()
+    private fun redactedHttpError(
+        code: Int,
+        body: String?,
+        message: String,
+        sensitiveValues: Collection<String>,
+    ): String =
+        httpErrorMessage(
+            code,
+            body?.redactSensitiveTokens(sensitiveValues),
+            message,
+        ).redactSensitiveTokens(sensitiveValues)
 
     private fun GeneratedPanelCollectionsResponse.toAppModel(): PanelCollectionsResponse =
         PanelCollectionsResponse(collections = collections)
 
-    private fun String.redactSensitiveTokens(): String =
-        replace(Regex("(?i)(authorization|x-api-key|x-axon-panel-token)\\s*[:=]\\s*(bearer\\s+)?[^,}\\s]+"), "$1:<redacted>")
+    private fun Map<String, String>.sensitiveHeaderValues(): List<String> =
+        values.flatMap { value ->
+            listOf(value, value.removePrefix("Bearer ").removePrefix("bearer "))
+        }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedByDescending(String::length)
+
+    private fun String.redactSensitiveTokens(sensitiveValues: Collection<String>): String =
+        sensitiveValues.fold(this) { redacted, value ->
+            redacted.replace(value, "<redacted>")
+        }
+            .replace(Regex("(?i)(authorization|x-api-key|x-axon-panel-token)\\s*[:=]\\s*(bearer\\s+)?[^,}\\s]+"), "$1:<redacted>")
             .replace(Regex("(?i)(\"(?:access_)?token\"\\s*:\\s*\")[^\"]+(\")"), "$1<redacted>$2")
             .replace(Regex("(?i)(token=)[^,}\\s]+"), "$1<redacted>")
             .replace(Regex("secret-[A-Za-z0-9._-]*"), "<redacted>")
-            .replace("secret-token", "<redacted>")
 }

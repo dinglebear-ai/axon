@@ -9,6 +9,9 @@ plugins {
 
 val axonOpenApiSpec = rootProject.layout.projectDirectory.file("../../apps/web/openapi/axon.json")
 val axonOpenApiOutput = layout.buildDirectory.dir("generated/openapi")
+val androidTempFilePatchPattern =
+    Regex("""java\.nio\.file\.Files\.createTempFile\(([^)]*)\)\.toFile\(\)""")
+val androidTempFileReplacement = "java.io.File.createTempFile($1)"
 
 android {
     namespace = "com.axon.app"
@@ -109,12 +112,12 @@ tasks.named("openApiGenerate") {
             .asFile
         if (apiClient.isFile) {
             val before = apiClient.readText()
-            val target = "java.nio.file.Files.createTempFile(prefix, suffix).toFile()"
-            require(before.contains(target)) {
-                "Generated ApiClient.kt no longer contains the Android-incompatible temp-file call; review the OpenAPI generator output before removing this patch."
+            val matches = androidTempFilePatchPattern.findAll(before).toList()
+            require(matches.size == 1) {
+                "Generated ApiClient.kt should contain exactly one Android-incompatible java.nio temp-file call; found ${matches.size}."
             }
-            val after = before.replace(target, "java.io.File.createTempFile(prefix, suffix)")
-            require(!after.contains(target) && after.contains("java.io.File.createTempFile(prefix, suffix)")) {
+            val after = before.replace(androidTempFilePatchPattern, androidTempFileReplacement)
+            require(!androidTempFilePatchPattern.containsMatchIn(after) && after.contains("java.io.File.createTempFile(")) {
                 "Generated ApiClient.kt temp-file patch did not apply cleanly."
             }
             apiClient.writeText(after)

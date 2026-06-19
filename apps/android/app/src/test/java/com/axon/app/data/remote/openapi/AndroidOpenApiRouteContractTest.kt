@@ -1,5 +1,7 @@
 package com.axon.app.data.remote.openapi
 
+import java.io.File
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
@@ -7,48 +9,8 @@ import org.junit.Test
 
 class AndroidOpenApiRouteContractTest {
     private val json = Json { ignoreUnknownKeys = true }
-
-    private val requiredAndroidRoutes = listOf(
-        Route("POST", "/v1/ask", true),
-        Route("POST", "/v1/chat", true),
-        Route("POST", "/v1/ask/stream", true),
-        Route("POST", "/v1/chat/stream", true),
-        Route("POST", "/v1/query", true),
-        Route("POST", "/v1/retrieve", true),
-        Route("GET", "/v1/sources", true),
-        Route("GET", "/v1/stats", true),
-        Route("POST", "/v1/scrape", true),
-        Route("POST", "/v1/map", true),
-        Route("POST", "/v1/research", true),
-        Route("POST", "/v1/crawl", true),
-        Route("GET", "/v1/crawl/{id}", true),
-        Route("POST", "/v1/summarize", true),
-        Route("POST", "/v1/search", true),
-        Route("POST", "/v1/ingest", true),
-        Route("POST", "/v1/extract", true),
-        Route("POST", "/v1/embed", true),
-        Route("GET", "/v1/crawl", true),
-        Route("GET", "/v1/embed", true),
-        Route("GET", "/v1/extract", true),
-        Route("GET", "/v1/ingest", true),
-        Route("GET", "/v1/embed/{id}", true),
-        Route("GET", "/v1/extract/{id}", true),
-        Route("GET", "/v1/ingest/{id}", true),
-        Route("POST", "/v1/crawl/{id}/cancel", true),
-        Route("POST", "/v1/embed/{id}/cancel", true),
-        Route("POST", "/v1/extract/{id}/cancel", true),
-        Route("POST", "/v1/ingest/{id}/cancel", true),
-        Route("GET", "/v1/status", true),
-        Route("GET", "/v1/doctor", true),
-        Route("POST", "/v1/suggest", true),
-        Route("GET", "/v1/domains", true),
-        Route("GET", "/v1/watch", true),
-        Route("GET", "/v1/mobile/sessions", true),
-        Route("GET", "/v1/mobile/sessions/{id}", true),
-        Route("PUT", "/v1/mobile/sessions/{id}", true),
-        Route("DELETE", "/v1/mobile/sessions/{id}", true),
-        Route("GET", "/v1/artifacts", true),
-        Route("GET", "/v1/collections", true),
+    private val routeContracts: List<Route> = json.decodeFromString(
+        File("src/test/resources/openapi/android-route-contracts.json").readText(),
     )
 
     private val forbiddenGeneratedRoutes = listOf(
@@ -62,7 +24,7 @@ class AndroidOpenApiRouteContractTest {
     @Test
     fun androidRoutesExistInOpenApiWithExpectedSecurity() {
         val paths = pathsObject()
-        val failures = requiredAndroidRoutes.flatMap { route ->
+        val failures = routeContracts.flatMap { route ->
             val operation = paths[route.path]?.jsonObject?.get(route.method.lowercase())?.jsonObject
             when {
                 operation == null -> listOf("${route.method} ${route.path} missing")
@@ -85,12 +47,10 @@ class AndroidOpenApiRouteContractTest {
     @Test
     fun healthRoutesAreTheOnlyPublicNonDocsRuntimeRoutesInThisContract() {
         val paths = pathsObject()
-        val allowedPublicRoutes = setOf(
-            "GET /healthz",
-            "GET /readyz",
-            "GET /api-docs/openapi.json",
-            "GET /docs",
-        )
+        val allowedPublicRoutes = routeContracts
+            .filterNot { it.requiresAuth }
+            .map { "${it.method} ${it.path}" }
+            .toSet()
         val publicRuntimeRoutes = paths.entries
             .flatMap { (path, item) ->
                 item.jsonObject.entries
@@ -109,6 +69,7 @@ class AndroidOpenApiRouteContractTest {
         .getValue("paths")
         .jsonObject
 
+    @Serializable
     private data class Route(
         val method: String,
         val path: String,

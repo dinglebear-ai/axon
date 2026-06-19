@@ -8,11 +8,13 @@ const GENERATED_ARTIFACTS: &[&str] = &[
     "apps/web/openapi/axon.json",
     "apps/web/lib/generated/axon-api.ts",
     "apps/palette-tauri/src/lib/axon-api.d.ts",
+    "apps/android/app/src/test/resources/openapi/android-route-contracts.json",
 ];
 
 pub fn check(root: &Path) -> Result<()> {
     ensure_web_deps(root)?;
     export_openapi(root)?;
+    export_android_route_contracts(root)?;
     run(
         root,
         "npm",
@@ -44,6 +46,43 @@ pub fn check(root: &Path) -> Result<()> {
     eprintln!();
     eprintln!("Run `cargo xtask check-openapi-drift` and commit the regenerated files.");
     bail!("OpenAPI generated artifact drift");
+}
+
+fn export_android_route_contracts(root: &Path) -> Result<()> {
+    let output_path =
+        root.join("apps/android/app/src/test/resources/openapi/android-route-contracts.json");
+    let parent = output_path
+        .parent()
+        .context("Android route contract output path must have a parent directory")?;
+    fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
+
+    let output = command_with_clean_env("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "Cargo.toml",
+            "--bin",
+            "axon-route-contracts",
+        ])
+        .current_dir(root)
+        .output()
+        .context(
+            "failed to invoke `cargo run --quiet --manifest-path Cargo.toml --bin axon-route-contracts`",
+        )?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "`cargo run --quiet --manifest-path Cargo.toml --bin axon-route-contracts` failed with exit {}: {}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        );
+    }
+
+    fs::write(&output_path, output.stdout)
+        .with_context(|| format!("failed to write {}", output_path.display()))?;
+    Ok(())
 }
 
 fn export_openapi(root: &Path) -> Result<()> {

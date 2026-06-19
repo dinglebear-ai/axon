@@ -6,6 +6,7 @@
 //! before the split is re-exported here so external callers keep working
 //! without any `use` changes.
 
+mod collections;
 mod dedupe;
 mod doctor;
 mod domains;
@@ -14,6 +15,7 @@ mod stats;
 mod status;
 mod watchdog;
 
+pub use self::collections::{CollectionsError, collections, map_collections_payload};
 pub use self::dedupe::dedupe;
 pub use self::doctor::{doctor, map_doctor_payload};
 pub use self::domains::{
