@@ -43,8 +43,23 @@ def any_match(paths: list[str], predicate: Callable[[str], bool]) -> bool:
 
 RUST_CI_HELPER_SCRIPTS = {
     "scripts/cargo_test_filter_guard.py",
+    "scripts/check_lefthook_pre_commit_speed.py",
     "scripts/check_shell_completions.sh",
+    "scripts/enforce_monoliths.py",
     "scripts/generate_mcp_schema_doc.py",
+    "scripts/test-ask-quality-regressions.sh",
+    "scripts/test-mcp-oauth-protection.sh",
+    "scripts/test-mcp-tools-mcporter.sh",
+}
+
+MCP_CI_HELPER_SCRIPTS = {
+    "scripts/generate_mcp_schema_doc.py",
+    "scripts/test-mcp-oauth-protection.sh",
+    "scripts/test-mcp-tools-mcporter.sh",
+}
+
+DOC_CI_HELPER_SCRIPTS = {
+    "scripts/check_aurora_primitive_inventory.py",
 }
 
 
@@ -60,16 +75,20 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         lambda p: starts(p, ".github/workflows/")
         or p in {"scripts/ci/changed_paths.py", "tests/workflow_shapes.rs", "tests/ci_changed_paths.rs"},
     )
-    docs = any_match(paths, lambda p: starts(p, "docs/") or p in {"README.md", "CHANGELOG.md"})
+    docs = any_match(
+        paths,
+        lambda p: starts(p, "docs/") or p in {"README.md", "CHANGELOG.md"} or p in DOC_CI_HELPER_SCRIPTS,
+    )
     openapi = any_match(paths, lambda p: starts(p, "apps/web/openapi/"))
-    web = any_match(paths, lambda p: starts(p, "apps/web/")) or openapi
+    web = any_match(paths, lambda p: starts(p, "apps/web/", "assets/")) or openapi
     android = any_match(paths, lambda p: starts(p, "apps/android/")) or openapi
     palette = any_match(paths, lambda p: starts(p, "apps/palette-tauri/")) or openapi
     chrome = any_match(paths, lambda p: starts(p, "apps/chrome-extension/", "assets/"))
     mcp = any_match(
         paths,
         lambda p: starts(p, "src/mcp/", "docs/reference/mcp/")
-        or p in {"scripts/generate_mcp_schema_doc.py", "tests/workflow_shapes.rs"},
+        or p in MCP_CI_HELPER_SCRIPTS
+        or p == "tests/workflow_shapes.rs",
     )
     rust = any_match(
         paths,
@@ -91,9 +110,10 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     compose = any_match(
         paths,
         lambda p: starts(p, "config/", "scripts/")
-        or p in {".env.example", "docker-compose.yaml", "docker-compose.prod.yaml", "docker-compose.llama.yaml"},
+        or p
+        in {".dockerignore", ".env.example", "docker-compose.yaml", "docker-compose.prod.yaml", "docker-compose.llama.yaml"},
     )
-    docker = rust or web or compose or any_match(paths, lambda p: p == "config/Dockerfile")
+    docker = rust or web or compose or any_match(paths, lambda p: p in {".dockerignore", "config/Dockerfile"})
     security = any_match(paths, lambda p: p in {"Cargo.lock", "deny.toml"} or starts(p, ".cargo/", "vendor/")) or rust
 
     codeql_actions = workflow

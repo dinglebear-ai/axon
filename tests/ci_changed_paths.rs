@@ -103,6 +103,7 @@ fn compose_and_docker_inputs_route_to_container_smoke_only() {
         "docker-compose.yaml",
         "docker-compose.prod.yaml",
         "docker-compose.llama.yaml",
+        ".dockerignore",
         "config/chrome/Dockerfile",
         "scripts/sync-openapi.ts",
     ] {
@@ -118,12 +119,54 @@ fn compose_and_docker_inputs_route_to_container_smoke_only() {
 }
 
 #[test]
+fn shared_assets_route_to_web_chrome_and_docker() {
+    let out = classify("pull_request", &["assets/logo.png"]);
+    assert_eq!(out["web"], "true");
+    assert_eq!(out["chrome"], "true");
+    assert_eq!(out["docker"], "true");
+    assert_eq!(out["android"], "false");
+    assert_eq!(out["palette"], "false");
+}
+
+#[test]
 fn dockerfile_change_routes_to_image_and_compose_smoke() {
     let out = classify("pull_request", &["config/Dockerfile"]);
     assert_eq!(out["docker"], "true");
     assert_eq!(out["compose"], "true");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
+}
+
+#[test]
+fn ci_executed_helper_scripts_enable_their_consuming_jobs() {
+    let aurora = classify(
+        "pull_request",
+        &["scripts/check_aurora_primitive_inventory.py"],
+    );
+    assert_eq!(aurora["docs"], "true");
+    assert_eq!(aurora["android"], "false");
+    assert_eq!(aurora["palette"], "false");
+
+    for file in [
+        "scripts/check_lefthook_pre_commit_speed.py",
+        "scripts/enforce_monoliths.py",
+        "scripts/test-ask-quality-regressions.sh",
+    ] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(out["rust"], "true", "{file} should enable Rust CI jobs");
+        assert_eq!(out["security"], "true", "{file} should enable security");
+        assert_eq!(out["docker"], "true", "{file} should enable image smoke");
+    }
+
+    for file in [
+        "scripts/test-mcp-oauth-protection.sh",
+        "scripts/test-mcp-tools-mcporter.sh",
+    ] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(out["rust"], "true", "{file} should enable Rust CI jobs");
+        assert_eq!(out["mcp"], "true", "{file} should enable MCP jobs");
+        assert_eq!(out["security"], "true", "{file} should enable security");
+    }
 }
 
 #[test]
