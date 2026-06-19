@@ -92,31 +92,11 @@ fn export_openapi(root: &Path) -> Result<()> {
         .context("OpenAPI output path must have a parent directory")?;
     fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
 
-    let output = command_with_clean_env("cargo")
-        .args([
-            "run",
-            "--quiet",
-            "--manifest-path",
-            "Cargo.toml",
-            "--bin",
-            "axon-openapi",
-        ])
-        .current_dir(root)
-        .output()
-        .context(
-            "failed to invoke `cargo run --quiet --manifest-path Cargo.toml --bin axon-openapi`",
-        )?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!(
-            "`cargo run --quiet --manifest-path Cargo.toml --bin axon-openapi` failed with exit {}: {}",
-            output.status.code().unwrap_or(-1),
-            stderr.trim()
-        );
-    }
-
-    fs::write(&output_path, output.stdout)
+    let document = axon::web::openapi_document();
+    let mut output =
+        serde_json::to_vec_pretty(&document).context("failed to serialize OpenAPI spec")?;
+    output.push(b'\n');
+    fs::write(&output_path, output)
         .with_context(|| format!("failed to write {}", output_path.display()))?;
     Ok(())
 }
