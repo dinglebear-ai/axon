@@ -2,9 +2,8 @@ use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
 use crate::core::config::Config;
-use crate::jobs::backend::{JobKind, lift_err};
+use crate::jobs::backend::lift_err;
 use crate::jobs::config_snapshot::apply_config_snapshot;
-use crate::jobs::ops::update_result_json_for_attempt;
 
 use super::JobResult;
 
@@ -23,12 +22,6 @@ pub async fn run_extract_job(
         tracing::warn!(id = %id, table = "axon_extract_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
-    let attempt_id: Option<String> =
-        sqlx::query_scalar("SELECT active_attempt_id FROM axon_extract_jobs WHERE id=?")
-            .bind(id.to_string())
-            .fetch_optional(pool)
-            .await?
-            .flatten();
     let mut effective_cfg = apply_config_snapshot(cfg, &config_json).map_err(lift_err)?;
     effective_cfg.output_dir = effective_cfg
         .output_dir
@@ -60,18 +53,6 @@ pub async fn run_extract_job(
     };
 
     let final_result = build_extract_job_result_json(&result);
-
-    if let Err(e) = update_result_json_for_attempt(
-        pool,
-        JobKind::Extract,
-        id,
-        attempt_id.as_deref(),
-        &final_result,
-    )
-    .await
-    {
-        tracing::warn!(job_id = %id, error = %e, "failed to persist extract result");
-    }
 
     Ok(Some(final_result))
 }

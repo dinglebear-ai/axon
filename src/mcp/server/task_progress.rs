@@ -134,7 +134,15 @@ async fn run_progress_notifier(
             }
         };
         let status = job.status_enum();
-        let mapped = map_job_progress(kind, &status, job.result_json.as_ref());
+        let mapped = map_job_progress(
+            kind,
+            &status,
+            progress_metrics_for_status(
+                &status,
+                job.progress_json.as_ref(),
+                job.result_json.as_ref(),
+            ),
+        );
         let fingerprint = progress_fingerprint(&status, job.updated_at, &mapped);
         if fingerprint != last_fingerprint {
             last_fingerprint = fingerprint;
@@ -186,6 +194,18 @@ pub(super) fn map_job_progress(
         JobStatus::Canceled => terminal("cancelled"),
         JobStatus::Running => map_running_progress(kind, result_json),
         JobStatus::Unknown(_) => terminal("unknown status"),
+    }
+}
+
+pub(super) fn progress_metrics_for_status<'a>(
+    status: &JobStatus,
+    progress_json: Option<&'a Value>,
+    result_json: Option<&'a Value>,
+) -> Option<&'a Value> {
+    if status.clone().is_active() {
+        progress_json.or(result_json)
+    } else {
+        result_json
     }
 }
 

@@ -5,6 +5,7 @@ use crate::jobs::crawl::CrawlJob;
 use crate::jobs::embed::EmbedJob;
 use crate::jobs::extract::ExtractJob;
 use crate::jobs::ingest::IngestJob;
+use crate::jobs::status::JobStatus;
 use crate::services::types::ServiceJob;
 
 use super::responses::JobStatusResponse;
@@ -136,6 +137,12 @@ impl From<SharedJobRecord> for JobStatusResponse {
         let collection = payload_string(value.result_json.as_ref(), "collection")
             .or_else(|| payload_string(value.config_json.as_ref(), "collection"));
         let source = payload_string(value.result_json.as_ref(), "source");
+        let metrics = metrics_alias_for_status(
+            &value.status,
+            value.progress_json.as_ref(),
+            value.result_json.as_ref(),
+        )
+        .cloned();
         Self {
             id: value.id,
             status: value.status,
@@ -150,13 +157,25 @@ impl From<SharedJobRecord> for JobStatusResponse {
             target: value.target,
             urls: value.urls.clone(),
             urls_json: value.urls,
-            metrics: value.result_json.clone(),
+            metrics,
             collection,
             source,
             progress_json: value.progress_json,
             result_json: value.result_json,
             config_json: value.config_json,
         }
+    }
+}
+
+fn metrics_alias_for_status<'a>(
+    status: &str,
+    progress_json: Option<&'a serde_json::Value>,
+    result_json: Option<&'a serde_json::Value>,
+) -> Option<&'a serde_json::Value> {
+    if JobStatus::from_str(status).is_active() {
+        progress_json.or(result_json)
+    } else {
+        result_json
     }
 }
 

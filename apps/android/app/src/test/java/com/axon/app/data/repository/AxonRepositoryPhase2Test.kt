@@ -6,6 +6,8 @@ import com.axon.app.data.remote.AxonClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -65,6 +67,22 @@ class AxonRepositoryPhase2Test {
         server.enqueue(MockResponse().setBody("""{"jobs":[{"id":"a","status":"x"},{"id":"b","status":"y"}],"limit":100,"offset":0}""").addHeader("Content-Type","application/json"))
         val jobs = repo.listJobs(JobFamily.Crawl).getOrThrow()
         assertEquals(2, jobs.size)
+    }
+
+    @Test fun `listJobs maps progressJson to JobUi`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """{"jobs":[{"id":"j","status":"running","progress_json":{"lifecycle_progress":0.42,"pages_crawled":42}}],"limit":25,"offset":0}"""
+                )
+                .addHeader("Content-Type", "application/json")
+        )
+
+        val job = repo.listJobs(JobFamily.Crawl).getOrThrow().single()
+
+        val progress = job.progressJson!!.jsonObject
+        assertEquals("0.42", progress["lifecycle_progress"]!!.jsonPrimitive.content)
+        assertEquals("42", progress["pages_crawled"]!!.jsonPrimitive.content)
     }
 
     @Test fun `listWatches maps watch definitions`() = runBlocking {

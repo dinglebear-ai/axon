@@ -48,3 +48,33 @@ fn extract_running_progress_uses_unknown_total() {
     assert_eq!(progress.total, None);
     assert_eq!(progress.message, "running");
 }
+
+#[test]
+fn active_progress_prefers_progress_json_over_legacy_result_json() {
+    let progress_json = json!({"pages_crawled": 4, "pages_discovered": 10});
+    let result_json = json!({"pages_crawled": 99, "pages_discovered": 100});
+
+    let selected = progress_metrics_for_status(
+        &JobStatus::Running,
+        Some(&progress_json),
+        Some(&result_json),
+    );
+    let progress = map_job_progress(JobKind::Crawl, &JobStatus::Running, selected);
+
+    assert_eq!(progress.progress, 4.0);
+    assert_eq!(progress.total, Some(10.0));
+}
+
+#[test]
+fn terminal_progress_uses_final_result_json() {
+    let progress_json = json!({"pages_crawled": 4, "pages_discovered": 10});
+    let result_json = json!({"pages_crawled": 99, "pages_discovered": 100});
+
+    let selected = progress_metrics_for_status(
+        &JobStatus::Completed,
+        Some(&progress_json),
+        Some(&result_json),
+    );
+
+    assert_eq!(selected, Some(&result_json));
+}

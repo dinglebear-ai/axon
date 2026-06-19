@@ -135,9 +135,10 @@ async fn claim_next_pending_for_attempt_inner(
         Some((id_str, error_text, previous_attempt_count)) => {
             let attempt_id = Uuid::new_v4().to_string();
             let attempt_count = previous_attempt_count + 1;
+            let progress_json = running_progress_json();
             let update_result = match sqlx::query(&format!(
                 "UPDATE {} SET status='running', started_at=?, updated_at=?, finished_at=NULL, \
-                 attempt_count=?, active_attempt_id=? \
+                 attempt_count=?, active_attempt_id=?, progress_json=? \
                  WHERE id=? AND status='pending'",
                 table
             ))
@@ -145,6 +146,7 @@ async fn claim_next_pending_for_attempt_inner(
             .bind(now)
             .bind(attempt_count)
             .bind(&attempt_id)
+            .bind(progress_json.to_string())
             .bind(&id_str)
             .execute(&mut *conn)
             .await
@@ -212,46 +214,24 @@ async fn mark_completed_inner(
 ) -> Result<(), sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
-    let progress_json = completed_progress_json(result_json);
-    let result = match result_json {
-        Some(result) => {
-            let sql = format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=?, progress_json=?, error_text=NULL, active_attempt_id=NULL \
-                 WHERE id=? AND status='running'{}",
-                table,
-                attempt_clause(attempt_id)
-            );
-            let mut query = sqlx::query(&sql);
-            query = query
-                .bind(now)
-                .bind(now)
-                .bind(result.to_string())
-                .bind(progress_json.to_string())
-                .bind(id.to_string());
-            if let Some(attempt_id) = attempt_id {
-                query = query.bind(attempt_id);
-            }
-            query.execute(pool).await?
-        }
-        None => {
-            let sql = format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, progress_json=?, error_text=NULL, active_attempt_id=NULL \
-                 WHERE id=? AND status='running'{}",
-                table,
-                attempt_clause(attempt_id)
-            );
-            let mut query = sqlx::query(&sql);
-            query = query
-                .bind(now)
-                .bind(now)
-                .bind(progress_json.to_string())
-                .bind(id.to_string());
-            if let Some(attempt_id) = attempt_id {
-                query = query.bind(attempt_id);
-            }
-            query.execute(pool).await?
-        }
-    };
+    let progress_json = completed_progress_json();
+    let sql = format!(
+        "UPDATE {} SET status='completed', finished_at=?, updated_at=?, \
+         result_json=COALESCE(?, result_json), progress_json=?, error_text=NULL, active_attempt_id=NULL \
+         WHERE id=? AND status='running'{}",
+        table,
+        attempt_clause(attempt_id)
+    );
+    let mut query = sqlx::query(&sql)
+        .bind(now)
+        .bind(now)
+        .bind(result_json.map(serde_json::Value::to_string))
+        .bind(progress_json.to_string())
+        .bind(id.to_string());
+    if let Some(attempt_id) = attempt_id {
+        query = query.bind(attempt_id);
+    }
+    let result = query.execute(pool).await?;
     if result.rows_affected() == 0 {
         tracing::warn!(
             id = %id,
@@ -262,50 +242,18 @@ async fn mark_completed_inner(
     Ok(())
 }
 
-fn completed_progress_json(result_json: Option<&serde_json::Value>) -> serde_json::Value {
-    let mut progress = serde_json::Map::new();
-    progress.insert("phase".into(), serde_json::json!("completed"));
-    progress.insert("lifecycle_progress".into(), serde_json::json!(1.0));
-
-    if let Some(result) = result_json {
-        for key in [
-            "coverage_status",
-            "coverage_summary",
-            "coverage_reason",
-            "coverage_limit_pages",
-            "pages_crawled",
-            "pages_discovered",
-            "pages_embedded",
-            "chunks_embedded",
-            "items_processed",
-            "items_total",
-        ] {
-            if let Some(value) = result.get(key) {
-                progress.insert(key.into(), value.clone());
-            }
-        }
-        if !progress.contains_key("coverage_summary")
-            && let Some(summary) = derived_coverage_summary(result)
-        {
-            progress.insert("coverage_summary".into(), serde_json::json!(summary));
-        }
-    }
-
-    serde_json::Value::Object(progress)
+fn running_progress_json() -> serde_json::Value {
+    serde_json::json!({
+        "phase": "running",
+        "lifecycle_progress": 0.0
+    })
 }
 
-fn derived_coverage_summary(result: &serde_json::Value) -> Option<&'static str> {
-    let status = result.get("coverage_status")?.as_str()?;
-    let reason = result
-        .get("coverage_reason")
-        .and_then(|value| value.as_str());
-    match (status, reason) {
-        ("partial", Some("max_pages_limit" | "max_pages" | "page_limit")) => Some("max pages hit"),
-        ("partial", _) => Some("partial"),
-        ("complete" | "completed" | "complete_or_exhausted" | "exhausted", _) => Some("complete"),
-        ("failed", _) => Some("failed"),
-        _ => None,
-    }
+fn completed_progress_json() -> serde_json::Value {
+    serde_json::json!({
+        "phase": "completed",
+        "lifecycle_progress": 1.0
+    })
 }
 
 /// Bump only `updated_at` for a running job. Used by the periodic heartbeat
