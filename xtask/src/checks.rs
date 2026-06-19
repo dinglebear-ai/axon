@@ -1,11 +1,13 @@
 use anyhow::Result;
 use std::path::Path;
 
+pub mod android_api_contract;
 pub mod broken_symlinks;
 pub mod claude_symlinks;
 pub mod env_staged;
 pub mod mcp_http;
 pub mod no_mod_rs;
+pub mod openapi_drift;
 pub mod release_versions;
 pub mod secrets;
 pub mod unwraps;

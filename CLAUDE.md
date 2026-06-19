@@ -72,6 +72,7 @@ MCP docs:
 | `sources` | List all indexed URLs + chunk counts | No |
 | `domains` | List indexed domains + stats | No |
 | `stats` | Qdrant collection stats | No |
+| `purge <url>` | Delete indexed Qdrant points by URL/seed URL. Use `--prefix` for a whole docs subtree/origin and `--dry-run` to preview matches. Alias: `delete-url`. | No |
 | `status` | Show async job queue status | No |
 | `doctor` | Diagnose service connectivity | No |
 | `debug` | Run doctor + LLM-assisted troubleshooting | No |

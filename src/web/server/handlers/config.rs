@@ -167,6 +167,18 @@ pub async fn collections(
     qdrant_collections_response(&cfg).await
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/collections",
+    responses(
+        (status = 200, description = "Available Qdrant collection names", body = PanelCollectionsResponse),
+        (status = 502, description = "Qdrant collections request failed", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "discovery"
+)]
+#[allow(dead_code)]
+pub async fn collections_openapi_marker() {}
+
 async fn qdrant_collections_response(cfg: &Config) -> axum::response::Response {
     let url = format!("{}/collections", cfg.qdrant_url.trim_end_matches('/'));
     let client = match reqwest::Client::builder()
