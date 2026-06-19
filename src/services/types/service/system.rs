@@ -61,6 +61,11 @@ pub struct StatsResult {
     pub payload: serde_json::Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CollectionsResult {
+    pub collections: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DoctorResult {
     pub payload: serde_json::Value,

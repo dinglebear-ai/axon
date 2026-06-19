@@ -21,7 +21,6 @@ use axum::{
     response::IntoResponse,
 };
 use std::sync::Arc;
-use std::time::Duration;
 
 pub async fn get_config(
     State((state, _)): State<(AppState, Arc<Config>)>,
@@ -158,7 +157,7 @@ pub async fn panel_collections(
             .into_response();
     }
 
-    match qdrant_collections_response(&cfg).await {
+    match collections_response(&cfg).await {
         Ok(response) => Json(response).into_response(),
         Err(error) => error.into_response(),
     }
@@ -167,7 +166,7 @@ pub async fn panel_collections(
 pub async fn collections(
     State((_state, cfg)): State<(AppState, Arc<Config>)>,
 ) -> impl IntoResponse {
-    match qdrant_collections_response(&cfg).await {
+    match collections_response(&cfg).await {
         Ok(response) => Json(response).into_response(),
         Err(error) => error.into_response(),
     }
@@ -185,51 +184,20 @@ pub async fn collections(
 #[allow(dead_code)]
 pub async fn collections_openapi_marker() {}
 
-async fn qdrant_collections_response(cfg: &Config) -> Result<PanelCollectionsResponse, HttpError> {
-    let url = format!("{}/collections", cfg.qdrant_url.trim_end_matches('/'));
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-    {
-        Ok(client) => client,
-        Err(err) => {
-            return Err(HttpError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal",
-                format!("failed to build qdrant metadata client: {err}"),
-            ));
-        }
-    };
-    match client.get(url).send().await {
-        Ok(resp) if resp.status().is_success() => match resp.json::<serde_json::Value>().await {
-            Ok(value) => {
-                let mut collections = value
-                    .get("result")
-                    .and_then(|v| v.get("collections"))
-                    .and_then(|v| v.as_array())
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|entry| entry.get("name").and_then(|name| name.as_str()))
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>();
-                collections.sort();
-                Ok(PanelCollectionsResponse { collections })
-            }
-            Err(err) => Err(HttpError::new(
-                StatusCode::BAD_GATEWAY,
-                "bad_gateway",
-                format!("qdrant returned invalid collections response: {err}"),
-            )),
-        },
-        Ok(resp) => Err(HttpError::new(
-            StatusCode::BAD_GATEWAY,
-            "bad_gateway",
-            format!("qdrant collections request failed: {}", resp.status()),
+async fn collections_response(cfg: &Config) -> Result<PanelCollectionsResponse, HttpError> {
+    match system::collections(cfg).await {
+        Ok(result) => Ok(PanelCollectionsResponse {
+            collections: result.collections,
+        }),
+        Err(system::CollectionsError::ClientBuild(err)) => Err(HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            err.to_string(),
         )),
         Err(err) => Err(HttpError::new(
             StatusCode::BAD_GATEWAY,
             "bad_gateway",
-            format!("qdrant collections request failed: {err}"),
+            err.to_string(),
         )),
     }
 }
