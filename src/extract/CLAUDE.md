@@ -1,7 +1,7 @@
 # src/extract — Vertical Extractor Framework
-Last Modified: 2026-06-09
+Last Modified: 2026-06-19
 
-Per-site/per-API "vertical" extractors that produce richer, more structured docs than the generic HTML→markdown crawl path. Ships 13 extractors across a match-chain dispatcher. Replaces the legacy webclaw mod.rs dispatcher.
+Per-site/per-API "vertical" extractors that produce richer, more structured docs than the generic HTML→markdown crawl path. Ships 18 extractors across a match-chain dispatcher. Replaces the legacy webclaw mod.rs dispatcher.
 
 ## Module Layout
 
@@ -14,18 +14,23 @@ extract/
 ├── verticals.rs        # module root re-exporting all verticals/*
 └── verticals/          # one file per extractor
     ├── amazon.rs            # auto_dispatch: false (ToS-risky)
+    ├── arxiv.rs
     ├── crates_io.rs
     ├── dev_to.rs
     ├── docker_hub.rs
+    ├── docs_rs.rs
     ├── ebay.rs              # auto_dispatch: false (ToS-risky)
+    ├── github_issue.rs
+    ├── github_pr.rs
     ├── github_release.rs
     ├── github_repo.rs
+    ├── hackernews.rs
     ├── huggingface_model.rs
     ├── npm.rs
     ├── pypi.rs
     ├── reddit.rs
     ├── shopify.rs
-    └── youtube_video.rs
+    └── stackoverflow.rs
 ```
 
 ## Dispatch Model

@@ -192,7 +192,7 @@ High-level subsystem map:
   - `src/crawl/engine.rs` (collector pipeline runs antibot detect, structured-data pass, DOM ladder before commit)
   - `src/core/http.rs` and `src/core/content.rs` (including `extract_ladder.rs` retry strategy)
 - Vertical extractors:
-  - `src/extract/` — per-site extractor framework (registry + 13 verticals: github_repo, pypi, npm, crates_io, reddit, etc.) — see `src/extract/CLAUDE.md`
+  - `src/extract/` — per-site extractor framework (registry + 18 verticals: github_repo, pypi, npm, crates_io, reddit, etc.) — see `src/extract/CLAUDE.md`
   - Auto-routed from `services::scrape::scrape` via `dispatch_by_url()` when `cfg.enable_verticals = true` (default on)
 - Async jobs:
   - `src/jobs/runtime.rs` + `src/jobs/` (SQLite-backed enqueue/query/store/cancel)
