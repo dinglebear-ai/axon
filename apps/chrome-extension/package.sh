@@ -14,6 +14,7 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(git -C "$here" rev-parse --show-toplevel 2>/dev/null || { cd "$here/../.." && pwd; })"
 cd "$here"
 
 # Version comes straight from the manifest so the two never drift. Anchor to a
@@ -64,5 +65,11 @@ rm -f "$out_zip"
 # No -y: store real files, never symlinks.
 ( cd "$stage" && zip -rq "$out_zip" . -x '*.DS_Store' )
 
+bin_dir="${AXON_ARTIFACT_BIN_DIR:-$repo/bin}"
+bin_zip="$bin_dir/axon-chrome-extension-${version}.zip"
+mkdir -p "$bin_dir"
+cp -f "$out_zip" "$bin_zip"
+
 echo "Packaged ${#refs[@]} asset(s) + runtime files"
 echo "$out_zip"
+echo "$bin_zip"

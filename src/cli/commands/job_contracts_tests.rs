@@ -3,6 +3,7 @@ use crate::jobs::crawl::CrawlJob;
 use crate::jobs::embed::EmbedJob;
 use crate::jobs::extract::ExtractJob;
 use crate::jobs::ingest::IngestJob;
+use crate::services::types::ServiceJob;
 use chrono::{TimeZone, Utc};
 use uuid::Uuid;
 
@@ -75,6 +76,29 @@ fn test_embed_job() -> EmbedJob {
 fn serialize_list(entries: Vec<JobSummaryEntry>) -> serde_json::Value {
     let serialized = serde_json::to_string(&entries).expect("serialize");
     serde_json::from_str(&serialized).expect("parse")
+}
+
+fn test_service_job(status: &str) -> ServiceJob {
+    ServiceJob {
+        id: Uuid::parse_str("55555555-5555-5555-5555-555555555555").expect("valid uuid"),
+        status: status.to_string(),
+        created_at: test_ts(),
+        updated_at: test_ts(),
+        started_at: Some(test_ts()),
+        finished_at: None,
+        error_text: None,
+        url: Some("https://example.com".to_string()),
+        source_type: None,
+        target: None,
+        urls_json: None,
+        progress_json: None,
+        result_json: None,
+        config_json: None,
+        attempt_count: 1,
+        active_attempt_id: Some("attempt-1".to_string()),
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    }
 }
 
 #[test]
@@ -165,6 +189,150 @@ fn embed_status_contract_includes_input_and_metrics() {
     assert_eq!(
         json["result_json"],
         serde_json::json!({"chunks_embedded": 7, "source": "rust"})
+    );
+}
+
+#[test]
+fn service_running_metrics_alias_uses_progress_json() {
+    let mut job = test_service_job("running");
+    job.progress_json = Some(serde_json::json!({
+        "phase": "crawling",
+        "lifecycle_progress": 0.42,
+        "pages_crawled": 42
+    }));
+    let json = serde_json::to_value(JobStatusResponse::from_service_job(&job)).expect("serialize");
+
+    assert_eq!(
+        json["metrics"],
+        serde_json::json!({
+            "phase": "crawling",
+            "lifecycle_progress": 0.42,
+            "pages_crawled": 42
+        })
+    );
+    assert_eq!(json["result_json"], json["metrics"]);
+    assert_eq!(json["progress_json"], json["metrics"]);
+}
+
+#[test]
+fn service_wire_json_keeps_active_result_json_compat_alias() {
+    let mut job = test_service_job("running");
+    job.progress_json = Some(serde_json::json!({
+        "phase": "crawling",
+        "lifecycle_progress": 0.42,
+        "pages_crawled": 42
+    }));
+    let json = job.wire_json_compat();
+
+    assert_eq!(
+        json["metrics"],
+        serde_json::json!({
+            "phase": "crawling",
+            "lifecycle_progress": 0.42,
+            "pages_crawled": 42
+        })
+    );
+    assert_eq!(json["metrics"], json["result_json"]);
+    assert_eq!(json["metrics"], json["progress_json"]);
+}
+
+#[test]
+fn service_running_alias_overwrites_stale_result_json() {
+    let mut job = test_service_job("running");
+    job.progress_json = Some(serde_json::json!({
+        "phase": "crawling",
+        "lifecycle_progress": 0.42,
+        "pages_crawled": 42
+    }));
+    job.result_json = Some(serde_json::json!({
+        "phase": "stale",
+        "pages_crawled": 99
+    }));
+
+    let status_json =
+        serde_json::to_value(JobStatusResponse::from_service_job(&job)).expect("serialize");
+    assert_eq!(status_json["result_json"], status_json["metrics"]);
+    assert_eq!(status_json["metrics"]["pages_crawled"], 42);
+
+    let wire_json = job.wire_json_compat();
+    assert_eq!(wire_json["result_json"], wire_json["metrics"]);
+    assert_eq!(wire_json["metrics"]["pages_crawled"], 42);
+}
+
+#[test]
+fn service_running_alias_ignores_degraded_progress_marker() {
+    let mut job = test_service_job("running");
+    job.progress_json = Some(serde_json::json!({
+        "degraded": true,
+        "field": "progress_json",
+        "error": "corrupt job JSON"
+    }));
+    job.result_json = Some(serde_json::json!({
+        "phase": "legacy",
+        "pages_crawled": 5
+    }));
+
+    let status_json =
+        serde_json::to_value(JobStatusResponse::from_service_job(&job)).expect("serialize");
+    assert_eq!(status_json["metrics"]["pages_crawled"], 5);
+    assert_eq!(status_json["result_json"], status_json["metrics"]);
+
+    let wire_json = job.wire_json_compat();
+    assert_eq!(wire_json["metrics"]["pages_crawled"], 5);
+    assert_eq!(wire_json["result_json"], wire_json["metrics"]);
+}
+
+#[test]
+fn service_completed_metrics_alias_uses_result_json() {
+    let mut job = test_service_job("completed");
+    job.finished_at = Some(test_ts());
+    job.active_attempt_id = None;
+    job.progress_json = Some(serde_json::json!({
+        "phase": "completed",
+        "lifecycle_progress": 1.0
+    }));
+    job.result_json = Some(serde_json::json!({
+        "coverage_status": "partial",
+        "pages_crawled": 42
+    }));
+    let json = serde_json::to_value(JobStatusResponse::from_service_job(&job)).expect("serialize");
+
+    assert_eq!(
+        json["metrics"],
+        serde_json::json!({"coverage_status": "partial", "pages_crawled": 42})
+    );
+    assert_eq!(
+        json["progress_json"],
+        serde_json::json!({"phase": "completed", "lifecycle_progress": 1.0})
+    );
+}
+
+#[test]
+fn service_wire_json_keeps_terminal_result_json_final() {
+    let mut job = test_service_job("completed");
+    job.finished_at = Some(test_ts());
+    job.active_attempt_id = None;
+    job.progress_json = Some(serde_json::json!({
+        "phase": "completed",
+        "lifecycle_progress": 1.0
+    }));
+    job.result_json = Some(serde_json::json!({
+        "coverage_status": "partial",
+        "pages_crawled": 42
+    }));
+    let json = job.wire_json_compat();
+
+    assert_eq!(
+        json["metrics"],
+        serde_json::json!({"coverage_status": "partial", "pages_crawled": 42})
+    );
+    assert_eq!(
+        json["result_json"],
+        serde_json::json!({"coverage_status": "partial", "pages_crawled": 42})
+    );
+    assert_eq!(
+        json["progress_json"],
+        serde_json::json!({"phase": "completed", "lifecycle_progress": 1.0})
     );
 }
 

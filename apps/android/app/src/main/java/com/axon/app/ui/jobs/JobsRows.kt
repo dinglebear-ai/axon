@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.data.repository.WatchUi
+import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
@@ -66,8 +68,11 @@ internal fun JobDrillRow(job: JobUi, modifier: Modifier = Modifier, onClick: (()
                 fontFamily = AxonTheme.fonts.mono,
             )
         }
-        if (isActiveJobStatus(job.status)) {
+        if (isActiveJobStatus(job.status) || isCompletedJobStatus(job.status)) {
             ProgressBar(progressForJob(job), tone, modifier = Modifier.width(184.dp).padding(start = 16.dp))
+        }
+        coverageSummary(job)?.let { summary ->
+            CoverageChip(summary, tone, modifier = Modifier.padding(start = 16.dp))
         }
         Text(
             jobProgressLabel(job),
@@ -234,7 +239,10 @@ internal fun ActiveJobCard(job: JobUi) {
             RunningDots(tone)
         }
 
-        ProgressBar(progressForStatus(job.status), tone)
+        ProgressBar(progressForJob(job), tone)
+        coverageSummary(job)?.let { summary ->
+            CoverageChip(summary, tone)
+        }
 
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
             Text(
@@ -244,13 +252,33 @@ internal fun ActiveJobCard(job: JobUi) {
                 fontFamily = AxonTheme.fonts.mono,
             )
             Text(
-                "${(progressForStatus(job.status) * 100).toInt()}%",
+                pagesCrawledMetric(job) ?: "${(progressForJob(job) * 100).toInt()}%",
                 color = colors.textMuted,
                 fontSize = 11.sp,
                 fontFamily = AxonTheme.fonts.mono,
             )
         }
     }
+}
+
+@Composable
+internal fun CoverageChip(text: String, tone: Color, modifier: Modifier = Modifier) {
+    val colors = AxonTheme.colors
+    Text(
+        text,
+        color = colors.tint(tone, 86, colors.textPrimary),
+        fontSize = 10.6.sp,
+        lineHeight = 13.sp,
+        fontFamily = AxonTheme.fonts.body,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(colors.tint(tone, 13, colors.control), RoundedCornerShape(999.dp))
+            .border(1.dp, colors.tint(tone, 28, colors.control), RoundedCornerShape(999.dp))
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -358,9 +386,9 @@ internal fun EmptyJobsCard(title: String, subtitle: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.control, RoundedCornerShape(13.dp))
-            .border(1.dp, colors.borderDefault, RoundedCornerShape(13.dp))
-            .padding(16.dp),
+            .background(colors.control.copy(alpha = 0.025f), RoundedCornerShape(9.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.07f), RoundedCornerShape(9.dp))
+            .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Text(title, color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = AxonTheme.fonts.display)
@@ -370,16 +398,9 @@ internal fun EmptyJobsCard(title: String, subtitle: String) {
 
 @Composable
 internal fun JobsErrorCard(message: String) {
-    val colors = AxonTheme.colors
-    Text(
-        humanizeJsonFragmentText(message),
-        color = colors.error,
-        fontSize = 12.sp,
-        fontFamily = AxonTheme.fonts.body,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.control, RoundedCornerShape(13.dp))
-            .border(1.dp, colors.error.copy(alpha = 0.45f), RoundedCornerShape(13.dp))
-            .padding(13.dp),
+    AppNoticeBanner(
+        message = humanizeJsonFragmentText(message),
+        tone = NoticeTone.Error,
+        modifier = Modifier.fillMaxWidth(),
     )
 }

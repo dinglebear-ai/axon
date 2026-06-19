@@ -147,10 +147,15 @@ pub(crate) fn render_ingest_status(
             );
             println!("  {} {}", muted("Created:"), job.created_at);
             println!("  {} {}", muted("Updated:"), job.updated_at);
-            if let Some(progress) = ingest_progress(&job.result_json) {
+            let live_progress = job
+                .progress_json
+                .as_ref()
+                .or(job.result_json.as_ref())
+                .cloned();
+            if let Some(progress) = ingest_progress(&live_progress) {
                 println!("  {} {}", muted("Progress:"), progress);
             }
-            if let Some(reclaim) = ingest_reclaim_label(&job.result_json) {
+            if let Some(reclaim) = ingest_reclaim_label(&job.progress_json) {
                 println!("  {} {}", muted("Reclaimed:"), accent(&reclaim));
             }
             if let Some(err) = job.error_text.as_deref() {
@@ -196,8 +201,14 @@ pub(crate) fn render_ingest_list(
                 status_text(&job.status),
                 job.source_type.as_deref().unwrap_or("unknown").to_string(),
                 job.target.as_deref().unwrap_or("unknown").to_string(),
-                ingest_progress(&job.result_json).unwrap_or_default(),
-                ingest_reclaim_label(&job.result_json).unwrap_or_default(),
+                ingest_progress(
+                    &job.progress_json
+                        .as_ref()
+                        .or(job.result_json.as_ref())
+                        .cloned(),
+                )
+                .unwrap_or_default(),
+                ingest_reclaim_label(&job.progress_json).unwrap_or_default(),
             ]
         },
     )

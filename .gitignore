@@ -5,6 +5,7 @@ services.env
 !.env.example
 .broadcastr
 # ── Runtime artifacts ────────────────────────────────────────────────────────
+/bin/
 logs/
 backups/
 reports/

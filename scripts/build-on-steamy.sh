@@ -91,11 +91,16 @@ ensure_windows_target() {
 copy_exe() {
   local src="$1"
   local dest_name="$2"
+  local artifact_name="$3"
 
   [[ -f "$src" ]] || die "built executable not found: $src"
+  mkdir -p "$remote_repo/bin"
+  cp -f "$src" "$remote_repo/bin/$artifact_name"
+  chmod 755 "$remote_repo/bin/$artifact_name" 2>/dev/null || log "Warning: could not chmod $remote_repo/bin/$artifact_name"
+  log "Copied $src -> $remote_repo/bin/$artifact_name"
   mkdir -p "$desktop"
   cp -f "$src" "$desktop/$dest_name"
-  chmod 755 "$desktop/$dest_name" 2>/dev/null || true
+  chmod 755 "$desktop/$dest_name" 2>/dev/null || log "Warning: could not chmod $desktop/$dest_name"
   log "Copied $src -> $desktop/$dest_name"
 }
 
@@ -115,7 +120,8 @@ case "$target" in
     cargo build --release --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-gnu
     copy_exe \
       "$remote_repo/apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe" \
-      'Axon Palette.exe'
+      'Axon Palette.exe' \
+      'axon-palette-x86_64-pc-windows-gnu-release.exe'
     ;;
   axon)
     ensure_windows_target
@@ -124,7 +130,8 @@ case "$target" in
     cargo build --release --locked --bin axon --target x86_64-pc-windows-gnu
     copy_exe \
       "$remote_repo/target/x86_64-pc-windows-gnu/release/axon.exe" \
-      'axon.exe'
+      'axon.exe' \
+      'axon-x86_64-pc-windows-gnu-release.exe'
     ;;
   *)
     die "unknown target: $target"

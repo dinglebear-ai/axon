@@ -106,6 +106,7 @@ pub struct JobStatusRow {
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     pub error_text: Option<String>,
+    pub progress_json: Option<serde_json::Value>,
     pub result_json: Option<serde_json::Value>,
     pub attempt_count: i64,
     pub active_attempt_id: Option<String>,

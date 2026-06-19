@@ -181,6 +181,18 @@ fn ci_xtask_compiling_jobs_checkout_release_manifest() {
 }
 
 #[test]
+fn rest_api_parity_checkout_includes_generated_client_targets() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let job = workflow_job_block(workflow, "rest-api-parity");
+    for path in ["apps/web", "apps/palette-tauri", "apps/android"] {
+        assert!(
+            sparse_checkout_covers(job, path),
+            "rest-api-parity runs OpenAPI drift generation and must checkout {path}"
+        );
+    }
+}
+
+#[test]
 fn auto_tag_uses_validated_xtask_release_plan() {
     let workflow = include_str!("../.github/workflows/auto-tag.yml");
     let plan = workflow_job_block(workflow, "plan");

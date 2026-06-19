@@ -45,7 +45,7 @@ internal data class SidebarItem(
     val icon: ImageVector,
 )
 
-internal val SidebarSheetWidth = 204.dp
+internal val SidebarSheetWidth = 224.dp
 
 @Composable
 internal fun AxonSidebarSheet(
@@ -61,14 +61,14 @@ internal fun AxonSidebarSheet(
             .fillMaxHeight()
             .background(colors.panelStrong)
             .border(width = 1.dp, color = colors.borderDefault)
-            .padding(horizontal = 11.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(horizontal = 14.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
-                .padding(horizontal = 4.dp),
+                .height(48.dp)
+                .padding(horizontal = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -81,7 +81,7 @@ internal fun AxonSidebarSheet(
                 fontFamily = AxonTheme.fonts.display,
             )
         }
-        Spacer(Modifier.height(1.dp))
+        Spacer(Modifier.height(3.dp))
         items.forEach { item ->
             AxonSidebarRow(
                 item = item,
@@ -105,13 +105,13 @@ private fun AxonSidebarRow(
     val colorSpec = tween<androidx.compose.ui.graphics.Color>(durationMillis = 220)
     val rowBg by animateColorAsState(
         targetValue = if (selected) colors.tint(colors.accentPrimary, 11, colors.panelStrong)
-        else colors.control.copy(alpha = 0.32f),
+        else colors.panelStrong.copy(alpha = 0.16f),
         animationSpec = colorSpec,
         label = "row-bg",
     )
     val rowBorder by animateColorAsState(
         targetValue = if (selected) colors.tint(colors.accentPrimary, 28, colors.panelStrong)
-        else colors.borderDefault.copy(alpha = 0.55f),
+        else colors.borderDefault.copy(alpha = 0.08f),
         animationSpec = colorSpec,
         label = "row-border",
     )
@@ -137,12 +137,12 @@ private fun AxonSidebarRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(54.dp)
             .clip(shape)
             .background(rowBg, shape)
             .border(1.dp, rowBorder, shape)
             .pressScale(onClick = onClick)
-            .padding(horizontal = 11.dp),
+            .padding(horizontal = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -162,7 +162,8 @@ private fun AxonSidebarRow(
         Text(
             text = item.label,
             color = labelColor,
-            fontSize = 13.4.sp,
+            fontSize = 14.4.sp,
+            lineHeight = 19.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,

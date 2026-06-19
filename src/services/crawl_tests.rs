@@ -189,6 +189,7 @@ impl ServiceJobRuntime for CrawlWithDependentEmbedRuntime {
             source_type: None,
             target: None,
             urls_json: None,
+            progress_json: None,
             result_json: Some(serde_json::json!({
                 "embed_job_id": self.embed_job_id.to_string()
             })),

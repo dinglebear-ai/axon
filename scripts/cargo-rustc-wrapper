@@ -76,14 +76,68 @@ if [ -z "$out" ] && [ -n "$out_dir" ] && [ -n "$extra_filename" ]; then
   out="$out_dir/$crate_name$extra_filename"
 fi
 
-if [ "$crate_name" != "axon" ] || [ "$crate_type" != "bin" ] || [ "$is_test" -eq 1 ] || [ -z "$out" ] || [ ! -x "$out" ]; then
+if [ "$crate_type" != "bin" ] || [ "$is_test" -eq 1 ] || [ -z "$out" ] || [ ! -x "$out" ]; then
   exit 0
 fi
 
-case "$out" in
-  target/debug/deps/axon-*|target/release/deps/axon-*|*/target/debug/deps/axon-*|*/target/release/deps/axon-*) ;;
+case "$crate_name" in
+  axon|axon-palette-tauri|axon_palette_tauri) ;;
   *) exit 0 ;;
 esac
+
+case "$out" in
+  target/*/deps/"$crate_name"*|*/target/*/deps/"$crate_name"*|target/*/*/deps/"$crate_name"*|*/target/*/*/deps/"$crate_name"*) ;;
+  *) exit 0 ;;
+esac
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+profile="unknown"
+target_triple=""
+after_target="${out##*target/}"
+IFS=/ read -r first second third _rest <<<"$after_target"
+if [ "$second" = "deps" ]; then
+  profile="$first"
+elif [ "$third" = "deps" ]; then
+  target_triple="$first"
+  profile="$second"
+fi
+
+case "$profile" in
+  release-fast) variant="fast-release" ;;
+  debug|release) variant="$profile" ;;
+  *) variant="$profile" ;;
+esac
+
+case "$crate_name" in
+  axon) artifact_base="axon" ;;
+  axon-palette-tauri|axon_palette_tauri) artifact_base="axon-palette" ;;
+esac
+
+ext=""
+case "$out" in
+  *.exe) ext=".exe" ;;
+esac
+
+if [ -n "$target_triple" ]; then
+  artifact_name="${artifact_base}-${target_triple}-${variant}${ext}"
+else
+  artifact_name="${artifact_base}-${variant}${ext}"
+fi
+
+bin_dir="${AXON_ARTIFACT_BIN_DIR:-$repo_root/bin}"
+mkdir -p "$bin_dir"
+cp -f "$out" "$bin_dir/$artifact_name"
+if [ "$ext" != ".exe" ]; then
+  chmod 755 "$bin_dir/$artifact_name"
+else
+  chmod 755 "$bin_dir/$artifact_name" 2>/dev/null || {
+    echo "warning: copied Windows artifact but could not chmod $bin_dir/$artifact_name" >&2
+  }
+fi
+
+if [ "$crate_name" != "axon" ]; then
+  exit 0
+fi
 
 local_bin="${AXON_RUSTC_WRAPPER_LOCAL_BIN:-$HOME/.local/bin/axon}"
 

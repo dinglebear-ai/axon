@@ -118,11 +118,23 @@ pre-push:
       # schema source: apps/web/openapi/axon.json, the web generated TS client,
       # or the Palette generated TS declarations.
       run: >
-        if [ -x "./target/debug/xtask" ]; then
-          ./target/debug/xtask check-openapi-drift;
-        else
-          cargo xtask check-openapi-drift;
-        fi
+        cargo xtask check-openapi-drift
+    android:
+      glob: "apps/android/**/*"
+      run: >
+        if [ -z "${AXON_AURORA_ANDROID_PATH:-}" ]; then
+          for candidate in "../aurora-design-system/android" "../../../aurora-design-system/android" "/home/jmagar/workspace/aurora-design-system/android"; do
+            if [ -d "$candidate" ]; then
+              export AXON_AURORA_ANDROID_PATH="$candidate";
+              break;
+            fi;
+          done;
+        fi &&
+        if [ ! -d "$AXON_AURORA_ANDROID_PATH" ]; then
+          echo "Set AXON_AURORA_ANDROID_PATH to an Aurora Android checkout before running Android validation." >&2;
+          exit 1;
+        fi &&
+        apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:lintDebug --no-daemon
     clippy:
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
     test:

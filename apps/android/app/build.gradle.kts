@@ -14,8 +14,8 @@ android {
         applicationId = "com.axon.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.3.3"
+        versionCode = 8
+        versionName = "1.3.4"
         manifestPlaceholders["appAuthRedirectScheme"] = "com.axon.app"
     }
 
@@ -118,3 +118,34 @@ dependencies {
     androidTestImplementation(libs.mockwebserver)
     debugImplementation(libs.compose.ui.test.manifest)
 }
+
+val repoBinDir = rootProject.layout.projectDirectory.dir("../../bin")
+
+fun registerApkArtifactCopy(variant: String) {
+    val capitalized = variant.replaceFirstChar { it.uppercaseChar() }
+    val copyTask = tasks.register("copy${capitalized}ApkToRepoBin") {
+        dependsOn("assemble$capitalized")
+        doLast {
+            val apkDir = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
+            val apks = apkDir
+                .listFiles { file -> file.isFile && file.extension == "apk" }
+                ?.toList()
+                .orEmpty()
+            require(apks.size == 1) {
+                "Expected exactly one $variant APK in ${apkDir.absolutePath}, found ${apks.size}: ${apks.joinToString { it.name }}"
+            }
+            val dest = repoBinDir.file("axon-android-$variant.apk").asFile
+            dest.parentFile.mkdirs()
+            apks.single().copyTo(dest, overwrite = true)
+            require(dest.isFile && dest.length() > 0) {
+                "Copied $variant APK to ${dest.absolutePath}, but the file is missing or empty"
+            }
+        }
+    }
+    tasks.matching { it.name == "assemble$capitalized" }.configureEach {
+        finalizedBy(copyTask)
+    }
+}
+
+registerApkArtifactCopy("debug")
+registerApkArtifactCopy("release")

@@ -208,20 +208,14 @@ data class AxonDimens(
     val rBubble: Dp = 13.dp,
 )
 
-val AxonDisplayFont = FontFamily(
-    Font(R.font.manrope_regular, FontWeight.Normal),
-    Font(R.font.manrope_medium, FontWeight.Medium),
-    Font(R.font.manrope_semibold, FontWeight.SemiBold),
-    Font(R.font.manrope_bold, FontWeight.Bold),
-    Font(R.font.manrope_extrabold, FontWeight.ExtraBold),
-)
-
 val AxonBodyFont = FontFamily(
     Font(R.font.noto_sans_regular, FontWeight.Normal),
     Font(R.font.noto_sans_medium, FontWeight.Medium),
     Font(R.font.noto_sans_semibold, FontWeight.SemiBold),
     Font(R.font.noto_sans_bold, FontWeight.Bold),
 )
+
+val AxonDisplayFont = AxonBodyFont
 
 val AxonMonoFont = FontFamily(
     Font(R.font.noto_sans_regular, FontWeight.Normal),
@@ -243,15 +237,15 @@ private val AxonMaterialTypography = Typography(
     headlineLarge = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.Bold, fontSize = 32.sp, lineHeight = 40.sp),
     headlineMedium = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
     headlineSmall = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp),
-    titleLarge = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 28.sp),
-    titleMedium = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 24.sp),
-    titleSmall = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
-    bodyLarge = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp),
-    bodySmall = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp),
-    labelLarge = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
-    labelMedium = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp),
+    titleLarge = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 30.sp),
+    titleMedium = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 25.sp),
+    titleSmall = TextStyle(fontFamily = AxonDisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 22.sp),
+    bodyLarge = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.Normal, fontSize = 16.5.sp, lineHeight = 25.sp),
+    bodyMedium = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.Normal, fontSize = 14.8.sp, lineHeight = 22.sp),
+    bodySmall = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp),
+    labelLarge = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.SemiBold, fontSize = 14.6.sp, lineHeight = 21.sp),
+    labelMedium = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, lineHeight = 18.sp),
+    labelSmall = TextStyle(fontFamily = AxonBodyFont, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 17.sp),
 )
 
 private val LocalAxonColors = staticCompositionLocalOf { AxonDarkColors }

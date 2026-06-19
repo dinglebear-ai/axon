@@ -104,6 +104,7 @@ pub struct ServiceJob {
     pub source_type: Option<String>,
     pub target: Option<String>,
     pub urls_json: Option<serde_json::Value>,
+    pub progress_json: Option<serde_json::Value>,
     pub result_json: Option<serde_json::Value>,
     pub config_json: Option<serde_json::Value>,
     pub attempt_count: i64,
@@ -128,6 +129,7 @@ impl From<crate::jobs::crawl::CrawlJob> for ServiceJob {
             source_type: None,
             target: None,
             urls_json: None,
+            progress_json: None,
             result_json: job.result_json,
             config_json: None,
             attempt_count: 0,
@@ -152,6 +154,7 @@ impl From<crate::jobs::embed::EmbedJob> for ServiceJob {
             source_type: None,
             target: Some(job.input_text),
             urls_json: None,
+            progress_json: None,
             result_json: job.result_json,
             config_json: Some(job.config_json),
             attempt_count: 0,
@@ -176,6 +179,7 @@ impl From<crate::jobs::extract::ExtractJob> for ServiceJob {
             source_type: None,
             target: None,
             urls_json: Some(job.urls_json),
+            progress_json: None,
             result_json: job.result_json,
             config_json: None,
             attempt_count: 0,
@@ -200,6 +204,7 @@ impl From<crate::jobs::ingest::IngestJob> for ServiceJob {
             source_type: Some(job.source_type),
             target: Some(job.target),
             urls_json: None,
+            progress_json: None,
             result_json: job.result_json,
             config_json: Some(job.config_json),
             attempt_count: 0,
@@ -217,6 +222,26 @@ impl ServiceJob {
         crate::jobs::status::JobStatus::from_str(&self.status)
     }
 
+    pub fn wire_json_compat(&self) -> serde_json::Value {
+        let mut value = serde_json::to_value(self).unwrap_or_else(|_| serde_json::json!({}));
+        let Some(obj) = value.as_object_mut() else {
+            return value;
+        };
+        let active = self.status_enum().is_active();
+        let metrics = if active {
+            usable_progress_json(self.progress_json.as_ref()).or(self.result_json.as_ref())
+        } else {
+            self.result_json.as_ref()
+        };
+        if let Some(metrics) = metrics {
+            obj.insert("metrics".to_string(), metrics.clone());
+            if active {
+                obj.insert("result_json".to_string(), metrics.clone());
+            }
+        }
+        value
+    }
+
     pub fn from_status_row(row: crate::jobs::backend::JobStatusRow) -> Self {
         Self {
             id: row.id,
@@ -230,6 +255,7 @@ impl ServiceJob {
             source_type: None,
             target: None,
             urls_json: None,
+            progress_json: row.progress_json,
             result_json: row.result_json,
             config_json: None,
             attempt_count: row.attempt_count,
@@ -253,6 +279,7 @@ impl ServiceJob {
             source_type: None,
             target: Some(summary.target),
             urls_json: None,
+            progress_json: None,
             result_json: None,
             config_json: None,
             attempt_count: 0,
@@ -261,6 +288,13 @@ impl ServiceJob {
             last_reclaimed_reason: None,
         }
     }
+}
+
+fn usable_progress_json(value: Option<&serde_json::Value>) -> Option<&serde_json::Value> {
+    value.filter(|value| {
+        !(value.get("degraded").and_then(serde_json::Value::as_bool) == Some(true)
+            && value.get("field").and_then(serde_json::Value::as_str) == Some("progress_json"))
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

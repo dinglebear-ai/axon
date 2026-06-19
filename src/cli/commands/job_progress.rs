@@ -8,16 +8,17 @@ pub(crate) fn crawl_progress_summary(
     embed_jobs_by_id: &HashMap<String, &ServiceJob>,
     embed_doc_totals: &HashMap<String, u64>,
 ) -> Option<String> {
-    let Some(metrics) = job.result_json.as_ref() else {
-        return if job.status == "running" {
-            Some("starting…".to_string())
-        } else {
-            None
-        };
-    };
     match job.status.as_str() {
-        "running" => crawl_running_progress(job, metrics),
-        "completed" => crawl_completed_progress(metrics, embed_jobs_by_id, embed_doc_totals),
+        "running" => {
+            let Some(metrics) = live_progress_metrics(job) else {
+                return Some("starting…".to_string());
+            };
+            crawl_running_progress(job, metrics)
+        }
+        "completed" => {
+            let metrics = job.result_json.as_ref()?;
+            crawl_completed_progress(metrics, embed_jobs_by_id, embed_doc_totals)
+        }
         "pending" => reclaimed_suffix(job)
             .strip_prefix(" · ")
             .map(ToOwned::to_owned),
@@ -38,7 +39,12 @@ pub(crate) fn embed_progress_summary(
     if !matches!(job.status.as_str(), "running" | "completed") {
         return None;
     }
-    let Some(metrics) = job.result_json.as_ref() else {
+    let metrics = if job.status == "running" {
+        live_progress_metrics(job)
+    } else {
+        job.result_json.as_ref()
+    };
+    let Some(metrics) = metrics else {
         return if job.status == "running" {
             Some("starting…".to_string())
         } else {
@@ -90,7 +96,12 @@ pub(crate) fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
     if !matches!(job.status.as_str(), "running" | "completed") {
         return None;
     }
-    let Some(metrics) = job.result_json.as_ref() else {
+    let metrics = if job.status == "running" {
+        live_progress_metrics(job)
+    } else {
+        job.result_json.as_ref()
+    };
+    let Some(metrics) = metrics else {
         return if job.status == "running" {
             Some("starting…".to_string())
         } else {
@@ -112,7 +123,12 @@ pub(crate) fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
 }
 
 pub(crate) fn ingest_progress_summary(job: &ServiceJob) -> Option<String> {
-    format_ingest_progress(job.status.as_str(), job.result_json.as_ref(), true)
+    let metrics = if job.status == "running" {
+        live_progress_metrics(job)
+    } else {
+        job.result_json.as_ref()
+    };
+    format_ingest_progress(job.status.as_str(), metrics, true)
 }
 
 pub(crate) fn ingest_progress(result_json: &Option<Value>) -> Option<String> {
@@ -148,6 +164,10 @@ fn crawl_running_progress(job: &ServiceJob, metrics: &Value) -> Option<String> {
     } else {
         Some(format!("{crawled} crawled{error_suffix}{reclaim}"))
     }
+}
+
+fn live_progress_metrics(job: &ServiceJob) -> Option<&Value> {
+    job.progress_json.as_ref().or(job.result_json.as_ref())
 }
 
 fn crawl_completed_progress(
@@ -279,6 +299,7 @@ mod tests {
             source_type: Some("github".to_string()),
             target: Some("example/repo".to_string()),
             urls_json: None,
+            progress_json: None,
             result_json,
             config_json: None,
             attempt_count: 0,

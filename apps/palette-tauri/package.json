@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build",
+    "build": "tauri build && node scripts/copy-artifacts.mjs",
     "generate:api": "node scripts/generate-api.mjs",
     "check:api": "cd ../.. && cargo xtask check-openapi-drift",
     "preview": "vite preview",

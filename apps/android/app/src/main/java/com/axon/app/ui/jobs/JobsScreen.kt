@@ -60,14 +60,20 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
     val watches by vm.watches.collectAsStateWithLifecycle()
     val error by vm.errorMessage.collectAsStateWithLifecycle()
     var drill by remember { mutableStateOf<JobDrill?>(null) }
-    var selectedJob by remember { mutableStateOf<JobUi?>(null) }
+    var selectedJobRef by remember { mutableStateOf<JobRef?>(null) }
     var crawledPages by remember { mutableStateOf<List<String>>(emptyList()) }
     var crawledPagesLoading by remember { mutableStateOf(false) }
     var crawledPagesError by remember { mutableStateOf<String?>(null) }
     val overviewRows = jobOverviewRows(jobsByKind, watches)
     val reveal = rememberRevealState()
+    val selectedJob = selectedJobRef?.let { ref ->
+        jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
+    }
+    val selectedCrawlManifestPath = remember(selectedJob?.id, selectedJob?.resultJson) {
+        crawlManifestArtifactPath(selectedJob?.resultJson)
+    }
 
-    LaunchedEffect(selectedJob?.id, selectedJob?.resultJson) {
+    LaunchedEffect(selectedJob?.id, selectedCrawlManifestPath) {
         val job = selectedJob
         crawledPages = emptyList()
         crawledPagesError = null
@@ -84,23 +90,23 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         if (selectedJob != null) {
             JobDetailScreen(
-                job = selectedJob!!,
+                job = selectedJob,
                 crawledPages = crawledPages,
                 crawledPagesLoading = crawledPagesLoading,
                 crawledPagesError = crawledPagesError,
                 modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .widthIn(max = 460.dp)
-                    .padding(top = 16.dp),
-                onBack = { selectedJob = null },
+                    .fillMaxWidth()
+                    .widthIn(max = 520.dp)
+                    .padding(start = 6.dp, top = 10.dp, end = 6.dp),
+                onBack = { selectedJobRef = null },
             )
         } else {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .widthIn(max = 460.dp)
-                    .padding(top = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(13.dp),
+                    .fillMaxWidth()
+                    .widthIn(max = 520.dp)
+                    .padding(start = 6.dp, top = 10.dp, end = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (val selected = drill) {
                     null -> {
@@ -137,7 +143,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                                     modifier = Modifier
                                         .animateItem()
                                         .revealOnce(reveal, "${selected.kind}-${job.id}", index),
-                                    onClick = { selectedJob = job },
+                                    onClick = { selectedJobRef = JobRef(selected.kind, job.id) },
                                 )
                             }
                             if (jobs.size > visibleJobs.size) {
@@ -179,6 +185,8 @@ private sealed interface JobDrill {
     data object Watches : JobDrill
 }
 
+private data class JobRef(val kind: JobFamily, val id: String)
+
 private data class JobOverviewRowModel(
     val key: String,
     val title: String,
@@ -199,25 +207,28 @@ private fun jobOverviewRows(
     val colors = AxonTheme.colors
     fun row(kind: JobFamily): JobOverviewRowModel {
         val jobs = jobsByKind[kind].orEmpty()
-        val runningCount = jobs.count { isActiveJobStatus(it.status) }
+        val activeJobs = jobs.filter { isActiveJobStatus(it.status) }
+        val runningCount = activeJobs.size
         val failedCount = jobs.count { it.status.lowercase() in setOf("failed", "error") }
-        val running = jobs.firstOrNull { isActiveJobStatus(it.status) }
+        val running = activeJobs.firstOrNull()
         val representative = running ?: jobs.firstOrNull()
+        val aggregateProgress = aggregateProgressForJobs(activeJobs)
         return JobOverviewRowModel(
             key = kind.name,
             title = kind.drillTitle(),
             detail = representative?.let { job ->
-                val suffix = if (running == null && job.status.lowercase() in setOf("done", "completed", "success")) {
-                    "latest · ${jobProgressLabel(job)}"
-                } else {
-                    jobProgressLabel(job)
+                val suffix = when {
+                    activeJobs.size > 1 -> "${activeJobs.size} active ${kind.drillTitle().lowercase()} · avg ${((aggregateProgress ?: 0f) * 100).toInt()}%"
+                    running != null -> jobProgressLabel(job)
+                    job.status.lowercase() in setOf("done", "completed", "success") -> "latest · ${jobProgressLabel(job)}"
+                    else -> jobProgressLabel(job)
                 }
                 "${shortTarget(jobDisplayTarget(job))} · $suffix"
             }
                 ?: "No ${kind.label().lowercase()} jobs",
             runningCount = runningCount,
             failedCount = failedCount,
-            progress = running?.let { progressForJob(it) },
+            progress = aggregateProgress,
             icon = iconForKind(kind),
             tone = when (kind) {
                 JobFamily.Crawl -> colors.accentPrimary
@@ -251,25 +262,26 @@ private fun jobOverviewRows(
 private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = AxonTheme.colors
     val shape = RoundedCornerShape(8.dp)
+    val quiet = row.runningCount == 0 && row.failedCount == 0 && row.progress == null
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(colors.control.copy(alpha = 0.06f), shape)
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.12f), shape)
+            .background(colors.control.copy(alpha = if (quiet) 0.018f else 0.07f), shape)
+            .border(1.dp, colors.borderDefault.copy(alpha = if (quiet) 0.04f else 0.14f), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 18.dp),
+            .padding(horizontal = if (quiet) 18.dp else 20.dp, vertical = if (quiet) 13.dp else 20.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(15.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (quiet) 13.dp else 15.dp),
     ) {
-        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(22.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(if (quiet) 22.dp else 24.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (quiet) 4.dp else 9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     row.title,
                     color = colors.textPrimary,
-                    fontSize = 15.2.sp,
-                    lineHeight = 20.sp,
+                    fontSize = if (quiet) 15.sp else 16.sp,
+                    lineHeight = if (quiet) 19.5.sp else 21.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = AxonTheme.fonts.body,
                     maxLines = 1,
@@ -282,8 +294,8 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
             Text(
                 row.detail,
                 color = colors.textMuted.copy(alpha = 0.82f),
-                fontSize = 12.4.sp,
-                lineHeight = 16.4.sp,
+                fontSize = if (quiet) 12.4.sp else 13.2.sp,
+                lineHeight = if (quiet) 16.sp else 18.sp,
                 fontFamily = AxonTheme.fonts.mono,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

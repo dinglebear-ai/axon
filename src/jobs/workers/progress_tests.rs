@@ -32,6 +32,7 @@ async fn crawl_progress_persister_includes_adaptive_concurrency_snapshot() {
     );
     tx.send(CrawlSummary {
         pages_seen: 2,
+        pages_discovered: 4,
         adaptive: Some(AdaptiveCrawlSnapshot {
             successes: 10,
             failures: 1,
@@ -47,19 +48,27 @@ async fn crawl_progress_persister_includes_adaptive_concurrency_snapshot() {
     drop(tx);
     task.await.expect("progress task");
 
-    let result_json: Option<String> =
-        sqlx::query_scalar("SELECT result_json FROM axon_crawl_jobs WHERE id = ?")
+    let progress_json: Option<String> =
+        sqlx::query_scalar("SELECT progress_json FROM axon_crawl_jobs WHERE id = ?")
             .bind(id.to_string())
             .fetch_one(&pool)
             .await
-            .expect("result json");
+            .expect("progress json");
     let value: serde_json::Value =
-        serde_json::from_str(result_json.as_deref().expect("stored progress json"))
+        serde_json::from_str(progress_json.as_deref().expect("stored progress json"))
             .expect("valid json");
 
+    assert_eq!(value["phase"], "crawling");
+    assert_eq!(value["lifecycle_progress"], serde_json::json!(0.5));
     assert_eq!(value["pages_crawled"], 2);
     assert_eq!(value["adaptive_concurrency"]["current_target"], 5);
     assert_eq!(value["adaptive_concurrency"]["available_permits"], 4);
     assert_eq!(value["adaptive_concurrency"]["successes"], 10);
     assert_eq!(value["adaptive_concurrency"]["failures"], 1);
+}
+
+#[test]
+fn active_ratio_preserves_explicit_zero_progress() {
+    assert_eq!(active_ratio(0.0, 100.0), 0.0);
+    assert_eq!(active_ratio(1.0, 100.0), 0.02);
 }

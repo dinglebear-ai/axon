@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,20 +93,20 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 16.dp)
-                .padding(bottom = 16.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp)
+                .padding(bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .widthIn(max = 420.dp)
+                    .fillMaxWidth()
+                    .widthIn(max = 460.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(AxonTheme.colors.panelMedium.copy(alpha = 0.42f), RoundedCornerShape(10.dp))
-                    .border(1.dp, AxonTheme.colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
-                    .padding(4.dp),
+                    .background(AxonTheme.colors.panelMedium.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
+                    .border(1.dp, AxonTheme.colors.borderDefault.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                    .padding(3.dp),
             ) {
                 SettingsTab.entries.forEach { entry ->
                     SettingsTabButton(entry, selected = tab == entry, modifier = Modifier.weight(1f)) {
@@ -137,8 +139,8 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     onRefreshCollections = vm::refreshCollections,
                     connection = connection,
                     modifier = Modifier
-                        .fillMaxWidth(0.96f)
-                        .widthIn(max = 420.dp),
+                        .fillMaxWidth()
+                        .widthIn(max = 460.dp),
                 )
                 SettingsTab.Env -> ConfigGroupsTab(
                     path = files.envPath,
@@ -152,8 +154,8 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     searchQuery = settingsSearch,
                     onSearchQueryChange = { settingsSearch = it },
                     modifier = Modifier
-                        .fillMaxWidth(0.96f)
-                        .widthIn(max = 560.dp),
+                        .fillMaxWidth()
+                        .widthIn(max = 600.dp),
                 )
                 SettingsTab.Config -> ConfigGroupsTab(
                     path = files.configPath,
@@ -167,8 +169,8 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     searchQuery = settingsSearch,
                     onSearchQueryChange = { settingsSearch = it },
                     modifier = Modifier
-                        .fillMaxWidth(0.96f)
-                        .widthIn(max = 560.dp),
+                        .fillMaxWidth()
+                        .widthIn(max = 600.dp),
                 )
             }
         }
@@ -204,19 +206,20 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) colors.tint(colors.accentPrimary, 10, colors.pageBg) else colors.control.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
-            .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 28, colors.pageBg) else colors.borderDefault.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
+            .background(if (selected) colors.tint(colors.accentPrimary, 7, colors.pageBg) else colors.control.copy(alpha = 0.01f), RoundedCornerShape(8.dp))
+            .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 20, colors.pageBg) else colors.borderDefault.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .height(48.dp)
-            .padding(horizontal = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(tab.icon, contentDescription = null, tint = if (selected) colors.accentStrong else colors.textMuted.copy(alpha = 0.72f), modifier = Modifier.size(15.dp))
         Text(
             tab.shortLabel,
             color = if (selected) colors.accentStrong else colors.textMuted,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
+            lineHeight = 17.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
@@ -226,14 +229,19 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             Text(
                 it.toString(),
                 modifier = Modifier
+                    .width(32.dp)
+                    .height(22.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(colors.control.copy(alpha = if (selected) 0.34f else 0.18f))
-                    .border(1.dp, colors.borderDefault.copy(alpha = if (selected) 0.18f else 0.08f), RoundedCornerShape(999.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                    .border(1.dp, colors.borderDefault.copy(alpha = if (selected) 0.18f else 0.08f), RoundedCornerShape(999.dp)),
                 color = colors.textMuted.copy(alpha = 0.78f),
-                fontSize = 9.2.sp,
-                lineHeight = 10.sp,
+                fontSize = 10.4.sp,
+                lineHeight = 22.sp,
                 fontFamily = AxonTheme.fonts.mono,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
+                textAlign = TextAlign.Center,
             )
         }
     }

@@ -32,6 +32,7 @@ internal fun ServiceJob.toJobUi(kind: JobFamily): JobUi =
         sourceType = sourceType,
         target = target,
         errorText = errorText,
+        progressJson = progressJson,
         resultJson = resultJson,
         configJson = configJson,
     )

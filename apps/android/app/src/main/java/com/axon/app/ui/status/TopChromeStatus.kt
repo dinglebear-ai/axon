@@ -1,12 +1,15 @@
 package com.axon.app.ui.status
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +26,7 @@ import com.axon.app.ui.theme.AxonTheme
 fun TopChromeStatus(
     modifier: Modifier = Modifier,
     vm: ConnectionStatusViewModel = viewModel(),
+    onOfflineClick: (() -> Unit)? = null,
 ) {
     val colors = AxonTheme.colors
     val state by vm.state.collectAsStateWithLifecycle()
@@ -30,30 +34,38 @@ fun TopChromeStatus(
     val dot = when (state) {
         ConnectionState.Checking -> colors.accentStrong
         ConnectionState.Online -> colors.success
-        ConnectionState.Offline -> colors.error
+        ConnectionState.Offline -> colors.textMuted
     }
     val label = when (state) {
-        ConnectionState.Checking -> "..."
-        ConnectionState.Online -> latencyMs?.let { "${it.coerceAtMost(999)}ms" } ?: "live"
-        ConnectionState.Offline -> "down"
+        ConnectionState.Checking -> "Checking"
+        ConnectionState.Online -> latencyMs?.let { "${it.coerceAtMost(999)}ms" } ?: "Online"
+        ConnectionState.Offline -> "Offline"
     }
+    val shape = RoundedCornerShape(999.dp)
+    val onClick = if (state == ConnectionState.Offline && onOfflineClick != null) onOfflineClick else vm::refresh
 
     Row(
-        modifier = modifier.clickable { vm.refresh() },
+        modifier = modifier
+            .height(30.dp)
+            .background(colors.control.copy(alpha = 0.42f), shape)
+            .border(1.dp, dot.copy(alpha = 0.34f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(5.5.dp)
-                .clip(CircleShape)
+                .size(6.dp)
+                .clip(shape)
                 .background(dot.copy(alpha = 0.92f)),
         )
         Text(
             label,
-            color = colors.textMuted.copy(alpha = 0.76f),
-            fontSize = 9.4.sp,
-            fontFamily = AxonTheme.fonts.mono,
+            color = colors.textMuted.copy(alpha = if (state == ConnectionState.Offline) 0.94f else 0.86f),
+            fontSize = 11.2.sp,
+            lineHeight = 14.sp,
+            fontFamily = AxonTheme.fonts.body,
         )
     }
 }
