@@ -123,3 +123,36 @@ fn workflow_dispatch_and_schedule_enable_everything() {
         }
     }
 }
+
+#[test]
+fn changed_path_router_edits_force_full_ci() {
+    for file in [
+        "scripts/ci/changed_paths.py",
+        "tests/ci_changed_paths.rs",
+        "tests/workflow_shapes.rs",
+    ] {
+        let out = classify("pull_request", &[file]);
+        for key in [
+            "all",
+            "workflow",
+            "rust",
+            "web",
+            "android",
+            "palette",
+            "chrome",
+            "docker",
+            "compose",
+            "mcp",
+            "security",
+            "release",
+            "openapi",
+            "codeql_actions",
+            "codeql_javascript_typescript",
+            "codeql_python",
+            "codeql_rust",
+            "codeql_java_kotlin",
+        ] {
+            assert_eq!(out[key], "true", "{file} should enable {key}");
+        }
+    }
+}

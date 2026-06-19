@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -46,7 +48,11 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     if not paths:
         return {key: True for key in OUTPUT_KEYS}
 
-    workflow = any_match(paths, lambda p: starts(p, ".github/workflows/") or p == "tests/workflow_shapes.rs")
+    workflow = any_match(
+        paths,
+        lambda p: starts(p, ".github/workflows/")
+        or p in {"scripts/ci/changed_paths.py", "tests/workflow_shapes.rs", "tests/ci_changed_paths.rs"},
+    )
     docs = any_match(paths, lambda p: starts(p, "docs/") or p in {"README.md", "CHANGELOG.md"})
     openapi = any_match(paths, lambda p: starts(p, "apps/web/openapi/"))
     web = any_match(paths, lambda p: starts(p, "apps/web/")) or openapi
@@ -125,6 +131,54 @@ def read_paths(path: Path) -> list[str]:
     return [line.strip() for line in path.read_text().splitlines() if line.strip()]
 
 
+def git_path_exists(rev: str) -> bool:
+    return subprocess.run(
+        ["git", "cat-file", "-e", rev],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
+
+
+def git_output(*args: str) -> str:
+    return subprocess.check_output(["git", *args], text=True, stderr=subprocess.DEVNULL).strip()
+
+
+def resolve_paths(event: str) -> list[str]:
+    if event in {"schedule", "workflow_dispatch"}:
+        return []
+
+    env = os.environ
+    base = ""
+    head = env.get("HEAD_SHA") or env.get("GITHUB_SHA") or "HEAD"
+
+    if event == "pull_request":
+        base = env.get("PR_BASE_SHA", "")
+        head = env.get("PR_HEAD_SHA") or head
+    elif event == "push":
+        if env.get("GITHUB_REF", "").startswith("refs/tags/"):
+            return []
+        base = env.get("PUSH_BEFORE_SHA", "")
+    else:
+        return []
+
+    if not base or set(base) == {"0"} or not git_path_exists(base):
+        try:
+            base = git_output("rev-parse", "HEAD^")
+        except subprocess.CalledProcessError:
+            base = ""
+
+    if not base:
+        return []
+
+    try:
+        raw = git_output("diff", "--name-only", base, head)
+    except subprocess.CalledProcessError:
+        return []
+
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
 def write_outputs(path: Path, values: dict[str, bool]) -> None:
     lines = [f"{key}={'true' if values[key] else 'false'}" for key in OUTPUT_KEYS]
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,11 +188,16 @@ def write_outputs(path: Path, values: dict[str, bool]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--event", required=True)
-    parser.add_argument("--changed-files", type=Path, required=True)
+    parser.add_argument("--changed-files", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--write-changed-files", type=Path)
     args = parser.parse_args()
 
-    values = classify(args.event, read_paths(args.changed_files))
+    paths = read_paths(args.changed_files) if args.changed_files else resolve_paths(args.event)
+    if args.write_changed_files:
+        args.write_changed_files.write_text("\n".join(paths) + ("\n" if paths else ""))
+
+    values = classify(args.event, paths)
     write_outputs(args.output, values)
     for key in OUTPUT_KEYS:
         print(f"{key}={str(values[key]).lower()}")

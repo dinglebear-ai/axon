@@ -20,22 +20,21 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Resolve changed files
+      - name: Prepare trusted changed path classifier
+        run: |
+          set -euo pipefail
+          classifier="scripts/ci/changed_paths.py"
+          trusted="/tmp/axon-changed-paths.py"
+          cp "$classifier" "$trusted"
+          chmod +x "$trusted"
+          echo "AXON_CHANGED_PATHS=$trusted" >> "$GITHUB_ENV"
+      - name: Classify changed paths
+        id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if [[ "$EVENT_NAME" == "push" && "${GITHUB_REF}" != refs/tags/v* ]]; then
-            git diff --name-only "$PUSH_BEFORE_SHA" "$HEAD_SHA" > changed-files.txt
-          else
-            : > changed-files.txt
-          fi
-          cat changed-files.txt
-      - name: Classify changed paths
-        id: classify
-        run: python3 scripts/ci/changed_paths.py --event "${{ github.event_name }}" --changed-files changed-files.txt --output "$GITHUB_OUTPUT"
+        run: python3 "$AXON_CHANGED_PATHS" --event "$EVENT_NAME" --output "$GITHUB_OUTPUT" --write-changed-files changed-files.txt
 
   build:
     name: build-and-push
