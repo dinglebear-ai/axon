@@ -192,11 +192,22 @@ jobs:
             apps/android
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: ${{ env.AURORA_REPO }}
           ref: ${{ env.AURORA_REF }}
           path: aurora-design-system
-          sparse-checkout: |
-            android
+          token: ${{ secrets.AURORA_TOKEN || github.token }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "lts/*"
+          cache: pnpm
+          cache-dependency-path: aurora-design-system/pnpm-lock.yaml
+      - name: Install Aurora token dependencies
+        working-directory: aurora-design-system
+        run: pnpm install --frozen-lockfile
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
