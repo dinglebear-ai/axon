@@ -20,7 +20,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import com.axon.app.data.auth.AuthConfig
-import com.axon.app.data.auth.MissingAuthException
 import com.axon.app.data.auth.hasUsableAuth
 import com.axon.app.data.remote.models.AcceptedJob
 import com.axon.app.data.remote.models.CancelResponse
@@ -83,8 +82,7 @@ class AxonClient(
     private val httpLong = clients.longRead
     private val httpStream = clients.stream
     private val generatedApi = GeneratedAxonApi(
-        baseUrlProvider = { baseUrl() },
-        authProvider = { config.get() },
+        snapshotProvider = { config.get().let { (baseUrl, auth) -> ClientAuthSnapshot(baseUrl, auth) } },
         clients = clients,
     )
 
@@ -378,30 +376,8 @@ class AxonClient(
         java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
     private suspend fun authRequest(builder: Request.Builder, panelRoute: Boolean = false): Request.Builder {
-        val (currentBaseUrl, auth) = config.get()
-        if (panelRoute && auth is AuthConfig.OAuth) {
-            throw MissingAuthException("Server config requires bearer/panel-compatible auth; OAuth app tokens are not used for panel routes")
-        }
-        val headers = when (auth) {
-            is AuthConfig.Bearer -> {
-                val token = auth.token.trim()
-                if (token.isBlank()) throw MissingAuthException("No Axon authentication configured")
-                if (panelRoute) {
-                    mapOf("x-axon-panel-token" to token)
-                } else {
-                    mapOf("Authorization" to "Bearer $token", "x-api-key" to token)
-                }
-            }
-            is AuthConfig.OAuth -> {
-                if (auth.serverUrl.trimEnd('/') != currentBaseUrl.trimEnd('/')) {
-                    throw MissingAuthException("OAuth credentials belong to a different Axon server; sign in again for this server")
-                }
-                val token = auth.tokenSource.freshAccessToken().getOrThrow()
-                mapOf("Authorization" to "Bearer $token")
-            }
-        }
-        headers.forEach { (name, value) -> builder.header(name, value) }
-        return builder
+        val snapshot = config.get().let { (baseUrl, auth) -> ClientAuthSnapshot(baseUrl, auth) }
+        return builder.withAxonAuth(snapshot, panelRoute)
     }
 
     private suspend inline fun <reified B, reified R> put(path: String, body: B): Result<R> {

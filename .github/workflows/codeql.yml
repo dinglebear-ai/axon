@@ -14,7 +14,7 @@ permissions:
 
 env:
   AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
-  AURORA_REF: ${{ vars.AURORA_REF || (github.event_name == 'pull_request' && 'codex/axon-hrqn-primitives' || 'main') }}
+  AURORA_REF: ${{ vars.AURORA_REF || 'main' }}
 
 jobs:
   analyze:
