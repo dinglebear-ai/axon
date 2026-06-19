@@ -501,7 +501,7 @@ jobs:
       - name: Workflow shape contracts
         run: cargo test --locked --test workflow_shapes
       - name: OpenAPI and generated client sync
-        run: scripts/check_openapi_drift.sh
+        run: cargo xtask check-openapi-drift
 
   mcp-oauth-smoke:
     name: mcp-oauth-smoke
