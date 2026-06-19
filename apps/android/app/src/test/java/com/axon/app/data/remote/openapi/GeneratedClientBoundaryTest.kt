@@ -7,10 +7,12 @@ import org.junit.Test
 class GeneratedClientBoundaryTest {
     @Test
     fun generatedModelsAreOnlyImportedByGeneratedAdapter() {
-        val root = File("src/main/java")
+        val root = File("src")
         val offenders = root.walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .filterNot { it.invariantSeparatorsPath.endsWith("/data/remote/GeneratedAxonApi.kt") }
+            .filterNot { it.invariantSeparatorsPath.endsWith("/data/remote/openapi/GeneratedClientBoundaryTest.kt") }
+            .filterNot { "/build/generated/" in it.invariantSeparatorsPath }
             .flatMap { file ->
                 file.readLines()
                     .mapIndexedNotNull { index, line ->

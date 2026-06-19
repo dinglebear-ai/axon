@@ -108,6 +108,31 @@ jobs:
       - name: Check Aurora primitive inventory guard
         run: python3 scripts/check_aurora_primitive_inventory.py
 
+  android-openapi-client:
+    name: android-openapi-client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            apps/web/openapi
+            apps/android
+      - uses: actions/checkout@v5
+        with:
+          repository: jmagar/aurora-design-system
+          path: aurora-design-system
+          sparse-checkout: |
+            android
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Verify generated Android OpenAPI client
+        env:
+          AXON_AURORA_ANDROID_PATH: ${{ github.workspace }}/aurora-design-system/android
+        run: apps/android/gradlew -p apps/android :app:verifyOpenApiGeneratedClient --no-daemon --stacktrace
+
   no-mod-rs:
     name: no-mod-rs
     runs-on: ubuntu-latest
@@ -463,6 +488,8 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
             plugins
             docs
             .github
