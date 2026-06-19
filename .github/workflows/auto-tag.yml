@@ -64,6 +64,10 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: xtask
+      - name: create web assets placeholder
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: Build release plan
         id: plan
         run: |
