@@ -55,6 +55,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -100,6 +101,19 @@ tasks.named("openApiGenerate") {
     doFirst {
         require(axonOpenApiSpec.asFile.isFile) {
             "Missing OpenAPI spec at ${axonOpenApiSpec.asFile.absolutePath}; run `cargo xtask check-openapi-drift` from repo root."
+        }
+    }
+    doLast {
+        val apiClient = axonOpenApiOutput.get()
+            .file("src/main/kotlin/org/openapitools/client/infrastructure/ApiClient.kt")
+            .asFile
+        if (apiClient.isFile) {
+            apiClient.writeText(
+                apiClient.readText().replace(
+                    "java.nio.file.Files.createTempFile(prefix, suffix).toFile()",
+                    "java.io.File.createTempFile(prefix, suffix)",
+                )
+            )
         }
     }
 }
@@ -153,6 +167,7 @@ dependencies {
     implementation(libs.kotlinx.collections.immutable)
     implementation(libs.moshi)
     implementation(libs.moshi.kotlin)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     // Security
     implementation(libs.security.crypto)
