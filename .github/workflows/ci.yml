@@ -57,13 +57,11 @@ jobs:
           set -euo pipefail
           classifier="scripts/ci/changed_paths.py"
           trusted="/tmp/axon-changed-paths.py"
-          if [[ "${{ github.event_name }}" == "pull_request" ]] \
-            && git show "${{ github.event.pull_request.base.sha }}:$classifier" > "$trusted" 2>/dev/null; then
-            chmod +x "$trusted"
-          else
+          if [[ "${{ github.event_name }}" != "pull_request" ]] \
+            || ! git show "${{ github.event.pull_request.base.sha }}:$classifier" > "$trusted" 2>/dev/null; then
             cp "$classifier" "$trusted"
-            chmod +x "$trusted"
           fi
+          chmod +x "$trusted"
           echo "AXON_CHANGED_PATHS=$trusted" >> "$GITHUB_ENV"
       - name: Classify changed paths
         id: classify
