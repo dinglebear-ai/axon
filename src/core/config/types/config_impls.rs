@@ -69,6 +69,8 @@ impl Default for Config {
             wait: false,
             sqlite_path: crate::core::paths::axon_data_base_dir().join("jobs.db"),
             yes: false,
+            purge_prefix: false,
+            purge_dry_run: false,
             setup_method: None,
             color_choice: super::enums::ColorChoice::Auto,
             watch_mode: false,

@@ -74,6 +74,8 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.retrieve_max_points = inputs.dispatched.retrieve_max_points;
     cfg.train_best_rank = inputs.dispatched.train_best_rank;
     cfg.train_notes = inputs.dispatched.train_notes.clone();
+    cfg.purge_prefix = inputs.dispatched.purge_prefix;
+    cfg.purge_dry_run = inputs.dispatched.purge_dry_run;
     cfg.doctor_diagnose = inputs.dispatched.doctor_diagnose;
     // `extract` defaults to the exact single-page path when omitted. `crawl`
     // defaults to a bounded site crawl so accidental origin seeds cannot build

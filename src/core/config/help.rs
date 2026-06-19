@@ -38,6 +38,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "domains",
             "stats",
             "dedupe",
+            "purge",
             "migrate",
         ],
     ),

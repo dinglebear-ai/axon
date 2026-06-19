@@ -588,6 +588,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/mobile/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_mobile_sessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/mobile/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_mobile_session"];
+        put: operations["upsert_mobile_session"];
+        post?: never;
+        delete: operations["delete_mobile_session"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/query": {
         parameters: {
             query?: never;
@@ -868,6 +900,9 @@ export interface components {
         DedupeRequest: {
             collection?: string | null;
         };
+        DeleteMobileSessionResponse: {
+            ok: boolean;
+        };
         DiffResult: {
             links_added: components["schemas"]["LinkEntry"][];
             links_removed: components["schemas"]["LinkEntry"][];
@@ -981,6 +1016,50 @@ export interface components {
             field: string;
             new?: string | null;
             old?: string | null;
+        };
+        MobileChatItem: {
+            kind: string;
+            payload?: Record<string, never>;
+            text?: string | null;
+            /** Format: int64 */
+            timestamp: number;
+        };
+        MobileSession: {
+            /** Format: int64 */
+            created_at: number;
+            first_message_preview: string;
+            id: string;
+            /** Format: int32 */
+            injected_op_count: number;
+            items?: components["schemas"]["MobileChatItem"][];
+            /** Format: int64 */
+            pinned_at?: number | null;
+            title: string;
+            /** Format: int32 */
+            turn_count: number;
+            /** Format: int64 */
+            updated_at: number;
+        };
+        MobileSessionDetailResponse: {
+            session: components["schemas"]["MobileSession"];
+        };
+        MobileSessionListResponse: {
+            sessions: components["schemas"]["MobileSessionSummary"][];
+        };
+        MobileSessionSummary: {
+            /** Format: int64 */
+            created_at: number;
+            first_message_preview: string;
+            id: string;
+            /** Format: int32 */
+            injected_op_count: number;
+            /** Format: int64 */
+            pinned_at?: number | null;
+            title: string;
+            /** Format: int32 */
+            turn_count: number;
+            /** Format: int64 */
+            updated_at: number;
         };
         PreparedSessionDoc: {
             extra?: unknown;
@@ -1227,6 +1306,13 @@ export interface components {
             supported_actions?: string[];
             supported_routes: string[];
             version: string;
+        };
+        UpsertMobileSessionRequest: {
+            session: components["schemas"]["MobileSession"];
+        };
+        UpsertMobileSessionResponse: {
+            ok: boolean;
+            session: components["schemas"]["MobileSession"];
         };
         WatchDefCreateRequest: {
             enabled?: boolean | null;
@@ -3412,6 +3498,216 @@ export interface operations {
             };
             /** @description Upstream vector or embedding service unavailable */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_mobile_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Mobile chat sessions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileSessionListResponse"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Session store error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_mobile_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Mobile session id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Mobile chat session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileSessionDetailResponse"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upsert_mobile_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Mobile session id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertMobileSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Upserted mobile chat session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpsertMobileSessionResponse"];
+                };
+            };
+            /** @description Invalid session payload */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Stale mobile session update */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_mobile_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Mobile session id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted mobile chat session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteMobileSessionResponse"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Session store error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
