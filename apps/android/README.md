@@ -78,3 +78,22 @@ the UI.
 
 The custom retrieve-output parser is fixture-driven. See
 `docs/document-parser-fixtures.md` before changing `DocumentParsing.kt`.
+
+## OpenAPI Client Generation
+
+Android can generate Kotlin client/model code from `../../apps/web/openapi/axon.json`:
+
+```bash
+./gradlew :app:openApiGenerate
+./gradlew :app:verifyOpenApiGeneratedClient
+```
+
+Generated code is written to `app/build/generated/openapi` and is not committed.
+Normal JSON REST endpoints may move behind `GeneratedAxonApi` only after
+MockWebServer tests prove auth headers, error redaction, and result mapping.
+
+Do not use the generated client for:
+
+- `/api/panel/*` local config/file-write routes
+- SSE routes such as `/v1/ask/stream` and `/v1/chat/stream`
+- ViewModel/UI-facing DTOs without an explicit repository boundary migration
