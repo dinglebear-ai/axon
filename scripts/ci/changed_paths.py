@@ -41,6 +41,13 @@ def any_match(paths: list[str], predicate: Callable[[str], bool]) -> bool:
     return any(predicate(path) for path in paths)
 
 
+RUST_CI_HELPER_SCRIPTS = {
+    "scripts/cargo_test_filter_guard.py",
+    "scripts/check_shell_completions.sh",
+    "scripts/generate_mcp_schema_doc.py",
+}
+
+
 def classify(event: str, paths: list[str]) -> dict[str, bool]:
     if event in {"schedule", "workflow_dispatch"}:
         return {key: True for key in OUTPUT_KEYS}
@@ -77,7 +84,8 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
             ".cargo/",
             ".config/",
         )
-        or p in {"Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml", "Justfile"},
+        or p in {"Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml", "Justfile"}
+        or p in RUST_CI_HELPER_SCRIPTS,
     )
     release = rust or web or any_match(paths, lambda p: starts(p, "release/"))
     compose = any_match(

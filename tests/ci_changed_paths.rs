@@ -97,6 +97,36 @@ fn android_changes_enable_kotlin_codeql_only_for_app_language() {
 }
 
 #[test]
+fn compose_and_docker_inputs_route_to_container_smoke_only() {
+    for file in [
+        ".env.example",
+        "docker-compose.yaml",
+        "docker-compose.prod.yaml",
+        "docker-compose.llama.yaml",
+        "config/chrome/Dockerfile",
+        "scripts/sync-openapi.ts",
+    ] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(
+            out["compose"], "true",
+            "{file} should enable compose checks"
+        );
+        assert_eq!(out["docker"], "true", "{file} should enable docker checks");
+        assert_eq!(out["android"], "false", "{file} should not enable Android");
+        assert_eq!(out["palette"], "false", "{file} should not enable palette");
+    }
+}
+
+#[test]
+fn dockerfile_change_routes_to_image_and_compose_smoke() {
+    let out = classify("pull_request", &["config/Dockerfile"]);
+    assert_eq!(out["docker"], "true");
+    assert_eq!(out["compose"], "true");
+    assert_eq!(out["android"], "false");
+    assert_eq!(out["palette"], "false");
+}
+
+#[test]
 fn workflow_dispatch_and_schedule_enable_everything() {
     for event in ["workflow_dispatch", "schedule"] {
         let out = classify(event, &[]);
@@ -154,5 +184,33 @@ fn changed_path_router_edits_force_full_ci() {
         ] {
             assert_eq!(out[key], "true", "{file} should enable {key}");
         }
+    }
+}
+
+#[test]
+fn rust_ci_helper_scripts_enable_the_jobs_that_execute_them() {
+    for file in [
+        "scripts/cargo_test_filter_guard.py",
+        "scripts/check_shell_completions.sh",
+        "scripts/generate_mcp_schema_doc.py",
+    ] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(out["rust"], "true", "{file} should enable rust jobs");
+        assert_eq!(
+            out["release"], "true",
+            "{file} should enable release-version checks that compile xtask"
+        );
+        assert_eq!(
+            out["security"], "true",
+            "{file} should enable security checks"
+        );
+        assert_eq!(
+            out["codeql_python"], "true",
+            "{file} should enable Python CodeQL"
+        );
+        assert_eq!(
+            out["codeql_rust"], "true",
+            "{file} should enable Rust CodeQL"
+        );
     }
 }

@@ -4,9 +4,11 @@
 
 **Goal:** Make Axon's CI run the checks that match the files changed, while keeping scheduled/manual runs broad and preserving a single branch-protection-friendly gate.
 
-**Execution status:** Tasks 1-4 implemented and locally verified on `codex/ci-path-gating`. Task 5 branch-protection mutation is intentionally pending coordinator follow-up after the branch is pushed and a completed `ci-gate` check context exists.
+**Origin:** Jacob explicitly asked for the `superpowers:writing-plans` and `work-it` workflow for this PR.
 
-**Architecture:** Add one tested path-classifier script that maps changed files into CI categories, then consume those outputs from GitHub Actions jobs. Keep one always-running aggregate gate (`ci-gate`) so branch protection can require a stable check even when expensive jobs are intentionally skipped. Apply the same path-gating model to `CI`, `CodeQL`, `Compose smoke`, `Docker image`, and GitHub branch protection.
+**Execution status:** Tasks 1-4 implemented and locally verified on `codex/ci-path-gating`. Later review tightened the implementation so workflows run the classifier from the trusted base revision when available, and the classifier owns changed-file resolution. Task 5 branch-protection configuration is intentionally pending maintainer follow-up after the branch is pushed and a completed `ci-gate` check context exists.
+
+**Architecture:** Add one tested path-classifier script that maps changed files into CI categories, then consume those outputs from GitHub Actions jobs. Keep stable always-running aggregate gates (`ci-gate`, `codeql-gate`, and `compose-smoke-gate`) so branch protection can require predictable checks even when expensive jobs are intentionally skipped. Apply the same path-gating model to `CI`, `CodeQL`, `Compose smoke`, `Docker image`, and GitHub branch protection.
 
 **Tech Stack:** GitHub Actions YAML, Python 3 standard library, Rust workflow-shape tests, `gh` CLI for live GitHub protection configuration.
 
@@ -30,7 +32,7 @@
 - Modify `.github/workflows/compose-smoke.yml`: path-gate compose config and image smoke jobs independently.
 - Modify `.github/workflows/docker-image.yml`: skip image publishing unless container/runtime inputs changed or the run is a release tag/manual dispatch.
 - Modify `tests/workflow_shapes.rs`: assert the new classifier, gates, and aggregate check shape remain intact.
-- Live configuration step: update GitHub branch protection/ruleset to require `ci-gate`.
+- Live configuration step: update GitHub branch protection/ruleset to require `ci-gate`, `codeql-gate`, and `compose-smoke-gate`, preserving any existing review, conversation-resolution, and restriction settings.
 
 ---
 
@@ -1036,9 +1038,9 @@ Expected: commit succeeds with CodeQL workflow and workflow-shape test changes s
 
 **Interfaces:**
 - Consumes: GitHub check context `ci-gate` created by Task 2 after one pushed CI run.
-- Produces: main-branch protection requiring `ci-gate`.
+- Produces: main-branch protection requiring `ci-gate`, `codeql-gate`, and `compose-smoke-gate`.
 
-- [ ] **Step 1: Confirm the current protection state**
+- [ ] **Step 1: Confirm the current protection state and ruleset owner**
 
 Run:
 
@@ -1047,7 +1049,7 @@ gh api repos/jmagar/axon/branches/main/protection --jq '{required_status_checks:
 gh api repos/jmagar/axon/rulesets --jq '.[] | {id, name, enforcement, target}'
 ```
 
-Expected: branch protection may be absent; current ruleset may show `review` with `enforcement: disabled`.
+Expected: identify whether required checks are controlled by classic branch protection or a repository ruleset before changing anything.
 
 - [ ] **Step 2: Wait for one pushed run to create the `ci-gate` check context**
 
@@ -1057,35 +1059,23 @@ Run:
 gh run list --workflow=ci.yml --limit 1 --json databaseId,status,conclusion,headSha,url
 ```
 
-Expected: latest run exists for the branch containing Task 2 and includes a completed `ci-gate` job.
+Expected: latest runs exist for the branch containing Task 2 and include completed `ci-gate`, `codeql-gate`, and `compose-smoke-gate` jobs.
 
-- [ ] **Step 3: Require the stable gate on `main`**
+- [ ] **Step 3: Require the stable gate on `main` without resetting unrelated settings**
 
-Run:
+If a repository ruleset owns required checks, update that ruleset to require `ci-gate`, `codeql-gate`, and `compose-smoke-gate`. If classic branch protection owns required checks, fetch the current protection JSON first and preserve existing settings while replacing only the required status-check contexts with `["ci-gate", "codeql-gate", "compose-smoke-gate"]`.
+
+Do not apply a blind full `PUT` payload from this plan. In particular, preserve existing pull-request review, conversation-resolution, admin-enforcement, restriction, linear-history, force-push, deletion, branch-lock, and fork-sync settings unless Jacob explicitly asks to change them.
+
+One safe pattern for classic branch protection is:
 
 ```bash
-gh api -X PUT repos/jmagar/axon/branches/main/protection \
-  --input - <<'JSON'
-{
-  "required_status_checks": {
-    "strict": true,
-    "contexts": ["ci-gate"]
-  },
-  "enforce_admins": false,
-  "required_pull_request_reviews": null,
-  "restrictions": null,
-  "required_linear_history": false,
-  "allow_force_pushes": false,
-  "allow_deletions": false,
-  "block_creations": false,
-  "required_conversation_resolution": false,
-  "lock_branch": false,
-  "allow_fork_syncing": true
-}
-JSON
+gh api repos/jmagar/axon/branches/main/protection > /tmp/axon-main-protection.json
+# Edit only required_status_checks.contexts to ["ci-gate", "codeql-gate", "compose-smoke-gate"], preserving the other fields.
+# Then PUT the complete preserved object back through gh api.
 ```
 
-Expected: GitHub returns a JSON branch protection object with `required_status_checks.contexts` containing `ci-gate`.
+Expected: GitHub returns a protection/ruleset object that requires `ci-gate`, `codeql-gate`, and `compose-smoke-gate` and preserves unrelated protections.
 
 - [ ] **Step 4: Verify protection**
 
@@ -1103,58 +1093,24 @@ Expected:
 
 ---
 
-### Task 6: End-to-End Verification Pull Requests
+### Task 6: End-to-End Verification
 
 **Files:**
 - No permanent repository files required beyond the tasks above.
 
 **Interfaces:**
 - Consumes: completed Tasks 1-5.
-- Produces: live proof that docs-only, Android-only, Rust-only, and Docker-only changes route correctly.
+- Produces: live or local proof that docs-only, Android-only, Rust-only, and Docker-only changes route correctly.
 
-- [ ] **Step 1: Create a docs-only verification branch**
-
-Run:
-
-```bash
-git switch -c codex/ci-docs-only-routing
-printf '\n<!-- ci routing smoke: docs only -->\n' >> docs/guides/configuration.md
-git add docs/guides/configuration.md
-git commit -m "test: verify docs-only ci routing"
-git push -u origin codex/ci-docs-only-routing
-gh pr create --draft --title "CI routing smoke: docs only" --body "Temporary draft PR to verify docs-only CI routing."
-```
-
-Expected: PR opens as draft.
-
-- [ ] **Step 2: Verify docs-only CI skips expensive jobs**
+- [ ] **Step 1: Verify classifier locally for representative changes**
 
 Run:
 
 ```bash
-RUN_ID=$(gh run list --workflow=ci.yml --branch codex/ci-docs-only-routing --event pull_request --limit 1 --json databaseId --jq '.[0].databaseId')
-gh run view "$RUN_ID" --json jobs --jq '.jobs[] | {name, conclusion}'
-```
+printf 'docs/guides/configuration.md\n' > /tmp/axon-docs-change.txt
+python3 scripts/ci/changed_paths.py --event pull_request --changed-files /tmp/axon-docs-change.txt --output /tmp/axon-docs-output.txt
+cat /tmp/axon-docs-output.txt
 
-Expected: `ci-gate` succeeds; Rust, Android, Tauri, release, and MCP smoke jobs are skipped unless their paths were touched by workflow changes.
-
-- [ ] **Step 3: Close the docs-only verification PR**
-
-Run:
-
-```bash
-gh pr close --delete-branch
-git switch main
-git pull --ff-only
-```
-
-Expected: draft PR closed and remote verification branch deleted.
-
-- [ ] **Step 4: Verify classifier locally for representative changes**
-
-Run:
-
-```bash
 printf 'src/vector/ops/query.rs\n' > /tmp/axon-rust-change.txt
 python3 scripts/ci/changed_paths.py --event pull_request --changed-files /tmp/axon-rust-change.txt --output /tmp/axon-rust-output.txt
 cat /tmp/axon-rust-output.txt
@@ -1171,12 +1127,24 @@ cat /tmp/axon-docker-output.txt
 Expected:
 
 ```text
+# docs sample includes docs=true and does not enable rust/android/palette/docker unless workflow files changed
 # rust sample includes rust=true, release=true, docker=true, codeql_rust=true
 # android sample includes android=true, codeql_java_kotlin=true
-# docker sample includes compose=true or docker=true depending on the file, and does not enable android/palette unless related files changed
+# docker sample includes docker=true and does not enable android/palette unless related files changed
 ```
 
-- [ ] **Step 5: Run final local test suite for CI routing**
+- [ ] **Step 2: Verify the PR's real CI routing**
+
+Run:
+
+```bash
+RUN_ID=$(gh run list --workflow=ci.yml --branch codex/ci-path-gating --event pull_request --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run view "$RUN_ID" --json jobs --jq '.jobs[] | {name, conclusion}'
+```
+
+Expected: `ci-gate` succeeds and any skipped jobs are skipped because their changed-path category is false.
+
+- [ ] **Step 3: Run final local test suite for CI routing**
 
 Run:
 
