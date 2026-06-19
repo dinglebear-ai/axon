@@ -14,7 +14,7 @@ pub(super) async fn job_status(
     let job = job_svc::job_status(service_context, kind, id)
         .await
         .map_err(|err| ClientActionError::new("internal", err.to_string(), true, None))?;
-    Ok(serde_json::json!({ "job": job }))
+    Ok(serde_json::json!({ "job": job.map(|job| job.wire_json_compat()) }))
 }
 
 pub(super) async fn job_cancel(
@@ -40,6 +40,7 @@ pub(super) async fn job_list(
     let jobs = job_svc::list_jobs(service_context, kind, limit, offset)
         .await
         .map_err(|err| ClientActionError::new("internal", err.to_string(), true, None))?;
+    let jobs: Vec<_> = jobs.iter().map(|job| job.wire_json_compat()).collect();
     Ok(serde_json::json!({ "jobs": jobs, "limit": limit, "offset": offset }))
 }
 

@@ -60,14 +60,17 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
     val watches by vm.watches.collectAsStateWithLifecycle()
     val error by vm.errorMessage.collectAsStateWithLifecycle()
     var drill by remember { mutableStateOf<JobDrill?>(null) }
-    var selectedJob by remember { mutableStateOf<JobUi?>(null) }
+    var selectedJobRef by remember { mutableStateOf<JobRef?>(null) }
     var crawledPages by remember { mutableStateOf<List<String>>(emptyList()) }
     var crawledPagesLoading by remember { mutableStateOf(false) }
     var crawledPagesError by remember { mutableStateOf<String?>(null) }
     val overviewRows = jobOverviewRows(jobsByKind, watches)
     val reveal = rememberRevealState()
+    val selectedJob = selectedJobRef?.let { ref ->
+        jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
+    }
 
-    LaunchedEffect(selectedJob?.id, selectedJob?.resultJson) {
+    LaunchedEffect(selectedJob?.id, selectedJob?.progressJson, selectedJob?.resultJson) {
         val job = selectedJob
         crawledPages = emptyList()
         crawledPagesError = null
@@ -84,7 +87,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         if (selectedJob != null) {
             JobDetailScreen(
-                job = selectedJob!!,
+                job = selectedJob,
                 crawledPages = crawledPages,
                 crawledPagesLoading = crawledPagesLoading,
                 crawledPagesError = crawledPagesError,
@@ -92,7 +95,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                     .fillMaxWidth()
                     .widthIn(max = 520.dp)
                     .padding(start = 6.dp, top = 10.dp, end = 6.dp),
-                onBack = { selectedJob = null },
+                onBack = { selectedJobRef = null },
             )
         } else {
             LazyColumn(
@@ -137,7 +140,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                                     modifier = Modifier
                                         .animateItem()
                                         .revealOnce(reveal, "${selected.kind}-${job.id}", index),
-                                    onClick = { selectedJob = job },
+                                    onClick = { selectedJobRef = JobRef(selected.kind, job.id) },
                                 )
                             }
                             if (jobs.size > visibleJobs.size) {
@@ -178,6 +181,8 @@ private sealed interface JobDrill {
     data class Kind(val kind: JobFamily) : JobDrill
     data object Watches : JobDrill
 }
+
+private data class JobRef(val kind: JobFamily, val id: String)
 
 private data class JobOverviewRowModel(
     val key: String,

@@ -214,6 +214,28 @@ fn service_running_metrics_alias_uses_progress_json() {
 }
 
 #[test]
+fn service_wire_json_keeps_active_result_json_compat_alias() {
+    let mut job = test_service_job("running");
+    job.progress_json = Some(serde_json::json!({
+        "phase": "crawling",
+        "lifecycle_progress": 0.42,
+        "pages_crawled": 42
+    }));
+    let json = job.wire_json_compat();
+
+    assert_eq!(
+        json["metrics"],
+        serde_json::json!({
+            "phase": "crawling",
+            "lifecycle_progress": 0.42,
+            "pages_crawled": 42
+        })
+    );
+    assert_eq!(json["metrics"], json["result_json"]);
+    assert_eq!(json["metrics"], json["progress_json"]);
+}
+
+#[test]
 fn service_completed_metrics_alias_uses_result_json() {
     let mut job = test_service_job("completed");
     job.finished_at = Some(test_ts());
@@ -230,6 +252,35 @@ fn service_completed_metrics_alias_uses_result_json() {
 
     assert_eq!(
         json["metrics"],
+        serde_json::json!({"coverage_status": "partial", "pages_crawled": 42})
+    );
+    assert_eq!(
+        json["progress_json"],
+        serde_json::json!({"phase": "completed", "lifecycle_progress": 1.0})
+    );
+}
+
+#[test]
+fn service_wire_json_keeps_terminal_result_json_final() {
+    let mut job = test_service_job("completed");
+    job.finished_at = Some(test_ts());
+    job.active_attempt_id = None;
+    job.progress_json = Some(serde_json::json!({
+        "phase": "completed",
+        "lifecycle_progress": 1.0
+    }));
+    job.result_json = Some(serde_json::json!({
+        "coverage_status": "partial",
+        "pages_crawled": 42
+    }));
+    let json = job.wire_json_compat();
+
+    assert_eq!(
+        json["metrics"],
+        serde_json::json!({"coverage_status": "partial", "pages_crawled": 42})
+    );
+    assert_eq!(
+        json["result_json"],
         serde_json::json!({"coverage_status": "partial", "pages_crawled": 42})
     );
     assert_eq!(

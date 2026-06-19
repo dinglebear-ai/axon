@@ -256,6 +256,21 @@ fn completed_progress_json() -> serde_json::Value {
     })
 }
 
+fn failed_progress_json(error: &str) -> serde_json::Value {
+    serde_json::json!({
+        "phase": "failed",
+        "lifecycle_progress": 1.0,
+        "error": error
+    })
+}
+
+fn canceled_progress_json() -> serde_json::Value {
+    serde_json::json!({
+        "phase": "canceled",
+        "lifecycle_progress": 1.0
+    })
+}
+
 /// Bump only `updated_at` for a running job. Used by the periodic heartbeat
 /// task so the watchdog's stale detection (driven by `updated_at`) does not
 /// reclaim long-running jobs that haven't emitted a progress update recently.
@@ -376,14 +391,20 @@ async fn mark_failed_inner(
 ) -> Result<(), sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
+    let progress_json = failed_progress_json(error);
     let sql = format!(
-        "UPDATE {} SET status='failed', finished_at=?, updated_at=?, error_text=?, active_attempt_id=NULL \
+        "UPDATE {} SET status='failed', finished_at=?, updated_at=?, error_text=?, progress_json=?, active_attempt_id=NULL \
          WHERE id=? AND status='running'{}",
         table,
         attempt_clause(attempt_id)
     );
     let mut query = sqlx::query(&sql);
-    query = query.bind(now).bind(now).bind(error).bind(id.to_string());
+    query = query
+        .bind(now)
+        .bind(now)
+        .bind(error)
+        .bind(progress_json.to_string())
+        .bind(id.to_string());
     if let Some(attempt_id) = attempt_id {
         query = query.bind(attempt_id);
     }
@@ -411,13 +432,15 @@ fn attempt_clause(attempt_id: Option<&str>) -> &'static str {
 pub async fn cancel_row(pool: &SqlitePool, kind: JobKind, id: Uuid) -> Result<bool, sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
+    let progress_json = canceled_progress_json();
     let result = sqlx::query(&format!(
-        "UPDATE {} SET status='canceled', updated_at=?, finished_at=?, active_attempt_id=NULL \
+        "UPDATE {} SET status='canceled', updated_at=?, finished_at=?, progress_json=?, active_attempt_id=NULL \
          WHERE id=? AND status IN ('pending','running')",
         table
     ))
     .bind(now)
     .bind(now)
+    .bind(progress_json.to_string())
     .bind(id.to_string())
     .execute(pool)
     .await?;

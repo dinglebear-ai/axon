@@ -222,6 +222,26 @@ impl ServiceJob {
         crate::jobs::status::JobStatus::from_str(&self.status)
     }
 
+    pub fn wire_json_compat(&self) -> serde_json::Value {
+        let mut value = serde_json::to_value(self).unwrap_or_else(|_| serde_json::json!({}));
+        let Some(obj) = value.as_object_mut() else {
+            return value;
+        };
+        let active = self.status_enum().is_active();
+        let metrics = if active {
+            self.progress_json.as_ref().or(self.result_json.as_ref())
+        } else {
+            self.result_json.as_ref()
+        };
+        if let Some(metrics) = metrics {
+            obj.insert("metrics".to_string(), metrics.clone());
+            if active && self.result_json.is_none() {
+                obj.insert("result_json".to_string(), metrics.clone());
+            }
+        }
+        value
+    }
+
     pub fn from_status_row(row: crate::jobs::backend::JobStatusRow) -> Self {
         Self {
             id: row.id,

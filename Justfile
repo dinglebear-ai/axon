@@ -96,7 +96,7 @@ link-bin profile=local_release_profile:
     fi
     mkdir -p bin
     cp -f "$AXON_BIN" "bin/axon-$variant"
-    chmod 755 "bin/axon-$variant" 2>/dev/null || true
+    chmod 755 "bin/axon-$variant"
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
     systemctl --user restart axon-mcp 2>/dev/null || true

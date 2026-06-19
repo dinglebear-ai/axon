@@ -99,7 +99,7 @@ if [[ "$dry_run" -eq 0 ]]; then
   [[ -f "$exe" ]] || die "built executable not found: $exe"
   mkdir -p "$bin_dir"
   cp -f "$exe" "$bin_dir/$bin_name"
-  chmod 755 "$bin_dir/$bin_name" 2>/dev/null || true
+  chmod 755 "$bin_dir/$bin_name" 2>/dev/null || log "Warning: could not chmod $bin_dir/$bin_name"
   log "Artifact copied to $bin_dir/$bin_name"
 fi
 

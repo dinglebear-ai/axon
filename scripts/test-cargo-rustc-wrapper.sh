@@ -118,13 +118,13 @@ rm -f "$HOME/.local/bin/axon" "$AXON_ARTIFACT_BIN_DIR/axon-fast-release"
 (
   cd "$tmp"
   "$repo/scripts/cargo-rustc-wrapper" "$fake_rustc" \
-    --crate-name axon-palette-tauri \
+    --crate-name axon_palette_tauri \
     --crate-type bin \
     src/main.rs \
-    -o target/x86_64-pc-windows-gnu/release/deps/axon-palette-tauri.exe
+    -o target/x86_64-pc-windows-gnu/release/deps/axon_palette_tauri.exe
 )
 
-cmp "$tmp/target/x86_64-pc-windows-gnu/release/deps/axon-palette-tauri.exe" \
+cmp "$tmp/target/x86_64-pc-windows-gnu/release/deps/axon_palette_tauri.exe" \
   "$AXON_ARTIFACT_BIN_DIR/axon-palette-x86_64-pc-windows-gnu-release.exe"
 test ! -e "$HOME/.local/bin/axon"
 
