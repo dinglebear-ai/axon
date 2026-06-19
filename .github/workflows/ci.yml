@@ -57,8 +57,26 @@ jobs:
           set -euo pipefail
           classifier="scripts/ci/changed_paths.py"
           trusted="/tmp/axon-changed-paths.py"
-          if [[ "${{ github.event_name }}" != "pull_request" ]] \
-            || ! git show "${{ github.event.pull_request.base.sha }}:$classifier" > "$trusted" 2>/dev/null; then
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if ! git show "${{ github.event.pull_request.base.sha }}:$classifier" > "$trusted" 2>/dev/null; then
+              cat > "$trusted" <<'PY'
+          #!/usr/bin/env python3
+          import argparse
+          from pathlib import Path
+          keys = "all docs workflow rust web android palette chrome docker compose mcp security release openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          parser = argparse.ArgumentParser()
+          parser.add_argument("--event", required=True)
+          parser.add_argument("--output", type=Path, required=True)
+          parser.add_argument("--write-changed-files", type=Path)
+          args, _ = parser.parse_known_args()
+          if args.write_changed_files:
+              args.write_changed_files.write_text("")
+          args.output.write_text("".join(f"{key}=true\n" for key in keys))
+          for key in keys:
+              print(f"{key}=true")
+          PY
+            fi
+          else
             cp "$classifier" "$trusted"
           fi
           chmod +x "$trusted"

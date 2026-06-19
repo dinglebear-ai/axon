@@ -356,8 +356,8 @@ fn compose_and_docker_workflows_use_changed_path_classifier() {
     assert!(compose.contains("needs.changes.outputs.compose == 'true'"));
     assert!(compose.contains("needs.changes.outputs.docker == 'true'"));
     assert!(compose.contains("compose-smoke-gate:"));
-    assert!(compose.contains("require_success_or_skipped compose-config"));
-    assert!(compose.contains("require_success_or_skipped image-build-smoke"));
+    assert!(compose.contains("require_success_or_intentional_skip compose-config"));
+    assert!(compose.contains("require_success_or_intentional_skip image-build-smoke"));
     assert!(docker.contains("scripts/ci/changed_paths.py"));
     assert!(docker.contains("AXON_CHANGED_PATHS"));
     assert!(docker.contains("python3 \"$AXON_CHANGED_PATHS\""));
@@ -374,6 +374,7 @@ fn codeql_workflow_routes_language_matrix_by_changed_paths() {
     assert!(
         workflow.contains("git show \"${{ github.event.pull_request.base.sha }}:$classifier\"")
     );
+    assert!(workflow.contains("args.output.write_text"));
     assert!(workflow.contains("python3 \"$AXON_CHANGED_PATHS\""));
     assert!(
         !workflow.contains("source changed-paths.out"),
