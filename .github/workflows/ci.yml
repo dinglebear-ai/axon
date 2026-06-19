@@ -236,7 +236,8 @@ jobs:
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
       # CI-L1: these steps deliberately mirror `pnpm verify`
-      # (lint → test → typecheck → vite:build) plus the cargo gates below.
+      # (lint → test → check:api → typecheck → vite:build) plus the cargo
+      # gates below.
       # If you change the `verify` script in apps/palette-tauri/package.json,
       # update these steps to stay in sync (and vice versa).
       - name: Palette lint (Biome)

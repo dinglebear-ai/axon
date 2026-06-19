@@ -113,6 +113,15 @@ pre-push:
       run: >
         if [ ! -d apps/web/node_modules ]; then npm ci --prefix apps/web; fi &&
         npm --prefix apps/web run build
+    2-palette-openapi-types:
+      # Fail locally when the committed Palette OpenAPI types drift from the
+      # committed Axon OpenAPI spec. CI runs the same check in the palette-tauri
+      # job, but this catches it before a push waits on the full Actions lane.
+      run: >
+        if [ ! -d apps/palette-tauri/node_modules ]; then
+          pnpm --dir apps/palette-tauri install --frozen-lockfile;
+        fi &&
+        pnpm --dir apps/palette-tauri check:api
     clippy:
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
     test:
