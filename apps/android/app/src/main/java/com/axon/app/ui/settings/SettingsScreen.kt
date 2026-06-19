@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,7 +49,7 @@ import com.axon.app.ui.theme.tint
 import kotlinx.coroutines.launch
 
 private enum class SettingsTab(val label: String, val shortLabel: String, val icon: ImageVector) {
-    Connection("Connection", "Connection", Icons.Rounded.Link),
+    Connection("Connection", "Conn", Icons.Rounded.Link),
     Env("Env", "Env", Icons.Rounded.Key),
     Config("Config", "Config", Icons.Rounded.Slideshow),
 }
@@ -91,10 +93,10 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 16.dp)
-                .padding(bottom = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 20.dp)
+                .padding(bottom = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -207,16 +209,17 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             .background(if (selected) colors.tint(colors.accentPrimary, 10, colors.pageBg) else colors.control.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
             .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 28, colors.pageBg) else colors.borderDefault.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .height(48.dp)
-            .padding(horizontal = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
+                    .height(54.dp)
+                    .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(tab.icon, contentDescription = null, tint = if (selected) colors.accentStrong else colors.textMuted.copy(alpha = 0.72f), modifier = Modifier.size(15.dp))
         Text(
             tab.shortLabel,
             color = if (selected) colors.accentStrong else colors.textMuted,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
+            lineHeight = 17.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
@@ -226,14 +229,19 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             Text(
                 it.toString(),
                 modifier = Modifier
+                    .width(32.dp)
+                    .height(22.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(colors.control.copy(alpha = if (selected) 0.34f else 0.18f))
-                    .border(1.dp, colors.borderDefault.copy(alpha = if (selected) 0.18f else 0.08f), RoundedCornerShape(999.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                    .border(1.dp, colors.borderDefault.copy(alpha = if (selected) 0.18f else 0.08f), RoundedCornerShape(999.dp)),
                 color = colors.textMuted.copy(alpha = 0.78f),
-                fontSize = 9.2.sp,
-                lineHeight = 10.sp,
+                fontSize = 10.4.sp,
+                lineHeight = 22.sp,
                 fontFamily = AxonTheme.fonts.mono,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
+                textAlign = TextAlign.Center,
             )
         }
     }

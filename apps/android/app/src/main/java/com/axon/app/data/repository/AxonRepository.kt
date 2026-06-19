@@ -87,6 +87,7 @@ import kotlinx.serialization.json.intOrNull
     val sourceType: String?,
     val target: String?,
     val errorText: String?,
+    val progressJson: kotlinx.serialization.json.JsonElement? = null,
     val resultJson: kotlinx.serialization.json.JsonElement?,
     val configJson: kotlinx.serialization.json.JsonElement? = null,
 )

@@ -30,6 +30,8 @@ pub struct JobStatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress_json: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub result_json: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_json: Option<serde_json::Value>,

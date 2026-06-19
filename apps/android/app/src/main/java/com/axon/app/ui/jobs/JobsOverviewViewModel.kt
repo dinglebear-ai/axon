@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 
 private const val OVERVIEW_TAG = "JobsOverviewVM"
 private const val OVERVIEW_POLL_MS = 30_000L
-private val ACTIVE_STATUSES = setOf("pending", "running", "processing")
+private val ACTIVE_STATUSES = setOf("pending", "queued", "running", "processing", "in_progress")
 
 /** Lightweight job-overview ViewModel for the drawer. Polling is active only while visible. */
 class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {

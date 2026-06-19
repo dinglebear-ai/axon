@@ -36,6 +36,7 @@ data class ServiceJob(
     val url: String? = null,                                       // crawl
     @SerialName("source_type") val sourceType: String? = null,      // ingest
     val target: String? = null,                                     // ingest/embed/extract
+    @SerialName("progress_json") val progressJson: JsonElement? = null,
     @SerialName("result_json") val resultJson: JsonElement? = null, // locked: JsonElement, not JsonObject
     @SerialName("config_json") val configJson: JsonElement? = null,
 )

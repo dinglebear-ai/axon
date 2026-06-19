@@ -212,10 +212,11 @@ async fn mark_completed_inner(
 ) -> Result<(), sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
+    let progress_json = completed_progress_json(result_json);
     let result = match result_json {
         Some(result) => {
             let sql = format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=?, error_text=NULL, active_attempt_id=NULL \
+                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=?, progress_json=?, error_text=NULL, active_attempt_id=NULL \
                  WHERE id=? AND status='running'{}",
                 table,
                 attempt_clause(attempt_id)
@@ -225,6 +226,7 @@ async fn mark_completed_inner(
                 .bind(now)
                 .bind(now)
                 .bind(result.to_string())
+                .bind(progress_json.to_string())
                 .bind(id.to_string());
             if let Some(attempt_id) = attempt_id {
                 query = query.bind(attempt_id);
@@ -233,13 +235,17 @@ async fn mark_completed_inner(
         }
         None => {
             let sql = format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, error_text=NULL, active_attempt_id=NULL \
+                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, progress_json=?, error_text=NULL, active_attempt_id=NULL \
                  WHERE id=? AND status='running'{}",
                 table,
                 attempt_clause(attempt_id)
             );
             let mut query = sqlx::query(&sql);
-            query = query.bind(now).bind(now).bind(id.to_string());
+            query = query
+                .bind(now)
+                .bind(now)
+                .bind(progress_json.to_string())
+                .bind(id.to_string());
             if let Some(attempt_id) = attempt_id {
                 query = query.bind(attempt_id);
             }
@@ -254,6 +260,52 @@ async fn mark_completed_inner(
         );
     }
     Ok(())
+}
+
+fn completed_progress_json(result_json: Option<&serde_json::Value>) -> serde_json::Value {
+    let mut progress = serde_json::Map::new();
+    progress.insert("phase".into(), serde_json::json!("completed"));
+    progress.insert("lifecycle_progress".into(), serde_json::json!(1.0));
+
+    if let Some(result) = result_json {
+        for key in [
+            "coverage_status",
+            "coverage_summary",
+            "coverage_reason",
+            "coverage_limit_pages",
+            "pages_crawled",
+            "pages_discovered",
+            "pages_embedded",
+            "chunks_embedded",
+            "items_processed",
+            "items_total",
+        ] {
+            if let Some(value) = result.get(key) {
+                progress.insert(key.into(), value.clone());
+            }
+        }
+        if !progress.contains_key("coverage_summary")
+            && let Some(summary) = derived_coverage_summary(result)
+        {
+            progress.insert("coverage_summary".into(), serde_json::json!(summary));
+        }
+    }
+
+    serde_json::Value::Object(progress)
+}
+
+fn derived_coverage_summary(result: &serde_json::Value) -> Option<&'static str> {
+    let status = result.get("coverage_status")?.as_str()?;
+    let reason = result
+        .get("coverage_reason")
+        .and_then(|value| value.as_str());
+    match (status, reason) {
+        ("partial", Some("max_pages_limit" | "max_pages" | "page_limit")) => Some("max pages hit"),
+        ("partial", _) => Some("partial"),
+        ("complete" | "completed" | "complete_or_exhausted" | "exhausted", _) => Some("complete"),
+        ("failed", _) => Some("failed"),
+        _ => None,
+    }
 }
 
 /// Bump only `updated_at` for a running job. Used by the periodic heartbeat
@@ -297,14 +349,14 @@ pub async fn touch_heartbeat_for_attempt(
     .await
 }
 
-/// Persist live job progress/result JSON without changing job status.
+/// Persist live job progress JSON without changing job status.
 pub async fn update_result_json(
     pool: &SqlitePool,
     kind: JobKind,
     id: Uuid,
-    result_json: &serde_json::Value,
+    progress_json: &serde_json::Value,
 ) -> Result<(), sqlx::Error> {
-    update_result_json_for_attempt(pool, kind, id, None, result_json).await
+    update_result_json_for_attempt(pool, kind, id, None, progress_json).await
 }
 
 pub async fn update_result_json_for_attempt(
@@ -312,19 +364,19 @@ pub async fn update_result_json_for_attempt(
     kind: JobKind,
     id: Uuid,
     attempt_id: Option<&str>,
-    result_json: &serde_json::Value,
+    progress_json: &serde_json::Value,
 ) -> Result<(), sqlx::Error> {
     retry_busy("update_result_json_for_attempt", || async {
         let now = now_ms();
         let table = kind.table_name();
         let sql = format!(
-            "UPDATE {} SET result_json=?, updated_at=? WHERE id=? AND status='running'{}",
+            "UPDATE {} SET progress_json=?, updated_at=? WHERE id=? AND status='running'{}",
             table,
             attempt_clause(attempt_id)
         );
         let mut query = sqlx::query(&sql);
         query = query
-            .bind(result_json.to_string())
+            .bind(progress_json.to_string())
             .bind(now)
             .bind(id.to_string());
         if let Some(attempt_id) = attempt_id {

@@ -219,14 +219,14 @@ async fn stale_attempt_writes_are_rejected_after_reclaim_and_retry() {
     )
     .await
     .expect("current progress accepted");
-    let result_json: Option<String> =
-        sqlx::query_scalar("SELECT result_json FROM axon_crawl_jobs WHERE id = ?")
+    let progress_json: Option<String> =
+        sqlx::query_scalar("SELECT progress_json FROM axon_crawl_jobs WHERE id = ?")
             .bind(id.to_string())
             .fetch_one(&pool)
             .await
-            .expect("result json");
+            .expect("progress json");
     assert!(
-        result_json
+        progress_json
             .as_deref()
             .is_some_and(|json| json.contains("pages_crawled")),
         "current attempt should be able to persist progress"
@@ -265,18 +265,159 @@ async fn update_result_json_persists_progress_without_changing_status() {
     .await
     .expect("persist progress");
 
-    let row: (String, Option<String>) =
-        sqlx::query_as("SELECT status, result_json FROM axon_ingest_jobs WHERE id = ?")
+    let row: (String, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT status, progress_json, result_json FROM axon_ingest_jobs WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("fetch");
+    assert_eq!(row.0, "running");
+    let progress_json: serde_json::Value =
+        serde_json::from_str(&row.1.expect("progress json")).expect("json");
+    assert_eq!(
+        row.2, None,
+        "live progress must not write final result_json"
+    );
+    assert_eq!(progress_json["phase"], "collecting_files");
+    assert_eq!(progress_json["files_done"], 25);
+    assert_eq!(progress_json["chunks_embedded"], 42);
+}
+
+#[tokio::test]
+async fn progress_updates_are_separate_from_final_result_json() {
+    let pool = test_pool().await;
+    let id = enqueue_job(
+        &pool,
+        &JobPayload::Crawl {
+            url: "https://example.com".into(),
+            config_json: "{}".into(),
+        },
+        &Config::default_minimal(),
+    )
+    .await
+    .expect("enqueue");
+    let attempt = claim_next_pending_for_attempt(&pool, JobKind::Crawl)
+        .await
+        .expect("claim")
+        .expect("claimed");
+
+    update_result_json_for_attempt(
+        &pool,
+        JobKind::Crawl,
+        id,
+        Some(&attempt.attempt_id),
+        &serde_json::json!({
+            "phase": "crawling",
+            "lifecycle_progress": 0.42,
+            "pages_crawled": 42,
+            "pages_discovered": 100
+        }),
+    )
+    .await
+    .expect("persist progress");
+
+    let row: (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT progress_json, result_json FROM axon_crawl_jobs WHERE id = ?")
             .bind(id.to_string())
             .fetch_one(&pool)
             .await
-            .expect("fetch");
-    assert_eq!(row.0, "running");
-    let result_json: serde_json::Value =
-        serde_json::from_str(&row.1.expect("result json")).expect("json");
-    assert_eq!(result_json["phase"], "collecting_files");
-    assert_eq!(result_json["files_done"], 25);
-    assert_eq!(result_json["chunks_embedded"], 42);
+            .expect("row");
+    assert!(
+        row.0
+            .as_deref()
+            .is_some_and(|json| json.contains("lifecycle_progress"))
+    );
+    assert_eq!(
+        row.1, None,
+        "live progress must not pollute final result_json"
+    );
+
+    mark_completed_for_attempt(
+        &pool,
+        JobKind::Crawl,
+        id,
+        Some(&attempt.attempt_id),
+        Some(&serde_json::json!({
+            "url": "https://example.com",
+            "coverage_status": "partial",
+            "coverage_summary": "max pages hit",
+            "pages_crawled": 42
+        })),
+    )
+    .await
+    .expect("complete");
+
+    let row: (String, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT status, progress_json, result_json FROM axon_crawl_jobs WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("row");
+    assert_eq!(row.0, "completed");
+    let progress: serde_json::Value =
+        serde_json::from_str(row.1.as_deref().expect("progress json")).expect("progress json");
+    let result: serde_json::Value =
+        serde_json::from_str(row.2.as_deref().expect("result json")).expect("result json");
+    assert_eq!(progress["lifecycle_progress"], serde_json::json!(1.0));
+    assert_eq!(progress["phase"], serde_json::json!("completed"));
+    assert_eq!(result["lifecycle_progress"], serde_json::Value::Null);
+    assert_eq!(result["coverage_status"], "partial");
+}
+
+#[tokio::test]
+async fn reclaim_marks_progress_json_requeued_and_keeps_previous_attempt_progress() {
+    let pool = test_pool().await;
+    let id = enqueue_job(
+        &pool,
+        &JobPayload::Crawl {
+            url: "https://example.com".into(),
+            config_json: "{}".into(),
+        },
+        &Config::default_minimal(),
+    )
+    .await
+    .expect("enqueue");
+    let attempt = claim_next_pending_for_attempt(&pool, JobKind::Crawl)
+        .await
+        .expect("claim")
+        .expect("claimed");
+    update_result_json_for_attempt(
+        &pool,
+        JobKind::Crawl,
+        id,
+        Some(&attempt.attempt_id),
+        &serde_json::json!({
+            "phase": "crawling",
+            "lifecycle_progress": 0.33,
+            "pages_crawled": 33
+        }),
+    )
+    .await
+    .expect("progress");
+    sqlx::query("UPDATE axon_crawl_jobs SET updated_at = 1 WHERE id = ?")
+        .bind(id.to_string())
+        .execute(&pool)
+        .await
+        .expect("age row");
+
+    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000)
+        .await
+        .expect("reclaim");
+
+    let row: (String, Option<String>) =
+        sqlx::query_as("SELECT status, progress_json FROM axon_crawl_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("row");
+    assert_eq!(row.0, "pending");
+    let progress: serde_json::Value =
+        serde_json::from_str(row.1.as_deref().expect("progress json")).expect("progress json");
+    assert_eq!(progress["phase"], "requeued");
+    assert_eq!(progress["lifecycle_progress"], serde_json::json!(0.0));
+    assert_eq!(progress["previous_attempt_progress"]["pages_crawled"], 33);
 }
 
 #[tokio::test]
@@ -302,14 +443,16 @@ async fn update_result_json_skips_non_running_rows() {
     .await
     .expect("skip pending progress");
 
-    let row: (String, Option<String>) =
-        sqlx::query_as("SELECT status, result_json FROM axon_embed_jobs WHERE id = ?")
-            .bind(id.to_string())
-            .fetch_one(&pool)
-            .await
-            .expect("fetch");
+    let row: (String, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT status, progress_json, result_json FROM axon_embed_jobs WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("fetch");
     assert_eq!(row.0, "pending");
     assert_eq!(row.1, None);
+    assert_eq!(row.2, None);
 }
 
 #[tokio::test]

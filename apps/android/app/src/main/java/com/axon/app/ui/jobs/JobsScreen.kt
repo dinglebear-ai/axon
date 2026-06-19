@@ -91,7 +91,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                 modifier = Modifier
                     .fillMaxWidth(0.96f)
                     .widthIn(max = 460.dp)
-                    .padding(top = 16.dp),
+                    .padding(top = 20.dp),
                 onBack = { selectedJob = null },
             )
         } else {
@@ -99,8 +99,8 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                 modifier = Modifier
                     .fillMaxWidth(0.96f)
                     .widthIn(max = 460.dp)
-                    .padding(top = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(13.dp),
+                    .padding(top = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 when (val selected = drill) {
                     null -> {
@@ -199,25 +199,27 @@ private fun jobOverviewRows(
     val colors = AxonTheme.colors
     fun row(kind: JobFamily): JobOverviewRowModel {
         val jobs = jobsByKind[kind].orEmpty()
-        val runningCount = jobs.count { isActiveJobStatus(it.status) }
+        val activeJobs = jobs.filter { isActiveJobStatus(it.status) }
+        val runningCount = activeJobs.size
         val failedCount = jobs.count { it.status.lowercase() in setOf("failed", "error") }
-        val running = jobs.firstOrNull { isActiveJobStatus(it.status) }
+        val running = activeJobs.firstOrNull()
         val representative = running ?: jobs.firstOrNull()
         return JobOverviewRowModel(
             key = kind.name,
             title = kind.drillTitle(),
             detail = representative?.let { job ->
-                val suffix = if (running == null && job.status.lowercase() in setOf("done", "completed", "success")) {
-                    "latest · ${jobProgressLabel(job)}"
-                } else {
-                    jobProgressLabel(job)
+                val suffix = when {
+                    activeJobs.size > 1 -> "${activeJobs.size} active ${kind.drillTitle().lowercase()} · avg ${(aggregateProgressForJobs(activeJobs).orZeroPercent() * 100).toInt()}%"
+                    running != null -> jobProgressLabel(job)
+                    job.status.lowercase() in setOf("done", "completed", "success") -> "latest · ${jobProgressLabel(job)}"
+                    else -> jobProgressLabel(job)
                 }
                 "${shortTarget(jobDisplayTarget(job))} · $suffix"
             }
                 ?: "No ${kind.label().lowercase()} jobs",
             runningCount = runningCount,
             failedCount = failedCount,
-            progress = running?.let { progressForJob(it) },
+            progress = aggregateProgressForJobs(activeJobs),
             icon = iconForKind(kind),
             tone = when (kind) {
                 JobFamily.Crawl -> colors.accentPrimary
@@ -247,29 +249,32 @@ private fun jobOverviewRows(
     )
 }
 
+private fun Float?.orZeroPercent(): Float = this ?: 0f
+
 @Composable
 private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = AxonTheme.colors
     val shape = RoundedCornerShape(8.dp)
+    val quiet = row.runningCount == 0 && row.failedCount == 0 && row.progress == null
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(colors.control.copy(alpha = 0.06f), shape)
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.12f), shape)
+            .background(colors.control.copy(alpha = if (quiet) 0.018f else 0.07f), shape)
+            .border(1.dp, colors.borderDefault.copy(alpha = if (quiet) 0.04f else 0.14f), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 18.dp),
+            .padding(horizontal = 20.dp, vertical = if (quiet) 18.dp else 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(15.dp),
     ) {
-        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(22.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(24.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     row.title,
                     color = colors.textPrimary,
-                    fontSize = 15.2.sp,
-                    lineHeight = 20.sp,
+                    fontSize = 16.sp,
+                    lineHeight = 21.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = AxonTheme.fonts.body,
                     maxLines = 1,
@@ -282,8 +287,8 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
             Text(
                 row.detail,
                 color = colors.textMuted.copy(alpha = 0.82f),
-                fontSize = 12.4.sp,
-                lineHeight = 16.4.sp,
+                fontSize = 13.2.sp,
+                lineHeight = 18.sp,
                 fontFamily = AxonTheme.fonts.mono,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

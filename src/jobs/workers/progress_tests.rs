@@ -47,14 +47,14 @@ async fn crawl_progress_persister_includes_adaptive_concurrency_snapshot() {
     drop(tx);
     task.await.expect("progress task");
 
-    let result_json: Option<String> =
-        sqlx::query_scalar("SELECT result_json FROM axon_crawl_jobs WHERE id = ?")
+    let progress_json: Option<String> =
+        sqlx::query_scalar("SELECT progress_json FROM axon_crawl_jobs WHERE id = ?")
             .bind(id.to_string())
             .fetch_one(&pool)
             .await
-            .expect("result json");
+            .expect("progress json");
     let value: serde_json::Value =
-        serde_json::from_str(result_json.as_deref().expect("stored progress json"))
+        serde_json::from_str(progress_json.as_deref().expect("stored progress json"))
             .expect("valid json");
 
     assert_eq!(value["pages_crawled"], 2);

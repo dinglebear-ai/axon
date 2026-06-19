@@ -54,11 +54,11 @@ internal fun SettingsActionDock(
     Column(
         modifier = modifier
             .background(colors.navBg.copy(alpha = 0.98f))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.28f))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.16f))
             .navigationBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         feedback?.let { (message, kind) ->
             SettingsFeedbackBanner(
@@ -114,20 +114,20 @@ internal fun SettingsFeedbackBanner(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(colors.tint(tone, 7, colors.panelStrong).copy(alpha = 0.99f), RoundedCornerShape(8.dp))
-            .border(1.dp, tone.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 13.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .border(1.dp, tone.copy(alpha = 0.46f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .height(32.dp)
+                .height(24.dp)
                 .widthIn(min = 3.dp, max = 3.dp)
                 .background(tone, RoundedCornerShape(99.dp)),
         )
         Box(
             modifier = Modifier
-                .size(22.dp)
+                .size(20.dp)
                 .background(tone.copy(alpha = 0.18f), RoundedCornerShape(99.dp)),
             contentAlignment = Alignment.Center,
         ) {
@@ -136,9 +136,9 @@ internal fun SettingsFeedbackBanner(
         Text(
             message,
             color = colors.textPrimary,
-            fontSize = 13.6.sp,
-            lineHeight = 18.4.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = 12.6.sp,
+            lineHeight = 17.2.sp,
+            fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 4,
             overflow = TextOverflow.Ellipsis,
@@ -156,7 +156,7 @@ internal fun CompactSettingField(
 ) {
     val colors = AxonTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text(label, color = colors.textMuted.copy(alpha = 0.84f), fontSize = 12.sp, fontFamily = AxonTheme.fonts.body)
+        Text(label, color = colors.textMuted.copy(alpha = 0.86f), fontSize = 13.sp, lineHeight = 17.sp, fontFamily = AxonTheme.fonts.body)
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -164,20 +164,21 @@ internal fun CompactSettingField(
             visualTransformation = visualTransformation,
             textStyle = TextStyle(
                 color = colors.textPrimary,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
+                lineHeight = 19.sp,
                 fontFamily = AxonTheme.fonts.mono,
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
-                .background(colors.control.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+                .height(56.dp)
+                .background(colors.panelStrong.copy(alpha = 0.72f), RoundedCornerShape(10.dp))
+                .border(1.dp, colors.borderStrong.copy(alpha = 0.42f), RoundedCornerShape(10.dp))
                 .padding(horizontal = 14.dp),
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.weight(1f)) {
                         if (value.isBlank()) {
-                            Text("unset", color = colors.textMuted, fontSize = 13.sp, fontFamily = AxonTheme.fonts.mono)
+                            Text("unset", color = colors.textMuted, fontSize = 14.sp, fontFamily = AxonTheme.fonts.mono)
                         }
                         inner()
                     }
@@ -216,7 +217,8 @@ internal fun CompactActionButton(
         Text(
             label,
             color = fg,
-            fontSize = 13.sp,
+            fontSize = 14.sp,
+            lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,

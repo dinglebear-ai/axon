@@ -91,7 +91,7 @@ internal fun AskPromptBar(
     val colors = AxonTheme.colors
     val canSend = value.isNotBlank() && !loading
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(15.dp)
+    val shape = RoundedCornerShape(17.dp)
 
     // A solid raised panel so the input reads as a distinct surface instead of
     // blending into the chat behind it; focus brightens the border.
@@ -131,8 +131,8 @@ internal fun AskPromptBar(
             maxLines = 6,
             textStyle = TextStyle(
                 color = colors.textPrimary,
-                fontSize = 15.sp,
-                lineHeight = 20.sp,
+                fontSize = 16.sp,
+                lineHeight = 22.sp,
                 fontFamily = AxonTheme.fonts.body,
             ),
             cursorBrush = SolidColor(colors.accentStrong),
@@ -140,8 +140,8 @@ internal fun AskPromptBar(
             keyboardActions = KeyboardActions(onSend = { triggerSend() }),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 22.dp)
-                .padding(start = 14.dp, end = 14.dp, top = 12.dp)
+                .heightIn(min = 28.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 15.dp)
                 .semantics { contentDescription = "Ask prompt" }
                 .onFocusChanged { focused = it.isFocused },
             decorationBox = { inner ->
@@ -150,7 +150,7 @@ internal fun AskPromptBar(
                         Text(
                             placeholder,
                             color = colors.textMuted.copy(alpha = 0.72f),
-                            fontSize = 15.sp,
+                            fontSize = 16.sp,
                             fontFamily = AxonTheme.fonts.body,
                         )
                     }
@@ -161,7 +161,7 @@ internal fun AskPromptBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 6.dp),
+                .padding(start = 10.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -201,12 +201,12 @@ private fun ToolbarIconButton(
 ) {
     Box(
         modifier = Modifier
-            .size(34.dp)
+            .size(38.dp)
             .clip(RoundedCornerShape(9.dp))
             .pressScale(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(18.dp))
+        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(20.dp))
     }
 }
 

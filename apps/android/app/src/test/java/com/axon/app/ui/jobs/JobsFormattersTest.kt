@@ -50,6 +50,84 @@ class JobsFormattersTest {
     }
 
     @Test
+    fun `successful terminal job progress ignores stale partial result metrics`() {
+        val job = JobUi(
+            id = "job-1",
+            status = "completed",
+            url = "https://example.com",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            resultJson = Json.parseToJsonElement("""{"pages_crawled":70,"pages_total":100}"""),
+        )
+
+        assertEquals(1f, progressForJob(job), 0.0f)
+    }
+
+    @Test
+    fun `running job progress uses lifecycle progress instead of coverage metrics`() {
+        val job = JobUi(
+            id = "job-1",
+            status = "running",
+            url = "https://example.com",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            progressJson = Json.parseToJsonElement("""{"lifecycle_progress":0.44,"pages_crawled":44}"""),
+            resultJson = Json.parseToJsonElement("""{"pages_crawled":70,"pages_total":100}"""),
+        )
+
+        assertEquals(0.44f, progressForJob(job), 0.0001f)
+        assertEquals("44 pages", pagesCrawledMetric(job))
+    }
+
+    @Test
+    fun `coverage summary is separate from lifecycle progress`() {
+        val job = JobUi(
+            id = "job-1",
+            status = "completed",
+            url = "https://example.com",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            progressJson = Json.parseToJsonElement("""{"phase":"completed","lifecycle_progress":1.0}"""),
+            resultJson = Json.parseToJsonElement(
+                """{"coverage_status":"partial","coverage_reason":"max_pages_limit","pages_crawled":70}"""
+            ),
+        )
+
+        assertEquals(1f, progressForJob(job), 0.0f)
+        assertEquals("max pages hit", coverageSummary(job))
+        assertEquals("70 pages", pagesCrawledMetric(job))
+    }
+
+    @Test
+    fun `aggregate progress averages all active jobs`() {
+        val first = JobUi(
+            id = "job-1",
+            status = "running",
+            url = "https://a.example",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            progressJson = Json.parseToJsonElement("""{"lifecycle_progress":0.25}"""),
+            resultJson = Json.parseToJsonElement("""{"coverage_status":"partial","pages_crawled":80,"pages_total":100}"""),
+        )
+        val second = JobUi(
+            id = "job-2",
+            status = "running",
+            url = "https://b.example",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            progressJson = Json.parseToJsonElement("""{"lifecycle_progress":0.75}"""),
+            resultJson = Json.parseToJsonElement("""{"coverage_status":"complete","pages_crawled":100,"pages_total":100}"""),
+        )
+
+        assertEquals(0.5f, aggregateProgressForJobs(listOf(first, second))!!, 0.0001f)
+    }
+
+    @Test
     fun `crawled page urls parse from inline result arrays`() {
         val result = Json.parseToJsonElement(
             """
