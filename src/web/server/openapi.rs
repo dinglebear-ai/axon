@@ -22,6 +22,8 @@ use super::{handlers, openapi_jobs, routing};
         description = "Dedicated REST routes for Axon discovery, RAG, crawl, ingest, and watch workflows."
     ),
     paths(
+        super::super::health::healthz,
+        super::super::health::readyz,
         routing::v1_capabilities,
         handlers::discovery::sources,
         handlers::discovery::domains,
@@ -89,6 +91,7 @@ use super::{handlers, openapi_jobs, routing};
         handlers::artifacts::serve_artifact_query
     ),
     components(schemas(
+        super::super::health::ReadinessBody,
         crate::services::client_contract::RestAskRequest,
         crate::services::client_contract::RestChatRequest,
         crate::services::client_contract::RestChatResponse,

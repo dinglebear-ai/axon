@@ -3,21 +3,40 @@ use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use std::sync::Arc;
 use std::time::Duration;
+use utoipa::ToSchema;
 
+#[utoipa::path(
+    get,
+    path = "/healthz",
+    responses(
+        (status = 200, description = "Axon process is alive", body = String, content_type = "text/plain")
+    ),
+    tag = "system"
+)]
 pub(super) async fn healthz() -> impl IntoResponse {
     (StatusCode::OK, "ok")
 }
 
-#[derive(Serialize)]
-struct ReadinessBody {
+#[derive(Serialize, ToSchema)]
+pub(super) struct ReadinessBody {
     ok: bool,
     qdrant: &'static str,
     tei: &'static str,
 }
 
+#[utoipa::path(
+    get,
+    path = "/readyz",
+    responses(
+        (status = 200, description = "Qdrant and TEI dependencies are ready", body = ReadinessBody),
+        (status = 503, description = "One or more dependencies are not ready", body = ReadinessBody)
+    ),
+    tag = "system"
+)]
 pub(super) async fn readyz(
-    State((_, cfg)): State<(AppState, Arc<crate::core::config::Config>)>,
+    State(state): State<(AppState, Arc<crate::core::config::Config>)>,
 ) -> impl IntoResponse {
+    let (_, cfg) = state;
     let qdrant_ready =
         probe_http_endpoint(&format!("{}/readyz", cfg.qdrant_url.trim_end_matches('/'))).await;
     let tei_ready = if cfg.tei_url.trim().is_empty() {
