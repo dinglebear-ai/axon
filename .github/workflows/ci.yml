@@ -485,6 +485,9 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -498,7 +501,7 @@ jobs:
       - name: Workflow shape contracts
         run: cargo test --locked --test workflow_shapes
       - name: OpenAPI and generated client sync
-        run: npm --prefix apps/web run openapi:check
+        run: scripts/check_openapi_drift.sh
 
   mcp-oauth-smoke:
     name: mcp-oauth-smoke

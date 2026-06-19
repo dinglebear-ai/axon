@@ -7,7 +7,7 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "generate:api": "node scripts/generate-api.mjs",
-    "check:api": "pnpm generate:api && git diff --exit-code src/lib/axon-api.d.ts",
+    "check:api": "../../scripts/check_openapi_drift.sh",
     "preview": "vite preview",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
