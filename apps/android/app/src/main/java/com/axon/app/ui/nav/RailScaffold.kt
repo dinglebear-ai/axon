@@ -125,6 +125,11 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
                 sidebarOpen = sidebarOpen,
                 onToggleSidebar = { sidebarOpen = !sidebarOpen },
                 onCloseOverlay = { activeOverlay = null },
+                onOpenSettings = {
+                    activeOverlay = null
+                    activePage = DrawerSection.Settings
+                    sidebarOpen = false
+                },
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault.copy(alpha = 0.32f)))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -295,14 +300,15 @@ private fun AxonTopBar(
     sidebarOpen: Boolean,
     onToggleSidebar: () -> Unit,
     onCloseOverlay: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val colors = AxonTheme.colors
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(58.dp)
             .background(colors.navBg)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 12.dp),
     ) {
         // Sidebar toggle + brand — present on every screen, overlays included.
         Row(
@@ -311,11 +317,11 @@ private fun AxonTopBar(
         ) {
             Box(
                 modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .pressScale(onClick = onToggleSidebar)
                     .semantics { contentDescription = if (sidebarOpen) "Collapse sidebar" else "Open sidebar" }
-                    .padding(7.dp),
+                    .padding(8.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 AxonMarkGlyph(Modifier.fillMaxSize())
@@ -324,7 +330,8 @@ private fun AxonTopBar(
         Text(
             title,
             color = colors.textPrimary.copy(alpha = 0.95f),
-            fontSize = 16.sp,
+            fontSize = 17.2.sp,
+            lineHeight = 22.sp,
             fontWeight = FontWeight.ExtraBold,
             fontFamily = AxonTheme.fonts.display,
             maxLines = 1,
@@ -340,13 +347,13 @@ private fun AxonTopBar(
                     contentDescription = "Close",
                     tint = colors.textMuted,
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .pressScale(onClick = onCloseOverlay)
-                        .padding(8.dp),
+                        .padding(9.dp),
                 )
             } else {
-                TopChromeStatus()
+                TopChromeStatus(onOfflineClick = onOpenSettings)
             }
         }
     }

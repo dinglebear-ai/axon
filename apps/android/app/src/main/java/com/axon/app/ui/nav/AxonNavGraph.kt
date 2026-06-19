@@ -150,9 +150,9 @@ internal fun BackShell(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(44.dp)
+                .height(56.dp)
                 .background(colors.navBg)
-                .padding(start = 13.dp, end = 11.dp),
+                .padding(start = 14.dp, end = 12.dp),
         ) {
             Icon(
                 Icons.AutoMirrored.Rounded.ArrowBack,
@@ -160,15 +160,16 @@ internal fun BackShell(
                 tint = colors.textMuted,
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .size(26.dp)
+                    .size(34.dp)
                     .pressScale(onClick = onBack)
-                    .clip(RoundedCornerShape(8.dp))
-                    .padding(5.dp),
+                    .clip(RoundedCornerShape(10.dp))
+                    .padding(7.dp),
             )
             Text(
                 title,
                 color = colors.textPrimary.copy(alpha = 0.94f),
-                fontSize = 14.sp,
+                fontSize = 16.sp,
+                lineHeight = 21.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = AxonTheme.fonts.display,
                 maxLines = 1,

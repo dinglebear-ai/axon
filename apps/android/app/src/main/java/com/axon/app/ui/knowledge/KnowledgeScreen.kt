@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +42,7 @@ import com.axon.app.ui.knowledge.sections.DomainsSection
 import com.axon.app.ui.knowledge.sections.SourcesSection
 import com.axon.app.ui.knowledge.sections.StatsSection
 import com.axon.app.ui.knowledge.sections.SuggestSection
+import com.axon.app.ui.common.Resource
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
@@ -84,6 +86,10 @@ fun KnowledgeScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (showChrome) {
+            val unavailable = listOf(suggest, sources, domains, stats).count { it is Resource.Error }
+            if (unavailable > 0) {
+                KnowledgeNotice("$unavailable knowledge ${if (unavailable == 1) "view needs" else "views need"} authentication or a reachable Axon server.")
+            }
             KnowledgeMenu(
                 selected = selected,
                 onSelect = { index ->
@@ -154,6 +160,32 @@ private fun KnowledgeMenu(
 }
 
 @Composable
+private fun KnowledgeNotice(message: String) {
+    val colors = AxonTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth(0.88f)
+            .widthIn(max = 360.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.tint(colors.warn, 4, colors.pageBg), RoundedCornerShape(8.dp))
+            .border(1.dp, colors.tint(colors.warn, 18, colors.pageBg), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = colors.warn, modifier = Modifier.size(16.dp).padding(top = 1.dp))
+        Text(
+            message,
+            color = colors.textMuted.copy(alpha = 0.94f),
+            fontSize = 12.4.sp,
+            lineHeight = 17.sp,
+            fontFamily = AxonTheme.fonts.body,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
 private fun KnowledgeMenuRow(
     icon: ImageVector,
     label: String,
@@ -167,8 +199,8 @@ private fun KnowledgeMenuRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(if (selected) colors.tint(colors.accentPrimary, 3, colors.pageBg) else colors.control.copy(alpha = 0.025f), shape)
-            .border(1.dp, if (selected) colors.borderStrong.copy(alpha = 0.22f) else colors.borderDefault.copy(alpha = 0.06f), shape)
+            .background(if (selected) colors.tint(colors.accentPrimary, 4, colors.pageBg) else colors.pageBg.copy(alpha = 0f), shape)
+            .border(1.dp, if (selected) colors.borderStrong.copy(alpha = 0.22f) else colors.borderDefault.copy(alpha = 0.0f), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,

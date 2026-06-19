@@ -22,6 +22,7 @@ pub(super) struct SharedJobRecord {
     pub source_type: Option<String>,
     pub target: Option<String>,
     pub urls: Option<serde_json::Value>,
+    pub progress_json: Option<serde_json::Value>,
     pub result_json: Option<serde_json::Value>,
     pub config_json: Option<serde_json::Value>,
 }
@@ -47,6 +48,7 @@ impl SharedJobRecord {
             source_type: None,
             target: None,
             urls: None,
+            progress_json: None,
             result_json: job.result_json.clone(),
             config_json: None,
         }
@@ -65,6 +67,7 @@ impl SharedJobRecord {
             source_type: None,
             target: None,
             urls: Some(job.urls_json.clone()),
+            progress_json: None,
             result_json: job.result_json.clone(),
             config_json: None,
         }
@@ -83,6 +86,7 @@ impl SharedJobRecord {
             source_type: Some(job.source_type.clone()),
             target: Some(job.target.clone()),
             urls: None,
+            progress_json: None,
             result_json: job.result_json.clone(),
             config_json: Some(job.config_json.clone()),
         }
@@ -101,6 +105,7 @@ impl SharedJobRecord {
             source_type: None,
             target: Some(job.input_text.clone()),
             urls: None,
+            progress_json: None,
             result_json: job.result_json.clone(),
             config_json: Some(job.config_json.clone()),
         }
@@ -119,6 +124,7 @@ impl SharedJobRecord {
             source_type: job.source_type.clone(),
             target: job.target.clone(),
             urls: job.urls_json.clone(),
+            progress_json: job.progress_json.clone(),
             result_json: job.result_json.clone(),
             config_json: job.config_json.clone(),
         }
@@ -147,6 +153,7 @@ impl From<SharedJobRecord> for JobStatusResponse {
             metrics: value.result_json.clone(),
             collection,
             source,
+            progress_json: value.progress_json,
             result_json: value.result_json,
             config_json: value.config_json,
         }
@@ -173,6 +180,7 @@ impl From<SharedJobRecord> for JobSummaryEntry {
             metrics: r.metrics,
             collection: r.collection,
             source: r.source,
+            progress_json: r.progress_json,
             result_json: r.result_json,
             config_json: r.config_json,
         }

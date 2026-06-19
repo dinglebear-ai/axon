@@ -20,6 +20,7 @@ fn job(status: &str) -> ServiceJob {
         source_type: Some("github".to_string()),
         target: Some("secret-target".to_string()),
         urls_json: Some(json!(["https://example.com/private"])),
+        progress_json: None,
         result_json: Some(json!({
             "raw": "result",
             "access_token": "secret-token",

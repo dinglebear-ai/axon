@@ -48,12 +48,23 @@ internal fun progressForStatus(status: String): Float = when (status.lowercase()
 }
 
 internal fun progressForJob(job: JobUi): Float {
-    val fromResult = progressFromResult(job.resultJson)
-    return fromResult ?: progressForStatus(job.status)
+    if (isCompletedJobStatus(job.status)) return 1f
+    val fromProgress = lifecycleProgressFromProgress(job.progressJson)
+    val fromLegacyResult = progressFromResult(job.resultJson)
+    return fromProgress ?: fromLegacyResult ?: progressForStatus(job.status)
 }
 
 internal fun progressForJobDetail(job: JobUi): Float =
     if (isCompletedJobStatus(job.status)) 1f else progressForJob(job)
+
+internal fun aggregateProgressForJobs(jobs: List<JobUi>): Float? {
+    if (jobs.isEmpty()) return null
+    return jobs
+        .map(::progressForJob)
+        .average()
+        .toFloat()
+        .coerceIn(0.02f, 1f)
+}
 
 internal fun crawledPageUrlsFromResult(result: JsonElement?): List<String> {
     val obj = result as? JsonObject ?: return emptyList()
@@ -107,6 +118,45 @@ internal fun progressFromResult(result: JsonElement?): Float? {
     return (done.toFloat() / total.toFloat()).coerceIn(0.02f, 1f)
 }
 
+internal fun lifecycleProgressFromProgress(progress: JsonElement?): Float? {
+    val obj = progress as? JsonObject ?: return null
+    val value = obj["lifecycle_progress"]
+        ?.let { primitiveFloat(it) }
+        ?: obj["progress"]
+            ?.let { primitiveFloat(it) }
+        ?: return null
+    return value.coerceIn(0.02f, 1f)
+}
+
+internal fun coverageSummary(job: JobUi): String? {
+    val progress = job.progressJson as? JsonObject
+    firstString(progress ?: JsonObject(emptyMap()), "coverage_summary")?.let { return it }
+    val result = job.resultJson as? JsonObject ?: return null
+    firstString(result, "coverage_summary")?.let { return it }
+    val rawStatus = firstString(result, "coverage_status")?.lowercase()
+    val rawReason = firstString(result, "coverage_reason")?.lowercase()
+    val errors = firstMetric(result, "error_pages", "errors") ?: 0L
+    return when {
+        rawReason in setOf("max_pages_limit", "max_pages", "page_limit") -> "max pages hit"
+        rawStatus in setOf("complete", "completed", "complete_or_exhausted", "exhausted") -> {
+            if (errors > 0) "complete · $errors errors" else "complete"
+        }
+        rawStatus == "partial" -> if (errors > 0) "partial · $errors errors" else "partial"
+        rawStatus == "failed" -> "failed"
+        errors > 0 -> "$errors errors"
+        else -> null
+    }
+}
+
+internal fun pagesCrawledMetric(job: JobUi): String? {
+    val value = (job.progressJson as? JsonObject)?.let {
+        firstMetric(it, "pages_crawled", "pages_seen", "pages_processed")
+    } ?: (job.resultJson as? JsonObject)?.let {
+        firstMetric(it, "pages_crawled", "pages_seen", "pages_processed", "md_created")
+    } ?: return null
+    return "%,d %s".format(value, if (value == 1L) "page" else "pages")
+}
+
 internal fun firstMetric(obj: JsonObject, vararg keys: String): Long? {
     for (key in keys) {
         val value = obj[key]?.let { primitiveLong(it) }
@@ -122,6 +172,9 @@ internal fun firstMetric(obj: JsonObject, vararg keys: String): Long? {
 
 internal fun primitiveLong(element: JsonElement): Long? =
     (element as? JsonPrimitive)?.longOrNull
+
+internal fun primitiveFloat(element: JsonElement): Float? =
+    (element as? JsonPrimitive)?.contentOrNull?.toFloatOrNull()
 
 private val crawlPageArrayKeys = setOf(
     "urls",
@@ -235,7 +288,7 @@ internal fun shortTarget(target: String): String =
 
 internal fun jobProgressLabel(job: JobUi): String =
     listOfNotNull(
-        resultMetricSummary(job.resultJson) ?: fallbackJobDetail(job),
+        pagesCrawledMetric(job) ?: resultMetricSummary(job.resultJson) ?: fallbackJobDetail(job),
         "job ${job.id.take(8)}",
     ).joinToString(" · ")
 

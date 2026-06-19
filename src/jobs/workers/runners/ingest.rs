@@ -80,7 +80,7 @@ pub async fn run_ingest_job(
     }
 
     let progress_json: Option<String> =
-        sqlx::query_scalar("SELECT result_json FROM axon_ingest_jobs WHERE id=?")
+        sqlx::query_scalar("SELECT progress_json FROM axon_ingest_jobs WHERE id=?")
             .bind(id.to_string())
             .fetch_optional(pool)
             .await?

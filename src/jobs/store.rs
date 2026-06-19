@@ -236,8 +236,8 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
     let reclaimed_at = now_ms();
     let mut conn = pool.acquire().await?;
     sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
-    let reclaimed_rows: Vec<(String, Option<String>)> = match sqlx::query_as(&format!(
-        "SELECT id, active_attempt_id FROM {} WHERE status='running' AND updated_at < ?",
+    let reclaimed_rows: Vec<(String, Option<String>, Option<String>)> = match sqlx::query_as(&format!(
+        "SELECT id, active_attempt_id, progress_json FROM {} WHERE status='running' AND updated_at < ?",
         table
     ))
     .bind(threshold)
@@ -254,25 +254,37 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
         sqlx::query("ROLLBACK").execute(&mut *conn).await?;
         return Ok(Vec::new());
     }
-    if let Err(err) = sqlx::query(&format!(
-        "UPDATE {} SET status='pending', error_text=?, \
-         updated_at=?, active_attempt_id=NULL, last_reclaimed_at=?, last_reclaimed_reason=? \
-         WHERE status='running' AND updated_at < ?",
-        table
-    ))
-    .bind(RECLAIMED_ERROR_TEXT)
-    .bind(reclaimed_at)
-    .bind(reclaimed_at)
-    .bind("stale running job exceeded watchdog threshold")
-    .bind(threshold)
-    .execute(&mut *conn)
-    .await
-    {
-        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-        return Err(err);
+    let mut updated_rows: Vec<(String, Option<String>)> = Vec::new();
+    for (job_id, attempt_id, previous_progress_json) in &reclaimed_rows {
+        let progress_json = requeued_progress_json(previous_progress_json.as_deref());
+        let update_result = sqlx::query(&format!(
+            "UPDATE {} SET status='pending', error_text=?, progress_json=?, \
+             updated_at=?, active_attempt_id=NULL, last_reclaimed_at=?, last_reclaimed_reason=? \
+             WHERE id=? AND status='running' AND updated_at < ?",
+            table
+        ))
+        .bind(RECLAIMED_ERROR_TEXT)
+        .bind(progress_json.to_string())
+        .bind(reclaimed_at)
+        .bind(reclaimed_at)
+        .bind("stale running job exceeded watchdog threshold")
+        .bind(job_id)
+        .bind(threshold)
+        .execute(&mut *conn)
+        .await;
+        match update_result {
+            Ok(result) if result.rows_affected() > 0 => {
+                updated_rows.push((job_id.clone(), attempt_id.clone()));
+            }
+            Ok(_) => {}
+            Err(err) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(err);
+            }
+        }
     }
     sqlx::query("COMMIT").execute(&mut *conn).await?;
-    let jobs: Vec<ReclaimedJob> = reclaimed_rows
+    let jobs: Vec<ReclaimedJob> = updated_rows
         .into_iter()
         .filter_map(|(job_id, attempt_id)| match Uuid::parse_str(&job_id) {
             Ok(id) => Some(ReclaimedJob { id, attempt_id }),
@@ -299,6 +311,22 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
         );
     }
     Ok(jobs)
+}
+
+fn requeued_progress_json(previous_progress_json: Option<&str>) -> serde_json::Value {
+    let previous_attempt_progress = previous_progress_json.and_then(|json| {
+        serde_json::from_str::<serde_json::Value>(json)
+            .map_err(|e| {
+                tracing::warn!(error = %e, "watchdog: corrupt progress_json on reclaimed job");
+                e
+            })
+            .ok()
+    });
+    serde_json::json!({
+        "phase": "requeued",
+        "lifecycle_progress": 0.0,
+        "previous_attempt_progress": previous_attempt_progress,
+    })
 }
 
 /// Reclaim stale watch leases from a previous crashed process.

@@ -18,12 +18,14 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -55,7 +57,6 @@ import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.nav.AxonMarkGlyph
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
-import tv.tootie.aurora.components.AuroraSuggestionChip
 
 @Composable
 internal fun AskModeSwitch(
@@ -71,7 +72,7 @@ internal fun AskModeSwitch(
 
     BoxWithConstraints(
         modifier = modifier
-            .height(30.dp)
+            .height(36.dp)
             .clip(shape)
             .background(colors.control.copy(alpha = 0.58f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = 0.56f), shape)
@@ -117,7 +118,8 @@ internal fun AskModeSwitch(
                     Text(
                         item.label,
                         color = labelColor,
-                        fontSize = 10.6.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = AxonTheme.fonts.body,
                     )
@@ -151,7 +153,7 @@ internal fun EmptyAskState(
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            modifier = Modifier.widthIn(max = 292.dp),
+            modifier = Modifier.widthIn(max = 340.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
@@ -167,21 +169,23 @@ internal fun EmptyAskState(
                 AxonMarkGlyph(Modifier.size(34.dp))
             }
             Text(
-                "No active conversation",
-                color = colors.textPrimary,
-                fontSize = 16.sp,
+            "No active conversation",
+            color = colors.textPrimary,
+                fontSize = 17.sp,
+                lineHeight = 23.sp,
                 fontFamily = AxonTheme.fonts.display,
             )
             if (suggestions.isNotEmpty()) {
                 Text(
-                    "Try asking",
+                    "Start with",
                     color = colors.textMuted.copy(alpha = 0.7f),
-                    fontSize = 11.5.sp,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
                     fontFamily = AxonTheme.fonts.body,
                 )
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     suggestions.forEachIndexed { index, prompt ->
                         SuggestionChip(text = prompt, index = index, onClick = { onSuggestion(prompt) })
@@ -202,10 +206,18 @@ private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
         animationSpec = tween(durationMillis = 360, delayMillis = 140 + index * 90, easing = LinearEasing),
         label = "chip-in",
     )
-    AuroraSuggestionChip(
-        label = text,
-        onClick = onClick,
+    Text(
+        text,
+        color = AxonTheme.colors.textMuted.copy(alpha = 0.92f),
+        fontSize = 14.sp,
+        lineHeight = 19.sp,
+        fontWeight = FontWeight.SemiBold,
+        fontFamily = AxonTheme.fonts.body,
         modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
             .graphicsLayer {
                 alpha = anim
                 translationY = (1f - anim) * 16f

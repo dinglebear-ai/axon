@@ -24,6 +24,7 @@ pub(super) fn build_crawl_result_json(
         "output_path": caller_output_dir.join("markdown"),
         "coverage_status": coverage.status,
         "coverage_reason": coverage.reason,
+        "coverage_summary": coverage.summary(),
         "coverage_limit_pages": max_pages,
         "pages_crawled": summary.pages_seen,
         "md_created": summary.markdown_files,
@@ -84,6 +85,17 @@ struct CoverageStatus {
     reason: Option<&'static str>,
 }
 
+impl CoverageStatus {
+    fn summary(&self) -> &'static str {
+        match (self.status, self.reason) {
+            ("partial", Some("max_pages_limit")) => "max pages hit",
+            ("partial", _) => "partial",
+            ("complete_or_exhausted", _) => "complete",
+            _ => self.status,
+        }
+    }
+}
+
 fn coverage_status(max_pages: u32, summary: &crate::crawl::engine::CrawlSummary) -> CoverageStatus {
     if max_pages > 0 && summary.pages_seen >= max_pages {
         CoverageStatus {
@@ -129,6 +141,7 @@ mod tests {
 
         assert_eq!(coverage.status, "partial");
         assert_eq!(coverage.reason, Some("max_pages_limit"));
+        assert_eq!(coverage.summary(), "max pages hit");
     }
 
     #[test]
@@ -143,6 +156,7 @@ mod tests {
 
         assert_eq!(coverage.status, "complete_or_exhausted");
         assert_eq!(coverage.reason, None);
+        assert_eq!(coverage.summary(), "complete");
     }
 
     #[test]
