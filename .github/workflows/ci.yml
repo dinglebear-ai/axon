@@ -236,6 +236,7 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
             plugins
             docs
             .github
@@ -476,6 +477,7 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
             plugins
             docs
             .github
@@ -539,6 +541,8 @@ jobs:
             xtask
             benches
             apps/web
+            apps/palette-tauri
+            apps/android
             plugins
             docs
             .github
