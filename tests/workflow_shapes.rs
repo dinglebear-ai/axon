@@ -279,6 +279,65 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     }
 }
 
+#[test]
+fn ci_has_changed_path_classifier_and_stable_gate() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    assert!(
+        workflow.contains("changes:"),
+        "CI must define a changes job"
+    );
+    assert!(
+        workflow.contains("scripts/ci/changed_paths.py"),
+        "CI must use the tested changed path classifier"
+    );
+    assert!(workflow.contains("ci-gate:"), "CI must expose ci-gate");
+    assert!(
+        !workflow.contains("production-gate:"),
+        "production-gate should be replaced by ci-gate so branch protection has one clear required check"
+    );
+}
+
+#[test]
+fn ci_gate_covers_expensive_and_contract_jobs() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let gate = workflow_job_block(workflow, "ci-gate");
+    for job in [
+        "mcp-transport-modes",
+        "version-sync",
+        "aurora-primitive-inventory",
+        "android",
+        "android-openapi-client",
+        "no-mod-rs",
+        "toml-fmt",
+        "lefthook-pre-commit-speed",
+        "palette-tauri",
+        "windows-check",
+        "windows-build",
+        "shell-completions-smoke",
+        "web-panel",
+        "mcp-schema-doc-sync",
+        "rest-api-parity",
+        "mcp-oauth-smoke",
+        "advisory-lock-policy",
+        "ban-skip-validation",
+        "monolith",
+        "fmt",
+        "check",
+        "msrv",
+        "clippy",
+        "test",
+        "security",
+        "mcp-smoke",
+        "release",
+        "release-smoke",
+    ] {
+        assert!(
+            gate.contains(&format!("- {job}")),
+            "ci-gate must need {job}"
+        );
+    }
+}
+
 fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
     let marker = format!("  {job_name}:");
     let start = workflow
