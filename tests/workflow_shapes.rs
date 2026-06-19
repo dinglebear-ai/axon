@@ -338,6 +338,18 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
     }
 }
 
+#[test]
+fn compose_and_docker_workflows_use_changed_path_classifier() {
+    let compose = include_str!("../.github/workflows/compose-smoke.yml");
+    let docker = include_str!("../.github/workflows/docker-image.yml");
+    assert!(compose.contains("scripts/ci/changed_paths.py"));
+    assert!(compose.contains("needs.changes.outputs.compose == 'true'"));
+    assert!(compose.contains("needs.changes.outputs.docker == 'true'"));
+    assert!(docker.contains("scripts/ci/changed_paths.py"));
+    assert!(docker.contains("needs.changes.outputs.docker == 'true'"));
+    assert!(docker.contains("startsWith(github.ref, 'refs/tags/v')"));
+}
+
 fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
     let marker = format!("  {job_name}:");
     let start = workflow
