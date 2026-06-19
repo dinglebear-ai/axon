@@ -4,7 +4,11 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlinx.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.openapi.generator)
 }
+
+val axonOpenApiSpec = rootProject.layout.projectDirectory.file("../../apps/web/openapi/axon.json")
+val axonOpenApiOutput = layout.buildDirectory.dir("generated/openapi")
 
 android {
     namespace = "com.axon.app"
@@ -58,6 +62,47 @@ android {
     }
 }
 
+openApiGenerate {
+    generatorName.set("kotlin")
+    library.set("jvm-okhttp4")
+    inputSpec.set(axonOpenApiSpec.asFile.absolutePath)
+    outputDir.set(axonOpenApiOutput.get().asFile.absolutePath)
+    apiPackage.set("com.axon.app.generated.api")
+    modelPackage.set("com.axon.app.generated.model")
+    invokerPackage.set("com.axon.app.generated.invoker")
+    validateSpec.set(true)
+    configOptions.set(
+        mapOf(
+            "dateLibrary" to "java8",
+            "enumPropertyNaming" to "original",
+            "nonPublicApi" to "true",
+        )
+    )
+    globalProperties.set(
+        mapOf(
+            "apiDocs" to "false",
+            "apiTests" to "false",
+            "modelDocs" to "false",
+            "modelTests" to "false",
+        )
+    )
+}
+
+tasks.named("openApiGenerate") {
+    inputs.file(axonOpenApiSpec)
+    outputs.dir(axonOpenApiOutput)
+    doFirst {
+        require(axonOpenApiSpec.asFile.isFile) {
+            "Missing OpenAPI spec at ${axonOpenApiSpec.asFile.absolutePath}; run `cargo xtask check-openapi-drift` from repo root."
+        }
+    }
+}
+
+tasks.register("verifyOpenApiGeneratedClient") {
+    dependsOn("openApiGenerate")
+    dependsOn("testDebugUnitTest")
+}
+
 ksp {
     // Room schema export — enables migration verification and schema diffing
     arg("room.schemaLocation", "$projectDir/schemas")
@@ -92,6 +137,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.collections.immutable)
+    implementation(libs.moshi)
+    implementation(libs.moshi.kotlin)
 
     // Security
     implementation(libs.security.crypto)
