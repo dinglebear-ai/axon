@@ -36,6 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -256,6 +259,20 @@ private fun SessionRow(
                 .clip(RoundedCornerShape(8.dp))
                 .background(colors.control.copy(alpha = 0.075f))
                 .border(1.dp, colors.borderDefault.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction(
+                            label = if (session.pinnedAt == null) "Pin session" else "Unpin session",
+                        ) {
+                            if (session.pinnedAt == null) onPin() else onUnpin()
+                            true
+                        },
+                        CustomAccessibilityAction(label = "Delete session") {
+                            onDelete()
+                            true
+                        },
+                    )
+                }
                 .combinedClickable(
                     onClick = onSelect,
                     onLongClick = { showMenu = true },
@@ -267,7 +284,7 @@ private fun SessionRow(
                 if (session.pinnedAt != null) {
                     Icon(
                         imageVector = Icons.Rounded.BookmarkAdded,
-                        contentDescription = null,
+                        contentDescription = "Pinned",
                         tint = colors.accentStrong.copy(alpha = 0.78f),
                         modifier = Modifier.size(12.dp),
                     )
@@ -282,6 +299,26 @@ private fun SessionRow(
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    imageVector = Icons.Rounded.BookmarkAdded,
+                    contentDescription = if (session.pinnedAt == null) "Pin session" else "Unpin session",
+                    tint = if (session.pinnedAt == null) colors.textMuted.copy(alpha = 0.58f) else colors.accentStrong,
+                    modifier = Modifier
+                        .size(25.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { if (session.pinnedAt == null) onPin() else onUnpin() }
+                        .padding(6.dp),
+                )
+                Icon(
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = "Delete session",
+                    tint = colors.textMuted.copy(alpha = 0.58f),
+                    modifier = Modifier
+                        .size(25.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onDelete() }
+                        .padding(6.dp),
                 )
                 Text(
                     relativeTime(session.updatedAt),

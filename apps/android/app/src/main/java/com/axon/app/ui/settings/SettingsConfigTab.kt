@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Article
@@ -48,6 +49,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -225,7 +229,12 @@ private fun MiniToggle(on: Boolean, onChange: (Boolean) -> Unit) {
             .height(24.dp)
             .background(if (on) colors.accentDeep else colors.control, RoundedCornerShape(999.dp))
             .border(1.dp, if (on) colors.accentPrimary else colors.borderDefault, RoundedCornerShape(999.dp))
-            .clickable { onChange(!on) },
+            .semantics { stateDescription = if (on) "On" else "Off" }
+            .toggleable(
+                value = on,
+                role = Role.Switch,
+                onValueChange = onChange,
+            ),
     ) {
         Box(
             modifier = Modifier
@@ -295,7 +304,7 @@ private fun CompactKnobInput(field: SettingField, value: String, onValueChange: 
         if (secret) {
             Icon(
                 if (reveal) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                contentDescription = null,
+                contentDescription = if (reveal) "Hide value" else "Show value",
                 tint = if (reveal) colors.accentStrong else colors.textMuted,
                 modifier = Modifier
                     .size(34.dp)

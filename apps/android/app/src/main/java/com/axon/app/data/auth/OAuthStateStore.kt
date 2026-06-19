@@ -2,8 +2,7 @@ package com.axon.app.data.auth
 
 import android.content.Context
 import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.axon.app.data.security.SecurePrefsFactory
 
 private const val TAG = "OAuthStateStore"
 private const val PREFS_NAME = "axon_oauth_state"
@@ -13,15 +12,7 @@ private const val KEY_PENDING_STATE = "pending_authorization_state"
 open class OAuthStateStore(context: Context) {
     private val appContext = context.applicationContext
 
-    private fun createPrefs() = EncryptedSharedPreferences.create(
-        appContext,
-        PREFS_NAME,
-        MasterKey.Builder(appContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private fun createPrefs() = SecurePrefsFactory.create(appContext, PREFS_NAME)
 
     open fun read(): String? = runCatching {
         createPrefs().getString(KEY_AUTH_STATE, null)?.takeIf { it.isNotBlank() }

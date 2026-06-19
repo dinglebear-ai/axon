@@ -2,8 +2,7 @@ package com.axon.app.data.repository
 
 import android.content.Context
 import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.axon.app.data.security.SecurePrefsFactory
 
 /**
  * Encrypted storage for user-configured HTTP headers.
@@ -25,13 +24,7 @@ import androidx.security.crypto.MasterKey
 class EncryptedHeadersStore(private val context: Context) {
     private val prefs by lazy {
         runCatching {
-            EncryptedSharedPreferences.create(
-                context,
-                FILE,
-                MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
+            SecurePrefsFactory.create(context, FILE)
         }.getOrElse { t ->
             Log.w(TAG, "EncryptedSharedPreferences init failed for $FILE; clearing file", t)
             context.deleteSharedPreferences(FILE)
