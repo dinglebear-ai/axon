@@ -116,9 +116,16 @@ pre-push:
     android:
       glob: "apps/android/**/*"
       run: >
-        export AXON_AURORA_ANDROID_PATH="${AXON_AURORA_ANDROID_PATH:-/home/jmagar/workspace/aurora-design-system/android}" &&
+        if [ -z "${AXON_AURORA_ANDROID_PATH:-}" ]; then
+          for candidate in "../aurora-design-system/android" "../../../aurora-design-system/android" "/home/jmagar/workspace/aurora-design-system/android"; do
+            if [ -d "$candidate" ]; then
+              export AXON_AURORA_ANDROID_PATH="$candidate";
+              break;
+            fi;
+          done;
+        fi &&
         if [ ! -d "$AXON_AURORA_ANDROID_PATH" ]; then
-          echo "AXON_AURORA_ANDROID_PATH does not point at an Aurora Android checkout: $AXON_AURORA_ANDROID_PATH" >&2;
+          echo "Set AXON_AURORA_ANDROID_PATH to an Aurora Android checkout before running Android validation." >&2;
           exit 1;
         fi &&
         apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:lintDebug --no-daemon

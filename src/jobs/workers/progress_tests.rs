@@ -66,3 +66,9 @@ async fn crawl_progress_persister_includes_adaptive_concurrency_snapshot() {
     assert_eq!(value["adaptive_concurrency"]["successes"], 10);
     assert_eq!(value["adaptive_concurrency"]["failures"], 1);
 }
+
+#[test]
+fn active_ratio_preserves_explicit_zero_progress() {
+    assert_eq!(active_ratio(0.0, 100.0), 0.0);
+    assert_eq!(active_ratio(1.0, 100.0), 0.02);
+}

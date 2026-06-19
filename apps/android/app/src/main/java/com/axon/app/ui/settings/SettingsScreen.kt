@@ -49,7 +49,7 @@ import com.axon.app.ui.theme.tint
 import kotlinx.coroutines.launch
 
 private enum class SettingsTab(val label: String, val shortLabel: String, val icon: ImageVector) {
-    Connection("Connection", "Conn", Icons.Rounded.Link),
+    Connection("Connection", "Connection", Icons.Rounded.Link),
     Env("Env", "Env", Icons.Rounded.Key),
     Config("Config", "Config", Icons.Rounded.Slideshow),
 }
@@ -209,7 +209,7 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             .background(if (selected) colors.tint(colors.accentPrimary, 7, colors.pageBg) else colors.control.copy(alpha = 0.01f), RoundedCornerShape(8.dp))
             .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 20, colors.pageBg) else colors.borderDefault.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .height(46.dp)
+            .height(48.dp)
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,

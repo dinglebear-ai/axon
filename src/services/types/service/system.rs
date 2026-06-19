@@ -229,13 +229,13 @@ impl ServiceJob {
         };
         let active = self.status_enum().is_active();
         let metrics = if active {
-            self.progress_json.as_ref().or(self.result_json.as_ref())
+            usable_progress_json(self.progress_json.as_ref()).or(self.result_json.as_ref())
         } else {
             self.result_json.as_ref()
         };
         if let Some(metrics) = metrics {
             obj.insert("metrics".to_string(), metrics.clone());
-            if active && self.result_json.is_none() {
+            if active {
                 obj.insert("result_json".to_string(), metrics.clone());
             }
         }
@@ -288,6 +288,13 @@ impl ServiceJob {
             last_reclaimed_reason: None,
         }
     }
+}
+
+fn usable_progress_json(value: Option<&serde_json::Value>) -> Option<&serde_json::Value> {
+    value.filter(|value| {
+        !(value.get("degraded").and_then(serde_json::Value::as_bool) == Some(true)
+            && value.get("field").and_then(serde_json::Value::as_str) == Some("progress_json"))
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

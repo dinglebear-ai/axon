@@ -16,10 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +30,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
@@ -98,53 +96,13 @@ internal fun SettingsFeedbackBanner(
     kind: SettingsFeedbackKind,
     modifier: Modifier = Modifier,
 ) {
-    val colors = AxonTheme.colors
     val tone = when (kind) {
-        SettingsFeedbackKind.Success -> colors.success
-        SettingsFeedbackKind.Error -> colors.error
-        SettingsFeedbackKind.Info -> colors.accentStrong
-        SettingsFeedbackKind.Warn -> colors.warn
+        SettingsFeedbackKind.Success -> NoticeTone.Success
+        SettingsFeedbackKind.Error -> NoticeTone.Error
+        SettingsFeedbackKind.Info -> NoticeTone.Info
+        SettingsFeedbackKind.Warn -> NoticeTone.Warn
     }
-    val icon = when (kind) {
-        SettingsFeedbackKind.Success -> Icons.Rounded.Check
-        SettingsFeedbackKind.Error, SettingsFeedbackKind.Warn -> Icons.Rounded.WarningAmber
-        SettingsFeedbackKind.Info -> Icons.Rounded.Refresh
-    }
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(colors.tint(tone, 7, colors.panelStrong).copy(alpha = 0.99f), RoundedCornerShape(8.dp))
-            .border(1.dp, tone.copy(alpha = 0.46f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 9.dp),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .height(24.dp)
-                .widthIn(min = 3.dp, max = 3.dp)
-                .background(tone, RoundedCornerShape(99.dp)),
-        )
-        Box(
-            modifier = Modifier
-                .size(20.dp)
-                .background(tone.copy(alpha = 0.18f), RoundedCornerShape(99.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = tone, modifier = Modifier.size(14.dp))
-        }
-        Text(
-            message,
-            color = colors.textPrimary,
-            fontSize = 12.6.sp,
-            lineHeight = 17.2.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = AxonTheme.fonts.body,
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-    }
+    AppNoticeBanner(message = message, modifier = modifier, tone = tone)
 }
 
 @Composable
@@ -202,7 +160,7 @@ internal fun CompactActionButton(
     val fg = if (outlined) colors.textMuted else Color.White
     Row(
         modifier = modifier
-            .height(46.dp)
+            .height(48.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (enabled) bg else colors.control, RoundedCornerShape(8.dp))
             .border(1.dp, if (outlined) colors.borderStrong.copy(alpha = 0.42f) else colors.accentPrimary.copy(alpha = 0.86f), RoundedCornerShape(8.dp))

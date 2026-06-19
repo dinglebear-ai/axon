@@ -120,7 +120,7 @@ internal fun lifecycleProgressFromProgress(progress: JsonElement?): Float? {
         ?: obj["progress"]
             ?.let { primitiveFloat(it) }
         ?: return null
-    return value.coerceIn(0.02f, 1f)
+    return if (value <= 0f) 0f else value.coerceIn(0.02f, 1f)
 }
 
 internal fun lifecycleProgressFromCounters(progress: JsonElement?): Float? {
@@ -179,6 +179,7 @@ private fun ratioMetric(obj: JsonObject, doneKey: String, totalKey: String): Flo
     val done = topLevelMetric(obj, doneKey) ?: return null
     val total = topLevelMetric(obj, totalKey) ?: return null
     if (total <= 0L) return null
+    if (done <= 0L) return 0f
     return (done.toFloat() / total.toFloat()).coerceIn(0.02f, 0.98f)
 }
 

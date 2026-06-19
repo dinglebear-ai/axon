@@ -203,10 +203,17 @@ pub(super) fn progress_metrics_for_status<'a>(
     result_json: Option<&'a Value>,
 ) -> Option<&'a Value> {
     if status.clone().is_active() {
-        progress_json.or(result_json)
+        usable_progress_json(progress_json).or(result_json)
     } else {
         result_json
     }
+}
+
+fn usable_progress_json(value: Option<&Value>) -> Option<&Value> {
+    value.filter(|value| {
+        !(value.get("degraded").and_then(Value::as_bool) == Some(true)
+            && value.get("field").and_then(Value::as_str) == Some("progress_json"))
+    })
 }
 
 pub(super) fn progress_fingerprint(

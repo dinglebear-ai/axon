@@ -93,7 +93,7 @@ esac
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 profile="unknown"
 target_triple=""
-after_target="${out#*target/}"
+after_target="${out##*target/}"
 IFS=/ read -r first second third _rest <<<"$after_target"
 if [ "$second" = "deps" ]; then
   profile="$first"
