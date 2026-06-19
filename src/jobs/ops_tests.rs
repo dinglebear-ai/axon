@@ -4,8 +4,8 @@ use crate::jobs::backend::{JobKind, JobPayload};
 use crate::jobs::error::JobError;
 use crate::jobs::ops::{
     cancel_row, claim_next_pending, claim_next_pending_for_attempt, enqueue_job, mark_completed,
-    mark_completed_for_attempt, mark_failed, touch_heartbeat_for_attempt, update_result_json,
-    update_result_json_for_attempt,
+    mark_completed_for_attempt, mark_failed, touch_heartbeat_for_attempt, update_progress_json,
+    update_progress_json_for_attempt,
 };
 use crate::jobs::store::{
     RECLAIMED_ERROR_TEXT, open_sqlite_pool, reclaim_stale_running_jobs_for_table,
@@ -192,7 +192,7 @@ async fn stale_attempt_writes_are_rejected_after_reclaim_and_retry() {
         .expect("retry claim")
         .expect("claimed");
 
-    update_result_json_for_attempt(
+    update_progress_json_for_attempt(
         &pool,
         JobKind::Crawl,
         id,
@@ -225,7 +225,7 @@ async fn stale_attempt_writes_are_rejected_after_reclaim_and_retry() {
     assert_eq!(row.1, None);
     assert_eq!(row.2, 2);
 
-    update_result_json_for_attempt(
+    update_progress_json_for_attempt(
         &pool,
         JobKind::Crawl,
         id,
@@ -249,7 +249,7 @@ async fn stale_attempt_writes_are_rejected_after_reclaim_and_retry() {
 }
 
 #[tokio::test]
-async fn update_result_json_persists_progress_without_changing_status() {
+async fn update_progress_json_persists_progress_without_changing_status() {
     let pool = test_pool().await;
     let id = enqueue_job(
         &pool,
@@ -266,7 +266,7 @@ async fn update_result_json_persists_progress_without_changing_status() {
         .await
         .expect("claim");
 
-    update_result_json(
+    update_progress_json(
         &pool,
         JobKind::Ingest,
         id,
@@ -317,7 +317,7 @@ async fn progress_updates_are_separate_from_final_result_json() {
         .expect("claim")
         .expect("claimed");
 
-    update_result_json_for_attempt(
+    update_progress_json_for_attempt(
         &pool,
         JobKind::Crawl,
         id,
@@ -454,7 +454,7 @@ async fn reclaim_marks_progress_json_requeued_and_keeps_previous_attempt_progres
         .await
         .expect("claim")
         .expect("claimed");
-    update_result_json_for_attempt(
+    update_progress_json_for_attempt(
         &pool,
         JobKind::Crawl,
         id,
@@ -492,7 +492,50 @@ async fn reclaim_marks_progress_json_requeued_and_keeps_previous_attempt_progres
 }
 
 #[tokio::test]
-async fn update_result_json_skips_non_running_rows() {
+async fn reclaim_keeps_legacy_result_json_progress_when_progress_json_is_absent() {
+    let pool = test_pool().await;
+    let id = enqueue_job(
+        &pool,
+        &JobPayload::Crawl {
+            url: "https://example.com".into(),
+            config_json: "{}".into(),
+        },
+        &Config::default_minimal(),
+    )
+    .await
+    .expect("enqueue");
+    claim_next_pending_for_attempt(&pool, JobKind::Crawl)
+        .await
+        .expect("claim")
+        .expect("claimed");
+    sqlx::query(
+        "UPDATE axon_crawl_jobs SET updated_at = 1, progress_json = NULL, result_json = ? WHERE id = ?",
+    )
+    .bind(r#"{"phase":"legacy-progress","pages_crawled":17}"#)
+    .bind(id.to_string())
+    .execute(&pool)
+    .await
+    .expect("seed legacy progress");
+
+    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000)
+        .await
+        .expect("reclaim");
+
+    let row: (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT progress_json, result_json FROM axon_crawl_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("row");
+    assert_eq!(row.1, None, "reclaim clears stale legacy result_json");
+    let progress: serde_json::Value =
+        serde_json::from_str(row.0.as_deref().expect("progress json")).expect("progress json");
+    assert_eq!(progress["phase"], "requeued");
+    assert_eq!(progress["previous_attempt_progress"]["pages_crawled"], 17);
+}
+
+#[tokio::test]
+async fn update_progress_json_skips_non_running_rows() {
     let pool = test_pool().await;
     let id = enqueue_job(
         &pool,
@@ -505,7 +548,7 @@ async fn update_result_json_skips_non_running_rows() {
     .await
     .expect("enqueue");
 
-    update_result_json(
+    update_progress_json(
         &pool,
         JobKind::Embed,
         id,
@@ -562,7 +605,7 @@ async fn mark_failed_sets_error_text() {
 }
 
 #[tokio::test]
-async fn mark_completed_preserves_existing_result_when_none_provided() {
+async fn mark_completed_clears_existing_result_when_none_provided() {
     let pool = test_pool().await;
     let id = enqueue_job(
         &pool,
@@ -588,12 +631,16 @@ async fn mark_completed_preserves_existing_result_when_none_provided() {
         .await
         .expect("complete");
 
-    let row: (String,) = sqlx::query_as("SELECT result_json FROM axon_embed_jobs WHERE id = ?")
-        .bind(id.to_string())
-        .fetch_one(&pool)
-        .await
-        .expect("fetch");
-    assert_eq!(row.0, r#"{"phase":"running"}"#);
+    let row: (Option<String>,) =
+        sqlx::query_as("SELECT result_json FROM axon_embed_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
+    assert_eq!(
+        row.0, None,
+        "completion without a final result must not preserve stale active progress"
+    );
 }
 
 #[tokio::test]

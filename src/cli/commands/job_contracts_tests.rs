@@ -210,7 +210,8 @@ fn service_running_metrics_alias_uses_progress_json() {
             "pages_crawled": 42
         })
     );
-    assert_eq!(json["result_json"], serde_json::Value::Null);
+    assert_eq!(json["result_json"], json["metrics"]);
+    assert_eq!(json["progress_json"], json["metrics"]);
 }
 
 #[test]
@@ -233,6 +234,52 @@ fn service_wire_json_keeps_active_result_json_compat_alias() {
     );
     assert_eq!(json["metrics"], json["result_json"]);
     assert_eq!(json["metrics"], json["progress_json"]);
+}
+
+#[test]
+fn service_running_alias_overwrites_stale_result_json() {
+    let mut job = test_service_job("running");
+    job.progress_json = Some(serde_json::json!({
+        "phase": "crawling",
+        "lifecycle_progress": 0.42,
+        "pages_crawled": 42
+    }));
+    job.result_json = Some(serde_json::json!({
+        "phase": "stale",
+        "pages_crawled": 99
+    }));
+
+    let status_json =
+        serde_json::to_value(JobStatusResponse::from_service_job(&job)).expect("serialize");
+    assert_eq!(status_json["result_json"], status_json["metrics"]);
+    assert_eq!(status_json["metrics"]["pages_crawled"], 42);
+
+    let wire_json = job.wire_json_compat();
+    assert_eq!(wire_json["result_json"], wire_json["metrics"]);
+    assert_eq!(wire_json["metrics"]["pages_crawled"], 42);
+}
+
+#[test]
+fn service_running_alias_ignores_degraded_progress_marker() {
+    let mut job = test_service_job("running");
+    job.progress_json = Some(serde_json::json!({
+        "degraded": true,
+        "field": "progress_json",
+        "error": "corrupt job JSON"
+    }));
+    job.result_json = Some(serde_json::json!({
+        "phase": "legacy",
+        "pages_crawled": 5
+    }));
+
+    let status_json =
+        serde_json::to_value(JobStatusResponse::from_service_job(&job)).expect("serialize");
+    assert_eq!(status_json["metrics"]["pages_crawled"], 5);
+    assert_eq!(status_json["result_json"], status_json["metrics"]);
+
+    let wire_json = job.wire_json_compat();
+    assert_eq!(wire_json["metrics"]["pages_crawled"], 5);
+    assert_eq!(wire_json["result_json"], wire_json["metrics"]);
 }
 
 #[test]

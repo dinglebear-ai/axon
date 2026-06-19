@@ -138,7 +138,7 @@ async fn claim_next_pending_for_attempt_inner(
             let progress_json = running_progress_json();
             let update_result = match sqlx::query(&format!(
                 "UPDATE {} SET status='running', started_at=?, updated_at=?, finished_at=NULL, \
-                 attempt_count=?, active_attempt_id=?, progress_json=? \
+                 attempt_count=?, active_attempt_id=?, progress_json=?, result_json=NULL \
                  WHERE id=? AND status='pending'",
                 table
             ))
@@ -217,7 +217,7 @@ async fn mark_completed_inner(
     let progress_json = completed_progress_json();
     let sql = format!(
         "UPDATE {} SET status='completed', finished_at=?, updated_at=?, \
-         result_json=COALESCE(?, result_json), progress_json=?, error_text=NULL, active_attempt_id=NULL \
+         result_json=?, progress_json=?, error_text=NULL, active_attempt_id=NULL \
          WHERE id=? AND status='running'{}",
         table,
         attempt_clause(attempt_id)
@@ -275,7 +275,7 @@ fn canceled_progress_json() -> serde_json::Value {
 /// task so the watchdog's stale detection (driven by `updated_at`) does not
 /// reclaim long-running jobs that haven't emitted a progress update recently.
 ///
-/// Unlike [`update_result_json`], this does NOT touch `result_json` — that
+/// Unlike [`update_progress_json`], this does NOT touch `result_json` — that
 /// avoids racing with progress persisters that own that column.
 ///
 /// No-op (rows_affected=0) for jobs not in `running` state.
@@ -313,23 +313,23 @@ pub async fn touch_heartbeat_for_attempt(
 }
 
 /// Persist live job progress JSON without changing job status.
-pub async fn update_result_json(
+pub async fn update_progress_json(
     pool: &SqlitePool,
     kind: JobKind,
     id: Uuid,
     progress_json: &serde_json::Value,
 ) -> Result<(), sqlx::Error> {
-    update_result_json_for_attempt(pool, kind, id, None, progress_json).await
+    update_progress_json_for_attempt(pool, kind, id, None, progress_json).await
 }
 
-pub async fn update_result_json_for_attempt(
+pub async fn update_progress_json_for_attempt(
     pool: &SqlitePool,
     kind: JobKind,
     id: Uuid,
     attempt_id: Option<&str>,
     progress_json: &serde_json::Value,
 ) -> Result<(), sqlx::Error> {
-    retry_busy("update_result_json_for_attempt", || async {
+    retry_busy("update_progress_json_for_attempt", || async {
         let now = now_ms();
         let table = kind.table_name();
         let sql = format!(
@@ -393,7 +393,7 @@ async fn mark_failed_inner(
     let table = kind.table_name();
     let progress_json = failed_progress_json(error);
     let sql = format!(
-        "UPDATE {} SET status='failed', finished_at=?, updated_at=?, error_text=?, progress_json=?, active_attempt_id=NULL \
+        "UPDATE {} SET status='failed', finished_at=?, updated_at=?, error_text=?, progress_json=?, result_json=NULL, active_attempt_id=NULL \
          WHERE id=? AND status='running'{}",
         table,
         attempt_clause(attempt_id)
@@ -434,7 +434,7 @@ pub async fn cancel_row(pool: &SqlitePool, kind: JobKind, id: Uuid) -> Result<bo
     let table = kind.table_name();
     let progress_json = canceled_progress_json();
     let result = sqlx::query(&format!(
-        "UPDATE {} SET status='canceled', updated_at=?, finished_at=?, progress_json=?, active_attempt_id=NULL \
+        "UPDATE {} SET status='canceled', updated_at=?, finished_at=?, progress_json=?, result_json=NULL, active_attempt_id=NULL \
          WHERE id=? AND status IN ('pending','running')",
         table
     ))

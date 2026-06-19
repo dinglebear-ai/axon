@@ -99,6 +99,23 @@ class JobsFormattersTest {
     }
 
     @Test
+    fun `running crawl progress preserves explicit zero counters`() {
+        val job = JobUi(
+            id = "job-1",
+            status = "running",
+            url = "https://example.com",
+            sourceType = null,
+            target = null,
+            errorText = null,
+            progressJson = Json.parseToJsonElement("""{"phase":"crawling","pages_crawled":0,"pages_discovered":100}"""),
+            resultJson = null,
+        )
+
+        assertEquals(0f, progressForJob(job), 0.0f)
+        assertEquals("0 pages", pagesCrawledMetric(job))
+    }
+
+    @Test
     fun `running embed progress falls back to live counters from server payload`() {
         val job = JobUi(
             id = "job-1",
@@ -138,7 +155,7 @@ class JobsFormattersTest {
             resultJson = null,
         )
 
-        assertEquals(0.02f, progressForJob(job), 0.0001f)
+        assertEquals(0f, progressForJob(job), 0.0001f)
         assertEquals(null, pagesCrawledMetric(job))
         assertEquals(null, coverageSummary(job))
     }

@@ -105,13 +105,13 @@ private fun AxonSidebarRow(
     val colorSpec = tween<androidx.compose.ui.graphics.Color>(durationMillis = 220)
     val rowBg by animateColorAsState(
         targetValue = if (selected) colors.tint(colors.accentPrimary, 11, colors.panelStrong)
-        else colors.panelStrong.copy(alpha = 0f),
+        else colors.panelStrong.copy(alpha = 0.16f),
         animationSpec = colorSpec,
         label = "row-bg",
     )
     val rowBorder by animateColorAsState(
         targetValue = if (selected) colors.tint(colors.accentPrimary, 28, colors.panelStrong)
-        else colors.borderDefault.copy(alpha = 0f),
+        else colors.borderDefault.copy(alpha = 0.08f),
         animationSpec = colorSpec,
         label = "row-border",
     )

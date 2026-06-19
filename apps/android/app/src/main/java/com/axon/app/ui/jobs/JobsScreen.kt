@@ -69,8 +69,11 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
     val selectedJob = selectedJobRef?.let { ref ->
         jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
     }
+    val selectedCrawlManifestPath = remember(selectedJob?.id, selectedJob?.resultJson) {
+        crawlManifestArtifactPath(selectedJob?.resultJson)
+    }
 
-    LaunchedEffect(selectedJob?.id, selectedJob?.progressJson, selectedJob?.resultJson) {
+    LaunchedEffect(selectedJob?.id, selectedCrawlManifestPath) {
         val job = selectedJob
         crawledPages = emptyList()
         crawledPagesError = null

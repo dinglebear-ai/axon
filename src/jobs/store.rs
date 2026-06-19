@@ -127,6 +127,8 @@ pub struct ReclaimedJob {
     pub attempt_id: Option<String>,
 }
 
+type ReclaimedRunningRow = (String, Option<String>, Option<String>, Option<String>);
+
 /// Per-kind reclaimed jobs returned by `reclaim_stale_running_jobs_detailed`.
 #[derive(Debug, Default, Clone)]
 pub struct ReclaimedJobs {
@@ -236,8 +238,8 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
     let reclaimed_at = now_ms();
     let mut conn = pool.acquire().await?;
     sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
-    let reclaimed_rows: Vec<(String, Option<String>, Option<String>)> = match sqlx::query_as(&format!(
-        "SELECT id, active_attempt_id, progress_json FROM {} WHERE status='running' AND updated_at < ?",
+    let reclaimed_rows: Vec<ReclaimedRunningRow> = match sqlx::query_as(&format!(
+        "SELECT id, active_attempt_id, progress_json, result_json FROM {} WHERE status='running' AND updated_at < ?",
         table
     ))
     .bind(threshold)
@@ -255,11 +257,14 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
         return Ok(Vec::new());
     }
     let mut updated_rows: Vec<(String, Option<String>)> = Vec::new();
-    for (job_id, attempt_id, previous_progress_json) in &reclaimed_rows {
-        let progress_json = requeued_progress_json(previous_progress_json.as_deref());
+    for (job_id, attempt_id, previous_progress_json, previous_result_json) in &reclaimed_rows {
+        let previous_progress = previous_progress_json
+            .as_deref()
+            .or(previous_result_json.as_deref());
+        let progress_json = requeued_progress_json(previous_progress);
         let update_result = sqlx::query(&format!(
             "UPDATE {} SET status='pending', error_text=?, progress_json=?, \
-             updated_at=?, active_attempt_id=NULL, last_reclaimed_at=?, last_reclaimed_reason=? \
+             result_json=NULL, updated_at=?, active_attempt_id=NULL, last_reclaimed_at=?, last_reclaimed_reason=? \
              WHERE id=? AND status='running' AND updated_at < ?",
             table
         ))

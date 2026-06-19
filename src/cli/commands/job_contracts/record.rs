@@ -143,6 +143,12 @@ impl From<SharedJobRecord> for JobStatusResponse {
             value.result_json.as_ref(),
         )
         .cloned();
+        let active = JobStatus::from_str(&value.status).is_active();
+        let result_json = if active {
+            metrics.clone()
+        } else {
+            value.result_json
+        };
         Self {
             id: value.id,
             status: value.status,
@@ -161,7 +167,7 @@ impl From<SharedJobRecord> for JobStatusResponse {
             collection,
             source,
             progress_json: value.progress_json,
-            result_json: value.result_json,
+            result_json,
             config_json: value.config_json,
         }
     }
@@ -173,10 +179,17 @@ fn metrics_alias_for_status<'a>(
     result_json: Option<&'a serde_json::Value>,
 ) -> Option<&'a serde_json::Value> {
     if JobStatus::from_str(status).is_active() {
-        progress_json.or(result_json)
+        usable_progress_json(progress_json).or(result_json)
     } else {
         result_json
     }
+}
+
+fn usable_progress_json(value: Option<&serde_json::Value>) -> Option<&serde_json::Value> {
+    value.filter(|value| {
+        !(value.get("degraded").and_then(serde_json::Value::as_bool) == Some(true)
+            && value.get("field").and_then(serde_json::Value::as_str) == Some("progress_json"))
+    })
 }
 
 impl From<SharedJobRecord> for JobSummaryEntry {

@@ -27,7 +27,7 @@ env:
   CARGO_TERM_COLOR: always
   RUSTC_WRAPPER: ""
   AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
-  AURORA_REF: ${{ vars.AURORA_REF || 'main' }}
+  AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
 jobs:
   mcp-transport-modes:
@@ -158,13 +158,28 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Run Android unit tests and lint
-        run: apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:lintDebug --no-daemon --stacktrace
+      - name: Run Android unit tests, lint, and APK builds
+        run: >
+          apps/android/gradlew -p apps/android
+          :app:testDebugUnitTest
+          :app:lintDebug
+          :app:copyDebugApkToRepoBin
+          :app:copyReleaseApkToRepoBin
+          --no-daemon --stacktrace
 
-      - name: Build Android debug APK artifact
+      - name: Verify Android APK artifacts
         run: |
-          apps/android/gradlew -p apps/android :app:copyDebugApkToRepoBin --no-daemon --stacktrace
           test -s bin/axon-android-debug.apk
+          test -s bin/axon-android-release.apk
+
+      - name: Upload Android APK artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: axon-android-apks
+          path: |
+            bin/axon-android-debug.apk
+            bin/axon-android-release.apk
+          if-no-files-found: error
 
   no-mod-rs:
     name: no-mod-rs
@@ -1401,6 +1416,7 @@ jobs:
       - clippy
       - test
       - web-panel
+      - android
       - palette-tauri
       - security
       - release

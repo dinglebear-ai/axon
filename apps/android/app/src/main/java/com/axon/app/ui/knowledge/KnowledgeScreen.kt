@@ -187,8 +187,8 @@ private fun KnowledgeMenuRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(if (selected) colors.tint(colors.accentPrimary, 4, colors.pageBg) else colors.pageBg.copy(alpha = 0f), shape)
-            .border(1.dp, if (selected) colors.borderStrong.copy(alpha = 0.22f) else colors.borderDefault.copy(alpha = 0.0f), shape)
+            .background(if (selected) colors.tint(colors.accentPrimary, 4, colors.pageBg) else colors.control.copy(alpha = 0.12f), shape)
+            .border(1.dp, if (selected) colors.borderStrong.copy(alpha = 0.22f) else colors.borderDefault.copy(alpha = 0.08f), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
