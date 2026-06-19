@@ -93,16 +93,16 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 20.dp)
-                .padding(bottom = 20.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp)
+                .padding(bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .widthIn(max = 420.dp)
+                    .fillMaxWidth()
+                    .widthIn(max = 460.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(AxonTheme.colors.panelMedium.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
                     .border(1.dp, AxonTheme.colors.borderDefault.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
@@ -139,8 +139,8 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     onRefreshCollections = vm::refreshCollections,
                     connection = connection,
                     modifier = Modifier
-                        .fillMaxWidth(0.96f)
-                        .widthIn(max = 420.dp),
+                        .fillMaxWidth()
+                        .widthIn(max = 460.dp),
                 )
                 SettingsTab.Env -> ConfigGroupsTab(
                     path = files.envPath,
@@ -154,8 +154,8 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     searchQuery = settingsSearch,
                     onSearchQueryChange = { settingsSearch = it },
                     modifier = Modifier
-                        .fillMaxWidth(0.96f)
-                        .widthIn(max = 560.dp),
+                        .fillMaxWidth()
+                        .widthIn(max = 600.dp),
                 )
                 SettingsTab.Config -> ConfigGroupsTab(
                     path = files.configPath,
@@ -169,8 +169,8 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     searchQuery = settingsSearch,
                     onSearchQueryChange = { settingsSearch = it },
                     modifier = Modifier
-                        .fillMaxWidth(0.96f)
-                        .widthIn(max = 560.dp),
+                        .fillMaxWidth()
+                        .widthIn(max = 600.dp),
                 )
             }
         }

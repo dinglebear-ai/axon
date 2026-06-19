@@ -82,9 +82,11 @@ fun KnowledgeScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 10.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (showChrome) {
             val unavailable = listOf(suggest, sources, domains, stats).count { it is Resource.Error }
@@ -126,8 +128,8 @@ private fun KnowledgeMenu(
     Column(
         verticalArrangement = Arrangement.spacedBy(7.dp),
         modifier = Modifier
-            .fillMaxWidth(0.88f)
-            .widthIn(max = 360.dp),
+            .fillMaxWidth()
+            .widthIn(max = 440.dp),
     ) {
         KnowledgeMenuRow(
             icon = Icons.Rounded.AutoAwesome,
@@ -166,8 +168,8 @@ private fun KnowledgeNotice(message: String) {
         message = message,
         tone = NoticeTone.Warn,
         modifier = Modifier
-            .fillMaxWidth(0.88f)
-            .widthIn(max = 360.dp),
+            .fillMaxWidth()
+            .widthIn(max = 440.dp),
     )
 }
 
