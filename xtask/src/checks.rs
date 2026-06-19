@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
+pub mod android_api_contract;
 pub mod broken_symlinks;
 pub mod claude_symlinks;
 pub mod env_staged;

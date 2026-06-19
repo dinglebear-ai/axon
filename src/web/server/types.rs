@@ -86,7 +86,7 @@ pub(super) struct OpsResponse {
     pub(super) mcp_http_url: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct PanelCollectionsResponse {
     pub(super) collections: Vec<String>,
 }

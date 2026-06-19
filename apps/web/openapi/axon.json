@@ -602,6 +602,36 @@
         ]
       }
     },
+    "/v1/collections": {
+      "get": {
+        "tags": [
+          "discovery"
+        ],
+        "operationId": "collections_openapi_marker",
+        "responses": {
+          "200": {
+            "description": "Available Qdrant collection names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelCollectionsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Qdrant collections request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/crawl": {
       "get": {
         "tags": [
@@ -5608,6 +5638,20 @@
           "updated_at": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "PanelCollectionsResponse": {
+        "type": "object",
+        "required": [
+          "collections"
+        ],
+        "properties": {
+          "collections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

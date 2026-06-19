@@ -124,6 +124,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["collections_openapi_marker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/crawl": {
         parameters: {
             query?: never;
@@ -1061,6 +1077,9 @@ export interface components {
             /** Format: int64 */
             updated_at: number;
         };
+        PanelCollectionsResponse: {
+            collections: string[];
+        };
         PreparedSessionDoc: {
             extra?: unknown;
             session_date?: string | null;
@@ -1746,6 +1765,35 @@ export interface operations {
             };
             /** @description Chat request exceeds limits */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    collections_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Available Qdrant collection names */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PanelCollectionsResponse"];
+                };
+            };
+            /** @description Qdrant collections request failed */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
