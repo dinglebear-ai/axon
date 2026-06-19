@@ -13,6 +13,56 @@
     "version": "5.16.2"
   },
   "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "Axon process is alive",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "description": "Qdrant and TEI dependencies are ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "One or more dependencies are not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/artifacts": {
       "get": {
         "tags": [
@@ -619,6 +669,26 @@
               }
             }
           },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "502": {
             "description": "Qdrant collections request failed",
             "content": {
@@ -629,7 +699,22 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
       }
     },
     "/v1/crawl": {
@@ -5705,6 +5790,25 @@
           }
         },
         "additionalProperties": false
+      },
+      "ReadinessBody": {
+        "type": "object",
+        "required": [
+          "ok",
+          "qdrant",
+          "tei"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "qdrant": {
+            "type": "string"
+          },
+          "tei": {
+            "type": "string"
+          }
+        }
       },
       "RenderMode": {
         "type": "string",

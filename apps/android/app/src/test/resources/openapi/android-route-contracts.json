@@ -1,0 +1,337 @@
+[
+  {
+    "method": "GET",
+    "path": "/healthz",
+    "requiresAuth": false
+  },
+  {
+    "method": "GET",
+    "path": "/readyz",
+    "requiresAuth": false
+  },
+  {
+    "method": "GET",
+    "path": "/v1/capabilities",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/sources",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/collections",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/domains",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/stats",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/status",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/doctor",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/query",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/retrieve",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/map",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/artifacts",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/endpoints",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/brand",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/diff",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/screenshot",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ask",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ask/stream",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/chat",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/chat/stream",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/evaluate",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/suggest",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/scrape",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/summarize",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/summarize/stream",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/search",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/research",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/research/stream",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memory",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/mobile/sessions",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/mobile/sessions/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/mobile/sessions/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/mobile/sessions/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/crawl",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/crawl",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/crawl/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/crawl/{id}/cancel",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/crawl/cleanup",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/crawl",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/crawl/recover",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/embed",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/embed/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed/{id}/cancel",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed/cleanup",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/embed",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed/recover",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/extract",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/extract",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/extract/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/extract/{id}/cancel",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/extract/cleanup",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/extract",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/extract/recover",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ingest",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ingest/sessions/prepared",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/ingest",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/ingest/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ingest/{id}/cancel",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ingest/cleanup",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/ingest",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ingest/recover",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/dedupe",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/watch",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/watch",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/watch/{id}/run",
+    "requiresAuth": true
+  }
+]

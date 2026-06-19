@@ -20,6 +20,7 @@ const FOCUS_DELAY_MS = 30;
 
 export function focusInput(select = false) {
   window.setTimeout(() => {
+    if (typeof document === "undefined") return;
     const input = document.querySelector<HTMLInputElement>(".command-input");
     input?.focus();
     if (select) input?.select();

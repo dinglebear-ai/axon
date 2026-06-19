@@ -25,6 +25,7 @@ Status meanings:
 | `GET /readyz` | readiness | none | Panel/server readiness, not CLI/MCP parity. |
 | `GET /api-docs/openapi.json` | OpenAPI contract | none | Source for generated TypeScript client types. |
 | `GET /v1/capabilities` | client/server capability metadata | axon:read or axon:write | Advertises `supported_routes` for direct REST. |
+| `GET /v1/collections` | Qdrant collection names | axon:read or axon:write | Client/server route for collection pickers and Android settings. |
 | `POST /v1/actions` | removed legacy action envelope | none | Always returns 404 with direct REST migration text. |
 | `/v1/mobile/sessions*` | Android mobile chat session sync | axon:read or axon:write | Client/server-only surface for authenticated mobile session persistence. |
 | `/api/panel/*` | web panel operations | panel token / local policy | Panel-only, excluded from parity accounting unless promoted to `/v1`. |
@@ -40,6 +41,7 @@ Status meanings:
 | `dedupe` | `services::system::dedupe` | no dedicated action | `POST /v1/dedupe` = Implemented | Mutating vector maintenance command; migrate remains CLI-only. |
 | `doctor` | `services::system::doctor` | `doctor` | `GET /v1/doctor` = Implemented | Returns diagnostics to authenticated callers; boolean probes use healthz/readyz. |
 | `domains` | `services::system::{domains,detailed_domains}` | `domains` | `GET /v1/domains` = Implemented | HTTP exposes the domain facets service path. |
+| `collections` | `web::server::handlers::config::collections` | no dedicated action | `GET /v1/collections` = Implemented | Client/server route for listing Qdrant collections; panel flows still use `/api/panel/collections`. |
 | `brand` | `services::brand::brand` | `brand` | `POST /v1/brand` = Implemented | Brand-identity extraction is available through CLI, MCP, and direct REST. |
 | `diff` | `services::diff::diff` | `diff` | `POST /v1/diff` = Implemented | Two-URL compare is available through CLI, MCP, and direct REST. |
 | `endpoints` | `services::endpoints::discover` | `endpoints` | `POST /v1/endpoints` = Implemented | API-endpoint discovery. `--probe-rpc`/`--probe-rpc-subdomains` remain CLI-only (no MCP/REST toggle); see `docs/reference/endpoints.md`. |
@@ -87,6 +89,7 @@ GET /api-docs/openapi.json
 GET /docs
 GET /v1/capabilities
 GET /v1/sources
+GET /v1/collections
 GET /v1/domains
 GET /v1/stats
 GET /v1/status
