@@ -158,13 +158,19 @@ pub async fn panel_collections(
             .into_response();
     }
 
-    qdrant_collections_response(&cfg).await
+    match qdrant_collections_response(&cfg).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => error.into_response(),
+    }
 }
 
 pub async fn collections(
     State((_state, cfg)): State<(AppState, Arc<Config>)>,
 ) -> impl IntoResponse {
-    qdrant_collections_response(&cfg).await
+    match qdrant_collections_response(&cfg).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => error.into_response(),
+    }
 }
 
 #[utoipa::path(
@@ -179,7 +185,7 @@ pub async fn collections(
 #[allow(dead_code)]
 pub async fn collections_openapi_marker() {}
 
-async fn qdrant_collections_response(cfg: &Config) -> axum::response::Response {
+async fn qdrant_collections_response(cfg: &Config) -> Result<PanelCollectionsResponse, HttpError> {
     let url = format!("{}/collections", cfg.qdrant_url.trim_end_matches('/'));
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
@@ -187,11 +193,11 @@ async fn qdrant_collections_response(cfg: &Config) -> axum::response::Response {
     {
         Ok(client) => client,
         Err(err) => {
-            return (
+            return Err(HttpError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
                 format!("failed to build qdrant metadata client: {err}"),
-            )
-                .into_response();
+            ));
         }
     };
     match client.get(url).send().await {
@@ -207,24 +213,24 @@ async fn qdrant_collections_response(cfg: &Config) -> axum::response::Response {
                     .map(ToString::to_string)
                     .collect::<Vec<_>>();
                 collections.sort();
-                Json(PanelCollectionsResponse { collections }).into_response()
+                Ok(PanelCollectionsResponse { collections })
             }
-            Err(err) => (
+            Err(err) => Err(HttpError::new(
                 StatusCode::BAD_GATEWAY,
+                "bad_gateway",
                 format!("qdrant returned invalid collections response: {err}"),
-            )
-                .into_response(),
+            )),
         },
-        Ok(resp) => (
+        Ok(resp) => Err(HttpError::new(
             StatusCode::BAD_GATEWAY,
+            "bad_gateway",
             format!("qdrant collections request failed: {}", resp.status()),
-        )
-            .into_response(),
-        Err(err) => (
+        )),
+        Err(err) => Err(HttpError::new(
             StatusCode::BAD_GATEWAY,
+            "bad_gateway",
             format!("qdrant collections request failed: {err}"),
-        )
-            .into_response(),
+        )),
     }
 }
 

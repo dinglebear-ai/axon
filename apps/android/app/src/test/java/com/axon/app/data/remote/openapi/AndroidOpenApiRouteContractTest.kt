@@ -85,13 +85,23 @@ class AndroidOpenApiRouteContractTest {
     @Test
     fun healthRoutesAreTheOnlyPublicNonDocsRuntimeRoutesInThisContract() {
         val paths = pathsObject()
+        val allowedPublicRoutes = setOf(
+            "GET /healthz",
+            "GET /readyz",
+            "GET /api-docs/openapi.json",
+            "GET /docs",
+        )
         val publicRuntimeRoutes = paths.entries
-            .filter { (path, _) -> path == "/healthz" || path == "/readyz" }
-            .filter { (_, item) -> item.jsonObject.values.any { operation -> operation.jsonObject["security"] == null } }
-            .map { it.key }
+            .flatMap { (path, item) ->
+                item.jsonObject.entries
+                    .filter { (method, _) -> method in openApiMethods }
+                    .filter { (_, operation) -> operation.jsonObject["security"] == null }
+                    .map { (method, _) -> "${method.uppercase()} $path" }
+            }
+            .filterNot { it in allowedPublicRoutes }
             .sorted()
 
-        assertEquals(listOf("/healthz", "/readyz"), publicRuntimeRoutes)
+        assertEquals(emptyList<String>(), publicRuntimeRoutes)
     }
 
     private fun pathsObject() = json.parseToJsonElement(OpenApiTestPaths.openApiJson.readText())
@@ -104,4 +114,8 @@ class AndroidOpenApiRouteContractTest {
         val path: String,
         val requiresAuth: Boolean,
     )
+
+    private companion object {
+        val openApiMethods = setOf("get", "put", "post", "delete", "options", "head", "patch", "trace")
+    }
 }

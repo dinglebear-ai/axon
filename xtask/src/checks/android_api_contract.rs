@@ -15,7 +15,7 @@ const JOB_KINDS: &[&str] = &["crawl", "embed", "extract", "ingest"];
 pub fn check(root: &Path) -> Result<()> {
     let openapi_routes = openapi_routes(root)?;
     let android_routes = android_routes(root)?;
-    check_routes(&openapi_routes.paths, &android_routes)?;
+    check_routes(&openapi_routes.operations, &android_routes)?;
     check_route_security(&openapi_routes.operations, &android_routes)
 }
 
@@ -24,8 +24,13 @@ pub fn check_against_openapi(root: &Path) -> Result<()> {
 }
 
 struct OpenApiRoutes {
-    paths: BTreeSet<String>,
-    operations: BTreeMap<String, Vec<Value>>,
+    operations: BTreeMap<Route, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Route {
+    method: String,
+    path: String,
 }
 
 fn openapi_routes(root: &Path) -> Result<OpenApiRoutes> {
@@ -42,26 +47,24 @@ fn openapi_routes_from_value(parsed: &Value) -> Result<OpenApiRoutes> {
         .get("paths")
         .and_then(Value::as_object)
         .context("apps/web/openapi/axon.json is missing object field `paths`")?;
-    let mut route_paths = BTreeSet::new();
     let mut operations = BTreeMap::new();
 
     for (path, item) in paths {
-        route_paths.insert(path.clone());
         let item = item
             .as_object()
             .with_context(|| format!("OpenAPI path item for {path} is not an object"))?;
-        let route_operations = item
-            .iter()
-            .filter(|(method, _)| is_openapi_method(method))
-            .map(|(_, operation)| operation.clone())
-            .collect::<Vec<_>>();
-        operations.insert(path.clone(), route_operations);
+        for (method, operation) in item.iter().filter(|(method, _)| is_openapi_method(method)) {
+            operations.insert(
+                Route {
+                    method: method.to_uppercase(),
+                    path: path.clone(),
+                },
+                operation.clone(),
+            );
+        }
     }
 
-    Ok(OpenApiRoutes {
-        paths: route_paths,
-        operations,
-    })
+    Ok(OpenApiRoutes { operations })
 }
 
 fn is_openapi_method(method: &str) -> bool {
@@ -71,7 +74,7 @@ fn is_openapi_method(method: &str) -> bool {
     )
 }
 
-fn android_routes(root: &Path) -> Result<BTreeSet<String>> {
+fn android_routes(root: &Path) -> Result<BTreeSet<Route>> {
     let route_pattern = Regex::new(r#"/v1[^"'\s]*"#).context("valid Android route regex")?;
     let mut routes = BTreeSet::new();
 
@@ -80,13 +83,86 @@ fn android_routes(root: &Path) -> Result<BTreeSet<String>> {
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
         for found in route_pattern.find_iter(&content) {
-            for route in normalize_android_route(found.as_str()) {
-                routes.insert(route);
+            let method = android_route_method(relative, &content, found.start(), found.end())?;
+            for path in normalize_android_route(found.as_str()) {
+                routes.insert(Route {
+                    method: method.clone(),
+                    path,
+                });
             }
         }
     }
 
     Ok(routes)
+}
+
+fn android_route_method(relative: &str, content: &str, start: usize, end: usize) -> Result<String> {
+    if relative.ends_with("OperationMode.kt") {
+        return Ok("POST".to_string());
+    }
+
+    let context_start = floor_char_boundary(content, start.saturating_sub(180));
+    let context_end = ceil_char_boundary(content, (end + 180).min(content.len()));
+    let context = &content[context_start..context_end];
+    let lower = context.to_lowercase();
+    let route_offset = start - context_start;
+
+    let candidates = [
+        (
+            "DELETE",
+            vec!["delete<", ".delete(", " delete ", "delete /v1"],
+        ),
+        ("PUT", vec!["put<", ".put(", " put ", "put /v1"]),
+        (
+            "POST",
+            vec![
+                "streamcompletion(",
+                "postwith(",
+                "post<",
+                "post(",
+                ".post(",
+                " post ",
+                "post /v1",
+            ],
+        ),
+        (
+            "GET",
+            vec!["gettext(", "get<", "get(", ".get(", " get ", "get /v1"],
+        ),
+    ];
+
+    candidates
+        .iter()
+        .filter_map(|(method, needles)| {
+            needles
+                .iter()
+                .flat_map(|needle| lower.match_indices(needle).map(|(index, _)| index))
+                .map(|index| index.abs_diff(route_offset))
+                .min()
+                .map(|distance| (distance, *method))
+        })
+        .min_by_key(|(distance, _)| *distance)
+        .map(|(_, method)| method.to_string())
+        .with_context(|| {
+            format!(
+                "could not infer Android HTTP method for {}",
+                &content[start..end]
+            )
+        })
+}
+
+fn floor_char_boundary(content: &str, mut index: usize) -> usize {
+    while index > 0 && !content.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
+}
+
+fn ceil_char_boundary(content: &str, mut index: usize) -> usize {
+    while index < content.len() && !content.is_char_boundary(index) {
+        index += 1;
+    }
+    index
 }
 
 fn normalize_android_route(raw: &str) -> Vec<String> {
@@ -113,10 +189,13 @@ fn normalize_android_route(raw: &str) -> Vec<String> {
     vec![path]
 }
 
-fn check_routes(openapi_paths: &BTreeSet<String>, android_routes: &BTreeSet<String>) -> Result<()> {
+fn check_routes(
+    openapi_operations: &BTreeMap<Route, Value>,
+    android_routes: &BTreeSet<Route>,
+) -> Result<()> {
     let missing = android_routes
         .iter()
-        .filter(|route| !openapi_paths.contains(*route))
+        .filter(|route| !openapi_operations.contains_key(*route))
         .cloned()
         .collect::<Vec<_>>();
 
@@ -127,28 +206,22 @@ fn check_routes(openapi_paths: &BTreeSet<String>, android_routes: &BTreeSet<Stri
 
     eprintln!("ERROR: Android calls /v1 route(s) missing from OpenAPI:");
     for route in &missing {
-        eprintln!("  {route}");
+        eprintln!("  {} {}", route.method, route.path);
     }
     bail!("Android API route contract drift");
 }
 
 fn check_route_security(
-    openapi_operations: &BTreeMap<String, Vec<Value>>,
-    android_routes: &BTreeSet<String>,
+    openapi_operations: &BTreeMap<Route, Value>,
+    android_routes: &BTreeSet<Route>,
 ) -> Result<()> {
     let missing_security = android_routes
         .iter()
-        .filter(|route| route.starts_with("/v1/"))
-        .filter(|route| route.as_str() != "/healthz" && route.as_str() != "/readyz")
+        .filter(|route| route.path.starts_with("/v1/"))
         .filter(|route| {
             openapi_operations
                 .get(*route)
-                .map(|operations| {
-                    operations.is_empty()
-                        || operations
-                            .iter()
-                            .any(|operation| operation.get("security").is_none())
-                })
+                .map(|operation| operation.get("security").is_none())
                 .unwrap_or(true)
         })
         .cloned()
@@ -161,7 +234,7 @@ fn check_route_security(
 
     eprintln!("ERROR: Android calls /v1 route(s) missing OpenAPI security metadata:");
     for route in &missing_security {
-        eprintln!("  {route}");
+        eprintln!("  {} {}", route.method, route.path);
     }
     bail!("Android API security contract drift");
 }
@@ -200,9 +273,34 @@ mod tests {
 
     #[test]
     fn collections_route_is_not_public() {
-        let openapi_paths = BTreeSet::from(["/v1/collections".to_string()]);
-        let android_routes = BTreeSet::from(["/v1/collections".to_string()]);
-        assert!(check_routes(&openapi_paths, &android_routes).is_ok());
+        let openapi_operations = BTreeMap::from([(
+            Route {
+                method: "GET".to_string(),
+                path: "/v1/collections".to_string(),
+            },
+            serde_json::json!({ "security": [{ "bearerAuth": [] }] }),
+        )]);
+        let android_routes = BTreeSet::from([Route {
+            method: "GET".to_string(),
+            path: "/v1/collections".to_string(),
+        }]);
+        assert!(check_routes(&openapi_operations, &android_routes).is_ok());
+    }
+
+    #[test]
+    fn route_check_requires_matching_method() {
+        let openapi_operations = BTreeMap::from([(
+            Route {
+                method: "GET".to_string(),
+                path: "/v1/collections".to_string(),
+            },
+            serde_json::json!({ "security": [{ "bearerAuth": [] }] }),
+        )]);
+        let android_routes = BTreeSet::from([Route {
+            method: "POST".to_string(),
+            path: "/v1/collections".to_string(),
+        }]);
+        assert!(check_routes(&openapi_operations, &android_routes).is_err());
     }
 
     #[test]
@@ -223,7 +321,10 @@ mod tests {
                 }
             }
         });
-        let android_routes = BTreeSet::from(["/v1/collections".to_string()]);
+        let android_routes = BTreeSet::from([Route {
+            method: "GET".to_string(),
+            path: "/v1/collections".to_string(),
+        }]);
 
         let secure_routes = openapi_routes_from_value(&secure).expect("secure routes");
         assert!(check_route_security(&secure_routes.operations, &android_routes).is_ok());

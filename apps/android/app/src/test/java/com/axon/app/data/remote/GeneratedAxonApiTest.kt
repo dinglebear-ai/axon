@@ -82,23 +82,30 @@ class GeneratedAxonApiTest {
 
     @Test
     fun generatedErrorsAreResultFailuresAndRedactTokens() = runTest {
-        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"nope","token":"secret-token"}"""))
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(401)
+                .setBody("""{"error":"nope","token":"secret-token","access_token":"oauth-access-token","Authorization":"Bearer secret-token"}""")
+        )
         val api = api(AuthConfig.Bearer("secret-token"))
 
         val result = api.collections()
 
         assertTrue(result.isFailure)
-        val message = result.exceptionOrNull()?.message.orEmpty()
-        assertTrue(message.contains("HTTP 401"))
-        assertFalse(message.contains("secret-token"))
-        assertFalse(message.contains("Authorization"))
-        assertFalse(message.contains("x-api-key"))
+        val error = result.exceptionOrNull()
+        val rendered = listOfNotNull(error?.message, error?.toString(), error?.cause?.toString()).joinToString("\n")
+        assertTrue(rendered.contains("HTTP 401"))
+        assertFalse(rendered.contains("secret-token"))
+        assertFalse(rendered.contains("oauth-access-token"))
+        assertFalse(rendered.contains("Bearer secret"))
+        assertFalse(rendered.contains("Authorization"))
+        assertFalse(rendered.contains("x-api-key"))
+        assertEquals(null, error?.cause)
     }
 
     private fun api(auth: AuthConfig): GeneratedAxonApi =
         GeneratedAxonApi(
-            baseUrlProvider = { server.url("/").toString().trimEnd('/') },
-            authProvider = { server.url("/").toString().trimEnd('/') to auth },
+            snapshotProvider = { ClientAuthSnapshot(server.url("/").toString().trimEnd('/'), auth) },
             clients = AxonHttpClients(),
         )
 }

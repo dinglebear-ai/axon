@@ -18,8 +18,8 @@ android {
         applicationId = "com.axon.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.3.3"
+        versionCode = 8
+        versionName = "1.3.4"
         manifestPlaceholders["appAuthRedirectScheme"] = "com.axon.app"
     }
 
@@ -108,12 +108,18 @@ tasks.named("openApiGenerate") {
             .file("src/main/kotlin/org/openapitools/client/infrastructure/ApiClient.kt")
             .asFile
         if (apiClient.isFile) {
-            apiClient.writeText(
-                apiClient.readText().replace(
-                    "java.nio.file.Files.createTempFile(prefix, suffix).toFile()",
-                    "java.io.File.createTempFile(prefix, suffix)",
-                )
-            )
+            val before = apiClient.readText()
+            val target = "java.nio.file.Files.createTempFile(prefix, suffix).toFile()"
+            require(before.contains(target)) {
+                "Generated ApiClient.kt no longer contains the Android-incompatible temp-file call; review the OpenAPI generator output before removing this patch."
+            }
+            val after = before.replace(target, "java.io.File.createTempFile(prefix, suffix)")
+            require(!after.contains(target) && after.contains("java.io.File.createTempFile(prefix, suffix)")) {
+                "Generated ApiClient.kt temp-file patch did not apply cleanly."
+            }
+            apiClient.writeText(after)
+        } else {
+            error("Generated ApiClient.kt not found at ${apiClient.absolutePath}; OpenAPI generator layout changed.")
         }
     }
 }
