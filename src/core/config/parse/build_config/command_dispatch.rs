@@ -76,6 +76,8 @@ pub(super) struct DispatchOutput {
     pub sources_domain: Option<String>,
     pub sources_domain_all: bool,
     pub domains_domain: Option<String>,
+    pub purge_prefix: bool,
+    pub purge_dry_run: bool,
     /// Binary acquisition method passed in by install.sh via `axon setup --method pull|build`
     pub setup_method: Option<String>,
 }
@@ -130,6 +132,8 @@ impl DispatchOutput {
             sources_domain: None,
             sources_domain_all: false,
             domains_domain: None,
+            purge_prefix: false,
+            purge_dry_run: false,
             setup_method: None,
         }
     }
@@ -274,6 +278,12 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Stats => out.command = CommandKind::Stats,
         CliCommand::Status => out.command = CommandKind::Status,
         CliCommand::Dedupe => out.command = CommandKind::Dedupe,
+        CliCommand::Purge(args) => {
+            out.command = CommandKind::Purge;
+            out.positional = vec![args.url];
+            out.purge_prefix = args.prefix;
+            out.purge_dry_run = args.dry_run;
+        }
         CliCommand::Refresh(args) => {
             out.command = CommandKind::Refresh;
             out.positional = args.filter.into_iter().collect();

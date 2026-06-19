@@ -113,6 +113,16 @@ pre-push:
       run: >
         if [ ! -d apps/web/node_modules ]; then npm ci --prefix apps/web; fi &&
         npm --prefix apps/web run build
+    2-openapi-drift:
+      # Fail locally when any tracked OpenAPI artifact drifts from the Rust
+      # schema source: apps/web/openapi/axon.json, the web generated TS client,
+      # or the Palette generated TS declarations.
+      run: >
+        if [ -x "./target/debug/xtask" ]; then
+          ./target/debug/xtask check-openapi-drift;
+        else
+          cargo xtask check-openapi-drift;
+        fi
     android:
       glob: "apps/android/**/*"
       run: >

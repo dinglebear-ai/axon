@@ -28,6 +28,7 @@ fn top_level_help_commands_come_from_clap_surface() {
         "stats",
         "status",
         "dedupe",
+        "purge",
         "ingest",
         "memory",
         "sessions",

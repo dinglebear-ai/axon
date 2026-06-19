@@ -8,7 +8,18 @@ use reqwest::StatusCode;
 use std::collections::HashSet;
 
 use super::super::utils::{qdrant_collection_endpoint, qdrant_retry_delay};
-use super::scroll::scroll_url_set;
+use super::scroll::{qdrant_scroll_pages_selective, scroll_url_set};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QdrantDeleteByUrlResult {
+    pub target: String,
+    pub prefix: bool,
+    pub dry_run: bool,
+    pub matched_points: usize,
+    pub deleted_points: usize,
+    pub matched_url_count: usize,
+    pub sample_urls: Vec<String>,
+}
 
 /// Delete with retry on 429/5xx (up to 4 attempts, 250 ms exponential backoff).
 async fn qdrant_delete_with_retry(
@@ -76,6 +87,112 @@ pub(crate) async fn qdrant_delete_by_url_filter(cfg: &Config, url: &str) -> Resu
     )
     .await?;
     Ok(())
+}
+
+/// Delete indexed points whose `url` or `seed_url` matches `target`.
+///
+/// With `prefix=true`, `url`/`seed_url` also match descendants below the target
+/// prefix, using URL path boundaries so `https://x/docs` does not match
+/// `https://x/docs-old`.
+pub async fn qdrant_delete_by_url(
+    cfg: &Config,
+    target: &str,
+    prefix: bool,
+    dry_run: bool,
+) -> Result<QdrantDeleteByUrlResult> {
+    let target = target.trim();
+    if target.is_empty() {
+        return Err(anyhow!("purge target URL cannot be empty"));
+    }
+
+    let mut ids = Vec::new();
+    let mut seen_ids = HashSet::new();
+    let mut urls = HashSet::new();
+    qdrant_scroll_pages_selective(
+        cfg,
+        serde_json::json!({"include": ["url", "seed_url"]}),
+        |points| {
+            for point in points {
+                let payload = point.get("payload").unwrap_or(&serde_json::Value::Null);
+                let url = payload.get("url").and_then(serde_json::Value::as_str);
+                let seed_url = payload.get("seed_url").and_then(serde_json::Value::as_str);
+                if !point_matches_url_target(url, seed_url, target, prefix) {
+                    continue;
+                }
+
+                if let Some(url) = url.filter(|value| !value.is_empty()) {
+                    urls.insert(url.to_string());
+                }
+
+                if let Some(id) = point_id_as_string(point)
+                    && seen_ids.insert(id.clone())
+                {
+                    ids.push(id);
+                }
+            }
+            true
+        },
+    )
+    .await?;
+
+    let deleted_points = if dry_run {
+        0
+    } else {
+        qdrant_delete_points(cfg, &ids).await?
+    };
+
+    let mut sample_urls: Vec<String> = urls.iter().cloned().collect();
+    sample_urls.sort();
+    sample_urls.truncate(20);
+
+    Ok(QdrantDeleteByUrlResult {
+        target: target.to_string(),
+        prefix,
+        dry_run,
+        matched_points: ids.len(),
+        deleted_points,
+        matched_url_count: urls.len(),
+        sample_urls,
+    })
+}
+
+fn point_id_as_string(point: &serde_json::Value) -> Option<String> {
+    let id = point.get("id")?;
+    if let Some(s) = id.as_str() {
+        return Some(s.to_string());
+    }
+    if id.is_number() {
+        return Some(id.to_string());
+    }
+    None
+}
+
+pub(crate) fn point_matches_url_target(
+    url: Option<&str>,
+    seed_url: Option<&str>,
+    target: &str,
+    prefix: bool,
+) -> bool {
+    url.is_some_and(|value| url_matches_target(value, target, prefix))
+        || seed_url.is_some_and(|value| url_matches_target(value, target, prefix))
+}
+
+fn url_matches_target(value: &str, target: &str, prefix: bool) -> bool {
+    if value == target {
+        return true;
+    }
+    if !prefix {
+        return false;
+    }
+    if value.starts_with(target) && target.ends_with('/') {
+        return true;
+    }
+    value.strip_prefix(target).is_some_and(|rest| {
+        matches!(
+            rest.as_bytes().first(),
+            Some(b'/') | Some(b'?') | Some(b'#')
+        )
+    })
 }
 
 /// Delete stale tail chunks for `url` — points with `chunk_index >= new_chunk_count`.
