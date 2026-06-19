@@ -201,3 +201,47 @@ fn stale_tail_filter_count_0_would_delete_all_chunks() {
         "gte=0 deletes all chunks including chunk_index=0"
     );
 }
+
+#[test]
+fn url_target_match_exact_url_or_seed_url() {
+    assert!(point_matches_url_target(
+        Some("https://docs.example.com/page"),
+        None,
+        "https://docs.example.com/page",
+        false
+    ));
+    assert!(point_matches_url_target(
+        Some("https://docs.example.com/page"),
+        Some("https://docs.example.com/"),
+        "https://docs.example.com/",
+        false
+    ));
+    assert!(!point_matches_url_target(
+        Some("https://docs.example.com/page"),
+        None,
+        "https://docs.example.com/",
+        false
+    ));
+}
+
+#[test]
+fn url_target_match_prefix_respects_path_boundaries() {
+    assert!(point_matches_url_target(
+        Some("https://docs.example.com/guide/install"),
+        None,
+        "https://docs.example.com/guide",
+        true
+    ));
+    assert!(point_matches_url_target(
+        Some("https://docs.example.com/guide?x=1"),
+        None,
+        "https://docs.example.com/guide",
+        true
+    ));
+    assert!(!point_matches_url_target(
+        Some("https://docs.example.com/guide-old"),
+        None,
+        "https://docs.example.com/guide",
+        true
+    ));
+}
