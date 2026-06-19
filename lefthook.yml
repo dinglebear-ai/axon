@@ -118,11 +118,7 @@ pre-push:
       # schema source: apps/web/openapi/axon.json, the web generated TS client,
       # or the Palette generated TS declarations.
       run: >
-        if [ -x "./target/debug/xtask" ]; then
-          ./target/debug/xtask check-openapi-drift;
-        else
-          cargo xtask check-openapi-drift;
-        fi
+        cargo xtask check-openapi-drift
     android:
       glob: "apps/android/**/*"
       run: >
