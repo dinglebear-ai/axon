@@ -51,6 +51,7 @@ fn docs_only_changes_skip_expensive_runtime_categories() {
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
     assert_eq!(out["docker"], "false");
+    assert_eq!(out["release"], "false");
     assert_eq!(out["codeql_rust"], "false");
 }
 

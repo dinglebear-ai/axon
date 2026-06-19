@@ -73,7 +73,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         )
         or p in {"Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml", "Justfile"},
     )
-    release = rust or web or any_match(paths, lambda p: starts(p, "release/") or p in {"README.md", "CHANGELOG.md"})
+    release = rust or web or any_match(paths, lambda p: starts(p, "release/"))
     compose = any_match(
         paths,
         lambda p: starts(p, "config/", "scripts/")
