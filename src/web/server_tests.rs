@@ -143,6 +143,40 @@ fn route_to_test_path(path: &str) -> String {
         .replace("{path}", "missing.txt")
 }
 
+#[test]
+fn openapi_document_matches_openapi_route_inventory() {
+    let document = crate::web::server::openapi_document();
+    let documented = document
+        .paths
+        .paths
+        .iter()
+        .flat_map(|(path, item)| {
+            [
+                ("GET", item.get.as_ref()),
+                ("PUT", item.put.as_ref()),
+                ("POST", item.post.as_ref()),
+                ("DELETE", item.delete.as_ref()),
+                ("OPTIONS", item.options.as_ref()),
+                ("HEAD", item.head.as_ref()),
+                ("PATCH", item.patch.as_ref()),
+                ("TRACE", item.trace.as_ref()),
+            ]
+            .into_iter()
+            .filter_map(move |(method, operation)| {
+                operation.map(|_| (method.to_string(), path.as_str().to_string()))
+            })
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+
+    let expected = rest_route_inventory()
+        .iter()
+        .filter(|route| route.openapi)
+        .map(|route| (route.method.to_string(), route.path.to_string()))
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(expected, documented);
+}
+
 #[tokio::test]
 #[serial]
 async fn v1_actions_is_not_mounted_after_rest_cutover() {

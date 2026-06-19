@@ -181,15 +181,48 @@ fn ci_xtask_compiling_jobs_checkout_release_manifest() {
 }
 
 #[test]
-fn rest_api_parity_checkout_includes_generated_client_targets() {
+fn rest_api_parity_checkout_covers_openapi_drift_inputs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let job = workflow_job_block(workflow, "rest-api-parity");
+
+    assert!(
+        job.contains("cargo xtask check-openapi-drift"),
+        "rest-api-parity must run the generated OpenAPI drift guard"
+    );
+
     for path in ["apps/web", "apps/palette-tauri", "apps/android"] {
         assert!(
             sparse_checkout_covers(job, path),
-            "rest-api-parity runs OpenAPI drift generation and must checkout {path}"
+            "rest-api-parity runs check-openapi-drift and must checkout {path}"
         );
     }
+}
+
+#[test]
+fn ci_runs_android_generated_openapi_client_tests() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let job = workflow_job_block(workflow, "android-openapi-client");
+
+    assert!(
+        sparse_checkout_covers(job, "apps/android"),
+        "android OpenAPI client verification must checkout apps/android"
+    );
+    assert!(
+        sparse_checkout_covers(job, "apps/web/openapi"),
+        "android OpenAPI client verification must checkout the generated OpenAPI spec"
+    );
+    assert!(
+        job.contains(":app:verifyOpenApiGeneratedClient"),
+        "CI must run the Android generated OpenAPI client verification task"
+    );
+    assert!(
+        workflow.contains(
+            "AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}"
+        ) && job.contains("repository: ${{ env.AURORA_REPO }}")
+            && job.contains("ref: ${{ env.AURORA_REF }}")
+            && job.contains("AXON_AURORA_ANDROID_PATH"),
+        "android OpenAPI client verification must pin and provide the Aurora composite build path"
+    );
 }
 
 #[test]

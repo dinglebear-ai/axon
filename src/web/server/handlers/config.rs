@@ -21,7 +21,6 @@ use axum::{
     response::IntoResponse,
 };
 use std::sync::Arc;
-use std::time::Duration;
 
 pub async fn get_config(
     State((state, _)): State<(AppState, Arc<Config>)>,
@@ -158,13 +157,19 @@ pub async fn panel_collections(
             .into_response();
     }
 
-    qdrant_collections_response(&cfg).await
+    match collections_response(&cfg).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => error.into_response(),
+    }
 }
 
 pub async fn collections(
     State((_state, cfg)): State<(AppState, Arc<Config>)>,
 ) -> impl IntoResponse {
-    qdrant_collections_response(&cfg).await
+    match collections_response(&cfg).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => error.into_response(),
+    }
 }
 
 #[utoipa::path(
@@ -179,52 +184,23 @@ pub async fn collections(
 #[allow(dead_code)]
 pub async fn collections_openapi_marker() {}
 
-async fn qdrant_collections_response(cfg: &Config) -> axum::response::Response {
-    let url = format!("{}/collections", cfg.qdrant_url.trim_end_matches('/'));
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-    {
-        Ok(client) => client,
-        Err(err) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to build qdrant metadata client: {err}"),
-            )
-                .into_response();
-        }
-    };
-    match client.get(url).send().await {
-        Ok(resp) if resp.status().is_success() => match resp.json::<serde_json::Value>().await {
-            Ok(value) => {
-                let mut collections = value
-                    .get("result")
-                    .and_then(|v| v.get("collections"))
-                    .and_then(|v| v.as_array())
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|entry| entry.get("name").and_then(|name| name.as_str()))
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>();
-                collections.sort();
-                Json(PanelCollectionsResponse { collections }).into_response()
-            }
-            Err(err) => (
-                StatusCode::BAD_GATEWAY,
-                format!("qdrant returned invalid collections response: {err}"),
-            )
-                .into_response(),
-        },
-        Ok(resp) => (
-            StatusCode::BAD_GATEWAY,
-            format!("qdrant collections request failed: {}", resp.status()),
-        )
-            .into_response(),
-        Err(err) => (
-            StatusCode::BAD_GATEWAY,
-            format!("qdrant collections request failed: {err}"),
-        )
-            .into_response(),
+async fn collections_response(cfg: &Config) -> Result<PanelCollectionsResponse, HttpError> {
+    match system::collections(cfg).await {
+        Ok(result) => Ok(PanelCollectionsResponse {
+            collections: result.collections,
+        }),
+        Err(error) => Err(collections_error_to_http(error)),
+    }
+}
+
+fn collections_error_to_http(error: system::CollectionsError) -> HttpError {
+    match error {
+        system::CollectionsError::ClientBuild(err) => HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            err.to_string(),
+        ),
+        err => HttpError::new(StatusCode::BAD_GATEWAY, "bad_gateway", err.to_string()),
     }
 }
 
@@ -466,5 +442,21 @@ pub async fn panel_artifact(
     match super::artifacts::serve_artifact_from_path(&cfg, rel_path).await {
         Ok(response) => response,
         Err(err) => err.into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collections_status_errors_map_to_bad_gateway() {
+        let error = collections_error_to_http(system::CollectionsError::Status(
+            StatusCode::SERVICE_UNAVAILABLE,
+        ));
+
+        assert_eq!(error.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(error.kind(), "bad_gateway");
+        assert!(error.message().contains("503"));
     }
 }

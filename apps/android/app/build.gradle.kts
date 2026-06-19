@@ -4,7 +4,12 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlinx.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.openapi.generator)
 }
+
+val axonOpenApiSpec = rootProject.layout.projectDirectory.file("../../apps/web/openapi/axon.json")
+val axonOpenApiOutput = layout.buildDirectory.dir("generated/openapi")
+val axonOpenApiTemplates = rootProject.layout.projectDirectory.dir("openapi-templates")
 
 android {
     namespace = "com.axon.app"
@@ -51,11 +56,69 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    sourceSets {
+        getByName("main") {
+            java.srcDir(layout.buildDirectory.dir("generated/openapi/src/main/kotlin"))
+        }
+    }
+}
+
+openApiGenerate {
+    generatorName.set("kotlin")
+    library.set("jvm-okhttp4")
+    inputSpec.set(axonOpenApiSpec.asFile.absolutePath)
+    outputDir.set(axonOpenApiOutput.get().asFile.absolutePath)
+    templateDir.set(axonOpenApiTemplates.asFile.absolutePath)
+    apiPackage.set("com.axon.app.generated.api")
+    modelPackage.set("com.axon.app.generated.model")
+    invokerPackage.set("com.axon.app.generated.invoker")
+    validateSpec.set(true)
+    configOptions.set(
+        mapOf(
+            "dateLibrary" to "java8",
+            "enumPropertyNaming" to "original",
+            "nonPublicApi" to "true",
+        )
+    )
+    globalProperties.set(
+        mapOf(
+            "apiDocs" to "false",
+            "apiTests" to "false",
+            "modelDocs" to "false",
+            "modelTests" to "false",
+        )
+    )
+}
+
+tasks.named("openApiGenerate") {
+    inputs.file(axonOpenApiSpec)
+    inputs.dir(axonOpenApiTemplates)
+    outputs.dir(axonOpenApiOutput)
+    doFirst {
+        require(axonOpenApiSpec.asFile.isFile) {
+            "Missing OpenAPI spec at ${axonOpenApiSpec.asFile.absolutePath}; run `cargo xtask check-openapi-drift` from repo root."
+        }
+    }
+}
+
+tasks.register("verifyOpenApiGeneratedClient") {
+    dependsOn("openApiGenerate")
+    dependsOn("testDebugUnitTest")
+}
+
+tasks.matching { it.name == "compileDebugKotlin" || it.name == "compileReleaseKotlin" }.configureEach {
+    dependsOn("openApiGenerate")
+}
+
+tasks.matching { it.name == "kspDebugKotlin" || it.name == "kspReleaseKotlin" }.configureEach {
+    dependsOn("openApiGenerate")
 }
 
 ksp {
@@ -92,6 +155,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.collections.immutable)
+    implementation(libs.moshi)
+    implementation(libs.moshi.kotlin)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     // Security
     implementation(libs.security.crypto)

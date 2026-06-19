@@ -46,13 +46,13 @@ const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         method: "GET",
         path: "/healthz",
         auth: RestRouteAuth::Public,
-        openapi: false,
+        openapi: true,
     },
     RestRouteInfo {
         method: "GET",
         path: "/readyz",
         auth: RestRouteAuth::Public,
-        openapi: false,
+        openapi: true,
     },
     RestRouteInfo {
         method: "GET",
@@ -75,6 +75,12 @@ const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
     RestRouteInfo {
         method: "GET",
         path: "/v1/sources",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/collections",
         auth: RestRouteAuth::Read,
         openapi: true,
     },
