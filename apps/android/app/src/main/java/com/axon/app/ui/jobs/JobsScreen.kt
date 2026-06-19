@@ -262,18 +262,18 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
             .background(colors.control.copy(alpha = if (quiet) 0.018f else 0.07f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = if (quiet) 0.04f else 0.14f), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = if (quiet) 18.dp else 20.dp),
+            .padding(horizontal = if (quiet) 18.dp else 20.dp, vertical = if (quiet) 13.dp else 20.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(15.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (quiet) 13.dp else 15.dp),
     ) {
-        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(24.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(if (quiet) 22.dp else 24.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (quiet) 4.dp else 9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     row.title,
                     color = colors.textPrimary,
-                    fontSize = 16.sp,
-                    lineHeight = 21.5.sp,
+                    fontSize = if (quiet) 15.sp else 16.sp,
+                    lineHeight = if (quiet) 19.5.sp else 21.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = AxonTheme.fonts.body,
                     maxLines = 1,
@@ -286,8 +286,8 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
             Text(
                 row.detail,
                 color = colors.textMuted.copy(alpha = 0.82f),
-                fontSize = 13.2.sp,
-                lineHeight = 18.sp,
+                fontSize = if (quiet) 12.4.sp else 13.2.sp,
+                lineHeight = if (quiet) 16.sp else 18.sp,
                 fontFamily = AxonTheme.fonts.mono,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

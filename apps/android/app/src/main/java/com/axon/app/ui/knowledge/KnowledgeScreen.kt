@@ -19,7 +19,6 @@ import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Public
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.knowledge.sections.DomainsSection
 import com.axon.app.ui.knowledge.sections.SourcesSection
 import com.axon.app.ui.knowledge.sections.StatsSection
@@ -161,28 +162,13 @@ private fun KnowledgeMenu(
 
 @Composable
 private fun KnowledgeNotice(message: String) {
-    val colors = AxonTheme.colors
-    Row(
+    AppNoticeBanner(
+        message = message,
+        tone = NoticeTone.Warn,
         modifier = Modifier
             .fillMaxWidth(0.88f)
-            .widthIn(max = 360.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(colors.tint(colors.warn, 4, colors.pageBg), RoundedCornerShape(8.dp))
-            .border(1.dp, colors.tint(colors.warn, 18, colors.pageBg), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = colors.warn, modifier = Modifier.size(16.dp).padding(top = 1.dp))
-        Text(
-            message,
-            color = colors.textMuted.copy(alpha = 0.94f),
-            fontSize = 12.4.sp,
-            lineHeight = 17.sp,
-            fontFamily = AxonTheme.fonts.body,
-            modifier = Modifier.weight(1f),
-        )
-    }
+            .widthIn(max = 360.dp),
+    )
 }
 
 @Composable
@@ -233,15 +219,11 @@ private fun KnowledgeMenuRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .size(5.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(colors.accentPrimary.copy(alpha = 0.9f)),
-            )
-        } else {
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.60f), modifier = Modifier.size(15.dp))
-        }
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = if (selected) colors.accentStrong.copy(alpha = 0.8f) else colors.textMuted.copy(alpha = 0.60f),
+            modifier = Modifier.size(15.dp),
+        )
     }
 }

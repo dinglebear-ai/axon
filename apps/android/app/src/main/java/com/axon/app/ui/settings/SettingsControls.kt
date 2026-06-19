@@ -54,11 +54,11 @@ internal fun SettingsActionDock(
     Column(
         modifier = modifier
             .background(colors.navBg.copy(alpha = 0.98f))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.16f))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.10f))
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         feedback?.let { (message, kind) ->
             SettingsFeedbackBanner(
@@ -202,10 +202,10 @@ internal fun CompactActionButton(
     val fg = if (outlined) colors.textMuted else Color.White
     Row(
         modifier = modifier
-            .height(50.dp)
+            .height(46.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (enabled) bg else colors.control, RoundedCornerShape(8.dp))
-            .border(1.dp, if (outlined) colors.borderStrong.copy(alpha = 0.56f) else colors.accentPrimary, RoundedCornerShape(8.dp))
+            .border(1.dp, if (outlined) colors.borderStrong.copy(alpha = 0.42f) else colors.accentPrimary.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp),
         horizontalArrangement = Arrangement.Center,

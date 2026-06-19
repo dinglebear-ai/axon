@@ -22,7 +22,6 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BookmarkAdded
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.SyncProblem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -45,6 +44,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.local.Session
+import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
@@ -116,27 +117,11 @@ fun SessionsDrawerContent(
 
 @Composable
 private fun SessionSyncErrorRow(message: String) {
-    val colors = AxonTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(colors.tint(colors.warn, 6, colors.pageBg), RoundedCornerShape(8.dp))
-            .border(1.dp, colors.tint(colors.warn, 22, colors.pageBg), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        Icon(Icons.Rounded.SyncProblem, contentDescription = null, tint = colors.warn, modifier = Modifier.size(16.dp))
-        Text(
-            message,
-            color = colors.textPrimary.copy(alpha = 0.9f),
-            fontSize = 11.2.sp,
-            lineHeight = 15.2.sp,
-            fontFamily = AxonTheme.fonts.body,
-            modifier = Modifier.weight(1f),
-        )
-    }
+    AppNoticeBanner(
+        message = message,
+        tone = NoticeTone.Warn,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

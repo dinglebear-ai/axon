@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -199,6 +200,7 @@ internal fun EmptyAskState(
 /** Tappable starter prompt that fades + rises in, staggered by [index]. */
 @Composable
 private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
+    val colors = AxonTheme.colors
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val anim by animateFloatAsState(
@@ -206,23 +208,37 @@ private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
         animationSpec = tween(durationMillis = 360, delayMillis = 140 + index * 90, easing = LinearEasing),
         label = "chip-in",
     )
-    Text(
-        text,
-        color = AxonTheme.colors.textMuted.copy(alpha = 0.92f),
-        fontSize = 14.sp,
-        lineHeight = 19.sp,
-        fontWeight = FontWeight.SemiBold,
-        fontFamily = AxonTheme.fonts.body,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
+            .background(colors.control.copy(alpha = 0.025f), RoundedCornerShape(10.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.055f), RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
             .graphicsLayer {
                 alpha = anim
                 translationY = (1f - anim) * 16f
             },
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text,
+            color = colors.textMuted.copy(alpha = 0.94f),
+            fontSize = 13.6.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = AxonTheme.fonts.body,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = colors.textMuted.copy(alpha = 0.56f),
+            modifier = Modifier.size(15.dp),
+        )
+    }
 }
 
 /**
