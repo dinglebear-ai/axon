@@ -53,32 +53,12 @@ import com.axon.app.data.remote.models.UpsertMobileSessionRequest
 import com.axon.app.data.remote.models.UpsertMobileSessionResponse
 import com.axon.app.data.remote.models.WatchDef
 import com.axon.app.data.remote.models.WatchListResponse
-import okhttp3.ConnectionPool
-import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.net.URLEncoder
-
-// ── Timeout constants ─────────────────────────────────────────────────────────
-
-private const val CONNECT_TIMEOUT_SECONDS = 10L
-private const val READ_TIMEOUT_SECONDS = 60L
-
-/** Synthesis endpoints (research) can take up to 5 min — matches AXON_LLM_COMPLETION_TIMEOUT_SECS. */
-private const val LONG_READ_TIMEOUT_SECONDS = 300L
-
-/**
- * SSE stream read timeout. Must be long enough to span the full LLM generation window.
- * OkHttp's read timeout fires when no *bytes* arrive for this duration — a slow token
- * stream resets it on each chunk, so this is effectively an idle-stream timeout.
- */
-private const val STREAM_READ_TIMEOUT_SECONDS = 300L
-
-private const val WRITE_TIMEOUT_SECONDS = 15L
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -98,40 +78,15 @@ class AxonClient(
     // Thread-safe config: both baseUrl and auth mode updated atomically together.
     private val config = AtomicReference<Pair<String, AuthConfig>>(baseUrl.trimEnd('/') to AuthConfig.Bearer(token))
 
-    // R7: share a single ConnectionPool + Dispatcher across http/httpLong/httpStream
-    // so concurrent fan-out (e.g. polling multiple job kinds) doesn't starve on
-    // OkHttp's default `maxRequestsPerHost = 5`.
-    private val sharedPool = ConnectionPool(
-        maxIdleConnections = 16,
-        keepAliveDuration = 5,
-        TimeUnit.MINUTES,
+    private val clients = AxonHttpClients()
+    private val http = clients.normal
+    private val httpLong = clients.longRead
+    private val httpStream = clients.stream
+    private val generatedApi = GeneratedAxonApi(
+        baseUrlProvider = { baseUrl() },
+        authProvider = { config.get() },
+        clients = clients,
     )
-    private val sharedDispatcher = Dispatcher().apply { maxRequestsPerHost = 16 }
-
-    private val http = OkHttpClient.Builder()
-        .connectionPool(sharedPool)
-        .dispatcher(sharedDispatcher)
-        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .build()
-
-    // Research synthesis can take up to 5 minutes — built from the shared client to reuse the
-    // connection pool and dispatcher.
-    private val httpLong = http.newBuilder()
-        .readTimeout(LONG_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .build()
-
-    /**
-     * Dedicated OkHttp client for SSE streaming. Uses a longer read timeout than [httpLong]
-     * because OkHttp's read timeout is an *idle* timeout — it fires when no bytes arrive for
-     * the configured duration, not after an absolute wall-clock budget. A slow LLM emitting
-     * tokens occasionally keeps the timeout rolling, so we give it the full synthesis window
-     * without sharing the connection-timeout semantics of [httpLong].
-     */
-    private val httpStream = http.newBuilder()
-        .readTimeout(STREAM_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .build()
 
     fun updateConfig(newBaseUrl: String, newToken: String) {
         updateConfig(newBaseUrl, AuthConfig.Bearer(newToken))
@@ -414,7 +369,7 @@ class AxonClient(
     }
 
     suspend fun collections(): Result<PanelCollectionsResponse> = withContext(Dispatchers.IO) {
-        get("/v1/collections")
+        generatedApi.collections()
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
