@@ -54,6 +54,7 @@ need x86_64-w64-mingw32-gcc
 export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="${CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER:-x86_64-w64-mingw32-gcc}"
 
 repo="$(repo_root)"
+bin_dir="${AXON_ARTIFACT_BIN_DIR:-$repo/bin}"
 
 log "Target:  $target"
 log "Host:    $host"
@@ -74,6 +75,7 @@ case "$target" in
         --ci
     fi
     exe="$palette/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe"
+    bin_name="axon-palette-x86_64-pc-windows-gnu-release.exe"
     dest="Axon Palette.exe"
     ;;
   axon)
@@ -85,12 +87,21 @@ case "$target" in
         --target x86_64-pc-windows-gnu
     fi
     exe="$repo/target/x86_64-pc-windows-gnu/release/axon.exe"
+    bin_name="axon-x86_64-pc-windows-gnu-release.exe"
     dest="axon.exe"
     ;;
   *)
     die "unknown target: $target (valid: palette-tauri, axon)"
     ;;
 esac
+
+if [[ "$dry_run" -eq 0 ]]; then
+  [[ -f "$exe" ]] || die "built executable not found: $exe"
+  mkdir -p "$bin_dir"
+  cp -f "$exe" "$bin_dir/$bin_name"
+  chmod 755 "$bin_dir/$bin_name" 2>/dev/null || true
+  log "Artifact copied to $bin_dir/$bin_name"
+fi
 
 # ── ship ──────────────────────────────────────────────────────────────────────
 if [[ "$ship" -eq 1 ]]; then

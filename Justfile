@@ -90,10 +90,18 @@ link-bin profile=local_release_profile:
       echo "$profile binary not found at $AXON_BIN — run 'just build' first" >&2
       exit 1
     fi
+    variant="$profile"
+    if [ "$profile" = "release-fast" ]; then
+      variant="fast-release"
+    fi
+    mkdir -p bin
+    cp -f "$AXON_BIN" "bin/axon-$variant"
+    chmod 755 "bin/axon-$variant" 2>/dev/null || true
     mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
     systemctl --user restart axon-mcp 2>/dev/null || true
     echo "axon → $AXON_BIN"
+    echo "artifact → bin/axon-$variant"
 
 install:
     {{rust_dev_env}}; CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile {{local_release_profile}} --locked
