@@ -60,6 +60,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: xtask
+      - name: create web assets placeholder
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: Enforce MCP CLI transport mode support
         run: cargo xtask check-mcp-http
 
@@ -93,6 +97,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: xtask
+      - name: create web assets placeholder
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: Verify release versions for changed shipping components
         run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
 
@@ -247,6 +255,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: xtask
+      - name: create web assets placeholder
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: Enforce modern Rust module style (no mod.rs)
         run: cargo xtask check-no-mod-rs
 
@@ -420,6 +432,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: xtask-windows
+      - name: create web assets placeholder
+        shell: bash
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: cargo check -p xtask
         run: cargo check -p xtask --locked
       - name: cargo test -p xtask
