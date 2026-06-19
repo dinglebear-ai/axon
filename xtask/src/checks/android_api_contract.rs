@@ -6,6 +6,7 @@ use std::path::Path;
 
 const ANDROID_ROUTE_SOURCES: &[&str] = &[
     "apps/android/app/src/main/java/com/axon/app/data/remote/AxonClient.kt",
+    "apps/android/app/src/main/java/com/axon/app/data/remote/GeneratedAxonApi.kt",
     "apps/android/app/src/main/java/com/axon/app/ui/operations/OperationMode.kt",
 ];
 
@@ -180,6 +181,13 @@ mod tests {
                 "/v1/ingest/{id}/cancel",
             ]
         );
+    }
+
+    #[test]
+    fn route_sources_include_generated_adapter() {
+        assert!(ANDROID_ROUTE_SOURCES.contains(
+            &"apps/android/app/src/main/java/com/axon/app/data/remote/GeneratedAxonApi.kt"
+        ));
     }
 
     #[test]
