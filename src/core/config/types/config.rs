@@ -35,6 +35,18 @@ pub struct Config {
     /// Maximum number of results returned by `query`/`search` commands. Flag: `--limit`.
     pub search_limit: usize,
 
+    /// Working directory for `code-search`; resolved to the containing git root.
+    /// Flag: `code-search --cwd`.
+    pub code_search_cwd: Option<PathBuf>,
+
+    /// Repository-relative path prefix filter for `code-search`.
+    /// Flag: `code-search --path-prefix`.
+    pub code_search_path_prefix: Option<String>,
+
+    /// Skip foreground freshness check for `code-search`.
+    /// Flag: `code-search --no-freshness`.
+    pub code_search_no_freshness: bool,
+
     /// Maximum chunks fetched by `retrieve` before reconstructing the document.
     /// Flag: `retrieve --max-points` (`retrieve --limit` alias). Default: None
     /// (use the retrieve service ceiling).

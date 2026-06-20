@@ -58,6 +58,14 @@ impl<'a> VectorSearchRequest<'a> {
         self
     }
 
+    pub(crate) fn with_filter(mut self, filter: serde_json::Value) -> Self {
+        self.filter = match self.filter.take() {
+            Some(existing) => Some(combine_must_filters(&[existing, filter])),
+            None => Some(filter),
+        };
+        self
+    }
+
     /// Add an optional `payload_schema_version >= min` filter to the request.
     ///
     /// Composes with any existing filter (e.g. `scraped_at` range) via

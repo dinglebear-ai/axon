@@ -362,6 +362,29 @@ pub async fn qdrant_delete_local_file_fragments(cfg: &Config, file_url: &str) ->
     Ok(stale.len())
 }
 
+pub async fn qdrant_delete_local_code_files_for_generation(
+    cfg: &Config,
+    project_key: &str,
+    generation: i64,
+    paths: &[String],
+) -> Result<usize> {
+    if paths.is_empty() {
+        return Ok(0);
+    }
+    let client = internal_service_http_client()?;
+    let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
+    for batch in paths.chunks(500) {
+        qdrant_delete_with_retry(
+            client,
+            &endpoint,
+            local_code_batch_delete_body(project_key, generation, batch),
+            "qdrant_delete_local_code_files_for_generation",
+        )
+        .await?;
+    }
+    Ok(paths.len())
+}
+
 pub async fn qdrant_delete_repo_file_fragments(
     cfg: &Config,
     provider: &str,
@@ -440,6 +463,35 @@ fn local_legacy_fragment_delete_body(urls: &[&str]) -> serde_json::Value {
             "should": should
         }
     })
+}
+
+fn local_code_batch_delete_body(
+    project_key: &str,
+    generation: i64,
+    paths: &[String],
+) -> serde_json::Value {
+    serde_json::json!({
+        "filter": {
+            "must": [
+                {"key": "source_type", "match": {"value": "local_code"}},
+                {"key": "local_project_key", "match": {"value": project_key}},
+                {"key": "local_index_version", "match": {"value": crate::code_index::config::CODE_INDEX_VERSION}},
+                {"key": "local_generation", "match": {"value": generation}}
+            ],
+            "should": paths.iter().map(|path| {
+                serde_json::json!({"key": "code_file_path", "match": {"value": path}})
+            }).collect::<Vec<_>>()
+        }
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn local_code_batch_delete_body_for_test(
+    project_key: &str,
+    generation: i64,
+    paths: &[String],
+) -> serde_json::Value {
+    local_code_batch_delete_body(project_key, generation, paths)
 }
 
 /// Test helper: build the delete body that `qdrant_delete_stale_tail` would

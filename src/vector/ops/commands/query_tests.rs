@@ -76,4 +76,5 @@ fn query_score_policy_does_not_apply_ask_threshold() {
     assert_eq!(policy.authoritative_boost, 0.25);
     assert_eq!(policy.product_authority_boost, 0.35);
     assert!(policy.apply_code_search_adjustment);
+    assert!(!policy.force_code_intent);
 }

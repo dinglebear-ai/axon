@@ -27,6 +27,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
         &[
             "embed",
             "query",
+            "code-search",
             "retrieve",
             "ask",
             "evaluate",

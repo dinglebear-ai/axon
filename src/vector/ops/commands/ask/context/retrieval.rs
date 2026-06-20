@@ -246,7 +246,10 @@ async fn retrieve_and_build_candidates<'a>(
     let built_candidates = build_ask_candidates(
         hits,
         secondary_res,
-        &CandidateBuildPolicy { allow_low_signal },
+        &CandidateBuildPolicy {
+            allow_low_signal,
+            allow_short_content: false,
+        },
         cfg.ask_explain.then_some(retrieval_score_kind),
     );
     warnings.extend(built_candidates.warnings);

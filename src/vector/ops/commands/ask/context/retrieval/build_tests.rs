@@ -9,6 +9,7 @@ fn keyword_search_failure_returns_warning() {
         Some(secondary),
         &CandidateBuildPolicy {
             allow_low_signal: false,
+            allow_short_content: false,
         },
         None,
     );

@@ -31,6 +31,7 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "git_file_language",
     "git_file_path",
     "code_file_path",
+    "code_path_prefixes",
     "code_language",
     "code_file_type",
     "chunk_content_kind",
@@ -52,6 +53,7 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     // Ingest source fields promoted to indexes for per-source filtering.
     "reddit_subreddit",
     "yt_channel",
+    "local_project_key",
 ];
 
 const CORE_KEYWORD_INDEX_FIELDS: &[&str] = &[
@@ -60,12 +62,17 @@ const CORE_KEYWORD_INDEX_FIELDS: &[&str] = &[
     "source_type",
     "seed_url",
     "extractor_name",
+    "local_project_key",
+    "code_file_path",
+    "code_path_prefixes",
     "chunk_content_kind",
 ];
 
 const CORE_TYPED_FIELDS: &[(&str, &str)] = &[
     ("chunk_index", "integer"),
     ("payload_schema_version", "integer"),
+    ("local_index_version", "integer"),
+    ("local_generation", "integer"),
     ("scraped_at", "datetime"),
 ];
 
@@ -259,6 +266,8 @@ const FULL_TYPED_FIELDS: &[(&str, &str)] = &[
     ("git_repo_open_issues", "integer"),
     ("so_question_id", "integer"),
     ("payload_schema_version", "integer"),
+    ("local_index_version", "integer"),
+    ("local_generation", "integer"),
     ("code_file_size_bytes", "integer"),
     ("code_line_start", "integer"),
     ("code_line_end", "integer"),

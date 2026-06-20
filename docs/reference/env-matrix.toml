@@ -227,6 +227,66 @@ compatibility = "advanced"
 reason = "SQLite queue path override."
 
 [[env]]
+key = "AXON_CODE_SEARCH_ALLOWED_ROOTS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Server-side allowlist for MCP code-search cwd roots; security boundary remains process env in v1."
+
+[[env]]
+key = "AXON_CODE_SEARCH_FRESHNESS_TTL_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Local code-search freshness TTL in seconds; env-backed v1 tuning."
+
+[[env]]
+key = "AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Foreground code-search refresh timeout in seconds; env-backed v1 tuning."
+
+[[env]]
+key = "AXON_CODE_SEARCH_MAX_FILE_BYTES"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Maximum local source file size indexed by code-search; env-backed v1 tuning."
+
+[[env]]
+key = "AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Changed-file embedding batch size for code-search freshness; env-backed v1 tuning."
+
+[[env]]
 key = "AXON_MCP_HTTP_PUBLISH"
 classification = "compose-env"
 runtime_placement = "compose-interpolation"

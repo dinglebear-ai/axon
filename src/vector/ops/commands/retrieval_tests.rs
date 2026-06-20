@@ -63,6 +63,7 @@ fn merge_candidates_handles_multibyte_chunk_prefix() {
 fn build_candidates_trace_records_low_signal_drops() {
     let policy = CandidateBuildPolicy {
         allow_low_signal: false,
+        allow_short_content: false,
     };
     let built = build_candidates_from_hits_with_trace(
         vec![make_hit(
@@ -126,6 +127,7 @@ fn score_policy_can_apply_threshold_and_topical_overlap() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: Some(0.0),
         require_topical_overlap: true,
     };
@@ -147,6 +149,7 @@ fn score_policy_can_disable_threshold_for_query_modes() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -188,6 +191,7 @@ fn code_intent_query_boosts_source_symbol_above_readme() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
         apply_code_search_adjustment: true,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -235,6 +239,7 @@ fn code_intent_query_prefers_symbol_match_over_benchmark_usage() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
         apply_code_search_adjustment: true,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -282,6 +287,7 @@ fn code_intent_query_demotes_test_file_below_equivalent_source() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
         apply_code_search_adjustment: true,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -426,6 +432,7 @@ fn score_policy_boosts_docs_like_url_with_query_product_token() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.35,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -456,6 +463,7 @@ fn score_trace_components_sum_to_final_rerank_score() {
         authoritative_boost: 0.12,
         product_authority_boost: 0.35,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -505,6 +513,7 @@ fn score_trace_uses_supplied_dense_score_kind() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.0,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -543,6 +552,7 @@ fn score_trace_preserves_normal_rerank_output() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.35,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };
@@ -583,6 +593,7 @@ fn rrf_score_trace_applies_lexical_boosts_without_min_relevance() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.35,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };

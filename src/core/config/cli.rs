@@ -55,6 +55,8 @@ pub(super) enum CliCommand {
     Doctor(DoctorArgs),
     /// Semantic vector search over the Qdrant index
     Query(QueryArgs),
+    /// Semantic search over one local git checkout, refreshing changed source files first
+    CodeSearch(CodeSearchArgs),
     /// Fetch stored document chunks from Qdrant by URL
     Retrieve(RetrieveArgs),
     /// RAG: retrieve relevant context, then answer with LLM
@@ -607,6 +609,21 @@ pub(super) struct AskArgs {
 pub(super) struct QueryArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) diagnostics: bool,
+    #[arg(value_name = "TEXT")]
+    pub(super) value: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct CodeSearchArgs {
+    /// Working directory inside the git checkout to search. Defaults to the current directory.
+    #[arg(long, value_name = "PATH")]
+    pub(super) cwd: Option<std::path::PathBuf>,
+    /// Repository-relative path prefix to search, such as `src/vector`.
+    #[arg(long = "path-prefix", value_name = "PREFIX")]
+    pub(super) path_prefix: Option<String>,
+    /// Search the existing index without refreshing changed local files first.
+    #[arg(long = "no-freshness", action = ArgAction::SetTrue)]
+    pub(super) no_freshness: bool,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
 }

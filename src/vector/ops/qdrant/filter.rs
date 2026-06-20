@@ -160,10 +160,45 @@ pub(crate) fn build_schema_version_filter(min: Option<u32>) -> Option<serde_json
 
 pub(crate) fn combine_must_filters(filters: &[serde_json::Value]) -> serde_json::Value {
     let mut must = Vec::new();
+    let mut must_not = Vec::new();
     for filter in filters {
         if let Some(values) = filter.get("must").and_then(|v| v.as_array()) {
             must.extend(values.iter().cloned());
         }
+        if let Some(values) = filter.get("must_not").and_then(|v| v.as_array()) {
+            must_not.extend(values.iter().cloned());
+        }
+    }
+    let mut filter = serde_json::Map::new();
+    filter.insert("must".to_string(), serde_json::Value::Array(must));
+    if !must_not.is_empty() {
+        filter.insert("must_not".to_string(), serde_json::Value::Array(must_not));
+    }
+    serde_json::Value::Object(filter)
+}
+
+pub(crate) fn exclude_local_code_filter() -> serde_json::Value {
+    serde_json::json!({
+        "must_not": [{
+            "key": "source_type",
+            "match": {"value": "local_code"}
+        }]
+    })
+}
+
+pub(crate) fn build_local_project_code_filter(
+    project_key: &str,
+    generation: i64,
+    path_prefix: Option<&str>,
+) -> serde_json::Value {
+    let mut must = vec![
+        serde_json::json!({"key": "source_type", "match": {"value": "local_code"}}),
+        serde_json::json!({"key": "local_project_key", "match": {"value": project_key}}),
+        serde_json::json!({"key": "local_index_version", "match": {"value": crate::code_index::config::CODE_INDEX_VERSION}}),
+        serde_json::json!({"key": "local_generation", "match": {"value": generation}}),
+    ];
+    if let Some(prefix) = path_prefix {
+        must.push(serde_json::json!({"key": "code_path_prefixes", "match": {"value": prefix}}));
     }
     serde_json::json!({ "must": must })
 }

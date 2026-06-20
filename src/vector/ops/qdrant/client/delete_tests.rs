@@ -245,3 +245,31 @@ fn url_target_match_prefix_respects_path_boundaries() {
         true
     ));
 }
+
+#[test]
+fn local_code_batch_delete_body_is_generation_fenced() {
+    let body = local_code_batch_delete_body_for_test(
+        "project-1",
+        41,
+        &["src/lib.rs".to_string(), "src/main.rs".to_string()],
+    );
+    let must = body["filter"]["must"].as_array().expect("must array");
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_type",
+        "match": {"value": "local_code"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "local_project_key",
+        "match": {"value": "project-1"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "local_index_version",
+        "match": {"value": crate::code_index::config::CODE_INDEX_VERSION}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "local_generation",
+        "match": {"value": 41}
+    })));
+    let should = body["filter"]["should"].as_array().expect("should array");
+    assert_eq!(should.len(), 2);
+}

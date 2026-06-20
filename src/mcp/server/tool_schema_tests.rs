@@ -19,7 +19,16 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
         .expect("tools/list inputSchema publishes properties.action.enum");
 
     for action in [
-        "crawl", "scrape", "retrieve", "ask", "query", "embed", "ingest", "status", "memory",
+        "crawl",
+        "scrape",
+        "retrieve",
+        "ask",
+        "query",
+        "code_search",
+        "embed",
+        "ingest",
+        "status",
+        "memory",
     ] {
         assert!(
             action_enum
@@ -37,6 +46,46 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
     assert_eq!(actual, expected);
     assert!(!actual.contains(&"debug"));
     assert!(!actual.contains(&"watch"));
+}
+
+#[test]
+fn mcp_schema_includes_code_search() {
+    let schema = axon_input_schema();
+    let action_enum = schema
+        .pointer("/properties/action/enum")
+        .and_then(serde_json::Value::as_array)
+        .expect("tools/list inputSchema publishes properties.action.enum");
+    assert!(
+        action_enum
+            .iter()
+            .any(|value| value.as_str() == Some("code_search")),
+        "action enum should include code_search"
+    );
+    let properties = schema
+        .pointer("/properties")
+        .and_then(serde_json::Value::as_object)
+        .expect("tools/list inputSchema has top-level properties");
+    for field in ["cwd", "path_prefix", "no_freshness"] {
+        assert!(
+            properties.contains_key(field),
+            "top-level properties should include flattened code_search field `{field}`"
+        );
+    }
+}
+
+#[test]
+fn mcp_schema_documents_code_search_required_fields() {
+    let schema = axon_input_schema();
+    let required = schema
+        .pointer("/x-axon-required-fields/code_search")
+        .and_then(serde_json::Value::as_array)
+        .expect("code_search required field metadata is present");
+    for field in ["query", "cwd"] {
+        assert!(
+            required.iter().any(|value| value.as_str() == Some(field)),
+            "code_search should document `{field}` as required"
+        );
+    }
 }
 
 #[test]
