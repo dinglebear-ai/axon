@@ -247,6 +247,31 @@ fn ci_runs_android_generated_openapi_client_tests() {
 }
 
 #[test]
+fn android_ci_setup_does_not_install_unused_emulator_packages() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let setup = workflow
+        .split("      - name: Set up Android SDK")
+        .nth(1)
+        .and_then(|rest| rest.split("      - name: Run Android unit tests").next())
+        .expect("android SDK setup block exists");
+
+    assert!(
+        setup.contains("uses: android-actions/setup-android@v3"),
+        "android job must set up SDK licenses/tooling before Gradle runs"
+    );
+    assert!(
+        setup.contains("packages: \"\""),
+        "android job should not install default tools/emulator packages for unit/lint/APK builds"
+    );
+    assert!(
+        !setup.contains("connected")
+            && !setup.contains("sdkmanager emulator")
+            && !setup.contains("avdmanager"),
+        "android job should not require emulator setup unless connected tests are added"
+    );
+}
+
+#[test]
 fn auto_tag_uses_validated_xtask_release_plan() {
     let workflow = include_str!("../.github/workflows/auto-tag.yml");
     let plan = workflow_job_block(workflow, "plan");
