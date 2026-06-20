@@ -482,6 +482,7 @@ jobs:
   windows-check:
     name: windows-check (xtask only)
     runs-on: windows-latest
+    timeout-minutes: 25
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
@@ -522,8 +523,6 @@ jobs:
         run: cargo check -p xtask --locked
       - name: cargo test -p xtask
         run: cargo test -p xtask --locked
-      - name: cargo xtask check-no-mod-rs
-        run: cargo xtask check-no-mod-rs
       - name: cargo xtask check-mcp-http
         run: cargo xtask check-mcp-http
 

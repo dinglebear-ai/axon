@@ -181,6 +181,27 @@ fn ci_xtask_compiling_jobs_checkout_release_manifest() {
 }
 
 #[test]
+fn windows_xtask_check_avoids_duplicate_repository_scans() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let job = workflow_job_block(workflow, "windows-check");
+
+    assert!(
+        job.contains("timeout-minutes: 25"),
+        "windows-check must have a bounded timeout because Windows runners can hang on repo scans"
+    );
+    assert!(
+        job.contains("cargo check -p xtask --locked")
+            && job.contains("cargo test -p xtask --locked")
+            && job.contains("cargo xtask check-mcp-http"),
+        "windows-check should keep the Windows-specific xtask compile/test coverage"
+    );
+    assert!(
+        !job.contains("cargo xtask check-no-mod-rs"),
+        "check-no-mod-rs already runs in the Linux no-mod-rs job and has hung on Windows"
+    );
+}
+
+#[test]
 fn rest_api_parity_checkout_covers_openapi_drift_inputs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let job = workflow_job_block(workflow, "rest-api-parity");
