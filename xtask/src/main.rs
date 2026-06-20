@@ -25,6 +25,10 @@ enum Command {
     CheckClaudeSymlinks,
     /// Fail if any symlink in the worktree points to a non-existent target.
     CheckBrokenSymlinks,
+    /// Verify SQLite job migrations are append-only and checksum-pinned.
+    CheckSqliteMigrations,
+    /// Regenerate the SQLite job migration checksum manifest after adding a migration.
+    UpdateSqliteMigrationChecksums,
     /// Scan staged files for secrets and credentials.
     CheckSecrets,
     /// Compatibility check for the CLI component's version-bearing files.
@@ -98,6 +102,8 @@ fn main() -> Result<()> {
         Command::CheckUnwraps => checks::unwraps::check(&root),
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
         Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
+        Command::CheckSqliteMigrations => checks::sqlite_migrations::check(&root),
+        Command::UpdateSqliteMigrationChecksums => checks::sqlite_migrations::update(&root),
         Command::CheckSecrets => checks::secrets::check(&root),
         Command::CheckVersionSync => checks::version_sync::check(&root),
         Command::CheckOpenapiDrift => checks::openapi_drift::check(&root),
