@@ -1,5 +1,10 @@
 # Changelog
 
+## [5.16.4] - 2026-06-20
+
+### Changed
+- Release version bump.
+
 ## [5.16.3] - 2026-06-20
 
 ### Changed
