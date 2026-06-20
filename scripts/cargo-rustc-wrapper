@@ -126,14 +126,7 @@ fi
 
 bin_dir="${AXON_ARTIFACT_BIN_DIR:-$repo_root/bin}"
 mkdir -p "$bin_dir"
-cp -f "$out" "$bin_dir/$artifact_name"
-if [ "$ext" != ".exe" ]; then
-  chmod 755 "$bin_dir/$artifact_name"
-else
-  chmod 755 "$bin_dir/$artifact_name" 2>/dev/null || {
-    echo "warning: copied Windows artifact but could not chmod $bin_dir/$artifact_name" >&2
-  }
-fi
+install -m 755 "$out" "$bin_dir/$artifact_name"
 
 if [ "$crate_name" != "axon" ]; then
   exit 0
@@ -142,4 +135,4 @@ fi
 local_bin="${AXON_RUSTC_WRAPPER_LOCAL_BIN:-$HOME/.local/bin/axon}"
 
 mkdir -p "$(dirname "$local_bin")"
-cp -f "$out" "$local_bin"
+install -m 755 "$out" "$local_bin"
