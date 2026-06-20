@@ -46,7 +46,10 @@ IGNORED_TOKENS = {
     "AXON_DEV_BIN_DIR",  # local shell variable in scripts/axon
     "AXON_HOME_DIR",  # local shell variable in scripts/axon
     "AXON_BACKUP_DIR",  # operational var in scripts/axon-backup.sh, not axon runtime config
+    "AXON_ALLOW_FALLBACK_WEB_ASSETS",  # local/CI build escape hatch, not runtime config
     "AXON_CHANGED_PATHS",  # workflow test fixture variable, not axon runtime config
+    "AXON_FULL_PRE_PUSH",  # local hook control variable, not axon runtime config
+    "AXON_PRE_PUSH_BASE",  # local hook control variable, not axon runtime config
     "QDRANT_DEST",  # local shell variable in scripts/axon-backup.sh
     "QDRANT_DIR",  # local shell variable in scripts/axon-backup.sh
     "QDRANT_SHA256",  # local shell variable in scripts/axon-backup.sh
