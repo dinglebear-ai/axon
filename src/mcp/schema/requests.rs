@@ -261,6 +261,24 @@ pub struct QueryRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct CodeSearchRequest {
+    pub query: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+    /// Absolute or process-relative working directory inside an allowed git checkout.
+    /// Required for MCP; it must resolve below AXON_CODE_SEARCH_ALLOWED_ROOTS.
+    pub cwd: Option<String>,
+    /// Repository-relative path prefix to search, such as `src/vector`.
+    pub path_prefix: Option<String>,
+    /// Search the existing index without refreshing changed local files first.
+    pub no_freshness: Option<bool>,
+    /// Qdrant collection to search. Defaults to the server's configured collection.
+    pub collection: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RetrieveRequest {
     pub url: Option<String>,
     pub max_points: Option<usize>,

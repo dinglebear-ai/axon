@@ -81,6 +81,10 @@ fn enrich_tool_input_schema(schema: &mut Value, supported_actions: &[&'static st
     );
     insert_lifted_fields(properties, lifted_fields);
     object.insert("x-axon-action-metadata".to_string(), axon_action_metadata());
+    object.insert(
+        "x-axon-required-fields".to_string(),
+        axon_required_field_metadata(),
+    );
     object.insert("x-axon-subactions".to_string(), axon_subaction_metadata());
     object.insert(
         "x-axon-agent-guidance".to_string(),
@@ -209,6 +213,12 @@ fn axon_subaction_metadata() -> Value {
         "ingest": enum_values_for::<IngestSubaction>(),
         "memory": enum_values_for::<MemorySubaction>(),
         "vertical_scrape": enum_values_for::<VerticalScrapeSubaction>(),
+    })
+}
+
+fn axon_required_field_metadata() -> Value {
+    json!({
+        "code_search": ["query", "cwd"]
     })
 }
 

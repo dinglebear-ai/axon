@@ -37,6 +37,7 @@ pub(super) async fn run_qdrant_dispatch<'a>(
     let primary_request =
         qdrant::VectorSearchRequest::from_query(cfg, vecq, query, candidate_limit)
             .map_err(|e| anyhow!("build ask vector search request: {e}"))?
+            .with_filter(qdrant::exclude_local_code_filter())
             .with_candidates_override(Some(hybrid_candidates));
     log_info(&format!(
         "ask qdrant dispatch start mode={} candidate_limit={} hybrid_candidates={} collection={}",
@@ -58,6 +59,7 @@ pub(super) async fn run_qdrant_dispatch<'a>(
     let secondary_request =
         qdrant::VectorSearchRequest::from_query(cfg, &vecq_kw, keyword_query, candidate_limit)
             .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
+            .with_filter(qdrant::exclude_local_code_filter())
             .with_candidates_override(Some(hybrid_candidates));
 
     run_dual_qdrant_dispatch(

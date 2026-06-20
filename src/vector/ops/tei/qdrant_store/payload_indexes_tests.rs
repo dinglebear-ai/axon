@@ -40,11 +40,27 @@ async fn ensure_payload_indexes_fires_one_put_per_field() {
         KEYWORD_INDEX_FIELDS.contains(&"symbol_kind"),
         "symbol_kind must be in the keyword index request list"
     );
-    // keyword(N) + integer(11) + datetime(1) + bool(6) = KEYWORD_INDEX_FIELDS.len() + 18
+    assert!(
+        KEYWORD_INDEX_FIELDS.contains(&"local_project_key"),
+        "local_project_key must be in the keyword index request list"
+    );
+    assert!(
+        KEYWORD_INDEX_FIELDS.contains(&"code_path_prefixes"),
+        "code_path_prefixes must be in the keyword index request list"
+    );
+    assert!(
+        FULL_TYPED_FIELDS.contains(&("local_index_version", "integer")),
+        "local_index_version must be in the typed index request list"
+    );
+    assert!(
+        FULL_TYPED_FIELDS.contains(&("local_generation", "integer")),
+        "local_generation must be in the typed index request list"
+    );
+    let expected_puts = KEYWORD_INDEX_FIELDS.len() + FULL_TYPED_FIELDS.len();
     assert_eq!(
         mock.calls_async().await,
-        KEYWORD_INDEX_FIELDS.len() + 18,
-        "expected exactly one PUT per indexed field"
+        expected_puts,
+        "expected one index PUT per missing payload field"
     );
 }
 
@@ -101,29 +117,10 @@ async fn ensure_payload_indexes_skips_fields_already_in_payload_schema() {
             serde_json::json!({"data_type": "keyword"}),
         );
     }
-    for field in [
-        "chunk_index",
-        "git_number",
-        "git_comment_count",
-        "git_repo_stars",
-        "git_repo_forks",
-        "git_repo_open_issues",
-        "so_question_id",
-        "payload_schema_version",
-        "code_file_size_bytes",
-        "code_line_start",
-        "code_line_end",
-        "scraped_at",
-        "git_repo_is_fork",
-        "git_repo_is_archived",
-        "git_repo_is_private",
-        "git_is_pr",
-        "git_is_draft",
-        "code_is_test",
-    ] {
+    for (field, schema_type) in FULL_TYPED_FIELDS {
         schema.insert(
-            field.to_string(),
-            serde_json::json!({"data_type": "integer"}),
+            (*field).to_string(),
+            serde_json::json!({"data_type": schema_type}),
         );
     }
     let info = serde_json::json!({"result": {"payload_schema": schema}});

@@ -164,3 +164,41 @@ fn combine_must_filters_concatenates_conditions() {
     assert_eq!(must[0]["key"].as_str(), Some("url"));
     assert_eq!(must[1]["key"].as_str(), Some("scraped_at"));
 }
+
+#[test]
+fn combine_must_filters_preserves_must_not_conditions() {
+    let combined = combine_must_filters(&[
+        url_filter("https://example.com/a"),
+        exclude_local_code_filter(),
+    ]);
+    let must = combined["must"].as_array().unwrap();
+    let must_not = combined["must_not"].as_array().unwrap();
+    assert_eq!(must.len(), 1);
+    assert_eq!(must_not.len(), 1);
+    assert_eq!(must_not[0]["key"].as_str(), Some("source_type"));
+    assert_eq!(must_not[0]["match"]["value"].as_str(), Some("local_code"));
+}
+
+#[test]
+fn local_project_code_filter_requires_project_and_prefix_bucket() {
+    let filter = build_local_project_code_filter("project-1", 7, Some("src/vector/"));
+    let must = filter["must"].as_array().unwrap();
+    assert!(
+        must.iter()
+            .any(|c| c["key"] == "source_type" && c["match"]["value"] == "local_code")
+    );
+    assert!(
+        must.iter()
+            .any(|c| c["key"] == "local_project_key" && c["match"]["value"] == "project-1")
+    );
+    assert!(must.iter().any(|c| c["key"] == "local_index_version"
+        && c["match"]["value"] == crate::code_index::config::CODE_INDEX_VERSION));
+    assert!(
+        must.iter()
+            .any(|c| c["key"] == "local_generation" && c["match"]["value"] == 7)
+    );
+    assert!(
+        must.iter()
+            .any(|c| c["key"] == "code_path_prefixes" && c["match"]["value"] == "src/vector/")
+    );
+}

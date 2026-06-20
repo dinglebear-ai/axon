@@ -104,6 +104,22 @@ fn top_level_help_describes_http_mcp_runtime() {
 }
 
 #[test]
+fn cli_help_contract_includes_code_search() {
+    let stdout = run_help(&["code-search", "--help"]);
+    for expected in [
+        "Search the existing index",
+        "--cwd",
+        "--path-prefix",
+        "--no-freshness",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "expected code-search help to include {expected}, got:\n{stdout}"
+        );
+    }
+}
+
+#[test]
 fn endpoints_help_describes_discovery_flags() {
     let stdout = run_help(&["endpoints", "--help"]);
     for expected in [

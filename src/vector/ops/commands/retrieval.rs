@@ -43,6 +43,7 @@ pub(crate) struct CodeSearchMetadata {
 
 pub(crate) struct CandidateBuildPolicy {
     pub(crate) allow_low_signal: bool,
+    pub(crate) allow_short_content: bool,
 }
 
 pub(crate) struct CandidateScorePolicy<'a> {
@@ -50,6 +51,7 @@ pub(crate) struct CandidateScorePolicy<'a> {
     pub(crate) authoritative_boost: f64,
     pub(crate) product_authority_boost: f64,
     pub(crate) apply_code_search_adjustment: bool,
+    pub(crate) force_code_intent: bool,
     pub(crate) min_relevance_score: Option<f64>,
     pub(crate) require_topical_overlap: bool,
 }
@@ -172,7 +174,7 @@ pub(crate) fn build_candidates_from_hits_with_trace(
     for hit in hits {
         let url = qdrant::payload_url_typed(&hit.payload).to_string();
         let chunk_text = qdrant::payload_text_typed(&hit.payload).to_string();
-        if url.is_empty() || chunk_text.len() < 40 {
+        if url.is_empty() || (!policy.allow_short_content && chunk_text.len() < 40) {
             continue;
         }
         if !policy.allow_low_signal && ranking::is_low_signal_url(&url) {

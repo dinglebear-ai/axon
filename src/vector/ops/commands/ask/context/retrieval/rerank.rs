@@ -32,6 +32,7 @@ pub(in crate::vector::ops::commands::ask::context) fn apply_mode_aware_rerank(
         authoritative_boost: params.authoritative_boost,
         product_authority_boost: params.product_authority_boost,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: if is_rrf {
             None
         } else {
@@ -55,6 +56,7 @@ pub(in crate::vector::ops::commands::ask::context) fn apply_mode_aware_rerank_wi
             authoritative_boost: params.authoritative_boost,
             product_authority_boost: params.product_authority_boost,
             apply_code_search_adjustment: false,
+            force_code_intent: false,
             min_relevance_score: None,
             require_topical_overlap: true,
         };
@@ -66,6 +68,7 @@ pub(in crate::vector::ops::commands::ask::context) fn apply_mode_aware_rerank_wi
         authoritative_boost: params.authoritative_boost,
         product_authority_boost: params.product_authority_boost,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: Some(params.min_relevance_score),
         require_topical_overlap: true,
     };

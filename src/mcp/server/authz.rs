@@ -80,6 +80,12 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         cost: "cheap",
     },
     McpActionSpec {
+        name: "code_search",
+        scope: ActionScope::Write,
+        description: "Search a local allowed git checkout, refreshing changed source files first",
+        cost: "write",
+    },
+    McpActionSpec {
         name: "retrieve",
         scope: ActionScope::Read,
         description: "Fetch stored document chunks by URL",

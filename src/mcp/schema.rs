@@ -19,6 +19,7 @@ pub enum AxonRequest {
     Ingest(IngestRequest),
     Memory(MemoryRequest),
     Query(QueryRequest),
+    CodeSearch(CodeSearchRequest),
     Retrieve(RetrieveRequest),
     Search(SearchRequest),
     Map(MapRequest),

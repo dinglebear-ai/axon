@@ -17,6 +17,7 @@ use super::super::super::types::{
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
 use std::env;
+use std::path::PathBuf;
 use std::time::Duration;
 
 fn env_usize_or(var: &str, default: usize) -> usize {
@@ -39,6 +40,9 @@ pub(super) struct DispatchOutput {
     pub ask_reset_session: bool,
     pub ask_new_session: bool,
     pub ask_list_sessions: bool,
+    pub code_search_cwd: Option<PathBuf>,
+    pub code_search_path_prefix: Option<String>,
+    pub code_search_no_freshness: bool,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -95,6 +99,9 @@ impl DispatchOutput {
             ask_reset_session: false,
             ask_new_session: false,
             ask_list_sessions: false,
+            code_search_cwd: None,
+            code_search_path_prefix: None,
+            code_search_no_freshness: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -223,6 +230,13 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Query(args) => {
             out.ask_diagnostics = args.diagnostics;
             set_simple(&mut out, CommandKind::Query, args.value);
+        }
+        CliCommand::CodeSearch(args) => {
+            out.command = CommandKind::CodeSearch;
+            out.positional = args.value;
+            out.code_search_cwd = args.cwd;
+            out.code_search_path_prefix = args.path_prefix;
+            out.code_search_no_freshness = args.no_freshness;
         }
         CliCommand::Retrieve(args) => {
             out.retrieve_max_points = args.max_points;

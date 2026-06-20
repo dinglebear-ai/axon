@@ -7,9 +7,14 @@ use crate::mcp::schema::{
 };
 use crate::services::system;
 use rmcp::ErrorData;
+use serde_json::Value;
 
 #[path = "handlers_system/screenshot.rs"]
 mod screenshot;
+
+#[cfg(test)]
+#[path = "handlers_system_tests.rs"]
+mod tests;
 
 // --- Public handlers ---
 
@@ -23,46 +28,7 @@ impl AxonMcpServer {
             "help",
             req.response_mode,
             "help-actions",
-            serde_json::json!({
-                "tool": "axon",
-                "actions": {
-                    "status": [],
-                    "help": [],
-                    "scrape": ["scrape"],
-                    "summarize": ["summarize"],
-                    "research": ["research"],
-                    "ask": ["ask"],
-                    "evaluate": ["evaluate"],
-                    "suggest": ["suggest"],
-                    "screenshot": ["screenshot"],
-                    "endpoints": ["endpoints"],
-                    "crawl": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
-                    "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
-                    "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
-                    "ingest": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
-                    "memory": ["remember", "list", "search", "show", "link", "supersede", "context"],
-                    "query": ["query"],
-                    "retrieve": ["retrieve"],
-                    "search": ["search"],
-                    "map": ["map"],
-                    "doctor": ["doctor"],
-                    "domains": ["domains"],
-                    "sources": ["sources"],
-                    "stats": ["stats"],
-                    "diff": ["diff"],
-                    "brand": ["brand"],
-                    "vertical_scrape": ["list", "capabilities"],
-                    "elicit_demo": []
-                },
-                "resources": [
-                    MCP_TOOL_SCHEMA_URI
-                ],
-                "defaults": {
-                    "response_mode": "path",
-                    "artifact_dir": artifact_root(),
-                    "artifact_context": client_context_name()
-                }
-            }),
+            help_payload(),
             InlineHint::Default,
         )
         .await
@@ -222,4 +188,48 @@ impl AxonMcpServer {
         )
         .await
     }
+}
+
+fn help_payload() -> Value {
+    serde_json::json!({
+        "tool": "axon",
+        "actions": {
+            "status": [],
+            "help": [],
+            "scrape": ["scrape"],
+            "summarize": ["summarize"],
+            "research": ["research"],
+            "ask": ["ask"],
+            "evaluate": ["evaluate"],
+            "suggest": ["suggest"],
+            "screenshot": ["screenshot"],
+            "endpoints": ["endpoints"],
+            "crawl": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
+            "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
+            "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
+            "ingest": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
+            "memory": ["remember", "list", "search", "show", "link", "supersede", "context"],
+            "query": ["query"],
+            "code_search": [],
+            "retrieve": ["retrieve"],
+            "search": ["search"],
+            "map": ["map"],
+            "doctor": ["doctor"],
+            "domains": ["domains"],
+            "sources": ["sources"],
+            "stats": ["stats"],
+            "diff": ["diff"],
+            "brand": ["brand"],
+            "vertical_scrape": ["list", "capabilities"],
+            "elicit_demo": []
+        },
+        "resources": [
+            MCP_TOOL_SCHEMA_URI
+        ],
+        "defaults": {
+            "response_mode": "path",
+            "artifact_dir": artifact_root(),
+            "artifact_context": client_context_name()
+        }
+    })
 }

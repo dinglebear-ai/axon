@@ -88,7 +88,8 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | Command | Async | Description |
 |---------|-------|-------------|
 | `embed [input]` | Yes | Embed file/dir/URL into Qdrant |
-| `query <text>` | No | Semantic vector search |
+| `query <text>` | No | Semantic vector search over indexed knowledge; excludes local `code-search` vectors |
+| `code-search <text>` | No | Local Git checkout semantic code search with freshness and committed-generation fencing |
 | `retrieve <url>` | No | Fetch stored chunks from Qdrant by URL |
 | `ask <question>` | No | RAG search + LLM answer |
 | `evaluate <question>` | No | RAG vs baseline with independent LLM judge |

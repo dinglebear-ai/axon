@@ -402,6 +402,7 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Status(_) => ("status", "None".to_string()),
         AxonRequest::Help(_) => ("help", "None".to_string()),
         AxonRequest::Query(_) => ("query", "None".to_string()),
+        AxonRequest::CodeSearch(_) => ("code_search", "None".to_string()),
         AxonRequest::Retrieve(_) => ("retrieve", "None".to_string()),
         AxonRequest::Search(_) => ("search", "None".to_string()),
         AxonRequest::Map(_) => ("map", "None".to_string()),

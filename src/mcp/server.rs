@@ -144,7 +144,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, memory, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff, vertical_scrape.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, memory, query, code_search, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff, vertical_scrape.",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]
@@ -179,6 +179,7 @@ impl AxonMcpServer {
             AxonRequest::Ingest(req) => self.handle_ingest(req).await?,
             AxonRequest::Memory(req) => self.handle_memory(req).await?,
             AxonRequest::Query(req) => self.handle_query(req).await?,
+            AxonRequest::CodeSearch(req) => self.handle_code_search(req).await?,
             AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
             AxonRequest::Search(req) => self.handle_search(req).await?,
             AxonRequest::Map(req) => self.handle_map(req).await?,

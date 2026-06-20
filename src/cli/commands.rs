@@ -1,5 +1,6 @@
 pub mod ask;
 pub mod brand;
+pub mod code_search;
 pub mod common;
 mod common_jobs;
 pub mod common_urls;
@@ -52,6 +53,7 @@ mod services_migration_tests;
 
 pub use ask::run_ask;
 pub use brand::run_brand;
+pub use code_search::run_code_search;
 pub use common::start_url_from_cfg;
 pub use completions::run_completions;
 pub use config::run_config;

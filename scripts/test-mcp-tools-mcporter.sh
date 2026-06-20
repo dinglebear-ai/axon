@@ -22,6 +22,7 @@ MCPORTER=()
 EXPECTED_ROUTES="$(cat <<'EOF'
 ask
 brand
+code_search
 crawl:cancel
 crawl:cleanup
 crawl:clear
@@ -81,10 +82,11 @@ vertical_scrape:list
 EOF
 )"
 
-DIRECT_ACTIONS_JSON='["ask","brand","diff","doctor","domains","elicit_demo","endpoints","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
+DIRECT_ACTIONS_JSON='["ask","brand","code_search","diff","doctor","domains","elicit_demo","endpoints","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
 ask
 brand
+code_search
 crawl
 diff
 doctor
@@ -274,10 +276,13 @@ build_suite_config() {
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/logs/axon.log" \
     --arg sqlite_path "$runtime_root/mcporter-jobs.db" \
-    '.mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
+    '.mcpServers[$server].args = ["-lc", ("exec \"" + $repo_root + "/scripts/mcporter-axon\"")]
+    | .mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
         AXON_REPO_ROOT: $repo_root,
         AXON_HOME: $axon_home,
         AXON_DATA_DIR: $data_dir,
+        AXON_CODE_SEARCH_ALLOWED_ROOTS: $repo_root,
+        AXON_MCP_EMBED_ALLOWED_ROOTS: $repo_root,
         AXON_LOG_FILE: $log_file,
         AXON_SQLITE_PATH: $sqlite_path
       })
@@ -322,6 +327,10 @@ run_suite() {
   run_json_case "${prefix}_domains" '.ok == true and .action == "domains" and .subaction == "domains" and (.data.data.domains | type == "array") and .data.data.limit == 5' call_tool action:domains limit:5 offset:0
   run_json_case "${prefix}_sources" '.ok == true and .action == "sources" and .subaction == "sources" and (.data.data.urls | type == "array") and .data.data.limit == 5' call_tool action:sources limit:5 offset:0
   run_json_case "${prefix}_query" '.ok == true and .action == "query" and .subaction == "query" and (.data.data.results | type == "array") and .data.data.query == "rust mcp sdk"' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
+  if [[ "$URL_MODE" != "1" ]]; then
+    run_json_case "${prefix}_code_search_no_freshness" '.ok == true and .action == "code_search" and .subaction == "code_search" and .data.data.content_trust == "untrusted_local_code" and (.data.data.results | type == "array") and .data.data.freshness.status == "stale"' call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT" no_freshness:true limit:3 offset:0
+  fi
+  run_error_case "${prefix}_code_search_missing_cwd" "cwd is required for code_search MCP requests" call_tool action:code_search query:'freshness lease' no_freshness:true limit:3 offset:0
   run_json_case "${prefix}_map" ".ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$REAL_PAGE_URL\"" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
   run_json_case "${prefix}_scrape" ".ok == true and .action == \"scrape\" and .subaction == \"scrape\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.markdown | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.markdown | type == \"string\") and (.data.artifact.path | type == \"string\")) or ((.data.inline.url == \"$REAL_PAGE_URL\") and (.data.inline.content | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:scrape url:"$REAL_PAGE_URL"
   run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.content | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.content | type == \"string\") and (.data.artifact.path | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.inline.content | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
@@ -332,8 +341,8 @@ run_suite() {
     run_error_case "${prefix}_screenshot_unavailable" "screenshot failed" call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   else
     run_json_case "${prefix}_search" '.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language"' call_tool action:search query:'rust programming language' limit:3 offset:0
-    run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and (.data.shape.search_results | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
-    run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (.data.data.answer | type == "string") and .data.data.query == "What is this repository?"' call_tool action:ask query:'What is this repository?'
+    run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
+    run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
     run_json_case "${prefix}_screenshot" '.ok == true and .action == "screenshot" and ((.data.data.path | type == "string") or (.data.path | type == "string"))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   fi
   run_json_case "${prefix}_elicit_demo" '.ok == true and .action == "elicit_demo" and (.data.action | type == "string")' call_tool action:elicit_demo
@@ -362,14 +371,14 @@ run_suite() {
   crawl_job_id="$(extract_json_field "$OUTDIR/${prefix}_crawl_start.log" '.data.job_ids[0]')"
   run_json_case "${prefix}_crawl_status" '.ok == true and .action == "crawl" and .subaction == "status" and (((.data.job | type) == "object") or (.data.job == null))' call_tool action:crawl subaction:status job_id:"$crawl_job_id"
   run_json_case "${prefix}_crawl_cancel" '.ok == true and .action == "crawl" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:crawl subaction:cancel job_id:"$crawl_job_id"
-  run_json_case "${prefix}_crawl_list" '.ok == true and .action == "crawl" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:crawl subaction:list limit:5 offset:0
+  run_json_case "${prefix}_crawl_list" '.ok == true and .action == "crawl" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:crawl subaction:list limit:5 offset:0
 
   run_json_case "${prefix}_extract_start" '.ok == true and .action == "extract" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"extract\",\"subaction\":\"start\",\"urls\":[\"$REAL_PAGE_URL\"],\"prompt\":\"Extract the page title.\",\"max_pages\":1}"
   local extract_job_id
   extract_job_id="$(extract_json_field "$OUTDIR/${prefix}_extract_start.log" '.data.job_id')"
   run_json_case "${prefix}_extract_status" '.ok == true and .action == "extract" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:extract subaction:status job_id:"$extract_job_id"
   run_json_case "${prefix}_extract_cancel" '.ok == true and .action == "extract" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:extract subaction:cancel job_id:"$extract_job_id"
-  run_json_case "${prefix}_extract_list" '.ok == true and .action == "extract" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:extract subaction:list limit:5 offset:0
+  run_json_case "${prefix}_extract_list" '.ok == true and .action == "extract" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:extract subaction:list limit:5 offset:0
 
   if [[ "$URL_MODE" == "1" ]]; then
     run_error_case "${prefix}_embed_start_unavailable" "local file embedding is disabled" call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
@@ -380,7 +389,7 @@ run_suite() {
     run_json_case "${prefix}_embed_status" '.ok == true and .action == "embed" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:embed subaction:status job_id:"$embed_job_id"
     run_json_case "${prefix}_embed_cancel" '.ok == true and .action == "embed" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:embed subaction:cancel job_id:"$embed_job_id"
   fi
-  run_json_case "${prefix}_embed_list" '.ok == true and .action == "embed" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:embed subaction:list limit:5 offset:0
+  run_json_case "${prefix}_embed_list" '.ok == true and .action == "embed" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:embed subaction:list limit:5 offset:0
 
   run_error_case "${prefix}_ingest_start_sessions_unavailable" "/v1/ingest/sessions/prepared" call_tool_json '{"action":"ingest","subaction":"start","source_type":"sessions","sessions":{"codex":true,"project":"axon_rust"}}'
   run_json_case "${prefix}_ingest_list" '.ok == true and .action == "ingest" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:ingest subaction:list limit:5 offset:0

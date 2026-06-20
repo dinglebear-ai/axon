@@ -157,6 +157,21 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 `--wait false` is intentionally fire-and-forget for crawl/embed/ingest submits: the command enqueues the job, prints the job ID, and exits without draining the table. `--wait true` starts in-process workers where the service path needs queued workers, then waits only for the job IDs submitted by the current command and any explicit dependent job IDs.
 
+### Local code search
+
+`axon code-search` and MCP `action=code_search` use the local code index stored
+in the shared SQLite database plus Qdrant vectors with `source_type = "local_code"`.
+MCP callers must pass a `cwd` that resolves under `AXON_CODE_SEARCH_ALLOWED_ROOTS`.
+The CLI may search the current Git checkout directly.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AXON_CODE_SEARCH_ALLOWED_ROOTS` | -- | Colon- or comma-separated filesystem roots allowed for MCP `code_search` `cwd` resolution. `/` and `HOME` are rejected. |
+| `AXON_CODE_SEARCH_FRESHNESS_TTL_SECS` | `30` | Process-local freshness cache TTL before a new manifest check is required. |
+| `AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS` | `15` | Foreground refresh timeout. On timeout, stale vectors are returned with a freshness warning; no background refresh continues in v1. |
+| `AXON_CODE_SEARCH_MAX_FILE_BYTES` | `10485760` | Max local source file size considered by the manifest and embed pass. Larger files are skipped. |
+| `AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE` | `50` | Changed-file batch size for local-code embedding. |
+
 ### TEI embedding
 
 Axon client-side TEI retry and batching knobs live in `~/.axon/config.toml`

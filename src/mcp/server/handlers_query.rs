@@ -1,17 +1,20 @@
 #[path = "handlers_query/brand_diff.rs"]
 mod brand_diff;
+#[path = "handlers_query/code_search.rs"]
+mod code_search;
+#[path = "handlers_query/query.rs"]
+mod query;
 
 use super::AxonMcpServer;
 use super::common::{
     InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
-    map_scrape_format, parse_offset, respond_with_mode, slugify, to_map_options, to_pagination,
-    to_retrieve_options, to_search_options, validate_mcp_collection, validate_mcp_url,
+    map_scrape_format, respond_with_mode, slugify, to_map_options, to_retrieve_options,
+    to_search_options, validate_mcp_collection, validate_mcp_url,
 };
 use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{
-    AskRequest, AxonToolResponse, EndpointsRequest, EvaluateRequest, MapRequest, QueryRequest,
-    ResearchRequest, RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest,
-    SummarizeRequest,
+    AskRequest, AxonToolResponse, EndpointsRequest, EvaluateRequest, MapRequest, ResearchRequest,
+    RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest, SummarizeRequest,
 };
 use crate::services::{document as document_svc, types::DocumentBackend};
 use crate::services::{
@@ -21,51 +24,6 @@ use crate::services::{
 use rmcp::ErrorData;
 
 impl AxonMcpServer {
-    pub(super) async fn handle_query(
-        &self,
-        req: QueryRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let query = req
-            .query
-            .ok_or_else(|| invalid_params("query is required for query"))?;
-        let limit = req.limit.unwrap_or(self.cfg.search_limit).clamp(1, 500);
-        let offset = parse_offset(req.offset);
-        let response_mode = req.response_mode;
-        let pagination = to_pagination(Some(limit), Some(offset), self.cfg.search_limit);
-
-        let collection = req
-            .collection
-            .as_deref()
-            .map(validate_mcp_collection)
-            .transpose()?;
-        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
-            collection,
-            since: req.since,
-            before: req.before,
-            hybrid_search_enabled: req.hybrid_search,
-            ..ConfigOverrides::default()
-        });
-
-        let result = query_svc::query(&cfg, &query, pagination)
-            .await
-            .map_err(|e| logged_internal_error(&format!("query '{query}'"), e.as_ref()))?;
-
-        respond_with_mode(
-            "query",
-            "query",
-            response_mode,
-            &format!("query-{}", slugify(&query, 56)),
-            serde_json::json!({
-                "query": query,
-                "limit": limit,
-                "offset": offset,
-                "results": serde_json::to_value(&result.results).map_err(|e| internal_error(format!("serialize query results: {e}")))?,
-            }),
-            InlineHint::Default,
-        )
-        .await
-    }
-
     pub(super) async fn handle_retrieve(
         &self,
         req: RetrieveRequest,

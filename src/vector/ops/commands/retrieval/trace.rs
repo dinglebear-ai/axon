@@ -115,7 +115,12 @@ fn score_and_filter_candidates_inner(
         );
         let base_rerank_score = breakdown.rerank_score + product_boost;
         let code_adjustment = if policy.apply_code_search_adjustment {
-            code_search_adjustment(&candidates[idx], query_tokens, base_rerank_score)
+            code_search_adjustment(
+                &candidates[idx],
+                query_tokens,
+                base_rerank_score,
+                policy.force_code_intent,
+            )
         } else {
             0.0
         };
@@ -236,8 +241,11 @@ fn code_search_adjustment(
     candidate: &RetrievedCandidate,
     query_tokens: &[String],
     base_rerank_score: f64,
+    force_code_intent: bool,
 ) -> f64 {
-    if query_tokens.is_empty() || !query_has_code_intent(candidate, query_tokens) {
+    if query_tokens.is_empty()
+        || (!force_code_intent && !query_has_code_intent(candidate, query_tokens))
+    {
         return 0.0;
     }
 

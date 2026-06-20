@@ -159,6 +159,7 @@ fn score_policy_boosts_docs_rs_crate_page_for_crate_queries() {
         authoritative_boost: 0.0,
         product_authority_boost: 0.35,
         apply_code_search_adjustment: false,
+        force_code_intent: false,
         min_relevance_score: None,
         require_topical_overlap: true,
     };

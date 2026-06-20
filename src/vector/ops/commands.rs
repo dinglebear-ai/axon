@@ -1,4 +1,5 @@
 pub(crate) mod ask;
+mod code_search;
 mod evaluate;
 mod query;
 mod retrieval;
@@ -6,6 +7,7 @@ pub(crate) mod streaming;
 mod suggest;
 
 pub use ask::{ask_payload, ask_payload_with_deltas};
+pub(crate) use code_search::{CodeSearchVectorRequest, code_search_hits};
 pub use evaluate::{evaluate_payload, evaluate_result};
 pub use query::{query_hits, query_results};
 pub use suggest::discover_crawl_suggestions;

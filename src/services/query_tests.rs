@@ -1,9 +1,11 @@
 use super::*;
+use crate::core::config::Config;
 use crate::services::types::{
     AskExplainCandidate, AskExplainContext, AskExplainContextRendered, AskExplainContextSourceTier,
     AskExplainFilterDecisionKind, AskExplainFullDocFetchMode, AskExplainFullDocFetchSkipReason,
     AskExplainMode, AskExplainRenderedContextFormat, AskExplainScoreComponentStatus,
-    AskExplainScoreKind, AskExplainSelectionDecisionKind, AskTiming, CorpusHealthKind,
+    AskExplainScoreKind, AskExplainSelectionDecisionKind, AskTiming, CodeSearchFreshness,
+    CodeSearchResult, CorpusHealthKind, RetrieveOptions,
 };
 use serde_json::json;
 
@@ -537,6 +539,111 @@ fn map_query_results_typed_nonempty() {
     assert_eq!(result.results[0].chunk_index, Some(2));
     assert_eq!(result.results[1].source, "b.com");
     assert_eq!(result.results[1].chunk_index, None);
+}
+
+#[test]
+fn code_search_result_marks_snippets_untrusted() {
+    let result = CodeSearchResult {
+        query: "find parser".to_string(),
+        content_trust: "untrusted_local_code".to_string(),
+        results: vec![],
+        freshness: CodeSearchFreshness {
+            status: "skipped".to_string(),
+            warning: None,
+            indexed_files: 0,
+            removed_files: 0,
+        },
+    };
+    let value = serde_json::to_value(result).unwrap();
+    assert_eq!(
+        value["content_trust"].as_str(),
+        Some("untrusted_local_code")
+    );
+}
+
+#[test]
+fn code_search_missing_index_freshness_warns() {
+    let freshness = code_search_missing_index_freshness(CodeSearchFreshness {
+        status: "skipped".to_string(),
+        warning: None,
+        indexed_files: 0,
+        removed_files: 0,
+    });
+    assert_eq!(freshness.status, "stale");
+    assert_eq!(
+        freshness.warning.as_deref(),
+        Some("no committed code index; rerun without --no-freshness to build it")
+    );
+}
+
+#[test]
+fn code_search_freshness_marks_warning_branches_stale() {
+    for warning in [
+        FreshnessWarning::AlreadyRunning,
+        FreshnessWarning::TimedOut { timeout_ms: 5000 },
+        FreshnessWarning::Failed {
+            error: "embed failed".to_string(),
+        },
+    ] {
+        let freshness = code_search_freshness("fresh", Some(warning), 0, 0);
+        assert_eq!(freshness.status, "stale");
+        assert!(freshness.warning.is_some());
+    }
+
+    let skipped = code_search_freshness("skipped", None, 0, 0);
+    assert_eq!(skipped.status, "skipped");
+    assert!(skipped.warning.is_none());
+}
+
+#[test]
+fn code_search_allowed_roots_error_does_not_leak_absolute_path() {
+    let message = code_search_outside_allowed_roots_message();
+    assert_eq!(
+        message,
+        "code_search cwd is outside AXON_CODE_SEARCH_ALLOWED_ROOTS"
+    );
+    assert!(!message.contains("/"));
+}
+
+#[tokio::test]
+async fn code_search_resolution_errors_do_not_echo_probe_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let missing = dir.path().join("secret-checkout");
+    let err = resolve_code_search_root(Some(&missing), CodeSearchCaller::Cli)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(err, "code_search cwd could not be resolved");
+    assert!(!err.contains(dir.path().to_string_lossy().as_ref()));
+}
+
+#[tokio::test]
+async fn code_search_project_origin_is_checkout_scoped() {
+    let a = tempfile::tempdir().expect("tempdir a");
+    let b = tempfile::tempdir().expect("tempdir b");
+    let origin_a = code_search_project_origin(a.path()).await;
+    let origin_b = code_search_project_origin(b.path()).await;
+    assert_ne!(origin_a, origin_b);
+}
+
+#[tokio::test]
+async fn retrieve_rejects_local_code_urls() {
+    let err = retrieve(
+        &Config::test_default(),
+        "local-code://project/g/1/src%2Flib.rs",
+        RetrieveOptions {
+            max_points: None,
+            cursor: None,
+            token_budget: None,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    assert_eq!(
+        err,
+        "local-code documents are only available through code_search"
+    );
 }
 
 #[test]

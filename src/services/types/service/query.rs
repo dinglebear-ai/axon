@@ -3,6 +3,7 @@
 // ask_explain types moved to crate::core::ask_explain (A-C1 cycle break)
 
 pub use crate::core::ask_explain::*;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct QueryHit {
@@ -40,6 +41,39 @@ pub struct QueryHit {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct QueryResult {
     pub results: Vec<QueryHit>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodeSearchCaller {
+    Cli,
+    Mcp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeSearchOptions {
+    pub limit: usize,
+    pub offset: usize,
+    pub cwd: Option<PathBuf>,
+    pub path_prefix: Option<String>,
+    pub ensure_fresh: bool,
+    pub caller: CodeSearchCaller,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CodeSearchFreshness {
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+    pub indexed_files: usize,
+    pub removed_files: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CodeSearchResult {
+    pub query: String,
+    pub content_trust: String,
+    pub results: Vec<QueryHit>,
+    pub freshness: CodeSearchFreshness,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
