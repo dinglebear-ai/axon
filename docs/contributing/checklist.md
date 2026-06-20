@@ -55,6 +55,9 @@ Pre-release quality checklist. Complete all items before tagging a release.
 ## SQLite
 
 - [ ] Migrations in `src/jobs/migrations/` are sequential
+- [ ] Existing migrations are append-only after merge; add a new migration instead of editing an applied one
+- [ ] New migrations are recorded with `cargo xtask update-sqlite-migration-checksums`
+- [ ] `cargo xtask check-sqlite-migrations` passes
 - [ ] Schema changes are reflected in SQLite store/list/recover paths
 - [ ] Migration upgrade path works against an existing `~/.axon/jobs.db`
 

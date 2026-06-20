@@ -340,6 +340,44 @@ jobs:
       - name: Enforce modern Rust module style (no mod.rs)
         run: cargo xtask check-no-mod-rs
 
+  sqlite-migrations:
+    name: sqlite-migrations
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            src
+            xtask
+            benches
+            apps/web
+            apps/palette-tauri
+            apps/android
+            apps/chrome-extension
+            assets
+            plugins
+            docs
+            migrations
+            .github
+            tests
+            scripts
+            config
+            release
+            vendor
+            .cargo
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask
+      - name: create web assets placeholder
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
+      - name: Verify SQLite migration checksum manifest
+        run: cargo xtask check-sqlite-migrations
+
   toml-fmt:
     name: toml-fmt
     runs-on: ubuntu-latest
@@ -1595,6 +1633,7 @@ jobs:
       - android
       - android-openapi-client
       - no-mod-rs
+      - sqlite-migrations
       - toml-fmt
       - lefthook-pre-commit-speed
       - palette-tauri
@@ -1638,6 +1677,7 @@ jobs:
           require_success_or_skipped android "${{ needs.android.result }}"
           require_success_or_skipped android-openapi-client "${{ needs.android-openapi-client.result }}"
           require_success_or_skipped no-mod-rs "${{ needs.no-mod-rs.result }}"
+          require_success_or_skipped sqlite-migrations "${{ needs.sqlite-migrations.result }}"
           require_success_or_skipped toml-fmt "${{ needs.toml-fmt.result }}"
           require_success_or_skipped lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}"
           require_success_or_skipped palette-tauri "${{ needs.palette-tauri.result }}"
