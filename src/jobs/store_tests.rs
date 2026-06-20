@@ -2,7 +2,7 @@ use super::*;
 use uuid::Uuid;
 
 #[tokio::test]
-async fn migration_0013_moves_only_active_result_json_to_progress_json() {
+async fn migration_0014_moves_only_active_result_json_to_progress_json() {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect(":memory:")
@@ -43,15 +43,20 @@ async fn migration_0013_moves_only_active_result_json_to_progress_json() {
         .expect("insert completed row");
     }
 
-    for statement in include_str!("migrations/0013_add_job_progress_json.sql")
-        .split(';')
-        .map(str::trim)
-        .filter(|statement| !statement.is_empty())
-    {
-        sqlx::query(statement)
-            .execute(&pool)
-            .await
-            .expect("run migration statement");
+    for migration in [
+        include_str!("migrations/0013_add_job_progress_json.sql"),
+        include_str!("migrations/0014_backfill_active_job_progress_json.sql"),
+    ] {
+        for statement in migration
+            .split(';')
+            .map(str::trim)
+            .filter(|statement| !statement.is_empty())
+        {
+            sqlx::query(statement)
+                .execute(&pool)
+                .await
+                .expect("run migration statement");
+        }
     }
 
     for table in [
