@@ -46,6 +46,10 @@ IGNORED_TOKENS = {
     "AXON_DEV_BIN_DIR",  # local shell variable in scripts/axon
     "AXON_HOME_DIR",  # local shell variable in scripts/axon
     "AXON_BACKUP_DIR",  # operational var in scripts/axon-backup.sh, not axon runtime config
+    "AXON_ALLOW_FALLBACK_WEB_ASSETS",  # local/CI build escape hatch, not runtime config
+    "AXON_CHANGED_PATHS",  # workflow test fixture variable, not axon runtime config
+    "AXON_FULL_PRE_PUSH",  # local hook control variable, not axon runtime config
+    "AXON_PRE_PUSH_BASE",  # local hook control variable, not axon runtime config
     "QDRANT_DEST",  # local shell variable in scripts/axon-backup.sh
     "QDRANT_DIR",  # local shell variable in scripts/axon-backup.sh
     "QDRANT_SHA256",  # local shell variable in scripts/axon-backup.sh
@@ -64,6 +68,8 @@ IGNORED_TOKENS = {
     "OPENAI_COMPAT_SECRET",  # fake secret string literal in runners_tests.rs redaction test, not an env var
     "GEMINI_DEFAULT_COMPLETION_CONCURRENCY",  # Rust const (default concurrency) in core/llm/types.rs, not an env var
     "OPENAI_DEFAULT_COMPLETION_CONCURRENCY",  # Rust const (default concurrency) in core/llm/types.rs, not an env var
+    "GITHUB_REF",  # GitHub Actions runtime variable, not axon runtime config
+    "GITHUB_SHA",  # GitHub Actions runtime variable, not axon runtime config
 }
 
 VALID_CLASSIFICATIONS = {
@@ -170,7 +176,7 @@ def scan_env_tokens() -> dict[str, set[str]]:
             if path.is_dir():
                 continue
             rel = path.relative_to(ROOT)
-            if any(part in {".git", ".worktrees", "target"} for part in rel.parts):
+            if any(part in {".git", ".worktrees", "__pycache__", "target"} for part in rel.parts):
                 continue
             if str(rel) == "scripts/check_legacy_runtime_terms.sh":
                 continue

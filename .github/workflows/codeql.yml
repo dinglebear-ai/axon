@@ -17,26 +17,95 @@ env:
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare trusted changed path classifier
+        run: |
+          set -euo pipefail
+          classifier="scripts/ci/changed_paths.py"
+          trusted="/tmp/axon-changed-paths.py"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if ! git show "${{ github.event.pull_request.base.sha }}:$classifier" > "$trusted" 2>/dev/null; then
+              cat > "$trusted" <<'PY'
+          #!/usr/bin/env python3
+          import argparse
+          from pathlib import Path
+          keys = "all docs workflow rust web android palette chrome docker compose mcp security release openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          parser = argparse.ArgumentParser()
+          parser.add_argument("--event", required=True)
+          parser.add_argument("--output", type=Path, required=True)
+          parser.add_argument("--write-changed-files", type=Path)
+          args, _ = parser.parse_known_args()
+          if args.write_changed_files:
+              args.write_changed_files.write_text("")
+          args.output.write_text("".join(f"{key}=true\n" for key in keys))
+          for key in keys:
+              print(f"{key}=true")
+          PY
+            fi
+          else
+            cp "$classifier" "$trusted"
+          fi
+          chmod +x "$trusted"
+          echo "AXON_CHANGED_PATHS=$trusted" >> "$GITHUB_ENV"
+      - name: Classify changed paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python3 "$AXON_CHANGED_PATHS" --event "$EVENT_NAME" --output "$GITHUB_OUTPUT" --write-changed-files changed-files.txt
+      - name: Build CodeQL matrix
+        id: matrix
+        env:
+          CODEQL_ACTIONS: ${{ steps.classify.outputs.codeql_actions }}
+          CODEQL_JAVASCRIPT_TYPESCRIPT: ${{ steps.classify.outputs.codeql_javascript_typescript }}
+          CODEQL_PYTHON: ${{ steps.classify.outputs.codeql_python }}
+          CODEQL_RUST: ${{ steps.classify.outputs.codeql_rust }}
+          CODEQL_JAVA_KOTLIN: ${{ steps.classify.outputs.codeql_java_kotlin }}
+        run: |
+          set -euo pipefail
+          jq -nc \
+            --arg actions "$CODEQL_ACTIONS" \
+            --arg js "$CODEQL_JAVASCRIPT_TYPESCRIPT" \
+            --arg py "$CODEQL_PYTHON" \
+            --arg rust "$CODEQL_RUST" \
+            --arg kotlin "$CODEQL_JAVA_KOTLIN" \
+            '{
+              include:
+                ([]
+                + (if $actions == "true" then [{language:"actions", build_mode:"none"}] else [] end)
+                + (if $js == "true" then [{language:"javascript-typescript", build_mode:"none"}] else [] end)
+                + (if $py == "true" then [{language:"python", build_mode:"none"}] else [] end)
+                + (if $rust == "true" then [{language:"rust", build_mode:"none"}] else [] end)
+                + (if $kotlin == "true" then [{language:"java-kotlin", build_mode:"manual"}] else [] end))
+            }' > matrix.json
+          if [[ "$(jq '.include | length' matrix.json)" == "0" ]]; then
+            jq -nc '{include: [{language:"actions", build_mode:"none"}]}' > matrix.json
+          fi
+          echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
+          cat matrix.json
+
   analyze:
     name: analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    needs: [changes]
     permissions:
       security-events: write
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - language: actions
-            build-mode: none
-          - language: javascript-typescript
-            build-mode: none
-          - language: python
-            build-mode: none
-          - language: rust
-            build-mode: none
-          - language: java-kotlin
-            build-mode: manual
+      matrix: ${{ fromJson(needs.changes.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v5
@@ -95,7 +164,7 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+          build-mode: ${{ matrix.build_mode }}
           dependency-caching: true
 
       - name: Build Android app for Java/Kotlin analysis
@@ -106,3 +175,25 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
+
+  codeql-gate:
+    name: codeql-gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - changes
+      - analyze
+    steps:
+      - name: verify CodeQL jobs passed or were intentionally skipped
+        run: |
+          set -euo pipefail
+          require_success_or_skipped() {
+            local name="$1"
+            local result="$2"
+            case "$result" in
+              success|skipped) printf '%s=%s\n' "$name" "$result" ;;
+              *) echo "::error::$name concluded $result" >&2; exit 1 ;;
+            esac
+          }
+          require_success_or_skipped changes "${{ needs.changes.result }}"
+          require_success_or_skipped analyze "${{ needs.analyze.result }}"
