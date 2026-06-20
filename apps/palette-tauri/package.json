@@ -1,6 +1,6 @@
 {
   "name": "axon-palette-tauri",
-  "version": "5.10.3",
+  "version": "5.10.4",
   "private": true,
   "type": "module",
   "scripts": {
