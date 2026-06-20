@@ -30,9 +30,72 @@ env:
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      all: ${{ steps.classify.outputs.all }}
+      docs: ${{ steps.classify.outputs.docs }}
+      workflow: ${{ steps.classify.outputs.workflow }}
+      rust: ${{ steps.classify.outputs.rust }}
+      web: ${{ steps.classify.outputs.web }}
+      android: ${{ steps.classify.outputs.android }}
+      palette: ${{ steps.classify.outputs.palette }}
+      chrome: ${{ steps.classify.outputs.chrome }}
+      docker: ${{ steps.classify.outputs.docker }}
+      compose: ${{ steps.classify.outputs.compose }}
+      mcp: ${{ steps.classify.outputs.mcp }}
+      security: ${{ steps.classify.outputs.security }}
+      release: ${{ steps.classify.outputs.release }}
+      openapi: ${{ steps.classify.outputs.openapi }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Prepare trusted changed path classifier
+        run: |
+          set -euo pipefail
+          classifier="scripts/ci/changed_paths.py"
+          trusted="/tmp/axon-changed-paths.py"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if ! git show "${{ github.event.pull_request.base.sha }}:$classifier" > "$trusted" 2>/dev/null; then
+              cat > "$trusted" <<'PY'
+          #!/usr/bin/env python3
+          import argparse
+          from pathlib import Path
+          keys = "all docs workflow rust web android palette chrome docker compose mcp security release openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          parser = argparse.ArgumentParser()
+          parser.add_argument("--event", required=True)
+          parser.add_argument("--output", type=Path, required=True)
+          parser.add_argument("--write-changed-files", type=Path)
+          args, _ = parser.parse_known_args()
+          if args.write_changed_files:
+              args.write_changed_files.write_text("")
+          args.output.write_text("".join(f"{key}=true\n" for key in keys))
+          for key in keys:
+              print(f"{key}=true")
+          PY
+            fi
+          else
+            cp "$classifier" "$trusted"
+          fi
+          chmod +x "$trusted"
+          echo "AXON_CHANGED_PATHS=$trusted" >> "$GITHUB_ENV"
+      - name: Classify changed paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python3 "$AXON_CHANGED_PATHS" --event "$EVENT_NAME" --output "$GITHUB_OUTPUT" --write-changed-files changed-files.txt
+
   mcp-transport-modes:
     name: mcp-transport-modes
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -70,6 +133,8 @@ jobs:
   version-sync:
     name: version-sync
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.release == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.docs == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -107,6 +172,8 @@ jobs:
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -121,6 +188,8 @@ jobs:
   android:
     name: android
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.android == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -165,6 +234,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The Gradle build uses the hosted runner SDK; installing the legacy
+          # `tools` package pulls the emulator and has failed on corrupt
+          # downloads before tests even start.
+          packages: ""
 
       - name: Run Android unit tests, lint, and APK builds
         run: >
@@ -192,6 +266,8 @@ jobs:
   android-openapi-client:
     name: android-openapi-client
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.openapi == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -229,6 +305,8 @@ jobs:
   no-mod-rs:
     name: no-mod-rs
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -265,6 +343,8 @@ jobs:
   toml-fmt:
     name: toml-fmt
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -312,6 +392,8 @@ jobs:
   lefthook-pre-commit-speed:
     name: lefthook pre-commit speed guard
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: enforce pre-commit stays fast
@@ -320,6 +402,8 @@ jobs:
   palette-tauri:
     name: palette-tauri
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.palette == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -403,6 +487,9 @@ jobs:
   windows-check:
     name: windows-check (xtask only)
     runs-on: windows-latest
+    timeout-minutes: 25
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -441,8 +528,6 @@ jobs:
         run: cargo check -p xtask --locked
       - name: cargo test -p xtask
         run: cargo test -p xtask --locked
-      - name: cargo xtask check-no-mod-rs
-        run: cargo xtask check-no-mod-rs
       - name: cargo xtask check-mcp-http
         run: cargo xtask check-mcp-http
 
@@ -464,6 +549,8 @@ jobs:
     # src/core/paths_tests.rs and was confirmed passing on Windows 11 against
     # this cross-compiled binary.
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' }}
     env:
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
       CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
@@ -523,6 +610,8 @@ jobs:
   shell-completions-smoke:
     name: shell-completions-smoke
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -557,6 +646,8 @@ jobs:
   web-panel:
     name: web-panel
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.web == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -577,6 +668,8 @@ jobs:
   mcp-schema-doc-sync:
     name: mcp-schema-doc-sync
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.mcp == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: Restore schema doc for drift comparison
@@ -587,6 +680,8 @@ jobs:
   rest-api-parity:
     name: rest-api-parity
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -641,6 +736,8 @@ jobs:
   mcp-oauth-smoke:
     name: mcp-oauth-smoke
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
     env:
       # TEI_URL must be set to pass startup validation even though TEI is not
       # actually running — this test exercises only the auth layer (/mcp 401).
@@ -678,6 +775,8 @@ jobs:
   advisory-lock-policy:
     name: advisory-lock-policy
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -720,6 +819,8 @@ jobs:
   ban-skip-validation:
     name: ban-skip-validation
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -751,6 +852,8 @@ jobs:
   monolith:
     name: monolith
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -814,6 +917,8 @@ jobs:
   fmt:
     name: fmt
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -841,6 +946,8 @@ jobs:
   check:
     name: check
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -879,6 +986,8 @@ jobs:
   msrv:
     name: msrv
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -918,6 +1027,8 @@ jobs:
   clippy:
     name: clippy
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -955,6 +1066,8 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     env:
       # Match the 8 MiB runtime thread stack from main.rs — deep scrape/extract
       # async chains overflow the 2 MiB rustc-test-harness default
@@ -1207,6 +1320,8 @@ jobs:
   security:
     name: security
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.security == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1247,7 +1362,8 @@ jobs:
   mcp-smoke:
     name: mcp-smoke
     runs-on: ubuntu-latest
-    needs: [release]
+    needs: [changes, release]
+    if: ${{ needs.release.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
@@ -1426,6 +1542,8 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -1453,7 +1571,8 @@ jobs:
   release-smoke:
     name: release-smoke
     runs-on: ubuntu-latest
-    needs: [release]
+    needs: [changes, release]
+    if: ${{ needs.release.result == 'success' }}
     steps:
       - uses: actions/download-artifact@v5
         with:
@@ -1464,38 +1583,82 @@ jobs:
           chmod +x ./target/release/axon
           ./target/release/axon --help
 
-  production-gate:
-    name: production-gate
+  ci-gate:
+    name: ci-gate
     runs-on: ubuntu-latest
     if: always()
     needs:
-      - monolith
-      - no-mod-rs
+      - changes
+      - mcp-transport-modes
       - version-sync
       - aurora-primitive-inventory
+      - android
+      - android-openapi-client
+      - no-mod-rs
+      - toml-fmt
+      - lefthook-pre-commit-speed
+      - palette-tauri
+      - windows-check
+      - windows-build
+      - shell-completions-smoke
+      - web-panel
+      - mcp-schema-doc-sync
+      - rest-api-parity
+      - mcp-oauth-smoke
+      - advisory-lock-policy
+      - ban-skip-validation
+      - monolith
       - fmt
       - check
+      - msrv
       - clippy
       - test
-      - web-panel
-      - android
-      - palette-tauri
       - security
+      - mcp-smoke
+      - rag-changes
+      - live-rag-pr
       - release
       - release-smoke
     steps:
-      - name: verify all required jobs passed
+      - name: verify required jobs passed or were intentionally skipped
         run: |
-          test "${{ needs.monolith.result }}" = "success"
-          test "${{ needs.no-mod-rs.result }}" = "success"
-          test "${{ needs.version-sync.result }}" = "success"
-          test "${{ needs.aurora-primitive-inventory.result }}" = "success"
-          test "${{ needs.fmt.result }}" = "success"
-          test "${{ needs.check.result }}" = "success"
-          test "${{ needs.clippy.result }}" = "success"
-          test "${{ needs.test.result }}" = "success"
-          test "${{ needs.web-panel.result }}" = "success"
-          test "${{ needs.palette-tauri.result }}" = "success"
-          test "${{ needs.security.result }}" = "success"
-          test "${{ needs.release.result }}" = "success"
-          test "${{ needs.release-smoke.result }}" = "success"
+          set -euo pipefail
+          require_success_or_skipped() {
+            local name="$1"
+            local result="$2"
+            case "$result" in
+              success|skipped) printf '%s=%s\n' "$name" "$result" ;;
+              *) echo "::error::$name concluded $result" >&2; exit 1 ;;
+            esac
+          }
+          require_success_or_skipped changes "${{ needs.changes.result }}"
+          require_success_or_skipped mcp-transport-modes "${{ needs.mcp-transport-modes.result }}"
+          require_success_or_skipped version-sync "${{ needs.version-sync.result }}"
+          require_success_or_skipped aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}"
+          require_success_or_skipped android "${{ needs.android.result }}"
+          require_success_or_skipped android-openapi-client "${{ needs.android-openapi-client.result }}"
+          require_success_or_skipped no-mod-rs "${{ needs.no-mod-rs.result }}"
+          require_success_or_skipped toml-fmt "${{ needs.toml-fmt.result }}"
+          require_success_or_skipped lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}"
+          require_success_or_skipped palette-tauri "${{ needs.palette-tauri.result }}"
+          require_success_or_skipped windows-check "${{ needs.windows-check.result }}"
+          require_success_or_skipped windows-build "${{ needs.windows-build.result }}"
+          require_success_or_skipped shell-completions-smoke "${{ needs.shell-completions-smoke.result }}"
+          require_success_or_skipped web-panel "${{ needs.web-panel.result }}"
+          require_success_or_skipped mcp-schema-doc-sync "${{ needs.mcp-schema-doc-sync.result }}"
+          require_success_or_skipped rest-api-parity "${{ needs.rest-api-parity.result }}"
+          require_success_or_skipped mcp-oauth-smoke "${{ needs.mcp-oauth-smoke.result }}"
+          require_success_or_skipped advisory-lock-policy "${{ needs.advisory-lock-policy.result }}"
+          require_success_or_skipped ban-skip-validation "${{ needs.ban-skip-validation.result }}"
+          require_success_or_skipped monolith "${{ needs.monolith.result }}"
+          require_success_or_skipped fmt "${{ needs.fmt.result }}"
+          require_success_or_skipped check "${{ needs.check.result }}"
+          require_success_or_skipped msrv "${{ needs.msrv.result }}"
+          require_success_or_skipped clippy "${{ needs.clippy.result }}"
+          require_success_or_skipped test "${{ needs.test.result }}"
+          require_success_or_skipped security "${{ needs.security.result }}"
+          require_success_or_skipped mcp-smoke "${{ needs.mcp-smoke.result }}"
+          require_success_or_skipped rag-changes "${{ needs.rag-changes.result }}"
+          require_success_or_skipped live-rag-pr "${{ needs.live-rag-pr.result }}"
+          require_success_or_skipped release "${{ needs.release.result }}"
+          require_success_or_skipped release-smoke "${{ needs.release-smoke.result }}"
