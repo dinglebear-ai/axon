@@ -234,6 +234,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The Gradle build uses the hosted runner SDK; installing the legacy
+          # `tools` package pulls the emulator and has failed on corrupt
+          # downloads before tests even start.
+          packages: ""
 
       - name: Run Android unit tests, lint, and APK builds
         run: >
