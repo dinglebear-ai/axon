@@ -272,6 +272,31 @@ fn android_ci_setup_does_not_install_unused_emulator_packages() {
 }
 
 #[test]
+fn lefthook_pre_push_uses_path_aware_router() {
+    let lefthook = include_str!("../lefthook.yml");
+    let pre_push = lefthook
+        .split("pre-push:")
+        .nth(1)
+        .expect("pre-push section exists");
+
+    assert!(
+        pre_push.contains("python3 scripts/ci/pre_push.py"),
+        "pre-push should delegate to the path-aware router"
+    );
+    for always_on_heavy_command in [
+        "npm --prefix apps/web run build",
+        "cargo xtask check-openapi-drift",
+        "cargo clippy --workspace --all-targets",
+        "cargo nextest run --workspace",
+    ] {
+        assert!(
+            !pre_push.contains(always_on_heavy_command),
+            "{always_on_heavy_command} must be selected by scripts/ci/pre_push.py, not always run by lefthook"
+        );
+    }
+}
+
+#[test]
 fn auto_tag_uses_validated_xtask_release_plan() {
     let workflow = include_str!("../.github/workflows/auto-tag.yml");
     let plan = workflow_job_block(workflow, "plan");

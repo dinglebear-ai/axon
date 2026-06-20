@@ -45,6 +45,7 @@ RUST_CI_HELPER_SCRIPTS = {
     "scripts/cargo_test_filter_guard.py",
     "scripts/check_lefthook_pre_commit_speed.py",
     "scripts/check_shell_completions.sh",
+    "scripts/ci/pre_push.py",
     "scripts/enforce_monoliths.py",
     "scripts/generate_mcp_schema_doc.py",
     "scripts/test-ask-quality-regressions.sh",
