@@ -199,7 +199,9 @@ def dedupe_plan(plan: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 def run_command(name: str, command: str) -> None:
     print(f"\n==> {name}\n{command}", flush=True)
-    subprocess.run(["bash", "-lc", command], cwd=ROOT, check=True)
+    env = os.environ.copy()
+    env.setdefault("AXON_ALLOW_FALLBACK_WEB_ASSETS", "1")
+    subprocess.run(["bash", "-lc", command], cwd=ROOT, env=env, check=True)
 
 
 def write_classifier_output(paths: list[str], categories: dict[str, bool]) -> None:
