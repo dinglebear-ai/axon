@@ -377,7 +377,8 @@ pub struct Config {
     /// Codex-specific model override for synthesis. Env: `AXON_SYNTHESIS_CODEX_MODEL` or `AXON_CODEX_MODEL`.
     pub codex_model: String,
 
-    /// Max concurrent Codex app-server completions. Env: `AXON_CODEX_COMPLETION_CONCURRENCY`.
+    /// Codex process-pool size (and max concurrent turns). Env: `AXON_CODEX_COMPLETION_CONCURRENCY`.
+    /// Default 4 — startup cost is amortised across turns so a larger default is safe.
     pub codex_completion_concurrency: usize,
 
     /// Load the user's real Codex config (MCP servers, skills, hooks) instead of
