@@ -123,12 +123,10 @@ Translates `clap` output into the runtime `Config` struct:
 
 When adding a **non-`Option`** field:
 1. Add the field to `Config` in `config/types/config.rs`
-2. Add a default in `Config::default()` in `config_impls.rs`
-3. **Update inline struct literals** in:
-   - `src/cli/commands/research.rs` (`make_test_config()`)
-   - `src/cli/commands/search.rs` (`make_test_config()`)
-   - Any `make_test_config()` in `src/jobs/common/`
-4. The compiler only catches missing struct literal fields at **test build time**, not `cargo check`.
+2. Add a default in `Config::default()` in `config_impls.rs` — the **single source of truth**
+3. If it's env/TOML-configurable, wire resolution in `config/parse/build_config/config_literal.rs` (and add the field to the relevant `parse/toml_config.rs` section)
+
+Test helpers do **not** need updating: they build on `Config::default()` via `Config::test_default()` (`#[cfg(test)]` in `config_impls.rs`), which spreads `..Default::default()`, so a new field flows through automatically. There are no whole-`Config` struct literals left to maintain.
 
 ## Docker URL Rewriting (`config/parse/docker.rs`)
 

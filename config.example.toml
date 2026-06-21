@@ -330,6 +330,12 @@
 # Env: AXON_CRAWL_JOB_TIMEOUT_SECS
 # crawl-job-timeout-secs = 7200
 
+# Maximum times a stale job may be reclaimed out of `running` before the watchdog
+# dead-letters it (marks it failed) instead of re-queueing — bounds a job that
+# crashes or hangs on every attempt from cycling forever. 0 = unlimited.
+# Env: AXON_MAX_JOB_ATTEMPTS
+# max-job-attempts = 5
+
 [workers.adaptive-concurrency]
 # Off by default. When enabled, Axon replaces the fixed crawl semaphore with
 # Spider's adaptive semaphore for the main Spider crawl path.

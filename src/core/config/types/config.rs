@@ -663,6 +663,14 @@ pub struct Config {
     /// Env: `AXON_CRAWL_JOB_TIMEOUT_SECS`. TOML: `workers.crawl-job-timeout-secs`. Default: 7200.
     pub crawl_job_timeout_secs: i64,
 
+    /// Maximum number of times a job may be reclaimed out of a stale `running`
+    /// state before the watchdog dead-letters it (marks it `failed`) instead of
+    /// re-queueing it as `pending`. Bounds a job that crashes or hangs on every
+    /// attempt so it cannot cycle running→pending→running forever, accumulating
+    /// `attempt_count` without bound. `0` disables the cap (unlimited reclaims).
+    /// Env: `AXON_MAX_JOB_ATTEMPTS`. TOML: `workers.max-job-attempts`. Default: 5.
+    pub max_job_attempts: u32,
+
     /// Emit machine-readable JSON output on stdout instead of human-readable text. Flag: `--json`.
     pub json_output: bool,
 

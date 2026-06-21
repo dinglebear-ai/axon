@@ -92,7 +92,7 @@ async fn none_path_rollback_does_not_poison_single_slot() {
     );
 }
 
-/// The success path commits via `commit_or_rollback`. Verify the commit is
+/// The success path commits via `ImmediateTx::commit`. Verify the commit is
 /// durable (status persisted) AND the single slot is left transaction-free for
 /// the next claim — i.e. neither the COMMIT nor a follow-up claim is wedged in
 /// a dangling transaction.

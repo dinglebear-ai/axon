@@ -11,6 +11,7 @@ pub mod query;
 pub mod runtime;
 pub mod status;
 pub mod store;
+pub(crate) mod tx;
 pub mod watch;
 pub mod workers;
 

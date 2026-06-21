@@ -137,10 +137,13 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
         kind: JobKind,
         stale_threshold_ms: i64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(
-            reclaim_stale_running_jobs_for_table(self.backend.pool(), kind, stale_threshold_ms)
-                .await?,
+        Ok(reclaim_stale_running_jobs_for_table(
+            self.backend.pool(),
+            kind,
+            stale_threshold_ms,
+            self.backend.cfg().max_job_attempts,
         )
+        .await?)
     }
 
     async fn notify_worker(&self, kind: JobKind) -> Result<(), Box<dyn Error + Send + Sync>> {

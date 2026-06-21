@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::jobs::backend::{JobKind, JobStatusRow, JobSummary};
 use crate::jobs::status::JobStatus;
+use crate::jobs::tx::ImmediateTx;
 use crate::services::types::ServiceJob;
 
 use super::store::now_ms;
@@ -166,26 +167,25 @@ pub async fn cleanup_jobs(pool: &SqlitePool, kind: JobKind) -> Result<u64, sqlx:
     let table = kind.table_name();
     let cutoff = now_ms() - 86_400_000;
     if kind == JobKind::Ingest {
-        let mut conn = pool.acquire().await?;
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
+        let mut tx = ImmediateTx::begin(pool).await?;
         let result = async {
             sqlx::query(
                 "DELETE FROM axon_ingest_payloads \
                  WHERE job_id IN (SELECT id FROM axon_ingest_jobs WHERE status IN ('completed','failed') AND finished_at < ?)",
             )
             .bind(cutoff)
-            .execute(&mut *conn)
+            .execute(tx.conn())
             .await?;
             let result = sqlx::query(
                 "DELETE FROM axon_ingest_jobs WHERE status IN ('completed','failed') AND finished_at < ?",
             )
             .bind(cutoff)
-            .execute(&mut *conn)
+            .execute(tx.conn())
             .await?;
             Ok::<u64, sqlx::Error>(result.rows_affected())
         }
         .await;
-        return commit_or_rollback(&mut conn, result).await;
+        return tx.finish(result).await;
     }
     let result = sqlx::query(&format!(
         "DELETE FROM {} WHERE status IN ('completed','failed') AND finished_at < ?",
@@ -197,47 +197,23 @@ pub async fn cleanup_jobs(pool: &SqlitePool, kind: JobKind) -> Result<u64, sqlx:
     Ok(result.rows_affected())
 }
 
-async fn commit_or_rollback<T>(
-    conn: &mut sqlx::pool::PoolConnection<sqlx::Sqlite>,
-    result: Result<T, sqlx::Error>,
-) -> Result<T, sqlx::Error> {
-    match result {
-        Ok(value) => {
-            if let Err(commit_err) = sqlx::query("COMMIT").execute(&mut **conn).await {
-                if let Err(rollback_err) = sqlx::query("ROLLBACK").execute(&mut **conn).await {
-                    tracing::warn!(error = %rollback_err, "job query transaction rollback failed");
-                }
-                return Err(commit_err);
-            }
-            Ok(value)
-        }
-        Err(err) => {
-            if let Err(rollback_err) = sqlx::query("ROLLBACK").execute(&mut **conn).await {
-                tracing::warn!(error = %rollback_err, "job query transaction rollback failed");
-            }
-            Err(err)
-        }
-    }
-}
-
 /// Delete ALL jobs in a table.
 /// Returns count of rows deleted.
 pub async fn clear_jobs(pool: &SqlitePool, kind: JobKind) -> Result<u64, sqlx::Error> {
     let table = kind.table_name();
     if kind == JobKind::Ingest {
-        let mut conn = pool.acquire().await?;
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
+        let mut tx = ImmediateTx::begin(pool).await?;
         let result = async {
             sqlx::query("DELETE FROM axon_ingest_payloads")
-                .execute(&mut *conn)
+                .execute(tx.conn())
                 .await?;
             let result = sqlx::query("DELETE FROM axon_ingest_jobs")
-                .execute(&mut *conn)
+                .execute(tx.conn())
                 .await?;
             Ok::<u64, sqlx::Error>(result.rows_affected())
         }
         .await;
-        return commit_or_rollback(&mut conn, result).await;
+        return tx.finish(result).await;
     }
     let result = sqlx::query(&format!("DELETE FROM {}", table))
         .execute(pool)

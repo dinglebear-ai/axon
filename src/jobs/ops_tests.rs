@@ -104,7 +104,7 @@ async fn claim_assigns_attempt_metadata_and_reclaim_creates_new_attempt() {
         .execute(&pool)
         .await
         .expect("age row");
-    let reclaimed = reclaim_stale_running_jobs_for_table(&pool, JobKind::Embed, 5_000)
+    let reclaimed = reclaim_stale_running_jobs_for_table(&pool, JobKind::Embed, 5_000, 0)
         .await
         .expect("reclaim");
     assert_eq!(reclaimed, 1);
@@ -184,7 +184,7 @@ async fn stale_attempt_writes_are_rejected_after_reclaim_and_retry() {
         .execute(&pool)
         .await
         .expect("age row");
-    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000)
+    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000, 0)
         .await
         .expect("reclaim");
     let second = claim_next_pending_for_attempt(&pool, JobKind::Crawl)
@@ -473,7 +473,7 @@ async fn reclaim_marks_progress_json_requeued_and_keeps_previous_attempt_progres
         .await
         .expect("age row");
 
-    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000)
+    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000, 0)
         .await
         .expect("reclaim");
 
@@ -517,7 +517,7 @@ async fn reclaim_keeps_legacy_result_json_progress_when_progress_json_is_absent(
     .await
     .expect("seed legacy progress");
 
-    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000)
+    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000, 0)
         .await
         .expect("reclaim");
 

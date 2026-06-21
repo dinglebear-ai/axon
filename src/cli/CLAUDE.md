@@ -252,4 +252,4 @@ Tests are in `common.rs` (pure functions) and `job_contracts.rs` (serialization)
 5. Add flag(s) to `GlobalArgs` or a new command-specific `Args` struct in `config/cli/`
 6. Add the parse logic to `config/parse/build_config.rs`
 7. Add match arm to `lib.rs::run_once()`
-8. **Update inline `Config { ... }` literals** in `src/cli/commands/research.rs`, `search.rs`, and any `make_test_config()` helpers — compiler only catches this at test build time
+8. No test-helper updates needed — helpers build on `Config::test_default()` (spreads `..Default::default()`), so a new `Config` field only needs `Config::default()` in `config_impls.rs`

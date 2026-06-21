@@ -28,6 +28,7 @@ pub(super) async fn watchdog_loop(
 ) {
     let stale_threshold_ms =
         (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
+    let max_attempts = cfg.max_job_attempts;
     let starvation_threshold_ms = cfg.worker_starvation_secs.max(0) * 1_000i64;
     let sweep_interval = Duration::from_secs(cfg.watchdog_sweep_secs.max(1) as u64);
     let mut ticker = tokio::time::interval(sweep_interval);
@@ -42,6 +43,7 @@ pub(super) async fn watchdog_loop(
                 let reclaimed = crate::jobs::store::reclaim_stale_running_jobs_detailed(
                     &pool,
                     stale_threshold_ms,
+                    max_attempts,
                 )
                 .await;
                 if reclaimed.total() > 0 {

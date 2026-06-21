@@ -193,6 +193,7 @@ impl Default for Config {
             watchdog_sweep_secs: 15,
             worker_starvation_secs: 120,
             crawl_job_timeout_secs: 7200,
+            max_job_attempts: 5,
             json_output: false,
             reclaimed_status_only: false,
             active_status_only: false,

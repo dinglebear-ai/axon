@@ -14,6 +14,11 @@ fn ok_body() -> serde_json::Value {
 }
 
 #[tokio::test]
+// Serial: shares the process-global `AXON_QDRANT_PAYLOAD_INDEX_PROFILE` env var
+// with `ensure_payload_indexes_core_profile_only_fires_core_fields`, which sets
+// it to "core". Without serialization this full-profile test can observe the
+// "core" value mid-run and fire fewer index PUTs than expected.
+#[serial_test::serial]
 async fn ensure_payload_indexes_fires_one_put_per_field() {
     let server = MockServer::start_async().await;
     let mock = server
@@ -100,6 +105,9 @@ async fn ensure_payload_indexes_core_profile_only_fires_core_fields() {
 }
 
 #[tokio::test]
+// Serial: count-sensitive and reads the global payload-index-profile env var
+// (see `ensure_payload_indexes_fires_one_put_per_field`).
+#[serial_test::serial]
 async fn ensure_payload_indexes_skips_fields_already_in_payload_schema() {
     let server = MockServer::start_async().await;
     let mock = server
@@ -138,6 +146,9 @@ async fn ensure_payload_indexes_skips_fields_already_in_payload_schema() {
 }
 
 #[tokio::test]
+// Serial: reads the global payload-index-profile env var
+// (see `ensure_payload_indexes_fires_one_put_per_field`).
+#[serial_test::serial]
 async fn ensure_payload_indexes_is_non_fatal_when_qdrant_always_errors() {
     let server = MockServer::start_async().await;
     server
