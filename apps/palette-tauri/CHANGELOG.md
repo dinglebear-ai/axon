@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.0] - 2026-06-21
+
+### Added
+
+- OAuth 2.0 "Sign in with Google" — Authorization Code + PKCE with a loopback
+  redirect and dynamic client registration, run entirely in the Rust shell and
+  coexisting with the existing static bearer token. Includes reactive 401
+  refresh, secure token storage (`oauth.json`, mode 0o600), a signed-out notice,
+  and shell diagnostics logged to `~/.axon/logs/palette.log`.
+
 ## [5.10.5] - 2026-06-21
 
 ### Added

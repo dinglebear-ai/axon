@@ -111,7 +111,7 @@ pub(crate) fn read_settings_result(app: &AppHandle) -> Result<PartialPaletteSett
     let path = match settings_path(app) {
         Ok(p) => p,
         Err(err) => {
-            eprintln!("palette: {err}");
+            crate::diag::warn(&err.to_string());
             return Ok(PartialPaletteSettings::default());
         }
     };
@@ -196,10 +196,10 @@ pub(crate) fn read_default_env_entries() -> Vec<(String, String)> {
         Ok(c) => c,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Vec::new(),
         Err(err) => {
-            eprintln!(
-                "palette: failed to read Axon env file at {}: {err}",
+            crate::diag::warn(&format!(
+                "failed to read Axon env file at {}: {err}",
                 path.display()
-            );
+            ));
             return Vec::new();
         }
     };
@@ -346,20 +346,20 @@ pub(crate) fn read_default_config_values() -> HashMap<String, serde_json::Value>
         Ok(c) => c,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return HashMap::new(),
         Err(err) => {
-            eprintln!(
-                "palette: failed to read Axon config file at {}: {err}",
+            crate::diag::warn(&format!(
+                "failed to read Axon config file at {}: {err}",
                 path.display()
-            );
+            ));
             return HashMap::new();
         }
     };
     let doc = match contents.parse::<DocumentMut>() {
         Ok(d) => d,
         Err(err) => {
-            eprintln!(
-                "palette: failed to parse Axon config file at {}: {err}",
+            crate::diag::warn(&format!(
+                "failed to parse Axon config file at {}: {err}",
                 path.display()
-            );
+            ));
             return HashMap::new();
         }
     };
@@ -421,32 +421,43 @@ pub(crate) fn write_axon_config_values(
     Ok(())
 }
 
-/// Write `data` to `path` atomically: write to `<path>.tmp`, then rename.
+/// Write `data` to `path` atomically: write to a per-write unique temp file,
+/// then rename.
+///
+/// The temp name carries a UUID so two concurrent writers of the same `path`
+/// (e.g. a login racing a refresh writing `oauth.json`) do not collide on a
+/// fixed `<path>.tmp`.  If any step fails the temp file is best-effort removed
+/// so unique temps don't accumulate on error.
 ///
 /// On Unix, the temp file is created with mode `0o600` atomically via
 /// `OpenOptions::mode`, so it is never world-readable even momentarily (no
 /// umask window between `open` and a separate `chmod`).  On Windows no explicit
 /// permission change is applied; rely on the directory ACL to restrict access.
-fn atomic_write(path: &Path, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-    let tmp = path.with_extension("tmp");
-    {
-        let mut opts = fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-
-        #[cfg(unix)]
+pub(crate) fn atomic_write(path: &Path, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let tmp = path.with_extension(format!("tmp-{}", uuid::Uuid::new_v4()));
+    let write = || -> Result<(), Box<dyn std::error::Error>> {
         {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600);
+            let mut opts = fs::OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+
+            let mut file = opts.open(&tmp)?;
+
+            use std::io::Write;
+            file.write_all(data)?;
+            file.sync_all()?;
         }
-
-        let mut file = opts.open(&tmp)?;
-
-        use std::io::Write;
-        file.write_all(data)?;
-        file.sync_all()?;
-    }
-    fs::rename(&tmp, path)?;
-    Ok(())
+        fs::rename(&tmp, path)?;
+        Ok(())
+    };
+    write().inspect_err(|_| {
+        let _ = fs::remove_file(&tmp);
+    })
 }
 
 fn collect_toml_values(prefix: &str, item: &Item, values: &mut HashMap<String, serde_json::Value>) {

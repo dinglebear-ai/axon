@@ -5,6 +5,7 @@ import {
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { ActionList, actionOptionId } from "@/components/palette/ActionList";
+import { AuthNotice } from "@/components/palette/AuthNotice";
 import { CrawlJobView } from "@/components/palette/CrawlJobView";
 import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
 import { OutputPanel } from "@/components/palette/OutputPanel";
@@ -385,6 +386,7 @@ export default function App() {
 
   return (
     <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${jobExpanded ? " palette-shell-job" : ""}`}>
+      <AuthNotice />
       <PaletteCommandBar
         active={active}
         activeDescendantId={activeDescendantId}
