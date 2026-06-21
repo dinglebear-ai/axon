@@ -1,10 +1,11 @@
-use sqlx::{SqliteConnection, SqlitePool, pool::PoolConnection};
+use sqlx::{SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, JobPayload, JobSidecarPayload};
 use crate::jobs::error::JobError;
 use crate::jobs::store::now_ms;
+use crate::jobs::tx::ImmediateTx;
 
 /// Reject the enqueue when the queue is at or above its pending cap.
 ///
@@ -50,29 +51,6 @@ where
     Ok(())
 }
 
-/// Acquire a dedicated connection and open a `BEGIN IMMEDIATE` transaction on
-/// it. sqlx's `pool.begin()` always emits plain `BEGIN` (deferred), and a
-/// follow-up `BEGIN IMMEDIATE` on the same connection errors as a nested
-/// transaction — so we go through a raw connection instead. The caller is
-/// responsible for issuing `COMMIT` (or `ROLLBACK`) before dropping the
-/// connection.
-async fn begin_immediate(pool: &SqlitePool) -> Result<PoolConnection<sqlx::Sqlite>, sqlx::Error> {
-    let mut conn = pool.acquire().await?;
-    sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
-    Ok(conn)
-}
-
-async fn commit(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
-    sqlx::query("COMMIT").execute(&mut *conn).await?;
-    Ok(())
-}
-
-async fn rollback_best_effort(conn: &mut SqliteConnection) {
-    if let Err(e) = sqlx::query("ROLLBACK").execute(&mut *conn).await {
-        tracing::warn!(error = %e, "enqueue: ROLLBACK after failed transaction errored");
-    }
-}
-
 /// Insert a new job row with status='pending'. Returns the new job's UUID.
 ///
 /// Pending-queue caps are sourced from `cfg.max_pending_{crawl,embed,extract,ingest}_jobs`
@@ -95,30 +73,14 @@ pub async fn enqueue_job(
     let kind = payload.kind();
     let cap = cap_for(kind, cfg);
 
-    let mut conn = begin_immediate(pool).await?;
-
-    let result: Result<(), JobError> = async {
-        check_pending_cap_for(&mut *conn, kind, cap).await?;
-        insert_payload(&mut conn, &id_str, now, payload).await
+    let mut tx = ImmediateTx::begin(pool).await?;
+    let work: Result<(), JobError> = async {
+        check_pending_cap_for(tx.conn(), kind, cap).await?;
+        insert_payload(tx.conn(), &id_str, now, payload).await
     }
     .await;
-
-    match result {
-        Ok(()) => match commit(&mut conn).await {
-            Ok(()) => Ok(id),
-            Err(commit_err) => {
-                // sqlx doesn't auto-rollback on PoolConnection::drop, so a
-                // failed COMMIT would leave the next pool checkout inside a
-                // stale BEGIN IMMEDIATE.
-                rollback_best_effort(&mut conn).await;
-                Err(commit_err.into())
-            }
-        },
-        Err(e) => {
-            rollback_best_effort(&mut conn).await;
-            Err(e)
-        }
-    }
+    tx.finish(work).await?;
+    Ok(id)
 }
 
 pub async fn enqueue_job_with_sidecar(
@@ -141,28 +103,15 @@ pub async fn enqueue_job_with_sidecar(
     let id_str = id.to_string();
     let cap = cap_for(kind, cfg);
 
-    let mut conn = begin_immediate(pool).await?;
-
-    let result: Result<(), JobError> = async {
-        check_pending_cap_for(&mut *conn, kind, cap).await?;
-        insert_payload(&mut conn, &id_str, now, payload).await?;
-        insert_sidecar_payload(&mut conn, &id_str, now, sidecar).await
+    let mut tx = ImmediateTx::begin(pool).await?;
+    let work: Result<(), JobError> = async {
+        check_pending_cap_for(tx.conn(), kind, cap).await?;
+        insert_payload(tx.conn(), &id_str, now, payload).await?;
+        insert_sidecar_payload(tx.conn(), &id_str, now, sidecar).await
     }
     .await;
-
-    match result {
-        Ok(()) => match commit(&mut conn).await {
-            Ok(()) => Ok(id),
-            Err(commit_err) => {
-                rollback_best_effort(&mut conn).await;
-                Err(commit_err.into())
-            }
-        },
-        Err(e) => {
-            rollback_best_effort(&mut conn).await;
-            Err(e)
-        }
-    }
+    tx.finish(work).await?;
+    Ok(id)
 }
 
 fn cap_for(kind: JobKind, cfg: &Config) -> u64 {

@@ -1,6 +1,6 @@
 use super::{
-    backfill_enabled, build_crawl_result_json, crawl_timeout_duration, merge_candidates,
-    run_crawl_job,
+    CrawlBudget, backfill_enabled, build_crawl_result_json, crawl_timeout_duration,
+    merge_candidates, run_crawl_job, validate_within_budget,
 };
 use crate::core::config::Config;
 use crate::crawl::engine::{AdaptiveCrawlSnapshot, CrawlDiagnostic, CrawlSummary};
@@ -353,5 +353,28 @@ fn backfill_gate_fires_for_llms_only() {
     assert!(
         backfill_enabled(&sitemap_only),
         "sitemaps on + llms off → backfill fires"
+    );
+}
+
+/// The wall-clock budget bounds URL validation: with an already-elapsed deadline,
+/// `validate_within_budget` aborts with the crawl-timeout error instead of running
+/// DNS to completion. This pins the ordering fix — `run_crawl_job` anchors the
+/// budget *before* validation, so a slow/hung lookup counts against
+/// `crawl_job_timeout_secs`. A regression that moved the budget back below
+/// validation (handing the engine a fresh full budget) would fail here.
+#[tokio::test]
+async fn validate_within_budget_aborts_on_already_elapsed_deadline() {
+    let budget = CrawlBudget {
+        deadline: Some(tokio::time::Instant::now() - std::time::Duration::from_secs(1)),
+        secs: 7200,
+    };
+    // `.invalid` is reserved (RFC 6761) and never resolves, so validation's DNS
+    // lookup stays pending and the already-passed deadline wins deterministically.
+    let err = validate_within_budget("https://does-not-exist.invalid/x", None, budget)
+        .await
+        .expect_err("an already-elapsed deadline must abort validation");
+    assert!(
+        err.to_string().contains("7200"),
+        "expected the crawl-timeout error naming the limit, got: {err}"
     );
 }

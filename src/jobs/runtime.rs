@@ -36,7 +36,9 @@ impl SqliteJobBackend {
     ) -> Result<Arc<CancelStore>, Box<dyn std::error::Error + Send + Sync>> {
         let stale_threshold_ms =
             (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
-        if let Err(e) = store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await {
+        if let Err(e) =
+            store::reclaim_stale_running_jobs(&pool, stale_threshold_ms, cfg.max_job_attempts).await
+        {
             if is_lock_busy(&e) {
                 tracing::warn!(error = %e, "startup reclaim skipped — DB busy; periodic watchdog will retry");
             } else {
@@ -124,6 +126,13 @@ impl SqliteJobBackend {
     /// Expose the shared SQLite pool for callers that need direct access (e.g. service layer).
     pub fn pool(&self) -> &Arc<SqlitePool> {
         &self.pool
+    }
+
+    /// Expose the carried `Config` so callers (e.g. the service-layer recover
+    /// path) read worker knobs like `max_job_attempts` from the same resolved
+    /// config the workers use.
+    pub fn cfg(&self) -> &Config {
+        &self.cfg
     }
 
     /// Expose the cancel store so the service layer can fire CancellationTokens on cancel.

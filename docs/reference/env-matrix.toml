@@ -2447,6 +2447,18 @@ compatibility = "canonical"
 reason = "Non-secret per-crawl-job wall-clock timeout knob; also settable via config.toml (workers.crawl-job-timeout-secs)."
 
 [[env]]
+key = "AXON_MAX_JOB_ATTEMPTS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret worker-liveness tuning knob (max reclaim attempts before a stale job is dead-lettered); also settable via config.toml (workers.max-job-attempts)."
+
+[[env]]
 key = "AXON_WEB_ALLOWED_ORIGINS"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"

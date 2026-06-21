@@ -283,6 +283,9 @@ pub(super) struct TomlWorkersSection {
     pub worker_starvation_secs: Option<i64>,
     /// Maximum wall-clock seconds a single crawl job may run before abort. 0 disables.
     pub crawl_job_timeout_secs: Option<i64>,
+    /// Maximum reclaim attempts before a stale-running job is dead-lettered
+    /// (marked failed) instead of re-queued. 0 disables the cap.
+    pub max_job_attempts: Option<i64>,
 }
 
 #[derive(Deserialize, Default)]

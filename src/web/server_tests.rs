@@ -177,6 +177,84 @@ fn openapi_document_matches_openapi_route_inventory() {
     assert_eq!(expected, documented);
 }
 
+/// Close the one dispatch surface with no compiler check: a `.route("/v1/...")`
+/// or `.nest("/v1/...")` added to the central route tree without a matching
+/// `rest_route_inventory()` entry. The inventory is locked to the OpenAPI
+/// document by `openapi_document_matches_openapi_route_inventory`, so an entry
+/// missing from the inventory is also missing from the docs; and every inventory
+/// route is exercised against the live router by
+/// `all_v1_rest_routes_reject_missing_auth_when_auth_is_configured`. This test
+/// adds the missing direction (router → inventory). Sub-routes nested inside the
+/// per-job routers are covered transitively: their `/v1/<kind>` nest prefix is
+/// checked here and their full inventory sub-paths are probed by the auth test.
+#[test]
+fn routing_registers_no_v1_route_outside_inventory() {
+    // Intentionally mounted but absent from the REST/OpenAPI inventory:
+    //   /v1/actions, /v1/migrate — removed-surface stubs that only return 404.
+    //   /v1/artifacts/{*path}    — wildcard file serving, not an OpenAPI op.
+    const ALLOWED_UNLISTED: &[&str] = &["/v1/actions", "/v1/migrate", "/v1/artifacts/{*path}"];
+
+    let source = include_str!("server/routing.rs");
+    let inventory: std::collections::BTreeSet<&str> =
+        rest_route_inventory().iter().map(|r| r.path).collect();
+
+    let mut registered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for marker in [".route(", ".nest("] {
+        for (idx, _) in source.match_indices(marker) {
+            // Tolerate rustfmt wrapping the path literal onto its own line
+            // (`.route(\n    "/v1/...",`) — skip whitespace/newlines before the
+            // opening quote. The old `.route("` literal match missed every
+            // multi-line registration, silently scanning only ~70% of routes.
+            let after = source[idx + marker.len()..].trim_start();
+            let Some(rest) = after.strip_prefix('"') else {
+                continue;
+            };
+            if let Some(end) = rest.find('"') {
+                let path = &rest[..end];
+                if path.starts_with("/v1") {
+                    registered.insert(path.to_string());
+                }
+            }
+        }
+    }
+
+    // Self-test floor: the scanner MUST see the multi-line registrations, not
+    // silently regress to seeing nothing (which would turn this whole test into a
+    // no-op — the exact failure mode it exists to prevent). Both of these are
+    // registered multi-line in routing.rs today (`.nest("/v1/crawl", …)` and
+    // `.route("/v1/research/stream", …)`).
+    for must_see in ["/v1/crawl", "/v1/research/stream"] {
+        assert!(
+            registered.contains(must_see),
+            "route scanner missed `{must_see}` — the .route(/.nest( matcher is broken \
+             and this test would pass without inspecting real routes. Found: {registered:?}"
+        );
+    }
+
+    let missing: Vec<String> = registered
+        .into_iter()
+        .filter(|path| !ALLOWED_UNLISTED.contains(&path.as_str()))
+        .filter(|path| {
+            // Covered when the path is an inventory route exactly, or is the
+            // prefix of a nested router whose sub-paths the inventory lists.
+            let exact = inventory.contains(path.as_str());
+            let nest_prefix = inventory
+                .iter()
+                .any(|inv| inv.starts_with(&format!("{path}/")));
+            !(exact || nest_prefix)
+        })
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "routing.rs registers /v1 route(s) absent from rest_route_inventory() \
+         (and therefore from the OpenAPI document): {missing:?}. Add each to \
+         REST_ROUTE_INVENTORY (src/services/types/route_inventory.rs) and the \
+         #[openapi(paths(...))] list in src/web/server/openapi.rs, or to \
+         ALLOWED_UNLISTED above if it is intentionally undocumented."
+    );
+}
+
 #[tokio::test]
 #[serial]
 async fn v1_actions_is_not_mounted_after_rest_cutover() {

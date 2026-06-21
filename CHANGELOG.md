@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.18.0] - 2026-06-21
+
+### Added
+- `AXON_MAX_JOB_ATTEMPTS` (default 5, `0` = unlimited): the job watchdog now
+  dead-letters a stale `running` job — marking it `failed` — once it has been
+  reclaimed that many times, instead of re-queueing it forever. Bounds a job that
+  crashes or hangs on every attempt from cycling running→pending indefinitely.
+
+### Changed
+- Hardened the SQLite job runtime against connection-pool poisoning: a single
+  `ImmediateTx` RAII guard now owns every `BEGIN IMMEDIATE` transaction (enqueue,
+  claim, reclaim, cleanup), so an early `?` return or a panic can no longer leave
+  a connection in the pool mid-transaction and starve the worker lanes. Replaces
+  four duplicated commit/rollback implementations.
+
+### Fixed
+- Crawl jobs now anchor their wall-clock timeout at job claim (before URL
+  validation) and bound the DNS-resolving validation step by the same deadline,
+  so a slow or hung lookup counts against `crawl_job_timeout_secs` instead of
+  parking the worker lane until the process is restarted.
+
 ## [5.17.0] - 2026-06-21
 
 ### Added
