@@ -353,6 +353,7 @@ async fn judge_llm_non_streaming_with_runner_builds_completion_request() {
         observed[0],
         CompletionRequest::new(judge_user_msg(&judge_ctx))
             .system_prompt(judge_system_prompt())
+            .effort(ReasoningEffort::High)
             .backend_from_config(&cfg)
             .stream(false)
     );

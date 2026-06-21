@@ -37,6 +37,22 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_ALLOW_UNBOUNDED_BROAD_CRAWL",
+        MoveToml,
+        NotRuntime,
+        Some("scrape.allow-unbounded-broad-crawl"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_CRAWL_MEMORY_ABORT_PERCENT",
+        MoveToml,
+        NotRuntime,
+        Some("scrape.crawl-memory-abort-percent"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
         "AXON_INGEST_LANES",
         MoveToml,
         NotRuntime,

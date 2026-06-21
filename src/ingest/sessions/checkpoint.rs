@@ -213,7 +213,7 @@ fn checkpoint_record_from_row(row: &SqliteRow) -> SessionWatchCheckpointRecord {
 }
 
 fn reusable_checkpoint_state(state: &str) -> bool {
-    matches!(state, "local_ingested" | "no_content")
+    matches!(state, "local_ingested" | "no_content" | "remote_accepted")
 }
 
 pub async fn stream_content_hash(path: &Path) -> Result<String> {

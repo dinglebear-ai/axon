@@ -11,6 +11,10 @@
 /// DO NOT add these as fields to `Config` yet — that migration touches hundreds
 /// of call sites and must be done sequentially after other agents merge. This
 /// file defines the target shapes so the team can agree on them first.
+use super::{
+    DEFAULT_CRAWL_BROADCAST_BUFFER_MAX, DEFAULT_CRAWL_BROADCAST_BUFFER_MIN,
+    DEFAULT_CRAWL_MEMORY_ABORT_PERCENT, DEFAULT_MAX_PAGE_BYTES,
+};
 use std::fmt;
 
 /// Connection URLs and API credentials for all external services.
@@ -212,6 +216,8 @@ pub struct CrawlConfig {
     pub auto_switch_min_pages: usize,
     pub crawl_broadcast_buffer_min: usize,
     pub crawl_broadcast_buffer_max: usize,
+    pub allow_unbounded_broad_crawl: bool,
+    pub crawl_memory_abort_percent: Option<f64>,
 }
 
 impl Default for CrawlConfig {
@@ -232,13 +238,15 @@ impl Default for CrawlConfig {
             delay_ms: 0,
             url_whitelist: vec![],
             block_assets: false,
-            max_page_bytes: None,
+            max_page_bytes: Some(DEFAULT_MAX_PAGE_BYTES),
             redirect_policy_strict: false,
             custom_headers: vec![],
             auto_switch_thin_ratio: 0.60,
             auto_switch_min_pages: 10,
-            crawl_broadcast_buffer_min: 4096,
-            crawl_broadcast_buffer_max: 16_384,
+            crawl_broadcast_buffer_min: DEFAULT_CRAWL_BROADCAST_BUFFER_MIN,
+            crawl_broadcast_buffer_max: DEFAULT_CRAWL_BROADCAST_BUFFER_MAX,
+            allow_unbounded_broad_crawl: false,
+            crawl_memory_abort_percent: Some(DEFAULT_CRAWL_MEMORY_ABORT_PERCENT),
         }
     }
 }

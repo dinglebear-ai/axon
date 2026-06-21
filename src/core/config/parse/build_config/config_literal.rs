@@ -6,7 +6,10 @@
 //! same as the previous flat literal.
 
 use super::super::super::cli::GlobalArgs;
-use super::super::super::types::{CommandKind, Config};
+use super::super::super::types::{
+    CommandKind, Config, DEFAULT_CRAWL_BROADCAST_BUFFER_MAX, DEFAULT_CRAWL_BROADCAST_BUFFER_MIN,
+    DEFAULT_CRAWL_MEMORY_ABORT_PERCENT, DEFAULT_MAX_PAGE_BYTES,
+};
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
     env_bool, env_port, parse_csv_env, parse_origin_allowlist, parse_path_budgets,
@@ -393,16 +396,24 @@ fn populate_misc(
         inputs.toml.chrome.network_idle_timeout_secs.unwrap_or(15);
     cfg.auto_switch_thin_ratio = inputs.toml.scrape.auto_switch_thin_ratio.unwrap_or(0.60);
     cfg.auto_switch_min_pages = inputs.toml.scrape.auto_switch_min_pages.unwrap_or(10);
-    cfg.crawl_broadcast_buffer_min = 4096; // placeholder — overwritten by post_init from profile
-    cfg.crawl_broadcast_buffer_max = 16_384; // placeholder — overwritten by post_init from profile
+    cfg.crawl_broadcast_buffer_min = DEFAULT_CRAWL_BROADCAST_BUFFER_MIN; // overwritten by post_init from profile
+    cfg.crawl_broadcast_buffer_max = DEFAULT_CRAWL_BROADCAST_BUFFER_MAX; // overwritten by post_init from profile
+    cfg.allow_unbounded_broad_crawl = parse_bool_env_opt("AXON_ALLOW_UNBOUNDED_BROAD_CRAWL")
+        .or(inputs.toml.scrape.allow_unbounded_broad_crawl)
+        .unwrap_or(false);
     cfg.url_whitelist = inputs.toml.scrape.url_whitelist.clone().unwrap_or_default();
     cfg.block_assets = g.block_assets;
-    let max_page_bytes = inputs.toml.scrape.max_page_bytes.unwrap_or(0);
+    let max_page_bytes = inputs
+        .toml
+        .scrape
+        .max_page_bytes
+        .unwrap_or(DEFAULT_MAX_PAGE_BYTES);
     cfg.max_page_bytes = if max_page_bytes == 0 {
         None
     } else {
         Some(max_page_bytes)
     };
+    cfg.crawl_memory_abort_percent = resolve_crawl_memory_abort_percent(inputs);
     cfg.redirect_policy_strict = inputs.toml.scrape.redirect_policy_strict.unwrap_or(false);
     cfg.chrome_wait_for_selector = g.chrome_wait_for_selector.clone();
     cfg.root_selector = g.root_selector.clone();
@@ -440,6 +451,41 @@ fn parse_i64_env(var_name: &str) -> Option<i64> {
     env::var(var_name)
         .ok()
         .and_then(|raw| raw.trim().parse::<i64>().ok())
+}
+
+fn parse_bool_env_opt(var_name: &str) -> Option<bool> {
+    env::var(var_name)
+        .ok()
+        .and_then(|raw| match raw.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => {
+                log_warn(&format!(
+                    "invalid {var_name}={raw:?}; expected true/false, 1/0, yes/no, or on/off"
+                ));
+                None
+            }
+        })
+}
+
+fn resolve_crawl_memory_abort_percent(inputs: &LiteralInputs<'_>) -> Option<f64> {
+    let percent = match env::var("AXON_CRAWL_MEMORY_ABORT_PERCENT") {
+        Ok(raw) => match raw.trim().parse::<f64>() {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                log_warn(&format!(
+                    "invalid AXON_CRAWL_MEMORY_ABORT_PERCENT={raw:?}: {err}; using default {DEFAULT_CRAWL_MEMORY_ABORT_PERCENT:.1}%"
+                ));
+                DEFAULT_CRAWL_MEMORY_ABORT_PERCENT
+            }
+        },
+        Err(_) => inputs
+            .toml
+            .scrape
+            .crawl_memory_abort_percent
+            .unwrap_or(DEFAULT_CRAWL_MEMORY_ABORT_PERCENT),
+    };
+    (percent.is_finite() && percent > 0.0).then_some(percent.clamp(1.0, 100.0))
 }
 
 fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {

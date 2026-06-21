@@ -1,10 +1,11 @@
 use serde_json::{Map, Value};
 
-use super::file_ingest::{chunk_file, chunking_method};
+use super::file_ingest::{chunk_file_reporting_cap, chunking_method};
 use super::input::classify::{classify_file_type, is_test_path, language_name};
 use super::input::code::code_symbol_extraction_status;
 use super::input::{chunk_markdown_with_offsets, chunk_text_with_offsets};
 use super::tei::{PreparedDoc, StructuredPayload};
+use crate::core::logging::log_warn;
 
 mod support;
 
@@ -308,13 +309,22 @@ async fn prepare_file_source(
     }
     let text = doc.text.clone();
     let ext = extension.to_ascii_lowercase();
-    let chunks = tokio::task::spawn_blocking({
+    let (chunks, dropped) = tokio::task::spawn_blocking({
         let text = text.clone();
         let ext = ext.clone();
-        move || chunk_file(&text, &ext)
+        move || chunk_file_reporting_cap(&text, &ext)
     })
     .await
     .map_err(|e| format!("chunk_file panicked for {}: {e}", doc.url))?;
+    if dropped > 0 {
+        log_warn(&format!(
+            "chunk cap: {} ({ext}) produced {} chunks; indexed first {}, dropped {dropped} \
+             (large/generated file — tail not indexed)",
+            doc.url,
+            chunks.len() + dropped,
+            chunks.len(),
+        ));
+    }
 
     let symbol_status = code_symbol_extraction_status(&text, &ext, &chunks);
     let mut chunk_texts = Vec::with_capacity(chunks.len());

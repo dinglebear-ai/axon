@@ -1,5 +1,5 @@
 use crate::core::config::{Config, ConfigOverrides, ScrapeFormat};
-use crate::core::llm::{self, CompletionRequest};
+use crate::core::llm::{self, CompletionRequest, ReasoningEffort};
 use crate::services::events::{LogLevel, ServiceEvent, emit, synthesis_delta_handler};
 use crate::services::scrape;
 use crate::services::types::{SummarizeDocument, SummarizeResult, SummarizeTiming, SummarizeUsage};
@@ -61,6 +61,7 @@ pub async fn summarize(
     let llm_started = Instant::now();
     let request = CompletionRequest::new(summary_user_prompt(&context))
         .system_prompt(summary_system_prompt())
+        .effort(ReasoningEffort::Low)
         .backend_from_config(cfg);
     let completion = llm::complete_streaming(request, summarize_delta_handler(tx.clone()))
         .await

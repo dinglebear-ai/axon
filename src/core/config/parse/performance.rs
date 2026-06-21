@@ -1,4 +1,6 @@
-use super::super::types::PerformanceProfile;
+use super::super::types::{
+    DEFAULT_CRAWL_BROADCAST_BUFFER_MAX, DEFAULT_CRAWL_BROADCAST_BUFFER_MIN, PerformanceProfile,
+};
 use std::env;
 
 /// Profile-derived settings returned by [`profile_settings`].
@@ -25,8 +27,8 @@ pub(super) fn profile_settings(profile: PerformanceProfile) -> ProfileSettings {
             request_timeout_ms: 20_000,
             fetch_retries: 2,
             retry_backoff_ms: 250,
-            broadcast_buffer_min: 4096,
-            broadcast_buffer_max: 16_384,
+            broadcast_buffer_min: DEFAULT_CRAWL_BROADCAST_BUFFER_MIN,
+            broadcast_buffer_max: DEFAULT_CRAWL_BROADCAST_BUFFER_MAX,
         },
         PerformanceProfile::Extreme => ProfileSettings {
             crawl_concurrency: (logical_cpus.saturating_mul(16)).clamp(128, 384),
@@ -43,8 +45,8 @@ pub(super) fn profile_settings(profile: PerformanceProfile) -> ProfileSettings {
             request_timeout_ms: 30_000,
             fetch_retries: 2,
             retry_backoff_ms: 300,
-            broadcast_buffer_min: 4096,
-            broadcast_buffer_max: 8_192,
+            broadcast_buffer_min: DEFAULT_CRAWL_BROADCAST_BUFFER_MIN,
+            broadcast_buffer_max: DEFAULT_CRAWL_BROADCAST_BUFFER_MAX,
         },
         PerformanceProfile::Max => ProfileSettings {
             crawl_concurrency: (logical_cpus.saturating_mul(24)).clamp(256, 1024),

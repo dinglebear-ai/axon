@@ -9,9 +9,10 @@ pub mod types;
 pub(crate) use concurrency::CompletionKey;
 pub use types::{
     CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult,
-    LlmBackendConfig, LlmBackendKind, LlmModelPurpose, SynthesisModelProfile, SynthesisModelTier,
-    UsageSnapshot, configured_chat_model_from_config, configured_model_for_config,
-    configured_model_from_config, extract_completion_result, normalize_stream_flag,
+    LlmBackendConfig, LlmBackendKind, LlmModelPurpose, ReasoningEffort, SynthesisModelProfile,
+    SynthesisModelTier, UsageSnapshot, configured_chat_model_from_config,
+    configured_model_for_config, configured_model_from_config, extract_completion_result,
+    normalize_stream_flag,
 };
 
 pub async fn complete_text(

@@ -16,7 +16,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "5.16.5"
+version = "5.16.6"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -56,6 +56,8 @@ reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
 rustls = { version = "0.23", features = ["aws-lc-rs"], default-features = false }
 rand = "0.10"
 rand_core = { version = "0.9", features = ["os_rng", "std"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.16", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"

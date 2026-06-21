@@ -328,13 +328,13 @@ fn command_json_chunks(detail: &str) -> Option<u64> {
 fn session_files_exist(home: &Path) -> bool {
     let roots = SessionWatchRoots::for_home(home);
     [
-        home.join(".claude/projects"),
-        home.join(".codex/sessions"),
-        home.join(".gemini/history"),
-        home.join(".gemini/tmp"),
+        &roots.claude_projects,
+        &roots.codex_sessions,
+        &roots.gemini_history,
+        &roots.gemini_tmp,
     ]
     .into_iter()
-    .any(|root| directory_contains_supported_session_file(&roots, &root))
+    .any(|root| directory_contains_supported_session_file(&roots, root))
 }
 
 fn directory_contains_supported_session_file(roots: &SessionWatchRoots, root: &Path) -> bool {

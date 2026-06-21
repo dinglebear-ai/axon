@@ -49,6 +49,9 @@ pub(super) fn router(
     Router::new()
         .route("/healthz", get(super::super::health::healthz))
         .route("/readyz", get(super::super::health::readyz))
+        // Prometheus scrape endpoint — unauthenticated like the health probes,
+        // so an in-cluster scraper can read it without a token.
+        .route("/metrics", get(super::super::metrics::metrics_handler))
         .route("/v1/actions", post(v1_actions_removed))
         .route("/v1/migrate", post(v1_migrate_not_exposed))
         .merge(super::openapi::docs_router())
