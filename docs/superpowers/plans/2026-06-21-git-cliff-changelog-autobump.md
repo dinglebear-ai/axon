@@ -81,16 +81,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 """
+# NOTE: git-cliff renders this body ONCE PER RELEASE — `version`/`timestamp`/
+# `commits` are the current release's fields. Do NOT wrap in
+# `{% for release in releases %}` (that variable is empty in per-release context
+# and yields a header-only changelog). Structure copied from git-cliff's
+# canonical `keepachangelog` template, with per-component prefix stripping added.
 body = """
-{% for release in releases %}
-## [{{ release.version | replace(from="palette-v", to="") | replace(from="android-v", to="") | replace(from="chrome-ext-v", to="") | trim_start_matches(pat="v") }}] - {{ release.timestamp | date(format="%Y-%m-%d") }}
-{% for group, commits in release.commits | group_by(attribute="group") %}
-### {{ group | upper_first }}
-{% for commit in commits %}
-- {{ commit.message | upper_first }}{% endfor %}
-{% endfor %}{% endfor %}
+{% if version -%}
+    ## [{{ version | replace(from="palette-v", to="") | replace(from="android-v", to="") | replace(from="chrome-ext-v", to="") | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+    ## [Unreleased]
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | split(pat="\\n") | first | upper_first | trim }}\
+    {% endfor %}
+{% endfor %}\\n
 """
-trim = true
 
 [git]
 conventional_commits = true
@@ -151,6 +159,7 @@ git commit -m "chore: add git-cliff config for per-component changelogs"
   - `fn parse_cliff_version(output: &str) -> ReleaseResult<Version>`
   - `fn derive_level(latest: &Version, bumped: &Version) -> Option<BumpLevel>`
   - `fn apply_level(current: &Version, level: BumpLevel) -> Version`
+  - `fn resolve_next(current: &Version, latest: Option<&Version>, level: BumpLevel) -> Version` — bumps from `max(current, latest)` so a worktree whose `version_source` lags the latest tag cannot undershoot (spike finding).
   - `fn next_version_from_outputs(current: &Version, latest: Option<&Version>, cliff_bumped_raw: &str, component_id: &str) -> ReleaseResult<Version>`
 
 - [ ] **Step 1: Declare the module**
@@ -231,27 +240,68 @@ fn derive_level_picks_highest_change() {
 }
 
 #[test]
-fn next_version_applies_delta_to_authoritative_current() {
+fn resolve_next_bumps_from_max_of_source_and_tag() {
     let v = |s: &str| Version::parse(s).unwrap();
-    // git-cliff bumped v5.16.5 -> v5.17.0 (a minor); current source is 5.16.5.
+    // Normal: source == tag.
+    assert_eq!(
+        resolve_next(&v("5.16.6"), Some(&v("5.16.6")), BumpLevel::Minor).to_string(),
+        "5.17.0"
+    );
+    // Stale worktree: source (5.16.5) lags tag (5.16.6) -> bump from the tag,
+    // so a patch yields 5.16.7 (not a collision at 5.16.6).
+    assert_eq!(
+        resolve_next(&v("5.16.5"), Some(&v("5.16.6")), BumpLevel::Patch).to_string(),
+        "5.16.7"
+    );
+    // Source ahead of tag (manual pre-bump): bump from the source.
+    assert_eq!(
+        resolve_next(&v("5.17.0"), Some(&v("5.16.6")), BumpLevel::Patch).to_string(),
+        "5.17.1"
+    );
+    // No tag: bump from the source.
+    assert_eq!(
+        resolve_next(&v("0.2.1"), None, BumpLevel::Major).to_string(),
+        "1.0.0"
+    );
+}
+
+#[test]
+fn next_version_uses_git_cliff_magnitude_from_max_baseline() {
+    let v = |s: &str| Version::parse(s).unwrap();
+    // git-cliff bumped tag 5.16.6 -> 5.17.0 (minor); source 5.16.5 lags the tag.
     let next =
-        next_version_from_outputs(&v("5.16.5"), Some(&v("5.16.5")), "v5.17.0", "cli").unwrap();
+        next_version_from_outputs(&v("5.16.5"), Some(&v("5.16.6")), "v5.17.0", "cli").unwrap();
     assert_eq!(next.to_string(), "5.17.0");
 }
 
 #[test]
-fn next_version_uses_source_when_ahead_of_tag() {
+fn next_version_patch_does_not_collide_with_tag_on_stale_worktree() {
     let v = |s: &str| Version::parse(s).unwrap();
-    // latest tag 5.16.5, git-cliff says minor; source manually ahead at 5.16.9.
+    // git-cliff patch-bumped tag 5.16.6 -> 5.16.7; source 5.16.5 lags.
+    // Applying to max(source, tag) gives 5.16.7, not a 5.16.6 collision.
     let next =
-        next_version_from_outputs(&v("5.16.9"), Some(&v("5.16.5")), "5.17.0", "cli").unwrap();
-    assert_eq!(next.to_string(), "5.17.0");
+        next_version_from_outputs(&v("5.16.5"), Some(&v("5.16.6")), "v5.16.7", "cli").unwrap();
+    assert_eq!(next.to_string(), "5.16.7");
+}
+
+#[test]
+fn next_version_tolerates_custom_prefix_output() {
+    let v = |s: &str| Version::parse(s).unwrap();
+    let next = next_version_from_outputs(
+        &v("5.10.5"),
+        Some(&v("5.10.5")),
+        "palette-v5.11.0",
+        "palette",
+    )
+    .unwrap();
+    assert_eq!(next.to_string(), "5.11.0");
 }
 
 #[test]
 fn next_version_errors_when_no_releasable_commits() {
     let v = |s: &str| Version::parse(s).unwrap();
-    let err = next_version_from_outputs(&v("5.16.5"), Some(&v("5.16.5")), "5.16.5", "cli");
+    // git-cliff echoes the latest tag unchanged ("nothing to bump").
+    let err = next_version_from_outputs(&v("5.16.6"), Some(&v("5.16.6")), "v5.16.6", "cli");
     assert!(err.is_err());
 }
 ```
@@ -342,9 +392,23 @@ pub(super) fn apply_level(current: &Version, level: BumpLevel) -> Version {
     }
 }
 
+/// Apply a bump level to the higher of `current` (version_source) and `latest`
+/// (the latest released tag). git-cliff bumps from the latest tag, but a
+/// worktree's version_source can lag that tag — bumping from the max prevents a
+/// patch from colliding with the existing tag (spike finding).
+pub(super) fn resolve_next(current: &Version, latest: Option<&Version>, level: BumpLevel) -> Version {
+    let baseline = match latest {
+        Some(latest) if latest > current => latest,
+        _ => current,
+    };
+    apply_level(baseline, level)
+}
+
 /// Pure core: given the authoritative current version, the latest tag version,
-/// and git-cliff's raw `--bumped-version` output, compute the next version by
-/// applying git-cliff's chosen magnitude to the authoritative current version.
+/// and git-cliff's raw `--bumped-version` output, compute the next version.
+/// git-cliff bumps from the latest tag; we read off its chosen magnitude and
+/// re-apply it from `max(current, latest)` so a lagging worktree cannot
+/// undershoot. Errors when git-cliff reports nothing to bump.
 pub(super) fn next_version_from_outputs(
     current: &Version,
     latest: Option<&Version>,
@@ -352,11 +416,11 @@ pub(super) fn next_version_from_outputs(
     component_id: &str,
 ) -> ReleaseResult<Version> {
     let bumped = parse_cliff_version(cliff_bumped_raw)?;
-    let baseline = latest.unwrap_or(current);
-    let level = derive_level(baseline, &bumped).with_release_context(|| {
-        format!("{component_id}: no releasable commits since {baseline} (nothing to bump)")
+    let magnitude_baseline = latest.unwrap_or(current);
+    let level = derive_level(magnitude_baseline, &bumped).with_release_context(|| {
+        format!("{component_id}: no releasable commits since {magnitude_baseline} (nothing to bump)")
     })?;
-    Ok(apply_level(current, level))
+    Ok(resolve_next(current, latest, level))
 }
 
 #[cfg(test)]
@@ -708,7 +772,7 @@ pub fn bump(
         .and_then(|version| Version::parse(version).ok());
 
     let next_version = match level {
-        Some(level) => cliff::apply_level(&current, level),
+        Some(level) => cliff::resolve_next(&current, latest_tag_version.as_ref(), level),
         None => cliff::next_version(root, component, &current, latest_tag_version.as_ref())?,
     };
     let next = next_version.to_string();
