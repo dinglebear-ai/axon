@@ -23,6 +23,12 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # On PRs, cancel superseded runs so the strict-up-to-date re-run treadmill
+  # doesn't pile up 30-min runs. Never cancel on main/schedule.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
   RUSTC_WRAPPER: ""
@@ -526,7 +532,10 @@ jobs:
   windows-check:
     name: windows-check (xtask only)
     runs-on: windows-latest
-    timeout-minutes: 25
+    # `cargo check -p xtask` transitively compiles axon (bench_embed dep); on a
+    # cold Windows cache this lands right at the old 25-min cap (observed
+    # 25m08s — a timeout despite all real steps passing). Give it headroom.
+    timeout-minutes: 40
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
@@ -982,87 +991,11 @@ jobs:
       - name: cargo fmt check
         run: cargo fmt --all -- --check
 
-  check:
-    name: check
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: ${{ needs.changes.outputs.rust == 'true' }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            migrations
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-            release
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-      - name: create web assets placeholder
-        run: |
-          mkdir -p apps/web/out
-          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
-      - name: cargo check (warnings are errors)
-        env:
-          RUSTFLAGS: -D warnings
-        run: cargo check --workspace --all-targets --locked --features test-helpers
-
-  msrv:
-    name: msrv
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: ${{ needs.changes.outputs.rust == 'true' }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          # Cone mode keeps root-level files such as `.gitignore` available.
-          # Non-cone sparse checkouts can make older Cargo/gix fail while
-          # fingerprinting the root build script.
-          sparse-checkout: |
-            src
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            migrations
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-            release
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-      - name: create web assets placeholder
-        run: |
-          mkdir -p apps/web/out
-          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
-      - name: cargo check (MSRV)
-        run: cargo check --workspace --all-targets --locked --features test-helpers
-
+  # `check` and `msrv` were removed: both ran `cargo check --workspace
+  # --all-targets --locked --features test-helpers` (byte-identical, and the
+  # 1.94.0 pin was silently overridden to rust-toolchain.toml's channel, so
+  # `msrv` validated nothing). `clippy -D warnings` is a strict superset of
+  # `cargo check -D warnings`, so the `clippy` job below covers them.
   clippy:
     name: clippy
     runs-on: ubuntu-latest
@@ -1095,6 +1028,13 @@ jobs:
           toolchain: 1.94.0
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Shared with `test` (same toolchain + features, no RUSTFLAGS) and
+          # warmed from main, so PRs restore a hot dep cache instead of each job
+          # recompiling the workspace. `clippy -D warnings` also denies rustc
+          # warnings, so this job subsumes the removed `check`/`msrv` jobs.
+          shared-key: rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -1150,6 +1090,11 @@ jobs:
         with:
           tool: cargo-nextest
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Shared with `clippy` (same toolchain + features, no RUSTFLAGS);
+          # warmed from main.
+          shared-key: rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -1589,6 +1534,12 @@ jobs:
         with:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Release-profile artifacts (distinct from the debug `rust` cache);
+          # warmed from main so the PR release build + serialized mcp-smoke start
+          # sooner.
+          shared-key: release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -1649,8 +1600,6 @@ jobs:
       - ban-skip-validation
       - monolith
       - fmt
-      - check
-      - msrv
       - clippy
       - test
       - security
@@ -1693,8 +1642,6 @@ jobs:
           require_success_or_skipped ban-skip-validation "${{ needs.ban-skip-validation.result }}"
           require_success_or_skipped monolith "${{ needs.monolith.result }}"
           require_success_or_skipped fmt "${{ needs.fmt.result }}"
-          require_success_or_skipped check "${{ needs.check.result }}"
-          require_success_or_skipped msrv "${{ needs.msrv.result }}"
           require_success_or_skipped clippy "${{ needs.clippy.result }}"
           require_success_or_skipped test "${{ needs.test.result }}"
           require_success_or_skipped security "${{ needs.security.result }}"

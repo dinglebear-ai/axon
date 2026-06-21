@@ -12,6 +12,11 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Cancel superseded CodeQL runs on PRs (heavy rust/kotlin build-mode analyze).
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}

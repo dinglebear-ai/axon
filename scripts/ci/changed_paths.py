@@ -127,7 +127,9 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     codeql_javascript_typescript = web or palette or any_match(
         paths, lambda p: p.endswith((".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"))
     )
-    codeql_python = any_match(paths, lambda p: p.endswith(".py") or starts(p, "scripts/"))
+    # Python CodeQL only analyzes .py sources; `scripts/` is mostly shell, so
+    # gating on the prefix triggered a full Python analyze on unrelated changes.
+    codeql_python = any_match(paths, lambda p: p.endswith(".py"))
     codeql_rust = rust or palette
     codeql_java_kotlin = android or any_match(paths, lambda p: p.endswith((".java", ".kt", ".kts")))
 
