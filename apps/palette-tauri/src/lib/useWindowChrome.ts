@@ -24,8 +24,14 @@ type BrowseHeight = () => number;
 // The palette is a borderless window resized to hug each view; these are the
 // per-view logical-px dimensions. `resize_palette` sizes in logical px, so CSS-px
 // measurements map 1:1 across DPIs.
-const COMPACT = { width: 680, height: 56 }; // launcher input only
-const TRAY = { width: 680, height: 96 }; // minimized crawl-job tray
+// The compact/tray launcher windows are intentionally larger than the bar they
+// contain: the shell insets the floating bar by --axon-launcher-inset (20px) on
+// every side so its glow renders fully instead of clipping at the window edge.
+// Geometry must match --axon-launcher-inset in styles.css and show_main_window()
+// in src-tauri/src/lib.rs — COMPACT = 680×52 bar + 20px inset all round; TRAY =
+// 680×88 panel (52px command bar + 36px idle tray) + 20px inset all round.
+const COMPACT = { width: 720, height: 92 }; // launcher input only
+const TRAY = { width: 720, height: 128 }; // minimized crawl-job tray
 const SETTINGS = { width: 800, height: 560 };
 const HISTORY = { width: 760, height: 520 };
 const BROWSE_WIDTH = 760; // action-list browse view
@@ -151,7 +157,13 @@ export function useWindowChrome({
       return;
     }
     lastSizeRef.current = size;
-    void invoke("resize_palette", size);
+    // The native window shadow travels with the resize: off for the floating
+    // compact/tray launcher (its CSS glow owns the float; the native shadow would
+    // double the halo around the larger transparent window), on for the roomy
+    // edge-to-edge views. resolvePaletteWindowSize returns the COMPACT/TRAY
+    // singletons by reference for exactly those two views.
+    const floating = size === COMPACT || size === TRAY;
+    void invoke("resize_palette", { ...size, shadow: !floating });
   }, [jobExpanded, jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filteredLength, shownTick]);
 
   // Launcher states (compact/browse/mode) keep click-away-to-dismiss; while a
