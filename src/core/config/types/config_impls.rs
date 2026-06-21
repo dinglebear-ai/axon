@@ -191,6 +191,8 @@ impl Default for Config {
             watchdog_stale_timeout_secs: 300,
             watchdog_confirm_secs: 60,
             watchdog_sweep_secs: 15,
+            worker_starvation_secs: 120,
+            crawl_job_timeout_secs: 7200,
             json_output: false,
             reclaimed_status_only: false,
             active_status_only: false,

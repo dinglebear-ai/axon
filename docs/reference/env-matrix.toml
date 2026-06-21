@@ -2423,6 +2423,30 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_WORKER_STARVATION_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret worker-liveness tuning knob (starvation detector threshold); also settable via config.toml (workers.worker-starvation-secs)."
+
+[[env]]
+key = "AXON_CRAWL_JOB_TIMEOUT_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret per-crawl-job wall-clock timeout knob; also settable via config.toml (workers.crawl-job-timeout-secs)."
+
+[[env]]
 key = "AXON_WEB_ALLOWED_ORIGINS"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"

@@ -387,6 +387,14 @@ fn populate_misc(
         .or(inputs.toml.workers.watchdog_sweep_secs)
         .unwrap_or(15)
         .clamp(1, 600);
+    cfg.worker_starvation_secs = parse_i64_env("AXON_WORKER_STARVATION_SECS")
+        .or(inputs.toml.workers.worker_starvation_secs)
+        .unwrap_or(120)
+        .clamp(0, 3600);
+    cfg.crawl_job_timeout_secs = parse_i64_env("AXON_CRAWL_JOB_TIMEOUT_SECS")
+        .or(inputs.toml.workers.crawl_job_timeout_secs)
+        .unwrap_or(7200)
+        .clamp(0, 86_400);
     cfg.json_output = g.json;
     cfg.reclaimed_status_only = g.reclaimed;
     cfg.active_status_only = g.active;

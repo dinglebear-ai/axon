@@ -278,6 +278,11 @@ pub(super) struct TomlWorkersSection {
     pub watchdog_confirm_secs: Option<i64>,
     /// Seconds between watchdog sweeps.
     pub watchdog_sweep_secs: Option<i64>,
+    /// Seconds pending jobs may starve (zero running) before the liveness
+    /// watchdog kicks/respawns the lane. 0 disables.
+    pub worker_starvation_secs: Option<i64>,
+    /// Maximum wall-clock seconds a single crawl job may run before abort. 0 disables.
+    pub crawl_job_timeout_secs: Option<i64>,
 }
 
 #[derive(Deserialize, Default)]

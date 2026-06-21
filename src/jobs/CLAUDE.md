@@ -100,19 +100,24 @@ The SQLite pool is expensive. `SqliteJobBackend::new()` creates one pool at star
 
 All internal async channels use `tokio::sync::mpsc::channel(256)` — **never** `unbounded_channel()`. Unbounded channels hide backpressure bugs and cause OOM under load.
 
-### Liveness Enforcement (Heartbeat + Watchdog)
+### Liveness Enforcement (Heartbeat + Watchdog + Panic Guard + Starvation Detector)
 
-Two cooperating mechanisms keep job state honest:
+Four cooperating mechanisms keep job state — and the worker lanes themselves — honest:
 
 **Heartbeat (per running job):**
 - `HeartbeatGuard` in `src/jobs/workers/heartbeat.rs` is spawned by `worker_loop` for every claimed job and aborted (RAII drop) when the runner returns.
 - Loops every 30s and calls `touch_heartbeat()` (in `ops/lifecycle.rs`) which bumps `updated_at` only on rows still in `running` state. It never writes `result_json` — that column is owned by the progress persisters.
 - Purpose: keep `updated_at` advancing during long blocking phases (crawl rendering a single page, embed pipeline mid-batch) where no progress event has fired yet.
 
-**Watchdog (periodic + startup):**
+**Watchdog (periodic + startup):** lives in `src/jobs/workers/watchdog.rs` (extracted from `workers.rs`).
 - Startup-time sweep: `SqliteJobBackend::init` calls `reclaim_stale_running_jobs` once, resetting any `running` row whose `updated_at < now - (watchdog_stale_timeout_secs + watchdog_confirm_secs)` to `pending`.
-- Periodic sweep: `spawn_workers` spawns a 60s ticker that re-runs `reclaim_stale_running_jobs` while the process is alive, cooperating with the heartbeat to detect both **crash** (process gone, heartbeat stopped) and **hang** (heartbeat task wedged) cases.
+- Periodic sweep: `spawn_workers` spawns `watchdog::watchdog_loop`, a `cfg.watchdog_sweep_secs` ticker (**default 15s**) that re-runs `reclaim_stale_running_jobs` while the process is alive, cooperating with the heartbeat to detect both **crash** (process gone, heartbeat stopped) and **hang** (heartbeat task wedged) cases. Each tick also runs the starvation detector (below).
 - Thresholds via `cfg.watchdog_stale_timeout_secs` (default 300s) and `cfg.watchdog_confirm_secs` (60s) → 360s total. With a 30s heartbeat that gives ~12x safety margin.
+- **Reclaim only acts on stale `running` rows.** It is blind to a lane that has stopped claiming while jobs sit `pending` — that is the starvation detector's job.
+
+**Panic guard (per job):** `worker_loop` runs each runner future through `panic_guard::run_catching` (`AssertUnwindSafe(fut).catch_unwind()`). Worker lanes are detached `tokio::spawn` tasks awaiting the runner inline, so a panic anywhere in a runner used to unwind and **permanently kill that lane** while the process stayed alive (silent, restart-only recovery). The guard converts a panic into a job `failed` (message `"job panicked: …"`, logged at ERROR) and the lane keeps claiming.
+
+**Starvation detector (periodic):** `src/jobs/workers/starvation.rs`, run each watchdog tick. For each `JobKind`: if `pending > 0` **and** `running == 0` **and** the oldest pending job's age ≥ `cfg.worker_starvation_secs * 1000` (default **120s**, `0` disables, env `AXON_WORKER_STARVATION_SECS`), it logs LOUDLY at ERROR (so a wedged lane is never silent again) and fires the kind's `Notify` (`notify_waiters`) to kick a parked-but-alive lane. The `running == 0` guard excludes a healthy backlog queued behind busy lanes (and ingest jobs waiting on a running same-target sibling). `worker_loop` also emits a per-wake `trace!` and a periodic `debug!` so lane liveness is visible in logs.
 
 ### Cancellation
 
@@ -129,7 +134,7 @@ When the runner exits with `Err("<kind> canceled")`, the worker loop calls `mark
 
 ### Stale Job Recovery
 
-- The SQLite-runtime watchdog (in `src/jobs/store.rs::reclaim_stale_running_jobs`) marks jobs stuck in `running` state as `pending` after the stale timeout, both at startup and on the periodic 60s tick from `spawn_workers`.
+- The SQLite-runtime watchdog (in `src/jobs/store.rs::reclaim_stale_running_jobs`) marks jobs stuck in `running` state as `pending` after the stale timeout, both at startup and on the periodic `cfg.watchdog_sweep_secs` tick (default 15s) from `spawn_workers`.
 - `axon crawl recover` subcommand: reclaims all stale jobs (re-queues them as `pending`).
 
 ## ingest_jobs Schema Difference
