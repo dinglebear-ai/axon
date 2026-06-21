@@ -10,6 +10,7 @@ macro_rules! release_bail {
     };
 }
 
+mod cliff;
 mod error;
 mod files;
 mod git;
