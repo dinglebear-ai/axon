@@ -47,6 +47,7 @@ jobs:
       mcp: ${{ steps.classify.outputs.mcp }}
       security: ${{ steps.classify.outputs.security }}
       release: ${{ steps.classify.outputs.release }}
+      version_files: ${{ steps.classify.outputs.version_files }}
       openapi: ${{ steps.classify.outputs.openapi }}
     steps:
       - uses: actions/checkout@v5
@@ -63,7 +64,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all docs workflow rust web android palette chrome docker compose mcp security release openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all docs workflow rust web android palette chrome docker compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -134,7 +135,7 @@ jobs:
     name: version-sync
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ needs.changes.outputs.release == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.docs == 'true' }}
+    if: ${{ needs.changes.outputs.release == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:

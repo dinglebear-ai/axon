@@ -44,15 +44,38 @@ fn classify(event: &str, files: &[&str]) -> HashMap<String, String> {
 fn docs_only_changes_skip_expensive_runtime_categories() {
     let out = classify(
         "pull_request",
-        &["docs/guides/configuration.md", "README.md"],
+        &[
+            "docs/guides/configuration.md",
+            "docs/sessions/2026-06-21-example.md",
+        ],
     );
     assert_eq!(out["docs"], "true");
+    // Prose-only docs (guides, session logs) must NOT drag in the release-version
+    // gate, which recompiles xtask (~5min). version-sync keys off version_files.
+    assert_eq!(out["version_files"], "false");
     assert_eq!(out["rust"], "false");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
     assert_eq!(out["docker"], "false");
     assert_eq!(out["release"], "false");
     assert_eq!(out["codeql_rust"], "false");
+}
+
+#[test]
+fn version_bearing_root_docs_trigger_version_sync() {
+    for file in ["README.md", "CHANGELOG.md"] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(
+            out["version_files"], "true",
+            "{file} must still trigger version-sync"
+        );
+        assert_eq!(out["docs"], "true", "{file} is still a docs change");
+        assert_eq!(out["rust"], "false", "{file} alone is not a rust change");
+        assert_eq!(
+            out["release"], "false",
+            "{file} alone is not a release change"
+        );
+    }
 }
 
 #[test]
@@ -185,6 +208,7 @@ fn workflow_dispatch_and_schedule_enable_everything() {
             "mcp",
             "security",
             "release",
+            "version_files",
             "openapi",
             "codeql_actions",
             "codeql_javascript_typescript",
@@ -218,6 +242,7 @@ fn changed_path_router_edits_force_full_ci() {
             "mcp",
             "security",
             "release",
+            "version_files",
             "openapi",
             "codeql_actions",
             "codeql_javascript_typescript",
