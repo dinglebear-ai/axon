@@ -43,6 +43,23 @@ impl CodeIndexStore {
         .await?;
         self.ensure_project_column("max_generation", "INTEGER NOT NULL DEFAULT 0")
             .await?;
+        self.ensure_project_column("root_hash", "TEXT").await?;
+        self.ensure_project_column("manifest_file_count", "INTEGER DEFAULT 0")
+            .await?;
+        self.ensure_project_column("indexed_file_count", "INTEGER DEFAULT 0")
+            .await?;
+        self.ensure_project_column("last_indexed_at_ms", "INTEGER DEFAULT 0")
+            .await?;
+        self.ensure_project_column("last_refresh_started_at_ms", "INTEGER DEFAULT 0")
+            .await?;
+        self.ensure_project_column("last_refresh_finished_at_ms", "INTEGER DEFAULT 0")
+            .await?;
+        self.ensure_project_column("last_refresh_status", "TEXT")
+            .await?;
+        self.ensure_project_column("last_error_message", "TEXT")
+            .await?;
+        self.ensure_project_column("cleanup_debt_count", "INTEGER DEFAULT 0")
+            .await?;
 
         sqlx::query(
             r#"
