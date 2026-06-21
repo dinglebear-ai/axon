@@ -24,6 +24,7 @@ OUTPUT_KEYS = [
     "mcp",
     "security",
     "release",
+    "version_files",
     "openapi",
     "codeql_actions",
     "codeql_javascript_typescript",
@@ -80,6 +81,11 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         paths,
         lambda p: starts(p, "docs/") or p in {"README.md", "CHANGELOG.md"} or p in DOC_CI_HELPER_SCRIPTS,
     )
+    # Version-bearing root docs only. version-sync (which recompiles xtask, ~5min)
+    # keys off this rather than the broad `docs` signal, so prose-only doc changes
+    # (e.g. docs/sessions/* logs) skip the release-version gate instead of dragging
+    # in the full check. ci-gate treats a skipped version-sync as success.
+    version_files = any_match(paths, lambda p: p in {"README.md", "CHANGELOG.md"})
     openapi = any_match(paths, lambda p: starts(p, "apps/web/openapi/"))
     web = any_match(paths, lambda p: starts(p, "apps/web/", "assets/")) or openapi
     android = any_match(paths, lambda p: starts(p, "apps/android/")) or openapi
@@ -141,6 +147,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         "mcp": mcp,
         "security": security,
         "release": release,
+        "version_files": version_files,
         "openapi": openapi,
         "codeql_actions": codeql_actions,
         "codeql_javascript_typescript": codeql_javascript_typescript,
