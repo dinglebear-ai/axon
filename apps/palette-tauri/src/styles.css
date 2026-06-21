@@ -126,6 +126,15 @@
   --axon-surface: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
   --axon-window-border: color-mix(in srgb, var(--aurora-border-strong) 58%, transparent);
   --axon-window-radius: 14px;
+  /* Compact launcher (floating bar): the transparent breathing room kept around
+     the bar so its glow renders fully instead of clipping at the window edge,
+     plus the glow itself. The window grows to fit (window = bar + 2*inset on
+     each axis) — these MUST stay in sync with COMPACT/TRAY in
+     src/lib/useWindowChrome.ts and show_main_window() in src-tauri/src/lib.rs. */
+  --axon-launcher-inset: 20px;
+  --axon-launcher-glow:
+    0 4px 16px rgba(0, 0, 0, 0.34),
+    0 1px 3px rgba(0, 0, 0, 0.30);
 }
 
 * {
@@ -262,10 +271,17 @@ textarea {
 .palette-shell-compact {
   --ctl: 32px;
   --r-ctl: 9px;
-  width: min(94vw, 680px);
-  min-height: 56px;
-  height: 56px;
-  padding: 0;
+  width: min(94vw, 720px);
+  min-height: 92px;
+  height: 92px;
+  /* Floating launcher: inset the bar so its glow renders fully inside the window
+     instead of clipping at the edge. The window grows by the same inset on every
+     side (see --axon-launcher-inset + COMPACT/TRAY in useWindowChrome.ts), so the
+     bar's content box stays 680px wide / 52px tall. */
+  padding: var(--axon-launcher-inset);
+  /* Center the floating bar/panel in the padded area so the glow stays symmetric
+     even under fractional DPI scaling. */
+  justify-content: center;
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -274,8 +290,8 @@ textarea {
 }
 
 .palette-shell-compact:has(.idle-tray) {
-  min-height: 92px;
-  height: 92px;
+  min-height: 128px;
+  height: 128px;
 }
 
 /* When the crawl tray is attached, the command bar becomes the TOP of one
@@ -287,18 +303,18 @@ textarea {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
+/* The compact shell fills the borderless window and insets the floating bar by
+   --axon-launcher-inset, leaving transparent breathing room so the bar's glow
+   renders fully (it was clipped when the window hugged the bar at 680×56). The
+   window grows to match — see COMPACT/TRAY in useWindowChrome.ts. The native
+   window shadow is turned off for this view (set_window_shadow) so it doesn't
+   cast a second halo around the larger window rect; the CSS glow owns the float.
+   This is a deliberate divergence from the roomy views, which stay edge-to-edge
+   with the native shadow to avoid transparent rounded corners over light apps. */
 .tauri-runtime .palette-shell-compact {
   width: 100vw;
-  height: 56px;
-  min-height: 56px;
-}
-
-/* Compact bar fills the window edge-to-edge too — same reason as the shell:
-   a rounded bar would leave transparent (white-on-light) window corners. */
-.tauri-runtime .palette-shell-compact .command-bar {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  height: 100vh;
+  min-height: 0;
 }
 
 .palette-shell-browse {
@@ -522,15 +538,15 @@ textarea {
 }
 
 .palette-shell-compact .command-bar {
-  height: 56px;
-  min-height: 56px;
+  height: 52px;
+  min-height: 52px;
   padding: 0 8px 0 14px;
   background: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
   border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 52%, transparent);
   border-radius: 14px;
   box-shadow:
-    0 16px 42px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+    var(--axon-launcher-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .idle-tray {
@@ -547,7 +563,7 @@ textarea {
   border-top: 1px solid color-mix(in srgb, var(--aurora-border-strong) 24%, transparent);
   border-radius: 0 0 14px 14px;
   /* Carry the whole panel's outer shadow (command bar no longer casts its own). */
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.36);
+  box-shadow: var(--axon-launcher-glow);
   cursor: pointer;
   font-family: var(--aurora-font-mono);
   font-size: 11px;
