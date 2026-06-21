@@ -735,7 +735,7 @@ fn main_mode_android_version_code_compares_against_latest_tag() {
 #[test]
 fn bump_cli_updates_source_manifests_and_lockfiles() {
     let fixture = Fixture::new();
-    bump(fixture.root(), "cli", BumpLevel::Patch).unwrap();
+    bump(fixture.root(), "cli", Some(BumpLevel::Patch), true).unwrap();
 
     assert!(
         fs::read_to_string(fixture.path("Cargo.toml"))
@@ -785,7 +785,7 @@ fn bump_cli_updates_source_manifests_and_lockfiles() {
 #[test]
 fn bump_android_updates_version_name_and_code() {
     let fixture = Fixture::new();
-    bump(fixture.root(), "android", BumpLevel::Patch).unwrap();
+    bump(fixture.root(), "android", Some(BumpLevel::Patch), true).unwrap();
     let content = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
     assert_eq!(read_gradle_version_name(&content).unwrap(), "1.3.3");
     assert_eq!(read_gradle_version_code(&content).unwrap(), 7);
@@ -794,7 +794,7 @@ fn bump_android_updates_version_name_and_code() {
 #[test]
 fn bump_palette_updates_source_manifests_and_lockfile() {
     let fixture = Fixture::new();
-    bump(fixture.root(), "palette", BumpLevel::Minor).unwrap();
+    bump(fixture.root(), "palette", Some(BumpLevel::Minor), true).unwrap();
 
     assert_eq!(
         read_json_version(
