@@ -214,9 +214,12 @@ fn include_paths_emit_file_and_dir_globs() {
 
 #[test]
 fn tag_pattern_is_anchored_and_escaped() {
+    // Hyphens are literal outside a character class (not escaped); regex
+    // metacharacters would be. Unescaped form is spike-verified.
     assert_eq!(build_tag_pattern("v"), "^v");
-    assert_eq!(build_tag_pattern("palette-v"), "^palette\\-v");
-    assert_eq!(build_tag_pattern("chrome-ext-v"), "^chrome\\-ext\\-v");
+    assert_eq!(build_tag_pattern("palette-v"), "^palette-v");
+    assert_eq!(build_tag_pattern("chrome-ext-v"), "^chrome-ext-v");
+    assert_eq!(build_tag_pattern("a.b"), "^a\\.b");
 }
 
 #[test]
