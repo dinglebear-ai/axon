@@ -7,12 +7,29 @@
 // onSave; toggle a switch → assert onChange. jest-dom matchers, jest-axe, and
 // DOM polyfills are registered globally via src/test/setup.ts (Lane B).
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock the OAuth client so the AuthBlock's effect resolves deterministically and
+// never reaches the real invoke seam during render tests.
+const oauthState: { value: OauthStatus } = {
+  value: { signedIn: false, scope: null, expiresAtUnix: null, serverUrl: null },
+};
+
+vi.mock("@/lib/oauthClient", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/oauthClient")>("@/lib/oauthClient");
+  return {
+    ...actual,
+    oauthStatus: vi.fn(() => Promise.resolve(oauthState.value)),
+    oauthLogin: vi.fn(() => Promise.resolve(oauthState.value)),
+    oauthLogout: vi.fn(() => Promise.resolve(oauthState.value)),
+  };
+});
 
 import { connectionFeedback, SettingsPanel } from "./SettingsPanel";
 import type { PaletteConfig } from "@/lib/axonClient";
+import type { OauthStatus } from "@/lib/oauthClient";
 
 const baseConfig: PaletteConfig = {
   serverUrl: "http://127.0.0.1:8001",
@@ -128,5 +145,63 @@ describe("SettingsPanel", () => {
       label: "Connection failed",
       detail: "HTTP 401",
     });
+  });
+});
+
+const authConfig: PaletteConfig = {
+  serverUrl: "https://axon.example.com",
+  token: null,
+  shortcut: "Ctrl+Shift+Space",
+  collection: "axon",
+  resultLimit: 10,
+  theme: "dark",
+  hideOnBlur: false,
+  openResultsInline: true,
+  envValues: {},
+  configValues: {},
+};
+
+describe("SettingsPanel authentication block", () => {
+  beforeEach(() => {
+    oauthState.value = { signedIn: false, scope: null, expiresAtUnix: null, serverUrl: null };
+  });
+
+  it("shows a Sign in button when signed out", async () => {
+    render(
+      <SettingsPanel
+        configError={null}
+        draftConfig={authConfig}
+        shortcutOptions={["Ctrl+Shift+Space"]}
+        onChange={() => {}}
+        onClose={() => {}}
+        onSave={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with google/i })).toBeInTheDocument(),
+    );
+  });
+
+  it("shows a Sign out button when signed in", async () => {
+    // Far-future expiry → describeOauthStatus tone "success" → "Sign out" shown.
+    oauthState.value = {
+      signedIn: true,
+      scope: "axon:read axon:write",
+      expiresAtUnix: 4102444800,
+      serverUrl: "https://axon.example.com",
+    };
+    render(
+      <SettingsPanel
+        configError={null}
+        draftConfig={authConfig}
+        shortcutOptions={["Ctrl+Shift+Space"]}
+        onChange={() => {}}
+        onClose={() => {}}
+        onSave={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument(),
+    );
   });
 });

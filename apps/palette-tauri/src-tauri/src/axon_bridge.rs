@@ -8,7 +8,7 @@ use crate::{merged_settings, validate_saved_server_url};
 
 const PALETTE_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 const MAX_ARTIFACT_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_ARTIFACT_ERROR_MESSAGE_BYTES: u64 = 2048;
+pub(crate) const MAX_ARTIFACT_ERROR_MESSAGE_BYTES: u64 = 2048;
 const ARTIFACT_TOO_LARGE: &str = "artifact is too large to preview";
 const RASTER_ARTIFACT_CONTENT_TYPES: &[&str] = &[
     "image/png",
@@ -110,6 +110,7 @@ pub(crate) struct AxonArtifactResult {
 pub(crate) async fn axon_http_request(
     app: AppHandle,
     bridge: tauri::State<'_, BridgeClient>,
+    oauth_state: tauri::State<'_, crate::oauth::OauthState>,
     request: AxonHttpRequest,
 ) -> Result<AxonHttpResult, String> {
     let path = validate_axon_route(&request)?.to_string();
@@ -119,29 +120,33 @@ pub(crate) async fn axon_http_request(
     let url = format!("{}{}", base_url.trim_end_matches('/'), path);
     let client = (*bridge).client();
 
-    let mut builder = match method {
-        HttpMethod::Get => client.get(&url),
-        HttpMethod::Post => client.post(&url),
-        HttpMethod::Delete => client.delete(&url),
-    }
-    .header(
-        reqwest::header::ACCEPT,
-        "application/json, text/plain;q=0.9, */*;q=0.5",
-    );
-
-    if let Some(token) = settings
+    let static_token = settings
         .token
         .as_deref()
         .map(str::trim)
-        .filter(|t| !t.is_empty())
-    {
-        builder = builder.bearer_auth(token).header("x-api-key", token);
-    }
-    if let Some(body) = request.body {
-        builder = builder.json(&body);
-    }
-
-    let response = builder.send().await.map_err(|err| err.to_string())?;
+        .filter(|t| !t.is_empty());
+    let body = request.body;
+    let make = |token: Option<&str>| {
+        let mut b = match method {
+            HttpMethod::Get => client.get(&url),
+            HttpMethod::Post => client.post(&url),
+            HttpMethod::Delete => client.delete(&url),
+        }
+        .header(
+            reqwest::header::ACCEPT,
+            "application/json, text/plain;q=0.9, */*;q=0.5",
+        );
+        if let Some(t) = token {
+            b = b.bearer_auth(t).header("x-api-key", t);
+        }
+        if let Some(body) = &body {
+            b = b.json(body);
+        }
+        b
+    };
+    let response =
+        crate::oauth::send_with_reauth(&app, client, &base_url, static_token, &oauth_state, make)
+            .await?;
     let status = response.status();
     let text = response.text().await.map_err(|err| err.to_string())?;
     let payload = if text.trim().is_empty() {
@@ -163,27 +168,32 @@ pub(crate) async fn axon_http_request(
 pub(crate) async fn axon_artifact_request(
     app: AppHandle,
     bridge: tauri::State<'_, BridgeClient>,
+    oauth_state: tauri::State<'_, crate::oauth::OauthState>,
     relative_path: String,
 ) -> Result<AxonArtifactResult, String> {
     let settings = merged_settings(&app)?;
     let base_url = validate_saved_server_url(&settings.server_url)?;
     let url = artifact_url(&base_url, &relative_path)?;
     let client = (*bridge).client();
-    let mut request = client.get(url).header(
-        reqwest::header::ACCEPT,
-        "image/png, image/jpeg, image/webp, image/gif, image/avif",
-    );
 
-    if let Some(token) = settings
+    let static_token = settings
         .token
         .as_deref()
         .map(str::trim)
-        .filter(|t| !t.is_empty())
-    {
-        request = request.bearer_auth(token).header("x-api-key", token);
-    }
-
-    let response = request.send().await.map_err(|err| err.to_string())?;
+        .filter(|t| !t.is_empty());
+    let make = |token: Option<&str>| {
+        let mut b = client.get(url.clone()).header(
+            reqwest::header::ACCEPT,
+            "image/png, image/jpeg, image/webp, image/gif, image/avif",
+        );
+        if let Some(t) = token {
+            b = b.bearer_auth(t).header("x-api-key", t);
+        }
+        b
+    };
+    let response =
+        crate::oauth::send_with_reauth(&app, client, &base_url, static_token, &oauth_state, make)
+            .await?;
     let status = response.status();
     let content_type = response
         .headers()
@@ -225,7 +235,7 @@ async fn read_limited_artifact_body(response: reqwest::Response) -> Result<Vec<u
     read_limited_artifact_stream(response.bytes_stream()).await
 }
 
-async fn read_limited_text_body(
+pub(crate) async fn read_limited_text_body(
     response: reqwest::Response,
     max_bytes: u64,
 ) -> Result<String, String> {

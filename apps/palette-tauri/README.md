@@ -57,6 +57,19 @@ The app reads Axon connection settings from the environment first, then `~/.axon
 
 Runtime palette preferences are stored in the platform app config directory as `settings.json`. The settings panel can override the server URL, token, shortcut, collection, result limit, theme, and hide-on-blur behavior. Hide-on-blur is on by default so clicking outside the palette dismisses it.
 
+## Authentication
+
+The palette authenticates to Axon two ways, and both can be configured at once:
+
+- **Static bearer token** — set `AXON_MCP_HTTP_TOKEN` or the **Bearer token** field in the Connection settings tab.
+- **OAuth "Sign in with Google"** — click **Sign in with Google** in the Connection tab's **Authentication** block. The palette runs an OAuth 2.0 Authorization Code + PKCE flow (RFC 8414 discovery → RFC 7591 dynamic client registration → loopback redirect → `/token` exchange) **entirely in the Rust shell**. The system browser is launched with the `open` crate and the `?code&state` redirect is captured by a `127.0.0.1` `TcpListener` — no webview HTTP and no new Tauri capabilities or CSP changes are involved.
+
+Issued credentials are stored beside `settings.json` as `<app config dir>/oauth.json` (mode `0o600`, holding the refresh token) and cached in-process. The access token is refreshed proactively (60s skew) with single-flight safety: concurrent requests at expiry produce exactly one `/token` call and one disk write, against the `token_endpoint` persisted from discovery (so reverse-proxy deployments refresh correctly). **When signed in, the OAuth token takes precedence over the static token**; if no valid OAuth token exists for the active server, the static token is used.
+
+OAuth requires the network calls and browser-open URL to be `https` (or loopback `http`), and the target server must run with `AXON_MCP_AUTH_MODE=oauth` and dynamic client registration enabled — otherwise sign-in reports that the server does not support OAuth login and you should use a static bearer token.
+
+**Known tradeoff:** each sign-in dynamically registers a fresh client on the server. Loopback redirects use an ephemeral port, so the registered `redirect_uri` (and therefore the client ID) cannot be reused across logins. Server-side this is rate-limited and bounded by operator policy; the palette does not garbage-collect prior registrations.
+
 ## Notes
 
 - **Frozen lockfile:** use `pnpm install --frozen-lockfile` (or `pnpm verify`) for reproducible installs.  An `.npmrc` with `frozen-lockfile=true` is included so CI tools that default to `pnpm install` also pick it up.

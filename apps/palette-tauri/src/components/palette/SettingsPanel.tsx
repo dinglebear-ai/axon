@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { SettingsAuthBlock } from "@/components/palette/SettingsAuthBlock";
 import { MiniToggle, SecretInput, SelectInput, TextInput } from "@/components/palette/SettingsFields";
 import { Button } from "@/components/ui/aurora/button";
 import { createAxonClient, executeAction, type PaletteConfig, type PaletteResult } from "@/lib/axonClient";
@@ -221,6 +222,7 @@ function ConnectionPanel({
           <TextInput value={draftConfig.collection} onChange={(value) => updateConfig("collection", value)} mono />
         </Field>
       </div>
+      <SettingsAuthBlock />
       <div className="settings-stack">
         <span className="settings-section-label">Client</span>
         <Field label="Global shortcut" hint="press to record">
