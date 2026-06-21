@@ -103,6 +103,26 @@ pub async fn count_jobs_by_status(
     Ok(out)
 }
 
+/// Oldest `created_at` (Unix ms) among `pending` jobs of `kind`, or `None` when
+/// no pending jobs exist. Used by the liveness watchdog to measure how long the
+/// queue has been starving before declaring worker starvation.
+pub async fn oldest_pending_created_at(
+    pool: &SqlitePool,
+    kind: JobKind,
+) -> Result<Option<i64>, sqlx::Error> {
+    let table = kind.table_name();
+    // MIN() over zero matching rows yields a single NULL row, so the outer
+    // Option is always Some(_) and the inner Option carries "no pending".
+    let row: (Option<i64>,) = sqlx::query_as(&format!(
+        "SELECT MIN(created_at) FROM {} WHERE status = ?",
+        table
+    ))
+    .bind(JobStatus::Pending.as_str())
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
 /// List all jobs in a table as summary rows (most recent first).
 /// Returns at most 500 rows.
 pub async fn list_jobs(pool: &SqlitePool, kind: JobKind) -> Result<Vec<JobSummary>, sqlx::Error> {

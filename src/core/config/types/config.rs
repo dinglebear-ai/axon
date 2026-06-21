@@ -648,6 +648,21 @@ pub struct Config {
     /// Env: `AXON_WATCHDOG_SWEEP_SECS`. Default: 15.
     pub watchdog_sweep_secs: i64,
 
+    /// Seconds a job kind's queue may hold pending jobs while zero jobs of that
+    /// kind are running before the liveness watchdog declares worker starvation,
+    /// logs loudly at ERROR, and kicks/respawns the lane(s). This is the safety
+    /// net for a worker lane that has silently stopped claiming. `0` disables the
+    /// starvation detector.
+    /// Env: `AXON_WORKER_STARVATION_SECS`. TOML: `workers.worker-starvation-secs`. Default: 120.
+    pub worker_starvation_secs: i64,
+
+    /// Maximum wall-clock seconds a single crawl job may run before the worker
+    /// aborts it. Defends against a wedged crawl-engine future that would
+    /// otherwise park the single crawl lane indefinitely while its heartbeat
+    /// keeps the row from being reclaimed. `0` disables the timeout.
+    /// Env: `AXON_CRAWL_JOB_TIMEOUT_SECS`. TOML: `workers.crawl-job-timeout-secs`. Default: 7200.
+    pub crawl_job_timeout_secs: i64,
+
     /// Emit machine-readable JSON output on stdout instead of human-readable text. Flag: `--json`.
     pub json_output: bool,
 

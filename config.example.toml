@@ -319,6 +319,17 @@
 # Env: AXON_WATCHDOG_SWEEP_SECS
 # watchdog-sweep-secs = 15
 
+# Seconds a kind's queue may hold pending jobs with zero running workers before
+# the liveness watchdog declares worker starvation, logs loudly, and kicks the
+# lane. Detects a worker lane that has silently stopped claiming. 0 disables.
+# Env: AXON_WORKER_STARVATION_SECS
+# worker-starvation-secs = 120
+
+# Maximum wall-clock seconds a single crawl job may run before the worker aborts
+# it (guards against a wedged crawl engine future parking the lane). 0 disables.
+# Env: AXON_CRAWL_JOB_TIMEOUT_SECS
+# crawl-job-timeout-secs = 7200
+
 [workers.adaptive-concurrency]
 # Off by default. When enabled, Axon replaces the fixed crawl semaphore with
 # Spider's adaptive semaphore for the main Spider crawl path.

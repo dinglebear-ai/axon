@@ -1,10 +1,42 @@
 use crate::core::config::Config;
 use crate::jobs::backend::JobKind;
+use sqlx::sqlite::SqliteConnection;
 use sqlx::{
     SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 use uuid::Uuid;
+
+/// Scrub any dangling transaction from a connection before it re-enters the
+/// pool's idle queue. Wired as the pool's `after_release` hook.
+///
+/// Every transactional path in axon uses a manual `BEGIN IMMEDIATE` on a raw
+/// pooled connection, not sqlx's `Transaction` RAII guard. sqlx does not track
+/// manual transactions, so a connection dropped between `BEGIN IMMEDIATE` and
+/// its matching `COMMIT`/`ROLLBACK` returns to the pool STILL IN A TRANSACTION,
+/// poisoning that slot: the next checkout's `BEGIN IMMEDIATE` fails ("cannot
+/// start a transaction within a transaction"), and enough poisoned slots starve
+/// `pool.acquire()` until workers silently stop claiming jobs (a confirmed
+/// production incident). Rolling back on release scrubs the slot first.
+///
+/// A `ROLLBACK` with no active transaction errors in SQLite ("cannot rollback -
+/// no transaction is active") — that is the expected, harmless case, so the
+/// connection is kept (`Ok(true)`). Any *other* rollback failure means the slot
+/// may still be poisoned, so it is evicted (`Ok(false)`) instead of returned to
+/// the idle queue: per sqlx 0.8 semantics only `Ok(true)` keeps the connection,
+/// while `Ok(false)`/`Err` close it and let a waiter open a fresh one.
+pub(crate) async fn rollback_on_release(conn: &mut SqliteConnection) -> Result<bool, sqlx::Error> {
+    match sqlx::query("ROLLBACK").execute(&mut *conn).await {
+        Ok(_) => Ok(true),
+        Err(sqlx::Error::Database(db)) if db.message().contains("no transaction is active") => {
+            Ok(true)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "store: after_release ROLLBACK failed; evicting connection");
+            Ok(false)
+        }
+    }
+}
 
 /// Open a SQLite pool, enable WAL mode, and run all migrations.
 ///
@@ -90,6 +122,10 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         .max_connections(4)
         .min_connections(1)
         .acquire_timeout(std::time::Duration::from_secs(60))
+        // Scrub dangling manual transactions before a connection re-enters the
+        // pool so a `BEGIN IMMEDIATE` dropped without COMMIT/ROLLBACK cannot
+        // poison the slot. See `rollback_on_release`.
+        .after_release(|conn, _meta| Box::pin(rollback_on_release(conn)))
         .connect_with(opts)
         .await?;
 
@@ -112,6 +148,29 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         })?;
 
     Ok(pool)
+}
+
+/// Best-effort `ROLLBACK` on a manual transaction: log on failure, never
+/// propagate. The `after_release` hook is the safety net, but rolling back
+/// eagerly returns the slot clean immediately instead of waiting for release.
+async fn rollback_best_effort(conn: &mut SqliteConnection) {
+    if let Err(e) = sqlx::query("ROLLBACK").execute(&mut *conn).await {
+        tracing::warn!(error = %e, "store: ROLLBACK after failed transaction errored");
+    }
+}
+
+/// `COMMIT` a manual transaction; on failure, attempt a `ROLLBACK` before
+/// returning the error so the connection does not return to the pool mid-
+/// transaction. Mirrors the `commit`/`rollback_best_effort` discipline in
+/// `src/jobs/ops/enqueue.rs`.
+async fn commit_or_rollback(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+    match sqlx::query("COMMIT").execute(&mut *conn).await {
+        Ok(_) => Ok(()),
+        Err(commit_err) => {
+            rollback_best_effort(conn).await;
+            Err(commit_err)
+        }
+    }
 }
 
 /// Error text written into `error_text` when the watchdog reclaims a stale running job.
@@ -253,7 +312,7 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
         }
     };
     if reclaimed_rows.is_empty() {
-        sqlx::query("ROLLBACK").execute(&mut *conn).await?;
+        rollback_best_effort(&mut conn).await;
         return Ok(Vec::new());
     }
     let mut updated_rows: Vec<(String, Option<String>)> = Vec::new();
@@ -288,7 +347,7 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
             }
         }
     }
-    sqlx::query("COMMIT").execute(&mut *conn).await?;
+    commit_or_rollback(&mut conn).await?;
     let jobs: Vec<ReclaimedJob> = updated_rows
         .into_iter()
         .filter_map(|(job_id, attempt_id)| match Uuid::parse_str(&job_id) {
