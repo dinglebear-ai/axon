@@ -39,6 +39,7 @@ version_files = [
   { kind = "json_version", path = "apps/palette-tauri/package.json", json_pointer = "/version" },
   { kind = "cargo_package", path = "apps/palette-tauri/src-tauri/Cargo.toml", package = "axon-palette-tauri" },
   { kind = "cargo_lock_package", path = "apps/palette-tauri/src-tauri/Cargo.lock", package = "axon-palette-tauri" },
+  { kind = "changelog_heading", path = "apps/palette-tauri/CHANGELOG.md" },
 ]
 
 [[components]]
@@ -51,6 +52,7 @@ version_source = { kind = "gradle_version_name", path = "apps/android/app/build.
 version_files = [
   { kind = "gradle_version_name", path = "apps/android/app/build.gradle.kts" },
   { kind = "gradle_version_code", path = "apps/android/app/build.gradle.kts" },
+  { kind = "changelog_heading", path = "apps/android/CHANGELOG.md" },
 ]
 
 [[components]]
@@ -62,4 +64,5 @@ shipping_paths = ["apps/chrome-extension", "assets"]
 version_source = { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" }
 version_files = [
   { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" },
+  { kind = "changelog_heading", path = "apps/chrome-extension/CHANGELOG.md" },
 ]
