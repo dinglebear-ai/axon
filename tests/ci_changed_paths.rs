@@ -249,8 +249,13 @@ fn rust_ci_helper_scripts_enable_the_jobs_that_execute_them() {
             "{file} should enable security checks"
         );
         assert_eq!(
-            out["codeql_python"], "true",
-            "{file} should enable Python CodeQL"
+            out["codeql_python"],
+            if file.ends_with(".py") {
+                "true"
+            } else {
+                "false"
+            },
+            "{file} codeql_python should track the .py extension"
         );
         assert_eq!(
             out["codeql_rust"], "true",
