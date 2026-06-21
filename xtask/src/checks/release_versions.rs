@@ -401,12 +401,16 @@ fn collect_changed_component_errors(
         )
     })?;
 
+    // Best-effort advisory: git-cliff's suggested bump level. Silent when
+    // git-cliff is unavailable (e.g. CI), so this never changes pass/fail.
+    let hint = suggested_level_hint(cliff::suggested_level(root, component, &candidate));
+
     let latest = latest_version_from_plan(component, plan)?;
     if let Some(latest) = latest
         && candidate <= latest
     {
         errors.push(format!(
-            "{} code changed but version {} is not greater than latest {} tag version {}. Bump {} before merging.",
+            "{} code changed but version {} is not greater than latest {} tag version {}. Bump {} before merging.{hint}",
             component.id,
             plan.version,
             component.tag_prefix,
@@ -417,7 +421,7 @@ fn collect_changed_component_errors(
 
     if tag_exists(root, &plan.candidate_tag)? {
         errors.push(format!(
-            "{} code changed but tag {} already exists. Bump {} before merging.",
+            "{} code changed but tag {} already exists. Bump {} before merging.{hint}",
             component.id,
             plan.candidate_tag,
             bump_hint(component)
@@ -461,6 +465,15 @@ fn bump_hint(component: &Component) -> String {
         "android" => "apps/android/app/build.gradle.kts versionName and versionCode".to_owned(),
         "chrome" => "apps/chrome-extension/manifest.json".to_owned(),
         _ => format!("the {} version files", component.id),
+    }
+}
+
+fn suggested_level_hint(level: Option<BumpLevel>) -> String {
+    match level {
+        Some(BumpLevel::Major) => " (suggested bump: major)".to_owned(),
+        Some(BumpLevel::Minor) => " (suggested bump: minor)".to_owned(),
+        Some(BumpLevel::Patch) => " (suggested bump: patch)".to_owned(),
+        None => String::new(),
     }
 }
 
