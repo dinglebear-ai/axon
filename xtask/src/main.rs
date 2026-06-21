@@ -60,11 +60,22 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Bump all version-bearing files for one component.
+    /// Bump all version-bearing files for one component. Level is auto-derived
+    /// from conventional commits (via git-cliff) when omitted.
     BumpVersion {
         component: String,
         #[arg(value_enum)]
-        level: checks::release_versions::BumpLevel,
+        level: Option<checks::release_versions::BumpLevel>,
+        /// Skip git-cliff changelog generation (stamp an empty heading instead).
+        #[arg(long)]
+        skip_changelog: bool,
+    },
+    /// Regenerate a component's full changelog from scoped git history.
+    RegenChangelog {
+        component: String,
+        /// Output path for the changelog file.
+        #[arg(long)]
+        output: String,
     },
     /// Benchmark embedding a local corpus through axon, TEI, and Qdrant.
     BenchEmbed {
@@ -130,9 +141,19 @@ fn main() -> Result<()> {
             checks::release_versions::print_plans(&plans, json)?;
             Ok(())
         }
-        Command::BumpVersion { component, level } => {
-            Ok(checks::release_versions::bump(&root, &component, level)?)
-        }
+        Command::BumpVersion {
+            component,
+            level,
+            skip_changelog,
+        } => Ok(checks::release_versions::bump(
+            &root,
+            &component,
+            level,
+            skip_changelog,
+        )?),
+        Command::RegenChangelog { component, output } => Ok(
+            checks::release_versions::regen_changelog(&root, &component, &output)?,
+        ),
         Command::BenchEmbed {
             corpus,
             axon_bin,
