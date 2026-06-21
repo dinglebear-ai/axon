@@ -531,7 +531,10 @@ jobs:
   windows-check:
     name: windows-check (xtask only)
     runs-on: windows-latest
-    timeout-minutes: 25
+    # `cargo check -p xtask` transitively compiles axon (bench_embed dep); on a
+    # cold Windows cache this lands right at the old 25-min cap (observed
+    # 25m08s — a timeout despite all real steps passing). Give it headroom.
+    timeout-minutes: 40
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
