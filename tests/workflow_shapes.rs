@@ -186,7 +186,7 @@ fn windows_xtask_check_avoids_duplicate_repository_scans() {
     let job = workflow_job_block(workflow, "windows-check");
 
     assert!(
-        job.contains("timeout-minutes: 25"),
+        job.contains("timeout-minutes: 40"),
         "windows-check must have a bounded timeout because Windows runners can hang on repo scans"
     );
     assert!(
