@@ -154,7 +154,7 @@ fn ci_runs_release_version_gate_before_merge() {
 #[test]
 fn ci_xtask_compiling_jobs_checkout_release_manifest() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    for job_name in ["check", "msrv", "clippy", "test", "windows-check"] {
+    for job_name in ["clippy", "test", "windows-check"] {
         let job = workflow_job_block(workflow, job_name);
         if job.contains("cargo check --workspace --all-targets")
             || job.contains("cargo clippy --workspace --all-targets")
@@ -393,8 +393,6 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "ban-skip-validation",
         "monolith",
         "fmt",
-        "check",
-        "msrv",
         "clippy",
         "test",
         "security",

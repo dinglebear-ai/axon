@@ -224,11 +224,18 @@ def main() -> int:
     full = truthy(os.environ.get("AXON_FULL_PRE_PUSH"))
     base = resolve_base()
     paths = changed_files(base)
-    if paths is None and not full:
-        print("Could not determine changed files; set AXON_FULL_PRE_PUSH=1 for full validation.", file=sys.stderr)
-        full = True
-        paths = []
-    elif paths is None:
+    if paths is None:
+        # The diff base couldn't be resolved (e.g. a fresh worktree without an
+        # origin/main upstream). Do NOT silently escalate to the ~10-min full
+        # build — CI is the authoritative gate. Run the minimal plan and warn;
+        # set AXON_FULL_PRE_PUSH=1 to force full local validation.
+        if not full:
+            print(
+                "pre-push: could not determine changed files; running minimal "
+                "checks only (CI is authoritative). Set AXON_FULL_PRE_PUSH=1 for "
+                "full local validation.",
+                file=sys.stderr,
+            )
         paths = []
 
     categories = classify(paths, full)
