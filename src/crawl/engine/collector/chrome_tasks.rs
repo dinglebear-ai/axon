@@ -6,10 +6,10 @@ use crate::crawl::engine::{CrawlDiagnostic, CrawlSummary};
 use crate::crawl::manifest::ManifestEntry;
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 
-/// Spawn an inline Chrome render task for a thin page, bounded by `sem`.
+/// Spawn an inline Chrome render task for a thin page after a permit is acquired.
 ///
 /// Uses the HTML bytes already in hand — no second HTTP request.
 #[expect(
@@ -18,7 +18,7 @@ use tokio::task::JoinSet;
 )]
 pub(super) fn spawn_chrome_render(
     chrome_tasks: &mut JoinSet<RefetchResult>,
-    sem: Arc<Semaphore>,
+    permit: OwnedSemaphorePermit,
     ws_url: String,
     html_bytes: Vec<u8>,
     url: String,
@@ -27,24 +27,7 @@ pub(super) fn spawn_chrome_render(
     selector_config: Option<SelectorConfiguration>,
 ) {
     chrome_tasks.spawn(async move {
-        let diagnostic_url = url.clone();
-        let _permit = match sem.acquire().await {
-            Ok(p) => p,
-            Err(_) => {
-                return RefetchResult {
-                    url,
-                    markdown: None,
-                    diagnostic: Some(
-                        CrawlDiagnostic::new(
-                            "chrome_render",
-                            "chrome_semaphore_closed",
-                            "Chrome render semaphore closed before task acquired a permit",
-                        )
-                        .with_url(diagnostic_url),
-                    ),
-                };
-            }
-        };
+        let _permit = permit;
         let markdown = render_html_with_chrome(
             &ws_url,
             html_bytes,
@@ -152,12 +135,26 @@ pub(super) async fn apply_thin_page_outcome(
     summary.thin_pages += 1;
     summary.thin_urls.insert(url.to_string());
     if let Some(ref ws_url) = col.chrome_ws_url {
+        let permit = match chrome_semaphore.acquire_owned().await {
+            Ok(permit) => permit,
+            Err(_) => {
+                summary.push_diagnostic(
+                    CrawlDiagnostic::new(
+                        "chrome_render",
+                        "chrome_semaphore_closed",
+                        "Chrome render semaphore closed before task acquired a permit",
+                    )
+                    .with_url(url.to_string()),
+                );
+                return Ok(true);
+            }
+        };
         log_info(&format!(
             "thin_refetch: inline Chrome render spawned for {url}"
         ));
         spawn_chrome_render(
             chrome_tasks,
-            chrome_semaphore,
+            permit,
             ws_url.clone(),
             html_bytes,
             url.to_string(),

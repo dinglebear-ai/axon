@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.MonitorHeart
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Slideshow
 import androidx.compose.material3.Icon
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.common.humanizeJsonFragmentText
+import com.axon.app.ui.system.SystemScreen
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 import kotlinx.coroutines.launch
@@ -52,6 +54,7 @@ private enum class SettingsTab(val label: String, val shortLabel: String, val ic
     Connection("Connection", "Connection", Icons.Rounded.Link),
     Env("Env", "Env", Icons.Rounded.Key),
     Config("Config", "Config", Icons.Rounded.Slideshow),
+    System("System", "System", Icons.Rounded.MonitorHeart),
 }
 
 @Composable
@@ -77,6 +80,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         SettingsTab.Connection -> true
         SettingsTab.Env -> !files.loading && files.error == null && files.envDirty.isNotEmpty()
         SettingsTab.Config -> !files.loading && files.error == null && files.configDirty.isNotEmpty()
+        SettingsTab.System -> false
     }
     val saveFeedback: Pair<String, SettingsFeedbackKind>? = when (val s = saveState) {
         is SaveState.Saved -> "Settings saved. Restart Axon for file changes to affect live requests." to SettingsFeedbackKind.Success
@@ -172,26 +176,30 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                         .fillMaxWidth()
                         .widthIn(max = 600.dp),
                 )
+                SettingsTab.System -> SystemScreen()
             }
         }
-        SettingsActionDock(
-            feedback = saveFeedback,
-            primaryLabel = if (saveState is SaveState.Saving) "Saving..." else "Save",
-            primaryEnabled = saveState !is SaveState.Saving && canSaveTab,
-            onPrimary = {
-                when (tab) {
-                    SettingsTab.Connection -> vm.saveConnection(serverUrl, token, collection)
-                    SettingsTab.Env -> vm.saveEnvFile()
-                    SettingsTab.Config -> vm.saveConfigFile()
-                }
-            },
-            secondaryLabel = if (tab == SettingsTab.Connection) "Test" else "Reload",
-            secondaryIcon = if (tab == SettingsTab.Connection) Icons.Rounded.Check else Icons.Rounded.Refresh,
-            onSecondary = {
-                if (tab == SettingsTab.Connection) vm.testConnection(serverUrl, token) else vm.refreshConfigFiles()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (tab != SettingsTab.System) {
+            SettingsActionDock(
+                feedback = saveFeedback,
+                primaryLabel = if (saveState is SaveState.Saving) "Saving..." else "Save",
+                primaryEnabled = saveState !is SaveState.Saving && canSaveTab,
+                onPrimary = {
+                    when (tab) {
+                        SettingsTab.Connection -> vm.saveConnection(serverUrl, token, collection)
+                        SettingsTab.Env -> vm.saveEnvFile()
+                        SettingsTab.Config -> vm.saveConfigFile()
+                        SettingsTab.System -> Unit
+                    }
+                },
+                secondaryLabel = if (tab == SettingsTab.Connection) "Test" else "Reload",
+                secondaryIcon = if (tab == SettingsTab.Connection) Icons.Rounded.Check else Icons.Rounded.Refresh,
+                onSecondary = {
+                    if (tab == SettingsTab.Connection) vm.testConnection(serverUrl, token) else vm.refreshConfigFiles()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -202,6 +210,7 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
         SettingsTab.Connection -> null
         SettingsTab.Env -> AxonSettingsCatalog.envGroups.sumOf { it.fields.size }
         SettingsTab.Config -> AxonSettingsCatalog.configGroups.sumOf { it.fields.size }
+        SettingsTab.System -> null
     }
     Row(
         modifier = modifier

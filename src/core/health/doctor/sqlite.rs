@@ -17,10 +17,24 @@ use std::time::Duration;
 /// SQLite-runtime doctor: skip PG/Redis/AMQP probes, check SQLite file and HTTP services.
 pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     let diagnostics = browser_diagnostics_pattern();
-    // Run the service probes and the deep LLM round-trip concurrently so the
-    // bounded LLM probe (OPS-M4) does not serialize behind Qdrant/TEI/Chrome.
-    let (probes, llm_roundtrip) =
-        spider::tokio::join!(collect_service_probes(cfg), probe_llm_roundtrip(cfg));
+    // Run service probes, LLM round-trip, and (for Codex) capability probe
+    // concurrently so none of the bounded probes serialise behind each other.
+    let is_codex = cfg.llm_backend == crate::core::llm::LlmBackendKind::CodexAppServer;
+    let codex_backend = crate::core::llm::LlmBackendConfig::from_config(cfg);
+    let (probes, llm_roundtrip, codex_caps) = spider::tokio::join!(
+        collect_service_probes(cfg),
+        probe_llm_roundtrip(cfg),
+        async {
+            if is_codex {
+                Some(
+                    crate::core::llm::codex_app_server::probe_codex_capabilities(&codex_backend)
+                        .await,
+                )
+            } else {
+                None
+            }
+        }
+    );
     let pending_jobs = count_pending_jobs(&cfg.sqlite_path).await;
 
     let sqlite_path = cfg.sqlite_path.display().to_string();
@@ -80,6 +94,9 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
         "llm".to_string(),
         llm_service_json(cfg, &gemini_probe, &llm_roundtrip),
     );
+    if let Some(caps) = codex_caps {
+        services.insert("codex_capabilities".to_string(), caps.to_json());
+    }
 
     let effective_qdrant = resolve_host_endpoint(EndpointKind::Qdrant, Some(&cfg.qdrant_url), &[]);
     let effective_tei = resolve_host_endpoint(EndpointKind::Embedding, Some(&cfg.tei_url), &[]);

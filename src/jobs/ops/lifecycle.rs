@@ -1,10 +1,36 @@
-use sqlx::SqlitePool;
+use std::time::Instant;
+
+use sqlx::{SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::jobs::backend::JobKind;
 use crate::jobs::store::now_ms;
 
 use super::retry::retry_busy;
+
+/// Best-effort `ROLLBACK` on a manual transaction: log on failure, never
+/// propagate. Dropping the connection on a propagated ROLLBACK error would
+/// return it to the pool mid-transaction. The pool's `after_release` hook is
+/// the safety net; this rolls back eagerly so the slot returns clean.
+async fn rollback_best_effort(conn: &mut SqliteConnection) {
+    if let Err(e) = sqlx::query("ROLLBACK").execute(&mut *conn).await {
+        tracing::warn!(error = %e, "claim: ROLLBACK after failed transaction errored");
+    }
+}
+
+/// `COMMIT` a manual transaction; on failure, attempt a `ROLLBACK` before
+/// returning the error so the connection does not return to the pool inside a
+/// dangling transaction. Mirrors `commit_or_rollback` in `src/jobs/store.rs`
+/// and the discipline in `src/jobs/ops/enqueue.rs`.
+async fn commit_or_rollback(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+    match sqlx::query("COMMIT").execute(&mut *conn).await {
+        Ok(_) => Ok(()),
+        Err(commit_err) => {
+            rollback_best_effort(conn).await;
+            Err(commit_err)
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaimedJob {
@@ -48,7 +74,7 @@ pub async fn claim_next_pending_for_attempt(
 /// Ingest jobs serialize per `(source_type, target)` to prevent concurrent
 /// runs on the same repository from racing each other.
 async fn fetch_next_pending_row(
-    conn: &mut sqlx::SqliteConnection,
+    conn: &mut SqliteConnection,
     kind: JobKind,
     table: &str,
 ) -> Result<Option<(String, Option<String>, i64)>, sqlx::Error> {
@@ -98,7 +124,18 @@ async fn claim_next_pending_for_attempt_inner(
 ) -> Result<Option<ClaimedJob>, sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
+    // Time the checkout: a slow acquire is the canary for SQLite connection-pool
+    // starvation (e.g. slots poisoned by leaked transactions). Silent under 1s.
+    let acquire_started = Instant::now();
     let mut conn = pool.acquire().await?;
+    let acquire_elapsed = acquire_started.elapsed();
+    if acquire_elapsed >= std::time::Duration::from_secs(1) {
+        tracing::warn!(
+            table,
+            waited_ms = acquire_elapsed.as_millis() as u64,
+            "claim: pool.acquire() blocked >=1s — possible SQLite connection-pool starvation"
+        );
+    }
 
     // BEGIN IMMEDIATE acquires a write lock upfront under WAL mode, serializing
     // the SELECT+UPDATE atomically and eliminating TOCTOU contention between
@@ -129,7 +166,7 @@ async fn claim_next_pending_for_attempt_inner(
 
     match row {
         None => {
-            sqlx::query("ROLLBACK").execute(&mut *conn).await?;
+            rollback_best_effort(&mut conn).await;
             Ok(None)
         }
         Some((id_str, error_text, previous_attempt_count)) => {
@@ -160,11 +197,11 @@ async fn claim_next_pending_for_attempt_inner(
 
             if update_result.rows_affected() == 0 {
                 tracing::trace!(table, job_id = id_str, "claim lost to concurrent worker");
-                sqlx::query("ROLLBACK").execute(&mut *conn).await?;
+                rollback_best_effort(&mut conn).await;
                 return Ok(None);
             }
 
-            sqlx::query("COMMIT").execute(&mut *conn).await?;
+            commit_or_rollback(&mut conn).await?;
             if error_text.is_some() {
                 tracing::info!(
                     table,
@@ -418,6 +455,10 @@ async fn mark_failed_inner(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "lifecycle_tests.rs"]
+mod tests;
 
 fn attempt_clause(attempt_id: Option<&str>) -> &'static str {
     if attempt_id.is_some() {

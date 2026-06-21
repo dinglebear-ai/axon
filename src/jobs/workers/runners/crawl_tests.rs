@@ -1,4 +1,7 @@
-use super::{backfill_enabled, build_crawl_result_json, merge_candidates, run_crawl_job};
+use super::{
+    backfill_enabled, build_crawl_result_json, crawl_timeout_duration, merge_candidates,
+    run_crawl_job,
+};
 use crate::core::config::Config;
 use crate::crawl::engine::{AdaptiveCrawlSnapshot, CrawlDiagnostic, CrawlSummary};
 use crate::jobs::backend::JobPayload;
@@ -306,6 +309,19 @@ fn merge_candidates_never_drops_sitemap_urls() {
     for s in &sitemap {
         assert!(out.contains(s), "sitemap URL {s} must not be dropped");
     }
+}
+
+/// The `i64` seconds knob maps to an `Option<Duration>` the helper consumes:
+/// `0` disables (None), positive values enable, negatives are treated as
+/// disabled (defensive — a negative timeout is meaningless).
+#[test]
+fn crawl_timeout_duration_maps_seconds_to_option() {
+    assert_eq!(crawl_timeout_duration(0), None);
+    assert_eq!(
+        crawl_timeout_duration(7200),
+        Some(std::time::Duration::from_secs(7200))
+    );
+    assert_eq!(crawl_timeout_duration(-5), None);
 }
 
 /// The backfill gate is an OR, not an AND: with sitemaps disabled but llms.txt enabled,

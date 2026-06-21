@@ -1,4 +1,34 @@
 use super::*;
+use std::env;
+
+struct EnvRestore {
+    saved: Vec<(String, Option<String>)>,
+}
+
+impl EnvRestore {
+    fn save(keys: &[&str]) -> Self {
+        Self {
+            saved: keys
+                .iter()
+                .map(|key| ((*key).to_string(), env::var(key).ok()))
+                .collect(),
+        }
+    }
+}
+
+impl Drop for EnvRestore {
+    #[allow(unsafe_code)]
+    fn drop(&mut self) {
+        for (key, value) in self.saved.drain(..) {
+            unsafe {
+                match value {
+                    Some(value) => env::set_var(&key, value),
+                    None => env::remove_var(&key),
+                }
+            }
+        }
+    }
+}
 
 fn summary(pages_seen: u32, thin: u32, markdown_files: u32) -> CrawlSummary {
     CrawlSummary {
@@ -29,13 +59,13 @@ fn default_cfg() -> Config {
 fn crawl_subscribe_buffer_uses_default_profile_bounds() {
     let mut cfg = default_cfg();
     cfg.max_pages = 0;
-    assert_eq!(crawl_subscribe_buffer_size(&cfg), 16_384);
+    assert_eq!(crawl_subscribe_buffer_size(&cfg), 2_048);
 
     cfg.max_pages = 10_000;
-    assert_eq!(crawl_subscribe_buffer_size(&cfg), 10_000);
+    assert_eq!(crawl_subscribe_buffer_size(&cfg), 2_048);
 
     cfg.max_pages = 100_000;
-    assert_eq!(crawl_subscribe_buffer_size(&cfg), 16_384);
+    assert_eq!(crawl_subscribe_buffer_size(&cfg), 2_048);
 }
 
 #[test]
@@ -61,20 +91,182 @@ fn crawl_subscribe_buffer_handles_inverted_bounds() {
     cfg.crawl_broadcast_buffer_max = 128;
     cfg.max_pages = 10_000;
 
-    assert_eq!(crawl_subscribe_buffer_size(&cfg), 10_000);
+    assert_eq!(crawl_subscribe_buffer_size(&cfg), 1024);
 }
 
 #[test]
-fn crawl_subscribe_buffer_does_not_regress_below_legacy_cap() {
+fn crawl_subscribe_buffer_honors_configured_max_without_legacy_floor() {
     let mut cfg = default_cfg();
     cfg.crawl_broadcast_buffer_min = 4096;
     cfg.crawl_broadcast_buffer_max = 8_192;
 
     cfg.max_pages = 10_000;
-    assert_eq!(crawl_subscribe_buffer_size(&cfg), 10_000);
+    assert_eq!(crawl_subscribe_buffer_size(&cfg), 8_192);
 
     cfg.max_pages = 0;
-    assert_eq!(crawl_subscribe_buffer_size(&cfg), 16_384);
+    assert_eq!(crawl_subscribe_buffer_size(&cfg), 8_192);
+}
+
+#[test]
+fn default_config_sets_crawl_memory_safety_defaults() {
+    let cfg = default_cfg();
+
+    assert_eq!(cfg.crawl_broadcast_buffer_max, 2_048);
+    assert_eq!(cfg.max_page_bytes, Some(4 * 1024 * 1024));
+}
+
+#[test]
+fn uncapped_root_domain_crawl_without_scope_is_rejected() {
+    let mut cfg = default_cfg();
+    cfg.max_pages = 0;
+    cfg.path_budgets.clear();
+    cfg.url_whitelist.clear();
+
+    let err = validate_crawl_memory_safety(&cfg, "https://developer.android.com/")
+        .expect_err("uncapped root crawl should be rejected");
+
+    assert!(err.contains("uncapped unscoped crawl"));
+}
+
+#[test]
+fn uncapped_deep_path_crawl_is_allowed_via_auto_scope() {
+    // A deep start URL (≥2 path segments) is auto-scoped to its subtree at crawl
+    // time, which bounds the crawl just like an explicit whitelist — so an
+    // uncapped crawl of it is allowed (the memory guard backstops OOM within the
+    // subtree). Only root/single-segment uncapped crawls stay rejected.
+    let mut cfg = default_cfg();
+    cfg.max_pages = 0;
+    cfg.path_budgets.clear();
+    cfg.url_whitelist.clear();
+
+    validate_crawl_memory_safety(&cfg, "https://developer.android.com/reference/kotlin")
+        .expect("deep-path uncapped crawl is bounded by auto-scope and should be allowed");
+}
+
+#[test]
+fn uncapped_single_segment_crawl_without_scope_is_rejected() {
+    // A single-segment path is NOT auto-scoped (too broad), so an uncapped crawl
+    // of it remains rejected.
+    let mut cfg = default_cfg();
+    cfg.max_pages = 0;
+    cfg.path_budgets.clear();
+    cfg.url_whitelist.clear();
+
+    let err = validate_crawl_memory_safety(&cfg, "https://developer.android.com/reference")
+        .expect_err("uncapped single-segment crawl should be rejected");
+
+    assert!(err.contains("uncapped unscoped crawl"));
+}
+
+#[test]
+fn uncapped_crawl_with_explicit_scope_is_allowed() {
+    let mut cfg = default_cfg();
+    cfg.max_pages = 0;
+    cfg.path_budgets.push(("/reference".to_string(), 500));
+
+    validate_crawl_memory_safety(&cfg, "https://developer.android.com/").unwrap();
+}
+
+#[test]
+fn uncapped_crawl_with_url_whitelist_is_allowed() {
+    let mut cfg = default_cfg();
+    cfg.max_pages = 0;
+    cfg.url_whitelist
+        .push("^https://developer\\.android\\.com/reference/".to_string());
+
+    validate_crawl_memory_safety(&cfg, "https://developer.android.com/reference/").unwrap();
+}
+
+#[test]
+fn uncapped_crawl_with_config_override_is_allowed() {
+    let mut cfg = default_cfg();
+    cfg.max_pages = 0;
+    cfg.path_budgets.clear();
+    cfg.url_whitelist.clear();
+    cfg.allow_unbounded_broad_crawl = true;
+
+    validate_crawl_memory_safety(&cfg, "https://developer.android.com/").unwrap();
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[tokio::test]
+async fn run_crawl_once_rejects_uncapped_broad_crawl_before_output_dirs() {
+    let _restore = EnvRestore::save(&["AXON_ALLOW_UNBOUNDED_BROAD_CRAWL"]);
+    unsafe {
+        env::remove_var("AXON_ALLOW_UNBOUNDED_BROAD_CRAWL");
+    }
+    let mut cfg = default_cfg();
+    cfg.max_pages = 0;
+    cfg.path_budgets.clear();
+    cfg.url_whitelist.clear();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let output_dir = temp.path().join("rejected-crawl");
+
+    let err = run_crawl_once(
+        &cfg,
+        "https://developer.android.com/",
+        RenderMode::Http,
+        &output_dir,
+        None,
+        false,
+        Arc::new(HashMap::new()),
+        None,
+    )
+    .await
+    .expect_err("uncapped broad crawl should be rejected");
+
+    assert!(err.to_string().contains("uncapped unscoped crawl"));
+    assert!(!output_dir.exists());
+}
+
+#[test]
+fn crawl_memory_guard_trips_at_configured_ram_percent() {
+    let snapshot = memory_guard::MemorySnapshot {
+        rss_bytes: 900,
+        total_bytes: std::num::NonZeroU64::new(1000).unwrap(),
+    };
+
+    assert!(memory_guard::should_abort_for_usage(snapshot, 85.0));
+    assert!(!memory_guard::should_abort_for_usage(snapshot, 95.0));
+}
+
+#[test]
+fn crawl_memory_guard_threshold_is_inclusive() {
+    // Exactly at the threshold must trip (the comparison is `>=`).
+    let at = memory_guard::MemorySnapshot {
+        rss_bytes: 850,
+        total_bytes: std::num::NonZeroU64::new(1000).unwrap(),
+    };
+    assert!(memory_guard::should_abort_for_usage(at, 85.0));
+    // One byte below must not.
+    let below = memory_guard::MemorySnapshot {
+        rss_bytes: 849,
+        total_bytes: std::num::NonZeroU64::new(1000).unwrap(),
+    };
+    assert!(!memory_guard::should_abort_for_usage(below, 85.0));
+    // `total_bytes == 0` (divide-by-zero) is unrepresentable: `MemorySnapshot`
+    // holds a `NonZeroU64`, so the guard can never be constructed with it.
+}
+
+#[tokio::test]
+async fn crawl_memory_guard_disabled_never_trips() {
+    // `None` abort_percent is the single "disabled" encoding: no reason is ever
+    // recorded and stop() is a clean no-op.
+    let guard = memory_guard::CrawlMemoryGuard::spawn("job-1", "https://example.com", None);
+    assert!(guard.abort_reason().is_none());
+    guard.stop();
+    assert!(guard.abort_reason().is_none());
+}
+
+#[test]
+fn crawl_memory_guard_error_is_identifiable_for_fallback_propagation() {
+    assert!(memory_guard::is_memory_abort_message(
+        "crawl memory guard tripped for https://example.com"
+    ));
+    assert!(!memory_guard::is_memory_abort_message(
+        "chrome fallback failed for unrelated reasons"
+    ));
 }
 
 #[test]

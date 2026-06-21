@@ -1,4 +1,5 @@
 use super::{is_indexable_doc_path, is_indexable_source_path, parse_github_repo};
+use crate::vector::ops::input::select::{is_minified_asset_filename, is_ts_declaration_file};
 
 // --- is_indexable_source_path ---
 
@@ -186,4 +187,52 @@ fn source_path_accepts_yaml_json_md() {
     assert!(is_indexable_source_path("config/settings.yml"));
     assert!(is_indexable_source_path("package.json"));
     assert!(is_indexable_source_path("README.md"));
+}
+
+// --- is_ts_declaration_file ---
+
+#[test]
+fn declaration_file_rejects_d_ts_variants() {
+    assert!(is_ts_declaration_file("index.d.ts"));
+    assert!(is_ts_declaration_file("types.d.mts"));
+    assert!(is_ts_declaration_file("module.d.cts"));
+}
+
+#[test]
+fn declaration_file_accepts_plain_ts() {
+    assert!(!is_ts_declaration_file("index.ts"));
+    assert!(!is_ts_declaration_file("component.tsx"));
+    assert!(!is_ts_declaration_file("util.js"));
+}
+
+#[test]
+fn source_path_rejects_declaration_files() {
+    assert!(!is_indexable_source_path("src/types/index.d.ts"));
+    assert!(!is_indexable_source_path("dist/index.d.mts"));
+    assert!(!is_indexable_source_path("lib/module.d.cts"));
+}
+
+// --- is_minified_asset_filename ---
+
+#[test]
+fn minified_asset_rejects_min_js_and_bundle() {
+    assert!(is_minified_asset_filename("app.min.js"));
+    assert!(is_minified_asset_filename("vendor.min.mjs"));
+    assert!(is_minified_asset_filename("styles.min.css"));
+    assert!(is_minified_asset_filename("main.bundle.js"));
+    assert!(is_minified_asset_filename("runtime.bundle.mjs"));
+}
+
+#[test]
+fn minified_asset_accepts_normal_js_css() {
+    assert!(!is_minified_asset_filename("index.js"));
+    assert!(!is_minified_asset_filename("styles.css"));
+    assert!(!is_minified_asset_filename("app.ts"));
+}
+
+#[test]
+fn source_path_rejects_minified_assets() {
+    assert!(!is_indexable_source_path("public/app.min.js"));
+    assert!(!is_indexable_source_path("assets/styles.min.css"));
+    assert!(!is_indexable_source_path("dist/vendor.bundle.js"));
 }

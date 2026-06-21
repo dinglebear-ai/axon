@@ -14,7 +14,7 @@
 use serde_json::{Value, json};
 use std::error::Error as StdError;
 
-use crate::core::llm::{CompletionResponse, UsageSnapshot};
+use crate::core::llm::{CompletionRequest, CompletionResponse, ReasoningEffort, UsageSnapshot};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
 
@@ -43,15 +43,28 @@ pub fn initialize_line(version: &str) -> String {
 }
 
 /// `initialized` notification + `thread/start`, sent once the init response lands.
+///
+/// `system_prompt` is sent as `developerInstructions` (preferred) and
+/// `baseInstructions` (legacy alias). `ephemeral: true` skips session
+/// persistence so synthesis runs do not accumulate in the Codex session store.
 #[must_use]
-pub fn thread_start_lines(model: Option<&str>, cwd: &str) -> Vec<String> {
+pub fn thread_start_lines(
+    model: Option<&str>,
+    cwd: &str,
+    system_prompt: Option<&str>,
+) -> Vec<String> {
     let mut params = json!({
         "cwd": cwd,
         "approvalPolicy": "never",
         "sandbox": "read-only",
+        "ephemeral": true,
     });
     if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
         params["model"] = json!(model);
+    }
+    if let Some(sp) = system_prompt.map(str::trim).filter(|s| !s.is_empty()) {
+        params["developerInstructions"] = json!(sp);
+        params["baseInstructions"] = json!(sp);
     }
     vec![
         json!({ "method": "initialized", "params": {} }).to_string(),
@@ -60,15 +73,22 @@ pub fn thread_start_lines(model: Option<&str>, cwd: &str) -> Vec<String> {
 }
 
 /// `turn/start` carrying the synthesis prompt as a single text input item.
+///
+/// `effort` is the optional reasoning-effort hint (`"low"` / `"medium"` /
+/// `"high"`). Pass `None` to omit it and let the server apply its default.
 #[must_use]
-pub fn turn_start_line(thread_id: &str, prompt: &str) -> String {
+pub fn turn_start_line(thread_id: &str, prompt: &str, effort: Option<&str>) -> String {
+    let mut params = json!({
+        "threadId": thread_id,
+        "input": [ { "type": "text", "text": prompt } ],
+    });
+    if let Some(e) = effort.map(str::trim).filter(|e| !e.is_empty()) {
+        params["effort"] = json!(e);
+    }
     json!({
         "method": "turn/start",
         "id": ID_TURN_START,
-        "params": {
-            "threadId": thread_id,
-            "input": [ { "type": "text", "text": prompt } ],
-        }
+        "params": params,
     })
     .to_string()
 }
@@ -88,7 +108,9 @@ pub enum CodexStep {
 #[derive(Debug, Clone)]
 pub struct CodexStreamState {
     model: Option<String>,
-    prompt: String,
+    system_prompt: Option<String>,
+    user_prompt: String,
+    effort: Option<ReasoningEffort>,
     cwd: String,
     version: String,
     thread_id: Option<String>,
@@ -102,13 +124,17 @@ impl CodexStreamState {
     #[must_use]
     pub fn new(
         model: Option<String>,
-        prompt: impl Into<String>,
+        system_prompt: Option<String>,
+        user_prompt: impl Into<String>,
+        effort: Option<ReasoningEffort>,
         cwd: impl Into<String>,
         version: impl Into<String>,
     ) -> Self {
         Self {
             model,
-            prompt: prompt.into(),
+            system_prompt,
+            user_prompt: user_prompt.into(),
+            effort,
             cwd: cwd.into(),
             version: version.into(),
             thread_id: None,
@@ -117,6 +143,31 @@ impl CodexStreamState {
             usage: None,
             last_error: None,
         }
+    }
+
+    /// Build the stream state from a [`CompletionRequest`], mapping each field
+    /// by name. Prefer this over [`CodexStreamState::new`] at call sites: `new`
+    /// takes several adjacent `Option<String>`/string args that are easy to
+    /// transpose silently, whereas this maps `req` field-by-field so the
+    /// compiler checks the wiring.
+    #[must_use]
+    pub fn from_request(
+        req: &CompletionRequest,
+        cwd: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Self {
+        let model = req
+            .model
+            .clone()
+            .or_else(|| req.backend.codex_model.clone());
+        Self::new(
+            model,
+            req.system_prompt.clone(),
+            req.user_prompt.clone(),
+            req.effort,
+            cwd,
+            version,
+        )
     }
 
     /// The `initialize` line that kicks off the handshake.
@@ -169,6 +220,7 @@ impl CodexStreamState {
             Some(ID_INITIALIZE) => Ok(CodexStep::Send(thread_start_lines(
                 self.model.as_deref(),
                 &self.cwd,
+                self.system_prompt.as_deref(),
             ))),
             Some(ID_THREAD_START) => {
                 let thread_id = value
@@ -178,7 +230,11 @@ impl CodexStreamState {
                     .and_then(Value::as_str)
                     .ok_or("codex thread/start response missing thread.id")?
                     .to_string();
-                let line = turn_start_line(&thread_id, &self.prompt);
+                let line = turn_start_line(
+                    &thread_id,
+                    &self.user_prompt,
+                    self.effort.map(ReasoningEffort::as_wire),
+                );
                 self.thread_id = Some(thread_id);
                 Ok(CodexStep::Send(vec![line]))
             }

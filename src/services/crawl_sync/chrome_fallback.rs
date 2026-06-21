@@ -3,10 +3,11 @@ use crate::core::logging::{log_info, log_warn};
 use crate::core::ui::Spinner;
 use crate::crawl::engine::{
     CrawlSummary, append_html_anchor_backfill, build_waf_diagnostics, chrome_refetch_thin_pages,
-    run_crawl_once, should_fallback_to_chrome,
+    memory_guard, run_crawl_once, should_fallback_to_chrome,
 };
 use crate::crawl::manifest::ManifestEntry;
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,23 +41,23 @@ pub(super) async fn maybe_chrome_fallback(
     http_summary: CrawlSummary,
     mut http_seen_urls: HashSet<String>,
     previous_manifest: Arc<HashMap<String, ManifestEntry>>,
-) -> (CrawlSummary, HashSet<String>) {
+) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
     let plan = plan_chrome_fallback(cfg, &http_summary);
     if matches!(plan, ChromeFallbackPlan::None) {
-        return (http_summary, http_seen_urls);
+        return Ok((http_summary, http_seen_urls));
     }
 
     log_auto_switch_warning(start_url, &http_summary);
     if let Some(updated) = maybe_refetch_waf_blocked(cfg, plan, &http_summary).await {
-        return (updated, http_seen_urls);
+        return Ok((updated, http_seen_urls));
     }
     if let Some(updated) = maybe_refetch_thin_pages(cfg, plan, &http_summary).await {
-        return (updated, http_seen_urls);
+        return Ok((updated, http_seen_urls));
     }
     let (html_summary, should_retry) =
         maybe_backfill_html_links(cfg, plan, start_url, &http_summary, &mut http_seen_urls).await;
     if !should_retry {
-        return (html_summary, http_seen_urls);
+        return Ok((html_summary, http_seen_urls));
     }
 
     let spinner = Spinner::new("HTTP yielded low coverage; retrying full crawl with Chrome");
@@ -77,16 +78,34 @@ pub(super) async fn maybe_chrome_fallback(
                 "Chrome fallback complete (pages={}, markdown={})",
                 chrome_summary.pages_seen, chrome_summary.markdown_files
             ));
-            (chrome_summary, chrome_urls)
+            Ok((chrome_summary, chrome_urls))
         }
         Err(err) => {
+            let err_msg = err.to_string();
+            if chrome_fallback_error_propagates(&err_msg) {
+                spinner.finish(&format!("Chrome fallback aborted ({err_msg})"));
+                return Err(err);
+            }
             spinner.finish(&format!(
                 "Chrome fallback failed ({err}), using HTTP result"
             ));
-            (html_summary, http_seen_urls)
+            Ok((html_summary, http_seen_urls))
         }
     }
 }
+
+/// Whether a failed Chrome fallback must propagate as an error (`true`) rather
+/// than being swallowed in favor of the HTTP result. A memory-guard abort has
+/// to fail the crawl loudly — masking it as "fell back to HTTP" would hide an
+/// OOM-avoidance shutdown; every other Chrome error is recoverable via the
+/// already-collected HTTP result.
+fn chrome_fallback_error_propagates(err_msg: &str) -> bool {
+    memory_guard::is_memory_abort_message(err_msg)
+}
+
+#[cfg(test)]
+#[path = "chrome_fallback_tests.rs"]
+mod tests;
 
 fn log_auto_switch_warning(start_url: &str, summary: &CrawlSummary) {
     let thin_ratio = if summary.pages_seen == 0 {

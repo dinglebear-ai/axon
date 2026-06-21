@@ -117,7 +117,7 @@ All flags are `--global` (usable with any subcommand).
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--max-pages <n>` | u32 | `2000` for `crawl`, `1` for omitted `extract` | Page cap. Set `0` explicitly for an uncapped crawl. |
+| `--max-pages <n>` | u32 | `2000` for `crawl`, `1` for omitted `extract` | Page cap. Set `0` explicitly for an uncapped crawl. Uncapped crawls require an explicit `--budget`/`--url-whitelist` scope or `AXON_ALLOW_UNBOUNDED_BROAD_CRAWL=true`. |
 | `--max-depth <n>` | usize | `10` | Maximum crawl depth from start URL. |
 | `--budget <PATH=N>` | string | — | Per-path page cap (repeatable), e.g. `--budget /blog=100 --budget '*=1000'`. `*` applies to all paths. Unset = no budget. Wired to spider's `with_budget`. |
 | `--etag-conditional` | flag | `false` | Conditional re-crawl: seed spider's ETag cache from a persisted `etag.json` sidecar so unchanged pages return 304 and are reused from the previous run instead of re-fetched. Independent of `--cache`. 304 skips are reconciled back into the manifest as `changed=false` entries, gated on spider's visited set so deleted/undiscovered pages are not resurrected. |
@@ -134,6 +134,10 @@ All flags are `--global` (usable with any subcommand).
 | `--header <HEADER>` | string | — | Custom HTTP header in `Key: Value` format. Repeatable (`--header "Auth: Bearer ..." --header "X-Custom: val"`). Applied to crawl, scrape, extract, and Chrome re-fetch paths. |
 | `--warc <PATH>` | path | — | Write every fetched page of a crawl to a WARC 1.1 archive at this path. HTTP and Chrome render paths both archive (spider `warc` feature). Crawl path only; round-trips through the crawl job config snapshot. |
 | `--automation-script <PATH>` | path | — | JSON file mapping URL path prefixes → ordered Chrome web-automation steps (`click`/`click_all`/`scroll_x`/`scroll_y`/`infinite_scroll`/`wait`/`wait_for`/`wait_for_and_click`/`wait_for_navigation`/`fill`/`evaluate`/`screenshot`). Steps run against each matching page before capture. **Requires a Chrome render path** (`--render-mode chrome`/`auto-switch`); ignored with a warning on HTTP-only. See `src/crawl/automation.rs`. |
+
+Memory safety:
+- Crawl page bodies are capped at 4 MiB by default (set `scrape.max_page_bytes` in `~/.axon/config.toml` to override; `0` disables — there is no CLI flag).
+- Long-running crawls self-abort when Axon's RSS reaches `AXON_CRAWL_MEMORY_ABORT_PERCENT` of the host/cgroup memory limit (the lower of the two, so inside a container the denominator is the cgroup cap, not host RAM); default is `85`, and `0` disables the guard. Linux-only — the guard never trips on other platforms.
 
 #### Output
 

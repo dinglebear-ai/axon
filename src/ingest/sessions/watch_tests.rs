@@ -657,7 +657,7 @@ async fn remote_upload_oversized_doc_records_terminal_error_without_poisoning_ba
 }
 
 #[tokio::test]
-async fn remote_watch_acceptance_retries_unchanged_until_remote_success() {
+async fn remote_accepted_unchanged_rescan_skips_without_reupload() {
     let server = MockServer::start_async().await;
     let mock = server
         .mock_async(|when, then| {
@@ -710,15 +710,18 @@ async fn remote_watch_acceptance_retries_unchanged_until_remote_success() {
     .await
     .unwrap();
 
+    // First scan uploads and records a remote_accepted checkpoint.
     assert!(matches!(
         first.as_slice(),
         [ProcessOutcome::RemoteAccepted { job }] if job == "remote-job-once"
     ));
+    // An unchanged rescan treats the 202-accepted upload as already handled:
+    // it is skipped (no duplicate remote job), so the mock is hit only once.
     assert!(matches!(
         second.as_slice(),
-        [ProcessOutcome::RemoteAccepted { job }] if job == "remote-job-once"
+        [ProcessOutcome::SkippedUnchanged]
     ));
-    assert_eq!(mock.calls_async().await, 2);
+    assert_eq!(mock.calls_async().await, 1);
 }
 
 #[tokio::test]

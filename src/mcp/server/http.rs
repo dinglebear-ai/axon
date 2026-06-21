@@ -19,6 +19,9 @@ pub async fn run_unified_server(
     host: &str,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Install the Prometheus recorder before any router is built so the
+    // `/metrics` route and the ask-path metric macros have a live recorder.
+    crate::web::metrics::install_recorder();
     let auth_policy = build_auth_policy(host, false).await?;
     let host_allowlist = HostAllowlist::new(host, port, &cfg.mcp_allowed_origins);
     let panel = Arc::new(crate::web::PanelRuntimeState::initialize(host, port)?);

@@ -11,7 +11,7 @@ use spider::website::Website;
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 
 mod chrome;
@@ -80,7 +80,7 @@ fn apply_deterministic_results(
 
 fn queue_fallback_extraction(
     fallback_tasks: &mut JoinSet<(String, Result<FallbackResponse, String>)>,
-    fallback_limiter: Arc<Semaphore>,
+    permit: OwnedSemaphorePermit,
     client: reqwest::Client,
     cfg: &FallbackConfig,
     page_url: String,
@@ -89,10 +89,10 @@ fn queue_fallback_extraction(
     let llm_backend_c = cfg.llm_backend.clone();
     let prompt_c = cfg.prompt_text.clone();
     fallback_tasks.spawn(async move {
+        let _permit = permit;
         // Run CPU-bound HTML→markdown conversion via spawn_blocking BEFORE
-        // acquiring the semaphore permit. This prevents blocking the Tokio
-        // executor thread and avoids inflating permit hold-time (only the
-        // downstream LLM call needs the permit).
+        // the downstream LLM call. The fallback permit is acquired before this
+        // task is spawned so queued tasks cannot retain unbounded HTML bodies.
         let markdown = match tokio::task::spawn_blocking(move || to_markdown(&html, None)).await {
             Ok(md) => md,
             Err(e) => {
@@ -100,12 +100,6 @@ fn queue_fallback_extraction(
                     page_url,
                     Err(format!("markdown conversion join error: {e}")),
                 );
-            }
-        };
-        let _permit = match fallback_limiter.acquire_owned().await {
-            Ok(p) => p,
-            Err(_) => {
-                return (page_url, Err("fallback limiter closed".to_string()));
             }
         };
         let res = extract_items_fallback(&client, llm_backend_c, &prompt_c, &page_url, &markdown)
@@ -161,9 +155,17 @@ async fn collect_page_results(
         }
         metrics.llm_fallback_pages += 1;
         metrics.llm_requests += 1;
+        let permit = match Arc::clone(&fallback_limiter).acquire_owned().await {
+            Ok(permit) => permit,
+            Err(_) => {
+                metrics.llm_fallback_failures += 1;
+                log_warn("fallback extraction limiter closed");
+                continue;
+            }
+        };
         queue_fallback_extraction(
             &mut fallback_tasks,
-            Arc::clone(&fallback_limiter),
+            permit,
             client.clone(),
             &cfg,
             page_url,
