@@ -58,13 +58,13 @@ async fn checkpoint_uses_stored_content_hash_even_when_metadata_matches() {
 }
 
 #[tokio::test]
-async fn remote_accepted_checkpoint_is_not_reusable_until_success() {
+async fn remote_accepted_checkpoint_skips_duplicate_upload_on_rescan() {
     let temp = tempfile::tempdir().unwrap();
     let db_path = temp.path().join("jobs.db");
     let pool = open_sqlite_pool(&db_path.to_string_lossy()).await.unwrap();
     let path = temp.path().join(".codex/sessions/session.jsonl");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, "remote accepted is only queued").unwrap();
+    std::fs::write(&path, "unchanged remote session").unwrap();
 
     let validated = test_validated_codex_path(&path);
     let meta = SessionFileMetadata::from_validated_path(&validated).unwrap();
@@ -73,8 +73,10 @@ async fn remote_accepted_checkpoint_is_not_reusable_until_success() {
         .await
         .unwrap();
 
-    assert!(!checkpoint_metadata_matches(&pool, &meta).await.unwrap());
-    assert!(!checkpoint_record_matches(
+    // Rescan of the same unchanged file must be treated as already-handled
+    // so the watcher does not re-upload it.
+    assert!(checkpoint_metadata_matches(&pool, &meta).await.unwrap());
+    assert!(checkpoint_record_matches(
         &meta,
         &checkpoint_record_for_path_hash(&pool, &meta.path_hash)
             .await

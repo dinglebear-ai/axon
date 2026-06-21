@@ -1,5 +1,83 @@
 use super::*;
+use crate::core::config::Config;
+use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
+use crate::jobs::status::JobStatus;
 use crate::jobs::store::open_sqlite_pool;
+use crate::services::context::ServiceContext;
+use crate::services::runtime::ServiceJobRuntime;
+use crate::services::types::ServiceJob;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::error::Error;
+
+struct NoSqliteRuntime;
+
+#[async_trait]
+impl ServiceJobRuntime for NoSqliteRuntime {
+    fn mode_name(&self) -> &'static str {
+        "test-no-sqlite"
+    }
+    async fn enqueue(&self, _payload: JobPayload) -> BackendResult<Uuid> {
+        Err("not implemented".into())
+    }
+    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+        Err("not implemented".into())
+    }
+    async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+        Ok(None)
+    }
+    async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+        Ok(false)
+    }
+    async fn list_jobs(
+        &self,
+        _kind: JobKind,
+        _limit: i64,
+        _offset: i64,
+    ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
+        Ok(Vec::new())
+    }
+    async fn job_status(
+        &self,
+        _kind: JobKind,
+        _id: Uuid,
+    ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
+        Ok(None)
+    }
+    async fn cancel_job(
+        &self,
+        _kind: JobKind,
+        _id: Uuid,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(false)
+    }
+    async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+    async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+    async fn recover_jobs(
+        &self,
+        _kind: JobKind,
+        _stale_threshold_ms: i64,
+    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+    async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+        Ok(0)
+    }
+    async fn count_jobs_by_status(
+        &self,
+        _kind: JobKind,
+    ) -> Result<HashMap<JobStatus, i64>, Box<dyn Error + Send + Sync>> {
+        Ok(HashMap::new())
+    }
+}
+
+fn no_sqlite_context() -> ServiceContext {
+    ServiceContext::from_runtime(Arc::new(Config::default()), Arc::new(NoSqliteRuntime))
+}
 
 fn remember_req(body: &str) -> MemoryRequest {
     MemoryRequest {
@@ -357,4 +435,83 @@ async fn context_seed_nodes_expand_one_hop_edges() {
     let ids = items.into_iter().map(|item| item.id).collect::<Vec<_>>();
 
     assert_eq!(ids, vec![seed.id.to_string(), neighbor.id.to_string()]);
+}
+
+#[test]
+fn memory_pool_fails_without_sqlite_runtime() {
+    let ctx = no_sqlite_context();
+    let err = memory_pool(&ctx).expect_err("should fail without sqlite runtime");
+    assert!(
+        err.to_string().contains("SQLite"),
+        "error should mention SQLite, got: {err}"
+    );
+}
+
+#[test]
+fn memory_id_same_inputs_produce_same_uuid() {
+    let a = memory_id("fact", Some("axon"), Some("jmagar/axon"), None, "My title");
+    let b = memory_id("fact", Some("axon"), Some("jmagar/axon"), None, "My title");
+    assert_eq!(a, b);
+}
+
+#[test]
+fn memory_id_case_and_whitespace_variants_produce_same_uuid() {
+    let a = memory_id(
+        "fact",
+        Some("Axon"),
+        Some("jmagar/axon"),
+        None,
+        "  My Title  ",
+    );
+    let b = memory_id("fact", Some("axon"), Some("jmagar/axon"), None, "my title");
+    assert_eq!(
+        a, b,
+        "canonicalization must normalize case and surrounding whitespace"
+    );
+}
+
+#[test]
+fn memory_id_different_inputs_produce_different_uuids() {
+    let type_differs = memory_id("decision", Some("axon"), None, None, "title");
+    let project_differs = memory_id("fact", Some("lab"), None, None, "title");
+    let title_differs = memory_id("fact", Some("axon"), None, None, "other title");
+    let base = memory_id("fact", Some("axon"), None, None, "title");
+
+    assert_ne!(
+        base, type_differs,
+        "different type must produce different id"
+    );
+    assert_ne!(
+        base, project_differs,
+        "different project must produce different id"
+    );
+    assert_ne!(
+        base, title_differs,
+        "different title must produce different id"
+    );
+}
+
+#[test]
+fn edge_id_stable_and_distinct_across_types() {
+    let src = Uuid::new_v4().to_string();
+    let tgt = Uuid::new_v4().to_string();
+
+    let relates_a = edge_id(&src, &tgt, "relates_to");
+    let relates_b = edge_id(&src, &tgt, "relates_to");
+    assert_eq!(
+        relates_a, relates_b,
+        "same inputs must produce same edge id"
+    );
+
+    let supersedes = edge_id(&src, &tgt, "supersedes");
+    assert_ne!(
+        relates_a, supersedes,
+        "different edge type must produce different id"
+    );
+
+    let reversed = edge_id(&tgt, &src, "relates_to");
+    assert_ne!(
+        relates_a, reversed,
+        "reversed source/target must produce different id"
+    );
 }

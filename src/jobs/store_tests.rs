@@ -1,6 +1,86 @@
 use super::*;
 use uuid::Uuid;
 
+/// A dangling `BEGIN IMMEDIATE` left on a connection that is dropped back into
+/// a single-slot pool must NOT poison the slot: the `after_release` ROLLBACK
+/// hook should scrub the transaction so the next checkout can `BEGIN IMMEDIATE`
+/// again.
+///
+/// RED without the hook: the second `BEGIN IMMEDIATE` fails with
+/// "cannot start a transaction within a transaction".
+#[tokio::test]
+async fn after_release_hook_scrubs_dangling_transaction() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .after_release(|conn, _meta| Box::pin(rollback_on_release(conn)))
+        .connect(":memory:")
+        .await
+        .expect("pool");
+
+    sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+        .execute(&pool)
+        .await
+        .expect("create table");
+
+    // Leak a transaction: acquire the single connection, open a write tx, and
+    // drop the connection WITHOUT commit/rollback. It returns to the pool still
+    // inside the transaction.
+    {
+        let mut conn = pool.acquire().await.expect("acquire 1");
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await
+            .expect("begin immediate");
+        // conn dropped here, still in a transaction.
+    }
+
+    // The after_release hook must have rolled back, so this BEGIN IMMEDIATE
+    // on the recycled connection succeeds.
+    let mut conn = pool.acquire().await.expect("acquire 2");
+    sqlx::query("BEGIN IMMEDIATE")
+        .execute(&mut *conn)
+        .await
+        .expect("second BEGIN IMMEDIATE must succeed — hook should have rolled back the leaked tx");
+    sqlx::query("ROLLBACK")
+        .execute(&mut *conn)
+        .await
+        .expect("cleanup rollback");
+}
+
+/// Control: WITHOUT the `after_release` hook, the same leak poisons the slot and
+/// the second `BEGIN IMMEDIATE` fails — proving the hook is what fixes it.
+#[tokio::test]
+async fn without_hook_dangling_transaction_poisons_slot() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(":memory:")
+        .await
+        .expect("pool");
+
+    sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+        .execute(&pool)
+        .await
+        .expect("create table");
+
+    {
+        let mut conn = pool.acquire().await.expect("acquire 1");
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await
+            .expect("begin immediate");
+    }
+
+    let mut conn = pool.acquire().await.expect("acquire 2");
+    let err = sqlx::query("BEGIN IMMEDIATE")
+        .execute(&mut *conn)
+        .await
+        .expect_err("without the hook the leaked tx must poison the slot");
+    assert!(
+        err.to_string().contains("within a transaction"),
+        "expected nested-transaction error, got: {err}"
+    );
+}
+
 #[tokio::test]
 async fn migration_0014_moves_only_active_result_json_to_progress_json() {
     let pool = SqlitePoolOptions::new()

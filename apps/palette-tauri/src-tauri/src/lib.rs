@@ -124,7 +124,7 @@ fn show_palette(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn resize_palette(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+fn resize_palette(app: AppHandle, width: f64, height: f64, shadow: bool) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
@@ -136,6 +136,8 @@ fn resize_palette(app: AppHandle, width: f64, height: f64) -> Result<(), String>
     window
         .set_size(Size::Logical(LogicalSize { width, height }))
         .map_err(|err| err.to_string())?;
+    // Per-view native shadow toggle (see useWindowChrome.ts for the policy).
+    let _ = window.set_shadow(shadow);
     window.center().map_err(|err| err.to_string())
 }
 
@@ -345,10 +347,13 @@ fn show_main_window(app: &AppHandle) -> Result<(), String> {
     }
     window
         .set_size(Size::Logical(LogicalSize {
-            width: 680.0,
-            height: 56.0,
+            // Compact launcher — matches COMPACT in useWindowChrome.ts (bar + inset).
+            width: 720.0,
+            height: 92.0,
         }))
         .map_err(|err| err.to_string())?;
+    // Compact floats a CSS-glowing bar; keep the native shadow off (JS re-asserts).
+    let _ = window.set_shadow(false);
     window.center().map_err(|err| err.to_string())?;
     window.show().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;

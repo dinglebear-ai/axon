@@ -77,6 +77,17 @@ dependent embed job. Use `--wait true` to wait for the submitted crawl and its
 explicit dependent embed job, if one is created. Pass `--skip-embed` to crawl
 without indexing the output.
 
+Uncapped crawls (`--max-pages 0`) of a root or single-segment path (e.g.
+`https://site/` or `https://site/docs`) are rejected unless you also provide an
+explicit `--budget` or `--url-whitelist` scope. A deeper start URL (≥2 path
+segments) is auto-scoped to its path subtree, so an uncapped crawl of it is
+allowed and bounded to that subtree. Set `AXON_ALLOW_UNBOUNDED_BROAD_CRAWL=true`
+only for intentional dangerous runs of an unscoped root.
+During any crawl, Axon asks Spider to shut down if process RSS reaches
+`AXON_CRAWL_MEMORY_ABORT_PERCENT` of the host/cgroup memory limit — the lower of
+the two, so inside a container the denominator is the cgroup cap, not host RAM
+(default `85`; `0` disables). Linux-only: the guard never trips on other platforms.
+
 ## Examples
 
 ```bash

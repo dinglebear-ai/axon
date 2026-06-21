@@ -322,7 +322,10 @@ fn validate_local_embed_directory(
                 depth + 1,
             )?;
         } else if child_meta.is_file() {
-            if select::is_binary_ext(path_extension(name)) {
+            let name_lower = name.to_ascii_lowercase();
+            if select::is_binary_ext(path_extension(name))
+                || select::is_generated_filename(&name_lower)
+            {
                 continue;
             }
             validate_local_embed_relative_path(&child_canonical, allowed_root)?;

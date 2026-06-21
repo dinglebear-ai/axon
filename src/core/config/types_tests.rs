@@ -361,8 +361,10 @@ fn new_engine_tuning_defaults() {
     assert_eq!(cfg.chrome_network_idle_timeout_secs, 15);
     assert!((cfg.auto_switch_thin_ratio - 0.60).abs() < f64::EPSILON);
     assert_eq!(cfg.auto_switch_min_pages, 10);
-    assert_eq!(cfg.crawl_broadcast_buffer_min, 4096);
-    assert_eq!(cfg.crawl_broadcast_buffer_max, 16_384);
+    assert_eq!(cfg.crawl_broadcast_buffer_min, 512);
+    assert_eq!(cfg.crawl_broadcast_buffer_max, 2_048);
+    assert!(!cfg.allow_unbounded_broad_crawl);
+    assert_eq!(cfg.crawl_memory_abort_percent, Some(85.0));
 }
 
 #[test]
@@ -370,7 +372,7 @@ fn new_spider_builder_defaults() {
     let cfg = Config::default();
     assert!(cfg.url_whitelist.is_empty());
     assert!(!cfg.block_assets);
-    assert!(cfg.max_page_bytes.is_none());
+    assert_eq!(cfg.max_page_bytes, Some(4 * 1024 * 1024));
     assert!(!cfg.redirect_policy_strict);
     assert!(cfg.chrome_wait_for_selector.is_none());
     assert!(!cfg.chrome_screenshot);

@@ -159,12 +159,14 @@ assert msg["method"] == "thread/start", msg
 assert msg["params"]["approvalPolicy"] == "never", msg
 assert msg["params"]["sandbox"] == "read-only", msg
 assert msg["params"]["model"] == "gpt-5.5", msg
+assert msg["params"]["ephemeral"] == True, msg
+assert msg["params"]["developerInstructions"] == "system prompt", msg
 send({{"id": 1, "result": {{"thread": {{"id": "thr_success"}}, "model": "gpt-5.5"}}}})
 
 msg = read_msg()
 assert msg["method"] == "turn/start", msg
 assert msg["params"]["threadId"] == "thr_success", msg
-assert msg["params"]["input"][0]["text"] == "system prompt\n\nuser prompt", msg
+assert msg["params"]["input"][0]["text"] == "user prompt", msg
 
 send({{"method": "item/agentMessage/delta", "params": {{"delta": "Hello "}}}})
 send({{"method": "item/agentMessage/delta", "params": {{"delta": "world"}}}})

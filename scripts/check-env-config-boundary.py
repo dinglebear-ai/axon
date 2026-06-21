@@ -146,6 +146,8 @@ VALID_TOML_DESTINATIONS = {
     "ask.min-citations-nontrivial",
     "logging.max-bytes",
     # Webclaw feature destinations
+    "scrape.allow-unbounded-broad-crawl",
+    "scrape.crawl-memory-abort-percent",
     "verticals.enabled",
     "verticals.auto-dispatch-skip",
     "payload.structured-data-max-bytes",

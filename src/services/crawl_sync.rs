@@ -206,7 +206,7 @@ async fn run_crawl_phase(
         http_seen_urls,
         previous_manifest,
     )
-    .await;
+    .await?;
 
     Ok((summary, seen_urls))
 }

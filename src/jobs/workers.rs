@@ -1,7 +1,10 @@
 mod heartbeat;
+mod panic_guard;
 mod progress;
 mod runners;
+mod starvation;
 mod watch_scheduler;
+mod watchdog;
 
 use heartbeat::HeartbeatGuard;
 
@@ -12,7 +15,7 @@ use crate::jobs::backend::JobKind;
 use crate::core::config::Config;
 use crate::jobs::cancel::CancelStore;
 use crate::jobs::ops::{
-    claim_next_pending_for_attempt, mark_completed_for_attempt, mark_failed_for_attempt,
+    ClaimedJob, claim_next_pending_for_attempt, mark_completed_for_attempt, mark_failed_for_attempt,
 };
 use sqlx::SqlitePool;
 use std::future::Future;
@@ -145,7 +148,7 @@ pub fn spawn_workers(
     }
 
     // Periodic watchdog: sweeps all job tables every 15s; wakes workers on reclaim.
-    worker_handles.push(tokio::spawn(watchdog_loop(
+    worker_handles.push(tokio::spawn(watchdog::watchdog_loop(
         Arc::clone(&pool),
         Arc::clone(&cfg),
         Arc::clone(&cancel_store),
@@ -177,13 +180,9 @@ pub fn spawn_workers(
     }
 }
 
-/// Periodic watchdog: sweeps all job tables on a config-driven interval
-/// (`cfg.watchdog_sweep_secs`, default 15s) while the process is alive.
-///
-/// Pairs with `HeartbeatGuard` — heartbeat keeps `updated_at` fresh for live jobs;
-/// watchdog reclaims rows whose `updated_at` has gone stale (process died, runner
-/// panicked, etc.). After a reclaim, wakes the worker channels whose kind had
-/// rows reclaimed — not the others — so untouched lanes stay parked.
+/// Per-kind `Notify` handles the watchdog uses to wake parked worker lanes
+/// after reclaiming stale jobs or detecting a starved queue. The loop itself
+/// lives in the `watchdog` submodule.
 struct WatchdogNotifies {
     crawl: Arc<Notify>,
     embed: Arc<Notify>,
@@ -191,71 +190,15 @@ struct WatchdogNotifies {
     ingest: Arc<Notify>,
 }
 
-async fn watchdog_loop(
-    pool: Arc<SqlitePool>,
-    cfg: Arc<Config>,
-    cancel_store: Arc<CancelStore>,
-    notifies: WatchdogNotifies,
-    shutdown: CancellationToken,
-) {
-    let stale_threshold_ms =
-        (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
-    let sweep_interval = Duration::from_secs(cfg.watchdog_sweep_secs.max(1) as u64);
-    let mut ticker = tokio::time::interval(sweep_interval);
-    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    // Skip immediate tick — startup-time reclaim already ran in SqliteJobBackend::init.
-    ticker.tick().await;
-    loop {
-        tokio::select! {
-            biased;
-            _ = shutdown.cancelled() => break,
-            _ = ticker.tick() => {
-                let reclaimed = crate::jobs::store::reclaim_stale_running_jobs_detailed(
-                    &pool,
-                    stale_threshold_ms,
-                )
-                .await;
-                if reclaimed.total() > 0 {
-                    cancel_reclaimed_local_tokens(&cancel_store, &reclaimed);
-                    // notify_waiters (not notify_one) so all parked lanes
-                    // for each kind wake — a single reclaim sweep can free
-                    // multiple jobs of the same kind, and embed/ingest run
-                    // multiple lanes that share one Notify handle.
-                    if reclaimed.count_for(JobKind::Crawl) > 0 {
-                        notifies.crawl.notify_waiters();
-                    }
-                    if reclaimed.count_for(JobKind::Embed) > 0 {
-                        notifies.embed.notify_waiters();
-                    }
-                    if reclaimed.count_for(JobKind::Extract) > 0 {
-                        notifies.extract.notify_waiters();
-                    }
-                    if reclaimed.count_for(JobKind::Ingest) > 0 {
-                        notifies.ingest.notify_waiters();
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn cancel_reclaimed_local_tokens(
-    cancel_store: &CancelStore,
-    reclaimed: &crate::jobs::store::ReclaimedJobs,
-) {
-    for kind in JobKind::all() {
-        for reclaimed_job in reclaimed.jobs_for(*kind) {
-            let canceled = reclaimed_job
-                .attempt_id
-                .as_deref()
-                .is_some_and(|attempt_id| cancel_store.cancel_local(reclaimed_job.id, attempt_id));
-            tracing::info!(
-                table = kind.table_name(),
-                job_id = %reclaimed_job.id,
-                attempt_id = reclaimed_job.attempt_id.as_deref().unwrap_or("unknown"),
-                canceled_local_token = canceled,
-                "watchdog: canceled local owner for reclaimed job"
-            );
+impl WatchdogNotifies {
+    /// Wake every parked lane of `kind` (`notify_waiters`, matching the reclaim
+    /// path). Used by the starvation detector to kick a stalled-but-alive lane.
+    fn notify_kind(&self, kind: JobKind) {
+        match kind {
+            JobKind::Crawl => self.crawl.notify_waiters(),
+            JobKind::Embed => self.embed.notify_waiters(),
+            JobKind::Extract => self.extract.notify_waiters(),
+            JobKind::Ingest => self.ingest.notify_waiters(),
         }
     }
 }
@@ -277,67 +220,28 @@ async fn worker_loop<F, Fut>(
     F: Fn(Arc<SqlitePool>, uuid::Uuid, CancellationToken) -> Fut + Send + 'static,
     Fut: Future<Output = JobResult> + Send,
 {
+    let mut wake_count: u64 = 0;
     loop {
         tokio::select! {
             _ = notify.notified() => {}
             _ = tokio::time::sleep(POLL_INTERVAL) => {}
             _ = shutdown.cancelled() => break,
         }
+        wake_count = wake_count.wrapping_add(1);
+        tracing::trace!(
+            table = kind.table_name(),
+            wake_count,
+            "worker: wake — polling for pending jobs"
+        );
 
+        let mut claimed_this_wake = 0usize;
         loop {
             let mut processed = 0usize;
             while processed < WORKER_BATCH_LIMIT && !shutdown.is_cancelled() {
                 match claim_next_pending_for_attempt(&pool, kind).await {
                     Ok(Some(claimed)) => {
-                        let cancel_token =
-                            cancel_store.register(claimed.id, claimed.attempt_id.clone());
-                        let _hb = HeartbeatGuard::spawn(
-                            Arc::clone(&pool),
-                            kind,
-                            claimed.id,
-                            claimed.attempt_id.clone(),
-                        );
-                        let result = run_job(Arc::clone(&pool), claimed.id, cancel_token).await;
-                        cancel_store.remove(claimed.id, &claimed.attempt_id);
+                        run_and_mark_claimed(&pool, kind, &cancel_store, &claimed, &run_job).await;
                         processed += 1;
-                        match result {
-                            Ok(result_json) => {
-                                if let Err(e) = mark_completed_for_attempt(
-                                    &pool,
-                                    kind,
-                                    claimed.id,
-                                    Some(&claimed.attempt_id),
-                                    result_json.as_ref(),
-                                )
-                                .await
-                                {
-                                    tracing::error!(
-                                        table = kind.table_name(),
-                                        job_id = %claimed.id,
-                                        error = %e,
-                                        "job worker: failed to mark job completed — job will remain in 'running' state"
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                if let Err(mark_err) = mark_failed_for_attempt(
-                                    &pool,
-                                    kind,
-                                    claimed.id,
-                                    Some(&claimed.attempt_id),
-                                    &e.to_string(),
-                                )
-                                .await
-                                {
-                                    tracing::error!(
-                                        table = kind.table_name(),
-                                        job_id = %claimed.id,
-                                        error = %mark_err,
-                                        "job worker: failed to mark job failed — job will remain in 'running' state"
-                                    );
-                                }
-                            }
-                        }
                     }
                     Ok(None) => break,
                     Err(e) => {
@@ -360,10 +264,91 @@ async fn worker_loop<F, Fut>(
                     }
                 }
             }
+            claimed_this_wake += processed;
             if shutdown.is_cancelled() || processed < WORKER_BATCH_LIMIT {
                 break;
             }
             tokio::task::yield_now().await;
+        }
+        // Cheap liveness signal: log when work was done, and roughly once a
+        // minute (every 12th 5s wake) while idle, so a lane that has gone silent
+        // is visible by the *absence* of these lines.
+        if claimed_this_wake > 0 || wake_count.is_multiple_of(12) {
+            tracing::debug!(
+                table = kind.table_name(),
+                claimed = claimed_this_wake,
+                wake_count,
+                "worker: poll batch complete"
+            );
+        }
+    }
+}
+
+/// Run one claimed job through the panic guard and persist its terminal state.
+/// Extracted from `worker_loop` to keep that function under the size cap; a
+/// panic in the runner is caught here (see `panic_guard::run_catching`) so the
+/// lane survives, and a failure to write the terminal state is logged (the row
+/// stays `running` and is later reclaimed by the watchdog).
+async fn run_and_mark_claimed<F, Fut>(
+    pool: &Arc<SqlitePool>,
+    kind: JobKind,
+    cancel_store: &CancelStore,
+    claimed: &ClaimedJob,
+    run_job: &F,
+) where
+    F: Fn(Arc<SqlitePool>, uuid::Uuid, CancellationToken) -> Fut,
+    Fut: Future<Output = JobResult>,
+{
+    let cancel_token = cancel_store.register(claimed.id, claimed.attempt_id.clone());
+    let _hb = HeartbeatGuard::spawn(
+        Arc::clone(pool),
+        kind,
+        claimed.id,
+        claimed.attempt_id.clone(),
+    );
+    let result = panic_guard::run_catching(
+        run_job(Arc::clone(pool), claimed.id, cancel_token),
+        kind,
+        claimed.id,
+    )
+    .await;
+    cancel_store.remove(claimed.id, &claimed.attempt_id);
+    match result {
+        Ok(result_json) => {
+            if let Err(e) = mark_completed_for_attempt(
+                pool,
+                kind,
+                claimed.id,
+                Some(&claimed.attempt_id),
+                result_json.as_ref(),
+            )
+            .await
+            {
+                tracing::error!(
+                    table = kind.table_name(),
+                    job_id = %claimed.id,
+                    error = %e,
+                    "job worker: failed to mark job completed — job will remain in 'running' state"
+                );
+            }
+        }
+        Err(e) => {
+            if let Err(mark_err) = mark_failed_for_attempt(
+                pool,
+                kind,
+                claimed.id,
+                Some(&claimed.attempt_id),
+                &e.to_string(),
+            )
+            .await
+            {
+                tracing::error!(
+                    table = kind.table_name(),
+                    job_id = %claimed.id,
+                    error = %mark_err,
+                    "job worker: failed to mark job failed — job will remain in 'running' state"
+                );
+            }
         }
     }
 }

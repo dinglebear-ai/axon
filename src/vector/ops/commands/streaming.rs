@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::core::llm::{self, CompletionRequest};
+use crate::core::llm::{self, CompletionRequest, ReasoningEffort};
 use std::error::Error;
 use std::io::Write;
 use tokio::sync::mpsc::UnboundedSender;
@@ -206,6 +206,7 @@ fn judge_completion_request(
 ) -> CompletionRequest {
     let req = CompletionRequest::new(judge_user_msg(ctx))
         .system_prompt(judge_system_prompt())
+        .effort(ReasoningEffort::High)
         .stream(stream)
         .backend_from_config(cfg);
     apply_optional_model(req, cfg)

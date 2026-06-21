@@ -29,6 +29,12 @@ type SearchHitsResult =
 
 const ASK_PRODUCT_AUTHORITY_BOOST: f64 = 0.35;
 
+// Error messages exposed as constants so tests can assert on their content
+// without needing live services (the thin seam for TEST-L1 / bd axon_rust-qcbb).
+pub(super) const ERR_NO_RELEVANT_DOCUMENTS: &str = "No relevant documents found for ask query";
+pub(super) const ERR_NO_CANDIDATES_TOPICAL: &str = "No candidates passed topical overlap";
+pub(super) const ERR_NO_CANDIDATES_THRESHOLD_PREFIX: &str = "No candidates met relevance threshold";
+
 pub(super) struct AskRetrieval {
     pub(super) candidate_count: usize,
     pub(super) reranked: Vec<ranking::AskCandidate>,
@@ -91,7 +97,7 @@ pub(super) async fn retrieve_ask_candidates(
     .await?;
 
     if retrieved_candidates.is_empty() {
-        return Err(anyhow!("No relevant documents found for ask query"));
+        return Err(anyhow!("{ERR_NO_RELEVANT_DOCUMENTS}"));
     }
 
     let rerank_params = RerankParams {
@@ -127,10 +133,10 @@ pub(super) async fn retrieve_ask_candidates(
     ));
     if reranked.is_empty() {
         if rrf_mode {
-            return Err(anyhow!("No candidates passed topical overlap"));
+            return Err(anyhow!("{ERR_NO_CANDIDATES_TOPICAL}"));
         }
         return Err(anyhow!(
-            "No candidates met relevance threshold {:.3}; lower AXON_ASK_MIN_RELEVANCE_SCORE",
+            "{ERR_NO_CANDIDATES_THRESHOLD_PREFIX} {:.3}; lower AXON_ASK_MIN_RELEVANCE_SCORE",
             ask_tuning.ask_min_relevance_score
         ));
     }
