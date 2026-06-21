@@ -37,7 +37,11 @@ pub(super) fn component_changed_since_ref(
     base: &str,
     head: &str,
 ) -> ReleaseResult<bool> {
-    let changed = changed_paths_since_ref(root, base, head, &component.shipping_paths)?;
+    let changed: Vec<String> =
+        changed_paths_since_ref(root, base, head, &component.shipping_paths)?
+            .into_iter()
+            .filter(|path| !is_changelog_path(path))
+            .collect();
     if changed.is_empty() {
         return Ok(false);
     }
@@ -50,6 +54,14 @@ pub(super) fn component_changed_since_ref(
     }
 
     Ok(true)
+}
+
+/// A component's own `CHANGELOG.md` lives inside its shipping paths, but editing
+/// it must not count as a shipping change — otherwise documenting a release
+/// would re-trigger one. (The cli changelog at the repo root is already outside
+/// shipping paths; this keeps the rule uniform across components.)
+fn is_changelog_path(path: &str) -> bool {
+    path == "CHANGELOG.md" || path.ends_with("/CHANGELOG.md")
 }
 
 fn changed_paths_since_ref(
@@ -205,3 +217,7 @@ fn cargo_lock_field(section: &str, key: &str) -> Option<String> {
             .map(ToOwned::to_owned)
     })
 }
+
+#[cfg(test)]
+#[path = "git_tests.rs"]
+mod tests;
