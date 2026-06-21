@@ -212,6 +212,19 @@ fn gradle_version_code_bump_rejects_cap() {
 }
 
 #[test]
+fn suggested_level_hint_renders_or_is_empty() {
+    assert_eq!(
+        suggested_level_hint(Some(BumpLevel::Minor)),
+        " (suggested bump: minor)"
+    );
+    assert_eq!(
+        suggested_level_hint(Some(BumpLevel::Major)),
+        " (suggested bump: major)"
+    );
+    assert_eq!(suggested_level_hint(None), "");
+}
+
+#[test]
 fn cli_parity_requires_changelog_and_web_versions() {
     let fixture = Fixture::new();
     fs::write(fixture.path("CHANGELOG.md"), "# Changelog\n\n## [0.9.9]\n").unwrap();
@@ -601,6 +614,11 @@ fn android_change_allows_version_code_increase() {
     }
 }
 "#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n",
     )
     .unwrap();
     fixture.git(&["add", "apps/android/app/build.gradle.kts"]);
@@ -1032,6 +1050,20 @@ version = "5.10.2"
         write(
             &self.path("apps/chrome-extension/manifest.json"),
             r#"{"manifest_version":3,"version":"0.2.0"}"#,
+        );
+        // Per-component changelogs (headings match each version_source above) so
+        // the copied manifest's changelog_heading entries validate and pass parity.
+        write(
+            &self.path("apps/palette-tauri/CHANGELOG.md"),
+            "# Changelog\n\n## [5.10.2]\n",
+        );
+        write(
+            &self.path("apps/android/CHANGELOG.md"),
+            "# Changelog\n\n## [1.3.2]\n",
+        );
+        write(
+            &self.path("apps/chrome-extension/CHANGELOG.md"),
+            "# Changelog\n\n## [0.2.0]\n",
         );
         write(&self.path("assets/.keep"), "");
     }
