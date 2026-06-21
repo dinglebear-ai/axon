@@ -835,11 +835,17 @@ git tag chrome-ext-vX.Y.Z && git push origin chrome-ext-vX.Y.Z  # chrome
 ### Version bumping rules
 
 **Bump ONLY the component(s) whose shipping code you changed** — versions are
-independent per component. Bump type is determined by the commit message prefix:
+independent per component. Bump type is determined by the commit message prefix
+(auto-derived by `cargo xtask bump-version`, via git-cliff + `cliff.toml`):
 
 - `feat!:` or `BREAKING CHANGE` → **major** (X+1.0.0)
 - `feat` or `feat(...)` → **minor** (X.Y+1.0)
 - Everything else (`fix`, `chore`, `refactor`, `test`, `docs`, etc.) → **patch** (X.Y.Z+1)
+
+`cargo xtask bump-version <component>` derives the level from the conventional
+commits touching that component's shipping paths since its last tag; pass an
+explicit `patch|minor|major` to override. It bumps from `max(version_source,
+latest tag)` so a worktree that lags `main` cannot collide with an existing tag.
 
 **CLI component — all of these MUST move together (Cargo.toml is the source of truth):**
 - `Cargo.toml` — `version = "X.Y.Z"` in `[package]` (Cargo.lock follows on next build)
@@ -858,10 +864,20 @@ independent per component. Bump type is determined by the commit message prefix:
 `just validate-plugin` (part of `just verify`) hard-fails on it; the plugin is
 versioned by the marketplace, not the manifest.
 
-CHANGELOG.md must have an entry for every CLI version bump.
+**Changelogs are generated, not hand-stamped.** Each component has its own
+`CHANGELOG.md` (`CHANGELOG.md`, `apps/palette-tauri/CHANGELOG.md`,
+`apps/android/CHANGELOG.md`, `apps/chrome-extension/CHANGELOG.md`). `bump-version`
+prepends a real section via git-cliff, scoped to the component's shipping paths +
+tag prefix (config in `cliff.toml`). **`git-cliff` must be installed where you run
+`bump-version`** (`mise use -g git-cliff`); the CI gate
+(`check-release-versions`) does **not** require it. Use `--skip-changelog` to fall
+back to an empty heading in an emergency, or
+`cargo xtask regen-changelog <component> --output <path>` to rebuild a changelog
+from full history. **Editing a `CHANGELOG.md` never triggers a release** — change
+detection ignores it, so documenting a release can't recursively cut another.
 
-Use `cargo xtask bump-version <component> patch|minor|major` to bump every
-version-bearing file for one component. The PR gate is:
+Use `cargo xtask bump-version <component> [patch|minor|major]` to bump every
+version-bearing file for one component (level optional — see above). The PR gate is:
 
 ```bash
 cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
