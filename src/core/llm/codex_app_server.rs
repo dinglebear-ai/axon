@@ -1,13 +1,16 @@
 //! `codex app-server` LLM backend.
 //!
-//! Spawns `codex app-server` over stdio per completion (mirroring the Gemini
-//! headless backend), runs the JSON-RPC synthesis handshake, and streams the
-//! assistant message back. Process config is isolated via a throwaway
-//! `CODEX_HOME` (see [`home`]) so a synthesis call does not load the user's MCP
-//! servers, hooks, or skills. Wire-protocol logic lives in [`protocol`].
+//! Routes synthesis calls through a bounded pool of long-lived `codex
+//! app-server` children (see [`pool`]).  Each child is spawned once, runs the
+//! `initialize` → `thread/start` handshake, and is reused for many
+//! `turn/start` cycles.  Pool size = `completion_concurrency`
+//! (env: `AXON_CODEX_COMPLETION_CONCURRENCY`, now defaults to 4).
+//!
+//! Wire-protocol logic lives in [`protocol`]; CODEX_HOME isolation in [`home`].
 
 mod capabilities;
 mod home;
+pub(super) mod pool;
 mod protocol;
 
 pub use capabilities::CodexCapabilities;
@@ -15,18 +18,15 @@ pub use capabilities::CodexCapabilities;
 use std::error::Error as StdError;
 use std::io;
 use std::path::Path;
-use std::process::Stdio;
 use std::time::Duration;
 
-use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::process::Child;
 use tokio::task::JoinHandle;
 
-use crate::core::llm::headless::common::{read_bounded_stderr, redacted_stderr_tail};
-use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
-use crate::core::logging::{log_info, log_warn};
-use protocol::{CodexStep, CodexStreamState};
+use crate::core::llm::headless::common::{
+    joined_prompt, read_bounded_stderr, redacted_stderr_tail,
+};
+use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig, ReasoningEffort};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -35,206 +35,83 @@ pub async fn complete_text(req: CompletionRequest) -> Result<CompletionResponse,
     complete_streaming(req, |_| Ok(())).await
 }
 
-/// Preflight check that the configured `codex` command is usable. Mirrors the
-/// Gemini backend's `validate_config` for `ask` validation.
+/// Preflight check that the configured `codex` command is usable.
 pub fn validate_config(config: &LlmBackendConfig) -> Result<(), BoxError> {
     validate_codex_cmd(config)
 }
 
 pub async fn complete_streaming<F>(
     req: CompletionRequest,
-    mut on_delta: F,
+    on_delta: F,
 ) -> Result<CompletionResponse, BoxError>
 where
     F: FnMut(&str) -> Result<(), BoxError> + Send,
 {
     validate_codex_cmd(&req.backend)?;
-    let cwd = tempfile::Builder::new()
-        .prefix("axon-codex-cwd-")
-        .tempdir()
-        .map_err(|err| format!("failed to create isolated codex cwd: {err}"))?;
-
-    // `_home_guard` owns the throwaway CODEX_HOME for the isolated path and must
-    // stay alive for the child's lifetime. In passthrough mode there is no
-    // throwaway home — the child runs against the user's real CODEX_HOME + env.
-    let (_home_guard, mut child) = if req.backend.codex_load_user_config {
-        let child = spawn_codex_child_passthrough(&req.backend, cwd.path())?;
-        (None, child)
-    } else {
-        let home = home::prepare_codex_home(&req.backend)?;
-        let child = spawn_codex_child(&req.backend, &home, cwd.path())?;
-        (Some(home), child)
-    };
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or("failed to open codex app-server stdin")?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or("failed to open codex app-server stdout")?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or("failed to open codex app-server stderr")?;
-    let stderr_task = tokio::spawn(read_bounded_stderr(stderr));
-
-    let mut state = CodexStreamState::from_request(
-        &req,
-        cwd.path().display().to_string(),
-        env!("CARGO_PKG_VERSION"),
-    );
-
-    let timeout = req.backend.completion_timeout();
-    let result = match tokio::time::timeout(
-        timeout,
-        run_handshake(&mut state, &mut stdin, stdout, &mut on_delta),
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(_) => Err(format!("codex app-server timed out after {}s", timeout.as_secs()).into()),
-    };
-
-    // `codex app-server` is a persistent process — it does not exit after a
-    // turn — so terminate it explicitly regardless of outcome.
-    let cleanup = cleanup_codex_child(&mut child).await;
-    let stderr_tail = collect_stderr(stderr_task).await;
-
-    match (result, cleanup) {
-        // A completed turn can still fail `into_response` (no answer text). Carry
-        // the already-collected stderr context into that error too, not just the
-        // handshake-error path — it often explains an empty response.
-        (Ok(()), Ok(_cleanup)) => state
-            .into_response()
-            .map_err(|err| format!("{err}{}", stderr_diagnostics_suffix(&stderr_tail)).into()),
-        // The turn succeeded; a cleanup failure (leaked/zombie child) is an
-        // operational concern, not a reason to throw away a usable answer. Log it
-        // and still return the completion. Only fall back to an error if there is
-        // no answer text to return.
-        (Ok(()), Err(cleanup_err)) => match state.into_response() {
-            Ok(response) => {
-                log_warn(&format!(
-                    "codex app-server turn succeeded but child cleanup failed: {cleanup_err}{}",
-                    stderr_diagnostics_suffix(&stderr_tail)
-                ));
-                Ok(response)
-            }
-            Err(err) => Err(format!(
-                "codex app-server completed but cleanup failed: {cleanup_err}; {err}{}",
-                stderr_diagnostics_suffix(&stderr_tail)
-            )
-            .into()),
-        },
-        (Err(err), Ok(cleanup)) => Err(format!(
-            "{err}; cleanup: {cleanup}{}",
-            stderr_diagnostics_suffix(&stderr_tail)
-        )
-        .into()),
-        (Err(err), Err(cleanup_err)) => Err(format!(
-            "{err}; cleanup failed: {cleanup_err}{}",
-            stderr_diagnostics_suffix(&stderr_tail)
-        )
-        .into()),
-    }
+    complete_via_pool(req, on_delta).await
 }
 
-async fn run_handshake<F>(
-    state: &mut CodexStreamState,
-    stdin: &mut ChildStdin,
-    stdout: ChildStdout,
-    on_delta: &mut F,
-) -> Result<(), BoxError>
+/// Route a completion through the process pool.
+async fn complete_via_pool<F>(
+    req: CompletionRequest,
+    mut on_delta: F,
+) -> Result<CompletionResponse, BoxError>
 where
     F: FnMut(&str) -> Result<(), BoxError> + Send,
 {
-    write_line(stdin, &state.initial_line()).await?;
-    let mut lines = BufReader::new(stdout).lines();
-    loop {
-        match lines.next_line().await {
-            Ok(Some(line)) => match state.handle_line(&line, on_delta)? {
-                CodexStep::Continue => {}
-                CodexStep::Send(messages) => {
-                    for message in &messages {
-                        write_line(stdin, message).await?;
-                    }
-                }
-                CodexStep::Done => return Ok(()),
-            },
-            Ok(None) => {
-                return Err("codex app-server stream ended before the turn completed".into());
-            }
-            Err(err) => return Err(Box::new(err) as BoxError),
-        }
-    }
-}
+    let pool = pool::pool_for(&req.backend);
+    let timeout = req.backend.completion_timeout();
+    let mut slot = pool.checkout(timeout).await?;
 
-fn spawn_codex_child(
-    backend: &LlmBackendConfig,
-    home: &TempDir,
-    cwd: &Path,
-) -> Result<Child, BoxError> {
-    let mut command = Command::new(&backend.codex_cmd);
-    command
-        .arg("app-server")
-        .current_dir(cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    home::apply_codex_env_allowlist(&mut command);
-    home::apply_codex_home_env(&mut command, home.path());
-    configure_codex_child_isolation(&mut command);
-    command
-        .spawn()
-        .map_err(|err| format!("failed to spawn codex app-server: {err}").into())
-}
+    let prompt = joined_prompt(req.system_prompt.as_deref(), &req.user_prompt);
+    let model = req.model.as_deref().or(req.backend.codex_model.as_deref());
+    let effort = req.effort.map(ReasoningEffort::as_wire);
 
-/// Spawn `codex app-server` against the user's real Codex config — inheriting the
-/// full environment so MCP servers, skills, and hooks load. This deliberately
-/// surrenders the isolation of [`spawn_codex_child`]; gated behind
-/// `AXON_CODEX_LOAD_USER_CONFIG`. The process group is still set so cleanup can
-/// SIGKILL the whole tree.
-fn spawn_codex_child_passthrough(
-    backend: &LlmBackendConfig,
-    cwd: &Path,
-) -> Result<Child, BoxError> {
-    let mut command = Command::new(&backend.codex_cmd);
-    command
-        .arg("app-server")
-        .current_dir(cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    // Inherit the ambient environment (PATH, tokens, OPENAI_API_KEY, etc.) so the
-    // user's MCP servers can authenticate. Only pin CODEX_HOME when explicitly
-    // overridden; otherwise Codex resolves its own default home.
-    match home::resolve_user_codex_home(backend)? {
-        Some(home) => {
-            command.env("CODEX_HOME", home);
-        }
-        None => log_info(
-            "codex load-user-config: no CODEX_HOME resolved; relying on Codex's \
-             default home and ambient-environment auth (e.g. OPENAI_API_KEY)",
+    let result = tokio::time::timeout(
+        timeout,
+        pool::run_turn(
+            &mut slot,
+            &prompt,
+            model,
+            effort,
+            &req.backend,
+            &mut on_delta,
         ),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(response)) => {
+            pool.checkin(slot).await;
+            Ok(response)
+        }
+        Ok(Err(err)) => {
+            pool::discard_slot(slot, &format!("turn error: {err}")).await;
+            Err(err)
+        }
+        Err(_) => {
+            pool::discard_slot(slot, "turn timeout").await;
+            Err(format!("codex app-server timed out after {}s", timeout.as_secs()).into())
+        }
     }
-    configure_codex_child_isolation(&mut command);
-    command
-        .spawn()
-        .map_err(|err| format!("failed to spawn codex app-server (load-user-config): {err}").into())
+}
+
+// ── Internal helpers (pub(super) so pool.rs can reuse them) ─────────────────
+
+pub(super) fn configure_codex_child_isolation(command: &mut tokio::process::Command) {
+    configure_impl(command);
 }
 
 #[cfg(unix)]
-fn configure_codex_child_isolation(command: &mut Command) {
+fn configure_impl(command: &mut tokio::process::Command) {
     command.process_group(0);
 }
 
 #[cfg(not(unix))]
-fn configure_codex_child_isolation(_command: &mut Command) {}
+fn configure_impl(_command: &mut tokio::process::Command) {}
 
 #[cfg(unix)]
-async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
+pub(super) async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
     let kill_result = match child.id() {
         Some(pid) => kill_process_group(pid),
         None => Err(io::Error::new(
@@ -245,9 +122,7 @@ async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
     let wait_result = tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await;
     match (kill_result, wait_result) {
         (Ok(()), Ok(Ok(status))) => Ok(format!("killed process group and reaped with {status}")),
-        (Ok(()), Ok(Err(wait_err))) => {
-            Err(format!("killed process group but wait failed: {wait_err}"))
-        }
+        (Ok(()), Ok(Err(e))) => Err(format!("killed process group but wait failed: {e}")),
         (Ok(()), Err(_)) => Err(format!(
             "killed process group but wait timed out after {}s",
             CLEANUP_TIMEOUT.as_secs()
@@ -255,8 +130,8 @@ async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
         (Err(kill_err), Ok(Ok(status))) => Err(format!(
             "process group kill failed: {kill_err}; wait returned {status}"
         )),
-        (Err(kill_err), Ok(Err(wait_err))) => Err(format!(
-            "process group kill failed: {kill_err}; wait failed: {wait_err}"
+        (Err(kill_err), Ok(Err(e))) => Err(format!(
+            "process group kill failed: {kill_err}; wait failed: {e}"
         )),
         (Err(kill_err), Err(_)) => Err(format!(
             "process group kill failed: {kill_err}; wait timed out after {}s",
@@ -268,24 +143,14 @@ async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
 #[cfg(unix)]
 #[allow(unsafe_code)]
 fn kill_process_group(pid: u32) -> Result<(), io::Error> {
-    // Send SIGKILL to the child's process group (negative pid) via syscall.
-    // The child is its own group leader (`process_group(0)` at spawn), so this
-    // reaps any app-server grandchildren too. Using libc directly avoids
-    // depending on an external `kill` binary — slim container images
-    // (config/Dockerfile) ship no procps, where shelling out fails with ENOENT.
     let pgid = i32::try_from(pid).map_err(|_| io::Error::other("codex child pid out of range"))?;
-    // SAFETY: `kill(2)` with a negative pid + SIGKILL is a plain signal send; it
-    // dereferences no memory and cannot trigger UB.
+    // SAFETY: `kill(2)` with a negative pid + SIGKILL is a plain signal send.
     let rc = unsafe { libc::kill(-pgid, libc::SIGKILL) };
     if rc == 0 {
         return Ok(());
     }
     let err = io::Error::last_os_error();
-    // ESRCH = no process in the group: the child (and its tree) already exited,
-    // which is exactly the cleanup goal — treat it as success. A persistent
-    // app-server can race-exit between the handshake returning and this signal;
-    // surfacing ESRCH here would otherwise convert a completed turn into a bogus
-    // "cleanup failed" error. Genuine faults (EPERM/EINVAL) still propagate.
+    // ESRCH = process already exited — treat as success.
     if err.raw_os_error() == Some(libc::ESRCH) {
         return Ok(());
     }
@@ -293,7 +158,7 @@ fn kill_process_group(pid: u32) -> Result<(), io::Error> {
 }
 
 #[cfg(not(unix))]
-async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
+pub(super) async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
     child
         .kill()
         .await
@@ -330,7 +195,7 @@ pub async fn probe_codex_capabilities(backend: &LlmBackendConfig) -> CodexCapabi
             .tempdir()
             .map_err(|e| format!("failed to create probe cwd: {e}"))?;
         let home = home::prepare_codex_home(backend)?;
-        let mut child = spawn_codex_child(backend, &home, cwd.path())?;
+        let mut child = pool::spawn_child_isolated(backend, &home, cwd.path())?;
         let mut stdin = child
             .stdin
             .take()
@@ -365,14 +230,39 @@ pub async fn probe_codex_capabilities(backend: &LlmBackendConfig) -> CodexCapabi
     }
 }
 
+pub(super) fn read_bounded_stderr_spawn(
+    stderr: tokio::process::ChildStderr,
+) -> JoinHandle<Result<Vec<u8>, io::Error>> {
+    tokio::spawn(read_bounded_stderr(stderr))
+}
+
+pub(super) async fn collect_stderr(
+    task: JoinHandle<Result<Vec<u8>, io::Error>>,
+) -> Result<Vec<u8>, String> {
+    let mut task = task;
+    match tokio::time::timeout(Duration::from_millis(200), &mut task).await {
+        Ok(Ok(Ok(stderr))) => Ok(stderr),
+        Ok(Ok(Err(err))) => Err(format!("failed to read codex stderr: {err}")),
+        Ok(Err(err)) => Err(format!("failed to join codex stderr reader: {err}")),
+        Err(_) => {
+            task.abort();
+            Err("timed out collecting codex stderr after cleanup".to_string())
+        }
+    }
+}
+
+pub(super) fn stderr_diagnostics_suffix(stderr: &Result<Vec<u8>, String>) -> String {
+    match stderr {
+        Ok(stderr) => stderr_suffix(stderr),
+        Err(err) => format!("; stderr diagnostics unavailable: {err}"),
+    }
+}
+
 fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {
     let program = backend.codex_cmd.trim();
     if program.is_empty() {
         return Err("AXON_CODEX_CMD must not be empty".into());
     }
-    // Only validate explicit paths; bare command names resolve via PATH. The
-    // production image installs `@openai/codex` (see config/Dockerfile), so a
-    // bare `codex` resolves in-container too — no host-only restriction.
     if !(program.contains('/') || program.contains('\\')) {
         return Ok(());
     }
@@ -392,33 +282,6 @@ fn validate_codex_cmd(backend: &LlmBackendConfig) -> Result<(), BoxError> {
         }
     }
     Ok(())
-}
-
-async fn write_line(stdin: &mut ChildStdin, line: &str) -> Result<(), BoxError> {
-    stdin.write_all(line.as_bytes()).await?;
-    stdin.write_all(b"\n").await?;
-    stdin.flush().await?;
-    Ok(())
-}
-
-async fn collect_stderr(task: JoinHandle<Result<Vec<u8>, io::Error>>) -> Result<Vec<u8>, String> {
-    let mut task = task;
-    match tokio::time::timeout(Duration::from_millis(200), &mut task).await {
-        Ok(Ok(Ok(stderr))) => Ok(stderr),
-        Ok(Ok(Err(err))) => Err(format!("failed to read codex stderr: {err}")),
-        Ok(Err(err)) => Err(format!("failed to join codex stderr reader: {err}")),
-        Err(_) => {
-            task.abort();
-            Err("timed out collecting codex stderr after cleanup".to_string())
-        }
-    }
-}
-
-fn stderr_diagnostics_suffix(stderr: &Result<Vec<u8>, String>) -> String {
-    match stderr {
-        Ok(stderr) => stderr_suffix(stderr),
-        Err(err) => format!("; stderr diagnostics unavailable: {err}"),
-    }
 }
 
 fn stderr_suffix(stderr: &[u8]) -> String {

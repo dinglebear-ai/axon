@@ -259,7 +259,7 @@ fn populate_services_and_ask_basics(
         .or_else(|| non_empty_env("AXON_CODEX_MODEL"))
         .unwrap_or_default();
     cfg.codex_completion_concurrency =
-        parse_positive_usize_env("AXON_CODEX_COMPLETION_CONCURRENCY", 1)?;
+        parse_positive_usize_env("AXON_CODEX_COMPLETION_CONCURRENCY", 4)?;
     cfg.codex_load_user_config = env_bool("AXON_CODEX_LOAD_USER_CONFIG", false);
     cfg.llm_completion_concurrency =
         parse_positive_usize_env("AXON_LLM_COMPLETION_CONCURRENCY", 4)?;
