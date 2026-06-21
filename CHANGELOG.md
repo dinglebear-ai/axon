@@ -1,5 +1,32 @@
 # Changelog
 
+## [5.16.6] - 2026-06-20
+
+### Added
+- Prometheus `/metrics` endpoint on the unified server (`axon serve`/`axon mcp`),
+  exposing ask-path request, latency, and retrieval metrics. Unauthenticated,
+  like the `/healthz` and `/readyz` probes.
+- Codex app-server backend: ephemeral threads, developer instructions, and a
+  reasoning-effort hint (summarize requests run at `low`, the evaluate judge at
+  `high`).
+- `axon doctor` surfaces a Codex capability probe (available models + rate-limit
+  headroom) when the configured LLM backend is `codex-app-server`.
+
+### Changed
+- Release version bump.
+- Crawl page bodies are now capped at 4 MiB by default (previously unlimited);
+  pages over the cap are skipped. Set `scrape.max_page_bytes = 0` in
+  `~/.axon/config.toml` to restore unlimited.
+- Uncapped crawls (`--max-pages 0`) of a deep (≥2 path-segment) start URL are
+  now allowed — they auto-scope to the path subtree. Only uncapped root or
+  single-segment crawls remain rejected.
+
+### Fixed
+- Added crawl memory guardrails for unscoped uncapped crawls, oversized page
+  bodies, broadcast buffering, and queued HTML-owning fallback tasks.
+- JSON/YAML/TOML files that exceed the per-file chunk cap now log a warning
+  naming the file and the dropped chunk count instead of silently truncating.
+
 ## [5.16.5] - 2026-06-20
 
 ### Changed

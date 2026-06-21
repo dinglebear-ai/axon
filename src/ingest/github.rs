@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::ingest::progress::PhaseReporter;
+use crate::vector::ops::input::select::{is_minified_asset_filename, is_ts_declaration_file};
 use crate::vector::ops::{SourceDocument, embed_prepared_docs, prepare_source_document};
 use anyhow::Result;
 use octocrab::Octocrab;
@@ -84,6 +85,12 @@ pub fn is_indexable_source_path(path: &str) -> bool {
         return false;
     }
 
+    // Reject TypeScript declaration files and minified assets — compiler/bundler output.
+    let filename_lower = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+    if is_ts_declaration_file(&filename_lower) || is_minified_asset_filename(&filename_lower) {
+        return false;
+    }
+
     // Accept known source extensions
     let accepted = [
         // Systems languages
@@ -135,6 +142,12 @@ fn is_generated_bulk_path(path: &str) -> bool {
     }
 
     if lower.starts_with("docs/reference/actions/") || lower.contains("/docs/reference/actions/") {
+        return true;
+    }
+
+    // TypeScript declaration files (.d.ts, .d.mts, .d.cts) and minified assets
+    // are compiler/bundler output — no useful semantic content for RAG.
+    if is_ts_declaration_file(filename) || is_minified_asset_filename(filename) {
         return true;
     }
 

@@ -119,6 +119,7 @@ pub(super) async fn probe_llm_roundtrip(cfg: &Config) -> (bool, String) {
         user_prompt: "ping".to_string(),
         model: None,
         stream: false,
+        effort: None,
         backend,
     };
 

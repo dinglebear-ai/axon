@@ -695,16 +695,11 @@ pub async fn ask(
     Ok(result)
 }
 
-/// OPS-H2 (bounded): emit ask-path timing + retrieval counts as STRUCTURED
-/// tracing fields at the service boundary so an operator can scrape ask latency
-/// and pool sizes from logs (JSON file sink) without a metrics backend.
-///
-/// This is the minimal, reviewable observability step. A real `/metrics`
-/// (Prometheus) surface is intentionally out of scope for this pass.
-/// TODO(OPS-H2): expose /metrics (Prometheus) at the web server bootstrap
-/// (`src/web/server/`) and convert these fields into counters/histograms —
-/// see .full-review/04-best-practices.md (OPS-H2).
+/// OPS-H2: emit ask-path timing + retrieval counts as both structured tracing
+/// fields and Prometheus metrics. The `/metrics` endpoint (wired in
+/// `src/web/server/routing.rs`) exposes these to Prometheus scrapers.
 fn emit_ask_metrics(question: &str, result: &AskResult) {
+    use metrics::{counter, histogram};
     let t = &result.timing_ms;
     let (candidate_pool, reranked_pool, chunks_selected, full_docs_selected, context_chars) =
         match &result.diagnostics {
@@ -732,6 +727,18 @@ fn emit_ask_metrics(question: &str, result: &AskResult) {
         warnings = result.warnings.len(),
         "ask path completed"
     );
+    // Prometheus metrics — no-ops when no recorder is installed (CLI/MCP-stdio).
+    counter!("axon_ask_requests_total").increment(1);
+    histogram!("axon_ask_retrieval_ms").record(t.retrieval as f64);
+    histogram!("axon_ask_context_build_ms").record(t.context_build as f64);
+    histogram!("axon_ask_llm_ms").record(t.llm as f64);
+    histogram!("axon_ask_total_ms").record(t.total as f64);
+    histogram!("axon_ask_candidate_pool").record(candidate_pool as f64);
+    histogram!("axon_ask_chunks_selected").record(chunks_selected as f64);
+    let warning_count = result.warnings.len() as u64;
+    if warning_count > 0 {
+        counter!("axon_ask_warnings_total").increment(warning_count);
+    }
 }
 
 fn ask_delta_handler(tx: Option<mpsc::Sender<ServiceEvent>>) -> impl FnMut(&str) + Send {

@@ -679,12 +679,16 @@ pub struct Config {
     pub auto_switch_min_pages: usize,
 
     /// Minimum broadcast channel buffer for crawl page receiver (entries, not bytes).
-    /// Set by performance profile. Default (high-stable): 4096.
+    /// Set by performance profile. Default (high-stable): 512.
     pub crawl_broadcast_buffer_min: usize,
 
     /// Maximum broadcast channel buffer for crawl page receiver (entries, not bytes).
-    /// Set by performance profile. Default (high-stable): 16_384.
+    /// Set by performance profile. Default (high-stable): 2_048.
     pub crawl_broadcast_buffer_max: usize,
+
+    /// Allow explicitly uncapped broad-domain crawls without a path budget or URL whitelist.
+    /// Default: false. Env: `AXON_ALLOW_UNBOUNDED_BROAD_CRAWL`.
+    pub allow_unbounded_broad_crawl: bool,
 
     // P3 — missing spider builder methods
     /// URL allow-list: only crawl URLs matching at least one of these regex patterns.
@@ -696,8 +700,12 @@ pub struct Config {
     pub block_assets: bool,
 
     /// Maximum response size per page in bytes; pages exceeding this are skipped.
-    /// Spider: `with_max_page_bytes(u64)`. Default: None (unlimited). TOML: `scrape.max-page-bytes`.
+    /// Spider: `with_max_page_bytes(u64)`. Default: 4 MiB; explicit 0 disables the cap. TOML: `scrape.max-page-bytes`.
     pub max_page_bytes: Option<u64>,
+
+    /// Abort an in-process crawl when RSS reaches this percent of the host/cgroup memory limit.
+    /// Default: 85.0; explicit 0 disables the guard. Env: `AXON_CRAWL_MEMORY_ABORT_PERCENT`.
+    pub crawl_memory_abort_percent: Option<f64>,
 
     /// Use strict redirect policy — only follow same-origin redirects.
     /// Spider: `with_redirect_policy(RedirectPolicy::Strict)`. Default: false. TOML: `scrape.redirect-policy-strict`.

@@ -65,30 +65,80 @@ pub(super) fn into_config_via_args(extra: &[&str]) -> Result<Config, String> {
     into_config_with_sources(cli, output_dir_was_explicit, collection_was_explicit)
 }
 
+#[allow(unsafe_code)]
 #[test]
 fn extract_and_crawl_defaults_are_bounded_but_explicit_zero_stays_uncapped() {
     let _guard = ENV_LOCK.lock().unwrap();
+    let mut default_toml = TempfileBuilder::new()
+        .suffix(".toml")
+        .tempfile()
+        .expect("temp default config");
+    writeln!(default_toml).expect("write empty config");
 
-    let default_extract = into_config_via_args(&["extract", "https://example.com/page"])
-        .expect("extract config should parse");
-    assert_eq!(default_extract.max_pages, 1);
+    with_env_saved(
+        &[
+            "AXON_CONFIG_PATH",
+            "AXON_ALLOW_UNBOUNDED_BROAD_CRAWL",
+            "AXON_CRAWL_MEMORY_ABORT_PERCENT",
+        ],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", default_toml.path());
+            env::remove_var("AXON_ALLOW_UNBOUNDED_BROAD_CRAWL");
+            env::remove_var("AXON_CRAWL_MEMORY_ABORT_PERCENT");
 
-    let explicit_uncapped =
-        into_config_via_args(&["--max-pages", "0", "extract", "https://example.com/page"])
-            .expect("extract config with explicit max-pages should parse");
-    assert_eq!(explicit_uncapped.max_pages, 0);
+            let default_extract = into_config_via_args(&["extract", "https://example.com/page"])
+                .expect("extract config should parse");
+            assert_eq!(default_extract.max_pages, 1);
 
-    let default_crawl =
-        into_config_via_args(&["crawl", "https://example.com"]).expect("crawl config should parse");
-    assert_eq!(
-        default_crawl.max_pages,
-        super::config_literal::DEFAULT_CRAWL_MAX_PAGES
+            let explicit_uncapped =
+                into_config_via_args(&["--max-pages", "0", "extract", "https://example.com/page"])
+                    .expect("extract config with explicit max-pages should parse");
+            assert_eq!(explicit_uncapped.max_pages, 0);
+
+            let default_crawl = into_config_via_args(&["crawl", "https://example.com"])
+                .expect("crawl config should parse");
+            assert_eq!(
+                default_crawl.max_pages,
+                super::config_literal::DEFAULT_CRAWL_MAX_PAGES
+            );
+            assert_eq!(
+                default_crawl.max_page_bytes,
+                Some(crate::core::config::types::DEFAULT_MAX_PAGE_BYTES)
+            );
+            assert_eq!(
+                default_crawl.crawl_broadcast_buffer_min,
+                crate::core::config::types::DEFAULT_CRAWL_BROADCAST_BUFFER_MIN
+            );
+            assert_eq!(
+                default_crawl.crawl_broadcast_buffer_max,
+                crate::core::config::types::DEFAULT_CRAWL_BROADCAST_BUFFER_MAX
+            );
+
+            let explicit_uncapped_crawl =
+                into_config_via_args(&["--max-pages", "0", "crawl", "https://example.com"])
+                    .expect("crawl config with explicit max-pages should parse");
+            assert_eq!(explicit_uncapped_crawl.max_pages, 0);
+
+            let mut unlimited_toml = TempfileBuilder::new()
+                .suffix(".toml")
+                .tempfile()
+                .expect("temp unlimited config");
+            writeln!(unlimited_toml, "[scrape]\nmax-page-bytes = 0")
+                .expect("write unlimited config");
+            env::set_var("AXON_CONFIG_PATH", unlimited_toml.path());
+            let explicit_unlimited_bytes = into_config_via_args(&["crawl", "https://example.com"])
+                .expect("crawl config with explicit max-page-bytes should parse");
+            assert_eq!(explicit_unlimited_bytes.max_page_bytes, None);
+
+            env::set_var("AXON_CONFIG_PATH", default_toml.path());
+            env::set_var("AXON_ALLOW_UNBOUNDED_BROAD_CRAWL", "true");
+            env::set_var("AXON_CRAWL_MEMORY_ABORT_PERCENT", "0");
+            let env_overrides = into_config_via_args(&["crawl", "https://example.com"])
+                .expect("crawl config with env memory knobs should parse");
+            assert!(env_overrides.allow_unbounded_broad_crawl);
+            assert_eq!(env_overrides.crawl_memory_abort_percent, None);
+        },
     );
-
-    let explicit_uncapped_crawl =
-        into_config_via_args(&["--max-pages", "0", "crawl", "https://example.com"])
-            .expect("crawl config with explicit max-pages should parse");
-    assert_eq!(explicit_uncapped_crawl.max_pages, 0);
 }
 
 /// Save/restore env vars around a test body so panics don't leak state.

@@ -214,6 +214,72 @@ fn chunk_file_handles_multibyte_content_without_panic() {
 }
 
 #[test]
+fn permissive_skips_declaration_and_minified_files() {
+    use crate::vector::ops::input::classify::path_extension;
+    // Verify the predicate logic that drives Permissive include_file decisions.
+    // Extension alone (`ts`, `js`, `css`) is not in BINARY_EXTENSIONS, so only
+    // is_generated_filename blocks these files under the Permissive policy.
+    let cases: &[(&str, bool)] = &[
+        ("index.d.ts", false),
+        ("types.d.mts", false),
+        ("app.min.js", false),
+        ("styles.min.css", false),
+        ("main.bundle.js", false),
+        ("index.ts", true),
+        ("styles.css", true),
+        ("app.js", true),
+    ];
+    for (name, expect_included) in cases {
+        let name_lower = name.to_ascii_lowercase();
+        let included = !select::is_binary_ext(path_extension(name))
+            && !select::is_generated_filename(&name_lower);
+        assert_eq!(
+            included, *expect_included,
+            "Permissive policy for '{name}': expected included={expect_included}, got {included}"
+        );
+    }
+}
+
+#[test]
+fn json_yaml_toml_chunks_are_capped_at_max() {
+    // ~210 KB of structured content → well over MAX text chunks, so the cap
+    // actually fires and reports a dropped tail (the prior 100-key fixture
+    // produced only ~2 chunks, making the `<= MAX` assertion vacuous).
+    let big: String = (0..10_000)
+        .map(|i| format!("key_{i}: value_{i}\n"))
+        .collect();
+    for ext in ["json", "yaml", "yml", "toml"] {
+        let (chunks, dropped) = chunk_file_reporting_cap(&big, ext);
+        assert_eq!(
+            chunks.len(),
+            MAX_JSON_YAML_CHUNKS,
+            "ext {ext} must cap at MAX, got {}",
+            chunks.len()
+        );
+        assert!(
+            dropped > 0,
+            "ext {ext} must report the dropped tail, got {dropped}"
+        );
+    }
+}
+
+#[test]
+fn chunk_cap_does_not_truncate_non_structured_exts() {
+    // The same over-MAX volume with a plain-text extension must NOT be capped —
+    // a regression that widened the cap to all extensions would fail here.
+    let big: String = (0..10_000)
+        .map(|i| format!("key_{i}: value_{i}\n"))
+        .collect();
+    let (chunks, dropped) = chunk_file_reporting_cap(&big, "txt");
+    assert!(
+        chunks.len() > MAX_JSON_YAML_CHUNKS,
+        "plain text should exceed MAX, got {}",
+        chunks.len()
+    );
+    assert_eq!(dropped, 0, "plain text must never be capped");
+}
+
+#[test]
 fn chunking_method_returns_prose_for_chunk_without_symbol() {
     use crate::vector::ops::input::code::{ChunkSource, CodeChunk};
     let chunk = CodeChunk {

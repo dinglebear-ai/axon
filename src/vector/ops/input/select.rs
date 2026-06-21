@@ -64,6 +64,30 @@ pub fn is_binary_ext(ext: &str) -> bool {
     BINARY_EXTENSIONS.contains(&lower.as_str())
 }
 
+/// Returns true for TypeScript declaration files (`.d.ts`, `.d.mts`, `.d.cts`).
+/// These are compiler output — `path_extension` sees only `ts`, so detection
+/// requires the full lowercased filename, not just the extension.
+pub fn is_ts_declaration_file(filename: &str) -> bool {
+    filename.ends_with(".d.ts") || filename.ends_with(".d.mts") || filename.ends_with(".d.cts")
+}
+
+/// Returns true for minified/bundled JavaScript and CSS assets.
+/// Takes the bare lowercased filename.
+pub fn is_minified_asset_filename(filename: &str) -> bool {
+    filename.ends_with(".min.js")
+        || filename.ends_with(".min.mjs")
+        || filename.ends_with(".min.css")
+        || filename.ends_with(".bundle.js")
+        || filename.ends_with(".bundle.mjs")
+}
+
+/// Returns true for generated/compiled output files with no RAG value:
+/// TypeScript declaration files and minified/bundled assets.
+/// Takes the bare lowercased filename (last path component).
+pub fn is_generated_filename(filename: &str) -> bool {
+    is_ts_declaration_file(filename) || is_minified_asset_filename(filename)
+}
+
 /// Returns true if the file at `path` should chunk through tree-sitter
 /// (`code::chunk_code`) rather than the prose/markdown splitters. Matched on the
 /// path's extension, case-insensitively. Delegates to

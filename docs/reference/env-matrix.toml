@@ -779,6 +779,30 @@ compatibility = "warn-env-override"
 reason = "End-to-end timeout for one service-level scrape batch."
 
 [[env]]
+key = "AXON_ALLOW_UNBOUNDED_BROAD_CRAWL"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "scrape.allow-unbounded-broad-crawl"
+compatibility = "warn-env-override"
+reason = "Explicit operator override for uncapped broad-domain crawl guardrails."
+
+[[env]]
+key = "AXON_CRAWL_MEMORY_ABORT_PERCENT"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "scrape.crawl-memory-abort-percent"
+compatibility = "warn-env-override"
+reason = "RSS percent of host/cgroup memory that aborts long-running crawls."
+
+[[env]]
 key = "AXON_INGEST_LANES"
 classification = "move-toml"
 runtime_placement = "not-runtime"

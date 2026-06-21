@@ -121,39 +121,6 @@ fun <T> ResourceContent(
 }
 
 /**
- * Page-sized "feature not yet wired" placeholder. Headline, Aurora separator,
- * and a full-bleed empty-state card. Used by stub screens that own a top-level
- * pager page or operation mode and have nothing to render yet.
- */
-@Composable
-fun NotYetWiredPage(
-    title: String,
-    headline: String,
-    description: String,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-) {
-    androidx.compose.foundation.layout.Column(
-        modifier = androidx.compose.ui.Modifier
-            .fillMaxWidth()
-            .then(modifier),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
-    ) {
-        androidx.compose.material3.Text(
-            title,
-            style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
-        )
-        tv.tootie.aurora.components.AuroraSeparator()
-        EmptyContent(
-            title = headline,
-            description = description,
-            icon = icon,
-            modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-/**
  * Empty state placeholder shared across screens.
  * Pass [icon] and [onAction] for a fully decorated empty state.
  */

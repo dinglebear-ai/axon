@@ -88,8 +88,12 @@ pub(super) struct TomlScrapeSection {
     pub auto_switch_min_pages: Option<usize>,
     /// Only crawl URLs matching these regex patterns.
     pub url_whitelist: Option<Vec<String>>,
-    /// Maximum response size per page in bytes; 0 means unlimited. Default 0.
+    /// Allow `max-pages = 0` without an explicit path budget or URL whitelist.
+    pub allow_unbounded_broad_crawl: Option<bool>,
+    /// Maximum response size per page in bytes; 0 means unlimited. Default 4 MiB.
     pub max_page_bytes: Option<u64>,
+    /// RSS percent of host/cgroup memory that aborts a crawl; 0 disables. Default 85.
+    pub crawl_memory_abort_percent: Option<f64>,
     /// Only follow same-origin redirects. Default false.
     pub redirect_policy_strict: Option<bool>,
     /// DOM retry ladder Strategy 1 threshold (words). Default 30.

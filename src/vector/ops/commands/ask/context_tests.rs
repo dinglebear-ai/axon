@@ -7,7 +7,10 @@ use super::heuristics::{
     url_matches_domain_list,
 };
 use super::query_rewrite::{QueryComplexity, build_query_forms};
-use super::retrieval::{RerankParams, apply_mode_aware_rerank, is_rrf_mode};
+use super::retrieval::{
+    ERR_NO_CANDIDATES_THRESHOLD_PREFIX, ERR_NO_CANDIDATES_TOPICAL, ERR_NO_RELEVANT_DOCUMENTS,
+    RerankParams, apply_mode_aware_rerank, is_rrf_mode,
+};
 use super::{
     FullDocsSource, high_context_synthesis_model, resolve_ask_full_docs,
     resolve_ask_full_docs_for_model,
@@ -1239,4 +1242,83 @@ fn full_docs_source_strings_are_stable() {
     );
     assert_eq!(FullDocsSource::AdaptiveSimple.as_str(), "adaptive_simple");
     assert_eq!(FullDocsSource::AdaptiveComplex.as_str(), "adaptive_complex");
+}
+
+// TEST-L1: empty-retrieval graceful-answer tests (bd axon_rust-qcbb).
+//
+// The ask path has three empty-corpus exits that must produce an Err, never a
+// panic. Two of them (empty rerank) are already exercised by
+// `apply_mode_aware_rerank_empty_input_both_modes` above. The third (zero
+// Qdrant hits before rerank) is in async retrieval code that needs live
+// services and is covered by the `#[ignore]` test below.
+//
+// These constant-stability tests pin the error strings so any accidental
+// rename shows up as a test failure rather than a silent behaviour change.
+
+#[test]
+fn empty_retrieval_error_constants_are_stable() {
+    assert_eq!(
+        ERR_NO_RELEVANT_DOCUMENTS,
+        "No relevant documents found for ask query"
+    );
+    assert_eq!(
+        ERR_NO_CANDIDATES_TOPICAL,
+        "No candidates passed topical overlap"
+    );
+    assert!(
+        ERR_NO_CANDIDATES_THRESHOLD_PREFIX.starts_with("No candidates met relevance threshold"),
+        "prefix must start with expected text; got: {ERR_NO_CANDIDATES_THRESHOLD_PREFIX}"
+    );
+}
+
+#[test]
+fn empty_rerank_both_modes_does_not_panic() {
+    // Regression guard: apply_mode_aware_rerank on zero candidates must
+    // return an empty Vec in both cosine and RRF modes without panicking.
+    // The caller (retrieve_ask_candidates) then converts this to
+    // ERR_NO_CANDIDATES_TOPICAL or ERR_NO_CANDIDATES_THRESHOLD_PREFIX.
+    let params = rerank_params(&[]);
+    let tokens = vec!["rust".to_string()];
+    let cosine_result = apply_mode_aware_rerank(false, &[], &tokens, &params);
+    assert!(
+        cosine_result.is_empty(),
+        "cosine mode: expected empty, got {}",
+        cosine_result.len()
+    );
+    let rrf_result = apply_mode_aware_rerank(true, &[], &tokens, &params);
+    assert!(
+        rrf_result.is_empty(),
+        "rrf mode: expected empty, got {}",
+        rrf_result.len()
+    );
+}
+
+// Live integration test — requires Qdrant + TEI. Run with:
+//   QDRANT_URL=http://... TEI_URL=http://... cargo test empty_corpus_ask_returns_err -- --ignored
+#[ignore]
+#[tokio::test]
+async fn empty_corpus_ask_returns_err_not_panic() {
+    // Point at a fresh throwaway collection that has no indexed documents.
+    // The ask path must return an Err (not panic) when retrieval finds nothing.
+    let cfg = Config {
+        collection: format!(
+            "axon_test_empty_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        ),
+        ..Config::default()
+    };
+    let result =
+        crate::vector::ops::commands::ask::ask_result(&cfg, "what is the meaning of life").await;
+    assert!(result.is_err(), "expected Err from empty corpus, got Ok");
+    let msg = result.unwrap_err().to_string();
+    let is_known_empty_msg = msg.contains(ERR_NO_RELEVANT_DOCUMENTS)
+        || msg.contains(ERR_NO_CANDIDATES_TOPICAL)
+        || msg.contains(ERR_NO_CANDIDATES_THRESHOLD_PREFIX);
+    assert!(
+        is_known_empty_msg,
+        "expected a known empty-retrieval error message, got: {msg}"
+    );
 }

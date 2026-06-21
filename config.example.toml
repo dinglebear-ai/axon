@@ -412,8 +412,17 @@ remote-local-policy = false
 # Only crawl URLs matching these regex patterns.
 # url-whitelist = ["^https://example\\.com/docs/"]
 
+# Allow explicitly uncapped broad-domain crawls without a path budget or URL whitelist.
+# Env: AXON_ALLOW_UNBOUNDED_BROAD_CRAWL
+# allow-unbounded-broad-crawl = false
+
 # Maximum response size per page in bytes. 0 = unlimited.
-# max-page-bytes = 0
+# max-page-bytes = 4194304
+
+# Abort an in-process crawl when RSS reaches this percent of host/cgroup memory.
+# 0 disables the guard.
+# Env: AXON_CRAWL_MEMORY_ABORT_PERCENT
+# crawl-memory-abort-percent = 85.0
 
 # Only follow same-origin redirects.
 # redirect-policy-strict = false

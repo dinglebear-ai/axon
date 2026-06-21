@@ -6,8 +6,11 @@
 //! `CODEX_HOME` (see [`home`]) so a synthesis call does not load the user's MCP
 //! servers, hooks, or skills. Wire-protocol logic lives in [`protocol`].
 
+mod capabilities;
 mod home;
 mod protocol;
+
+pub use capabilities::CodexCapabilities;
 
 use std::error::Error as StdError;
 use std::io;
@@ -20,9 +23,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::task::JoinHandle;
 
-use crate::core::llm::headless::common::{
-    joined_prompt, read_bounded_stderr, redacted_stderr_tail,
-};
+use crate::core::llm::headless::common::{read_bounded_stderr, redacted_stderr_tail};
 use crate::core::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use crate::core::logging::{log_info, log_warn};
 use protocol::{CodexStep, CodexStreamState};
@@ -78,14 +79,8 @@ where
         .ok_or("failed to open codex app-server stderr")?;
     let stderr_task = tokio::spawn(read_bounded_stderr(stderr));
 
-    let prompt = joined_prompt(req.system_prompt.as_deref(), &req.user_prompt);
-    let model = req
-        .model
-        .clone()
-        .or_else(|| req.backend.codex_model.clone());
-    let mut state = CodexStreamState::new(
-        model,
-        prompt,
+    let mut state = CodexStreamState::from_request(
+        &req,
         cwd.path().display().to_string(),
         env!("CARGO_PKG_VERSION"),
     );
@@ -310,6 +305,63 @@ async fn cleanup_codex_child(child: &mut Child) -> Result<String, String> {
             "killed child but wait timed out after {}s",
             CLEANUP_TIMEOUT.as_secs()
         )),
+    }
+}
+
+/// Probe the Codex app-server for capability information.
+///
+/// Spawns the Codex child, performs the `initialize` handshake, then sends
+/// `model/list` and `account/rateLimits/read` requests and parses the
+/// responses. Used by `axon doctor` when the backend is `codex-app-server`.
+///
+/// The probe is bounded by a 15-second hard timeout and always returns a
+/// [`CodexCapabilities`] value — individual method failures are represented as
+/// `Err` variants inside the struct rather than propagated.
+pub async fn probe_codex_capabilities(backend: &LlmBackendConfig) -> CodexCapabilities {
+    use capabilities::run_capability_probe;
+    use std::time::Duration;
+
+    const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
+
+    let result = tokio::time::timeout(PROBE_TIMEOUT, async {
+        validate_codex_cmd(backend)?;
+        let cwd = tempfile::Builder::new()
+            .prefix("axon-codex-probe-cwd-")
+            .tempdir()
+            .map_err(|e| format!("failed to create probe cwd: {e}"))?;
+        let home = home::prepare_codex_home(backend)?;
+        let mut child = spawn_codex_child(backend, &home, cwd.path())?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or("failed to open codex stdin for capability probe")?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or("failed to open codex stdout for capability probe")?;
+        let caps = run_capability_probe(&mut stdin, stdout, env!("CARGO_PKG_VERSION")).await;
+        drop(stdin);
+        let _ = cleanup_codex_child(&mut child).await;
+        Ok::<CodexCapabilities, BoxError>(caps)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(caps)) => caps,
+        Ok(Err(e)) => {
+            let msg = format!("codex capability probe failed: {e}");
+            CodexCapabilities {
+                models: Err(msg.clone()),
+                rate_limits: Err(msg),
+            }
+        }
+        Err(_) => {
+            let msg = "codex capability probe timed out after 15s".to_string();
+            CodexCapabilities {
+                models: Err(msg.clone()),
+                rate_limits: Err(msg),
+            }
+        }
     }
 }
 
