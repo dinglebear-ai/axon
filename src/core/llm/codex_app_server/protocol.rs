@@ -23,8 +23,8 @@ const CLIENT_NAME: &str = "axon";
 const CLIENT_TITLE: &str = "Axon";
 
 /// JSON-RPC ids for the three requests in the synthesis handshake.
-const ID_INITIALIZE: i64 = 0;
-const ID_THREAD_START: i64 = 1;
+pub(super) const ID_INITIALIZE: i64 = 0;
+pub(super) const ID_THREAD_START: i64 = 1;
 const ID_TURN_START: i64 = 2;
 const PROTOCOL_ERROR_LIMIT: usize = 512;
 
@@ -94,7 +94,9 @@ pub fn turn_start_line(thread_id: &str, prompt: &str, effort: Option<&str>) -> S
 }
 
 /// What the orchestrator should do after a server line is processed.
+/// Variants are exercised by [`CodexStreamState`] tests.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum CodexStep {
     /// Keep reading; nothing to send.
     Continue,
@@ -120,6 +122,10 @@ pub struct CodexStreamState {
     last_error: Option<String>,
 }
 
+// The pool path (`pool_protocol`) is the live completion route; this
+// per-completion streaming state machine is retained (and exercised by tests)
+// but no longer driven by production code, so its inherent methods read as dead.
+#[allow(dead_code)]
 impl CodexStreamState {
     #[must_use]
     pub fn new(
@@ -351,7 +357,7 @@ impl CodexStreamState {
     }
 }
 
-fn sanitize_protocol_error(text: &str) -> String {
+pub(super) fn sanitize_protocol_error(text: &str) -> String {
     let mut redacted = crate::core::llm::headless::common::redact_for_error(text);
     if redacted.len() > PROTOCOL_ERROR_LIMIT {
         truncate_utf8_boundary(&mut redacted, PROTOCOL_ERROR_LIMIT);
@@ -370,7 +376,7 @@ fn truncate_utf8_boundary(value: &mut String, max_bytes: usize) {
     value.truncate(end);
 }
 
-fn decline_server_request(id: &Value) -> CodexStep {
+pub(super) fn decline_server_request(id: &Value) -> CodexStep {
     let reply = json!({
         "id": id,
         "error": {
@@ -382,7 +388,7 @@ fn decline_server_request(id: &Value) -> CodexStep {
     CodexStep::Send(vec![reply])
 }
 
-fn parse_usage(params: Option<&Value>) -> Option<UsageSnapshot> {
+pub(super) fn parse_usage(params: Option<&Value>) -> Option<UsageSnapshot> {
     let total = params?.get("tokenUsage")?.get("total")?;
     let prompt_tokens = total
         .get("inputTokens")
@@ -402,6 +408,21 @@ fn parse_usage(params: Option<&Value>) -> Option<UsageSnapshot> {
         total_tokens,
     })
 }
+
+impl CodexStep {
+    /// Extract the lines from a `Send` variant (used by pool_protocol).
+    pub fn into_lines(self) -> Vec<String> {
+        match self {
+            CodexStep::Send(lines) => lines,
+            _ => vec![],
+        }
+    }
+}
+
+/// Pool-split protocol: one-time init handshake and per-turn cycles.
+pub mod pool_protocol;
+#[allow(unused_imports)]
+pub use pool_protocol::{CodexTurnState, TurnStep, run_init_handshake, run_turn_handshake};
 
 #[cfg(test)]
 #[path = "protocol_tests.rs"]

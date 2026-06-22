@@ -81,6 +81,7 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_CODEX_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_SYNTHESIS_CODEX_MODEL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CODEX_COMPLETION_CONCURRENCY` | keep-env | both | — | no | runtime.rs |
+| `AXON_CODEX_POOL_IDLE_TTL_SECS` | keep-env | both | — | no | pool.rs |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | keep-env | both | — | no | runtime.rs |
 | `AXON_LLM_COMPLETION_TIMEOUT_SECS` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_HOME` | trusted-bootstrap | both | — | no | advanced.rs |
