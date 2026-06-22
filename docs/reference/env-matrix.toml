@@ -695,6 +695,18 @@ compatibility = "canonical"
 reason = "Max concurrent Codex app-server child completions. Defaults lower because each completion spawns a child process."
 
 [[env]]
+key = "AXON_CODEX_POOL_IDLE_TTL_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Idle TTL (seconds) before the Codex app-server pool discards an unused child on next checkout. 0 disables TTL eviction."
+
+[[env]]
 key = "AXON_CODEX_LOAD_USER_CONFIG"
 classification = "keep-env"
 runtime_placement = "both"

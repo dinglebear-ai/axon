@@ -255,3 +255,177 @@ async fn concurrent_refresh_cannot_delete_newer_generation() {
             .any(|c| c["key"] == "local_index_version" && c["match"]["value"] == 1)
     );
 }
+
+#[tokio::test]
+async fn metadata_migration_is_safe_on_existing_schema() {
+    let store = store::CodeIndexStore::open_in_memory().await.unwrap();
+
+    // Manually create the OLD table WITHOUT the new columns
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS axon_code_projects (
+          project_key TEXT PRIMARY KEY,
+          project_display TEXT NOT NULL,
+          project_root TEXT NOT NULL,
+          collection TEXT NOT NULL,
+          embedder_key TEXT NOT NULL,
+          index_version INTEGER NOT NULL,
+          committed_generation INTEGER NOT NULL DEFAULT 0,
+          max_generation INTEGER NOT NULL DEFAULT 0,
+          lease_owner TEXT,
+          lease_expires_at_ms INTEGER NOT NULL DEFAULT 0,
+          last_checked_at_ms INTEGER NOT NULL DEFAULT 0
+        )",
+    )
+    .execute(&store.pool)
+    .await
+    .unwrap();
+
+    // Also create the other tables so init_schema doesn't fail on them
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS axon_code_files (
+          project_key TEXT NOT NULL,
+          relative_path TEXT NOT NULL,
+          hash TEXT NOT NULL,
+          size_bytes INTEGER NOT NULL,
+          mtime_ns INTEGER NOT NULL,
+          indexed_generation INTEGER NOT NULL,
+          pending INTEGER NOT NULL DEFAULT 0,
+          updated_at_ms INTEGER NOT NULL,
+          PRIMARY KEY (project_key, relative_path)
+        )",
+    )
+    .execute(&store.pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS axon_code_cleanup_debt (
+          project_key TEXT NOT NULL,
+          generation INTEGER NOT NULL,
+          relative_path TEXT NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          PRIMARY KEY (project_key, generation, relative_path)
+        )",
+    )
+    .execute(&store.pool)
+    .await
+    .unwrap();
+
+    // Insert a row into the OLD schema (committed_generation=5, max_generation=5)
+    sqlx::query(
+        "INSERT INTO axon_code_projects
+          (project_key, project_display, project_root, collection, embedder_key,
+           index_version, committed_generation, max_generation, last_checked_at_ms)
+         VALUES ('legacy-key', 'Legacy', '/tmp/legacy', 'axon', 'tei', 1, 5, 5, 0)",
+    )
+    .execute(&store.pool)
+    .await
+    .unwrap();
+
+    // Run init_schema — should add the new columns without destroying the existing row
+    store.init_schema().await.unwrap();
+
+    // Verify the row survived with committed_generation still 5
+    let committed_gen: Option<(i64,)> = sqlx::query_as(
+        "SELECT committed_generation FROM axon_code_projects WHERE project_key = 'legacy-key'",
+    )
+    .fetch_optional(&store.pool)
+    .await
+    .unwrap();
+    assert_eq!(committed_gen, Some((5,)));
+
+    // Verify read_project_metadata returns Some with all new-column defaults
+    let dir = tempdir().unwrap();
+    let identity = CodeIndexIdentity::for_test(dir.path(), "origin:legacy", "axon", "tei");
+    // Insert the identity row so we can query it
+    sqlx::query(
+        "INSERT OR IGNORE INTO axon_code_projects
+          (project_key, project_display, project_root, collection, embedder_key,
+           index_version, committed_generation, max_generation, last_checked_at_ms)
+         VALUES (?, ?, ?, ?, ?, 1, 0, 0, 0)",
+    )
+    .bind(&identity.project_key)
+    .bind(&identity.project_display)
+    .bind(identity.project_root.to_string_lossy().as_ref())
+    .bind(&identity.collection)
+    .bind(&identity.embedder_key)
+    .execute(&store.pool)
+    .await
+    .unwrap();
+
+    let meta = store
+        .read_project_metadata(&identity)
+        .await
+        .unwrap()
+        .expect("should have a row");
+    assert!(meta.root_hash.is_none());
+    assert_eq!(meta.manifest_file_count, 0);
+    assert_eq!(meta.indexed_file_count, 0);
+    assert_eq!(meta.last_indexed_at_ms, 0);
+    assert_eq!(meta.last_refresh_started_at_ms, 0);
+    assert_eq!(meta.last_refresh_finished_at_ms, 0);
+    assert!(meta.last_refresh_status.is_none());
+    assert!(meta.last_error_message.is_none());
+    assert_eq!(meta.cleanup_debt_count, 0);
+}
+
+#[tokio::test]
+async fn project_metadata_write_read_round_trip() {
+    let store = store::CodeIndexStore::open_in_memory().await.unwrap();
+    store.init_schema().await.unwrap();
+    let dir = tempdir().unwrap();
+    let identity = CodeIndexIdentity::for_test(dir.path(), "origin:axon", "axon", "tei-test");
+
+    // Ensure the project row exists
+    store.next_generation(&identity).await.unwrap();
+
+    let meta = store::ProjectMetadata {
+        root_hash: Some("abc123".to_string()),
+        manifest_file_count: 42,
+        indexed_file_count: 40,
+        last_indexed_at_ms: 0,
+        last_refresh_started_at_ms: 0,
+        last_refresh_finished_at_ms: 0,
+        last_refresh_status: Some("ok".to_string()),
+        last_error_message: None,
+        cleanup_debt_count: 2,
+    };
+    store
+        .write_project_metadata(&identity, &meta)
+        .await
+        .unwrap();
+
+    let read_back = store
+        .read_project_metadata(&identity)
+        .await
+        .unwrap()
+        .expect("should have a row");
+    assert_eq!(read_back.root_hash.as_deref(), Some("abc123"));
+    assert_eq!(read_back.manifest_file_count, 42);
+    assert_eq!(read_back.indexed_file_count, 40);
+    assert_eq!(read_back.last_indexed_at_ms, 0);
+    assert_eq!(read_back.last_refresh_started_at_ms, 0);
+    assert_eq!(read_back.last_refresh_finished_at_ms, 0);
+    assert_eq!(read_back.last_refresh_status.as_deref(), Some("ok"));
+    assert!(read_back.last_error_message.is_none());
+    assert_eq!(read_back.cleanup_debt_count, 2);
+}
+
+#[test]
+fn project_metadata_does_not_expose_absolute_paths() {
+    let meta = store::ProjectMetadata {
+        root_hash: None,
+        manifest_file_count: 0,
+        indexed_file_count: 0,
+        last_indexed_at_ms: 0,
+        last_refresh_started_at_ms: 0,
+        last_refresh_finished_at_ms: 0,
+        last_refresh_status: None,
+        last_error_message: None,
+        cleanup_debt_count: 0,
+    };
+    let json = serde_json::to_string(&meta).unwrap();
+    assert!(!json.contains("/home"), "JSON must not expose /home paths");
+    assert!(!json.contains("/tmp"), "JSON must not expose /tmp paths");
+    assert!(!json.contains("/var"), "JSON must not expose /var paths");
+}
