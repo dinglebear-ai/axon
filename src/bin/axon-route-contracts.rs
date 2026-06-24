@@ -1,4 +1,4 @@
-use axon::services::types::{RestRouteAuth, rest_route_inventory};
+use axon_services::types::{RestRouteAuth, rest_route_inventory};
 use serde::Serialize;
 
 #[derive(Serialize)]

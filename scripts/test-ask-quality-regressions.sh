@@ -46,11 +46,11 @@ if [[ "${MODE}" == "--verify-only" ]]; then
   for test_name in "${REQUIRED_TESTS[@]}"; do
     pattern="fn[[:space:]]+${test_name}\\b"
     if command -v rg >/dev/null 2>&1; then
-      found="$(rg -l "${pattern}" src tests || true)"
+      found="$(rg -l "${pattern}" crates src tests || true)"
     elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      found="$(git grep -l -E "${pattern}" -- src tests || true)"
+      found="$(git grep -l -E "${pattern}" -- crates src tests || true)"
     else
-      found="$(grep -R -l -E "${pattern}" src tests || true)"
+      found="$(grep -R -l -E "${pattern}" crates src tests || true)"
     fi
     if [[ -z "${found}" ]]; then
       echo "[ask-quality] required test function is missing: ${test_name}" >&2
@@ -61,7 +61,7 @@ if [[ "${MODE}" == "--verify-only" ]]; then
   exit 0
 fi
 
-LIST_OUTPUT="$(cargo test --locked -- --list)"
+LIST_OUTPUT="$(cargo test --locked --workspace -- --list)"
 for test_name in "${REQUIRED_TESTS[@]}"; do
   if ! grep -Fq "${test_name}:" <<<"${LIST_OUTPUT}"; then
     echo "[ask-quality] required cargo test is missing: ${test_name}" >&2
@@ -69,7 +69,7 @@ for test_name in "${REQUIRED_TESTS[@]}"; do
   fi
 done
 
-cargo test -q --locked normalize_ask_answer
-cargo test -q --locked non_trivial_answer_requires_minimum_citation_count
+cargo test -q --locked --workspace normalize_ask_answer
+cargo test -q --locked --workspace non_trivial_answer_requires_minimum_citation_count
 
 echo "[ask-quality] All regression checks passed."

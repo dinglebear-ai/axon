@@ -6,8 +6,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const MIGRATIONS_DIR: &str = "src/jobs/migrations";
-const CHECKSUMS_FILE: &str = "src/jobs/migration-checksums.txt";
+const MIGRATIONS_DIR: &str = "crates/axon-jobs/src/migrations";
+const CHECKSUMS_FILE: &str = "crates/axon-jobs/src/migration-checksums.txt";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MigrationEntry {

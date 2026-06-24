@@ -180,45 +180,69 @@ Memory safety:
 
 Canonical architecture and data-flow diagrams live in `docs/architecture/overview.md`.
 
-High-level subsystem map:
+### Workspace layout (Rust crates)
+
+The product is a Cargo workspace of 13 library/adapter crates under `crates/`,
+consumed by the thin `axon` binary at the repo root (`src/main.rs` +
+`src/lib.rs`, which re-exports `axon_cli::run`). Each crate keeps its module
+guide in `crates/<crate>/src/CLAUDE.md`. All crates inherit the product version
+via `[workspace.package] version` (so `CARGO_PKG_VERSION` tracks releases).
+
+Dependency layering (lower → higher; no cycles):
+
+```
+axon-api      (transport-neutral DTOs: results, diff, mcp_schema, job_dto, service_job, job_status)
+axon-authz    (scope checking)
+   ↓
+axon-core     (config, http/SSRF, content/chunking, llm, paths, artifacts, events, redact)
+   ↓
+axon-crawl · axon-vector · axon-ingest · axon-extract · axon-code-index
+   ↓
+axon-jobs     (SQLite job runtime + in-process workers; constructs axon_api::ServiceJob)
+   ↓
+axon-services (typed service-first entry points; the only API CLI/MCP/web call)
+   ↓
+axon-mcp · axon-web   (siblings; the unified `serve` bootstrap lives in axon-cli)
+   ↓
+axon-cli      (argv dispatch + all command handlers)
+   ↓
+axon (binary) (main.rs + build.rs web-asset embed)
+```
+
+High-level subsystem map (paths are `crates/<crate>/src/...`):
 
 - Entrypoint and dispatch:
-  - `main.rs` loads environment and calls `axon::run()`
-  - `lib.rs` owns `run`/`run_once` and command dispatch
+  - `src/main.rs` loads environment and calls `axon::run()` (re-exports `axon_cli::run`)
+  - `crates/axon-cli/src/lib.rs` owns `run`/`run_once` and command dispatch
 - Command + config:
-  - `src/cli/*` command handlers
-  - `src/core/config/{cli,parse,types}.rs` flag/env parsing and runtime config resolution
+  - `crates/axon-cli/src/commands/*` command handlers
+  - `crates/axon-core/src/config/{cli,parse,types}.rs` flag/env parsing and runtime config resolution
 - Crawl + content:
-  - `src/crawl/engine.rs` (collector pipeline runs antibot detect, structured-data pass, DOM ladder before commit)
-  - `src/core/http.rs` and `src/core/content.rs` (including `extract_ladder.rs` retry strategy)
+  - `crates/axon-crawl/src/engine.rs` (collector pipeline runs antibot detect, structured-data pass, DOM ladder before commit)
+  - `crates/axon-core/src/http.rs` and `crates/axon-core/src/content.rs` (including `extract_ladder.rs` retry strategy)
 - Vertical extractors:
-  - `src/extract/` — per-site extractor framework (registry + 18 verticals: github_repo, pypi, npm, crates_io, reddit, etc.) — see `src/extract/CLAUDE.md`
+  - `crates/axon-extract/src/` — per-site extractor framework (registry + verticals) + `scrape`/`sync` — see `crates/axon-extract/src/CLAUDE.md`
   - Auto-routed from `services::scrape::scrape` via `dispatch_by_url()` when `cfg.enable_verticals = true` (default on)
 - Async jobs:
-  - `src/jobs/runtime.rs` + `src/jobs/` (SQLite-backed enqueue/query/store/cancel)
-  - `src/jobs/workers.rs` + `src/jobs/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
-  - `src/jobs/{crawl,embed,extract,ingest}.rs` (per-family job payload + dispatch helpers)
-  - `src/jobs/crawl/sitemap.rs` (sitemap helpers; the former `processor`/`repo`/`watchdog`/`worker`/`runtime` files were consolidated into `src/jobs/workers.rs` + `workers/runners/`)
-  - `src/jobs/watch.rs` (recurring task scheduler — list/create/run-now/history + `lease_due_watches`)
-  - `src/jobs/workers/watch_scheduler.rs` (in-process loop that auto-fires due watches)
-  - `src/jobs/backend.rs` (`JobBackend` trait + `SqliteJobBackend` only)
-  - job states in `src/jobs/status.rs`
+  - `crates/axon-jobs/src/runtime.rs` + the crate (SQLite-backed enqueue/query/store/cancel)
+  - `crates/axon-jobs/src/workers.rs` + `workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
+  - `crates/axon-jobs/src/{crawl,embed,extract,ingest}.rs` (per-family job payload + dispatch helpers)
+  - `crates/axon-jobs/src/watch.rs` (recurring task scheduler) + `workers/watch_scheduler.rs`
+  - `crates/axon-jobs/src/backend.rs` (`JobBackend` trait + `SqliteJobBackend`); `JobStatus`/`ServiceJob` now live in `axon-api`
+  - migrations in `crates/axon-jobs/src/migrations`
 - Vector + RAG:
-  - `src/vector/ops/*` (TEI embedding, Qdrant upsert/search, ask/evaluate/query)
-  - Hybrid search: new collections use named `dense` + `bm42` sparse vectors with Reciprocal Rank Fusion (RRF) via Qdrant `/query` when hybrid search is active; falls back to dense-only when the sparse query is empty or hybrid is disabled. Legacy collections use dense-only. See `src/vector/CLAUDE.md`.
-- Services layer (services-first contract) — see `src/services/CLAUDE.md`:
-  - `src/services/` — typed entry points consumed by both CLI handlers and MCP/web routes
-  - CLI commands call `src/services::{query,retrieve,ask,summarize,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those public call-site entry points are removed from the API surface; callers must go through the services layer)
-  - Each service function returns a typed result struct (defined in `src/services/types/service.rs`) — no raw JSON printing or stdout side-effects
-  - MCP handlers and web routes call the same service functions, mapping typed results to wire format
-  - Gemini headless LLM completions live in `src/core/llm/` — used by ask synthesis, summarize, research, evaluate, suggest, debug, and extract fallback
+  - `crates/axon-vector/src/ops/*` (TEI embedding, Qdrant upsert/search, ask/evaluate/query)
+  - Hybrid search: new collections use named `dense` + `bm42` sparse vectors with RRF. See `crates/axon-vector/src/CLAUDE.md`.
+- Services layer (services-first contract) — see `crates/axon-services/src/CLAUDE.md`:
+  - `crates/axon-services/src/` — typed entry points consumed by CLI handlers and MCP/web routes
+  - Each service function returns a typed result struct — no raw JSON printing or stdout side-effects
+  - Gemini headless LLM completions live in `crates/axon-core/src/llm/`
 - MCP server:
-  - `src/mcp/` (schema, server routing, handler modules, config)
+  - `crates/axon-mcp/src/` (server routing, handler modules, auth); wire-contract DTOs in `axon-api::mcp_schema`
   - Single `axon` tool with `action`/`subaction` routing
 - HTTP server (`axon serve`):
-  - `src/web/` — Axum router, auth, health, first-run + stack panel UI, security headers
-  - `src/web/server/` — server bootstrap; `src/web/actions/` — `/v1/actions` handlers
-  - Shares the `ServiceContext` from `src/services/context.rs`; see `src/web/CLAUDE.md`
+  - `crates/axon-web/src/` — Axum router, auth, health, first-run + stack panel UI, security headers
+  - The unified web+MCP `serve` bootstrap (`run_unified_server`) lives in `crates/axon-cli/src/commands/unified_server.rs` (the only layer depending on both web and mcp)
 
 ## Infrastructure
 

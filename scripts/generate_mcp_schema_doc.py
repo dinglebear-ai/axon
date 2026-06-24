@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/reference/mcp/tool-schema.md from src/mcp/schema.rs.
+"""Generate docs/reference/mcp/tool-schema.md from crates/axon-api/src/mcp_schema.rs.
 
 Parses the Rust source for struct/enum definitions across the schema module and
 produces a markdown document that stays in sync with the actual wire contract.
@@ -47,7 +47,7 @@ def find_repo_root(start: Path | None = None) -> Path | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate docs/reference/mcp/tool-schema.md from src/mcp/schema.rs",
+        description="Generate docs/reference/mcp/tool-schema.md from crates/axon-api/src/mcp_schema.rs",
     )
     parser.add_argument(
         "--check",
@@ -73,7 +73,7 @@ def main() -> int:
         print("ERROR: Could not find repo root. Pass --repo-root.", file=sys.stderr)
         return 2
 
-    schema_path = repo_root / "src" / "mcp" / "schema.rs"
+    schema_path = repo_root / "crates" / "axon-api" / "src" / "mcp_schema.rs"
     doc_path = repo_root / "docs" / "reference" / "mcp" / "tool-schema.md"
 
     if not schema_path.is_file():

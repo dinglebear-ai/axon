@@ -1,5 +1,5 @@
-use axon::services::client_contract::rest_route_contracts;
-use axon::services::types::{RestRouteAuth, rest_route_inventory, supported_routes};
+use axon_services::client_contract::rest_route_contracts;
+use axon_services::types::{RestRouteAuth, rest_route_inventory, supported_routes};
 use std::collections::BTreeSet;
 
 const DOC: &str = include_str!("../docs/reference/api-parity.md");
@@ -104,7 +104,7 @@ fn parity_doc_marks_representative_current_http_statuses() {
 
 #[test]
 fn rest_route_contracts_match_openapi_request_schemas() {
-    let openapi = axon::web::openapi_document();
+    let openapi = axon_web::openapi_document();
     let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
     let paths = openapi_json
         .get("paths")
@@ -173,7 +173,7 @@ fn rest_route_contracts_match_openapi_request_schemas() {
 
 #[test]
 fn route_inventory_openapi_operations_are_registered() {
-    let openapi = axon::web::openapi_document();
+    let openapi = axon_web::openapi_document();
     let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
     let paths = openapi_json
         .get("paths")
@@ -196,7 +196,7 @@ fn route_inventory_openapi_operations_are_registered() {
 
 #[test]
 fn openapi_security_schemes_and_operation_security_match_inventory() {
-    let openapi = axon::web::openapi_document();
+    let openapi = axon_web::openapi_document();
     let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
     let schemes = openapi_json
         .pointer("/components/securitySchemes")
@@ -274,7 +274,7 @@ fn openapi_security_schemes_and_operation_security_match_inventory() {
 
 #[test]
 fn openapi_artifact_route_accepts_slash_containing_path_as_query_param() {
-    let openapi = axon::web::openapi_document();
+    let openapi = axon_web::openapi_document();
     let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
     let paths = openapi_json
         .get("paths")
@@ -302,7 +302,7 @@ fn openapi_artifact_route_accepts_slash_containing_path_as_query_param() {
 
 #[test]
 fn openapi_error_body_kind_uses_error_kind_enum_schema() {
-    let openapi = axon::web::openapi_document();
+    let openapi = axon_web::openapi_document();
     let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
     assert_eq!(
         openapi_json.pointer("/components/schemas/ErrorBody/properties/kind/$ref"),
@@ -330,7 +330,7 @@ fn openapi_error_body_kind_uses_error_kind_enum_schema() {
 
 #[test]
 fn openapi_job_list_pagination_uses_query_parameters() {
-    let openapi = axon::web::openapi_document();
+    let openapi = axon_web::openapi_document();
     let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
     let paths = openapi_json
         .get("paths")

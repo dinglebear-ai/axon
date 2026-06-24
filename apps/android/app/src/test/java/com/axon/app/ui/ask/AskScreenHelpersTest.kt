@@ -49,7 +49,7 @@ class AskScreenHelpersTest {
                     op = FabOp.Scrape,
                     target = "https://example.com",
                     status = "200",
-                    endpoint = "POST /v1/actions",
+                    endpoint = "POST /v1/{operation}",
                     summary = "ok",
                     body = "{}",
                 ),

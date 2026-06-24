@@ -107,6 +107,23 @@ pub(super) fn read_cargo_package_version(
         .release_context("missing package.version")
 }
 
+/// Read `[workspace.package] version` if the manifest declares one.
+///
+/// Returns `Ok(None)` when there is no `[workspace.package]` table or it carries
+/// no string `version` (e.g. a workspace that shares only `edition`). Used to
+/// enforce that the workspace-inherited version — which every extracted crate
+/// picks up via `version.workspace = true`, and therefore every crate's
+/// `CARGO_PKG_VERSION` — stays equal to the product's `[package] version`.
+pub(super) fn read_workspace_package_version(content: &str) -> ReleaseResult<Option<String>> {
+    let value: toml::Value = toml::from_str(content).release_context("invalid TOML")?;
+    Ok(value
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get("version"))
+        .and_then(|version| version.as_str())
+        .map(ToOwned::to_owned))
+}
+
 pub(super) fn read_cargo_lock_package_version(
     content: &str,
     package: Option<&str>,
@@ -296,30 +313,55 @@ pub(super) fn replace_cargo_package_version(
     next: &str,
 ) -> ReleaseResult<String> {
     read_cargo_package_version(content, package)?;
+    // The root manifest also carries `[workspace.package] version`, inherited by
+    // every extracted crate via `version.workspace = true`. Bump it in lockstep
+    // with `[package]` so the workspace version — and therefore every crate's
+    // `CARGO_PKG_VERSION` — tracks the product version. Crate manifests without a
+    // `[workspace.package]` table are unaffected. The two sections are tracked
+    // separately so a half-bump (one section's version present but not rewritten)
+    // is caught rather than silently passing once `[package]` alone is bumped.
+    let has_workspace_version = read_workspace_package_version(content)?.is_some();
     let mut in_package = false;
-    let mut replaced = false;
+    let mut in_workspace_package = false;
+    let mut package_replaced = false;
+    let mut workspace_replaced = false;
     let mut output = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed == "[package]" {
             in_package = true;
-        } else if in_package && trimmed.starts_with('[') {
+            in_workspace_package = false;
+        } else if trimmed == "[workspace.package]" {
+            in_workspace_package = true;
             in_package = false;
+        } else if trimmed.starts_with('[') {
+            in_package = false;
+            in_workspace_package = false;
         }
 
         let mut next_line = line.to_owned();
-        if in_package
+        if (in_package || in_workspace_package)
             && trimmed.starts_with("version")
             && extract_toml_string_assignment(trimmed).is_some()
         {
             let leading = &line[..line.len() - line.trim_start().len()];
             next_line = format!(r#"{leading}version = "{next}""#);
-            replaced = true;
+            if in_package {
+                package_replaced = true;
+            } else {
+                workspace_replaced = true;
+            }
         }
         output.push(next_line);
     }
-    if !replaced {
+    if !package_replaced {
         release_bail!("missing Cargo package version");
+    }
+    if has_workspace_version && !workspace_replaced {
+        release_bail!(
+            "[workspace.package] version present but not bumped; refusing a half-bump that \
+             would drift the workspace-inherited version from the package version"
+        );
     }
     Ok(preserve_trailing_newline(content, output.join("\n")))
 }
