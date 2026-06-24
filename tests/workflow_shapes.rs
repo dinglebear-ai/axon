@@ -280,7 +280,7 @@ fn lefthook_pre_push_uses_path_aware_router() {
         .expect("pre-push section exists");
 
     assert!(
-        pre_push.contains("python3 scripts/ci/pre_push.py"),
+        pre_push.contains("cargo xtask pre-push"),
         "pre-push should delegate to the path-aware router"
     );
     for always_on_heavy_command in [
@@ -291,7 +291,7 @@ fn lefthook_pre_push_uses_path_aware_router() {
     ] {
         assert!(
             !pre_push.contains(always_on_heavy_command),
-            "{always_on_heavy_command} must be selected by scripts/ci/pre_push.py, not always run by lefthook"
+            "{always_on_heavy_command} must be selected by cargo xtask pre-push, not always run by lefthook"
         );
     }
 }

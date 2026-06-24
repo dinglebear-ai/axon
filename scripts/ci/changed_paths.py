@@ -46,7 +46,7 @@ RUST_CI_HELPER_SCRIPTS = {
     "scripts/cargo_test_filter_guard.py",
     "scripts/check_lefthook_pre_commit_speed.py",
     "scripts/check_shell_completions.sh",
-    "scripts/ci/pre_push.py",
+    "xtask/src/pre_push.rs",
     "scripts/enforce_monoliths.py",
     "scripts/generate_mcp_schema_doc.py",
     "scripts/test-ask-quality-regressions.sh",
@@ -75,7 +75,13 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     workflow = any_match(
         paths,
         lambda p: starts(p, ".github/workflows/")
-        or p in {"scripts/ci/changed_paths.py", "tests/workflow_shapes.rs", "tests/ci_changed_paths.rs"},
+        or p
+        in {
+            "scripts/ci/changed_paths.py",
+            "tests/workflow_shapes.rs",
+            "tests/ci_changed_paths.rs",
+            "xtask/src/pre_push.rs",
+        },
     )
     docs = any_match(
         paths,

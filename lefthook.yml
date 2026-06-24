@@ -83,4 +83,4 @@ pre-push:
   parallel: false
   commands:
     pre-push-router:
-      run: python3 scripts/ci/pre_push.py
+      run: cargo xtask pre-push

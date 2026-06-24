@@ -227,6 +227,7 @@ fn changed_path_router_edits_force_full_ci() {
         "scripts/ci/changed_paths.py",
         "tests/ci_changed_paths.rs",
         "tests/workflow_shapes.rs",
+        "xtask/src/pre_push.rs",
     ] {
         let out = classify("pull_request", &[file]);
         for key in [
@@ -260,7 +261,6 @@ fn rust_ci_helper_scripts_enable_the_jobs_that_execute_them() {
     for file in [
         "scripts/cargo_test_filter_guard.py",
         "scripts/check_shell_completions.sh",
-        "scripts/ci/pre_push.py",
         "scripts/generate_mcp_schema_doc.py",
     ] {
         let out = classify("pull_request", &[file]);

@@ -38,6 +38,8 @@ enum Command {
     CheckOpenapiDrift,
     /// Verify Android's handwritten /v1 client routes are present in OpenAPI.
     CheckAndroidApiContract,
+    /// Run the path-aware local pre-push router.
+    PrePush(pre_push::PrePushArgs),
     /// Verify all releasable components have valid versions and changed shipping paths have bumps.
     CheckReleaseVersions {
         #[arg(long)]
@@ -119,6 +121,7 @@ fn main() -> Result<()> {
         Command::CheckVersionSync => checks::version_sync::check(&root),
         Command::CheckOpenapiDrift => checks::openapi_drift::check(&root),
         Command::CheckAndroidApiContract => checks::android_api_contract::check(&root),
+        Command::PrePush(args) => pre_push::run(&root, args),
         Command::CheckReleaseVersions {
             base,
             head,
@@ -179,3 +182,4 @@ fn main() -> Result<()> {
 
 mod bench_embed;
 mod checks;
+mod pre_push;
