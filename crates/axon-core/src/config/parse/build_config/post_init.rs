@@ -1,0 +1,104 @@
+//! Post-init validation and profile-default application for `Config`.
+//!
+//! Split out of `into_config()` (bead axon_rust-2j9.6). Behavior is unchanged:
+//!   * Validates the parent of `output_path` exists when explicitly set.
+//!   * Restores default exclude-path prefixes when the user did not opt out.
+//!   * Applies `performance::profile_settings()` to fields the user did not set.
+//!   * Derives `output_dir` from the canonical Axon data directory when still at the clap default.
+
+use super::super::super::cli::DEFAULT_OUTPUT_DIR;
+use super::super::super::types::Config;
+use super::super::excludes;
+use super::super::performance;
+
+/// Flags captured before `Config` was built that the post-init pass needs.
+pub(super) struct PostInit {
+    pub disable_default_excludes: bool,
+    pub fetch_retries_was_set: bool,
+    pub retry_backoff_was_set: bool,
+    pub output_dir_was_explicit: bool,
+}
+
+pub(super) fn apply(cfg: &mut Config, ctx: PostInit) -> Result<(), String> {
+    // Validate that --etag-conditional is not set without --cache.
+    // etag_conditional seeds spider's ETag cache from a persisted sidecar and
+    // reconciles 304 responses back into the manifest — that path requires the
+    // cached markdown.old file, which only exists when `cache` is enabled.
+    if cfg.etag_conditional && !cfg.cache {
+        return Err(
+            "--etag-conditional requires --cache (pass --cache true or omit --cache false)"
+                .to_string(),
+        );
+    }
+
+    // Validate output path parent exists when explicitly set.
+    if let Some(ref path) = cfg.output_path
+        && let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+        && !parent.exists()
+    {
+        return Err(format!(
+            "output directory '{}' does not exist",
+            parent.display()
+        ));
+    }
+
+    if cfg.exclude_path_prefix.is_empty() && !ctx.disable_default_excludes {
+        cfg.exclude_path_prefix = excludes::default_exclude_prefixes_vec();
+    }
+
+    let ps = performance::profile_settings(cfg.performance_profile);
+
+    if cfg.crawl_concurrency_limit.is_none() {
+        cfg.crawl_concurrency_limit = Some(ps.crawl_concurrency);
+    }
+    if cfg.backfill_concurrency_limit.is_none() {
+        cfg.backfill_concurrency_limit = Some(ps.backfill_concurrency);
+    }
+    if cfg.request_timeout_ms.is_none() {
+        cfg.request_timeout_ms = Some(ps.request_timeout_ms);
+    }
+    if !ctx.fetch_retries_was_set {
+        cfg.fetch_retries = ps.fetch_retries;
+    }
+    if !ctx.retry_backoff_was_set {
+        cfg.retry_backoff_ms = ps.retry_backoff_ms;
+    }
+    cfg.crawl_broadcast_buffer_min = ps.broadcast_buffer_min;
+    cfg.crawl_broadcast_buffer_max = ps.broadcast_buffer_max;
+    validate_adaptive_concurrency(cfg)?;
+
+    // Derive output_dir from the canonical data directory when still at the clap default.
+    if !ctx.output_dir_was_explicit && cfg.output_dir == std::path::Path::new(DEFAULT_OUTPUT_DIR) {
+        cfg.output_dir = crate::paths::axon_data_base_dir().join("output");
+    }
+    Ok(())
+}
+
+fn validate_adaptive_concurrency(cfg: &mut Config) -> Result<(), String> {
+    if !cfg.adaptive_concurrency.enabled {
+        return Ok(());
+    }
+
+    let resolved_max = cfg
+        .adaptive_concurrency
+        .max
+        .unwrap_or_else(|| cfg.crawl_concurrency_limit.unwrap_or(1))
+        .max(1);
+    let min = cfg.adaptive_concurrency.min.max(1);
+    let cap = cfg.crawl_broadcast_buffer_max.min(1024);
+
+    if min > resolved_max {
+        return Err("workers.adaptive-concurrency.min must be <= max".to_string());
+    }
+    if resolved_max > cap {
+        return Err(
+            "workers.adaptive-concurrency.max must be <= min(crawl-broadcast-buffer-max, 1024)"
+                .to_string(),
+        );
+    }
+
+    cfg.adaptive_concurrency.min = min;
+    cfg.adaptive_concurrency.max = Some(resolved_max);
+    Ok(())
+}

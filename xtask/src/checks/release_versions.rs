@@ -24,8 +24,9 @@ use manifest::same_version_file;
 
 use files::{
     check_component_parity, ensure_changelog_heading, increment_gradle_version_code, read_version,
-    replace_cargo_lock_package_version, replace_cargo_package_version, replace_gradle_version_name,
-    replace_json_version, replace_npm_package_lock_version, replace_readme_version_line,
+    read_workspace_package_version, replace_cargo_lock_package_version,
+    replace_cargo_package_version, replace_gradle_version_name, replace_json_version,
+    replace_npm_package_lock_version, replace_readme_version_line,
 };
 use git::{
     check_gradle_version_code_increased, compare_ref_for_component, component_changed_since_ref,
@@ -288,6 +289,11 @@ pub fn check_local(root: &Path) -> ReleaseResult<()> {
                 .into_iter()
                 .map(|error| format!("{}: {error}", component.id)),
         );
+        if component.id == "cli"
+            && let Err(error) = check_workspace_package_version(root, &version)
+        {
+            errors.push(format!("{}: {error}", component.id));
+        }
     }
 
     if !errors.is_empty() {
@@ -305,6 +311,32 @@ pub fn check_local(root: &Path) -> ReleaseResult<()> {
     Ok(())
 }
 
+/// Assert the root manifest's `[workspace.package] version` (inherited by every
+/// extracted crate via `version.workspace = true`) equals the product version.
+///
+/// The release-version readers treat `[package] version` as the authoritative
+/// product version, but they cannot resolve workspace inheritance, so `axon`
+/// keeps an explicit `[package] version`. This guard closes the gap: it fails if
+/// the two ever drift, regardless of how (manual edit, a future tool, a partial
+/// bump), so a stale workspace version — and thus a wrong `CARGO_PKG_VERSION`
+/// baked into every crate — cannot slip through the gate. A no-op when the root
+/// manifest declares no `[workspace.package] version`.
+fn check_workspace_package_version(root: &Path, product_version: &str) -> ReleaseResult<()> {
+    let manifest_path = root.join("Cargo.toml");
+    let content = std::fs::read_to_string(&manifest_path)
+        .with_release_context(|| format!("reading {}", manifest_path.display()))?;
+    if let Some(workspace_version) = read_workspace_package_version(&content)?
+        && workspace_version != product_version
+    {
+        release_bail!(
+            "[workspace.package] version ({workspace_version}) does not match the product \
+             [package] version ({product_version}); they must stay equal so every crate's \
+             inherited version tracks releases"
+        );
+    }
+    Ok(())
+}
+
 pub fn check_cli_parity_only(root: &Path) -> ReleaseResult<()> {
     let manifest = load_manifest(root)?;
     let component = manifest
@@ -316,7 +348,10 @@ pub fn check_cli_parity_only(root: &Path) -> ReleaseResult<()> {
     Version::parse(&version).with_release_context(|| {
         format!("{} version is not valid semver: {version}", component.id)
     })?;
-    let errors = check_component_parity(root, component, &version)?;
+    let mut errors = check_component_parity(root, component, &version)?;
+    if let Err(error) = check_workspace_package_version(root, &version) {
+        errors.push(error.to_string());
+    }
     if !errors.is_empty() {
         for error in &errors {
             eprintln!("version sync error: cli: {error}");

@@ -1,0 +1,68 @@
+[package]
+name = "axon-web"
+version.workspace = true
+edition = "2024"
+rust-version = "1.94.0"
+description = "Axon web layer: Axum panel UI, REST /v1 API, OpenAPI, health, security headers, first-run setup"
+license = "MIT"
+
+[dependencies]
+axon-core = { path = "../axon-core" }
+axon-vector = { path = "../axon-vector" }
+axon-ingest = { path = "../axon-ingest" }
+axon-jobs = { path = "../axon-jobs" }
+axon-services = { path = "../axon-services" }
+axon-authz = { path = "../axon-authz" }
+axon-mcp = { path = "../axon-mcp" }
+async-trait = "0.1"
+axum = { version = "0.8", features = ["ws"] }
+base64 = "0.22"
+percent-encoding = "2"
+futures-util = "0.3"
+reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
+rand_core = { version = "0.9", features = ["os_rng", "std"] }
+metrics-exporter-prometheus = { version = "0.16", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
+subtle = "2"
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "net",
+  "process",
+  "signal",
+  "sync",
+  "time",
+] }
+tokio-util = { version = "0.7", features = ["compat", "io"] }
+tracing = "0.1"
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-axum = "0.2"
+utoipa-swagger-ui = { version = "9", features = ["axum", "debug-embed"] }
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+lab-auth = { git = "https://github.com/jmagar/lab.git", rev = "87cec3241f9baef22335de9cc8629ebbcd8ba047", package = "lab-auth" }
+url = "2"
+libc = "0.2"
+mime_guess = "2"
+rust-embed = "8"
+
+[lints.rust]
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"              # src/crawl.rs: acceptable module name
+[features]
+test-util = []
+
+[dev-dependencies]
+axon-core = { path = "../axon-core", features = ["test-util"] }
+httpmock = "0.8"
+serial_test = "3"
+proptest = "1"

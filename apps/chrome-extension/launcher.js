@@ -85,8 +85,8 @@
   function callApi(op, arg) {
     switch (op.id) {
       case "scrape": return requestAxon("POST", "/v1/scrape", { url: arg, embed: true });
-      case "map": return requestAxon("POST", "/v1/map", { url: arg, limit: 100 });
-      case "retrieve": return requestAxon("POST", "/v1/retrieve", { url: arg, max_points: 50, token_budget: 8000 });
+      case "map": return requestAxon("POST", "/v1/map", { url: arg });
+      case "retrieve": return requestAxon("POST", "/v1/retrieve", { url: arg });
       case "screenshot": return requestAxon("POST", "/v1/screenshot", { url: arg, full_page: true });
       case "brand": return requestAxon("POST", "/v1/brand", { url: arg });
       case "endpoints": return requestAxon("POST", "/v1/endpoints", { url: arg });
@@ -316,7 +316,7 @@
     panel.appendChild(body);
     panel.appendChild(footer());
     body.appendChild(el("div", { class: "ext-loading" }, [axonMark(18, true), "Loading document…"]));
-    requestAxon("POST", "/v1/retrieve", { url: state.docUrl, max_points: 50, token_budget: 8000 })
+    requestAxon("POST", "/v1/retrieve", { url: state.docUrl })
       .then((raw) => { refreshResultBadge(); body.textContent = ""; body.appendChild(RetrieveDocFromRaw(raw, toneOf("cyan", COLOR_CODE))); })
       .catch((error) => { refreshResultBadge(); body.textContent = ""; body.appendChild(errorCard({ name: "Retrieve" }, error)); });
   }

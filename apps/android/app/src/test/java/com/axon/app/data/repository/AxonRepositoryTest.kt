@@ -204,6 +204,29 @@ class AxonRepositoryTest {
         assertTrue(result.getOrThrow().isEmpty())
     }
 
+    @Test
+    fun `sources forwards domain and cursor query parameters`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"count":0,"limit":50,"offset":0,"urls":[]}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        val result = repo.sources(
+            limit = 10_000,
+            offset = 25,
+            domain = "docs.example.com",
+            cursor = "https://docs.example.com/page?x=1",
+        )
+
+        assertTrue(result.isSuccess)
+        val request = server.takeRequest()
+        assertEquals(
+            "/v1/sources?limit=10000&offset=25&domain=docs.example.com&cursor=https%3A%2F%2Fdocs.example.com%2Fpage%3Fx%3D1",
+            request.path,
+        )
+    }
+
     // ── crawlStatus ───────────────────────────────────────────────────────────
 
     @Test
@@ -328,11 +351,11 @@ class AxonRepositoryTest {
         )
         repo.retrieve("https://c.com")
         val request = server.takeRequest()
-        // Default DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000 — verify it lands on the wire.
+        // Default DEFAULT_RETRIEVE_TOKEN_BUDGET matches the server's inline document default.
         val body = request.body.readUtf8()
         assertTrue(
-            "expected token_budget=64000 in body, got: $body",
-            body.contains("\"token_budget\":64000") || body.contains("\"token_budget\": 64000"),
+            "expected token_budget=10000 in body, got: $body",
+            body.contains("\"token_budget\":10000") || body.contains("\"token_budget\": 10000"),
         )
     }
 
@@ -370,6 +393,21 @@ class AxonRepositoryTest {
         val result = emptyRepo.retrieve("https://x.com")
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Axon is not authenticated"))
+    }
+
+    @Test
+    fun `domainIndexed forwards exact domain query URL`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody("""{"domain":"docs.example.com","indexed":true}""")
+                .addHeader("Content-Type", "application/json"),
+        )
+
+        val result = repo.domainIndexed("docs.example.com")
+
+        assertTrue(result.isSuccess)
+        val request = server.takeRequest()
+        assertEquals("/v1/domains?domain=docs.example.com", request.path)
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

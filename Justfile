@@ -63,6 +63,11 @@ fmt-check:
 clippy:
     {{rust_dev_env}}; cargo clippy --all-targets --locked -- -D warnings
 
+# Fail on unused crate dependencies (keeps per-crate manifests honest after the
+# workspace extraction). Graceful no-op when cargo-machete is not installed.
+machete:
+    @if command -v cargo-machete >/dev/null 2>&1; then cargo machete; else echo "skip: cargo-machete not installed (cargo install cargo-machete)"; fi
+
 build:
     {{rust_dev_env}}; CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile {{local_release_profile}} --locked
     just link-bin {{local_release_profile}}
@@ -300,6 +305,7 @@ verify:
     just web-check
     just fmt-check
     just clippy
+    just machete
     just check
     just test
 

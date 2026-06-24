@@ -94,6 +94,7 @@ import kotlinx.serialization.json.intOrNull
 
 @Stable data class SuggestHitUi(val url: String, val reason: String?)
 @Stable data class DomainFacetUi(val domain: String, val vectors: Long)
+@Stable data class DomainIndexedUi(val domain: String, val indexed: Boolean)
 @Stable data class WatchUi(
     val id: String,
     val name: String,
@@ -104,7 +105,7 @@ import kotlinx.serialization.json.intOrNull
 )
 
 /** Mobile-safe first-page cap for `/v1/retrieve` calls. */
-private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 64_000
+private const val DEFAULT_RETRIEVE_TOKEN_BUDGET = 10_000
 private const val DEFAULT_RETRIEVE_MAX_POINTS = 48
 
 class AxonRepository(
@@ -193,8 +194,13 @@ class AxonRepository(
         }
     }
 
-    suspend fun sources(limit: Int = 50, offset: Int = 0, collection: String? = null): Result<List<SourceEntryUi>> = withAuth {
-        client.sources(SourcesRequest(limit = limit, offset = offset, collection = collection)).mapCatching { r ->
+    suspend fun sources(
+        limit: Int = 50,
+        offset: Int = 0,
+        domain: String? = null,
+        cursor: String? = null,
+    ): Result<List<SourceEntryUi>> = withAuth {
+        client.sources(SourcesRequest(limit = limit, offset = offset, domain = domain, cursor = cursor)).mapCatching { r ->
             var parseFailures = 0
             val entries = r.urls.mapNotNull { element ->
                 runCatching {
@@ -392,6 +398,10 @@ class AxonRepository(
         client.domains(limit = limit, offset = offset).map { r ->
             r.domains.map { DomainFacetUi(it.domain, it.vectors) }
         }
+    }
+
+    suspend fun domainIndexed(domain: String): Result<DomainIndexedUi> = withAuth {
+        client.domainIndexed(domain).map { r -> DomainIndexedUi(r.domain, r.indexed) }
     }
 
 }

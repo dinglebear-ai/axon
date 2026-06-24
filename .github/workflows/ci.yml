@@ -109,6 +109,7 @@ jobs:
           fetch-depth: 0
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -148,6 +149,7 @@ jobs:
           fetch-depth: 0
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -319,6 +321,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -357,6 +360,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -407,6 +411,7 @@ jobs:
             rust-toolchain.toml
             docs/reference/env-matrix.toml
             src
+            crates
             xtask
             benches
             apps/web
@@ -546,6 +551,7 @@ jobs:
           # fingerprinting the root build script.
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -611,6 +617,7 @@ jobs:
           # fingerprinting the root build script.
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             assets
@@ -665,6 +672,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -735,6 +743,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -796,6 +805,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -830,6 +840,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -874,6 +885,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -908,6 +920,7 @@ jobs:
           fetch-depth: 0
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -972,6 +985,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -1006,6 +1020,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -1065,6 +1080,7 @@ jobs:
             docker-compose.prod.yaml
             docker-compose.yaml
             src
+            crates
             xtask
             benches
             apps/web
@@ -1120,6 +1136,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -1154,6 +1171,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -1235,6 +1253,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -1311,6 +1330,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web
@@ -1354,6 +1374,7 @@ jobs:
         with:
           sparse-checkout: |
             src
+            crates
             xtask
             benches
             apps/web

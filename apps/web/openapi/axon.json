@@ -3,14 +3,11 @@
   "info": {
     "title": "Axon REST API",
     "description": "Dedicated REST routes for Axon discovery, RAG, crawl, ingest, and watch workflows.",
-    "contact": {
-      "name": "jmagar"
-    },
     "license": {
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "5.19.0"
+    "version": "6.0.0"
   },
   "paths": {
     "/healthz": {
@@ -6160,14 +6157,44 @@
           "question"
         ],
         "properties": {
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "collection": {
             "type": [
               "string",
               "null"
             ]
           },
+          "diagnostics": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "hybrid_search": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "question": {
             "type": "string"
+          },
+          "retrieval_ab": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
@@ -6477,9 +6504,21 @@
           "query"
         ],
         "properties": {
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "collection": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "hybrid_search": {
+            "type": [
+              "boolean",
               "null"
             ]
           },
@@ -6499,6 +6538,12 @@
           },
           "query": {
             "type": "string"
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
@@ -6541,6 +6586,12 @@
           "url"
         ],
         "properties": {
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "collection": {
             "type": [
               "string",
@@ -6559,6 +6610,12 @@
               "null"
             ],
             "minimum": 0
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "token_budget": {
             "type": [

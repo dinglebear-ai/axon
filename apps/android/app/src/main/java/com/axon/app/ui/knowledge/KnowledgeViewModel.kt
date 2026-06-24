@@ -110,8 +110,7 @@ class KnowledgeViewModel(
 
     fun loadSources(force: Boolean = false) {
         loadSection(_sources, ::sourcesCachedAt, force, "sources") {
-            val collection = container.settingsRepository.settings.first().collection
-            container.axonRepository.sources(collection = collection)
+            container.axonRepository.sources()
         }
     }
 

@@ -1,0 +1,83 @@
+[package]
+name = "axon-jobs"
+version.workspace = true
+edition = "2024"
+rust-version = "1.94.0"
+description = "Axon async job runtime: SQLite-backed enqueue/query/store/cancel + in-process worker lanes (crawl/embed/extract/ingest/watch)"
+license = "MIT"
+
+[dependencies]
+axon-core = { path = "../axon-core" }
+axon-api = { path = "../axon-api" }
+axon-crawl = { path = "../axon-crawl" }
+axon-vector = { path = "../axon-vector" }
+axon-ingest = { path = "../axon-ingest" }
+axon-extract = { path = "../axon-extract" }
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+dashmap = "6"
+notify = "8"
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+spider = { version = "2", default-features = false, features = [
+  "basic",
+  "chrome",
+  "regex",
+  "sitemap",
+  "adblock",
+  "chrome_stealth",
+  "chrome_screenshot",
+  "chrome_store_page",
+  "chrome_headless_new",
+  "chrome_simd",
+  "simd",
+  "inline-more",
+  "cache_mem",
+  "ua_generator",
+  "headers",
+  "time",
+  "control",
+  "hedge",
+  "etag_cache",
+  "warc",
+] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "net",
+  "process",
+  "signal",
+  "sync",
+  "time",
+] }
+tokio-util = { version = "0.7", features = ["compat", "io"] }
+tracing = "0.1"
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+regex = "1"
+sha2 = "0.11"
+hex = "0.4"
+url = "2"
+
+[lints.rust]
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"              # src/crawl.rs: acceptable module name
+[features]
+test-util = []
+
+[dev-dependencies]
+axon-core = { path = "../axon-core", features = ["test-util"] }
+httpmock = "0.8"
+serial_test = "3"
+proptest = "1"

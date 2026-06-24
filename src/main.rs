@@ -38,7 +38,7 @@ fn load_dotenv() {
         }
     }
 
-    if let Some(home_env) = axon::core::paths::axon_home_dir().map(|d| d.join(".env")) {
+    if let Some(home_env) = axon_core::paths::axon_home_dir().map(|d| d.join(".env")) {
         // Reject symlinks under ~/.axon/ — this directory holds secrets and
         // we do not want a planted symlink redirecting us to attacker-controlled
         // env. Bare `dotenvy::from_path` follows symlinks via `File::open`.
