@@ -1,8 +1,8 @@
-use axon::services::crawl::{map_crawl_job_result, map_crawl_start_result};
-use axon::services::embed::{map_embed_job_result, map_embed_start_result};
-use axon::services::extract::{map_extract_job_result, map_extract_start_result};
-use axon::services::ingest::map_ingest_result;
-use axon::services::screenshot::map_screenshot_result;
+use axon_services::crawl::{map_crawl_job_result, map_crawl_start_result};
+use axon_services::embed::{map_embed_job_result, map_embed_start_result};
+use axon_services::extract::{map_extract_job_result, map_extract_start_result};
+use axon_services::ingest::map_ingest_result;
+use axon_services::screenshot::map_screenshot_result;
 use std::path::Path;
 
 // --- crawl mapping helpers ---
@@ -207,26 +207,26 @@ fn maps_screenshot_result_fields() {
 
 #[test]
 fn ingest_service_exposes_start_status_cancel_list_cleanup_clear_recover() {
-    let _ = axon::services::ingest::ingest_start;
-    let _ = axon::services::ingest::ingest_status;
-    let _ = axon::services::ingest::ingest_cancel;
-    let _ = axon::services::ingest::ingest_list;
-    let _ = axon::services::ingest::ingest_cleanup;
-    let _ = axon::services::ingest::ingest_clear;
-    let _ = axon::services::ingest::ingest_recover;
+    let _ = axon_services::ingest::ingest_start;
+    let _ = axon_services::ingest::ingest_status;
+    let _ = axon_services::ingest::ingest_cancel;
+    let _ = axon_services::ingest::ingest_list;
+    let _ = axon_services::ingest::ingest_cleanup;
+    let _ = axon_services::ingest::ingest_clear;
+    let _ = axon_services::ingest::ingest_recover;
 }
 
 #[test]
 fn classify_target_returns_ingest_source_for_github_slug() {
-    let src = axon::services::ingest::classify_target("owner/repo", true).expect("must classify");
+    let src = axon_services::ingest::classify_target("owner/repo", true).expect("must classify");
     assert!(matches!(
         src,
-        axon::jobs::ingest::IngestSource::Github { .. }
+        axon_jobs::ingest::IngestSource::Github { .. }
     ));
 }
 
 #[test]
 fn classify_target_rejects_unknown_target() {
-    let err = axon::services::ingest::classify_target("not-a-target", false).unwrap_err();
+    let err = axon_services::ingest::classify_target("not-a-target", false).unwrap_err();
     assert!(err.to_string().contains("cannot determine ingest source"));
 }

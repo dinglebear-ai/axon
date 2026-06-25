@@ -42,6 +42,9 @@ data class QueryRequest(
     val limit: Int = 10,
     val offset: Int? = null,
     val collection: String? = null,
+    val since: String? = null,
+    val before: String? = null,
+    @SerialName("hybrid_search") val hybridSearch: Boolean? = null,
 )
 
 /** Query parameters for GET /v1/sources. */
@@ -49,7 +52,8 @@ data class QueryRequest(
 data class SourcesRequest(
     val limit: Int = 50,
     val offset: Int = 0,
-    val collection: String? = null,
+    val domain: String? = null,
+    val cursor: String? = null,
 )
 
 // ── Ask response ──────────────────────────────────────────────────────────────
@@ -110,6 +114,8 @@ data class SourcesResponse(
 data class RetrieveRequest(
     val url: String,
     val collection: String? = null,
+    val since: String? = null,
+    val before: String? = null,
     @SerialName("max_points") val maxPoints: Int? = null,
     val cursor: String? = null,
     @SerialName("token_budget") val tokenBudget: Int? = null,

@@ -5,15 +5,15 @@
 ///   1. Option mapper round-trips produce correct service types.
 ///   2. Service result structs expose fields consumed by MCP handlers.
 ///   3. Serialization examples keep envelope field names explicit.
-use axon::mcp::schema::{
+use axon_mcp::schema::{
     AxonRequest, AxonToolResponse, IngestSubaction, SearchTimeRange, parse_axon_request,
 };
-use axon::mcp::server::common::{
+use axon_mcp::server::common::{
     to_map_options, to_pagination, to_retrieve_options, to_search_options, to_service_time_range,
 };
-use axon::mcp::server::required_scope_for;
-use axon::services::query::map_retrieve_result;
-use axon::services::types::{
+use axon_mcp::server::required_scope_for;
+use axon_services::query::map_retrieve_result;
+use axon_services::types::{
     AskResult, AskTiming, DoctorResult, DomainFacet, DomainsResult, MapOptions, Pagination,
     QueryHit, QueryResult, RetrieveOptions, RetrieveResult, SearchOptions, SearchResult,
     ServiceTimeRange, SourcesResult, StatsResult, SuggestResult,
@@ -327,7 +327,7 @@ fn ask_result_exposes_typed_answer() {
 #[test]
 fn suggest_result_exposes_url_vec() {
     let r = SuggestResult {
-        suggestions: vec![axon::services::types::Suggestion {
+        suggestions: vec![axon_services::types::Suggestion {
             url: "https://rust-lang.org".to_string(),
             reason: "Rust docs".to_string(),
         }],

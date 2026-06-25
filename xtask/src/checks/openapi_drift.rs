@@ -92,7 +92,7 @@ fn export_openapi(root: &Path) -> Result<()> {
         .context("OpenAPI output path must have a parent directory")?;
     fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
 
-    let document = axon::web::openapi_document();
+    let document = axon_web::openapi_document();
     let mut output =
         serde_json::to_vec_pretty(&document).context("failed to serialize OpenAPI spec")?;
     output.push(b'\n');
