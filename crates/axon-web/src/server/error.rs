@@ -256,7 +256,18 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
         cursor = current.source();
     }
     let lc = message.to_lowercase();
-    if contains_any(&lc, &["429", "rate limit", "rate-limited"]) {
+    if contains_any(
+        &lc,
+        &[
+            "429",
+            "rate limit",
+            "rate-limited",
+            "too many requests",
+            "usage limit",
+            "quota",
+            "resource exhausted",
+        ],
+    ) {
         (StatusCode::TOO_MANY_REQUESTS, "rate_limited")
     } else if contains_any(&lc, &["timed out", "timeout"]) {
         (StatusCode::GATEWAY_TIMEOUT, "timeout")
@@ -267,6 +278,11 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
             "tei",
             "chrome",
             "tavily",
+            "llm",
+            "gemini",
+            "codex app-server",
+            "openai",
+            "completion",
             "connection refused",
             "dns",
             "502",
@@ -321,5 +337,66 @@ fn response_message(status: StatusCode, err: &(dyn Error + 'static)) -> String {
         StatusCode::GATEWAY_TIMEOUT => "upstream request timed out".to_string(),
         StatusCode::TOO_MANY_REQUESTS => "rate limited".to_string(),
         _ => err.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt;
+
+    #[derive(Debug)]
+    struct StrError(&'static str);
+
+    impl fmt::Display for StrError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+
+    impl Error for StrError {}
+
+    fn classify(message: &'static str) -> (StatusCode, &'static str) {
+        status_and_kind_from_message(&StrError(message))
+    }
+
+    #[test]
+    fn codex_usage_limit_maps_to_rate_limited() {
+        let (status, kind) = classify(
+            "crawl suggestion discovery failed: codex app-server error: You've hit your usage limit",
+        );
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(kind, "rate_limited");
+    }
+
+    #[test]
+    fn codex_usage_limit_http_error_contract_is_rate_limited() {
+        let err: Box<dyn Error> = Box::new(StrError(
+            "crawl suggestion discovery failed: codex app-server error: You've hit your usage limit",
+        ));
+        let http = HttpError::from_box(err);
+
+        assert_eq!(http.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(http.kind(), "rate_limited");
+        assert_eq!(http.message(), "rate limited");
+    }
+
+    #[test]
+    fn generic_llm_completion_failure_maps_to_upstream() {
+        let (status, kind) = classify("crawl suggestion discovery failed: llm completion failed");
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(kind, "upstream_unavailable");
+    }
+
+    #[test]
+    fn generic_llm_completion_http_error_contract_is_upstream() {
+        let err: Box<dyn Error> = Box::new(StrError(
+            "crawl suggestion discovery failed: llm completion failed",
+        ));
+        let http = HttpError::from_box(err);
+
+        assert_eq!(http.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(http.kind(), "upstream_unavailable");
+        assert_eq!(http.message(), "upstream service unavailable");
     }
 }

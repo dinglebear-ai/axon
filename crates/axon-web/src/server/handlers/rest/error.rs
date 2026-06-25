@@ -46,8 +46,24 @@ pub(crate) fn classify_service_error(err: &(dyn Error + 'static)) -> (StatusCode
 
     // Upstream takes precedence over bad-request heuristics so misleading
     // strings like "qdrant returned invalid response" don't get downgraded.
+    if lc.contains("429")
+        || lc.contains("rate limit")
+        || lc.contains("rate-limited")
+        || lc.contains("too many requests")
+        || lc.contains("usage limit")
+        || lc.contains("quota")
+        || lc.contains("resource exhausted")
+    {
+        return (StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+
     if lc.contains("qdrant")
         || lc.contains("tei")
+        || lc.contains("llm")
+        || lc.contains("gemini")
+        || lc.contains("codex app-server")
+        || lc.contains("openai")
+        || lc.contains("completion")
         || lc.contains("connection refused")
         || lc.contains("upstream")
         || lc.contains("timed out")
