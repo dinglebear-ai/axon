@@ -181,6 +181,7 @@ export type components = {
         "ReadinessBody": {
             "ok": boolean;
             "qdrant": string;
+            "sqlite": string;
             "tei": string;
         };
         "RenderMode": "http" | "chrome" | "auto-switch";
