@@ -4469,6 +4469,16 @@
               }
             }
           },
+          "429": {
+            "description": "Upstream LLM or search provider rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "502": {
             "description": "Upstream search or LLM service unavailable",
             "content": {
