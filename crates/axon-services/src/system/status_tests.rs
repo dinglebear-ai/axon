@@ -227,8 +227,10 @@ async fn full_status_includes_sqlite_diagnostics_and_degrades_on_runtime_ioerr()
         "error returned from database: (code: 522) disk I/O error",
     );
     let tmp = tempfile::tempdir().expect("tempdir");
-    let mut cfg = Config::default();
-    cfg.sqlite_path = tmp.path().join("jobs.db");
+    let cfg = Config {
+        sqlite_path: tmp.path().join("jobs.db"),
+        ..Default::default()
+    };
     let ctx = ServiceContext::from_runtime(Arc::new(cfg), Arc::new(HealthyRuntime));
 
     let result = full_status(&ctx).await.expect("status");
