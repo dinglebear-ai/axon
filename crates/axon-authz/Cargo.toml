@@ -1,0 +1,9 @@
+[package]
+name = "axon-authz"
+version.workspace = true
+edition = "2024"
+rust-version = "1.94.0"
+description = "Axon OAuth scope constants and satisfaction logic"
+license = "MIT"
+
+[dependencies]

@@ -28,12 +28,11 @@ class SourcesViewModel(app: Application) : AndroidViewModel(app) {
     val uiState: StateFlow<SourcesUiState> = _uiState.asStateFlow()
 
     init {
-        // Auto-reload when the API token, server URL, or collection changes. All three affect
-        // which sources are visible: a different collection returns a different source list,
-        // and a different server URL points to a different Axon instance entirely.
+        // Auto-reload when the API token or server URL changes. Either points at a different
+        // Axon access boundary or instance, which can change the visible source list.
         viewModelScope.launch {
             container.settingsRepository.settings
-                .distinctUntilChangedBy { Triple(it.token, it.serverUrl, it.collection) }
+                .distinctUntilChangedBy { it.token to it.serverUrl }
                 .collect { load() }
         }
     }
@@ -41,8 +40,7 @@ class SourcesViewModel(app: Application) : AndroidViewModel(app) {
     fun load() {
         viewModelScope.launch {
             _uiState.value = SourcesUiState.Loading
-            val collection = container.settingsRepository.settings.first().collection
-            container.axonRepository.sources(limit = 100, collection = collection).fold(
+            container.axonRepository.sources(limit = 100).fold(
                 onSuccess = { list ->
                     _uiState.value = if (list.isEmpty()) {
                         SourcesUiState.Empty

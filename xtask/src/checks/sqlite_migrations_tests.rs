@@ -6,7 +6,7 @@ fn write_fixture() -> TempDir {
     let tmp = TempDir::new().unwrap();
     let migrations_dir = tmp.path().join(MIGRATIONS_DIR);
     fs::create_dir_all(&migrations_dir).unwrap();
-    fs::create_dir_all(tmp.path().join("src/jobs")).unwrap();
+    fs::create_dir_all(tmp.path().join("crates/axon-jobs/src")).unwrap();
 
     fs::write(
         migrations_dir.join("0001_create_tables.sql"),

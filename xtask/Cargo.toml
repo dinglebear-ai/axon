@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 anyhow = "1"
-axon = { path = ".." }
+axon-web = { path = "../crates/axon-web" }
 clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15"
 regex = "1"

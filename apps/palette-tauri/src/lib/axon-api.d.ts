@@ -1196,8 +1196,13 @@ export interface components {
             source_type?: string | null;
         };
         RestEvaluateRequest: {
+            before?: string | null;
             collection?: string | null;
+            diagnostics?: boolean | null;
+            hybrid_search?: boolean | null;
             question: string;
+            retrieval_ab?: boolean | null;
+            since?: string | null;
         };
         /** @enum {string} */
         RestExtractMode: "auto";
@@ -1252,10 +1257,13 @@ export interface components {
         /** @enum {string} */
         RestMemorySubaction: "remember" | "list" | "search" | "show" | "link" | "supersede" | "context";
         RestQueryRequest: {
+            before?: string | null;
             collection?: string | null;
+            hybrid_search?: boolean | null;
             limit?: number | null;
             offset?: number | null;
             query: string;
+            since?: string | null;
         };
         RestResearchRequest: {
             limit?: number | null;
@@ -1264,9 +1272,11 @@ export interface components {
             time_range?: string | null;
         };
         RestRetrieveRequest: {
+            before?: string | null;
             collection?: string | null;
             cursor?: string | null;
             max_points?: number | null;
+            since?: string | null;
             token_budget?: number | null;
             url: string;
         };

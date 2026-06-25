@@ -1,0 +1,252 @@
+use crate::progress::PhaseReporter;
+use crate::subprocess::{MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout};
+use anyhow::{Result, bail};
+use axon_core::config::Config;
+use axon_core::http::validate_url;
+use axon_core::logging::log_warn;
+use axon_vector::ops::{PreparedDoc, SourceDocument, embed_prepared_docs, prepare_source_document};
+use std::path::{Path, PathBuf};
+use url::Url;
+
+use super::GitHubCommonFields;
+use super::meta::{GitHubPayloadParams, build_github_payload};
+use crate::git_payload::ContentKind;
+
+const PHASE_CLONING_WIKI: &str = "cloning_wiki";
+const PHASE_EMBEDDING_WIKI: &str = "embedding_wiki";
+
+/// Maximum wiki file size accepted before reading into memory.
+const MAX_WIKI_FILE_BYTES: u64 = MAX_INGEST_FILE_BYTES;
+
+/// Walk a directory iteratively and collect all file paths.
+/// Skips `.git` directories. Uses an explicit stack to avoid recursive heap allocation.
+async fn collect_wiki_files(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let mut entries = tokio::fs::read_dir(&dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.file_name().and_then(|n| n.to_str()) == Some(".git") {
+                continue;
+            }
+            if entry.file_type().await?.is_dir() {
+                stack.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+/// Build PreparedDoc list from the files in a cloned wiki directory.
+async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<Vec<PreparedDoc>> {
+    let all_files = collect_wiki_files(Path::new(tmp_path)).await?;
+    let mut docs: Vec<PreparedDoc> = Vec::new();
+
+    for path in all_files {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        if !matches!(ext.as_str(), "md" | "rst" | "txt") {
+            continue;
+        }
+
+        // Guard against oversized wiki files that would spike memory.
+        match tokio::fs::metadata(&path).await {
+            Ok(meta) if meta.len() > MAX_WIKI_FILE_BYTES => {
+                log_warn(&format!(
+                    "command=ingest_github skip_large_wiki path={path:?} size_bytes={}",
+                    meta.len()
+                ));
+                continue;
+            }
+            Err(e) => {
+                log_warn(&format!(
+                    "command=ingest_github wiki_stat_failed path={path:?} err={e}"
+                ));
+                continue;
+            }
+            _ => {}
+        }
+
+        let content = match tokio::fs::read_to_string(&path).await {
+            Ok(c) => c,
+            Err(e) => {
+                log_warn(&format!(
+                    "command=ingest_github wiki_read_failed path={path:?} err={e}"
+                ));
+                continue;
+            }
+        };
+
+        if content.trim().is_empty() {
+            continue;
+        }
+
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Home");
+        let wiki_url = github_wiki_page_url(&common.owner, &common.name, stem)?;
+        let title = stem.replace(['-', '_'], " ");
+
+        let extra = build_github_payload(&GitHubPayloadParams {
+            repo: common.name.clone(),
+            owner: common.owner.clone(),
+            content_kind: ContentKind::Wiki,
+            default_branch: Some(common.default_branch.clone()),
+            repo_description: common.repo_description.clone(),
+            pushed_at: common.pushed_at.clone(),
+            is_private: common.is_private,
+            ..Default::default()
+        });
+
+        let source_doc = match SourceDocument::try_new_web_markdown(
+            wiki_url.clone(),
+            content,
+            "github",
+            Some(title),
+            Some(extra),
+            None,
+            None,
+        ) {
+            Ok(doc) => doc,
+            Err(err) => {
+                log_warn(&format!(
+                    "command=ingest_github wiki_invalid_source_doc url={wiki_url} err={err}"
+                ));
+                continue;
+            }
+        };
+        match prepare_source_document(source_doc).await {
+            Ok(doc) if !doc.is_empty() => docs.push(doc),
+            Ok(_) => {}
+            Err(err) => log_warn(&format!(
+                "command=ingest_github wiki_prepare_source_doc_failed url={wiki_url} err={err}"
+            )),
+        }
+    }
+
+    Ok(docs)
+}
+
+fn github_wiki_page_url(owner: &str, repo: &str, stem: &str) -> Result<String> {
+    let mut url = Url::parse("https://github.com/")?;
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("github base URL cannot be a base"))?;
+        segments.push(owner).push(repo).push("wiki").push(stem);
+    }
+    Ok(url.to_string())
+}
+
+/// Ingest wiki pages from a GitHub repository by cloning the wiki git repo.
+///
+/// Uses `git clone --depth=1` to clone the wiki. If the wiki doesn't exist
+/// (exit code 128 with "not found" in stderr), returns `Ok(0)` silently.
+/// Other clone failures are logged and returned as errors.
+///
+/// Authentication uses `http.extraHeader` via git config env vars to avoid
+/// embedding the token in the clone URL (which would leak in process args).
+///
+/// Requires `git` to be installed and on PATH.
+pub async fn ingest_wiki(
+    cfg: &Config,
+    common: &GitHubCommonFields,
+    token: Option<&str>,
+    reporter: &PhaseReporter,
+) -> Result<usize> {
+    reporter.report_phase(PHASE_CLONING_WIKI).await;
+    // Create a temp directory; cleaned up automatically when `_tmp` is dropped
+    let _tmp = tempfile::tempdir()?;
+    let tmp_path = _tmp.path().to_string_lossy().to_string();
+
+    // Plain HTTPS clone URL — token is passed via git config env vars, not the URL
+    let clone_url = format!(
+        "https://github.com/{}/{}.wiki.git",
+        common.owner, common.name
+    );
+
+    // SSRF guard: validate the clone URL against private IP ranges.
+    validate_url(&clone_url)?;
+
+    // "--" separates flags from the URL argument to prevent argument injection
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.args(["clone", "--depth=1", "--", &clone_url, &tmp_path]);
+
+    // Use header-based auth to avoid embedding token in process args
+    if let Some(t) = token {
+        cmd.env("GIT_CONFIG_COUNT", "1");
+        cmd.env("GIT_CONFIG_KEY_0", "http.extraHeader");
+        cmd.env("GIT_CONFIG_VALUE_0", format!("Authorization: token {t}"));
+    }
+
+    let ctx = format!("wiki clone {}/{}", common.owner, common.name);
+    let output = run_command_with_timeout(cmd, SUBPROCESS_TIMEOUT, &ctx).await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Exit code 128 with "not found" / "does not exist" = no wiki, expected
+        // GitHub returns "invalid credentials" (not "not found") when a token is
+        // provided but the wiki repo doesn't exist — security measure that avoids
+        // revealing repo existence. Treat it the same as "not found".
+        if stderr.contains("not found") || stderr.contains("does not exist") {
+            return Ok(0);
+        }
+        // GitHub returns "invalid credentials" (not "not found") when a valid token
+        // is provided but the wiki repo doesn't exist — anti-enumeration behaviour.
+        // Log it so a genuine auth failure on an existing wiki is still visible.
+        if token.is_some() && stderr.contains("invalid credentials") {
+            log_warn(&format!(
+                "command=ingest_github wiki_no_credentials repo={}/{} \
+                 treating_as_no_wiki (GitHub anti-enumeration)",
+                common.owner, common.name
+            ));
+            return Ok(0);
+        }
+        // Other failures are real errors worth surfacing
+        log_warn(&format!(
+            "wiki clone failed (exit {}): {}",
+            output.status,
+            stderr.trim()
+        ));
+        bail!("wiki clone failed: {}", stderr.trim());
+    }
+
+    let docs = build_wiki_docs(&tmp_path, common).await?;
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_EMBEDDING_WIKI,
+            "wiki_pages": docs.len(),
+        }))
+        .await;
+    let summary = embed_prepared_docs(cfg, docs, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .require_success("github wiki embed")
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(summary.chunks_embedded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn github_wiki_page_url_percent_encodes_page_segment() {
+        let url = match github_wiki_page_url("openai", "model-context-protocol", "Getting Started")
+        {
+            Ok(url) => url,
+            Err(err) => panic!("wiki URL should build: {err}"),
+        };
+        assert_eq!(
+            url,
+            "https://github.com/openai/model-context-protocol/wiki/Getting%20Started"
+        );
+    }
+}

@@ -244,8 +244,13 @@ export type components = {
             "source_type"?: string | null;
         };
         "RestEvaluateRequest": {
+            "before"?: string | null;
             "collection"?: string | null;
+            "diagnostics"?: boolean | null;
+            "hybrid_search"?: boolean | null;
             "question": string;
+            "retrieval_ab"?: boolean | null;
+            "since"?: string | null;
         };
         "RestExtractMode": "auto";
         "RestExtractRequest": {
@@ -293,10 +298,13 @@ export type components = {
         };
         "RestMemorySubaction": "remember" | "list" | "search" | "show" | "link" | "supersede" | "context";
         "RestQueryRequest": {
+            "before"?: string | null;
             "collection"?: string | null;
+            "hybrid_search"?: boolean | null;
             "limit"?: number | null;
             "offset"?: number | null;
             "query": string;
+            "since"?: string | null;
         };
         "RestResearchRequest": {
             "limit"?: number | null;
@@ -305,9 +313,11 @@ export type components = {
             "time_range"?: string | null;
         };
         "RestRetrieveRequest": {
+            "before"?: string | null;
             "collection"?: string | null;
             "cursor"?: string | null;
             "max_points"?: number | null;
+            "since"?: string | null;
             "token_budget"?: number | null;
             "url": string;
         };

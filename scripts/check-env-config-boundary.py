@@ -192,7 +192,7 @@ def scan_env_tokens() -> dict[str, set[str]]:
 
 
 def load_rust_registry_keys() -> set[str]:
-    registry_root = ROOT / "src/core/config/parse"
+    registry_root = ROOT / "crates/axon-core/src/config/parse"
     texts = [registry_root.joinpath("env_registry.rs").read_text()]
     texts.extend(path.read_text() for path in registry_root.glob("env_registry/*.rs"))
     return set(re.findall(r'spec\(\s*"([A-Z0-9_]+)"', "\n".join(texts)))

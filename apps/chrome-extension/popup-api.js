@@ -135,33 +135,30 @@ async function summarizeWithAxon(urls) {
 }
 
 async function mapWithAxon(url) {
-  return postAxon("/v1/map", { url, limit: 100 });
+  return postAxon("/v1/map", { url });
 }
 
 async function retrieveWithAxon(url) {
-  return postAxon("/v1/retrieve", { url, max_points: 12, token_budget: 6000 });
+  return postAxon("/v1/retrieve", { url });
 }
 
-async function queryWithAxon(query) {
-  return postAxon("/v1/query", { query, limit: 8, offset: 0 });
+function withOptionalPaging(body, flags = {}) {
+  if (flags.limit !== undefined) body.limit = flags.limit;
+  if (flags.offset !== undefined) body.offset = flags.offset;
+  if (flags.timeRange !== undefined) body.time_range = flags.timeRange;
+  return body;
+}
+
+async function queryWithAxon(query, flags = {}) {
+  return postAxon("/v1/query", withOptionalPaging({ query }, flags));
 }
 
 async function searchWithAxon(query, flags = {}) {
-  return postAxon("/v1/search", {
-    query,
-    limit: flags.limit || 10,
-    offset: flags.offset || 0,
-    time_range: flags.timeRange
-  });
+  return postAxon("/v1/search", withOptionalPaging({ query }, flags));
 }
 
 async function researchWithAxon(query, flags = {}) {
-  return postAxon("/v1/research", {
-    query,
-    limit: flags.limit || 10,
-    offset: flags.offset || 0,
-    time_range: flags.timeRange
-  });
+  return postAxon("/v1/research", withOptionalPaging({ query }, flags));
 }
 
 async function evaluateWithAxon(question) {

@@ -1,4 +1,4 @@
-use axon::services::map::parse_map_result;
+use axon_services::map::parse_map_result;
 /// Smoke tests for Task 3.2: CLI full rewire through services layer.
 ///
 /// These tests verify that:
@@ -8,11 +8,11 @@ use axon::services::map::parse_map_result;
 ///
 /// No live services are required — all tests use pure functions or type assertions.
 // ── services::query ──────────────────────────────────────────────────────────
-use axon::services::query::{
+use axon_services::query::{
     map_ask_payload, map_evaluate_payload, map_query_results, map_retrieve_result,
     map_suggest_payload,
 };
-use axon::services::types::{
+use axon_services::types::{
     AskResult, EvaluateResult, IngestResult, MapResult, Pagination, QueryResult, ResearchResult,
     RetrieveOptions, RetrieveResult, ScrapeResult, ScreenshotResult, SearchOptions, SearchResult,
     SuggestResult,
@@ -110,7 +110,7 @@ fn smoke_map_suggest_payload_missing_key_returns_error() {
 
 // ── services::scrape ─────────────────────────────────────────────────────────
 
-use axon::services::scrape::map_scrape_payload;
+use axon_services::scrape::map_scrape_payload;
 
 #[test]
 fn smoke_map_scrape_payload_wraps_value() {
@@ -151,7 +151,7 @@ fn smoke_map_map_payload_wraps_value() {
 
 // ── services::search ──────────────────────────────────────────────────────────
 
-use axon::services::search::{map_research_payload, map_search_results};
+use axon_services::search::{map_research_payload, map_search_results};
 
 #[test]
 fn smoke_map_search_results_wraps_items() {
@@ -165,7 +165,7 @@ fn smoke_map_search_results_wraps_items() {
 
 #[test]
 fn smoke_map_research_payload_wraps_value() {
-    use axon::services::types::{ResearchPayload, ResearchTiming, ResearchUsage, SummarySource};
+    use axon_services::types::{ResearchPayload, ResearchTiming, ResearchUsage, SummarySource};
     let payload = ResearchPayload {
         query: "rust async patterns".to_string(),
         limit: 10,
@@ -187,8 +187,8 @@ fn smoke_map_research_payload_wraps_value() {
 
 // ── services::crawl ───────────────────────────────────────────────────────────
 
-use axon::services::crawl::{map_crawl_job_result, map_crawl_start_result};
-use axon::services::types::CrawlStartResult;
+use axon_services::crawl::{map_crawl_job_result, map_crawl_start_result};
+use axon_services::types::CrawlStartResult;
 
 #[test]
 fn smoke_map_crawl_start_result_wraps_job_ids() {
@@ -218,8 +218,8 @@ fn smoke_map_crawl_job_result_wraps_payload() {
 
 // ── services::embed ───────────────────────────────────────────────────────────
 
-use axon::services::embed::{map_embed_job_result, map_embed_start_result};
-use axon::services::types::EmbedStartResult;
+use axon_services::embed::{map_embed_job_result, map_embed_start_result};
+use axon_services::types::EmbedStartResult;
 
 #[test]
 fn smoke_map_embed_start_result_wraps_job_id() {
@@ -236,8 +236,8 @@ fn smoke_map_embed_job_result_wraps_payload() {
 
 // ── services::extract ─────────────────────────────────────────────────────────
 
-use axon::services::extract::{map_extract_job_result, map_extract_start_result};
-use axon::services::types::ExtractStartResult;
+use axon_services::extract::{map_extract_job_result, map_extract_start_result};
+use axon_services::types::ExtractStartResult;
 
 #[test]
 fn smoke_map_extract_start_result_wraps_job_id() {
@@ -254,7 +254,7 @@ fn smoke_map_extract_job_result_wraps_payload() {
 
 // ── services::ingest ──────────────────────────────────────────────────────────
 
-use axon::services::ingest::map_ingest_result;
+use axon_services::ingest::map_ingest_result;
 
 #[test]
 fn smoke_map_ingest_result_wraps_github_payload() {
@@ -304,7 +304,7 @@ fn smoke_map_ingest_result_wraps_sessions_payload() {
 
 // ── services::screenshot ──────────────────────────────────────────────────────
 
-use axon::services::screenshot::map_screenshot_result;
+use axon_services::screenshot::map_screenshot_result;
 
 #[test]
 fn smoke_map_screenshot_result_returns_typed_fields() {

@@ -16,8 +16,8 @@
 //! These benchmarks guard against chunk-count amplification regressions (P-H1,
 //! P-L2) and provide a baseline for embedding throughput estimates.
 
-use axon::vector::ops::input::code::chunk_code;
-use axon::vector::ops::input::{chunk_markdown, chunk_text, chunk_text_with_offsets};
+use axon_vector::ops::input::code::chunk_code;
+use axon_vector::ops::input::{chunk_markdown, chunk_text, chunk_text_with_offsets};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 // ── synthetic document fixtures ───────────────────────────────────────────────

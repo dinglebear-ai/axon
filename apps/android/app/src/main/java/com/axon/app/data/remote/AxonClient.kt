@@ -24,6 +24,7 @@ import com.axon.app.data.auth.hasUsableAuth
 import com.axon.app.data.remote.models.AcceptedJob
 import com.axon.app.data.remote.models.CancelResponse
 import com.axon.app.data.remote.models.DoctorResponse
+import com.axon.app.data.remote.models.DomainIndexedResponse
 import com.axon.app.data.remote.models.DomainsResponse
 import com.axon.app.data.remote.models.EmbedRequest
 import com.axon.app.data.remote.models.ExtractRequest
@@ -64,6 +65,8 @@ private val json = Json {
 }
 
 private const val TAG = "AxonClient"
+
+private fun queryEncode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
 class AxonClient(
     baseUrl: String,
@@ -222,7 +225,13 @@ class AxonClient(
 
     suspend fun sources(request: SourcesRequest = SourcesRequest()): Result<SourcesResponse> =
         withContext(Dispatchers.IO) {
-            get(openApiRoute("GET", "/v1/sources", "/v1/sources?limit=${request.limit}&offset=${request.offset}"))
+            val params = buildList {
+                add("limit=${request.limit}")
+                add("offset=${request.offset}")
+                request.domain?.takeIf { it.isNotBlank() }?.let { add("domain=${queryEncode(it)}") }
+                request.cursor?.takeIf { it.isNotBlank() }?.let { add("cursor=${queryEncode(it)}") }
+            }.joinToString("&")
+            get(openApiRoute("GET", "/v1/sources", "/v1/sources?$params"))
         }
 
     suspend fun stats(): Result<StatsResponse> = withContext(Dispatchers.IO) {
@@ -319,7 +328,14 @@ class AxonClient(
         withContext(Dispatchers.IO) { post(openApiRoute("POST", "/v1/suggest"), SuggestRequest(focus = focus, collection = collection)) }
 
     suspend fun domains(limit: Int = 100, offset: Int = 0): Result<DomainsResponse> =
-        withContext(Dispatchers.IO) { get(openApiRoute("GET", "/v1/domains", "/v1/domains?limit=$limit&offset=$offset")) }
+        withContext(Dispatchers.IO) {
+            get(openApiRoute("GET", "/v1/domains", "/v1/domains?limit=$limit&offset=$offset"))
+        }
+
+    suspend fun domainIndexed(domain: String): Result<DomainIndexedResponse> =
+        withContext(Dispatchers.IO) {
+            get(openApiRoute("GET", "/v1/domains", "/v1/domains?domain=${queryEncode(domain)}"))
+        }
 
     suspend fun listWatches(limit: Int = 25): Result<List<WatchDef>> = withContext(Dispatchers.IO) {
         get<WatchListResponse>(openApiRoute("GET", "/v1/watch", "/v1/watch?limit=$limit")).map { it.watches }

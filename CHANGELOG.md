@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-06-23
+
+### Added
+
+- Replace codex app-server spawn-per-completion with persistent process pool
+- Add project metadata read/write to store
+- Move page-cap policy to the services layer; unify CLI/MCP/HTTP at a 5k default+cap
+
+### Changed
+
+- Extract axon-authz micro-crate (epic axon_rust-23dw)
+- Seed axon-api crate, break vector<->services cycle (epic axon_rust-23dw)
+- Remove 2 of 4 core upward deps (epic axon_rust-23dw.3)
+- Make src/core import-clean (epic axon_rust-23dw.3)
+- Extract axon-core crate (epic axon_rust-23dw.3)
+- Break vector->ingest cycle 2 (epic axon_rust-23dw)
+- Extract axon-crawl crate (epic axon_rust-23dw.10)
+- Break vector->jobs and vector<->code_index edges (epic axon_rust-23dw)
+- Extract axon-vector crate (epic axon_rust-23dw.5-8)
+- Move IngestSource DTOs to axon-api, break ingest<->jobs (epic axon_rust-23dw)
+- Extract axon-ingest crate (epic axon_rust-23dw.12)
+- Extract axon-extract crate (epic axon_rust-23dw.9)
+- Move diff DTOs to axon-api (epic axon_rust-23dw .11 prep)
+- Move ArtifactHandle to axon-api::contract (epic .2/.11 prep)
+- Move ScrapeResult/IngestResult/ExtractSyncResult to axon-api (epic .11)
+- Move ServiceEvent/emit/progress channel to axon-core::events (epic .11 enabler)
+- Move ingest orchestration to axon-ingest::orchestrate (epic .11)
+- Move predict_crawl_output_dir to axon-crawl (epic .11)
+- Move compute_diff/extract_links_from_payload to axon-api::diff (epic .11)
+- Move services::artifacts to axon-core::artifacts (epic .11 prep)
+- Move extract_sync to axon-extract::sync (epic .11)
+- Move single-URL scrape to axon-extract::scrape, break jobs/watch->services edge (epic .11)
+- Move ServiceJob + JobStatus to axon-api, sever last jobs->services edge (epic .11)
+- Repoint final watch test DTOs to axon-api, src/jobs now fully services-free (epic .11)
+- Extract axon-jobs crate (epic axon_rust-23dw)
+- Invert ServiceContext->cfg+pool, break code_index<->services cycle (epic axon_rust-23dw)
+- Extract axon-code-index crate (epic axon_rust-23dw)
+- Move mcp::schema DTOs to axon-api::mcp_schema, break services->mcp cycle3 (epic axon_rust-23dw)
+- Extract axon-services crate (epic axon_rust-23dw)
+- Relocate unified-server bootstrap to cli, break mcp<->web cycle (epic axon_rust-23dw)
+- Extract axon-mcp crate (epic axon_rust-23dw)
+- Extract axon-web crate (epic axon_rust-23dw)
+- Extract axon-cli crate, root becomes thin binary (epic axon_rust-23dw)
+- Trim 735 unused crate deps (cargo machete); narrow service_job_conv; doc-hide token reader (lavra review)
+
+### Fixed
+
+- Inherit product version across workspace crates; bump syncs [workspace.package] (epic axon_rust-23dw.17)
+- Enforce [workspace.package]==[package] version + guard half-bumps; doc lossy ServiceJob From impls (PR review)
+
 ## [5.19.0] - 2026-06-22
 
 ### Added
