@@ -1,5 +1,6 @@
-use super::classify_service_error;
-use axum::http::StatusCode;
+use super::{classify_service_error, map_service_error};
+use axum::{body::to_bytes, http::StatusCode};
+use serde_json::Value;
 use std::fmt;
 
 /// A simple error type for testing that wraps a static string.
@@ -43,6 +44,58 @@ fn timeout_classified_as_upstream() {
     let (status, kind) = check("request timed out after 30s");
     assert_eq!(status, StatusCode::BAD_GATEWAY);
     assert_eq!(kind, "upstream");
+}
+
+#[test]
+fn codex_usage_limit_classified_as_rate_limited() {
+    let (status, kind) = check(
+        "crawl suggestion discovery failed: codex app-server error: You've hit your usage limit",
+    );
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(kind, "rate_limited");
+}
+
+#[tokio::test]
+async fn codex_usage_limit_response_contract_is_rate_limited() {
+    let err = StrError(
+        "crawl suggestion discovery failed: codex app-server error: You've hit your usage limit",
+    );
+    let response = map_service_error(&err);
+
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let body = to_bytes(response.into_body(), 16 * 1024)
+        .await
+        .expect("error body");
+    let body: Value = serde_json::from_slice(&body).expect("json error body");
+    assert_eq!(body["kind"], "rate_limited");
+    assert_eq!(
+        body["message"],
+        "crawl suggestion discovery failed: codex app-server error: You've hit your usage limit"
+    );
+}
+
+#[test]
+fn llm_completion_error_classified_as_upstream() {
+    let (status, kind) = check("crawl suggestion discovery failed: llm completion failed");
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert_eq!(kind, "upstream");
+}
+
+#[tokio::test]
+async fn llm_completion_response_contract_is_upstream() {
+    let err = StrError("crawl suggestion discovery failed: llm completion failed");
+    let response = map_service_error(&err);
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = to_bytes(response.into_body(), 16 * 1024)
+        .await
+        .expect("error body");
+    let body: Value = serde_json::from_slice(&body).expect("json error body");
+    assert_eq!(body["kind"], "upstream");
+    assert_eq!(
+        body["message"],
+        "crawl suggestion discovery failed: llm completion failed"
+    );
 }
 
 #[test]
