@@ -103,10 +103,13 @@ chmod 600 ~/.axon/config.toml
 
 To point at a custom path: `AXON_CONFIG_PATH=/path/to/config.toml`.
 
-All TOML keys below are wired through `Config` — setting them in `~/.axon/config.toml` takes effect. The env var shown for each key still overrides the TOML value at the precedence chain above.
+All TOML keys below are wired through either runtime `Config` or the Rust build
+script — setting them in `~/.axon/config.toml` takes effect. The env var shown
+for each key still overrides the TOML value at the precedence chain above.
 
 | Section | Keys | Env override |
 |---------|------|---------------|
+| `[build]` | `allow-fallback-web-assets` | `AXON_ALLOW_FALLBACK_WEB_ASSETS` |
 | `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
 | `[ask]` | `max-context-chars`, `chunk-limit`, `candidate-limit`, `full-docs`, `backfill-chunks`, `doc-fetch-concurrency`, `doc-chunk-limit`, `min-relevance-score`, `authoritative-domains`, `authoritative-boost`, `min-citations-nontrivial` | `AXON_ASK_MAX_CONTEXT_CHARS`, `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_FULL_DOCS`, `AXON_ASK_BACKFILL_CHUNKS`, `AXON_ASK_DOC_FETCH_CONCURRENCY`, `AXON_ASK_DOC_CHUNK_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, `AXON_ASK_AUTHORITATIVE_BOOST`, `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
@@ -116,6 +119,12 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `batch-timeout-secs`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | `AXON_SCRAPE_BATCH_TIMEOUT_SECS` plus ladder env vars |
 
 URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`) for llama.cpp/OpenAI-compatible endpoints, or `AXON_LLM_BACKEND=codex-app-server` to spawn Codex CLI app-server completions over stdio. `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+
+`[build] allow-fallback-web-assets = true` is the preferred local-development
+way to let the Rust build embed the placeholder web panel when `apps/web/out`
+has not been built. The `AXON_ALLOW_FALLBACK_WEB_ASSETS` env var remains a
+compatibility override for CI or one-off commands, but normal developer
+machines should keep the value in `~/.axon/config.toml`.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 

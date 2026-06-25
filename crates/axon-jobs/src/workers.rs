@@ -254,6 +254,7 @@ async fn worker_loop<F, Fut>(
                                 "worker claim skipped — DB busy; will retry"
                             );
                         } else {
+                            crate::store::record_sqlite_runtime_error(&e);
                             tracing::error!(
                                 table = kind.table_name(),
                                 error = %e,

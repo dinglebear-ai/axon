@@ -1,7 +1,13 @@
 use axon_core::config::Config;
 use sqlx::SqlitePool;
+use std::path::Path;
 
 mod reclaim;
+pub use axon_core::sqlite::{
+    diagnostics as sqlite_diagnostics, readiness as sqlite_readiness,
+    record_runtime_error as record_sqlite_runtime_error, recover_corrupted_database,
+    reset_runtime_health_for_tests as reset_sqlite_runtime_health_for_tests,
+};
 pub use reclaim::RECLAIMED_ERROR_TEXT;
 pub use reclaim::{
     ReclaimedJob, ReclaimedJobs, reclaim_stale_running_jobs, reclaim_stale_running_jobs_detailed,
@@ -9,13 +15,31 @@ pub use reclaim::{
     reclaim_stale_running_jobs_for_table_jobs,
 };
 
+#[cfg(test)]
+pub(crate) use axon_core::sqlite::{
+    acquire_recovery_lock, active_db_lock_count_for_tests, active_lock_path, hold_active_db_lock,
+    open_lock_file,
+};
+
 /// Open a SQLite pool, enable WAL mode, and run all migrations.
 ///
 /// Pass `":memory:"` for in-memory databases (tests).
 pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
+    let active_lock = if path == ":memory:" {
+        None
+    } else {
+        axon_core::sqlite::acquire_active_db_lock(Path::new(path))?
+    };
+    let pool = open_sqlite_pool_unlocked(path).await?;
+    axon_core::sqlite::register_active_db_lock(active_lock)?;
+
+    Ok(pool)
+}
+
+async fn open_sqlite_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
     // Hardened connect + pragmas + after_release scrub live in axon-core; this
     // crate owns the jobs migrations run on top.
-    let pool = axon_core::sqlite::open_pool(path).await?;
+    let pool = axon_core::sqlite::open_pool_unlocked(path).await?;
 
     sqlx::migrate!("src/migrations")
         .run(&pool)
@@ -81,7 +105,12 @@ pub async fn checkpoint_and_close(pool: &SqlitePool) {
 /// opens a fresh database. Job history is lost but Qdrant vector data is
 /// unaffected. Logs a `tracing::error!` so the operator sees it.
 pub async fn open_sqlite_pool_or_recover(path: &str) -> Result<SqlitePool, sqlx::Error> {
-    match open_sqlite_pool(path).await {
+    let active_lock = if path == ":memory:" {
+        None
+    } else {
+        axon_core::sqlite::acquire_active_db_lock(Path::new(path))?
+    };
+    match open_sqlite_pool_unlocked(path).await {
         Ok(pool) => {
             // Quick integrity probe — catches corruption that slipped past the
             // open (e.g. partial WAL frames from a prior SIGKILL).
@@ -93,43 +122,26 @@ pub async fn open_sqlite_pool_or_recover(path: &str) -> Result<SqlitePool, sqlx:
                 .map(|s| s != "ok")
                 .unwrap_or(false);
             if !corrupt {
+                axon_core::sqlite::register_active_db_lock(active_lock)?;
                 return Ok(pool);
             }
             pool.close().await;
-            tracing::error!(path, "jobs: quick_check detected corruption — recovering");
-            rename_corrupted(path);
+            drop(active_lock);
+            recover_corrupted_database(Path::new(path), "quick_check detected corruption")?;
             open_sqlite_pool(path).await
         }
         Err(e) => {
+            drop(active_lock);
             let is_corrupt = e.to_string().contains("malformed")
                 || e.to_string().contains("corrupt")
                 || e.to_string().contains("code: 11");
             if is_corrupt && path != ":memory:" {
-                tracing::error!(path, error = %e, "jobs: database corrupt at open — recovering");
-                rename_corrupted(path);
+                recover_corrupted_database(Path::new(path), &e.to_string())?;
                 open_sqlite_pool(path).await
             } else {
                 Err(e)
             }
         }
-    }
-}
-
-fn rename_corrupted(path: &str) {
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let dest = format!("{path}.corrupted.{ts}");
-    if let Err(e) = std::fs::rename(path, &dest) {
-        tracing::warn!(src = path, dst = dest, error = %e, "jobs: could not rename corrupted db");
-    } else {
-        tracing::info!(src = path, dst = dest, "jobs: renamed corrupted db");
-    }
-    // Also remove WAL/SHM sidecars so the fresh db starts clean.
-    for suffix in ["-wal", "-shm"] {
-        let sidecar = format!("{path}{suffix}");
-        let _ = std::fs::remove_file(&sidecar);
     }
 }
 
@@ -159,7 +171,7 @@ mod tests;
 ///
 /// SAFETY: every table name below is a compile-time `&'static str` from a
 /// closed set; no caller-controlled value reaches the SQL string.
-pub async fn count_pending_jobs(sqlite_path: &std::path::Path) -> i64 {
+pub async fn count_pending_jobs(sqlite_path: &Path) -> i64 {
     if !sqlite_path.exists() {
         return 0;
     }
