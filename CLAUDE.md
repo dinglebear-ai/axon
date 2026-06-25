@@ -61,6 +61,7 @@ MCP docs:
 | `memory <sub>` | Persistent agent memory: `remember`, `search`, `show`, `link`, `supersede`, `context` backed by Qdrant content + SQLite metadata/edges | No |
 | `query <text>` | Semantic vector search | No |
 | `code-search <text>` | Local Git checkout semantic code search with foreground freshness | No |
+| `code-search-watch` | Host-local watcher that refreshes code-search indexes for Git repos under a workspace/project directory | No |
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
 | `ask <question>` | RAG: search + LLM answer. | No |
 | `summarize <url>...` | Scrape URL content and summarize it with the configured LLM | No |

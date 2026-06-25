@@ -17,6 +17,12 @@ async fn permissive_recurses_prunes_and_skips_binary() {
     tokio::fs::write(root.join("node_modules/x.js"), "1")
         .await
         .unwrap();
+    tokio::fs::create_dir_all(root.join(".worktrees/other"))
+        .await
+        .unwrap();
+    tokio::fs::write(root.join(".worktrees/other/clone.rs"), "fn cloned() {}")
+        .await
+        .unwrap();
 
     let files = collect_files(root, SelectionPolicy::Permissive)
         .await
@@ -30,6 +36,7 @@ async fn permissive_recurses_prunes_and_skips_binary() {
     assert!(names.iter().any(|n| n.ends_with("r.md")));
     assert!(!names.iter().any(|n| n.ends_with("img.png")));
     assert!(!names.iter().any(|n| n.contains("node_modules")));
+    assert!(!names.iter().any(|n| n.contains(".worktrees")));
 }
 
 #[tokio::test]
@@ -63,6 +70,126 @@ async fn allowlist_excludes_non_source_when_include_source_false() {
     .await
     .unwrap();
     assert_eq!(with_src.len(), 2);
+}
+
+#[tokio::test]
+async fn code_search_policy_keeps_docs_but_skips_lockfiles() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    tokio::fs::create_dir_all(root.join("src")).await.unwrap();
+    tokio::fs::write(root.join("src/lib.rs"), "pub fn x() {}")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join("Cargo.toml"), "[package]\nname = \"demo\"\n")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join("README.md"), "# hi")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n")
+        .await
+        .unwrap();
+
+    let files = collect_files(root, SelectionPolicy::CodeSearch)
+        .await
+        .unwrap();
+    let rels: Vec<String> = files
+        .iter()
+        .map(|p| {
+            p.strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+
+    assert!(rels.iter().any(|rel| rel == "src/lib.rs"), "{rels:?}");
+    assert!(rels.iter().any(|rel| rel == "Cargo.toml"), "{rels:?}");
+    assert!(rels.iter().any(|rel| rel == "README.md"), "{rels:?}");
+    assert!(!rels.iter().any(|rel| rel == "pnpm-lock.yaml"), "{rels:?}");
+}
+
+#[tokio::test]
+async fn code_search_policy_prunes_language_artifact_and_cache_dirs() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    for dir in [
+        "src",
+        ".ruff_cache",
+        ".pyre",
+        ".pytype",
+        "htmlcov",
+        ".turbo",
+        ".vitest",
+        "playwright-report",
+        "target",
+        "coverage",
+        ".serverless",
+        ".cache",
+        "package.egg-info",
+    ] {
+        tokio::fs::create_dir_all(root.join(dir)).await.unwrap();
+    }
+    tokio::fs::write(root.join("src/lib.rs"), "pub fn x() {}")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join(".ruff_cache/cache.py"), "print('cache')")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join(".pyre/cache.py"), "print('cache')")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join(".pytype/cache.py"), "print('cache')")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join("htmlcov/index.py"), "print('cache')")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join(".turbo/cache.ts"), "export const cache = true")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join(".vitest/cache.ts"), "export const cache = true")
+        .await
+        .unwrap();
+    tokio::fs::write(
+        root.join("playwright-report/report.ts"),
+        "export const cache = true",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(root.join("target/generated.rs"), "fn generated() {}")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join("coverage/report.go"), "package coverage")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join(".serverless/template.yml"), "service: demo")
+        .await
+        .unwrap();
+    tokio::fs::write(root.join(".cache/script.sh"), "echo cache")
+        .await
+        .unwrap();
+    tokio::fs::write(
+        root.join("package.egg-info/PKG-INFO"),
+        "Metadata-Version: 2.1",
+    )
+    .await
+    .unwrap();
+
+    let files = collect_files(root, SelectionPolicy::CodeSearch)
+        .await
+        .unwrap();
+    let rels: Vec<String> = files
+        .iter()
+        .map(|p| {
+            p.strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+
+    assert_eq!(rels, vec!["src/lib.rs".to_string()]);
 }
 
 #[tokio::test]

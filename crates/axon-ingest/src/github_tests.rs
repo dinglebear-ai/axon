@@ -29,6 +29,9 @@ fn source_path_accepts_go_files() {
 fn source_path_rejects_lock_files() {
     assert!(!is_indexable_source_path("Cargo.lock"));
     assert!(!is_indexable_source_path("package-lock.json"));
+    assert!(!is_indexable_source_path("pnpm-lock.yaml"));
+    assert!(!is_indexable_source_path("bun.lockb"));
+    assert!(!is_indexable_source_path("uv.lock"));
     assert!(!is_indexable_source_path("yarn.lock"));
     assert!(!is_indexable_source_path("Gemfile.lock"));
 }
@@ -80,6 +83,28 @@ fn source_path_rejects_build_artifacts() {
     assert!(!is_indexable_source_path("target/release/axon"));
     assert!(!is_indexable_source_path("dist/bundle.js.map"));
     assert!(!is_indexable_source_path("node_modules/lodash/index.js"));
+}
+
+#[test]
+fn source_path_rejects_language_artifact_and_cache_dirs() {
+    for path in [
+        ".ruff_cache/cache.py",
+        ".pyre/cache.py",
+        ".pytype/cache.py",
+        "htmlcov/index.py",
+        ".turbo/cache.ts",
+        ".vitest/results.ts",
+        "playwright-report/report.ts",
+        "coverage/report.go",
+        ".serverless/template.yml",
+        ".cache/script.sh",
+        "package.egg-info/meta.py",
+    ] {
+        assert!(
+            !is_indexable_source_path(path),
+            "expected artifact/cache path to be skipped: {path}"
+        );
+    }
 }
 
 // --- is_indexable_doc_path ---

@@ -710,6 +710,7 @@ dependencies = [
  "indicatif",
  "libc",
  "metrics",
+ "notify",
  "proptest",
  "psl",
  "rand_core 0.9.5",

@@ -24,6 +24,8 @@ use axon_core::logging::log_warn;
 pub enum SelectionPolicy {
     /// Git-repo ingest: curated allowlist of doc/source extensions.
     Allowlist { include_source: bool },
+    /// Local checkout semantic code search: docs, source, and config files.
+    CodeSearch,
     /// Local `embed <dir>`: permissive — everything except binary extensions.
     Permissive,
 }
@@ -86,7 +88,7 @@ pub async fn collect_files(root: &Path, policy: SelectionPolicy) -> Result<Vec<P
                 if !select::is_pruned_dir(name) {
                     stack.push(path);
                 }
-            } else if ft.is_file() && include_file(&path, root, policy) {
+            } else if ft.is_file() && should_include_file(&path, root, policy) {
                 files.push(path);
             }
         }
@@ -95,7 +97,7 @@ pub async fn collect_files(root: &Path, policy: SelectionPolicy) -> Result<Vec<P
     Ok(files)
 }
 
-fn include_file(path: &Path, root: &Path, policy: SelectionPolicy) -> bool {
+pub fn should_include_file(path: &Path, root: &Path, policy: SelectionPolicy) -> bool {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let name_lower = name.to_ascii_lowercase();
     let ext = path_extension(name);
@@ -109,6 +111,21 @@ fn include_file(path: &Path, root: &Path, policy: SelectionPolicy) -> bool {
             };
             let rel = rel.to_string_lossy().replace('\\', "/");
             is_indexable_doc_path(&rel) || (include_source && is_indexable_source_path(&rel))
+        }
+        SelectionPolicy::CodeSearch => {
+            let Ok(rel) = path.strip_prefix(root) else {
+                return false;
+            };
+            if rel.components().any(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .is_some_and(select::is_pruned_dir)
+            }) {
+                return false;
+            }
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            is_indexable_doc_path(&rel) || is_indexable_source_path(&rel)
         }
     }
 }

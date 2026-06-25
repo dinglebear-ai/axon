@@ -6,12 +6,34 @@ fn prunes_vcs_and_build_dirs() {
         ".git",
         "node_modules",
         "__pycache__",
+        ".ruff_cache",
+        ".pyre",
+        ".pytype",
+        "htmlcov",
+        ".turbo",
+        ".vitest",
+        "playwright-report",
         "target",
         "dist",
+        "coverage",
+        ".serverless",
         ".venv",
     ] {
         assert!(is_pruned_dir(name), "expected {name} to be pruned");
     }
+}
+
+#[test]
+fn detects_pruned_path_components() {
+    for path in [
+        "target/debug/axon",
+        "apps/web/.turbo/cache.ts",
+        "src\\__pycache__\\cache.py",
+        "package.egg-info/meta.py",
+    ] {
+        assert!(has_pruned_component(path), "expected {path} to be pruned");
+    }
+    assert!(!has_pruned_component("src/target_helpers/mod.rs"));
 }
 
 #[test]

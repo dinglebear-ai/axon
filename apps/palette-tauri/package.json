@@ -45,6 +45,8 @@
     "generate:api": "node scripts/generate-api.mjs",
     "lint": "biome lint .",
     "preview": "vite preview",
+    "qa:ask-stream": "python scripts/qa-ask-stream-transition.py",
+    "qa:switcher": "labby gateway code exec --file scripts/qa-switcher-open.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "verify": "pnpm install --frozen-lockfile && pnpm lint && pnpm test && pnpm check:api && pnpm typecheck && pnpm vite:build",
