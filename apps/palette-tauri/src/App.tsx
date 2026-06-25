@@ -257,8 +257,14 @@ export default function App() {
   }
 
   function switchActionMode(action: PaletteAction) {
+    if (action.argMode === "none") {
+      setQuery("");
+      setSelected(0);
+      setRun({ kind: "idle" });
+      void submit(action, "");
+      return;
+    }
     dispatchView({ type: "switchMode", action });
-    if (action.argMode === "none") setQuery("");
     setSelected(0);
     setRun({ kind: "idle" });
     focusInput(true);

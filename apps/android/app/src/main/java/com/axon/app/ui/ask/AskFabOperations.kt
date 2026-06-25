@@ -104,10 +104,11 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
                 repo.query(query = input).fold(
                     onSuccess = { hits ->
-                        val text = hits.take(5).joinToString("\n\n") { h ->
-                            "• ${h.url}\n  ${previewText(h.snippet, HIT_SNIPPET_CHARS)}"
+                        val text = hits.take(COMPACT_HIT_LIMIT).joinToString("\n\n") { h ->
+                            "• ${compactSingleLine(h.url, COMPACT_HIT_URL_CHARS)}\n  ${compactSingleLine(h.snippet, COMPACT_HIT_SNIPPET_CHARS)}"
                         }.ifBlank { "No results found." }
-                        replaceLastAxonMsg(text)
+                        val countNote = compactHitCountNote(hits.size)
+                        replaceLastAxonMsg(text + countNote)
                     },
                     onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
                 )
@@ -117,13 +118,15 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
                 repo.searchWeb(query = input).fold(
                     onSuccess = { r ->
-                        val resultsText = r.results.take(5).joinToString("\n\n") { h ->
-                            "• ${h.title}\n  ${h.url}\n  ${previewText(h.snippet.orEmpty(), HIT_SNIPPET_CHARS)}"
+                        val resultsText = r.results.take(COMPACT_HIT_LIMIT).joinToString("\n\n") { h ->
+                            "• ${compactSingleLine(h.title, COMPACT_HIT_TITLE_CHARS)}\n" +
+                                "  ${compactSingleLine(h.url, COMPACT_HIT_URL_CHARS)}\n" +
+                                "  ${compactSingleLine(h.snippet.orEmpty(), COMPACT_HIT_SNIPPET_CHARS)}"
                         }.ifBlank { "No results found." }
-                        val jobsText = r.crawlJobs.takeIf { it.isNotEmpty() }?.joinToString(
-                            prefix = "\n\nQueued crawl jobs:\n",
-                            separator = "\n",
-                        ) { job -> "• ${job.jobId} — ${job.url}" }.orEmpty()
+                        val countNote = compactHitCountNote(r.results.size)
+                        val jobsText = r.crawlJobs.takeIf { it.isNotEmpty() }?.let { jobs ->
+                            "\n\nQueued ${jobs.size} crawl jobs from search. Open Jobs for IDs and progress."
+                        }.orEmpty()
                         r.crawlJobs.forEach { job ->
                             recordRecentJob(job.jobId, kind = "crawl", target = job.url)
                             appendOperationContext(
@@ -135,7 +138,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                                 detail = "Search auto-enqueued a crawl job for this result.",
                             )
                         }
-                        replaceLastAxonMsg(resultsText + jobsText)
+                        replaceLastAxonMsg(resultsText + countNote + jobsText)
                     },
                     onFailure = { e -> replaceLastAxonMsg("Error: ${e.message}") },
                 )
@@ -178,7 +181,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                                 target = input,
                                 jobId = jobId,
                                 endpoint = "POST /v1/crawl",
-                                detail = "Crawl is queued. Pages, errors, and completion state are pulled from the job endpoint.",
+                                detail = "Crawl queued. Pages, errors, and completion state are pulled from the job endpoint.",
                             ),
                         )
                         appendOperationContext(
@@ -230,7 +233,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                                 target = input,
                                 jobId = jobId,
                                 endpoint = "POST /v1/ingest",
-                                detail = "Ingest is queued. Source discovery and embedding progress are tracked in Jobs.",
+                                detail = "Ingest queued. Discovery, source processing, and metadata progress are tracked in Jobs.",
                             ),
                         )
                         appendOperationContext(
@@ -249,3 +252,6 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
         }
     }
 }
+
+internal fun compactHitCountNote(total: Int): String =
+    if (total > COMPACT_HIT_LIMIT) "\n\nShowing $COMPACT_HIT_LIMIT of $total results." else ""

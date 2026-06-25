@@ -49,6 +49,10 @@ function endpointStatusLabel(tone: string, endpointLabel: string): string {
   }
 }
 
+function sentenceCase(value: string): string {
+  return value ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
 export function PaletteCommandBar({
   active,
   activeDescendantId,
@@ -184,6 +188,7 @@ export function PaletteCommandBar({
                 {switcherActions.map((action) => {
                   const Icon = actionIcon(action.subcommand);
                   const meta = actionDisplayMeta(action);
+                  const descriptor = sentenceCase(`${meta.input} to ${meta.output}`);
                   return (
                     <Button
                       variant="plain"
@@ -200,7 +205,7 @@ export function PaletteCommandBar({
                       <Icon size={15} strokeWidth={1.85} aria-hidden="true" />
                       <span>
                         <strong>{meta.label}</strong>
-                        <small>{meta.input} to {meta.output}</small>
+                        <small>{descriptor}</small>
                       </span>
                       <Kbd unstyled>{action.subcommand}</Kbd>
                     </Button>

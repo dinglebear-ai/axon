@@ -207,6 +207,28 @@ describe("useActionRunner A-M5 transient errors", () => {
     expect("text" in run ? run.text : "").toMatch(/required/i);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("falls back from empty job status to the matching job list", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ jobs: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const rendered = setup("crawl-status");
+
+    await act(async () => {
+      await rendered.result.current.submit(action("crawl-status"), "");
+    });
+    await act(async () => {});
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/v1/crawl",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(rendered.result.current.history[0]?.action.subcommand).toBe("crawl-list");
+    expect(rendered.result.current.run.kind).toBe("success");
+  });
 });
 
 // ── A-M4 / streaming reducer: no fabricated { status: 200 } ──────────────────
