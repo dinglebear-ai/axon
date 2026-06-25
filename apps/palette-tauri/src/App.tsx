@@ -18,6 +18,13 @@ import {
   type PaletteAction,
   actionMatches,
 } from "@/lib/actions";
+import {
+  actionConfirmationArmed,
+  actionConfirmationMessage,
+  actionNeedsConfirmation,
+  confirmationFor,
+  type PendingActionConfirmation,
+} from "@/lib/actionGuard";
 import { buildHelpRun, helpAction } from "@/lib/actionHelp";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { type PaletteConfig, createAxonClient } from "@/lib/axonClient";
@@ -65,6 +72,7 @@ export default function App() {
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingActionConfirmation | null>(null);
 
   const modeAction = modeOf(view);
   const settingsOpen = isSettingsOpen(view);
@@ -165,6 +173,12 @@ export default function App() {
   const active = modeAction ?? suggestedAction;
   const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
+  const confirmationArmed =
+    active && !validation ? actionConfirmationArmed(pendingConfirmation, active, activeArgument) : false;
+  const guardMessage =
+    active && !validation && actionNeedsConfirmation(active)
+      ? actionConfirmationMessage(active, Boolean(confirmationArmed))
+      : "";
   const canRunLocalAction = active?.kind === "local";
   const jobMinimized = run.kind === "job" && run.minimized;
   const jobExpanded = run.kind === "job" && !run.minimized;
@@ -228,6 +242,25 @@ export default function App() {
     query,
   });
 
+  const requestSubmit = useCallback(
+    (action: PaletteAction, argumentOverride?: string) => {
+      const argument = argumentOverride ?? argumentFor(action, modeAction, parsed, query);
+      const validationMessageText = validationMessage(action, argument);
+      if (!validationMessageText && actionNeedsConfirmation(action)) {
+        if (!actionConfirmationArmed(pendingConfirmation, action, argument)) {
+          setPendingConfirmation(confirmationFor(action, argument));
+          focusInput(true);
+          return;
+        }
+        setPendingConfirmation(null);
+      } else if (pendingConfirmation) {
+        setPendingConfirmation(null);
+      }
+      void submit(action, argumentOverride);
+    },
+    [modeAction, parsed, pendingConfirmation, query, submit],
+  );
+
   // A-M2 — useCrawlJob's 6 setters collapse to 3 view intents + the query reset
   // each implies. setRun stays (it owns the live poll snapshot, which is run state).
   const onMinimizeJob = useCallback(() => {
@@ -249,6 +282,7 @@ export default function App() {
   });
 
   function enterActionMode(action: PaletteAction) {
+    setPendingConfirmation(null);
     dispatchView({ type: "enterMode", action });
     setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
     setSelected(0);
@@ -265,9 +299,10 @@ export default function App() {
       setQuery("");
       setSelected(0);
       setRun({ kind: "idle" });
-      void submit(action, "");
+      requestSubmit(action, "");
       return;
     }
+    setPendingConfirmation(null);
     dispatchView({ type: "switchMode", action });
     setSelected(0);
     setRun({ kind: "idle" });
@@ -302,6 +337,7 @@ export default function App() {
       setConfig(nextConfig);
       setDraftConfig(nextConfig);
       setConfigError(null);
+      setPendingConfirmation(null);
       dispatchView({ type: "closeSettings" });
       focusInput(true);
     } catch (err) {
@@ -325,13 +361,13 @@ export default function App() {
       if (!modeAction && !parsed.invoked && active.argMode !== "none" && !looksLikeUrl(parsed.search)) {
         enterActionMode(active);
       } else {
-        void submit(active);
+        requestSubmit(active);
       }
     } else if (event.key === "Tab") {
       event.preventDefault();
       if (!active) return;
       // No-input actions run immediately rather than entering an empty arg mode.
-      if (active.argMode === "none") void submit(active);
+      if (active.argMode === "none") requestSubmit(active);
       else enterActionMode(active);
     }
   }
@@ -346,6 +382,7 @@ export default function App() {
     (!client && !canRunLocalAction) || !active || commandRunning || Boolean(validation);
 
   function goBackToBrowse() {
+    setPendingConfirmation(null);
     dispatchView({ type: "goToBrowse" });
     setRun({ kind: "idle" });
     setQuery("");
@@ -353,10 +390,11 @@ export default function App() {
   }
 
   // P-M2 — stable callbacks for the memoized children (CommandBar/OutputPanel).
-  const onSubmitAction = useCallback((action: PaletteAction) => void submit(action), [submit]);
+  const onSubmitAction = useCallback((action: PaletteAction) => requestSubmit(action), [requestSubmit]);
   const onReset = useCallback(() => {
     setQuery("");
     setRun({ kind: "idle" });
+    setPendingConfirmation(null);
     dispatchView({ type: "reset" });
   }, []);
   const onToggleSettings = useCallback(() => dispatchView({ type: "toggleSettings" }), []);
@@ -411,7 +449,7 @@ export default function App() {
         settingsOpen={settingsOpen}
         showBackButton={showBackButton}
         submitDisabled={submitDisabled}
-        validation={validation}
+        validation={validation || guardMessage}
         onBack={goBackToBrowse}
         onHelp={showHelpFor}
         onInputKeyDown={onInputKeyDown}
@@ -457,7 +495,7 @@ export default function App() {
             selected={selected}
             setSelected={setSelected}
             parsed={parsed}
-            onSubmit={(action) => void submit(action)}
+            onSubmit={requestSubmit}
             onEnterMode={enterActionMode}
             onHelp={showHelpFor}
           />

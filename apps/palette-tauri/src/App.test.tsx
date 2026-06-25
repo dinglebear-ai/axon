@@ -212,6 +212,40 @@ describe("App command palette accessibility + keyboard nav", () => {
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
 
+  it("requires a second Enter before running guarded actions", async () => {
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "axon_http_request") {
+        return {
+          ok: true,
+          status: 200,
+          method: "POST",
+          path: "/v1/dedupe",
+          payload: { collection: "axon", scanned: 10, removed: 0 },
+        };
+      }
+      return undefined;
+    });
+    const user = userEvent.setup();
+    const input = await renderApp();
+    await user.type(input, "dedupe");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText(/confirmation armed/i)).toBeInTheDocument();
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "axon_http_request",
+        expect.objectContaining({
+          request: expect.objectContaining({ path: "/v1/dedupe", method: "POST" }),
+        }),
+      ),
+    );
+  });
+
   // T-H1 — Escape backs out of argument mode rather than submitting.
   it("clears argument mode on Escape", async () => {
     const user = userEvent.setup();
