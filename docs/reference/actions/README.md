@@ -41,6 +41,7 @@ Axon exposes one logical action layer through three adapters: local CLI commands
 | `monitor` | `axon monitor ...` | Deferred | no action | [monitor](monitor.md) |
 | `query` | `axon query ...` | `POST /v1/query` (Implemented) | `query` | [axon query](query.md) |
 | `code-search` | `axon code-search ...` | Deferred | `code_search` | [code-search](code-search.md) |
+| `code-search-watch` | `axon code-search-watch ...` | Deferred | no dedicated action | [code-search](code-search.md) |
 | `reddit` | `axon ingest <target>` | `POST /v1/ingest` | `ingest.start` with `source_type: "reddit"` | [axon reddit (removed — use `axon ingest`)](reddit.md) |
 | `refresh` | `axon refresh ...` | Missing | no dedicated action | [axon refresh](refresh.md) |
 | `research` | `axon research ...` | `POST /v1/research` (Implemented) | `research` | [axon research](research.md) |

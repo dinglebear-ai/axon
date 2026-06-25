@@ -5,23 +5,9 @@ use sqlx::{Row, SqlitePool};
 use crate::config::CodeIndexIdentity;
 use crate::manifest::{FileDiff, FileManifestEntry, ManifestSnapshot};
 
-// Project-level root/status metadata substrate (bead o9y1.1). The read/write
-// store APIs are intentionally landed ahead of their consumers (root-hash
-// freshness + status reporting in o9y1.2+), so they read as unused until then.
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-#[cfg_attr(test, derive(serde::Serialize))]
-pub(crate) struct ProjectMetadata {
-    pub root_hash: Option<String>,
-    pub manifest_file_count: u32,
-    pub indexed_file_count: u32,
-    pub last_indexed_at_ms: i64,
-    pub last_refresh_started_at_ms: i64,
-    pub last_refresh_finished_at_ms: i64,
-    pub last_refresh_status: Option<String>,
-    pub last_error_message: Option<String>,
-    pub cleanup_debt_count: u32,
-}
+mod metadata;
+#[cfg(test)]
+pub(crate) use metadata::ProjectMetadata;
 
 #[derive(Clone)]
 pub struct CodeIndexStore {
@@ -82,6 +68,7 @@ impl CodeIndexStore {
         manifest: &ManifestSnapshot,
     ) -> anyhow::Result<FileDiff> {
         let stored = self.files_for_project(identity).await?;
+        let committed_generation = self.committed_generation(identity).await?.unwrap_or(0);
         let manifest_paths = manifest
             .files
             .iter()
@@ -94,6 +81,7 @@ impl CodeIndexStore {
                 None => diff.added.push(entry.clone()),
                 Some(file)
                     if file.pending
+                        || file.indexed_generation > committed_generation
                         || entry.hash.as_deref() != Some(file.hash.as_str())
                         || entry.size_bytes != file.size_bytes
                         || entry.mtime_ns != file.mtime_ns =>
@@ -111,6 +99,47 @@ impl CodeIndexStore {
         }
         diff.removed.sort();
         Ok(diff)
+    }
+
+    pub(crate) async fn completed_uncommitted_generation(
+        &self,
+        identity: &CodeIndexIdentity,
+        manifest: &ManifestSnapshot,
+    ) -> anyhow::Result<Option<i64>> {
+        let stored = self.files_for_project(identity).await?;
+        let committed_generation = self.committed_generation(identity).await?.unwrap_or(0);
+        let manifest_paths = manifest
+            .files
+            .iter()
+            .map(|entry| entry.relative_path.as_str())
+            .collect::<HashSet<_>>();
+        if stored
+            .keys()
+            .any(|path| !manifest_paths.contains(path.as_str()))
+        {
+            return Ok(None);
+        }
+
+        let mut candidate = None;
+        for entry in &manifest.files {
+            let Some(file) = stored.get(&entry.relative_path) else {
+                return Ok(None);
+            };
+            if file.pending
+                || file.indexed_generation <= committed_generation
+                || entry.hash.as_deref() != Some(file.hash.as_str())
+                || entry.size_bytes != file.size_bytes
+                || entry.mtime_ns != file.mtime_ns
+            {
+                return Ok(None);
+            }
+            match candidate {
+                Some(generation) if generation != file.indexed_generation => return Ok(None),
+                Some(_) => {}
+                None => candidate = Some(file.indexed_generation),
+            }
+        }
+        Ok(candidate)
     }
 
     pub(crate) async fn acquire_lease(
@@ -434,64 +463,6 @@ impl CodeIndexStore {
         Ok(())
     }
 
-    #[allow(dead_code)] // substrate for o9y1.2+ (see ProjectMetadata)
-    pub(crate) async fn read_project_metadata(
-        &self,
-        identity: &CodeIndexIdentity,
-    ) -> anyhow::Result<Option<ProjectMetadata>> {
-        let row = sqlx::query(
-            "SELECT root_hash, manifest_file_count, indexed_file_count, \
-             last_indexed_at_ms, last_refresh_started_at_ms, \
-             last_refresh_finished_at_ms, last_refresh_status, \
-             last_error_message, cleanup_debt_count \
-             FROM axon_code_projects WHERE project_key = ?",
-        )
-        .bind(&identity.project_key)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row.map(|row| ProjectMetadata {
-            root_hash: row.get::<Option<String>, _>("root_hash"),
-            manifest_file_count: row.get::<i64, _>("manifest_file_count").max(0) as u32,
-            indexed_file_count: row.get::<i64, _>("indexed_file_count").max(0) as u32,
-            last_indexed_at_ms: row.get::<i64, _>("last_indexed_at_ms"),
-            last_refresh_started_at_ms: row.get::<i64, _>("last_refresh_started_at_ms"),
-            last_refresh_finished_at_ms: row.get::<i64, _>("last_refresh_finished_at_ms"),
-            last_refresh_status: row.get::<Option<String>, _>("last_refresh_status"),
-            last_error_message: row.get::<Option<String>, _>("last_error_message"),
-            cleanup_debt_count: row.get::<i64, _>("cleanup_debt_count").max(0) as u32,
-        }))
-    }
-
-    #[allow(dead_code)] // substrate for o9y1.2+ (see ProjectMetadata)
-    pub(crate) async fn write_project_metadata(
-        &self,
-        identity: &CodeIndexIdentity,
-        meta: &ProjectMetadata,
-    ) -> anyhow::Result<()> {
-        self.upsert_project(identity).await?;
-        sqlx::query(
-            "UPDATE axon_code_projects SET \
-             root_hash = ?, manifest_file_count = ?, indexed_file_count = ?, \
-             last_indexed_at_ms = ?, last_refresh_started_at_ms = ?, \
-             last_refresh_finished_at_ms = ?, last_refresh_status = ?, \
-             last_error_message = ?, cleanup_debt_count = ? \
-             WHERE project_key = ?",
-        )
-        .bind(&meta.root_hash)
-        .bind(meta.manifest_file_count as i64)
-        .bind(meta.indexed_file_count as i64)
-        .bind(meta.last_indexed_at_ms)
-        .bind(meta.last_refresh_started_at_ms)
-        .bind(meta.last_refresh_finished_at_ms)
-        .bind(&meta.last_refresh_status)
-        .bind(&meta.last_error_message)
-        .bind(meta.cleanup_debt_count as i64)
-        .bind(&identity.project_key)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
     async fn files_for_project(
         &self,
         identity: &CodeIndexIdentity,
@@ -524,6 +495,6 @@ impl CodeIndexStore {
     }
 }
 
-fn now_ms() -> i64 {
+pub(super) fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
