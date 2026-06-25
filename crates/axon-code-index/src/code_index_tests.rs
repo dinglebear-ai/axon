@@ -1,4 +1,5 @@
 use super::*;
+use std::process::Command;
 use tempfile::tempdir;
 
 #[test]
@@ -62,6 +63,94 @@ async fn manifest_uses_metadata_fast_path_for_unchanged_files() {
         .unwrap();
     assert_eq!(second.files[0].hash, first.files[0].hash);
     assert_eq!(second.files[0].hash_source, manifest::HashSource::Stored);
+}
+
+#[tokio::test]
+async fn manifest_uses_git_ignored_file_set_for_local_checkout() {
+    let dir = tempdir().unwrap();
+    run_git(dir.path(), &["init"]);
+    tokio::fs::create_dir_all(dir.path().join("src"))
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(dir.path().join(".cache/cli-verify"))
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(dir.path().join(".worktrees/other/src"))
+        .await
+        .unwrap();
+    tokio::fs::write(dir.path().join(".gitignore"), ".cache/\n.worktrees/\n")
+        .await
+        .unwrap();
+    tokio::fs::write(dir.path().join("src/lib.rs"), "pub fn tracked() {}\n")
+        .await
+        .unwrap();
+    tokio::fs::write(dir.path().join("README.md"), "# tracked\n")
+        .await
+        .unwrap();
+    tokio::fs::write(
+        dir.path().join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nname = \"demo\"\n",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(
+        dir.path().join(".cache/cli-verify/result.rs"),
+        "pub fn cached() {}\n",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(
+        dir.path().join(".worktrees/other/src/lib.rs"),
+        "pub fn cloned() {}\n",
+    )
+    .await
+    .unwrap();
+    run_git(
+        dir.path(),
+        &[
+            "add",
+            ".gitignore",
+            "src/lib.rs",
+            "README.md",
+            "Cargo.toml",
+            "pnpm-lock.yaml",
+        ],
+    );
+
+    let store = store::CodeIndexStore::open_in_memory().await.unwrap();
+    store.init_schema().await.unwrap();
+    let identity = CodeIndexIdentity::for_test(dir.path(), "origin:axon", "axon", "tei-test");
+    let manifest =
+        manifest::build_manifest(&store, &identity, manifest::ManifestOptions::default())
+            .await
+            .unwrap();
+    let paths = manifest
+        .files
+        .iter()
+        .map(|entry| entry.relative_path.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(paths.contains(&"Cargo.toml"));
+    assert!(paths.contains(&"README.md"));
+    assert!(paths.contains(&"src/lib.rs"));
+    assert!(
+        !paths.contains(&"pnpm-lock.yaml"),
+        "code-search should skip lockfiles: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|path| path.starts_with(".cache/")),
+        "{paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|path| path.starts_with(".worktrees/")),
+        "{paths:?}"
+    );
 }
 
 #[tokio::test]
@@ -169,6 +258,51 @@ async fn uncommitted_generation_is_reindexed_even_when_file_metadata_matches() {
         .unwrap();
 
     assert_eq!(diff.modified_paths(), vec!["lib.rs"]);
+}
+
+#[tokio::test]
+async fn completed_uncommitted_generation_can_be_finished_without_reindex() {
+    let dir = tempdir().unwrap();
+    tokio::fs::write(dir.path().join("lib.rs"), "pub fn one() {}\n")
+        .await
+        .unwrap();
+    let store = store::CodeIndexStore::open_in_memory().await.unwrap();
+    store.init_schema().await.unwrap();
+    let identity = CodeIndexIdentity::for_test(dir.path(), "origin:axon", "axon", "tei-test");
+    let manifest =
+        manifest::build_manifest(&store, &identity, manifest::ManifestOptions::default())
+            .await
+            .unwrap();
+    let generation = store.next_generation(&identity).await.unwrap();
+    store
+        .mark_file_indexed(&identity, &manifest.files[0], generation)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store
+            .completed_uncommitted_generation(&identity, &manifest)
+            .await
+            .unwrap(),
+        Some(generation)
+    );
+
+    let deletes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    indexer::finish_completed_generation_for_test(
+        &store,
+        &identity,
+        &manifest,
+        generation,
+        deletes.clone(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        store.committed_generation(&identity).await.unwrap(),
+        Some(generation)
+    );
+    assert!(deletes.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -459,4 +593,17 @@ fn project_metadata_does_not_expose_absolute_paths() {
     assert!(!json.contains("/home"), "JSON must not expose /home paths");
     assert!(!json.contains("/tmp"), "JSON must not expose /tmp paths");
     assert!(!json.contains("/var"), "JSON must not expose /var paths");
+}
+
+fn run_git(root: &std::path::Path, args: &[&str]) {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

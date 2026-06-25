@@ -47,6 +47,7 @@ interface PaletteActionBase {
   description: string;
   example: string;
   tone: ActionTone;
+  autoRunOnSwitch?: boolean;
 }
 
 export interface LocalPaletteAction extends PaletteActionBase {
@@ -229,6 +230,7 @@ const STATIC_ACTIONS = [
     description: "Show the async job queue and recent worker state.",
     example: "status",
     tone: "neutral",
+    autoRunOnSwitch: true,
   },
   {
     label: "List sources",
@@ -239,6 +241,7 @@ const STATIC_ACTIONS = [
     description: "List indexed source URLs in the configured collection.",
     example: "sources",
     tone: "neutral",
+    autoRunOnSwitch: true,
   },
   {
     label: "List domains",
@@ -249,6 +252,7 @@ const STATIC_ACTIONS = [
     description: "Show indexed domains and vector counts.",
     example: "domains",
     tone: "neutral",
+    autoRunOnSwitch: true,
   },
   {
     label: "Collection stats",
@@ -259,6 +263,7 @@ const STATIC_ACTIONS = [
     description: "Show vector collection statistics.",
     example: "stats",
     tone: "neutral",
+    autoRunOnSwitch: true,
   },
   {
     label: "Doctor",
@@ -269,6 +274,7 @@ const STATIC_ACTIONS = [
     description: "Check Qdrant, TEI, and LLM connectivity.",
     example: "doctor",
     tone: "info",
+    autoRunOnSwitch: true,
   },
   {
     label: "Discover endpoints",
@@ -329,6 +335,7 @@ const STATIC_ACTIONS = [
     description: "List scheduled URL change-detection watches.",
     example: "watch-list",
     tone: "neutral",
+    autoRunOnSwitch: true,
   },
   {
     label: "Create URL watch",
@@ -384,6 +391,7 @@ function jobLifecycleActions(family: JobFamily): PaletteAction[] {
       description: `List recent ${family} jobs.`,
       example: `${family}-list`,
       tone: "neutral",
+      autoRunOnSwitch: true,
     },
     {
       label: `${label} job status`,

@@ -1,8 +1,12 @@
 use crate::config::{CodeIndexIdentity, max_indexed_file_bytes};
 use crate::store::CodeIndexStore;
-use axon_vector::ops::file_ingest::{SelectionPolicy, collect_files};
+use axon_vector::ops::file_ingest::{SelectionPolicy, collect_files, should_include_file};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tokio::process::Command;
+
+const GIT_LS_FILES_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy)]
 pub struct ManifestOptions {
@@ -63,13 +67,11 @@ pub(crate) async fn build_manifest(
     identity: &CodeIndexIdentity,
     options: ManifestOptions,
 ) -> anyhow::Result<ManifestSnapshot> {
-    let files = collect_files(
-        &identity.project_root,
-        SelectionPolicy::Allowlist {
-            include_source: true,
-        },
-    )
-    .await?;
+    let policy = SelectionPolicy::CodeSearch;
+    let files = match collect_git_files(&identity.project_root, policy).await {
+        Ok(files) => files,
+        Err(_) => collect_files(&identity.project_root, policy).await?,
+    };
     let mut entries = Vec::new();
     for path in files {
         if let Some(entry) = build_entry(store, identity, path, options).await? {
@@ -78,6 +80,53 @@ pub(crate) async fn build_manifest(
     }
     entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
     Ok(ManifestSnapshot { files: entries })
+}
+
+pub async fn collect_git_files(
+    root: &Path,
+    policy: SelectionPolicy,
+) -> anyhow::Result<Vec<PathBuf>> {
+    let output = tokio::time::timeout(
+        GIT_LS_FILES_TIMEOUT,
+        Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args([
+                "ls-files",
+                "-z",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+            ])
+            .output(),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("git ls-files timed out"))?
+    .map_err(|err| anyhow::anyhow!("git ls-files failed: {err}"))?;
+    if !output.status.success() {
+        return Err(anyhow::anyhow!(
+            "git ls-files failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let mut files = Vec::new();
+    for raw in output.stdout.split(|byte| *byte == 0) {
+        if raw.is_empty() {
+            continue;
+        }
+        let rel = std::str::from_utf8(raw)
+            .map_err(|err| anyhow::anyhow!("git ls-files output was not UTF-8: {err}"))?;
+        let path = root.join(rel);
+        let Ok(metadata) = tokio::fs::metadata(&path).await else {
+            continue;
+        };
+        if metadata.is_file() && should_include_file(&path, root, policy) {
+            files.push(path);
+        }
+    }
+    files.sort();
+    Ok(files)
 }
 
 async fn build_entry(

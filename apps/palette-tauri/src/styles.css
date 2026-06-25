@@ -170,6 +170,17 @@ body[data-fixture] {
   overflow: auto;
 }
 
+.fixture-shell {
+  width: min(100vw - 40px, 900px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 82px 0 40px;
+}
+
+.fixture-shell-ask .output-panel {
+  min-height: 568px;
+}
+
 body::before {
   content: "";
   position: fixed;
@@ -287,6 +298,12 @@ textarea {
    cohesive panel: square its bottom, drop its own border + drop-shadow there,
    and let the tray carry the panel's outer shadow. */
 .palette-shell-compact:has(.idle-tray) .command-bar {
+  border-radius: 14px 14px 0 0;
+  border-bottom: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.palette-shell-compact:has(.command-action-menu) .command-bar {
   border-radius: 14px 14px 0 0;
   border-bottom: 0;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
@@ -515,6 +532,7 @@ textarea {
 }
 
 .command-bar {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -540,11 +558,12 @@ textarea {
 
 .idle-tray {
   all: unset;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, max-content) minmax(160px, 1fr) auto auto;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   height: 36px;
-  padding: 0 12px 0 14px;
+  padding: 0 16px;
   color: var(--aurora-text-muted);
   background: color-mix(in srgb, var(--aurora-panel-strong) 88%, transparent);
   border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 52%, transparent);
@@ -554,7 +573,7 @@ textarea {
   /* Carry the whole panel's outer shadow (command bar no longer casts its own). */
   box-shadow: var(--axon-launcher-glow);
   cursor: pointer;
-  font-family: var(--aurora-font-mono);
+  font-family: var(--aurora-font-body);
   font-size: 11px;
 }
 
@@ -587,27 +606,32 @@ textarea {
 }
 
 .idle-tray-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: var(--aurora-warn);
   box-shadow: 0 0 6px var(--aurora-warn);
-  flex: 0 0 auto;
   animation: crawl-pulse 1.6s ease-in-out infinite;
 }
 
 .idle-tray > span:nth-of-type(2) {
+  min-width: 0;
+  max-width: min(220px, 34vw);
+  overflow: hidden;
   color: var(--aurora-text-primary);
+  font-size: 13px;
+  font-weight: 760;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .idle-tray-bar {
-  flex: 1;
   min-width: 44px;
-  height: 4px;
+  width: 100%;
+  height: 3px;
   overflow: hidden;
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-control-surface) 76%, var(--aurora-page-bg) 24%);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 70%, transparent);
   border-radius: 999px;
 }
 
@@ -621,8 +645,8 @@ textarea {
 
 .idle-tray strong {
   color: var(--aurora-warn-foreground);
-  font-size: 11px;
-  font-weight: 520;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .compact-brand {
@@ -1291,7 +1315,7 @@ textarea {
 }
 
 .command-input-wrap {
-  position: relative;
+  position: static;
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
@@ -1315,7 +1339,7 @@ textarea {
 }
 
 /* Active-mode switcher: the selected action sits inside the input and opens a
-   compact list of alternate actions without resizing the command bar. */
+   full-width command panel anchored to the command bar shell. */
 .command-action-switcher {
   position: static;
   flex: 0 0 auto;
@@ -1379,22 +1403,29 @@ textarea {
 .command-action-menu {
   position: absolute;
   z-index: 30;
-  top: calc(100% + 9px);
-  left: 0;
+  top: calc(100% - 1px);
+  left: -1px;
   display: flex;
-  width: 100%;
-  max-height: min(310px, calc(100vh - 76px));
+  width: calc(100% + 2px);
+  max-height: min(392px, calc(100vh - 76px));
+  overflow: hidden;
+  flex-direction: column;
+  color: var(--aurora-text-primary);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 62%, transparent);
+  border-radius: 0 0 10px 10px;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.command-action-options {
+  display: flex;
+  min-height: 0;
   padding: 7px;
   overflow-y: auto;
   flex-direction: column;
   gap: 2px;
-  color: var(--aurora-text-primary);
-  background: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
-  border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 62%, transparent);
-  border-radius: 10px;
-  box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
 .command-action-search {
@@ -1422,6 +1453,7 @@ textarea {
   max-width: 220px;
   overflow: hidden;
   color: var(--aurora-accent-strong);
+  font-family: var(--aurora-font-body);
   text-overflow: ellipsis;
 }
 
@@ -1485,8 +1517,67 @@ textarea {
   max-width: 98px;
   overflow: hidden;
   color: var(--aurora-text-muted);
+  font-family: var(--aurora-font-body);
   font-size: 10px;
+  font-weight: 560;
+  letter-spacing: 0;
   text-overflow: ellipsis;
+}
+
+.command-action-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 12px 0 14px;
+  color: var(--aurora-text-muted);
+  background: color-mix(in srgb, var(--aurora-control-surface) 72%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--aurora-border-default) 68%, transparent);
+}
+
+.command-action-footer-current {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.command-action-footer-current strong {
+  overflow: hidden;
+  color: var(--aurora-text-primary);
+  font-size: 11px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+}
+
+.command-action-footer-current span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--aurora-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.command-action-footer-hints {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.command-action-footer-hints span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.command-action-footer kbd {
+  font-family: var(--aurora-font-body);
+  letter-spacing: 0;
 }
 
 .command-action-option-warn {
@@ -1899,8 +1990,9 @@ textarea {
 
 .ask-message > span {
   color: var(--aurora-text-muted);
-  font-family: var(--aurora-font-mono);
+  font-family: var(--aurora-font-body);
   font-size: 10.5px;
+  font-weight: 650;
 }
 
 .ask-message > p {
@@ -1925,6 +2017,7 @@ textarea {
   background: var(--aurora-control-surface);
   border: 1px solid var(--aurora-border-default);
   border-radius: 12px;
+  font-family: var(--aurora-font-body);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -1935,6 +2028,143 @@ textarea {
   background: transparent;
   border: 0;
   border-radius: 0;
+}
+
+.ask-answer-prose p {
+  margin: 0 0 8px;
+}
+
+.ask-answer-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.ask-activity {
+  display: flex;
+  max-width: min(720px, 88%);
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0 1px;
+}
+
+.ask-activity-row {
+  display: inline-grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 8px;
+  color: var(--aurora-text-muted);
+  background: color-mix(in srgb, var(--aurora-panel-medium) 58%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 54%, transparent);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ask-activity-row svg {
+  margin-top: 1px;
+  color: var(--aurora-accent-violet-strong);
+}
+
+.ask-activity-tool svg {
+  color: var(--aurora-accent-strong);
+}
+
+.ask-activity-done svg {
+  color: var(--aurora-success);
+}
+
+.ask-activity-row span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ask-activity-row strong {
+  overflow: hidden;
+  color: var(--aurora-text-primary);
+  font-size: 11px;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-activity-row small {
+  overflow: hidden;
+  color: var(--aurora-text-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-sources {
+  max-width: min(720px, 88%);
+  color: var(--aurora-text-muted);
+  font-size: 11px;
+}
+
+.ask-sources summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--aurora-text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.ask-sources summary::-webkit-details-marker {
+  display: none;
+}
+
+.ask-sources summary::before {
+  width: 6px;
+  height: 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.ask-sources[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.ask-sources > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 7px;
+}
+
+.ask-sources a,
+.ask-sources > div > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 3px 8px;
+  overflow: hidden;
+  color: var(--aurora-text-muted);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--aurora-control-surface) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 64%, transparent);
+  border-radius: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-sources a:hover {
+  color: var(--aurora-accent-strong);
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 30%, transparent);
+}
+
+.ask-sources a span,
+.ask-sources > div > span span {
+  color: var(--aurora-accent-strong);
+  font-weight: 760;
 }
 
 .ask-prompt-strip {
@@ -1950,7 +2180,7 @@ textarea {
 }
 
 .ask-prompt-strip span {
-  font-family: var(--aurora-font-mono);
+  font-family: var(--aurora-font-body);
   font-size: 10px;
   font-weight: 760;
   letter-spacing: 0.05em;
@@ -1978,7 +2208,7 @@ textarea {
 
 .ask-waiting {
   color: var(--aurora-text-muted);
-  font-family: var(--aurora-font-mono);
+  font-family: var(--aurora-font-body);
   font-size: 11.5px;
 }
 
@@ -2006,31 +2236,9 @@ textarea {
   opacity: 0.65;
 }
 
-.ask-compose button {
-  all: unset;
-  display: grid;
-  min-width: 32px;
-  height: 32px;
-  place-items: center;
-  padding: 0 9px;
-  color: var(--aurora-text-muted);
-  background: var(--aurora-panel-medium);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 9px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.ask-compose button:last-child {
-  color: var(--aurora-accent-foreground);
-  background: var(--aurora-accent-primary);
-  border-color: var(--aurora-accent-primary);
-}
-
-.ask-compose button:disabled {
-  opacity: 0.45;
-  cursor: default;
+.ask-compose .command-submit {
+  --ctl: 38px;
+  --r-ctl: 10px;
 }
 
 .panel-heading {
