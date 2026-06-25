@@ -179,6 +179,39 @@ describe("App command palette accessibility + keyboard nav", () => {
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
 
+  it("auto-runs only safe no-input switcher actions", async () => {
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "axon_http_request") {
+        return { ok: true, status: 200, method: "GET", path: "/v1/sources", payload: { sources: [] } };
+      }
+      return undefined;
+    });
+    const user = userEvent.setup();
+    const input = await renderApp();
+    await user.type(input, "scr");
+    await user.keyboard("{Enter}");
+
+    await user.click(await screen.findByRole("button", { name: /Switch from/ }));
+    await user.click(await screen.findByRole("button", { name: /Sources/ }));
+
+    await waitFor(() =>
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "axon_http_request",
+        expect.objectContaining({
+          request: expect.objectContaining({ path: "/v1/sources", method: "GET" }),
+        }),
+      ),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Switch from/ }));
+    vi.mocked(invoke).mockClear();
+    fireEvent.click(await screen.findByRole("button", { name: /Dedupe/ }));
+
+    expect(await screen.findByRole("button", { name: /Switch from Dedupe collection/ })).toBeInTheDocument();
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
+  });
+
   // T-H1 — Escape backs out of argument mode rather than submitting.
   it("clears argument mode on Escape", async () => {
     const user = userEvent.setup();

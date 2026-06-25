@@ -41,6 +41,12 @@ enum PaletteStreamEvent {
         request_id: String,
         text: String,
     },
+    Activity {
+        request_id: String,
+        label: String,
+        detail: Option<String>,
+        kind: Option<String>,
+    },
     Done {
         request_id: String,
         answer: Option<String>,
@@ -204,6 +210,51 @@ fn handle_palette_sse_line(
                 .map_err(|err| err.to_string())?;
             Ok(false)
         }
+        Some("meta") => {
+            let phase = value
+                .get("phase")
+                .and_then(|phase| phase.as_str())
+                .unwrap_or("working");
+            window
+                .emit(
+                    "palette://stream",
+                    PaletteStreamEvent::Activity {
+                        request_id: request_id.to_string(),
+                        label: sentence_label(phase),
+                        detail: None,
+                        kind: Some("thinking".to_string()),
+                    },
+                )
+                .map_err(|err| err.to_string())?;
+            Ok(false)
+        }
+        Some("activity") => {
+            let label = value
+                .get("label")
+                .and_then(|label| label.as_str())
+                .unwrap_or("Working")
+                .to_string();
+            let detail = value
+                .get("detail")
+                .and_then(|detail| detail.as_str())
+                .map(str::to_string);
+            let kind = value
+                .get("kind")
+                .and_then(|kind| kind.as_str())
+                .map(str::to_string);
+            window
+                .emit(
+                    "palette://stream",
+                    PaletteStreamEvent::Activity {
+                        request_id: request_id.to_string(),
+                        label,
+                        detail,
+                        kind,
+                    },
+                )
+                .map_err(|err| err.to_string())?;
+            Ok(false)
+        }
         Some("done") => {
             let answer = done_answer_from_value(&value);
             window
@@ -240,6 +291,28 @@ fn handle_palette_sse_line(
         }
         None => Ok(false),
     }
+}
+
+fn sentence_label(value: &str) -> String {
+    let mut words = value
+        .split(['_', '-'])
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    if words.is_empty() {
+        return "Working".to_string();
+    }
+    let first = words.remove(0);
+    let mut label = String::new();
+    let mut chars = first.chars();
+    if let Some(ch) = chars.next() {
+        label.extend(ch.to_uppercase());
+        label.push_str(chars.as_str());
+    }
+    for word in words {
+        label.push(' ');
+        label.push_str(word);
+    }
+    label
 }
 
 fn done_answer_from_value(value: &serde_json::Value) -> Option<String> {

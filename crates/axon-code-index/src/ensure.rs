@@ -6,7 +6,9 @@ use dashmap::DashMap;
 use tokio::sync::Mutex;
 
 use crate::config::{CodeIndexIdentity, freshness_ttl, reindex_timeout};
-use crate::indexer::{ReindexSummary, reindex_changed_files, retry_cleanup_debt};
+use crate::indexer::{
+    ReindexSummary, finish_completed_generation, reindex_changed_files, retry_cleanup_debt,
+};
 use crate::manifest::{ManifestOptions, build_manifest};
 use crate::store::CodeIndexStore;
 use axon_core::config::Config;
@@ -157,6 +159,15 @@ async fn refresh_under_lease_inner(
     let manifest = build_manifest(store, identity, options.manifest_options)
         .await
         .map_err(|err| RefreshError::Failed(err.to_string()))?;
+    if let Some(generation) = store
+        .completed_uncommitted_generation(identity, &manifest)
+        .await
+        .map_err(|err| RefreshError::Failed(err.to_string()))?
+    {
+        return finish_completed_generation(cfg, store, identity, &manifest, generation)
+            .await
+            .map_err(|err| RefreshError::Failed(err.to_string()));
+    }
     let diff = store
         .diff_manifest(identity, &manifest)
         .await

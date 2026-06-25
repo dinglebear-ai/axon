@@ -1,9 +1,9 @@
 use super::super::tei_manifest::read_manifest_url_map;
-use crate::ops::input::classify::path_extension;
+use crate::ops::file_ingest::{SelectionPolicy, collect_files};
 use crate::ops::input::select;
 use axon_core::logging::log_warn;
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub(super) type InputRecord = (String, String, Option<serde_json::Value>);
 
@@ -26,9 +26,9 @@ pub(super) async fn read_inputs_with_max_bytes(
     let path = PathBuf::from(input);
     // POSIX-style symlink policy (like `du` / `find -H` / `chown -H`): a
     // symlink named explicitly on the command line is followed —
-    // `tokio::fs::metadata` resolves it — while symlinks *encountered during
-    // traversal* are skipped (see collect_embed_files). The server path is
-    // stricter and rejects a symlinked root outright (services/embed.rs).
+    // `tokio::fs::metadata` resolves it — while symlinks encountered during
+    // shared directory traversal are skipped. The server path is stricter and
+    // rejects a symlinked root outright (services/embed.rs).
     match tokio::fs::metadata(&path).await {
         Ok(meta) if meta.is_file() => {
             if meta.len() > max_file_bytes {
@@ -46,7 +46,9 @@ pub(super) async fn read_inputs_with_max_bytes(
         }
         Ok(meta) if meta.is_dir() => {
             let manifest_urls = read_manifest_url_map(&path);
-            let files = collect_embed_files(&path).await?;
+            let files = collect_files(&path, SelectionPolicy::Permissive)
+                .await
+                .map_err(|error| -> Box<dyn Error> { error.to_string().into() })?;
             let mut out = Vec::new();
             for p in files {
                 // Oversized files are skipped (not fatal) on directory walks —
@@ -109,68 +111,4 @@ pub(super) async fn read_inputs_with_max_bytes(
         .into()),
         _ => Ok(vec![(input.to_string(), input.to_string(), None)]),
     }
-}
-
-/// Recursively collect embeddable files under `root`, descending into
-/// subdirectories. Prunes VCS/dependency/build directories (`select::is_pruned_dir`)
-/// and skips known-binary file extensions (`select::is_binary_ext`) before any
-/// read. Symlinks are skipped (their `file_type` is neither file nor dir). The
-/// returned paths are sorted for deterministic embed order.
-///
-/// Resilience matches the file read: the **top-level** `root` read is a hard
-/// error (nothing to embed if the target is unreadable), but an unreadable
-/// **subdirectory** is logged and skipped rather than failing the whole embed —
-/// so one permission-protected subtree doesn't sink an otherwise-fine job.
-async fn collect_embed_files(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    let mut files = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    let mut at_root = true;
-    while let Some(dir) = stack.pop() {
-        let mut entries = match tokio::fs::read_dir(&dir).await {
-            Ok(entries) => entries,
-            Err(e) if at_root => {
-                return Err(format!("invalid embed directory {}: {e}", dir.display()).into());
-            }
-            Err(e) => {
-                log_warn(&format!(
-                    "command=embed skip_unreadable_dir path={} err={e}",
-                    dir.display()
-                ));
-                at_root = false;
-                continue;
-            }
-        };
-        at_root = false;
-        loop {
-            let entry = match entries.next_entry().await {
-                Ok(Some(entry)) => entry,
-                Ok(None) => break,
-                Err(e) => {
-                    log_warn(&format!(
-                        "command=embed dir_iter_error path={} err={e}",
-                        dir.display()
-                    ));
-                    break;
-                }
-            };
-            let p = entry.path();
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            let Ok(file_type) = entry.file_type().await else {
-                log_warn(&format!(
-                    "command=embed skip_unknown_type path={}",
-                    p.display()
-                ));
-                continue;
-            };
-            if file_type.is_dir() {
-                if !select::is_pruned_dir(name) {
-                    stack.push(p);
-                }
-            } else if file_type.is_file() && !select::is_binary_ext(path_extension(name)) {
-                files.push(p);
-            }
-        }
-    }
-    files.sort();
-    Ok(files)
 }

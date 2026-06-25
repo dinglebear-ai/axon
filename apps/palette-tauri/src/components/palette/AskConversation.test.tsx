@@ -1,0 +1,74 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { AskConversation } from "./AskConversation";
+import type { AskTurn } from "@/lib/runState";
+
+const noop = () => {};
+
+function setScrollMetrics(element: HTMLElement, metrics: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
+  Object.defineProperty(element, "scrollHeight", { configurable: true, value: metrics.scrollHeight });
+  Object.defineProperty(element, "clientHeight", { configurable: true, value: metrics.clientHeight });
+  Object.defineProperty(element, "scrollTop", { configurable: true, writable: true, value: metrics.scrollTop });
+}
+
+describe("AskConversation", () => {
+  it("auto-scrolls while pinned but preserves manual scrollback", () => {
+    const first: AskTurn[] = [
+      { id: "u1", role: "user", content: "question" },
+      { id: "a1", role: "assistant", content: "partial", pending: true },
+    ];
+    const { rerender } = render(<AskConversation transcript={first} pending onFollowUp={noop} />);
+    const thread = screen.getByRole("group", { name: "Ask conversation" });
+    setScrollMetrics(thread, { scrollHeight: 1000, clientHeight: 200, scrollTop: 800 });
+
+    rerender(
+      <AskConversation
+        transcript={[first[0], { ...first[1], content: "partial answer grows" }]}
+        pending
+        onFollowUp={noop}
+      />,
+    );
+    expect(thread.scrollTop).toBe(1000);
+
+    thread.scrollTop = 100;
+    fireEvent.scroll(thread);
+    rerender(
+      <AskConversation
+        transcript={[first[0], { ...first[1], content: "partial answer grows again" }]}
+        pending
+        onFollowUp={noop}
+      />,
+    );
+    expect(thread.scrollTop).toBe(100);
+  });
+
+  it("renders real agent activity and the palette send icon button", () => {
+    render(
+      <AskConversation
+        transcript={[
+          { id: "u1", role: "user", content: "question" },
+          {
+            id: "a1",
+            role: "assistant",
+            content: "",
+            pending: true,
+            activities: [
+              { id: "act1", kind: "thinking", label: "Thinking", detail: "Planning retrieval" },
+              { id: "act2", kind: "tool", label: "Retrieving context", detail: "Querying collection axon" },
+            ],
+          },
+        ]}
+        onFollowUp={noop}
+      />,
+    );
+
+    expect(screen.getByLabelText("Agent activity")).toBeInTheDocument();
+    expect(screen.getByText("Thinking")).toBeInTheDocument();
+    expect(screen.getByText("Retrieving context")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send follow-up" })).toHaveClass("command-submit");
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+  });
+});
