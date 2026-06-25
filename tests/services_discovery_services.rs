@@ -1,6 +1,6 @@
-use axon::services::map::parse_map_result;
-use axon::services::scrape::map_scrape_payload;
-use axon::services::search::{map_research_payload, map_search_results};
+use axon_services::map::parse_map_result;
+use axon_services::scrape::map_scrape_payload;
+use axon_services::search::{map_research_payload, map_search_results};
 
 // ---------------------------------------------------------------------------
 // scrape service — map_scrape_payload
@@ -189,8 +189,8 @@ fn maps_single_search_result() {
 // research service — map_research_payload
 // ---------------------------------------------------------------------------
 
-fn sample_research_payload() -> axon::services::types::ResearchPayload {
-    use axon::services::types::{ResearchPayload, ResearchTiming, ResearchUsage, SummarySource};
+fn sample_research_payload() -> axon_services::types::ResearchPayload {
+    use axon_services::types::{ResearchPayload, ResearchTiming, ResearchUsage, SummarySource};
     ResearchPayload {
         query: "rust async patterns".to_string(),
         limit: 5,
@@ -231,7 +231,7 @@ fn maps_research_payload_preserves_summary() {
 
 #[test]
 fn maps_research_payload_with_null_summary() {
-    use axon::services::types::SummarySource;
+    use axon_services::types::SummarySource;
     let mut payload = sample_research_payload();
     payload.summary = None;
     payload.summary_source = SummarySource::None;
@@ -242,7 +242,7 @@ fn maps_research_payload_with_null_summary() {
 
 #[test]
 fn research_payload_summary_source_distinguishes_fallback() {
-    use axon::services::types::SummarySource;
+    use axon_services::types::SummarySource;
     let mut payload = sample_research_payload();
     payload.summary = Some("snippet-based fallback".to_string());
     payload.summary_source = SummarySource::Fallback;

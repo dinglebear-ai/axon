@@ -65,7 +65,7 @@ export const noBody: BodyBuilder = () => null;
 
 export const scrapeBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url"), ...ctx.collectionBody });
 export const crawlBody: BodyBuilder = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
-export const mapBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url"), limit: 100 });
+export const mapBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url") });
 export const summarizeBody: BodyBuilder = (ctx) => ({ urls: required(ctx.words, "urls") });
 export const askBody: BodyBuilder = (ctx) => ({
   query: first(ctx.words, "query"),
@@ -75,7 +75,7 @@ export const askBody: BodyBuilder = (ctx) => ({
 });
 export const chatBody: BodyBuilder = (ctx) => ({ message: first(ctx.words, "message") });
 export const queryBody: BodyBuilder = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit, ...ctx.collectionBody });
-export const retrieveBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url"), token_budget: 6000, ...ctx.collectionBody });
+export const retrieveBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url"), ...ctx.collectionBody });
 export const suggestBody: BodyBuilder = (ctx) => (ctx.words[0] ? { focus: ctx.words[0] } : {});
 export const evaluateBody: BodyBuilder = (ctx) => ({ question: first(ctx.words, "question") });
 export const searchBody: BodyBuilder = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });

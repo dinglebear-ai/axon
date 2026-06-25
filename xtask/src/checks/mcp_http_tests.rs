@@ -3,7 +3,7 @@ use std::fs;
 use tempfile::TempDir;
 
 fn write_all_required(root: &Path) {
-    let mcp_rs = root.join("src/cli/commands/mcp.rs");
+    let mcp_rs = root.join("crates/axon-cli/src/commands/mcp.rs");
     fs::create_dir_all(mcp_rs.parent().unwrap()).unwrap();
     fs::write(
         &mcp_rs,
@@ -12,7 +12,7 @@ fn write_all_required(root: &Path) {
     )
     .unwrap();
 
-    let cli_cfg = root.join("src/core/config/cli.rs");
+    let cli_cfg = root.join("crates/axon-core/src/config/cli.rs");
     fs::create_dir_all(cli_cfg.parent().unwrap()).unwrap();
     fs::write(
         &cli_cfg,
@@ -20,7 +20,7 @@ fn write_all_required(root: &Path) {
     )
     .unwrap();
 
-    let build_cfg = root.join("src/core/config/parse/build_config/config_literal.rs");
+    let build_cfg = root.join("crates/axon-core/src/config/parse/build_config/config_literal.rs");
     fs::create_dir_all(build_cfg.parent().unwrap()).unwrap();
     fs::write(
         &build_cfg,
@@ -28,7 +28,7 @@ fn write_all_required(root: &Path) {
     )
     .unwrap();
 
-    let helpers = root.join("src/core/config/parse/helpers.rs");
+    let helpers = root.join("crates/axon-core/src/config/parse/helpers.rs");
     fs::create_dir_all(helpers.parent().unwrap()).unwrap();
     fs::write(&helpers, "// reads AXON_MCP_TRANSPORT env var\n").unwrap();
 }
@@ -44,9 +44,12 @@ fn passes_with_all_patterns_present() {
 fn fails_when_file_missing() {
     let tmp = TempDir::new().unwrap();
     write_all_required(tmp.path());
-    fs::remove_file(tmp.path().join("src/cli/commands/mcp.rs")).unwrap();
+    fs::remove_file(tmp.path().join("crates/axon-cli/src/commands/mcp.rs")).unwrap();
     let err = check(tmp.path()).expect_err("expected missing file error");
-    assert_eq!(err.to_string(), "ERROR: missing src/cli/commands/mcp.rs");
+    assert_eq!(
+        err.to_string(),
+        "ERROR: missing crates/axon-cli/src/commands/mcp.rs"
+    );
 }
 
 #[test]
@@ -56,7 +59,7 @@ fn fails_when_pattern_missing() {
     // Overwrite mcp.rs missing the `McpTransport::Both =>` arm. A bare `Both`
     // token (e.g., in a comment) must NOT satisfy the matcher.
     fs::write(
-        tmp.path().join("src/cli/commands/mcp.rs"),
+        tmp.path().join("crates/axon-cli/src/commands/mcp.rs"),
         "fn run_unified_server() {}\nfn run_stdio_server() {}\n// keyword: Both\n",
     )
     .unwrap();
@@ -74,10 +77,10 @@ fn pattern_table_is_canonical() {
     assert_eq!(
         paths,
         vec![
-            "src/cli/commands/mcp.rs",
-            "src/core/config/cli.rs",
-            "src/core/config/parse/build_config/config_literal.rs",
-            "src/core/config/parse/helpers.rs",
+            "crates/axon-cli/src/commands/mcp.rs",
+            "crates/axon-core/src/config/cli.rs",
+            "crates/axon-core/src/config/parse/build_config/config_literal.rs",
+            "crates/axon-core/src/config/parse/helpers.rs",
         ]
     );
 

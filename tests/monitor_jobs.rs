@@ -1,5 +1,5 @@
-use axon::cli::commands::monitor::{JobMonitorState, detect_job_events};
-use axon::services::types::ServiceJob;
+use axon_cli::commands::monitor::{JobMonitorState, detect_job_events};
+use axon_services::types::ServiceJob;
 use chrono::{TimeZone, Utc};
 use serde_json::json;
 use uuid::Uuid;

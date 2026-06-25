@@ -1,0 +1,56 @@
+//! Action-API dispatcher functions for the `diff` and `brand` actions.
+
+use super::super::internal_error;
+use super::helpers::map_render_mode;
+use crate::brand as brand_svc;
+use crate::context::ServiceContext;
+use crate::diff as diff_svc;
+use crate::types::ClientActionError;
+use axon_api::mcp_schema::{BrandRequest, DiffRequest};
+use axon_core::config::ConfigOverrides;
+
+pub async fn dispatch_diff(
+    service_context: &ServiceContext,
+    req: DiffRequest,
+) -> Result<serde_json::Value, ClientActionError> {
+    let url_a = req.url_a;
+    let url_b = req.url_b;
+
+    let cfg = service_context.cfg.apply_overrides(&ConfigOverrides {
+        render_mode: req.render_mode.map(map_render_mode),
+        ..ConfigOverrides::default()
+    });
+
+    let result = diff_svc::diff(&cfg, &url_a, &url_b, None)
+        .await
+        .map_err(internal_error)?;
+
+    serde_json::to_value(result).map_err(|e| {
+        ClientActionError::new(
+            "internal",
+            format!("serialize diff result: {e}"),
+            false,
+            None,
+        )
+    })
+}
+
+pub async fn dispatch_brand(
+    service_context: &ServiceContext,
+    req: BrandRequest,
+) -> Result<serde_json::Value, ClientActionError> {
+    let url = req.url;
+
+    let result = brand_svc::brand(service_context.cfg.as_ref(), &url, None)
+        .await
+        .map_err(internal_error)?;
+
+    serde_json::to_value(result).map_err(|e| {
+        ClientActionError::new(
+            "internal",
+            format!("serialize brand result: {e}"),
+            false,
+            None,
+        )
+    })
+}

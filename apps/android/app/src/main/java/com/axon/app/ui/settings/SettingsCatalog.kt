@@ -45,7 +45,7 @@ object AxonSettingsCatalog {
                 SettingField("AXON_MCP_HTTP_HOST", SettingKind.Text, "127.0.0.1", "Bind host for the MCP HTTP server."),
                 SettingField("AXON_MCP_HTTP_PORT", SettingKind.Int, "8001", "Bind port for the MCP HTTP server."),
                 SettingField("AXON_MCP_HTTP_TOKEN", SettingKind.Secret, "", "Static bearer token. setup init generates this for local bearer mode."),
-                SettingField("AXON_MCP_AUTH_MODE", SettingKind.Enum, "bearer", "Auth policy for /mcp, /v1/actions, /v1/ask.", options = listOf("bearer", "oauth")),
+                SettingField("AXON_MCP_AUTH_MODE", SettingKind.Enum, "bearer", "Auth policy for /mcp and direct /v1 routes.", options = listOf("bearer", "oauth")),
                 SettingField("AXON_MCP_PUBLIC_URL", SettingKind.Text, "", "Public base URL advertised to OAuth clients."),
                 SettingField("AXON_MCP_GOOGLE_CLIENT_ID", SettingKind.Text, "", "Google OAuth client id."),
                 SettingField("AXON_MCP_GOOGLE_CLIENT_SECRET", SettingKind.Secret, "", "Google OAuth client secret."),

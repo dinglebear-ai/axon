@@ -6,15 +6,15 @@ type FileSpec = (&'static str, &'static [(&'static str, &'static str)]);
 
 const FILE_SPECS: &[FileSpec] = &[
     (
-        "src/cli/commands/mcp.rs",
+        "crates/axon-cli/src/commands/mcp.rs",
         &[
             (
                 "run_unified_server(",
-                "ERROR: MCP CLI must support unified HTTP transport in src/cli/commands/mcp.rs",
+                "ERROR: MCP CLI must support unified HTTP transport in crates/axon-cli/src/commands/mcp.rs",
             ),
             (
                 "run_stdio_server(",
-                "ERROR: MCP CLI must support stdio transport in src/cli/commands/mcp.rs",
+                "ERROR: MCP CLI must support stdio transport in crates/axon-cli/src/commands/mcp.rs",
             ),
             // Match the actual McpTransport::Both match arm shape, not a bare "Both"
             // substring. The bare token would be satisfied by a comment, an unrelated
@@ -22,29 +22,29 @@ const FILE_SPECS: &[FileSpec] = &[
             (
                 "McpTransport::Both =>",
                 "ERROR: MCP CLI must support both transports concurrently \
-                 (`McpTransport::Both =>` arm) in src/cli/commands/mcp.rs",
+                 (`McpTransport::Both =>` arm) in crates/axon-cli/src/commands/mcp.rs",
             ),
         ],
     ),
     (
-        "src/core/config/cli.rs",
+        "crates/axon-core/src/config/cli.rs",
         &[(
             "transport: Option<McpTransport>",
-            "ERROR: MCP CLI must expose --transport in src/core/config/cli.rs",
+            "ERROR: MCP CLI must expose --transport in crates/axon-core/src/config/cli.rs",
         )],
     ),
     (
-        "src/core/config/parse/build_config/config_literal.rs",
+        "crates/axon-core/src/config/parse/build_config/config_literal.rs",
         &[(
             "resolve_mcp_transport(mcp_transport, mcp_transport_default)",
-            "ERROR: MCP transport resolver not wired into config build in src/core/config/parse/build_config/config_literal.rs",
+            "ERROR: MCP transport resolver not wired into config build in crates/axon-core/src/config/parse/build_config/config_literal.rs",
         )],
     ),
     (
-        "src/core/config/parse/helpers.rs",
+        "crates/axon-core/src/config/parse/helpers.rs",
         &[(
             "AXON_MCP_TRANSPORT",
-            "ERROR: MCP transport env override missing in src/core/config/parse/helpers.rs",
+            "ERROR: MCP transport env override missing in crates/axon-core/src/config/parse/helpers.rs",
         )],
     ),
 ];
