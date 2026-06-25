@@ -36,6 +36,16 @@ pub(crate) async fn retry_cleanup_debt(
     cleanup_debt(Some(cfg), store, identity, None).await
 }
 
+pub(crate) async fn finish_completed_generation(
+    cfg: &Config,
+    store: &CodeIndexStore,
+    identity: &CodeIndexIdentity,
+    manifest: &ManifestSnapshot,
+    generation: i64,
+) -> anyhow::Result<ReindexSummary> {
+    finish_completed_generation_inner(Some(cfg), store, identity, manifest, generation, None).await
+}
+
 async fn reindex_changed_files_inner(
     cfg: Option<&Config>,
     store: &CodeIndexStore,
@@ -48,54 +58,207 @@ async fn reindex_changed_files_inner(
     let mut summary = ReindexSummary::default();
     let previous_generation = generation.saturating_sub(1);
     let mut cleanup_paths = diff.removed.clone();
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        manifest_files = manifest.files.len(),
+        diff_added = diff.added.len(),
+        diff_modified = diff.modified.len(),
+        diff_removed = diff.removed.len(),
+        "code-search reindex start"
+    );
 
     for removed in &diff.removed {
         store.remove_file(identity, removed).await?;
         summary.removed_files += 1;
     }
 
-    for batch in manifest.files.chunks(changed_file_batch_size()) {
-        let mut prepared = Vec::new();
-
-        for entry in batch {
-            store
-                .mark_file_pending(identity, &entry.relative_path)
-                .await?;
-            cleanup_paths.push(entry.relative_path.clone());
-            if entry.size_bytes == 0 {
-                continue;
-            }
-
-            let Some(doc) = prepare_local_code_doc(identity, entry, generation).await? else {
-                continue;
-            };
-            prepared.push(doc);
-        }
-
-        if let Some(cfg) = cfg
-            && !prepared.is_empty()
-        {
-            embed_prepared_docs(cfg, prepared, None)
-                .await
-                .map_err(|err| anyhow::anyhow!("code search embed failed: {err}"))?
-                .require_success("code search embed")
-                .map_err(|err| anyhow::anyhow!(err))?;
-        }
-
-        for entry in batch {
-            store.mark_file_indexed(identity, entry, generation).await?;
-        }
-    }
+    reindex_manifest_batches(
+        cfg,
+        store,
+        identity,
+        manifest,
+        generation,
+        &mut cleanup_paths,
+    )
+    .await?;
     summary.indexed_files = diff.added.len() + diff.modified.len();
 
     cleanup_paths.sort();
     cleanup_paths.dedup();
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        cleanup_paths = cleanup_paths.len(),
+        previous_generation,
+        "code-search reindex cleanup debt start"
+    );
     store
         .add_cleanup_debt(identity, previous_generation, &cleanup_paths)
         .await?;
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        "code-search reindex commit start"
+    );
     store.commit_generation(identity, generation).await?;
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        "code-search reindex commit done"
+    );
     cleanup_debt(cfg, store, identity, test_deletes).await?;
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        "code-search reindex cleanup done"
+    );
     Ok(summary)
+}
+
+async fn reindex_manifest_batches(
+    cfg: Option<&Config>,
+    store: &CodeIndexStore,
+    identity: &CodeIndexIdentity,
+    manifest: &ManifestSnapshot,
+    generation: i64,
+    cleanup_paths: &mut Vec<String>,
+) -> anyhow::Result<()> {
+    let batch_size = changed_file_batch_size();
+    let total_batches = manifest.files.len().div_ceil(batch_size);
+    for (batch_index, batch) in manifest.files.chunks(batch_size).enumerate() {
+        let batch_number = batch_index + 1;
+        log_reindex_batch_start(identity, generation, batch_number, total_batches, batch);
+        let prepared =
+            prepare_reindex_batch(store, identity, generation, cleanup_paths, batch).await?;
+        embed_reindex_batch(
+            cfg,
+            identity,
+            generation,
+            batch_number,
+            total_batches,
+            prepared,
+        )
+        .await?;
+        mark_reindex_batch_indexed(
+            store,
+            identity,
+            generation,
+            batch_number,
+            total_batches,
+            batch,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+fn log_reindex_batch_start(
+    identity: &CodeIndexIdentity,
+    generation: i64,
+    batch_number: usize,
+    total_batches: usize,
+    batch: &[FileManifestEntry],
+) {
+    let first_path = batch
+        .first()
+        .map(|entry| entry.relative_path.as_str())
+        .unwrap_or_default();
+    let last_path = batch
+        .last()
+        .map(|entry| entry.relative_path.as_str())
+        .unwrap_or_default();
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        batch = batch_number,
+        total_batches,
+        batch_files = batch.len(),
+        first_path,
+        last_path,
+        "code-search reindex batch start"
+    );
+}
+
+async fn prepare_reindex_batch(
+    store: &CodeIndexStore,
+    identity: &CodeIndexIdentity,
+    generation: i64,
+    cleanup_paths: &mut Vec<String>,
+    batch: &[FileManifestEntry],
+) -> anyhow::Result<Vec<axon_vector::ops::PreparedDoc>> {
+    let mut prepared = Vec::new();
+    for entry in batch {
+        store
+            .mark_file_pending(identity, &entry.relative_path)
+            .await?;
+        cleanup_paths.push(entry.relative_path.clone());
+        if entry.size_bytes == 0 {
+            continue;
+        }
+        if let Some(doc) = prepare_local_code_doc(identity, entry, generation).await? {
+            prepared.push(doc);
+        }
+    }
+    Ok(prepared)
+}
+
+async fn embed_reindex_batch(
+    cfg: Option<&Config>,
+    identity: &CodeIndexIdentity,
+    generation: i64,
+    batch_number: usize,
+    total_batches: usize,
+    prepared: Vec<axon_vector::ops::PreparedDoc>,
+) -> anyhow::Result<()> {
+    let Some(cfg) = cfg else {
+        return Ok(());
+    };
+    if prepared.is_empty() {
+        return Ok(());
+    }
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        batch = batch_number,
+        total_batches,
+        prepared_docs = prepared.len(),
+        "code-search reindex batch embed start"
+    );
+    embed_prepared_docs(cfg, prepared, None)
+        .await
+        .map_err(|err| anyhow::anyhow!("code search embed failed: {err}"))?
+        .require_success("code search embed")
+        .map_err(|err| anyhow::anyhow!(err))?;
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        batch = batch_number,
+        total_batches,
+        "code-search reindex batch embed done"
+    );
+    Ok(())
+}
+
+async fn mark_reindex_batch_indexed(
+    store: &CodeIndexStore,
+    identity: &CodeIndexIdentity,
+    generation: i64,
+    batch_number: usize,
+    total_batches: usize,
+    batch: &[FileManifestEntry],
+) -> anyhow::Result<()> {
+    for entry in batch {
+        store.mark_file_indexed(identity, entry, generation).await?;
+    }
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        batch = batch_number,
+        total_batches,
+        "code-search reindex batch marked indexed"
+    );
+    Ok(())
 }
 
 async fn prepare_local_code_doc(
@@ -205,6 +368,35 @@ async fn cleanup_debt(
     Ok(())
 }
 
+async fn finish_completed_generation_inner(
+    cfg: Option<&Config>,
+    store: &CodeIndexStore,
+    identity: &CodeIndexIdentity,
+    manifest: &ManifestSnapshot,
+    generation: i64,
+    test_deletes: Option<Arc<Mutex<Vec<String>>>>,
+) -> anyhow::Result<ReindexSummary> {
+    let previous_generation = generation.saturating_sub(1);
+    let cleanup_paths = manifest
+        .files
+        .iter()
+        .map(|entry| entry.relative_path.clone())
+        .collect::<Vec<_>>();
+    tracing::info!(
+        project_key = %identity.project_key,
+        generation,
+        cleanup_paths = cleanup_paths.len(),
+        previous_generation,
+        "code-search finish completed generation"
+    );
+    store
+        .add_cleanup_debt(identity, previous_generation, &cleanup_paths)
+        .await?;
+    store.commit_generation(identity, generation).await?;
+    cleanup_debt(cfg, store, identity, test_deletes).await?;
+    Ok(ReindexSummary::default())
+}
+
 fn changed_file_batch_size() -> usize {
     u64_env(
         "AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE",
@@ -232,4 +424,16 @@ pub(crate) async fn reindex_changed_files_for_test(
         Some(deletes),
     )
     .await
+}
+
+#[cfg(test)]
+pub(crate) async fn finish_completed_generation_for_test(
+    store: &CodeIndexStore,
+    identity: &CodeIndexIdentity,
+    manifest: &ManifestSnapshot,
+    generation: i64,
+    deletes: Arc<Mutex<Vec<String>>>,
+) -> anyhow::Result<ReindexSummary> {
+    finish_completed_generation_inner(None, store, identity, manifest, generation, Some(deletes))
+        .await
 }

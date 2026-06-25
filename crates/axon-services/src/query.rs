@@ -238,6 +238,52 @@ fn code_index_pool(ctx: &ServiceContext) -> Result<sqlx::SqlitePool, Box<dyn Err
         .ok_or_else(|| "code search requires a SQLite service runtime".into())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct CodeSearchRefreshResult {
+    pub project_root: PathBuf,
+    pub project_key: String,
+    pub generation: Option<i64>,
+    pub freshness: CodeSearchFreshness,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct CodeSearchProjectResult {
+    pub project_root: PathBuf,
+    pub project_key: String,
+}
+
+#[must_use = "resolve_code_search_project returns a Result that should be handled"]
+pub async fn resolve_code_search_project(
+    ctx: &ServiceContext,
+    cwd: Option<&Path>,
+    caller: CodeSearchCaller,
+) -> Result<CodeSearchProjectResult, Box<dyn Error + Send + Sync>> {
+    let root = resolve_code_search_root(cwd, caller).await?;
+    let identity = code_search_identity(ctx.cfg(), root).await;
+    Ok(CodeSearchProjectResult {
+        project_root: identity.project_root,
+        project_key: identity.project_key,
+    })
+}
+
+#[must_use = "refresh_code_search_index returns a Result that should be handled"]
+pub async fn refresh_code_search_index(
+    ctx: &ServiceContext,
+    cwd: Option<&Path>,
+    caller: CodeSearchCaller,
+) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
+    let root = resolve_code_search_root(cwd, caller).await?;
+    let identity = code_search_identity(ctx.cfg(), root).await;
+    let freshness = resolve_code_search_freshness(ctx, &identity, true).await;
+    let generation = code_search_committed_generation(ctx, &identity).await?;
+    Ok(CodeSearchRefreshResult {
+        project_root: identity.project_root.clone(),
+        project_key: identity.project_key.clone(),
+        generation,
+        freshness,
+    })
+}
+
 async fn resolve_code_search_freshness(
     ctx: &ServiceContext,
     identity: &CodeIndexIdentity,
@@ -684,6 +730,33 @@ pub async fn ask(
         },
     )
     .await;
+    emit(
+        &tx,
+        ServiceEvent::Activity {
+            kind: "thinking".to_string(),
+            label: "Thinking".to_string(),
+            detail: Some("Planning retrieval and answer synthesis".to_string()),
+        },
+    )
+    .await;
+    emit(
+        &tx,
+        ServiceEvent::Activity {
+            kind: "tool".to_string(),
+            label: "Retrieving context".to_string(),
+            detail: Some(format!("Querying collection {}", cfg.collection)),
+        },
+    )
+    .await;
+    emit(
+        &tx,
+        ServiceEvent::Activity {
+            kind: "tool".to_string(),
+            label: "Synthesizing answer".to_string(),
+            detail: Some("Streaming model response".to_string()),
+        },
+    )
+    .await;
     let result = if cfg.ask_stream && tx.is_some() {
         ask_result_with_deltas(cfg, question, ask_delta_handler(tx.clone()))
             .await
@@ -705,6 +778,20 @@ pub async fn ask(
                 wrap_service_error(message, e.as_ref())
             })?
     };
+    if let Some(diagnostics) = &result.diagnostics {
+        emit(
+            &tx,
+            ServiceEvent::Activity {
+                kind: "done".to_string(),
+                label: "Context selected".to_string(),
+                detail: Some(format!(
+                    "{} chunks, {} full docs",
+                    diagnostics.chunks_selected, diagnostics.full_docs_selected
+                )),
+            },
+        )
+        .await;
+    }
     emit(
         &tx,
         ServiceEvent::Log {

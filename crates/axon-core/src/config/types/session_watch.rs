@@ -18,6 +18,17 @@ pub struct SessionWatchConfig {
     pub json: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct CodeSearchWatchConfig {
+    pub roots: Vec<PathBuf>,
+    pub debounce: Duration,
+    pub settle: Duration,
+    pub initial_refresh: bool,
+    pub dry_run: bool,
+    pub enable: bool,
+    pub json: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionsRuntimeAction {
     WatchStatus { limit: usize },

@@ -10,21 +10,44 @@
 
 use super::classify::path_extension;
 
-/// Directory names that are pruned from a recursive embed walk: version-control
-/// metadata, dependency caches, and build/output artifacts. This is a *superset*
-/// of the excluded-prefix list in `crate::ingest::github::is_indexable_source_path`
-/// — it additionally prunes `.git` (the github path filters by file extension via
-/// its allowlist, so it never needs to prune `.git` explicitly). Keep the shared
-/// entries in sync (no compile-time link).
+/// Directory names that are pruned from recursive file ingestion: version-control
+/// metadata, dependency caches, and build/output artifacts.
 const PRUNED_DIRS: &[&str] = &[
     ".git",
+    ".worktrees",
+    ".hg",
+    ".svn",
     "node_modules",
+    ".pnpm-store",
+    ".yarn",
+    ".npm",
+    ".turbo",
+    ".parcel-cache",
+    ".vite",
+    ".svelte-kit",
+    ".angular",
+    ".vitest",
+    "playwright-report",
+    "test-results",
     "__pycache__",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".pyre",
+    ".pytype",
+    ".tox",
+    ".nox",
+    ".hypothesis",
+    ".ipynb_checkpoints",
+    "htmlcov",
+    "site-packages",
+    ".eggs",
     "target",
     "dist",
     "build",
     "out",
     "coverage",
+    ".nyc_output",
     "vendor",
     ".venv",
     "venv",
@@ -33,8 +56,9 @@ const PRUNED_DIRS: &[&str] = &[
     ".nuxt",
     ".gradle",
     ".terraform",
-    ".mypy_cache",
-    ".pytest_cache",
+    ".serverless",
+    ".aws-sam",
+    ".cache",
 ];
 
 /// File extensions (lowercase, without the dot) treated as binary/non-text and
@@ -54,7 +78,13 @@ const BINARY_EXTENSIONS: &[&str] = &[
 /// into) during a recursive embed walk. Comparison is case-sensitive — these
 /// names are conventionally lowercase on every platform we target.
 pub fn is_pruned_dir(name: &str) -> bool {
-    PRUNED_DIRS.contains(&name)
+    PRUNED_DIRS.contains(&name) || name.ends_with(".egg-info")
+}
+
+/// Returns true when a slash- or backslash-separated path contains a pruned
+/// directory component.
+pub fn has_pruned_component(path: &str) -> bool {
+    path.split(['/', '\\']).any(is_pruned_dir)
 }
 
 /// Returns true if a file with this extension is binary/non-text and should be

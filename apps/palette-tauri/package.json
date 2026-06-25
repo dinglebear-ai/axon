@@ -1,24 +1,4 @@
 {
-  "name": "axon-palette-tauri",
-  "version": "5.11.1",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build && node scripts/copy-artifacts.mjs",
-    "generate:api": "node scripts/generate-api.mjs",
-    "check:api": "cd ../.. && cargo xtask check-openapi-drift",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
-    "vite:dev": "vite --host 127.0.0.1",
-    "vite:build": "vite build",
-    "fixture:operation-results": "vite --host 127.0.0.1 --open '/?fixture=operation-results'",
-    "lint": "biome lint .",
-    "format": "biome format --write . && biome check --write .",
-    "verify": "pnpm install --frozen-lockfile && pnpm lint && pnpm test && pnpm check:api && pnpm typecheck && pnpm vite:build"
-  },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/vite": "^4.1.18",
@@ -52,5 +32,27 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.4",
     "vitest": "^4.1.9"
-  }
+  },
+  "name": "axon-palette-tauri",
+  "private": true,
+  "scripts": {
+    "build": "tauri build && node scripts/copy-artifacts.mjs",
+    "check:api": "cd ../.. && cargo xtask check-openapi-drift",
+    "coverage": "vitest run --coverage",
+    "dev": "tauri dev",
+    "fixture:operation-results": "vite --host 127.0.0.1 --open '/?fixture=operation-results'",
+    "format": "biome format --write . && biome check --write .",
+    "generate:api": "node scripts/generate-api.mjs",
+    "lint": "biome lint .",
+    "preview": "vite preview",
+    "qa:ask-stream": "python scripts/qa-ask-stream-transition.py",
+    "qa:switcher": "labby gateway code exec --file scripts/qa-switcher-open.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify": "pnpm install --frozen-lockfile && pnpm lint && pnpm test && pnpm check:api && pnpm typecheck && pnpm vite:build",
+    "vite:build": "vite build",
+    "vite:dev": "vite --host 127.0.0.1"
+  },
+  "type": "module",
+  "version": "5.11.2"
 }

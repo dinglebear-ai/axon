@@ -256,9 +256,19 @@ export default function App() {
     focusInput(true);
   }
 
+  function shouldAutoRunOnSwitch(action: PaletteAction) {
+    return action.argMode === "none" && action.autoRunOnSwitch === true;
+  }
+
   function switchActionMode(action: PaletteAction) {
+    if (shouldAutoRunOnSwitch(action)) {
+      setQuery("");
+      setSelected(0);
+      setRun({ kind: "idle" });
+      void submit(action, "");
+      return;
+    }
     dispatchView({ type: "switchMode", action });
-    if (action.argMode === "none") setQuery("");
     setSelected(0);
     setRun({ kind: "idle" });
     focusInput(true);

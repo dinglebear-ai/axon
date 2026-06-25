@@ -57,6 +57,9 @@ pub(super) enum CliCommand {
     Query(QueryArgs),
     /// Semantic search over one local git checkout, refreshing changed source files first
     CodeSearch(CodeSearchArgs),
+    /// Watch a workspace directory and refresh child repo code-search vectors when files change
+    #[command(name = "code-search-watch")]
+    CodeSearchWatch(CodeSearchWatchArgs),
     /// Fetch stored document chunks from Qdrant by URL
     Retrieve(RetrieveArgs),
     /// RAG: retrieve relevant context, then answer with LLM
@@ -626,6 +629,36 @@ pub(super) struct CodeSearchArgs {
     pub(super) no_freshness: bool,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct CodeSearchWatchArgs {
+    #[command(subcommand)]
+    pub(super) action: Option<CodeSearchWatchSubcommand>,
+    /// Workspace/project directory to watch. If it is a Git checkout, watches that repo; otherwise watches Git checkout children.
+    #[arg(long, value_name = "PATH", global = true)]
+    pub(super) cwd: Vec<std::path::PathBuf>,
+    /// Debounce file events by this many milliseconds before refreshing.
+    #[arg(long = "debounce-ms", default_value_t = 750, global = true)]
+    pub(super) debounce_ms: u64,
+    /// Require no further events for this many milliseconds before refreshing.
+    #[arg(long = "settle-ms", default_value_t = 500, global = true)]
+    pub(super) settle_ms: u64,
+    /// Refresh all discovered repos once before watching. Off by default.
+    #[arg(long = "initial-refresh", global = true)]
+    pub(super) initial_refresh: bool,
+    /// Print discovered repos/files that would be indexed, then exit without writing SQLite/Qdrant.
+    #[arg(long = "dry-run", global = true)]
+    pub(super) dry_run: bool,
+    /// Emit newline-delimited JSON events suitable for service logs.
+    #[arg(long, global = true)]
+    pub(super) json: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum CodeSearchWatchSubcommand {
+    /// Install and enable the user systemd code-search watcher service.
+    Enable,
 }
 
 #[derive(Debug, Args)]

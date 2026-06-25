@@ -108,7 +108,7 @@ in addition to their source-type-specific fields. See `src/ingest/git_payload.rs
 ### Code Search Fields
 
 Git-backed file chunks also emit provider-neutral `code_*` and symbol fields. These are the
-Lumen-like code-search shape used by query ranking and result output.
+code-search payload fields used by query ranking and result output.
 
 | Field | Qdrant type | Indexed | Notes |
 |-------|-------------|---------|-------|

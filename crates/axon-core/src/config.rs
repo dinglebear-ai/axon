@@ -8,8 +8,9 @@ pub mod validation;
 pub use parse::{build_cli_command, parse_args};
 pub use secret::Secret;
 pub use types::{
-    AdaptiveConcurrencyConfig, ColorChoice, CommandKind, Config, ConfigOverrides,
-    EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort, RedditTime,
-    RenderMode, ScrapeFormat, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
+    AdaptiveConcurrencyConfig, CodeSearchWatchConfig, ColorChoice, CommandKind, Config,
+    ConfigOverrides, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
+    RedditSort, RedditTime, RenderMode, ScrapeFormat, SessionWatchConfig,
+    SessionWatchServiceAction, SessionsRuntimeAction,
 };
 pub use validation::{CollectionNameError, validate_collection_name};
