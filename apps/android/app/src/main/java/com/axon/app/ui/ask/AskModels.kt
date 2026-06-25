@@ -15,6 +15,10 @@ internal const val MAX_FOLLOW_UP_TURNS = 6
 internal const val STREAM_UI_FLUSH_MS = 50L
 private const val CHAT_PREVIEW_CHARS = 2_000
 internal const val HIT_SNIPPET_CHARS = 220
+internal const val COMPACT_HIT_LIMIT = 2
+internal const val COMPACT_HIT_TITLE_CHARS = 92
+internal const val COMPACT_HIT_URL_CHARS = 88
+internal const val COMPACT_HIT_SNIPPET_CHARS = 110
 
 /**
  * Build the effective query for the server by prepending the last
@@ -59,6 +63,16 @@ internal fun resolvedDoneAnswer(doneAnswer: String, accumulatedAnswer: String): 
 
 internal fun previewText(value: String, limit: Int = CHAT_PREVIEW_CHARS): String =
     if (value.length <= limit) value else value.take(limit).trimEnd() + "\n\n…truncated in chat"
+
+internal fun compactSingleLine(value: String, limit: Int): String {
+    val oneLine = value.trim().replace(Regex("\\s+"), " ")
+    if (oneLine.length <= limit) return oneLine
+    val cut = oneLine.take(limit).trimEnd()
+    val wordBoundaryCut = cut.substringBeforeLast(" ", missingDelimiterValue = cut)
+        .takeIf { it.length >= limit / 2 }
+        ?: cut
+    return wordBoundaryCut + "..."
+}
 
 sealed interface AskUiState {
     data object Idle : AskUiState
