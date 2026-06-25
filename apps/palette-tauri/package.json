@@ -54,5 +54,5 @@
     "vite:dev": "vite --host 127.0.0.1"
   },
   "type": "module",
-  "version": "5.11.3"
+  "version": "5.11.4"
 }
