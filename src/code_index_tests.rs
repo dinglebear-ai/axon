@@ -140,6 +140,37 @@ async fn failed_partial_generation_is_not_reused_for_deleted_file_cleanup() {
     );
 }
 
+#[tokio::test]
+async fn uncommitted_generation_is_reindexed_even_when_file_metadata_matches() {
+    let dir = tempdir().unwrap();
+    tokio::fs::write(dir.path().join("lib.rs"), "pub fn one() {}\n")
+        .await
+        .unwrap();
+    let store = store::CodeIndexStore::open_in_memory().await.unwrap();
+    store.init_schema().await.unwrap();
+    let identity = CodeIndexIdentity::for_test(dir.path(), "origin:axon", "axon", "tei-test");
+    let manifest =
+        manifest::build_manifest(&store, &identity, manifest::ManifestOptions::default())
+            .await
+            .unwrap();
+    let partial_generation = store.next_generation(&identity).await.unwrap();
+    store
+        .mark_file_indexed(&identity, &manifest.files[0], partial_generation)
+        .await
+        .unwrap();
+
+    let unchanged_manifest =
+        manifest::build_manifest(&store, &identity, manifest::ManifestOptions::default())
+            .await
+            .unwrap();
+    let diff = store
+        .diff_manifest(&identity, &unchanged_manifest)
+        .await
+        .unwrap();
+
+    assert_eq!(diff.modified_paths(), vec!["lib.rs"]);
+}
+
 #[test]
 fn path_prefix_rejects_absolute_parent_and_escape_segments() {
     assert!(config::validate_path_prefix("/etc").is_err());

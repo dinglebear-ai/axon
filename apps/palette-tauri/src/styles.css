@@ -37,7 +37,7 @@
   /* Text */
   --color-text-primary: var(--aurora-text-primary);
   --color-text-muted: var(--aurora-text-muted);
-  --color-on-accent: var(--aurora-on-accent);
+  --color-on-accent: var(--aurora-accent-foreground);
 
   /* Primary accent — cyan */
   --color-accent-primary: var(--aurora-accent-primary);
@@ -116,16 +116,11 @@
 
 :root,
 .dark {
-  --axon-orange: #ff9645;
-  --axon-orange-strong: #ffb474;
-  --axon-orange-deep: #c96a1c;
-  --axon-control: var(--aurora-control-surface);
   /* Near-opaque: a transparent borderless window has no backdrop blur, so any
      see-through just bleeds the desktop (and reads as "white" over light apps).
      Keep a sliver of translucency for depth without the wash. */
   --axon-surface: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
   --axon-window-border: color-mix(in srgb, var(--aurora-border-strong) 58%, transparent);
-  --axon-window-radius: 14px;
   /* Compact launcher (floating bar): the transparent breathing room kept around
      the bar so its glow renders fully instead of clipping at the window edge,
      plus the glow itself. The window grows to fit (window = bar + 2*inset on
@@ -139,12 +134,6 @@
 
 * {
   box-sizing: border-box;
-}
-
-.light {
-  --axon-orange: #e0731a;
-  --axon-orange-strong: #c25f10;
-  --axon-orange-deep: #a8540e;
 }
 
 html {
@@ -232,7 +221,7 @@ textarea {
   overflow: hidden;
   background: var(--axon-surface);
   border: 1px solid var(--axon-window-border);
-  border-radius: var(--axon-window-radius);
+  border-radius: var(--aurora-radius-1);
   box-shadow:
     0 20px 54px rgba(0, 0, 0, 0.38),
     inset 0 1px 0 rgba(255, 255, 255, 0.055);
@@ -448,7 +437,7 @@ textarea {
   width: var(--ctl);
   height: var(--ctl);
   color: var(--aurora-text-muted);
-  background: var(--axon-control);
+  background: var(--aurora-control-surface);
   border: 1px solid var(--aurora-border-default);
   border-radius: var(--r-ctl);
   cursor: pointer;
@@ -476,7 +465,7 @@ textarea {
 
 .command-submit {
   color: var(--aurora-text-muted);
-  background: var(--axon-control);
+  background: var(--aurora-control-surface);
   border-color: var(--aurora-border-default);
   box-shadow: none;
 }
@@ -504,19 +493,19 @@ textarea {
 }
 
 .command-submit-warn {
-  color: var(--aurora-on-accent);
-  background: var(--axon-orange);
-  border-color: var(--axon-orange);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--axon-orange) 30%, transparent);
+  color: var(--aurora-accent-foreground);
+  background: var(--aurora-warn);
+  border-color: var(--aurora-warn);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--aurora-warn) 30%, transparent);
 }
 
 .command-submit-warn:hover:not(:disabled),
 .command-submit-warn:disabled {
-  color: var(--aurora-on-accent);
-  background: var(--axon-orange);
-  border-color: var(--axon-orange);
+  color: var(--aurora-accent-foreground);
+  background: var(--aurora-warn);
+  border-color: var(--aurora-warn);
   opacity: 1;
-  box-shadow: 0 0 16px color-mix(in srgb, var(--axon-orange) 30%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--aurora-warn) 30%, transparent);
 }
 
 .palette-status,
@@ -574,7 +563,7 @@ textarea {
 }
 
 .idle-tray svg {
-  color: var(--axon-orange-strong);
+  color: var(--aurora-warn-foreground);
   flex: 0 0 auto;
 }
 
@@ -588,11 +577,11 @@ textarea {
 @keyframes crawl-pulse {
   0%,
   100% {
-    box-shadow: 0 0 4px var(--axon-orange);
+    box-shadow: 0 0 4px var(--aurora-warn);
     opacity: 1;
   }
   50% {
-    box-shadow: 0 0 11px 1.5px color-mix(in srgb, var(--axon-orange) 62%, transparent);
+    box-shadow: 0 0 11px 1.5px color-mix(in srgb, var(--aurora-warn) 62%, transparent);
     opacity: 0.55;
   }
 }
@@ -601,8 +590,8 @@ textarea {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: var(--axon-orange);
-  box-shadow: 0 0 6px var(--axon-orange);
+  background: var(--aurora-warn);
+  box-shadow: 0 0 6px var(--aurora-warn);
   flex: 0 0 auto;
   animation: crawl-pulse 1.6s ease-in-out infinite;
 }
@@ -626,12 +615,12 @@ textarea {
   display: block;
   width: 17%;
   height: 100%;
-  background: linear-gradient(90deg, var(--axon-orange-deep), var(--axon-orange));
+  background: linear-gradient(90deg, var(--aurora-warn-border), var(--aurora-warn));
   border-radius: inherit;
 }
 
 .idle-tray strong {
-  color: var(--axon-orange-strong);
+  color: var(--aurora-warn-foreground);
   font-size: 11px;
   font-weight: 520;
 }
@@ -1232,7 +1221,7 @@ textarea {
    now CSS-driven (.aurora-btn[data-variant]) rather than inline styles, so this
    higher-specificity selector wins on the cascade without !important (M7). */
 .settings-footer-actions button:last-child {
-  color: var(--aurora-on-accent);
+  color: var(--aurora-accent-foreground);
   background: var(--aurora-accent-primary);
   border-color: var(--aurora-accent-primary);
   box-shadow: 0 0 16px color-mix(in srgb, var(--aurora-accent-primary) 25%, transparent);
@@ -1322,13 +1311,13 @@ textarea {
    a WCAG 2.4.7 indicator. :focus-visible avoids a ring on pointer clicks. */
 .command-input-wrap:has(.command-input:focus-visible) {
   border-radius: 9px;
-  box-shadow: 0 0 0 2px var(--aurora-focus-ring-strong);
+  box-shadow: inset 0 0 0 1px var(--aurora-focus-ring-strong);
 }
 
 /* Active-mode switcher: the selected action sits inside the input and opens a
    compact list of alternate actions without resizing the command bar. */
 .command-action-switcher {
-  position: relative;
+  position: static;
   flex: 0 0 auto;
 }
 
@@ -1376,7 +1365,7 @@ textarea {
 }
 
 .command-mode-icon-warn {
-  color: var(--axon-orange-strong);
+  color: var(--aurora-warn-foreground);
 }
 
 .command-mode-icon-rose {
@@ -1393,7 +1382,7 @@ textarea {
   top: calc(100% + 9px);
   left: 0;
   display: flex;
-  width: min(388px, calc(100vw - 56px));
+  width: 100%;
   max-height: min(310px, calc(100vh - 76px));
   padding: 7px;
   overflow-y: auto;
@@ -1501,7 +1490,7 @@ textarea {
 }
 
 .command-action-option-warn {
-  color: var(--axon-orange-strong);
+  color: var(--aurora-warn-foreground);
 }
 
 .command-action-option-rose {
@@ -1662,15 +1651,15 @@ textarea {
 
 .history-live {
   gap: 6px;
-  color: var(--axon-orange-strong);
+  color: var(--aurora-warn-foreground);
 }
 
 .history-live span {
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: var(--axon-orange);
-  box-shadow: 0 0 6px var(--axon-orange);
+  background: var(--aurora-warn);
+  box-shadow: 0 0 6px var(--aurora-warn);
 }
 
 .history-duration {
@@ -1770,7 +1759,7 @@ textarea {
 }
 
 .running-stat-accent strong {
-  color: var(--axon-orange-strong);
+  color: var(--aurora-warn-foreground);
 }
 
 .running-progress-head {
@@ -1785,15 +1774,15 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--axon-orange-strong);
+  color: var(--aurora-warn-foreground);
 }
 
 .running-progress-head i {
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: var(--axon-orange);
-  box-shadow: 0 0 6px var(--axon-orange);
+  background: var(--aurora-warn);
+  box-shadow: 0 0 6px var(--aurora-warn);
   animation: crawl-pulse 1.6s ease-in-out infinite;
 }
 
@@ -1809,7 +1798,7 @@ textarea {
   display: block;
   width: 17%;
   height: 100%;
-  background: linear-gradient(90deg, var(--axon-orange-deep), var(--axon-orange));
+  background: linear-gradient(90deg, var(--aurora-warn-border), var(--aurora-warn));
   border-radius: inherit;
 }
 
@@ -2034,7 +2023,7 @@ textarea {
 }
 
 .ask-compose button:last-child {
-  color: var(--aurora-on-accent);
+  color: var(--aurora-accent-foreground);
   background: var(--aurora-accent-primary);
   border-color: var(--aurora-accent-primary);
 }
@@ -2180,9 +2169,9 @@ textarea {
 
 .output-tone-warn .output-op-tile,
 .output-running .output-op-tile {
-  color: var(--axon-orange-strong);
-  background: color-mix(in srgb, var(--axon-orange) 14%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--axon-orange) 30%, transparent);
+  color: var(--aurora-warn-foreground);
+  background: color-mix(in srgb, var(--aurora-warn) 14%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--aurora-warn) 30%, transparent);
 }
 
 .output-tone-rose .output-op-tile {
@@ -2376,9 +2365,9 @@ textarea {
 }
 
 .action-icon-warn {
-  color: var(--axon-orange-strong);
-  background: color-mix(in srgb, var(--axon-orange) 14%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--axon-orange) 30%, transparent);
+  color: var(--aurora-warn-foreground);
+  background: color-mix(in srgb, var(--aurora-warn) 14%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--aurora-warn) 30%, transparent);
 }
 
 .action-icon-rose {
@@ -2451,9 +2440,9 @@ textarea {
 
 .action-async {
   padding: 1px 5px;
-  color: var(--axon-orange-strong);
-  background: color-mix(in srgb, var(--axon-orange) 10%, var(--aurora-control-surface));
-  border: 1px solid color-mix(in srgb, var(--axon-orange) 22%, transparent);
+  color: var(--aurora-warn-foreground);
+  background: color-mix(in srgb, var(--aurora-warn) 10%, var(--aurora-control-surface));
+  border: 1px solid color-mix(in srgb, var(--aurora-warn) 22%, transparent);
   border-radius: 4px;
   font-family: var(--aurora-font-mono);
   font-size: 9px;
@@ -3665,7 +3654,7 @@ textarea {
   padding: clamp(18px, 3vw, 28px);
   color: var(--aurora-text-primary);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--aurora-panel) 88%, #000 12%), var(--aurora-bg)),
+    linear-gradient(180deg, color-mix(in srgb, var(--aurora-panel-strong) 88%, #000 12%), var(--aurora-bg)),
     var(--aurora-bg);
 }
 
@@ -3827,9 +3816,9 @@ textarea {
 
 .status-pill-running,
 .status-pill-pending {
-  color: var(--axon-orange-strong);
-  background: color-mix(in srgb, var(--axon-orange) 13%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--axon-orange) 30%, transparent);
+  color: var(--aurora-warn-foreground);
+  background: color-mix(in srgb, var(--aurora-warn) 13%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--aurora-warn) 30%, transparent);
 }
 
 .status-pill-completed {

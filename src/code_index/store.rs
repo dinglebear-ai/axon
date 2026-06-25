@@ -89,6 +89,7 @@ impl CodeIndexStore {
         manifest: &ManifestSnapshot,
     ) -> anyhow::Result<FileDiff> {
         let stored = self.files_for_project(identity).await?;
+        let committed_generation = self.committed_generation(identity).await?.unwrap_or(0);
         let manifest_paths = manifest
             .files
             .iter()
@@ -101,6 +102,7 @@ impl CodeIndexStore {
                 None => diff.added.push(entry.clone()),
                 Some(file)
                     if file.pending
+                        || file.indexed_generation > committed_generation
                         || entry.hash.as_deref() != Some(file.hash.as_str())
                         || entry.size_bytes != file.size_bytes
                         || entry.mtime_ns != file.mtime_ns =>

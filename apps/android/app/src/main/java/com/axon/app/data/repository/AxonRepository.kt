@@ -248,8 +248,11 @@ class AxonRepository(
         }
     }
 
-    suspend fun crawlSubmit(url: String, maxPages: Int? = null): Result<String> = withAuth {
-        val req = applicator.apply(CrawlRequest(urls = listOf(url), maxPages = maxPages))
+    suspend fun crawlSubmit(url: String, maxPages: Int? = null): Result<String> =
+        crawlSubmit(url, CrawlSubmitOptions(maxPages = maxPages))
+
+    suspend fun crawlSubmit(url: String, options: CrawlSubmitOptions): Result<String> = withAuth {
+        val req = applicator.apply(options.requestFor(url))
         client.crawlSubmit(req).map { it.jobId }
     }
 
@@ -321,10 +324,12 @@ class AxonRepository(
         }
     }
 
-    suspend fun ingestStart(sourceType: String, target: String): Result<String> = withAuth {
-        val req = applicator.apply(
-            com.axon.app.data.remote.models.IngestRequest(sourceType = sourceType, target = target)
-        )
+    suspend fun ingestStart(
+        sourceType: String,
+        target: String,
+        options: IngestSubmitOptions = IngestSubmitOptions(),
+    ): Result<String> = withAuth {
+        val req = applicator.apply(options.requestFor(sourceType = sourceType, target = target))
         client.ingestStart(req).map { it.jobId }
     }
 

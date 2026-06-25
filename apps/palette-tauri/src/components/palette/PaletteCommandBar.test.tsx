@@ -119,6 +119,15 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     expect(onSwitchAction.mock.calls[0][0].subcommand).toBe("ask");
   });
 
+  it("uses sentence casing for action descriptors", async () => {
+    const user = userEvent.setup();
+    renderBar({ modeAction: scrape });
+
+    await user.click(screen.getByRole("button", { name: /Switch from/ }));
+
+    expect(screen.getByText("Question to answer")).toBeInTheDocument();
+  });
+
   it("closes the disclosure on Escape and keeps focus on the trigger", async () => {
     const user = userEvent.setup();
     renderBar({ modeAction: scrape });

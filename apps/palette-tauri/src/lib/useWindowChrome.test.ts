@@ -23,6 +23,7 @@ describe("resolvePaletteWindowSize", () => {
       ),
     ).toEqual({ width: 1280, height: 470 });
   });
+
 });
 
 describe("crawl job layout CSS contract", () => {
@@ -46,5 +47,11 @@ describe("crawl job layout CSS contract", () => {
     expect(body).toContain("padding: 0 8px");
     expect(body).toContain("line-height: 1.1");
     expect(rule(".running-stat strong")).toContain("line-height: 1");
+  });
+
+  it("keeps the command palette focus and dropdown geometry visually stable", () => {
+    expect(rule(".command-input-wrap:has(.command-input:focus-visible)")).toContain("inset 0 0 0 1px");
+    expect(rule(".command-action-switcher")).toContain("position: static");
+    expect(rule(".command-action-menu")).toContain("width: 100%");
   });
 });

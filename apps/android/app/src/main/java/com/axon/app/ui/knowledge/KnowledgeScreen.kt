@@ -89,9 +89,22 @@ fun KnowledgeScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (showChrome) {
-            val unavailable = listOf(suggest, sources, domains, stats).count { it is Resource.Error }
-            if (unavailable > 0) {
-                KnowledgeNotice("$unavailable knowledge ${if (unavailable == 1) "view needs" else "views need"} authentication or a reachable Axon server.")
+            val failures = listOf(
+                "Suggest" to suggest,
+                "Sources" to sources,
+                "Domains" to domains,
+                "Stats" to stats,
+            ).mapNotNull { (label, state) ->
+                (state as? Resource.Error)?.let { label to it.message }
+            }
+            if (failures.isNotEmpty()) {
+                val message = if (failures.size == 1) {
+                    val (label, detail) = failures.single()
+                    "$label is unavailable: $detail"
+                } else {
+                    "${failures.size} knowledge views are unavailable. Check auth and Axon server status."
+                }
+                KnowledgeNotice(message)
             }
             KnowledgeMenu(
                 selected = selected,

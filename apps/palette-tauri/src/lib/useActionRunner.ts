@@ -1,7 +1,7 @@
 import { useActionState, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
-import type { PaletteAction, RemotePaletteAction } from "@/lib/actions";
+import { ACTIONS, type PaletteAction, type RemotePaletteAction } from "@/lib/actions";
 import { buildHelpRun, findHelpTarget, helpAction } from "@/lib/actionHelp";
 import { crawlSeedUrl, newRequestId, normalizeSubmitArgument } from "@/lib/appHelpers";
 import {
@@ -128,6 +128,13 @@ function makeStreamSuccessRun(args: {
       payload: { answer: args.text },
     },
   };
+}
+
+function statusFallbackAction(action: PaletteAction, argument: string): PaletteAction {
+  if (action.kind !== "job" || argument.trim()) return action;
+  const match = /^(crawl|embed|extract|ingest)-status$/.exec(action.subcommand);
+  if (!match) return action;
+  return ACTIONS.find((candidate) => candidate.subcommand === `${match[1]}-list`) ?? action;
 }
 
 // ── Streaming event reducer ──────────────────────────────────────────────────
@@ -456,33 +463,36 @@ export function useActionRunner({
       return;
     }
 
-    const argument = normalizeSubmitArgument(action, rawArgument);
+    const normalizedArgument = normalizeSubmitArgument(action, rawArgument);
+    const executableAction = statusFallbackAction(action, normalizedArgument);
+    const argument = executableAction === action ? normalizedArgument : "";
     // A-M5: failed validation surfaces inline instead of returning silently.
-    const validation = validationMessage(action, argument);
+    const validation = validationMessage(executableAction, argument);
     if (validation) {
       setRun(
         makeErrorRun({
-          title: `${action.label} needs input`,
-          subtitle: action.subcommand,
+          title: `${executableAction.label} needs input`,
+          subtitle: executableAction.subcommand,
           message: validation,
           path: "",
         }),
       );
       return;
     }
+    if (executableAction.kind === "local") return;
 
-    enterModeForRun(action, argument);
+    enterModeForRun(executableAction, argument);
 
-    if (action.subcommand === "crawl") {
-      await submitCrawl(action, argument, client, config);
+    if (executableAction.subcommand === "crawl") {
+      await submitCrawl(executableAction, argument, client, config);
       return;
     }
-    if (action.subcommand === "ask" || action.subcommand === "chat") {
-      const streamed = await submitStream(action, argument, client, config);
+    if (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") {
+      const streamed = await submitStream(executableAction, argument, client, config);
       if (streamed) return;
       // Non-Tauri runtime: fall through to the one-shot dispatcher below.
     }
-    dispatchOneShot({ action, argument, config, client });
+    dispatchOneShot({ action: executableAction, argument, config, client });
   }
 
   return { submit };
