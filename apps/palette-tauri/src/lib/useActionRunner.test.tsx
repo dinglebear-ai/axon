@@ -133,6 +133,44 @@ describe("useActionRunner local help", () => {
   });
 });
 
+describe("reduceStreamEvent activity", () => {
+  it("appends real stream activity to the pending assistant turn", () => {
+    const current: RunState = {
+      kind: "streaming",
+      title: "Streaming Ask",
+      subtitle: "POST /v1/ask/stream",
+      text: "",
+      outputKind: "markdown",
+      requestId: "r1",
+      path: "/v1/ask/stream",
+      actionLabel: "Ask",
+      prompt: "what is a skill?",
+      transcript: [
+        { id: "r1:user", role: "user", content: "what is a skill?" },
+        { id: "r1:assistant", role: "assistant", content: "", pending: true },
+      ],
+    };
+
+    const next = reduceStreamEvent(current, {
+      type: "activity",
+      requestId: "r1",
+      kind: "tool",
+      label: "Retrieving context",
+      detail: "Querying collection axon",
+    });
+
+    expect(next.kind).toBe("streaming");
+    expect("transcript" in next ? next.transcript?.[1]?.activities : []).toEqual([
+      {
+        id: "r1:activity:0",
+        kind: "tool",
+        label: "Retrieving context",
+        detail: "Querying collection axon",
+      },
+    ]);
+  });
+});
+
 // ── R-H1: one-shot (useActionState) request/response path ────────────────────
 describe("useActionRunner one-shot useActionState path", () => {
   it("transitions running → success and records history on a 2xx response", async () => {
@@ -179,6 +217,44 @@ describe("useActionRunner one-shot useActionState path", () => {
     expect(run.kind).toBe("error");
     expect("result" in run ? run.result.status : -1).toBe(0);
     expect("text" in run ? run.text : "").toContain("network down");
+  });
+
+  it("appends ask follow-ups to the existing transcript", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ answer: "First answer." }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ answer: "Second answer.", sources: ["https://docs.rs"] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    const rendered = setup("ask first question");
+
+    await act(async () => {
+      await rendered.result.current.submit(action("ask"));
+    });
+    await act(async () => {});
+
+    await act(async () => {
+      await rendered.result.current.submit(action("ask"), "second question");
+    });
+    await act(async () => {});
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const run = rendered.result.current.run;
+    expect(run.kind).toBe("success");
+    expect("transcript" in run ? run.transcript?.map((turn) => [turn.role, turn.content]) : []).toEqual([
+      ["user", "first question"],
+      ["assistant", "First answer."],
+      ["user", "second question"],
+      ["assistant", "Second answer."],
+    ]);
+    expect("transcript" in run ? run.transcript?.[3]?.sources?.[0]?.label : "").toBe("docs.rs");
   });
 });
 

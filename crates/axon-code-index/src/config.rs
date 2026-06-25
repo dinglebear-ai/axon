@@ -3,8 +3,8 @@ use std::time::Duration;
 
 pub(crate) use axon_core::CODE_INDEX_VERSION;
 pub(crate) const DEFAULT_FRESHNESS_TTL: Duration = Duration::from_secs(30);
-pub(crate) const DEFAULT_REINDEX_TIMEOUT: Duration = Duration::from_secs(15);
-pub(crate) const DEFAULT_CHANGED_FILE_BATCH_SIZE: usize = 50;
+pub(crate) const DEFAULT_REINDEX_TIMEOUT: Duration = Duration::from_secs(300);
+pub(crate) const DEFAULT_CHANGED_FILE_BATCH_SIZE: usize = 5;
 pub(crate) const MAX_INDEXED_FILE_BYTES: u64 = 10 * 1024 * 1024;
 
 pub(crate) fn freshness_ttl() -> Duration {

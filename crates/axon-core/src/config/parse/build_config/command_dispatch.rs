@@ -5,14 +5,15 @@
 //! shim small and the 28-arm match arm in its own module. No behavior change.
 
 use super::super::super::cli::{
-    CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
-    IngestArgs, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ServeArgs, ServeSubcommand,
-    SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode,
-    SetupInitArgs, SetupSubcommand, SyncSubcommand, UpdateArgs,
+    CliCommand, CodeSearchWatchSubcommand, ComposeArgs, ComposeSubcommand, ConfigArgs,
+    ConfigSubcommand, DoctorSubcommand, IngestArgs, MemoryCliSubcommand, MonitorSubcommand,
+    PaletteArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs,
+    SessionsSubcommand, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
+    UpdateArgs,
 };
 use super::super::super::types::{
-    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
-    SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
+    CodeSearchWatchConfig, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
+    RedditSort, RedditTime, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
 };
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
@@ -43,6 +44,7 @@ pub(super) struct DispatchOutput {
     pub code_search_cwd: Option<PathBuf>,
     pub code_search_path_prefix: Option<String>,
     pub code_search_no_freshness: bool,
+    pub code_search_watch: Option<CodeSearchWatchConfig>,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -102,6 +104,7 @@ impl DispatchOutput {
             code_search_cwd: None,
             code_search_path_prefix: None,
             code_search_no_freshness: false,
+            code_search_watch: None,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -237,6 +240,18 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.code_search_cwd = args.cwd;
             out.code_search_path_prefix = args.path_prefix;
             out.code_search_no_freshness = args.no_freshness;
+        }
+        CliCommand::CodeSearchWatch(args) => {
+            out.command = CommandKind::CodeSearchWatch;
+            out.code_search_watch = Some(CodeSearchWatchConfig {
+                roots: args.cwd,
+                debounce: Duration::from_millis(args.debounce_ms),
+                settle: Duration::from_millis(args.settle_ms),
+                initial_refresh: args.initial_refresh,
+                dry_run: args.dry_run,
+                enable: matches!(args.action, Some(CodeSearchWatchSubcommand::Enable)),
+                json: args.json,
+            });
         }
         CliCommand::Retrieve(args) => {
             out.retrieve_max_points = args.max_points;

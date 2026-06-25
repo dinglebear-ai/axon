@@ -1,8 +1,9 @@
-import { useActionState, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { startTransition, useActionState, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { ACTIONS, type PaletteAction, type RemotePaletteAction } from "@/lib/actions";
 import { buildHelpRun, findHelpTarget, helpAction } from "@/lib/actionHelp";
+import { answerParts, appendAskActivity, appendAskPendingTurn, completeLastAssistantTurn, updateLastAssistantTurn } from "@/lib/askTranscript";
 import { crawlSeedUrl, newRequestId, normalizeSubmitArgument } from "@/lib/appHelpers";
 import {
   buildActionRequest,
@@ -16,11 +17,12 @@ import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
 import { formatPayload, outputKindFor, type OutputKind } from "@/lib/format";
 import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import { argumentFor, validationMessage, type ParsedCommand } from "@/lib/paletteView";
-import type { RunState } from "@/lib/runState";
+import type { AskTurn, RunState } from "@/lib/runState";
 
 type PaletteStreamEvent =
   | { type: "started"; requestId: string; path: string }
   | { type: "delta"; requestId: string; text: string }
+  | { type: "activity"; requestId: string; label: string; detail?: string | null; kind?: "thinking" | "tool" | "done" | string | null }
   | { type: "done"; requestId: string; answer?: string | null }
   | { type: "error"; requestId: string; message: string };
 
@@ -70,6 +72,7 @@ function makeErrorRun(args: {
   path: string;
   outputKind?: OutputKind;
   prompt?: string;
+  transcript?: AskTurn[];
 }): TerminalRun {
   return {
     kind: "error",
@@ -78,6 +81,7 @@ function makeErrorRun(args: {
     text: args.message,
     outputKind: args.outputKind ?? "code",
     prompt: args.prompt,
+    transcript: args.transcript,
     result: errorResult(args.message, args.path),
   };
 }
@@ -90,6 +94,7 @@ function makeStreamErrorRun(args: {
   message: string;
   outputKind: OutputKind;
   prompt?: string;
+  transcript?: AskTurn[];
 }): TerminalRun {
   return {
     kind: "error",
@@ -98,6 +103,7 @@ function makeStreamErrorRun(args: {
     text: args.message,
     outputKind: args.outputKind,
     prompt: args.prompt,
+    transcript: args.transcript,
     result: errorResult(args.message, args.path),
   };
 }
@@ -112,20 +118,24 @@ function makeStreamSuccessRun(args: {
   outputKind: OutputKind;
   path: string;
   prompt?: string;
+  transcript?: AskTurn[];
+  payload?: unknown;
 }): TerminalRun {
+  const parts = answerParts(args.text, args.payload);
   return {
     kind: "success",
     title: `${args.actionLabel} completed`,
     subtitle: args.subtitle,
-    text: args.text,
+    text: parts.answer,
     outputKind: args.outputKind,
     prompt: args.prompt,
+    transcript: completeLastAssistantTurn(args.transcript, parts.answer, parts.sources),
     result: {
       ok: true,
       status: 0,
       path: args.path,
       method: "POST",
-      payload: { answer: args.text },
+      payload: { answer: parts.answer, sources: parts.sources },
     },
   };
 }
@@ -145,7 +155,20 @@ export function reduceStreamEvent(current: RunState, payload: PaletteStreamEvent
     return current;
   }
   if (payload.type === "delta") {
-    return { ...current, text: current.text + payload.text };
+    const text = current.text + payload.text;
+    return { ...current, text, transcript: updateLastAssistantTurn(current.transcript, text) };
+  }
+  if (payload.type === "activity") {
+    const kind = payload.kind === "tool" || payload.kind === "done" ? payload.kind : "thinking";
+    return {
+      ...current,
+      transcript: appendAskActivity(current.transcript, {
+        id: `${payload.requestId}:activity:${current.transcript?.at(-1)?.activities?.length ?? 0}`,
+        label: payload.label,
+        detail: payload.detail ?? undefined,
+        kind,
+      }),
+    };
   }
   if (payload.type === "done") {
     return makeStreamSuccessRun({
@@ -155,6 +178,7 @@ export function reduceStreamEvent(current: RunState, payload: PaletteStreamEvent
       outputKind: current.outputKind,
       path: current.path,
       prompt: current.prompt,
+      transcript: current.transcript,
     });
   }
   if (payload.type === "error") {
@@ -164,6 +188,7 @@ export function reduceStreamEvent(current: RunState, payload: PaletteStreamEvent
       message: payload.message,
       outputKind: current.outputKind,
       prompt: current.prompt,
+      transcript: current.transcript,
     });
   }
   return current;
@@ -228,24 +253,29 @@ export function useActionRunner({
     argument: string;
     config: PaletteConfig;
     client: Client;
+    transcript?: AskTurn[];
   }
   const [, dispatchOneShot, oneShotPending] = useActionState<RunState, OneShotInput>(
     async (_prev, input) => runOneShot(input),
     { kind: "idle" },
   );
 
-  async function runOneShot({ action, argument, config: cfg, client: cli }: OneShotInput): Promise<RunState> {
+  async function runOneShot({ action, argument, config: cfg, client: cli, transcript }: OneShotInput): Promise<RunState> {
     const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
     const isConversation = action.subcommand === "ask" || action.subcommand === "chat";
+    const pendingTranscript = isConversation ? appendAskPendingTurn(transcript, argument, `oneshot:${Date.now()}`) : undefined;
     setRun({
       kind: "running",
       title: isConversation ? action.label : `Running ${action.label}`,
       subtitle: isConversation ? `POST ${action.subcommand === "ask" ? "/v1/ask" : "/v1/chat"}` : commandLine,
       prompt: isConversation ? argument : undefined,
+      transcript: pendingTranscript,
     });
     try {
       const result = await executeAction(cli, action, argument, cfg);
-      const text = formatPayload(action.subcommand, result.payload);
+      const rawText = formatPayload(action.subcommand, result.payload);
+      const parts = isConversation ? answerParts(rawText, result.payload) : { answer: rawText, sources: [] };
+      const text = parts.answer;
       const title = isConversation ? action.label : `${action.label} ${result.ok ? "completed" : "failed"}`;
       const subtitle =
         action.subcommand === "ask"
@@ -268,6 +298,7 @@ export function useActionRunner({
         text,
         outputKind: outputKindFor(action.subcommand),
         prompt: isConversation ? argument : undefined,
+        transcript: isConversation ? completeLastAssistantTurn(pendingTranscript, text, parts.sources) : undefined,
         result,
       };
       setRun(next);
@@ -288,6 +319,7 @@ export function useActionRunner({
         path: "",
         outputKind: outputKindFor(action.subcommand),
         prompt: isConversation ? argument : undefined,
+        transcript: isConversation ? completeLastAssistantTurn(pendingTranscript, message) : undefined,
       });
       pushHistory(action, argument || action.subcommand, {
         status: 0,
@@ -372,12 +404,19 @@ export function useActionRunner({
   // ── Stream branch: start the streamed request; terminal states arrive via the
   // `palette://stream` listener and reduceStreamEvent. Returns false when the
   // current (non-Tauri) runtime can't stream so the caller falls back to one-shot.
-  async function submitStream(action: RemotePaletteAction, argument: string, cli: Client, cfg: PaletteConfig): Promise<boolean> {
+  async function submitStream(
+    action: RemotePaletteAction,
+    argument: string,
+    cli: Client,
+    cfg: PaletteConfig,
+    transcript?: AskTurn[],
+  ): Promise<boolean> {
     if (!isTauriRuntime) return false;
     const requestId = newRequestId();
     const request = buildActionRequest(cli, action, argument, cfg);
     const streamPath = action.subcommand === "chat" ? "/v1/chat/stream" : "/v1/ask/stream";
     const outputKind = outputKindFor(action.subcommand);
+    const pendingTranscript = appendAskPendingTurn(transcript, argument, requestId);
     setRun({
       kind: "streaming",
       title: `Streaming ${action.label}`,
@@ -388,6 +427,7 @@ export function useActionRunner({
       path: streamPath,
       actionLabel: action.label,
       prompt: argument,
+      transcript: pendingTranscript,
     });
     try {
       await invoke("axon_http_stream_request", {
@@ -403,6 +443,7 @@ export function useActionRunner({
               message,
               outputKind,
               prompt: current.prompt,
+              transcript: current.transcript,
             })
           : current,
       );
@@ -466,6 +507,10 @@ export function useActionRunner({
     const normalizedArgument = normalizeSubmitArgument(action, rawArgument);
     const executableAction = statusFallbackAction(action, normalizedArgument);
     const argument = executableAction === action ? normalizedArgument : "";
+    const previousTranscript =
+      (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") && "transcript" in current
+        ? current.transcript
+        : undefined;
     // A-M5: failed validation surfaces inline instead of returning silently.
     const validation = validationMessage(executableAction, argument);
     if (validation) {
@@ -488,11 +533,13 @@ export function useActionRunner({
       return;
     }
     if (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") {
-      const streamed = await submitStream(executableAction, argument, client, config);
+      const streamed = await submitStream(executableAction, argument, client, config, previousTranscript);
       if (streamed) return;
       // Non-Tauri runtime: fall through to the one-shot dispatcher below.
     }
-    dispatchOneShot({ action: executableAction, argument, config, client });
+    startTransition(() => {
+      dispatchOneShot({ action: executableAction, argument, config, client, transcript: previousTranscript });
+    });
   }
 
   return { submit };

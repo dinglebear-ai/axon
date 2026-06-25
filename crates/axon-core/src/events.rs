@@ -68,6 +68,11 @@ pub enum ServiceEvent {
         level: LogLevel,
         message: String,
     },
+    Activity {
+        kind: String,
+        label: String,
+        detail: Option<String>,
+    },
     /// Emitted after a turn completes when the agent's response contained
     /// one or more `<axon:editor>` blocks.  Each block becomes one event.
     EditorWrite {

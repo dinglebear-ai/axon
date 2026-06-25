@@ -256,8 +256,12 @@ export default function App() {
     focusInput(true);
   }
 
+  function shouldAutoRunOnSwitch(action: PaletteAction) {
+    return action.argMode === "none" && action.autoRunOnSwitch === true;
+  }
+
   function switchActionMode(action: PaletteAction) {
-    if (action.argMode === "none") {
+    if (shouldAutoRunOnSwitch(action)) {
       setQuery("");
       setSelected(0);
       setRun({ kind: "idle" });

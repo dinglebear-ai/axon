@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -126,6 +126,20 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     await user.click(screen.getByRole("button", { name: /Switch from/ }));
 
     expect(screen.getByText("Question to answer")).toBeInTheDocument();
+  });
+
+  it("renders a pinned switcher footer with current action context and hints", async () => {
+    const user = userEvent.setup();
+    renderBar({ modeAction: scrape });
+
+    await user.click(screen.getByRole("button", { name: /Switch from/ }));
+
+    const footer = screen.getByText("One URL to content").closest(".command-action-footer");
+    expect(footer).toBeTruthy();
+    expect(within(footer as HTMLElement).getByText("Scrape")).toBeInTheDocument();
+    expect(within(footer as HTMLElement).getByText("navigate")).toBeInTheDocument();
+    expect(within(footer as HTMLElement).getByText("switch")).toBeInTheDocument();
+    expect(within(footer as HTMLElement).getByText("close")).toBeInTheDocument();
   });
 
   it("closes the disclosure on Escape and keeps focus on the trigger", async () => {

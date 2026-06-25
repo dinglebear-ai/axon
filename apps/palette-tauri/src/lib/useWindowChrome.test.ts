@@ -49,9 +49,31 @@ describe("crawl job layout CSS contract", () => {
     expect(rule(".running-stat strong")).toContain("line-height: 1");
   });
 
+  it("keeps the minimized running-operation tray aligned to the compact shell", () => {
+    const body = rule(".idle-tray");
+    expect(body).toContain("display: grid");
+    expect(body).toContain("grid-template-columns: auto auto minmax(0, max-content) minmax(160px, 1fr) auto auto");
+    expect(body).toContain("font-family: var(--aurora-font-body)");
+    expect(rule(".idle-tray > span:nth-of-type(2)")).toContain("text-overflow: ellipsis");
+    expect(rule(".idle-tray-bar")).toContain("width: 100%");
+    expect(rule(".idle-tray-bar")).toContain("height: 3px");
+  });
+
   it("keeps the command palette focus and dropdown geometry visually stable", () => {
+    expect(css).toContain(".command-bar {\n  position: relative;");
+    expect(rule(".palette-shell-compact:has(.command-action-menu) .command-bar")).toContain("border-radius: 14px 14px 0 0");
+    expect(rule(".command-input-wrap")).toContain("position: static");
     expect(rule(".command-input-wrap:has(.command-input:focus-visible)")).toContain("inset 0 0 0 1px");
     expect(rule(".command-action-switcher")).toContain("position: static");
-    expect(rule(".command-action-menu")).toContain("width: 100%");
+    expect(rule(".command-action-menu")).toContain("left: -1px");
+    expect(rule(".command-action-menu")).toContain("width: calc(100% + 2px)");
+    expect(rule(".command-action-menu")).toContain("top: calc(100% - 1px)");
+    expect(rule(".command-action-menu")).toContain("max-height: min(392px, calc(100vh - 76px))");
+    expect(rule(".command-action-menu")).toContain("overflow: hidden");
+    expect(rule(".command-action-menu")).toContain("border-radius: 0 0 10px 10px");
+    expect(rule(".command-action-options")).toContain("overflow-y: auto");
+    expect(rule(".command-action-footer")).toContain("border-top: 1px solid");
+    expect(rule(".command-action-option kbd")).toContain("font-family: var(--aurora-font-body)");
+    expect(rule(".command-action-footer kbd")).toContain("font-family: var(--aurora-font-body)");
   });
 });

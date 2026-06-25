@@ -221,6 +221,13 @@ async fn dir_embed_recurses_and_filters() {
     tokio::fs::write(root.join("img.png"), "not really a png")
         .await
         .expect("write img.png");
+    // Generated compiler/bundler output (should be skipped by shared permissive policy).
+    tokio::fs::write(root.join("types.d.ts"), "export type Generated = string")
+        .await
+        .expect("write types.d.ts");
+    tokio::fs::write(root.join("app.min.js"), "console.log('generated')")
+        .await
+        .expect("write app.min.js");
     // Pruned directory contents (should never be descended into).
     tokio::fs::create_dir_all(root.join("node_modules"))
         .await
@@ -246,6 +253,8 @@ async fn dir_embed_recurses_and_filters() {
     );
     assert!(urls.iter().any(|u| u.ends_with("r.md")), "{urls:?}");
     assert!(!urls.iter().any(|u| u.ends_with("img.png")), "{urls:?}");
+    assert!(!urls.iter().any(|u| u.ends_with("types.d.ts")), "{urls:?}");
+    assert!(!urls.iter().any(|u| u.ends_with("app.min.js")), "{urls:?}");
     assert!(!urls.iter().any(|u| u.contains("node_modules")), "{urls:?}");
 }
 
