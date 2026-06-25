@@ -134,7 +134,9 @@ fun AskScreen(
     }
 
     LaunchedEffect(chatItems.size) {
-        if (chatItems.isNotEmpty()) listState.animateScrollToItem(chatItems.size - 1)
+        if (chatItems.isNotEmpty()) {
+            listState.animateScrollToItem(chatItems.lastIndex, Int.MAX_VALUE / 2)
+        }
     }
     // Follow the streamed answer as it grows, pinned to the bottom unless the
     // user has scrolled away to read earlier turns.

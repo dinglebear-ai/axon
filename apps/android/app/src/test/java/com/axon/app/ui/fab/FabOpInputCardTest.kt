@@ -24,6 +24,23 @@ class FabOpInputCardTest {
     }
 
     @Test
+    fun broadFabActionsRequireExplicitConfirmation() {
+        assertEquals(false, fabInputCanSubmit(FabOp.Crawl, "https://example.com", broadActionConfirmed = false))
+        assertEquals(false, fabInputCanSubmit(FabOp.Ingest, "github/owner/repo", broadActionConfirmed = false))
+
+        assertEquals(true, fabInputCanSubmit(FabOp.Crawl, "https://example.com", broadActionConfirmed = true))
+        assertEquals(true, fabInputCanSubmit(FabOp.Ingest, "github/owner/repo", broadActionConfirmed = true))
+        assertEquals(true, fabInputCanSubmit(FabOp.Scrape, "https://example.com", broadActionConfirmed = false))
+    }
+
+    @Test
+    fun broadFabConfirmationLabelsNameCurrentOptions() {
+        assertEquals("Run with current crawl defaults/options", FabOp.Crawl.broadActionConfirmationLabel())
+        assertEquals("Run with current ingest defaults/options", FabOp.Ingest.broadActionConfirmationLabel())
+        assertEquals(null, FabOp.Scrape.broadActionConfirmationLabel())
+    }
+
+    @Test
     fun fabInputBindsImeSendToSubmitHandler() {
         val sourcePath = listOf(
             Path.of("src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt"),

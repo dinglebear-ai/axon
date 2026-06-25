@@ -180,9 +180,10 @@ private fun OAuthControls(
                 )
             }
         }
-        AuroraCallout(
+        SettingsFeedbackBanner(
             message = "Use com.axon.app://oauth2redirect for this internal build. Verified HTTPS App Links are preferred before broad production distribution.",
-            variant = AuroraCalloutVariant.Info,
+            kind = SettingsFeedbackKind.Info,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

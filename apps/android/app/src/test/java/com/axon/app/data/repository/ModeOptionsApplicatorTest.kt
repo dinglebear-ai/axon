@@ -183,6 +183,29 @@ class ModeOptionsApplicatorTest {
         assertEquals(listOf("X-Inline: 2"), out.headers)
     }
 
+    @Test fun `Crawl call-site fields win over persisted settings`() = runBlocking {
+        ctx.modeOptionsDataStore.edit {
+            it[CrawlFormKeys.MAX_PAGES] = 200
+            it[CrawlFormKeys.MAX_DEPTH] = 10
+            it[CrawlFormKeys.RENDER_MODE] = "chrome"
+            it[CrawlFormKeys.INCLUDE_SUBDOMAINS] = true
+        }
+
+        val out = repo.apply(
+            CrawlSubmitOptions(
+                maxPages = 1,
+                maxDepth = 0,
+                renderMode = "http",
+                includeSubdomains = false,
+            ).requestFor("https://example.com"),
+        )
+
+        assertEquals(1, out.maxPages)
+        assertEquals(0, out.maxDepth)
+        assertEquals("http", out.renderMode)
+        assertEquals(false, out.includeSubdomains)
+    }
+
     @Test fun `Map override sets limit and offset`() = runBlocking {
         ctx.modeOptionsDataStore.edit {
             it[MapFormKeys.LIMIT] = 50
@@ -208,6 +231,19 @@ class ModeOptionsApplicatorTest {
             it[IngestFormKeys.INCLUDE_SOURCE] = false
         }
         val out = repo.apply(IngestRequest(sourceType = "github", target = "o/r"))
+        assertEquals(false, out.includeSource)
+    }
+
+    @Test fun `Ingest call-site option wins over persisted source indexing`() = runBlocking {
+        ctx.modeOptionsDataStore.edit {
+            it[IngestFormKeys.INCLUDE_SOURCE] = true
+        }
+
+        val out = repo.apply(
+            IngestSubmitOptions(includeSource = false)
+                .requestFor(sourceType = "github", target = "github/octocat/Hello-World"),
+        )
+
         assertEquals(false, out.includeSource)
     }
 

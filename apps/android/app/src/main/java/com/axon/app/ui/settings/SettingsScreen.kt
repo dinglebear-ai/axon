@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,10 +52,10 @@ import com.axon.app.ui.theme.tint
 import kotlinx.coroutines.launch
 
 private enum class SettingsTab(val label: String, val shortLabel: String, val icon: ImageVector) {
-    Connection("Connection", "Connection", Icons.Rounded.Link),
+    Connection("Connection", "Conn", Icons.Rounded.Link),
     Env("Env", "Env", Icons.Rounded.Key),
     Config("Config", "Config", Icons.Rounded.Slideshow),
-    System("System", "System", Icons.Rounded.MonitorHeart),
+    System("System", "Sys", Icons.Rounded.MonitorHeart),
 }
 
 @Composable
@@ -96,7 +97,6 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         Column(
             modifier = Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp, vertical = 10.dp)
                 .padding(bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -119,64 +119,83 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
             }
 
-            when (tab) {
-                SettingsTab.Connection -> ConnectionTab(
-                    serverUrl = serverUrl,
-                    token = token,
-                    collection = collection,
-                    onServerUrl = { serverUrl = it },
-                    onToken = { token = it },
-                    onCollection = { collection = it },
-                    authMode = draftAuthMode,
-                    oauthStatus = oauthStatus,
-                    onAuthMode = vm::setDraftAuthMode,
-                    onBeginOAuth = {
-                        scope.launch {
-                            vm.beginOAuthSignIn(serverUrl).fold(
-                                onSuccess = oauthLauncher::launch,
-                                onFailure = { },
-                            )
-                        }
-                    },
-                    onSignOutOAuth = vm::signOutOAuth,
-                    collections = collections,
-                    onRefreshCollections = vm::refreshCollections,
-                    connection = connection,
+            if (tab == SettingsTab.System) {
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .widthIn(max = 460.dp),
-                )
-                SettingsTab.Env -> ConfigGroupsTab(
-                    path = files.envPath,
-                    loading = files.loading,
-                    error = files.error,
-                    groups = AxonSettingsCatalog.envGroups,
-                    values = files.envValues,
-                    explicit = files.envExplicit,
-                    keyFor = { _, field -> field.key },
-                    onChange = vm::updateEnv,
-                    searchQuery = settingsSearch,
-                    onSearchQueryChange = { settingsSearch = it },
+                        .weight(1f),
+                ) {
+                    SystemScreen()
+                }
+            } else {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .widthIn(max = 600.dp),
-                )
-                SettingsTab.Config -> ConfigGroupsTab(
-                    path = files.configPath,
-                    loading = files.loading,
-                    error = files.error,
-                    groups = AxonSettingsCatalog.configGroups,
-                    values = files.configValues,
-                    explicit = files.configExplicit,
-                    keyFor = { group, field -> "${group.id}.${field.key}" },
-                    onChange = vm::updateConfig,
-                    searchQuery = settingsSearch,
-                    onSearchQueryChange = { settingsSearch = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = 600.dp),
-                )
-                SettingsTab.System -> SystemScreen()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    when (tab) {
+                        SettingsTab.Connection -> ConnectionTab(
+                            serverUrl = serverUrl,
+                            token = token,
+                            collection = collection,
+                            onServerUrl = { serverUrl = it },
+                            onToken = { token = it },
+                            onCollection = { collection = it },
+                            authMode = draftAuthMode,
+                            oauthStatus = oauthStatus,
+                            onAuthMode = vm::setDraftAuthMode,
+                            onBeginOAuth = {
+                                scope.launch {
+                                    vm.beginOAuthSignIn(serverUrl).fold(
+                                        onSuccess = oauthLauncher::launch,
+                                        onFailure = { },
+                                    )
+                                }
+                            },
+                            onSignOutOAuth = vm::signOutOAuth,
+                            collections = collections,
+                            onRefreshCollections = vm::refreshCollections,
+                            connection = connection,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 460.dp),
+                        )
+                        SettingsTab.Env -> ConfigGroupsTab(
+                            path = files.envPath,
+                            loading = files.loading,
+                            error = files.error,
+                            groups = AxonSettingsCatalog.envGroups,
+                            values = files.envValues,
+                            explicit = files.envExplicit,
+                            keyFor = { _, field -> field.key },
+                            onChange = vm::updateEnv,
+                            searchQuery = settingsSearch,
+                            onSearchQueryChange = { settingsSearch = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 600.dp),
+                        )
+                        SettingsTab.Config -> ConfigGroupsTab(
+                            path = files.configPath,
+                            loading = files.loading,
+                            error = files.error,
+                            groups = AxonSettingsCatalog.configGroups,
+                            values = files.configValues,
+                            explicit = files.configExplicit,
+                            keyFor = { group, field -> "${group.id}.${field.key}" },
+                            onChange = vm::updateConfig,
+                            searchQuery = settingsSearch,
+                            onSearchQueryChange = { settingsSearch = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 600.dp),
+                        )
+                        SettingsTab.System -> Unit
+                    }
+                }
             }
         }
         if (tab != SettingsTab.System) {
