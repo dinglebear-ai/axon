@@ -13,6 +13,9 @@ use std::path::{Path, PathBuf};
 #[serde(deny_unknown_fields)]
 pub(super) struct TomlConfig {
     #[serde(default)]
+    #[allow(dead_code)]
+    pub build: TomlBuildSection,
+    #[serde(default)]
     pub services: TomlServicesSection,
     #[serde(default)]
     pub llm: TomlLlmSection,
@@ -34,6 +37,15 @@ pub(super) struct TomlConfig {
     pub antibot: TomlAntibotSection,
     #[serde(default)]
     pub payload: TomlPayloadSection,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub(super) struct TomlBuildSection {
+    /// Compile-time development escape hatch for embedding fallback web assets
+    /// when `apps/web/out` is intentionally absent/incomplete.
+    pub allow_fallback_web_assets: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]

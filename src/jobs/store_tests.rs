@@ -1,6 +1,202 @@
 use super::*;
 use crate::jobs::backend::JobKind;
+use std::path::PathBuf;
+use std::process::Command;
 use uuid::Uuid;
+
+#[test]
+fn active_db_lock_registry_is_idempotent_per_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("jobs.db");
+    std::fs::write(&db_path, b"not actually sqlite").expect("write db");
+
+    reset_sqlite_runtime_health_for_tests();
+    let before = active_db_lock_count_for_tests();
+    hold_active_db_lock(&db_path).expect("first active lock");
+    hold_active_db_lock(&db_path).expect("second active lock");
+
+    assert_eq!(
+        active_db_lock_count_for_tests(),
+        before + 1,
+        "repeated opens of the same SQLite path should not leak lock handles"
+    );
+}
+
+#[tokio::test]
+async fn open_refuses_recovery_lock_before_creating_database() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("jobs.db");
+    let _recovery_lock = acquire_recovery_lock(&db_path).expect("hold recovery lock");
+
+    let err = open_sqlite_pool(db_path.to_str().expect("utf8 db path"))
+        .await
+        .expect_err("active recovery should block open");
+
+    assert!(
+        err.to_string().contains("recovery is already in progress"),
+        "expected recovery-in-progress error, got: {err}"
+    );
+    assert!(
+        !db_path.exists(),
+        "open must acquire the active-owner lock before SQLite creates the database"
+    );
+}
+
+#[tokio::test]
+async fn sqlite_diagnostics_distinguish_lock_file_from_active_owner() {
+    reset_sqlite_runtime_health_for_tests();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let orphan_db_path = tmp.path().join("orphan.db");
+    let orphan_lock_path = active_lock_path(&orphan_db_path);
+    std::fs::write(&orphan_lock_path, b"").expect("orphan lock file");
+
+    let orphan_diag = sqlite_diagnostics(&orphan_db_path).await;
+    assert_eq!(orphan_diag["active_lock_file_exists"], true);
+    assert_eq!(orphan_diag["active_owner_observed"], false);
+
+    let owned_db_path = tmp.path().join("owned.db");
+    let pool = open_sqlite_pool(owned_db_path.to_str().expect("utf8 db path"))
+        .await
+        .expect("open sqlite db");
+    let owned_diag = sqlite_diagnostics(&owned_db_path).await;
+    pool.close().await;
+
+    assert_eq!(owned_diag["active_lock_file_exists"], true);
+    assert_eq!(owned_diag["active_owner_observed"], true);
+}
+
+#[test]
+fn sqlite_readiness_uses_runtime_health_without_quick_check() {
+    reset_sqlite_runtime_health_for_tests();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("jobs.db");
+
+    let ready = sqlite_readiness(&db_path);
+    assert_eq!(ready["ok"], true);
+    assert_eq!(ready["check"], "runtime");
+    assert!(ready.get("quick_check").is_none());
+
+    std::fs::write(&db_path, b"sqlite will create schema later").expect("placeholder db");
+    let not_ready = sqlite_readiness(&db_path);
+    assert_eq!(not_ready["ok"], false);
+    assert_eq!(not_ready["active_owner_observed"], false);
+}
+
+#[test]
+fn recovery_refuses_to_rename_database_with_active_owner() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("jobs.db");
+    std::fs::write(&db_path, b"corrupt").expect("write corrupt db");
+
+    let active_lock = open_lock_file(&db_path).expect("open active lock");
+    active_lock
+        .try_lock_shared()
+        .expect("hold active owner lock");
+
+    let err = recover_corrupted_database(&db_path, "quick_check failed")
+        .expect_err("active owner should block recovery rename");
+
+    assert!(
+        err.to_string().contains("active Axon process"),
+        "expected active-owner recovery error, got: {err}"
+    );
+    assert!(
+        db_path.exists(),
+        "recovery must not rename a database while an active owner holds it"
+    );
+    assert!(
+        tmp.path()
+            .read_dir()
+            .expect("read temp dir")
+            .filter_map(Result::ok)
+            .all(|entry| !entry.file_name().to_string_lossy().contains(".corrupted.")),
+        "recovery should not leave a corrupted sidecar when active owner exists"
+    );
+}
+
+#[test]
+fn recovery_refuses_to_rename_database_with_active_owner_in_another_process() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("jobs.db");
+    std::fs::write(&db_path, b"corrupt").expect("write corrupt db");
+
+    let active_lock = open_lock_file(&db_path).expect("open active lock");
+    active_lock
+        .try_lock_shared()
+        .expect("hold active owner lock");
+
+    let output = Command::new(std::env::current_exe().expect("current test exe"))
+        .args([
+            "--ignored",
+            "--exact",
+            "jobs::store::tests::sqlite_recovery_lock_child_attempts_recovery",
+            "--nocapture",
+        ])
+        .env("AXON_SQLITE_RECOVERY_CHILD_DB", &db_path)
+        .output()
+        .expect("run child test process");
+
+    assert!(
+        output.status.success(),
+        "child recovery process failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        db_path.exists(),
+        "cross-process recovery must not rename an actively owned database"
+    );
+    assert!(
+        tmp.path()
+            .read_dir()
+            .expect("read temp dir")
+            .filter_map(Result::ok)
+            .all(|entry| !entry.file_name().to_string_lossy().contains(".corrupted.")),
+        "cross-process recovery should not leave a corrupted sidecar"
+    );
+}
+
+#[test]
+#[ignore = "child process for cross-process recovery lock test"]
+fn sqlite_recovery_lock_child_attempts_recovery() {
+    let db_path = std::env::var_os("AXON_SQLITE_RECOVERY_CHILD_DB")
+        .map(PathBuf::from)
+        .expect("AXON_SQLITE_RECOVERY_CHILD_DB");
+    let err = recover_corrupted_database(&db_path, "child quick_check failed")
+        .expect_err("active owner in parent should block child recovery");
+    assert!(
+        err.to_string().contains("active Axon process"),
+        "expected active-owner recovery error, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn sqlite_diagnostics_report_recovery_sidecars_and_runtime_ioerr() {
+    reset_sqlite_runtime_health_for_tests();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("jobs.db");
+    let pool = open_sqlite_pool(db_path.to_str().expect("utf8 db path"))
+        .await
+        .expect("open sqlite db");
+    pool.close().await;
+    std::fs::write(tmp.path().join("jobs.db.corrupted.9999999999"), b"old").expect("old sidecar");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    std::fs::write(tmp.path().join("jobs.db.corrupted.1"), b"new").expect("new sidecar");
+
+    record_sqlite_runtime_error("error returned from database: (code: 522) disk I/O error");
+    let diag = sqlite_diagnostics(&db_path).await;
+
+    assert_eq!(diag["exists"], true);
+    assert_eq!(diag["quick_check"], "ok");
+    assert_eq!(diag["corrupted_count"], 2);
+    let expected_latest = tmp.path().join("jobs.db.corrupted.1");
+    assert_eq!(
+        diag["latest_corrupted_path"].as_str(),
+        Some(expected_latest.to_string_lossy().as_ref())
+    );
+    assert_eq!(diag["runtime_ioerr_count"], 1);
+    assert_eq!(diag["ok"], false);
+}
 
 /// A dangling `BEGIN IMMEDIATE` left on a connection that is dropped back into
 /// a single-slot pool must NOT poison the slot: the `after_release` ROLLBACK

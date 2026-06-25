@@ -1127,6 +1127,7 @@ export interface components {
         ReadinessBody: {
             ok: boolean;
             qdrant: string;
+            sqlite: string;
             tei: string;
         };
         /** @enum {string} */
@@ -1418,7 +1419,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Qdrant and TEI dependencies are ready */
+            /** @description SQLite, Qdrant, and TEI dependencies are ready */
             200: {
                 headers: {
                     [name: string]: unknown;

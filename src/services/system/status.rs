@@ -2,6 +2,7 @@
 
 use crate::core::config::Config;
 use crate::jobs::backend::JobKind;
+use crate::jobs::store::sqlite_diagnostics;
 use crate::services::context::ServiceContext;
 use crate::services::jobs as job_service;
 use crate::services::system::watchdog::{include_status_job, include_status_view};
@@ -17,14 +18,19 @@ pub struct StatusJobs {
 
 #[must_use = "full_status returns a Result that should be handled"]
 pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResult, Box<dyn Error>> {
-    let (jobs, totals, errors) = load_status_jobs(service_context).await?;
-    let payload = build_status_payload_with_errors(
+    let (jobs, totals, mut errors) = load_status_jobs(service_context).await?;
+    let sqlite = sqlite_diagnostics(&service_context.cfg.sqlite_path).await;
+    if let Some(error) = sqlite_status_error(&sqlite) {
+        errors.push(error);
+    }
+    let payload = build_status_payload_with_errors_and_sqlite(
         &jobs.crawl,
         &jobs.extract,
         &jobs.embed,
         &jobs.ingest,
         &totals,
         &errors,
+        &sqlite,
     );
     let mut text = vec![
         "Axon Status".to_string(),
@@ -47,6 +53,27 @@ pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResul
         degraded: !errors.is_empty(),
         errors,
     })
+}
+
+pub fn sqlite_status_error(sqlite: &serde_json::Value) -> Option<String> {
+    if sqlite.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+        return None;
+    }
+    let ioerr_count = sqlite
+        .get("runtime_ioerr_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    if ioerr_count > 0 {
+        return Some(format!(
+            "SQLite runtime IOERR detected ({ioerr_count} error{}); restart the Axon process after verifying storage",
+            if ioerr_count == 1 { "" } else { "s" }
+        ));
+    }
+    let quick_check = sqlite
+        .get("quick_check")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown");
+    Some(format!("SQLite quick_check is {quick_check}"))
 }
 
 /// Filter + view-mode in one pass: drop reclaimed/non-reclaimed jobs, then
@@ -202,6 +229,26 @@ pub fn build_status_payload_with_errors(
     totals: &StatusTotals,
     errors: &[String],
 ) -> serde_json::Value {
+    build_status_payload_with_errors_and_sqlite(
+        crawl_jobs,
+        extract_jobs,
+        embed_jobs,
+        ingest_jobs,
+        totals,
+        errors,
+        &serde_json::Value::Null,
+    )
+}
+
+pub fn build_status_payload_with_errors_and_sqlite(
+    crawl_jobs: &[ServiceJob],
+    extract_jobs: &[ServiceJob],
+    embed_jobs: &[ServiceJob],
+    ingest_jobs: &[ServiceJob],
+    totals: &StatusTotals,
+    errors: &[String],
+    sqlite: &serde_json::Value,
+) -> serde_json::Value {
     serde_json::json!({
         "local_crawl_jobs": wire_jobs(crawl_jobs),
         "local_extract_jobs": wire_jobs(extract_jobs),
@@ -213,6 +260,7 @@ pub fn build_status_payload_with_errors(
             "embed": totals.embed,
             "ingest": totals.ingest,
         },
+        "sqlite": sqlite,
         "degraded": !errors.is_empty(),
         "errors": errors,
     })
