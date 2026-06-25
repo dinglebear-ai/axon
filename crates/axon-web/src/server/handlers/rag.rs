@@ -113,6 +113,7 @@ pub(crate) async fn evaluate(
     request_body = SuggestRequest,
     responses(
         (status = 200, description = "Suggested URLs to crawl", body = serde_json::Value),
+        (status = 429, description = "Upstream LLM or search provider rate limited", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream search or LLM service unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "rag"
