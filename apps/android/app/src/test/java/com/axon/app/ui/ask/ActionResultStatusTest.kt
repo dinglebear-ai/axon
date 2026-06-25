@@ -1,6 +1,7 @@
 package com.axon.app.ui.ask
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ActionResultStatusTest {
@@ -11,5 +12,22 @@ class ActionResultStatusTest {
         assertEquals(ResultStatusKind.Warning, resultStatusKind("running"))
         assertEquals(ResultStatusKind.Error, resultStatusKind("500 Internal Server Error"))
         assertEquals(ResultStatusKind.Error, resultStatusKind("failed"))
+    }
+
+    @Test
+    fun `action result body preview clamps long search output`() {
+        val rendered = compactActionResultBody(
+            (1..12).joinToString("\n") { index ->
+                "Result $index https://example.com/${"long-path-segment".repeat(8)}"
+            },
+            maxLines = 4,
+            maxChars = 160,
+        )
+
+        assertTrue(rendered.lines().size <= 5)
+        assertTrue(rendered.contains("Result 1"))
+        assertTrue(!rendered.contains("Result 12"))
+        assertTrue(rendered.endsWith("...truncated in chat"))
+        assertTrue(rendered.length <= 185)
     }
 }
