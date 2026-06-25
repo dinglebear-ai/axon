@@ -55,11 +55,22 @@ The current runtime stores jobs in SQLite and runs workers in-process. The
 doctor report includes:
 
 - SQLite file presence (`exists`) and path
+- `quick_check` result from a read-only SQLite integrity probe
+- Active-owner lock diagnostics:
+  - `active_lock_path`
+  - `active_lock_file_exists` / legacy `active_lock_exists`
+  - `active_owner_observed` to distinguish a real held lock from a stale lock file
+- Corruption-recovery sidecar count and latest sidecar path
+- Runtime IOERR count plus last error text/timestamp
 - TEI and Qdrant service probes
 - Gemini headless CLI/config status
 - Chrome endpoint probe
 - Browser runtime diagnostics
 - no legacy runtime-mode marker fields
+
+`GET /readyz` uses a lighter SQLite readiness check for liveness traffic. It
+reports runtime IOERR and active-owner state, but intentionally skips
+`quick_check`; use `doctor` or `status --json` for the full SQLite report.
 
 ## Examples
 

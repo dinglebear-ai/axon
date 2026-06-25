@@ -20,6 +20,7 @@ pub(super) async fn healthz() -> impl IntoResponse {
 #[derive(Serialize, ToSchema)]
 pub(super) struct ReadinessBody {
     ok: bool,
+    sqlite: &'static str,
     qdrant: &'static str,
     tei: &'static str,
 }
@@ -28,7 +29,7 @@ pub(super) struct ReadinessBody {
     get,
     path = "/readyz",
     responses(
-        (status = 200, description = "Qdrant and TEI dependencies are ready", body = ReadinessBody),
+        (status = 200, description = "SQLite, Qdrant, and TEI dependencies are ready", body = ReadinessBody),
         (status = 503, description = "One or more dependencies are not ready", body = ReadinessBody)
     ),
     tag = "system"
@@ -44,9 +45,24 @@ pub(super) async fn readyz(
     } else {
         probe_http_endpoint(&format!("{}/health", cfg.tei_url.trim_end_matches('/'))).await
     };
-    let ok = qdrant_ready && tei_ready;
+    let sqlite = crate::jobs::store::sqlite_readiness(&cfg.sqlite_path);
+    let sqlite_ready = sqlite
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let (status, body) = readiness_response(sqlite_ready, qdrant_ready, tei_ready);
+    (status, Json(body))
+}
+
+fn readiness_response(
+    sqlite_ready: bool,
+    qdrant_ready: bool,
+    tei_ready: bool,
+) -> (StatusCode, ReadinessBody) {
+    let ok = sqlite_ready && qdrant_ready && tei_ready;
     let body = ReadinessBody {
         ok,
+        sqlite: if sqlite_ready { "ready" } else { "not_ready" },
         qdrant: if qdrant_ready { "ready" } else { "not_ready" },
         tei: if tei_ready { "ready" } else { "not_ready" },
     };
@@ -55,7 +71,7 @@ pub(super) async fn readyz(
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     };
-    (status, Json(body))
+    (status, body)
 }
 
 async fn probe_http_endpoint(url: &str) -> bool {
@@ -72,4 +88,29 @@ async fn probe_http_endpoint(url: &str) -> bool {
         .await
         .map(|response| response.status().is_success())
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn readyz_response_includes_sqlite_dependency() {
+        let (status, body) = readiness_response(false, true, true);
+
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(!body.ok);
+        assert_eq!(body.sqlite, "not_ready");
+        assert_eq!(body.qdrant, "ready");
+        assert_eq!(body.tei, "ready");
+    }
+
+    #[test]
+    fn readyz_response_is_ok_only_when_all_dependencies_are_ready() {
+        let (status, body) = readiness_response(true, true, true);
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.ok);
+        assert_eq!(body.sqlite, "ready");
+    }
 }

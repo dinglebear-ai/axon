@@ -85,6 +85,14 @@ fn valid_toml_parses_chrome_bootstrap_section() {
 }
 
 #[test]
+fn valid_toml_parses_build_section() {
+    let cfg = load_toml_config_from_str("[build]\nallow-fallback-web-assets = true\n")
+        .expect("build section should parse");
+
+    assert_eq!(cfg.build.allow_fallback_web_assets, Some(true));
+}
+
+#[test]
 fn malformed_toml_returns_err() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(f, "[search\nbadly_broken = !!!").unwrap();

@@ -28,8 +28,9 @@ pub use self::sources::{
 };
 pub use self::stats::{map_stats_payload, stats};
 pub use self::status::{
-    StatusJobs, build_status_payload, build_status_payload_with_errors, full_status,
-    load_status_jobs,
+    StatusJobs, build_status_payload, build_status_payload_with_errors,
+    build_status_payload_with_errors_and_sqlite, full_status, load_status_jobs,
+    sqlite_status_error,
 };
 
 /// Error type for payload parsing failures shared across the `system`
