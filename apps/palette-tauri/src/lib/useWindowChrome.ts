@@ -53,7 +53,7 @@ const FALLBACK_ROW_HEIGHT = 48;
 // footer, and paddings. Measured exactly so the window hugs its content — an
 // over-estimate leaves dead space below the footer (it floats off the bottom
 // edge); an under-estimate clips it.
-const BROWSE_CHROME = 130;
+const BROWSE_CHROME = 142;
 
 // LIST_CAP mirrors .action-scroll max-height in styles.css — keep in sync.
 // `viewport.scrollHeight` is the full (unsquashed) list height regardless of the

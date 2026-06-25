@@ -63,6 +63,8 @@ export const OutputPanel = memo(function OutputPanel({
   const Icon = active ? outputIcon(active.subcommand) : Activity;
   const status = statusFor(run);
   const conversationMode = active?.subcommand === "ask" || active?.subcommand === "chat";
+  const transcript = "transcript" in run ? run.transcript : undefined;
+  const quietConversationChrome = conversationMode && run.kind !== "running" && run.kind !== "streaming";
   // P-M1: recomputes the scrape/retrieve reading-header metrics only when the run or
   // action changes, not on every unrelated parent re-render / stream token.
   const headerSummary = useMemo(() => readingHeaderSummary(run, active), [run, active]);
@@ -95,7 +97,7 @@ export const OutputPanel = memo(function OutputPanel({
             </span>
             <span className="output-subtitle">{outputSubtitle(run, active)}</span>
           </div>
-          <span className={`output-status output-status-${status.tone}`}>{status.label}</span>
+          {quietConversationChrome ? null : <span className={`output-status output-status-${status.tone}`}>{status.label}</span>}
           <span className="output-tools">
             {run.kind === "running" || run.kind === "streaming" ? (
               <>
@@ -106,6 +108,24 @@ export const OutputPanel = memo(function OutputPanel({
                   <X size={13} />
                 </Button>
               </>
+            ) : quietConversationChrome ? (
+              <details className="output-tool-menu">
+                <summary role="button" title="More actions" aria-label="More actions" data-tooltip="More">
+                  <MoreHorizontal size={13} />
+                </summary>
+                <div>
+                  {"text" in run && (
+                    <Button variant="plain" size="unstyled" type="button" onClick={() => onCopy(run.text)}>
+                      <Copy size={13} />
+                      <span>Copy</span>
+                    </Button>
+                  )}
+                  <Button variant="plain" size="unstyled" type="button" onClick={onHistory}>
+                    <History size={13} />
+                    <span>History</span>
+                  </Button>
+                </div>
+              </details>
             ) : (
               <>
                 {"text" in run && (
@@ -123,7 +143,7 @@ export const OutputPanel = memo(function OutputPanel({
                   </Button>
                 )}
                 <details className="output-tool-menu">
-                  <summary title="More actions" aria-label="More actions" data-tooltip="More">
+                  <summary role="button" title="More actions" aria-label="More actions" data-tooltip="More">
                     <MoreHorizontal size={13} />
                   </summary>
                   <div>
@@ -155,7 +175,9 @@ export const OutputPanel = memo(function OutputPanel({
             {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" /> : null}
           </span>
         </header>
-        {run.kind === "streaming" && conversationMode ? (
+        {(run.kind === "streaming" || run.kind === "running") && conversationMode && transcript?.length ? (
+          <AskConversation prompt={run.prompt ?? ""} answer={"text" in run ? run.text : ""} transcript={transcript} pending onFollowUp={onFollowUp} />
+        ) : run.kind === "streaming" && conversationMode ? (
           <AskConversation prompt={run.prompt ?? ""} answer={run.text} pending onFollowUp={onFollowUp} />
         ) : (run.kind === "running" || run.kind === "streaming") ? (
           <PendingBody run={run} />
@@ -170,7 +192,7 @@ export const OutputPanel = memo(function OutputPanel({
         ) : run.kind === "error" ? (
           <ErrorResultView result={run.result} text={run.text} />
         ) : "text" in run && conversationMode ? (
-          <AskConversation prompt={run.prompt ?? ""} answer={run.text} onFollowUp={onFollowUp} />
+          <AskConversation prompt={run.prompt ?? ""} answer={run.text} transcript={transcript} onFollowUp={onFollowUp} />
         ) : "text" in run ? (
           outputKind === "markdown" ? (
             <div className="output-body output-markdown">

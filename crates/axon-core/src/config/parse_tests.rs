@@ -40,6 +40,40 @@ fn parse_watch_create_with_every_and_type() {
 
 #[allow(unsafe_code)]
 #[test]
+fn parse_code_search_watch_is_watch_only_by_default_and_accepts_multiple_roots() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "code-search-watch",
+        "--cwd",
+        "/workspace",
+        "--cwd",
+        "/opt/projects",
+        "--dry-run",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("code-search-watch should parse");
+    assert!(matches!(cfg.command, CommandKind::CodeSearchWatch));
+    let watch = cfg
+        .code_search_watch
+        .expect("code-search-watch config should be set");
+    assert_eq!(
+        watch.roots,
+        vec![
+            std::path::PathBuf::from("/workspace"),
+            std::path::PathBuf::from("/opt/projects"),
+        ]
+    );
+    assert!(!watch.initial_refresh);
+    assert!(watch.dry_run);
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn parse_max_profile_flows_to_crawl_subscribe_buffer() {
     let _guard = ENV_LOCK.lock().unwrap();
 

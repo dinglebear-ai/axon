@@ -2,6 +2,9 @@ use crate::commands::resolve_input_text;
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use axon_core::ui::{accent, muted, primary};
+use axon_services::code_search_watch::{
+    StdoutCodeSearchWatchEventSink, run_code_search_watch as run_code_search_watch_service,
+};
 use axon_services::context::ServiceContext;
 use axon_services::query as query_svc;
 use axon_services::types::{CodeSearchCaller, CodeSearchOptions};
@@ -78,4 +81,18 @@ pub async fn run_code_search(
     }
 
     Ok(())
+}
+
+pub async fn run_code_search_watch(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    let options = cfg
+        .code_search_watch
+        .clone()
+        .ok_or("code-search-watch requires watcher options")?;
+    let sink = StdoutCodeSearchWatchEventSink { json: options.json };
+    run_code_search_watch_service(service_context, options, &sink)
+        .await
+        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })
 }

@@ -1,6 +1,6 @@
 use super::{
     MAX_SSE_LINE_BYTES, done_answer_from_value, drain_sse_lines,
-    parse_sse_data_line as parse_data_line,
+    parse_sse_data_line as parse_data_line, sentence_label,
 };
 
 #[test]
@@ -108,4 +108,10 @@ fn done_answer_reads_stream_result_payload() {
         done_answer_from_value(&value).as_deref(),
         Some("normalized answer\n\n## Sources\n- [S1] https://docs.example.com")
     );
+}
+
+#[test]
+fn sentence_label_formats_stream_phase() {
+    assert_eq!(sentence_label("retrieving"), "Retrieving");
+    assert_eq!(sentence_label("context_build"), "Context build");
 }

@@ -94,6 +94,65 @@ describe("OutputPanel run-state transitions (T-H2)", () => {
     // Streaming ask renders through the conversation thread.
     expect(screen.getByText(/abc see/)).toBeInTheDocument();
   });
+
+  it("keeps completed ask output in the conversation layout", () => {
+    const success: RunState = {
+      kind: "success",
+      title: "Ask completed",
+      subtitle: "POST /v1/ask/stream",
+      text: "A skill is a reusable instruction pack for an agent.",
+      outputKind: "markdown",
+      result: { ok: true, status: 0, method: "POST", path: "/v1/ask/stream", payload: {} },
+      prompt: "what is a skill?",
+    };
+
+    renderPanel(success);
+
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByText("Axon")).toBeInTheDocument();
+    expect(screen.getByText("what is a skill?")).toBeInTheDocument();
+    expect(screen.getByText(/A skill is a reusable instruction pack/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Ask a follow-up" })).toBeEnabled();
+    expect(document.querySelector(".ask-answer-prose")).not.toBeNull();
+    expect(document.querySelector(".ask-answer pre.output-body.output-code")).toBeNull();
+    expect(screen.queryByText("Question")).not.toBeInTheDocument();
+  });
+
+  it("renders completed ask transcripts with quiet chrome and collapsible sources", () => {
+    const success = {
+      kind: "success",
+      title: "Ask completed",
+      subtitle: "POST /v1/ask/stream",
+      text: "Second answer.",
+      outputKind: "markdown",
+      result: { ok: true, status: 0, method: "POST", path: "/v1/ask/stream", payload: {} },
+      prompt: "second question",
+      transcript: [
+        { id: "u1", role: "user", content: "first question" },
+        { id: "a1", role: "assistant", content: "First answer." },
+        { id: "u2", role: "user", content: "second question" },
+        {
+          id: "a2",
+          role: "assistant",
+          content: "Second answer.",
+          sources: [{ label: "docs.rs", url: "https://docs.rs" }],
+        },
+      ],
+    } satisfies RunState;
+
+    renderPanel(success);
+
+    expect(screen.getByText("first question")).toBeInTheDocument();
+    expect(screen.getByText("First answer.")).toBeInTheDocument();
+    expect(screen.getByText("second question")).toBeInTheDocument();
+    expect(screen.getByText("Second answer.")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Ask conversation" })).toBeInTheDocument();
+    expect(screen.getByText("Sources")).toBeInTheDocument();
+    expect(screen.getByText("docs.rs")).toBeInTheDocument();
+    expect(screen.queryByText("complete")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy output" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More actions" })).toBeInTheDocument();
+  });
 });
 
 describe("OutputPanel copy affordance (T-L1)", () => {
