@@ -40,7 +40,7 @@ fun ActionResultCard(
     val colors = AxonTheme.colors
     val tone = colors.toneOf(if (item.op.isAsync) AxonTone.Orange else AxonTone.Cyan)
     val shape = RoundedCornerShape(10.dp)
-    val bodyText = humanizeJsonFragmentText(item.body)
+    val bodyText = compactActionResultBody(humanizeJsonFragmentText(item.body))
 
     Column(
         modifier = modifier
@@ -109,9 +109,51 @@ fun ActionResultCard(
             fontSize = 13.sp,
             lineHeight = 18.6.sp,
             fontFamily = AxonTheme.fonts.body,
-            maxLines = 10,
+            maxLines = ACTION_RESULT_BODY_MAX_LINES,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+private const val ACTION_RESULT_BODY_MAX_LINES = 4
+private const val ACTION_RESULT_BODY_MAX_CHARS = 140
+
+internal fun compactActionResultBody(
+    text: String,
+    maxLines: Int = ACTION_RESULT_BODY_MAX_LINES,
+    maxChars: Int = ACTION_RESULT_BODY_MAX_CHARS,
+): String {
+    val normalized = text.trim()
+        .replace("\r\n", "\n")
+        .replace('\r', '\n')
+    if (normalized.isBlank()) return normalized
+
+    var truncated = false
+    val lineLimited = normalized
+        .lines()
+        .let { lines ->
+            if (lines.size > maxLines) {
+                truncated = true
+                lines.take(maxLines).joinToString("\n")
+            } else {
+                normalized
+            }
+        }
+    val charLimited = if (lineLimited.length > maxChars) {
+        truncated = true
+        val cut = lineLimited
+            .take(maxChars)
+            .replace(Regex("\\s+\\S*$"), "")
+            .ifBlank { lineLimited.take(maxChars) }
+        cut.trimEnd()
+    } else {
+        lineLimited.trimEnd()
+    }
+
+    return if (truncated) {
+        "$charLimited\n...truncated in chat"
+    } else {
+        charLimited
     }
 }
 
