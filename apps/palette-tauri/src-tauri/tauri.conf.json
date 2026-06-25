@@ -1,54 +1,43 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Axon Palette",
-  "version": "5.11.1",
-  "identifier": "tv.tootie.axon.palette",
+  "app": {
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/.axon/**"
+        ]
+      },
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
+    },
+    "windows": [
+      {
+        "alwaysOnTop": true,
+        "center": true,
+        "decorations": false,
+        "height": 520,
+        "label": "main",
+        "minHeight": 56,
+        "minWidth": 560,
+        "resizable": true,
+        "shadow": true,
+        "skipTaskbar": true,
+        "title": "Axon Palette",
+        "transparent": true,
+        "visible": false,
+        "width": 760
+      }
+    ]
+  },
   "build": {
-    "beforeDevCommand": "pnpm vite:dev",
     "beforeBuildCommand": "pnpm vite:build",
+    "beforeDevCommand": "pnpm vite:dev",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
-  "app": {
-    "windows": [
-      {
-        "title": "Axon Palette",
-        "label": "main",
-        "width": 760,
-        "height": 520,
-        "minWidth": 560,
-        "minHeight": 56,
-        "resizable": true,
-        "center": true,
-        "visible": false,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "shadow": true
-      }
-    ],
-    "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
-      "assetProtocol": {
-        "enable": true,
-        "scope": ["$HOME/.axon/**"]
-      }
-    }
-  },
   "bundle": {
     "active": true,
-    "targets": [
-      "deb",
-      "rpm",
-      "app",
-      "dmg",
-      "msi",
-      "nsis"
-    ],
     "category": "DeveloperTool",
-    "shortDescription": "Native command palette for Axon",
-    "longDescription": "Axon Palette provides a native desktop command surface for Axon REST workflows.",
     "icon": [
       "icons/icon.png",
       "icons/32x32.png",
@@ -56,6 +45,19 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "longDescription": "Axon Palette provides a native desktop command surface for Axon REST workflows.",
+    "shortDescription": "Native command palette for Axon",
+    "targets": [
+      "deb",
+      "rpm",
+      "app",
+      "dmg",
+      "msi",
+      "nsis"
     ]
-  }
+  },
+  "identifier": "tv.tootie.axon.palette",
+  "productName": "Axon Palette",
+  "version": "5.11.2"
 }

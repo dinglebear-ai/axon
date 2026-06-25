@@ -2,6 +2,7 @@ pub mod action_api;
 pub mod artifacts;
 pub mod brand;
 pub mod client_contract;
+pub mod code_search_watch;
 pub mod config;
 pub mod context;
 pub mod crawl;

@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "6.0.0"
+    "version": "6.0.1"
   },
   "paths": {
     "/healthz": {
@@ -4461,6 +4461,16 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Upstream LLM or search provider rate limited",
             "content": {
               "application/json": {
                 "schema": {

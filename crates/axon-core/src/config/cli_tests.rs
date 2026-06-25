@@ -44,6 +44,16 @@ fn parse_retrieve_max_points_flag() {
 }
 
 #[test]
+fn parse_code_search_watch_enable_subcommand_with_cwd_after_enable() {
+    let result =
+        Cli::try_parse_from(["axon", "code-search-watch", "enable", "--cwd", "/workspace"]);
+    assert!(
+        result.is_ok(),
+        "code-search-watch enable --cwd should parse: {result:?}"
+    );
+}
+
+#[test]
 fn parse_rejects_active_and_recent_together() {
     let result = Cli::try_parse_from(["axon", "--active", "--recent", "status"]);
     assert!(result.is_err(), "active/recent should conflict");

@@ -49,6 +49,10 @@ function endpointStatusLabel(tone: string, endpointLabel: string): string {
   }
 }
 
+function sentenceCase(value: string): string {
+  return value ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
 export function PaletteCommandBar({
   active,
   activeDescendantId,
@@ -82,6 +86,8 @@ export function PaletteCommandBar({
     () => sortActionsForDisplay(ACTIONS).filter((action) => action.subcommand !== modeAction?.subcommand),
     [modeAction?.subcommand],
   );
+  const modeMeta = modeAction ? actionDisplayMeta(modeAction) : null;
+  const modeDescriptor = modeMeta ? sentenceCase(`${modeMeta.input} to ${modeMeta.output}`) : "";
 
   useEffect(() => {
     if (!switcherOpen) return;
@@ -181,31 +187,47 @@ export function PaletteCommandBar({
                   }
                 }}
               >
-                {switcherActions.map((action) => {
-                  const Icon = actionIcon(action.subcommand);
-                  const meta = actionDisplayMeta(action);
-                  return (
-                    <Button
-                      variant="plain"
-                      size="unstyled"
-                      key={action.subcommand}
-                      className={`command-action-option command-action-option-${action.tone}`}
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSwitcherOpen(false);
-                        onSwitchAction(action);
-                      }}
-                    >
-                      <Icon size={15} strokeWidth={1.85} aria-hidden="true" />
-                      <span>
-                        <strong>{meta.label}</strong>
-                        <small>{meta.input} to {meta.output}</small>
-                      </span>
-                      <Kbd unstyled>{action.subcommand}</Kbd>
-                    </Button>
-                  );
-                })}
+                <div className="command-action-options">
+                  {switcherActions.map((action) => {
+                    const Icon = actionIcon(action.subcommand);
+                    const meta = actionDisplayMeta(action);
+                    const descriptor = sentenceCase(`${meta.input} to ${meta.output}`);
+                    return (
+                      <Button
+                        variant="plain"
+                        size="unstyled"
+                        key={action.subcommand}
+                        className={`command-action-option command-action-option-${action.tone}`}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSwitcherOpen(false);
+                          onSwitchAction(action);
+                        }}
+                      >
+                        <Icon size={15} strokeWidth={1.85} aria-hidden="true" />
+                        <span>
+                          <strong>{meta.label}</strong>
+                          <small>{descriptor}</small>
+                        </span>
+                        <Kbd unstyled>{action.subcommand}</Kbd>
+                      </Button>
+                    );
+                  })}
+                </div>
+                {modeAction && modeMeta && (
+                  <div className="command-action-footer">
+                    <span className="command-action-footer-current">
+                      <strong>{modeMeta.label}</strong>
+                      <span>{modeDescriptor}</span>
+                    </span>
+                    <span className="command-action-footer-hints">
+                      <span><Kbd unstyled>↑</Kbd><Kbd unstyled>↓</Kbd> navigate</span>
+                      <span><Kbd unstyled>↵</Kbd> switch</span>
+                      <span><Kbd unstyled>esc</Kbd> close</span>
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

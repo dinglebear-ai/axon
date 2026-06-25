@@ -47,6 +47,9 @@ pub struct Config {
     /// Flag: `code-search --no-freshness`.
     pub code_search_no_freshness: bool,
 
+    /// Options for `code-search-watch`.
+    pub code_search_watch: Option<super::session_watch::CodeSearchWatchConfig>,
+
     /// Maximum chunks fetched by `retrieve` before reconstructing the document.
     /// Flag: `retrieve --max-points` (`retrieve --limit` alias). Default: None
     /// (use the retrieve service ceiling).

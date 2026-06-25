@@ -17,7 +17,9 @@ pub use enums::{
     RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 pub use overrides::ConfigOverrides;
-pub use session_watch::{SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction};
+pub use session_watch::{
+    CodeSearchWatchConfig, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
+};
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;

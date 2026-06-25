@@ -1,7 +1,7 @@
 use super::super::error::HttpError;
 use axon_core::config::Config;
 use axon_services::client_contract::RestAskRequest as AskRequestBody;
-use axon_services::events::ServiceEvent;
+use axon_services::events::{LogLevel, ServiceEvent};
 use axon_services::query as query_svc;
 use axum::{
     Extension, Json,
@@ -50,6 +50,11 @@ enum AskStreamEvent {
     Meta {
         phase: &'static str,
     },
+    Activity {
+        kind: String,
+        label: String,
+        detail: Option<String>,
+    },
     Delta {
         text: String,
     },
@@ -70,6 +75,114 @@ fn sse_json(event_name: &'static str, value: &AskStreamEvent) -> Event {
                 .event("error")
                 .data("{\"type\":\"error\",\"message\":\"encode failed\"}")
         })
+}
+
+async fn send_stream_event(
+    tx: &mpsc::Sender<Result<Event, Infallible>>,
+    disconnected: &AtomicBool,
+    event_name: &'static str,
+    event: &AskStreamEvent,
+) -> bool {
+    if tx.send(Ok(sse_json(event_name, event))).await.is_ok() {
+        true
+    } else {
+        disconnected.store(true, Ordering::Relaxed);
+        false
+    }
+}
+
+fn spawn_service_event_forwarder(
+    mut event_rx: mpsc::Receiver<ServiceEvent>,
+    delta_tx: mpsc::Sender<Result<Event, Infallible>>,
+    disconnected: Arc<AtomicBool>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            if disconnected.load(Ordering::Relaxed) {
+                return;
+            }
+            if !forward_service_event(&delta_tx, &disconnected, event).await {
+                return;
+            }
+        }
+    })
+}
+
+async fn forward_service_event(
+    tx: &mpsc::Sender<Result<Event, Infallible>>,
+    disconnected: &AtomicBool,
+    event: ServiceEvent,
+) -> bool {
+    match event {
+        ServiceEvent::SynthesisDelta { text } => {
+            send_stream_event(tx, disconnected, "delta", &AskStreamEvent::Delta { text }).await
+        }
+        ServiceEvent::Activity {
+            kind,
+            label,
+            detail,
+        } => {
+            send_stream_event(
+                tx,
+                disconnected,
+                "activity",
+                &AskStreamEvent::Activity {
+                    kind,
+                    label,
+                    detail,
+                },
+            )
+            .await
+        }
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message,
+        } => {
+            send_stream_event(
+                tx,
+                disconnected,
+                "activity",
+                &AskStreamEvent::Activity {
+                    kind: "thinking".to_string(),
+                    label: message,
+                    detail: None,
+                },
+            )
+            .await
+        }
+        ServiceEvent::Log { .. } | ServiceEvent::EditorWrite { .. } => true,
+    }
+}
+
+async fn emit_ask_stream_result(
+    tx: &mpsc::Sender<Result<Event, Infallible>>,
+    disconnected: &AtomicBool,
+    result: Result<axon_services::types::AskResult, String>,
+) {
+    match result {
+        Ok(result) => {
+            send_stream_event(
+                tx,
+                disconnected,
+                "done",
+                &AskStreamEvent::Done {
+                    result: Box::new(result),
+                },
+            )
+            .await;
+        }
+        Err(message) => {
+            let message = axon_core::redact::redact_secrets(&message);
+            axon_core::logging::log_warn(&format!("ask stream failed: {message}"));
+            send_stream_event(
+                tx,
+                disconnected,
+                "error",
+                &AskStreamEvent::Error { message },
+            )
+            .await;
+        }
+    }
 }
 
 #[utoipa::path(
@@ -115,39 +228,22 @@ pub async fn v1_ask_stream(
     req_cfg.json_output = false;
 
     let handle = tokio::spawn(async move {
-        if tx
-            .send(Ok(sse_json(
-                "meta",
-                &AskStreamEvent::Meta {
-                    phase: "retrieving",
-                },
-            )))
-            .await
-            .is_err()
+        if !send_stream_event(
+            &tx,
+            &disconnected,
+            "meta",
+            &AskStreamEvent::Meta {
+                phase: "retrieving",
+            },
+        )
+        .await
         {
-            disconnected.store(true, Ordering::Relaxed);
             return;
         }
 
-        let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(256);
-        let delta_tx = tx.clone();
-        let delta_disconnected = Arc::clone(&disconnected);
-        let delta_task = tokio::spawn(async move {
-            while let Some(event) = event_rx.recv().await {
-                if delta_disconnected.load(Ordering::Relaxed) {
-                    return;
-                }
-                if let ServiceEvent::SynthesisDelta { text } = event
-                    && delta_tx
-                        .send(Ok(sse_json("delta", &AskStreamEvent::Delta { text })))
-                        .await
-                        .is_err()
-                {
-                    delta_disconnected.store(true, Ordering::Relaxed);
-                    return;
-                }
-            }
-        });
+        let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
+        let delta_task =
+            spawn_service_event_forwarder(event_rx, tx.clone(), Arc::clone(&disconnected));
         let result = query_svc::ask(&req_cfg, &req.query, Some(event_tx))
             .await
             .map_err(|err| err.to_string());
@@ -157,37 +253,7 @@ pub async fn v1_ask_stream(
             return;
         }
 
-        match result {
-            Ok(result) => {
-                if tx
-                    .send(Ok(sse_json(
-                        "done",
-                        &AskStreamEvent::Done {
-                            result: Box::new(result),
-                        },
-                    )))
-                    .await
-                    .is_err()
-                {
-                    disconnected.store(true, Ordering::Relaxed);
-                }
-            }
-            Err(message) => {
-                // SEC-H1: redact secret-shaped tokens (e.g. a leaked `AIza…`
-                // Gemini key echoed via subprocess stderr) before the error text
-                // is logged or written to the SSE error event. The non-streaming
-                // `/v1/ask` path is already masked; this closes the streaming gap.
-                let message = axon_core::redact::redact_secrets(&message);
-                axon_core::logging::log_warn(&format!("ask stream failed: {message}"));
-                if tx
-                    .send(Ok(sse_json("error", &AskStreamEvent::Error { message })))
-                    .await
-                    .is_err()
-                {
-                    disconnected.store(true, Ordering::Relaxed);
-                }
-            }
-        }
+        emit_ask_stream_result(&tx, &disconnected, result).await;
     });
 
     let event_stream = AbortOnDropStream { rx, handle };
