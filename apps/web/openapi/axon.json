@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "6.0.1"
+    "version": "6.0.2"
   },
   "paths": {
     "/healthz": {
@@ -38,7 +38,7 @@
         "operationId": "readyz",
         "responses": {
           "200": {
-            "description": "Qdrant and TEI dependencies are ready",
+            "description": "SQLite, Qdrant, and TEI dependencies are ready",
             "content": {
               "application/json": {
                 "schema": {
@@ -5802,6 +5802,7 @@
         "type": "object",
         "required": [
           "ok",
+          "sqlite",
           "qdrant",
           "tei"
         ],
@@ -5810,6 +5811,9 @@
             "type": "boolean"
           },
           "qdrant": {
+            "type": "string"
+          },
+          "sqlite": {
             "type": "string"
           },
           "tei": {

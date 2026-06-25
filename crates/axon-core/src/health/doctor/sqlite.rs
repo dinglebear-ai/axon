@@ -9,6 +9,7 @@ use crate::health::doctor::{
 };
 use crate::http::internal_service_http_client;
 use crate::http::with_path;
+use crate::sqlite::diagnostics as sqlite_diagnostics;
 use serde_json::{Map, Value};
 use std::error::Error;
 use std::time::Duration;
@@ -31,8 +32,8 @@ pub(super) async fn build(cfg: &Config, pending_jobs: i64) -> Result<Value, Box<
             }
         }
     );
-    let sqlite_path = cfg.sqlite_path.display().to_string();
-    let sqlite_exists = cfg.sqlite_path.exists();
+    let sqlite = sqlite_diagnostics(&cfg.sqlite_path).await;
+    let sqlite_ok = sqlite.get("ok").and_then(Value::as_bool).unwrap_or(false);
     let gemini_probe = probe_gemini_headless(cfg);
     let tei_model = probes.tei_info.0.as_ref().and_then(tei_model_from_info);
     let tei_summary = probes.tei_info.0.as_ref().and_then(tei_info_summary);
@@ -49,10 +50,7 @@ pub(super) async fn build(cfg: &Config, pending_jobs: i64) -> Result<Value, Box<
     let dimension_mismatch = dimension_mismatch_warning(tei_dim, qdrant_vector_size);
 
     let mut services = Map::new();
-    services.insert(
-        "sqlite".to_string(),
-        sqlite_service_json(sqlite_exists, &sqlite_path),
-    );
+    services.insert("sqlite".to_string(), sqlite);
     services.insert(
         "tei".to_string(),
         tei_service_json(
@@ -135,7 +133,7 @@ pub(super) async fn build(cfg: &Config, pending_jobs: i64) -> Result<Value, Box<
         "browser_runtime": browser_runtime,
         "stale_jobs": 0_i64,
         "pending_jobs": pending_jobs,
-        "all_ok": tei_ok && qdrant_ok && vector_mode_mismatch.is_none() && dimension_mismatch.is_none(),
+        "all_ok": sqlite_ok && tei_ok && qdrant_ok && vector_mode_mismatch.is_none() && dimension_mismatch.is_none(),
     }))
 }
 
@@ -233,14 +231,6 @@ async fn probe_internal_http(
     }
 
     (false, last_error)
-}
-
-fn sqlite_service_json(exists: bool, path: &str) -> Value {
-    serde_json::json!({
-        "ok": true,
-        "exists": exists,
-        "path": path,
-    })
 }
 
 fn tei_service_json(

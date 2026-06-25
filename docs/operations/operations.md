@@ -92,11 +92,14 @@ processed by that running `axon mcp` (or `axon serve`).
 ```bash
 ./scripts/axon doctor
 ./scripts/axon status
+curl -H "Host: axon.tootie.tv" http://127.0.0.1:40090/readyz
 ```
 
 `axon doctor` (SQLite-runtime probe at `src/core/health/doctor/sqlite.rs`) reports:
 
-- **SQLite** — file exists at `cfg.sqlite_path`
+- **SQLite** — file exists at `cfg.sqlite_path`, `PRAGMA quick_check`, runtime
+  IOERR count, recovery sidecars, the active lock path, whether the lock file
+  exists, and whether an active owner was observed holding that lock
 - **TEI** — `GET /health`, plus `/info` for embedding model + summary
 - **Qdrant** — `GET /readyz`, plus `/collections/{name}` for vector mode (named/unnamed)
 - **Chrome** — `chrome_remote_url` if configured
@@ -104,7 +107,13 @@ processed by that running `axon mcp` (or `axon serve`).
 - **Vector mode mismatch** — warns if collection is unnamed but `AXON_HYBRID_SEARCH=true`
 
 `axon status` reports per-kind job counts (Crawl / Extract / Embed / Ingest)
-and recent jobs (top 10).
+and recent jobs (top 10). Its JSON payload includes the same full SQLite
+diagnostics as `doctor`.
+
+`/readyz` is intentionally cheaper than `doctor`/`status`: it checks Qdrant,
+TEI, and SQLite runtime health, but it does not run `PRAGMA quick_check`.
+SQLite readiness is marked `not_ready` after an in-process IOERR is observed or
+when an existing jobs database has no observed active owner lock.
 
 ---
 

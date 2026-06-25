@@ -80,12 +80,19 @@ fn chrome_status_label(report: &serde_json::Value) -> String {
 fn render_sqlite_service_line(report: &serde_json::Value) {
     let path = report_text(report, &["services", "sqlite", "path"], "unknown");
     let exists = report_bool(report, &["services", "sqlite", "exists"]);
+    let ok = report_bool(report, &["services", "sqlite", "ok"]);
+    let quick_check = report_text(report, &["services", "sqlite", "quick_check"], "unknown");
+    let corrupted_count = report_i64(report, &["services", "sqlite", "corrupted_count"]);
+    let ioerr_count = report_i64(report, &["services", "sqlite", "runtime_ioerr_count"]);
+    let active_owner = report_bool(report, &["services", "sqlite", "active_owner_observed"]);
     let detail = if exists {
-        format!("path={path}")
+        format!(
+            "path={path} quick_check={quick_check} active_owner={active_owner} corrupted_sidecars={corrupted_count} runtime_ioerr={ioerr_count}"
+        )
     } else {
         format!("path={path} (will be created on first use)")
     };
-    render_status_line("sqlite", true, &detail);
+    render_status_line("sqlite", ok, &detail);
 }
 
 fn render_services_section(report: &serde_json::Value) {
