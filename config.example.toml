@@ -23,9 +23,17 @@
 # Priority (highest to lowest):
 #   CLI flags for command inputs > environment variables > this file > built-in defaults
 #
-# Every key below is wired through Config: setting it in this file takes effect.
-# The env var shown next to each key still overrides the TOML value at the same
-# priority described above.
+# Every key below is wired through either runtime Config or the Rust build
+# script: setting it in this file takes effect. The env var shown next to each
+# key still overrides the TOML value at the same priority described above.
+
+[build]
+# Development-only compile-time escape hatch: allow `cargo build`/`cargo test`
+# to embed the fallback web panel when apps/web/out is absent or contains only
+# fallback marker assets. Release builds should keep this false and build the
+# real web panel first.
+# Env override: AXON_ALLOW_FALLBACK_WEB_ASSETS
+# allow-fallback-web-assets = false
 
 # Service endpoint URLs are intentionally not configured here.
 # Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL

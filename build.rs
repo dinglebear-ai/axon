@@ -8,6 +8,10 @@ const FALLBACK_MARKER: &str = "AXON_FALLBACK_WEB_PANEL";
 fn main() {
     println!("cargo:rerun-if-changed=apps/web/out");
     println!("cargo:rerun-if-env-changed=AXON_ALLOW_FALLBACK_WEB_ASSETS");
+    println!("cargo:rerun-if-env-changed=AXON_CONFIG_PATH");
+    if let Some(path) = build_config_path() {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
 
     let manifest_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set"));
@@ -43,7 +47,70 @@ fn main() {
 }
 
 fn allow_fallback_assets() -> bool {
-    env::var_os("AXON_ALLOW_FALLBACK_WEB_ASSETS").is_some()
+    let explicit_config = env::var_os("AXON_CONFIG_PATH").map(PathBuf::from);
+    let home = build_config_home();
+    allow_fallback_assets_from(
+        env::var("AXON_ALLOW_FALLBACK_WEB_ASSETS").ok().as_deref(),
+        explicit_config.as_deref(),
+        &home,
+    )
+}
+
+fn build_config_home() -> PathBuf {
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn build_config_path() -> Option<PathBuf> {
+    env::var_os("AXON_CONFIG_PATH")
+        .map(PathBuf::from)
+        .or_else(|| Some(build_config_home().join(".axon/config.toml")))
+}
+
+pub(crate) fn allow_fallback_assets_from(
+    env_value: Option<&str>,
+    explicit_config_path: Option<&Path>,
+    home: &Path,
+) -> bool {
+    if env_value.is_some_and(|value| !value.trim().is_empty()) {
+        return true;
+    }
+
+    let config_path = explicit_config_path
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| home.join(".axon/config.toml"));
+    read_build_allow_fallback_web_assets(&config_path).unwrap_or(false)
+}
+
+fn read_build_allow_fallback_web_assets(path: &Path) -> io::Result<bool> {
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(err),
+    };
+
+    let mut in_build = false;
+    for raw_line in contents.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_build = line == "[build]";
+            continue;
+        }
+        if !in_build {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() == "allow-fallback-web-assets" {
+            return Ok(matches!(value.trim(), "true" | "\"true\"" | "'true'"));
+        }
+    }
+    Ok(false)
 }
 
 enum AssetState {

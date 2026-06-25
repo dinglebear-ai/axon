@@ -9,9 +9,11 @@ use crate::commands::job_progress::{
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use axon_core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
-use axon_jobs::store::RECLAIMED_ERROR_TEXT;
+use axon_jobs::store::{RECLAIMED_ERROR_TEXT, sqlite_diagnostics};
 use axon_services::context::ServiceContext;
-use axon_services::system::{build_status_payload_with_errors, load_status_jobs};
+use axon_services::system::{
+    build_status_payload_with_errors_and_sqlite, load_status_jobs, sqlite_status_error,
+};
 use axon_services::types::ServiceJob;
 use std::collections::HashMap;
 use std::error::Error;
@@ -46,25 +48,34 @@ pub async fn run_status(
 }
 
 pub async fn status_snapshot(
-    _cfg: &Config,
+    cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
-    let (jobs, totals, errors) = load_status_jobs(service_context).await?;
-    Ok(build_status_payload_with_errors(
+    let (jobs, totals, mut errors) = load_status_jobs(service_context).await?;
+    let sqlite = sqlite_diagnostics(&cfg.sqlite_path).await;
+    if let Some(error) = sqlite_status_error(&sqlite) {
+        errors.push(error);
+    }
+    Ok(build_status_payload_with_errors_and_sqlite(
         &jobs.crawl,
         &jobs.extract,
         &jobs.embed,
         &jobs.ingest,
         &totals,
         &errors,
+        &sqlite,
     ))
 }
 
 pub async fn status_text(
-    _cfg: &Config,
+    cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<String, Box<dyn Error>> {
-    let (_jobs, totals, errors) = load_status_jobs(service_context).await?;
+    let (_jobs, totals, mut errors) = load_status_jobs(service_context).await?;
+    let sqlite = sqlite_diagnostics(&cfg.sqlite_path).await;
+    if let Some(error) = sqlite_status_error(&sqlite) {
+        errors.push(error);
+    }
     let mut lines = Vec::new();
     lines.push("Axon Status".to_string());
     lines.push(format!("crawl jobs:   {} total", totals.crawl));
@@ -82,10 +93,14 @@ pub async fn status_text(
 }
 
 async fn run_status_impl(
-    _cfg: &Config,
+    cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let (jobs, totals, errors) = load_status_jobs(service_context).await?;
+    let (jobs, totals, mut errors) = load_status_jobs(service_context).await?;
+    let sqlite = sqlite_diagnostics(&cfg.sqlite_path).await;
+    if let Some(error) = sqlite_status_error(&sqlite) {
+        errors.push(error);
+    }
     if !errors.is_empty() {
         println!(
             "{}",
