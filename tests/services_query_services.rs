@@ -1,4 +1,4 @@
-use axon::services::query::{
+use axon_services::query::{
     map_ask_payload, map_evaluate_payload, map_query_results, map_retrieve_result,
     map_suggest_payload,
 };

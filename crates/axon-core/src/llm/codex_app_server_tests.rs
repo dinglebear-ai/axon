@@ -1,0 +1,524 @@
+use super::*;
+use crate::llm::LlmBackendKind;
+use std::io;
+use std::time::Duration;
+
+fn backend_with_cmd(cmd: &str) -> LlmBackendConfig {
+    LlmBackendConfig {
+        codex_cmd: cmd.to_string(),
+        ..LlmBackendConfig::default()
+    }
+}
+
+#[test]
+fn completion_timeout_is_at_least_one_second() {
+    let zero = LlmBackendConfig {
+        completion_timeout_secs: 0,
+        ..LlmBackendConfig::default()
+    };
+    assert_eq!(zero.completion_timeout(), Duration::from_secs(1));
+    let forty_five = LlmBackendConfig {
+        completion_timeout_secs: 45,
+        ..LlmBackendConfig::default()
+    };
+    assert_eq!(forty_five.completion_timeout(), Duration::from_secs(45));
+}
+
+#[test]
+fn validate_codex_cmd_allows_bare_name() {
+    assert!(validate_codex_cmd(&backend_with_cmd("codex")).is_ok());
+}
+
+#[test]
+fn validate_codex_cmd_allows_bare_name_in_container_for_codex_backend() {
+    // The production image ships @openai/codex, so a bare `codex` is valid
+    // in-container (resolved via PATH) — no host-only restriction.
+    let backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: "codex".to_string(),
+        ..LlmBackendConfig::default()
+    };
+
+    assert!(validate_codex_cmd(&backend).is_ok());
+}
+
+#[test]
+fn validate_codex_cmd_rejects_empty() {
+    assert!(validate_codex_cmd(&backend_with_cmd("   ")).is_err());
+}
+
+#[test]
+fn validate_codex_cmd_rejects_missing_path() {
+    let err = validate_codex_cmd(&backend_with_cmd("/nonexistent/path/to/codex")).unwrap_err();
+    assert!(err.to_string().contains("AXON_CODEX_CMD"));
+}
+
+#[test]
+fn stderr_suffix_empty_for_blank() {
+    assert_eq!(stderr_suffix(b""), "");
+    assert_eq!(stderr_suffix(b"   \n  "), "");
+}
+
+#[test]
+fn stderr_suffix_includes_nonblank_tail() {
+    let suffix = stderr_suffix(b"something broke");
+    assert!(suffix.contains("stderr:"));
+    assert!(suffix.contains("something broke"));
+}
+
+#[tokio::test]
+async fn collect_stderr_reports_join_failure() {
+    let task = tokio::spawn(async { std::future::pending::<Result<Vec<u8>, io::Error>>().await });
+    task.abort();
+
+    let err = collect_stderr(task).await.unwrap_err();
+
+    assert!(
+        err.contains("failed to join codex stderr reader"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn collect_stderr_reports_timeout() {
+    let task = tokio::spawn(async { std::future::pending::<Result<Vec<u8>, io::Error>>().await });
+
+    let err = collect_stderr(task).await.unwrap_err();
+
+    assert!(
+        err.contains("timed out collecting codex stderr"),
+        "got: {err}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn validate_codex_cmd_rejects_symlink() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("real-codex");
+    std::fs::write(&target, "#!/bin/sh\n").unwrap();
+    let link = dir.path().join("codex-link");
+    symlink(&target, &link).unwrap();
+    let err = validate_codex_cmd(&backend_with_cmd(link.to_str().unwrap())).unwrap_err();
+    assert!(err.to_string().contains("symlink"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn validate_codex_cmd_rejects_non_executable() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("not-exec");
+    std::fs::write(&file, "x").unwrap(); // default perms have no exec bit
+    let err = validate_codex_cmd(&backend_with_cmd(file.to_str().unwrap())).unwrap_err();
+    assert!(err.to_string().contains("not executable"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_success_drives_fake_app_server_process() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("fake-codex");
+    let pid_file = dir.path().join("success.pid");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/usr/bin/env python3
+import json
+import os
+import sys
+import time
+
+with open("{pid_file}", "w", encoding="utf-8") as pid:
+    pid.write(str(os.getpid()))
+
+home = os.environ.get("HOME")
+codex_home = os.environ.get("CODEX_HOME")
+assert home == codex_home, dict(HOME=home, CODEX_HOME=codex_home)
+assert os.environ.get("XDG_CONFIG_HOME", "").startswith(codex_home), os.environ.get("XDG_CONFIG_HOME")
+assert os.environ.get("XDG_CACHE_HOME", "").startswith(codex_home), os.environ.get("XDG_CACHE_HOME")
+assert os.environ.get("XDG_DATA_HOME", "").startswith(codex_home), os.environ.get("XDG_DATA_HOME")
+
+def read_msg():
+    line = sys.stdin.readline()
+    if not line:
+        raise SystemExit("stdin closed before protocol completed")
+    return json.loads(line)
+
+def send(obj):
+    print(json.dumps(obj, separators=(",", ":")), flush=True)
+
+msg = read_msg()
+assert msg["method"] == "initialize", msg
+send({{"id": 0, "result": {{"userAgent": "fake-codex"}}}})
+
+msg = read_msg()
+assert msg["method"] == "initialized", msg
+msg = read_msg()
+assert msg["method"] == "thread/start", msg
+assert msg["params"]["approvalPolicy"] == "never", msg
+assert msg["params"]["sandbox"] == "read-only", msg
+assert msg["params"]["model"] == "gpt-5.5", msg
+assert msg["params"]["ephemeral"] == True, msg
+send({{"id": 1, "result": {{"thread": {{"id": "thr_success"}}, "model": "gpt-5.5"}}}})
+
+msg = read_msg()
+assert msg["method"] == "turn/start", msg
+assert msg["params"]["threadId"] == "thr_success", msg
+assert msg["params"]["input"][0]["text"] == "system prompt\n\nuser prompt", msg
+
+send({{"method": "item/agentMessage/delta", "params": {{"delta": "Hello "}}}})
+send({{"method": "item/agentMessage/delta", "params": {{"delta": "world"}}}})
+send({{"method": "thread/tokenUsage/updated", "params": {{"tokenUsage": {{"total": {{"inputTokens": 7, "outputTokens": 3, "totalTokens": 10}}}}}}}})
+send({{"method": "item/completed", "params": {{"item": {{"type": "agentMessage", "text": "Hello world"}}}}}})
+send({{"method": "turn/completed", "params": {{"turn": {{"status": "completed"}}}}}})
+
+while True:
+    time.sleep(1)
+"#,
+            pid_file = pid_file.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("user prompt").system_prompt("system prompt");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        codex_model: Some("gpt-5.5".to_string()),
+        completion_timeout_secs: 3,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+    let mut deltas = Vec::new();
+
+    let response = complete_streaming(req, |delta| {
+        deltas.push(delta.to_string());
+        Ok(())
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(response.text, "Hello world");
+    assert_eq!(deltas, ["Hello ", "world"]);
+    let usage = response.usage.expect("usage captured");
+    assert_eq!(usage.prompt_tokens, 7);
+    assert_eq!(usage.completion_tokens, 3);
+    assert_eq!(usage.total_tokens, 10);
+    // With the pool the child stays alive after the turn (it's returned to the
+    // idle queue). Assert the PID file was written (child ran) but do NOT assert
+    // the process exited — the pool holds a long-lived reference to it.
+    let pid_str = std::fs::read_to_string(pid_file).unwrap();
+    assert!(
+        !pid_str.trim().is_empty(),
+        "child PID must have been written"
+    );
+}
+
+// A child that exits on its own right after the turn completes must still yield
+// the answer — cleanup's SIGKILL then races the already-exited process group and
+// gets ESRCH, which must be treated as success (not "cleanup failed").
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_succeeds_when_child_self_exits_after_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("self-exit-codex");
+    std::fs::write(
+        &script,
+        r#"#!/usr/bin/env python3
+import json, sys
+
+def read():
+    line = sys.stdin.readline()
+    if not line:
+        raise SystemExit("stdin closed early")
+    return json.loads(line)
+
+def send(o):
+    print(json.dumps(o, separators=(",", ":")), flush=True)
+
+assert read()["method"] == "initialize"
+send({"id": 0, "result": {"userAgent": "fake"}})
+assert read()["method"] == "initialized"
+assert read()["method"] == "thread/start"
+send({"id": 1, "result": {"thread": {"id": "thr_exit"}, "model": "fake"}})
+assert read()["method"] == "turn/start"
+send({"method": "item/agentMessage/delta", "params": {"delta": "Done"}})
+send({"method": "item/completed", "params": {"item": {"type": "agentMessage", "text": "Done"}}})
+send({"method": "turn/completed", "params": {"turn": {"status": "completed"}}})
+sys.exit(0)
+"#,
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        completion_timeout_secs: 5,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    // Without the ESRCH-as-success fix this returns a bogus "cleanup failed" error.
+    let response = complete_text(req).await.unwrap();
+    assert_eq!(response.text, "Done");
+}
+
+// The passthrough branch (codex_load_user_config = true) must take
+// `spawn_codex_child_passthrough`: pin CODEX_HOME to the resolved override and
+// inherit the ambient env (no HOME/XDG rehoming, unlike the isolated path).
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_passthrough_pins_codex_home_without_rehoming() {
+    let override_home = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("passthrough-codex");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/usr/bin/env python3
+import json, os, sys
+
+# Passthrough pins CODEX_HOME to the override and does NOT rehome HOME/XDG.
+assert os.environ.get("CODEX_HOME") == "{codex_home}", os.environ.get("CODEX_HOME")
+assert os.environ.get("HOME") != os.environ.get("CODEX_HOME"), "HOME must not be rehomed in passthrough"
+
+def read():
+    line = sys.stdin.readline()
+    if not line:
+        raise SystemExit("stdin closed early")
+    return json.loads(line)
+
+def send(o):
+    print(json.dumps(o, separators=(",", ":")), flush=True)
+
+assert read()["method"] == "initialize"
+send({{"id": 0, "result": {{"userAgent": "fake"}}}})
+assert read()["method"] == "initialized"
+assert read()["method"] == "thread/start"
+send({{"id": 1, "result": {{"thread": {{"id": "thr_pt"}}, "model": "fake"}}}})
+assert read()["method"] == "turn/start"
+send({{"method": "item/completed", "params": {{"item": {{"type": "agentMessage", "text": "ok"}}}}}})
+send({{"method": "turn/completed", "params": {{"turn": {{"status": "completed"}}}}}})
+sys.exit(0)
+"#,
+            codex_home = override_home.path().display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        codex_load_user_config: true,
+        codex_home: Some(override_home.path().to_path_buf()),
+        completion_timeout_secs: 5,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    let response = complete_text(req).await.unwrap();
+    assert_eq!(response.text, "ok");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_timeout_covers_slow_child_before_handshake() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("slow-codex");
+    let pid_file = dir.path().join("parent.pid");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo $$ > {}\n\
+             cat >/dev/null &\n\
+             echo '{{\"id\":0,\"result\":{{\"userAgent\":\"fake\"}}}}'\n\
+             echo '{{\"id\":1,\"result\":{{\"thread\":{{\"id\":\"thr_timeout\"}},\"model\":\"fake\"}}}}'\n\
+             sleep 5\n",
+            pid_file.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        completion_timeout_secs: 1,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    let started = std::time::Instant::now();
+    let err = complete_text(req).await.unwrap_err();
+
+    assert!(started.elapsed() < Duration::from_secs(3));
+    let text = err.to_string();
+    assert!(text.contains("timed out"), "got: {text}");
+    // The pool discards the slot (kills the child) on timeout. Verify the child
+    // PID was written before the kill (i.e. the child started successfully).
+    let pid = std::fs::read_to_string(pid_file)
+        .unwrap()
+        .trim()
+        .parse::<i32>()
+        .unwrap();
+    assert_process_exits(pid);
+}
+
+// The pool's init handshake fails cleanly for a child that immediately dies.
+// The error must not expose secrets written to stderr by the dying child.
+// The child must complete the init handshake before dying so its stderr can
+// reach the pool's discard path (which collects it after cleanup).
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_init_failure_does_not_expose_secrets_in_stderr() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("stderr-codex");
+    std::fs::write(
+        &script,
+        r#"#!/usr/bin/env python3
+import json, sys
+
+def read():
+    line = sys.stdin.readline()
+    if not line:
+        sys.exit(1)
+    return json.loads(line)
+
+def send(o):
+    print(json.dumps(o, separators=(",", ":")), flush=True)
+
+# Complete initialize so the pool gets a response, then fail thread/start.
+assert read()["method"] == "initialize"
+send({"id": 0, "result": {"userAgent": "bad-codex"}})
+# Emit secret to stderr before dying.
+import os
+os.write(2, b'{"api_key":"sk-compact-secret","token":"atk_compact_secret"}\n')
+sys.exit(1)
+"#,
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        completion_timeout_secs: 3,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    // The pool's init handshake fails (child dies after initialize ack).
+    // The error must not contain raw secret values.
+    let err = complete_text(req).await.unwrap_err();
+    let text = err.to_string();
+
+    assert!(
+        text.contains("init handshake failed")
+            || text.contains("timed out")
+            || text.contains("pool"),
+        "got: {text}"
+    );
+    assert!(!text.contains("sk-compact-secret"), "secret leaked: {text}");
+    assert!(
+        !text.contains("atk_compact_secret"),
+        "secret leaked: {text}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_completion_timeout_kills_grandchild_process_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("grandchild-codex");
+    let parent_pid_file = dir.path().join("parent.pid");
+    let grandchild_pid_file = dir.path().join("grandchild.pid");
+    // Use /bin/sh, not python: a shell cold-starts in microseconds so both
+    // pidfiles are written well before the 1s completion timeout fires the
+    // group kill. A python interpreter's cold start can exceed 1s under heavy
+    // parallel test load, killing the child mid-startup before it writes the
+    // pidfiles — a real source of flakiness this test previously hit.
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo $$ > {parent}\n\
+             sleep 30 &\n\
+             echo $! > {grandchild}\n\
+             echo '{{\"id\":0,\"result\":{{\"userAgent\":\"fake\"}}}}'\n\
+             echo '{{\"id\":1,\"result\":{{\"thread\":{{\"id\":\"thr_timeout\"}},\"model\":\"fake\"}}}}'\n\
+             sleep 30\n",
+            parent = parent_pid_file.display(),
+            grandchild = grandchild_pid_file.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut req = CompletionRequest::new("hello");
+    req.backend = LlmBackendConfig {
+        kind: LlmBackendKind::CodexAppServer,
+        codex_cmd: script.display().to_string(),
+        completion_timeout_secs: 1,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+
+    let err = complete_text(req).await.unwrap_err();
+    let text = err.to_string();
+    assert!(text.contains("timed out"), "got: {text}");
+    // "process group" no longer appears in the user-facing error (it's logged
+    // internally by discard_slot), but the pool must still kill the whole group.
+
+    let parent_pid = std::fs::read_to_string(parent_pid_file)
+        .unwrap()
+        .trim()
+        .parse::<i32>()
+        .unwrap();
+    let grandchild_pid = std::fs::read_to_string(grandchild_pid_file)
+        .unwrap()
+        .trim()
+        .parse::<i32>()
+        .unwrap();
+    assert_process_exits(parent_pid);
+    assert_process_exits(grandchild_pid);
+}
+
+#[cfg(unix)]
+fn assert_process_exits(pid: i32) {
+    for _ in 0..40 {
+        if !process_is_running(pid) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("process {pid} was still visible after codex timeout cleanup");
+}
+
+#[cfg(unix)]
+fn process_is_running(pid: i32) -> bool {
+    let proc_dir = Path::new("/proc").join(pid.to_string());
+    if !proc_dir.exists() {
+        return false;
+    }
+    let Ok(stat) = std::fs::read_to_string(proc_dir.join("stat")) else {
+        return true;
+    };
+    stat.split_whitespace()
+        .nth(2)
+        .is_none_or(|state| state != "Z")
+}

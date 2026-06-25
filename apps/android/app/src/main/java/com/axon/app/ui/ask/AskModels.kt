@@ -126,7 +126,7 @@ sealed interface ChatItem {
         val pageCount: Int? = null,
         val chunkCount: Int? = null,
         val status: String = "202 Accepted",
-        val endpoint: String = "POST /v1/actions",
+        val endpoint: String = "POST /v1/{operation}",
         val detail: String = "Job submitted. Track it from Jobs.",
     ) : ChatItem
 }

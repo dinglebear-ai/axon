@@ -1,0 +1,52 @@
+[package]
+name = "axon-extract"
+version.workspace = true
+edition = "2024"
+rust-version = "1.94.0"
+description = "Axon vertical extractors: per-site structured doc extraction (github, pypi, npm, crates.io, reddit, ...)"
+license = "MIT"
+
+[dependencies]
+axon-core = { path = "../axon-core" }
+axon-api = { path = "../axon-api" }
+axon-crawl = { path = "../axon-crawl" }
+axon-ingest = { path = "../axon-ingest" }
+flate2 = "1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
+reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "net",
+  "process",
+  "signal",
+  "sync",
+  "time",
+] }
+tracing = "0.1"
+regex = "1"
+url = "2"
+
+[lints.rust]
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"              # src/crawl.rs: acceptable module name
+[features]
+test-util = []
+
+[dev-dependencies]
+axon-core = { path = "../axon-core", features = ["test-util"] }
+httpmock = "0.8"
+serial_test = "3"
+proptest = "1"

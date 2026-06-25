@@ -9,6 +9,12 @@ ignore = [
   # Source: octocrab -> jsonwebtoken -> rsa v0.9.x; no upgrade path available.
   # Risk is low for our usage (JWT verification, not key generation/export).
   "RUSTSEC-2023-0071",
+  # RUSTSEC-2026-0183/RUSTSEC-2026-0184: git2 unsound APIs.
+  # Source: ssh2-config -> git2 build dependency. Axon only uses ssh2-config
+  # to parse local ~/.ssh/config target aliases and does not call the affected
+  # Remote::list() or BlameHunk Signature APIs.
+  "RUSTSEC-2026-0183",
+  "RUSTSEC-2026-0184",
 ]
 
 [licenses]

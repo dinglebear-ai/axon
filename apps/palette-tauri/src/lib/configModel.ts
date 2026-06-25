@@ -57,7 +57,7 @@ export const ENV_GROUPS: EnvGroup[] = [
       { key: 'AXON_MCP_HTTP_HOST', type: 'text', def: '127.0.0.1', desc: 'Bind host for the MCP HTTP server.' },
       { key: 'AXON_MCP_HTTP_PORT', type: 'int', def: '8001', desc: 'Bind port for the MCP HTTP server.' },
       { key: 'AXON_MCP_HTTP_TOKEN', type: 'secret', def: '', desc: 'Static bearer token. setup init generates this for local bearer mode.' },
-      { key: 'AXON_MCP_AUTH_MODE', type: 'enum', options: ['bearer', 'oauth'], def: 'bearer', desc: 'Auth policy for /mcp, /v1/actions, /v1/ask.' },
+      { key: 'AXON_MCP_AUTH_MODE', type: 'enum', options: ['bearer', 'oauth'], def: 'bearer', desc: 'Auth policy for /mcp and direct /v1 routes.' },
       { key: 'AXON_MCP_PUBLIC_URL', type: 'text', def: '', desc: 'Public base URL advertised to OAuth clients.' },
       { key: 'AXON_MCP_GOOGLE_CLIENT_ID', type: 'text', def: '', desc: 'Google OAuth client id.' },
       { key: 'AXON_MCP_GOOGLE_CLIENT_SECRET', type: 'secret', def: '', desc: 'Google OAuth client secret.' },

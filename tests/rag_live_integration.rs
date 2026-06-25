@@ -18,9 +18,9 @@
 //! semantic query through the real `services::query` entry point, asserts the
 //! embedded content comes back, and deletes the collection on the way out.
 
-use axon::core::config::Config;
-use axon::services::query::query;
-use axon::services::types::Pagination;
+use axon_core::config::Config;
+use axon_services::query::query;
+use axon_services::types::Pagination;
 
 /// Build a live config from env (`QDRANT_URL` / `TEI_URL`) targeting a unique
 /// throwaway collection. Returns `None` when the required service URLs are not
@@ -68,7 +68,7 @@ async fn embed_then_query_roundtrip_returns_embedded_content() {
     std::fs::write(&tmp, &doc).expect("write temp doc");
 
     // Embed the doc into the throwaway collection (ensure_collection runs inside).
-    let embed_result = axon::vector::ops::embed_path_native(&cfg, tmp.to_str().unwrap()).await;
+    let embed_result = axon_vector::ops::embed_path_native(&cfg, tmp.to_str().unwrap()).await;
 
     // Always attempt cleanup even if an assertion below fails.
     let outcome = async {

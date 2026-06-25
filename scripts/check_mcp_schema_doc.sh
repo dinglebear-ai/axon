@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify docs/reference/mcp/tool-schema.md is in sync with src/mcp/schema.rs.
+# Verify docs/reference/mcp/tool-schema.md is in sync with crates/axon-api/src/mcp_schema.rs.
 #
 # Previously this ran the generator inside the pre-commit hook and silently
 # `git add`ed the regenerated doc into the in-flight commit. That's
@@ -77,7 +77,7 @@ if diff -q <(strip_volatile "${regen}") <(strip_volatile "${backup}") >/dev/null
     exit 0
 fi
 
-echo "ERROR ${DOC_PATH} is out of sync with src/mcp/schema.rs" >&2
+echo "ERROR ${DOC_PATH} is out of sync with crates/axon-api/src/mcp_schema.rs" >&2
 echo "       Run: python3 ${GEN_SCRIPT} && git add ${DOC_PATH}" >&2
 echo "" >&2
 echo "       Diff (committed vs regenerated, ignoring Last Modified line):" >&2

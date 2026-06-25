@@ -1,0 +1,99 @@
+[package]
+name = "axon-services"
+version.workspace = true
+edition = "2024"
+rust-version = "1.94.0"
+description = "Axon services layer: typed entry points (query/ask/scrape/ingest/crawl/embed/memory/system) shared by CLI, MCP, and HTTP"
+license = "MIT"
+
+[dependencies]
+axon-core = { path = "../axon-core" }
+axon-api = { path = "../axon-api" }
+axon-crawl = { path = "../axon-crawl" }
+axon-vector = { path = "../axon-vector" }
+axon-ingest = { path = "../axon-ingest" }
+axon-extract = { path = "../axon-extract" }
+axon-jobs = { path = "../axon-jobs" }
+axon-code-index = { path = "../axon-code-index" }
+anyhow = "1"
+async-trait = "0.1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+indicatif = "0.18"
+psl = "2"
+futures-util = "0.3"
+reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
+rand_core = { version = "0.9", features = ["os_rng", "std"] }
+metrics = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+spider = { version = "2", default-features = false, features = [
+  "basic",
+  "chrome",
+  "regex",
+  "sitemap",
+  "adblock",
+  "chrome_stealth",
+  "chrome_screenshot",
+  "chrome_store_page",
+  "chrome_headless_new",
+  "chrome_simd",
+  "simd",
+  "inline-more",
+  "cache_mem",
+  "ua_generator",
+  "headers",
+  "time",
+  "control",
+  "hedge",
+  "etag_cache",
+  "warc",
+] }
+spider_agent = { version = "2.47.89", default-features = false, features = [
+  "search_tavily",
+  "openai",
+] }
+ssh2-config = "0.7.1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "net",
+  "process",
+  "signal",
+  "sync",
+  "time",
+] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
+toml = { version = "1.1", default-features = false, features = ["parse", "serde"] }
+toml_edit = "0.25.11"
+tracing = "0.1"
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+regex = "1"
+scraper = "0.22"
+dotenvy = "0.15"
+url = "2"
+libc = "0.2"
+
+[lints.rust]
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"              # src/crawl.rs: acceptable module name
+[features]
+test-util = []
+
+[dev-dependencies]
+axon-core = { path = "../axon-core", features = ["test-util"] }
+axon-vector = { path = "../axon-vector", features = ["test-util"] }
+httpmock = "0.8"
+serial_test = "3"
+proptest = "1"

@@ -39,7 +39,7 @@ pre-commit:
       glob: "skills/**"
       run: scripts/with_timeout.sh 30 -- ./scripts/validate_skills_ref.sh
     mcp-schema-doc:
-      glob: "src/mcp/schema.rs"
+      glob: "crates/axon-api/src/mcp_schema.rs"
       run: scripts/with_timeout.sh 30 -- scripts/check_mcp_schema_doc.sh
     helper-shell-scripts:
       glob: "scripts/{build-on-steamy,test-ask-gemma4}.sh"
@@ -83,4 +83,4 @@ pre-push:
   parallel: false
   commands:
     pre-push-router:
-      run: python3 scripts/ci/pre_push.py
+      run: cargo xtask pre-push

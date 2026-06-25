@@ -39,3 +39,9 @@ data class DomainsResponse(
     val limit: Long = 0,
     val offset: Long = 0,
 )
+
+@Serializable
+data class DomainIndexedResponse(
+    val domain: String = "",
+    val indexed: Boolean = false,
+)

@@ -1,0 +1,91 @@
+[package]
+name = "axon-cli"
+version.workspace = true
+edition = "2024"
+rust-version = "1.94.0"
+description = "Axon CLI adapter: argv dispatch + command handlers for all axon subcommands"
+license = "MIT"
+
+[dependencies]
+axon-core = { path = "../axon-core" }
+axon-crawl = { path = "../axon-crawl" }
+axon-vector = { path = "../axon-vector" }
+axon-ingest = { path = "../axon-ingest" }
+axon-extract = { path = "../axon-extract" }
+axon-jobs = { path = "../axon-jobs" }
+axon-services = { path = "../axon-services" }
+axon-mcp = { path = "../axon-mcp" }
+axon-web = { path = "../axon-web" }
+anyhow = "1"
+async-trait = "0.1"
+flate2 = "1"
+tar = "0.4"
+zip = "3"
+axum = { version = "0.8", features = ["ws"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+console = "0.16"
+indicatif = "0.18"
+futures-util = "0.3"
+reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
+metrics = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+spider = { version = "2", default-features = false, features = [
+  "basic",
+  "chrome",
+  "regex",
+  "sitemap",
+  "adblock",
+  "chrome_stealth",
+  "chrome_screenshot",
+  "chrome_store_page",
+  "chrome_headless_new",
+  "chrome_simd",
+  "simd",
+  "inline-more",
+  "cache_mem",
+  "ua_generator",
+  "headers",
+  "time",
+  "control",
+  "hedge",
+  "etag_cache",
+  "warc",
+] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "net",
+  "process",
+  "signal",
+  "sync",
+  "time",
+] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+sha2 = "0.11"
+hex = "0.4"
+url = "2"
+
+[lints.rust]
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"              # src/crawl.rs: acceptable module name
+[features]
+test-util = []
+
+[dev-dependencies]
+axon-core = { path = "../axon-core", features = ["test-util"] }
+httpmock = "0.8"
+serial_test = "3"
+proptest = "1"

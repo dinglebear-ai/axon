@@ -1,0 +1,65 @@
+[package]
+name = "axon-mcp"
+version.workspace = true
+edition = "2024"
+rust-version = "1.94.0"
+description = "Axon MCP server: single action/subaction-routed tool over rmcp stdio + streamable HTTP, lab-auth OAuth/bearer"
+license = "MIT"
+
+[dependencies]
+axon-core = { path = "../axon-core" }
+axon-api = { path = "../axon-api" }
+axon-vector = { path = "../axon-vector" }
+axon-extract = { path = "../axon-extract" }
+axon-jobs = { path = "../axon-jobs" }
+axon-services = { path = "../axon-services" }
+axon-authz = { path = "../axon-authz" }
+axum = { version = "0.8", features = ["ws"] }
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+subtle = "2"
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "net",
+  "process",
+  "signal",
+  "sync",
+  "time",
+] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+sha2 = "0.11"
+hex = "0.4"
+rmcp = { version = "1.7.0", features = [
+  "server",
+  "macros",
+  "transport-io",
+  "transport-streamable-http-server",
+  "schemars",
+  "elicitation",
+] }
+lab-auth = { git = "https://github.com/jmagar/lab.git", rev = "87cec3241f9baef22335de9cc8629ebbcd8ba047", package = "lab-auth" }
+url = "2"
+
+[lints.rust]
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"              # src/crawl.rs: acceptable module name
+[features]
+test-util = []
+
+[dev-dependencies]
+axon-core = { path = "../axon-core", features = ["test-util"] }
+httpmock = "0.8"
+serial_test = "3"
+proptest = "1"
