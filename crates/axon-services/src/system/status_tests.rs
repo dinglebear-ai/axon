@@ -227,9 +227,22 @@ async fn full_status_marks_count_failures_degraded() {
     );
 }
 
+/// Resets the process-global SQLite runtime health on drop, so the recorded
+/// IOERR below is cleared even if an assertion panics (unwind), not just on the
+/// success path. Without this, a panic would leak the global error into other
+/// tests in this binary.
+struct ResetSqliteRuntimeHealthOnDrop;
+
+impl Drop for ResetSqliteRuntimeHealthOnDrop {
+    fn drop(&mut self) {
+        axon_jobs::store::reset_sqlite_runtime_health_for_tests();
+    }
+}
+
 #[tokio::test]
 #[serial_test::serial(sqlite_runtime_health)]
 async fn full_status_includes_sqlite_diagnostics_and_degrades_on_runtime_ioerr() {
+    let _reset = ResetSqliteRuntimeHealthOnDrop;
     axon_jobs::store::reset_sqlite_runtime_health_for_tests();
     axon_jobs::store::record_sqlite_runtime_error(
         "error returned from database: (code: 522) disk I/O error",
@@ -253,6 +266,6 @@ async fn full_status_includes_sqlite_diagnostics_and_degrades_on_runtime_ioerr()
             .any(|error| error.contains("SQLite runtime IOERR"))
     );
 
-    // Don't leak the recorded global IOERR into other tests in this binary.
-    axon_jobs::store::reset_sqlite_runtime_health_for_tests();
+    // The `_reset` guard above clears the recorded global IOERR on scope exit
+    // (including unwind), so it cannot leak into other tests in this binary.
 }
