@@ -249,7 +249,7 @@
 #
 # OpenAI-compatible embedding endpoints, including vLLM served at a `/v1`
 # TEI_URL, use separate client-side defaults so native TEI tuning is not
-# overloaded for a different scheduler shape:
+# overloaded for a different scheduler shape.
 #
 # Model sent in OpenAI-compatible `/v1/embeddings` payloads.
 # Env: AXON_OPENAI_EMBEDDING_MODEL, fallback VLLM_SERVED_MODEL_NAME
@@ -270,6 +270,114 @@
 # Cross-document pool size for one OpenAI-compatible embedding wave.
 # Env: AXON_OPENAI_EMBED_POOL_MAX_INPUTS
 # openai-pool-max-inputs = 1024
+
+[chunking]
+# Markdown chunk target maximum. Env still wins for ad hoc overrides.
+# Env: AXON_MARKDOWN_CHUNK_MAX_CHARS
+# markdown-max-chars = 2000
+
+# Markdown chunk minimum before tiny chunk merge/padding behavior.
+# Env: AXON_MARKDOWN_CHUNK_MIN_CHARS
+# markdown-min-chars = 500
+
+# Character overlap between neighboring markdown chunks.
+# Env: AXON_CHUNK_OVERLAP_CHARS
+# overlap-chars = 200
+
+[qdrant]
+# Upsert request batch size and request parallelism.
+# Env: AXON_QDRANT_UPSERT_BATCH_SIZE
+# upsert-batch-size = 1024
+#
+# Env: AXON_QDRANT_UPSERT_PARALLELISM
+# upsert-parallelism = 1
+
+# Bulk-load mode and collection indexing thresholds for newly created
+# collections.
+# Env: AXON_QDRANT_BULK_LOAD
+# bulk-load = false
+#
+# Env: AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB
+# bulk-indexing-threshold-kb = 10485760
+#
+# Env: AXON_QDRANT_INDEXING_THRESHOLD_KB
+# indexing-threshold-kb = 20000
+
+# HNSW construction params for newly created collections.
+# Env: AXON_QDRANT_HNSW_M
+# hnsw-m = 32
+#
+# Env: AXON_QDRANT_HNSW_EF_CONSTRUCT
+# hnsw-ef-construct = 256
+
+# Payload index creation profile and fanout.
+# Env: AXON_QDRANT_PAYLOAD_INDEX_PROFILE
+# payload-index-profile = "full"
+#
+# Env: AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM
+# payload-index-parallelism = 16
+
+# Collection memory/latency tradeoffs for newly created collections.
+# Env: AXON_QDRANT_HNSW_ON_DISK
+# hnsw-on-disk = false
+#
+# Env: AXON_QDRANT_QUANTIZATION_ALWAYS_RAM
+# quantization-always-ram = true
+
+[code-search]
+# Foreground freshness TTL before checking whether a Git checkout changed.
+# Env: AXON_CODE_SEARCH_FRESHNESS_TTL_SECS
+# freshness-ttl-secs = 30
+
+# Timeout for a foreground code-search reindex.
+# Env: AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS
+# reindex-timeout-secs = 300
+
+# Skip files larger than this many bytes during local code indexing.
+# Env: AXON_CODE_SEARCH_MAX_FILE_BYTES
+# max-file-bytes = 10485760
+
+# Number of changed files processed per foreground refresh batch.
+# Env: AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE
+# changed-file-batch-size = 5
+
+[watch]
+# Recurring watch scheduler sweep interval and lease TTL.
+# Env: AXON_WATCH_TICK_SECS
+# tick-secs = 15
+#
+# Env: AXON_WATCH_LEASE_SECS
+# lease-secs = 300
+
+[endpoints]
+# Concurrency limits for endpoint map/verification helpers.
+# Env: AXON_ENDPOINT_BUNDLE_CONCURRENCY
+# bundle-concurrency = 8
+#
+# Env: AXON_ENDPOINT_CHROME_CONCURRENCY
+# chrome-concurrency = 1
+#
+# Env: AXON_ENDPOINT_VERIFY_CONCURRENCY
+# verify-concurrency = 16
+#
+# Env: AXON_ENDPOINT_PROBE_CONCURRENCY
+# probe-concurrency = 4
+
+[mcp]
+# Timeout for MCP task-result waits.
+# Env: AXON_TASK_RESULT_WAIT_TIMEOUT_SECS
+# task-result-wait-timeout-secs = 300
+
+[mcp.embed]
+# Local filesystem embed guards for MCP-triggered embed actions.
+# Env: AXON_MCP_EMBED_MAX_LOCAL_BYTES
+# max-local-bytes = 10485760
+#
+# Env: AXON_MCP_EMBED_MAX_LOCAL_DEPTH
+# max-local-depth = 16
+#
+# Env: AXON_MCP_EMBED_MAX_LOCAL_ENTRIES
+# max-local-entries = 10000
 
 [workers]
 # Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
@@ -536,47 +644,17 @@ remote-local-policy = false
 # Env: AXON_STRUCTURED_DATA_MAX_BYTES. Default: 65536 (64 KiB). Clamped 1024–16777216.
 # structured-data-max-bytes = 65536
 
-# ── Advanced env-only overrides ─────────────────────────────────────────────
-# These tuning knobs are read directly from the environment and do NOT belong
-# in .env.example (reserved for secrets, service URLs, auth/bootstrap, and
-# Docker Compose interpolation). They are listed here for operator
-# discoverability; they are not TOML keys yet. Set them as env vars when tuning.
+# ── Remaining advanced env-only overrides ───────────────────────────────────
+# These implemented values are still environment-only because they are host
+# affinity, source-specific migration guards, or early runtime/bootstrap knobs.
+# They do NOT belong in .env.example unless a deployment actually needs them.
 #
 # Embed job filesystem affinity. Compose sets the server container to
 # "axon-container"; host CLI workers normally leave this empty.
 #   AXON_FS_NAMESPACE
-#
-# Qdrant collection memory/latency tradeoffs for newly created collections.
-# Defaults: hnsw-on-disk=false, quantization-always-ram=true.
-#   AXON_QDRANT_HNSW_ON_DISK
-#   AXON_QDRANT_QUANTIZATION_ALWAYS_RAM
 #
 # Source chunking and conditional recrawl circuit breakers. Leave unset unless
 # tuning a known large-corpus edge case.
 #   AXON_MAX_TREE_SITTER_FILE_BYTES
 #   AXON_RESIDUAL_GAP_FLOOR
 #   AXON_ETAG_MAX_MISS_RUNS
-#
-# Embed throughput guards. Leave unset for defaults. On the RTX 4070/Qwen
-# profile, prefer raising TEI_MAX_BATCH_REQUESTS server-side before raising
-# AXON_TEI_MAX_CONCURRENT; docs chunks saturated near 200 chunks/sec and larger
-# client fanout mainly increased queue latency.
-#   AXON_TEI_MAX_CONCURRENT
-#   AXON_TEI_MAX_IN_FLIGHT_INPUTS
-#   AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE
-#   AXON_OPENAI_EMBED_MAX_CONCURRENT
-#   AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS
-#   AXON_OPENAI_EMBED_POOL_MAX_INPUTS
-#   AXON_EMBED_POOL_MAX_INPUTS
-#   AXON_MARKDOWN_CHUNK_MIN_CHARS
-#   AXON_MARKDOWN_CHUNK_MAX_CHARS
-#   AXON_CHUNK_OVERLAP_CHARS
-#   AXON_QDRANT_UPSERT_BATCH_SIZE
-#   AXON_QDRANT_UPSERT_PARALLELISM
-#   AXON_QDRANT_BULK_LOAD
-#   AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB
-#   AXON_QDRANT_INDEXING_THRESHOLD_KB
-#   AXON_QDRANT_HNSW_M
-#   AXON_QDRANT_HNSW_EF_CONSTRUCT
-#   AXON_QDRANT_PAYLOAD_INDEX_PROFILE
-#   AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM

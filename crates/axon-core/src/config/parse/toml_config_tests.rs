@@ -168,6 +168,17 @@ max-local-entries = 10000
 }
 
 #[test]
+fn root_config_example_parses() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root");
+    let raw = std::fs::read_to_string(repo_root.join("config.example.toml"))
+        .expect("read root config.example.toml");
+    load_toml_config_from_str(&raw).unwrap();
+}
+
+#[test]
 fn valid_toml_parses_build_section() {
     let cfg = load_toml_config_from_str("[build]\nallow-fallback-web-assets = true\n")
         .expect("build section should parse");
