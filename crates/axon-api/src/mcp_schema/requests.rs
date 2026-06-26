@@ -349,6 +349,21 @@ pub struct DedupeRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PurgeRequest {
+    /// URL (or seed-URL/origin when `prefix` is set) to delete from the index.
+    pub target: Option<String>,
+    /// Match `target` as a prefix over a whole docs subtree / origin.
+    #[serde(default)]
+    pub prefix: bool,
+    /// Preview only — count matches without deleting. **Defaults to `true`** for
+    /// agent safety: a bare `purge` previews; set `dry_run=false` to delete.
+    pub dry_run: Option<bool>,
+    pub collection: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MigrateRequest {

@@ -25,6 +25,15 @@ fn ingest_req(source_type: IngestSourceType, target: &str) -> IngestRequest {
     }
 }
 
+/// Request with NO explicit source_type — exercises the auto-classify fallback.
+fn auto_ingest_req(target: &str) -> IngestRequest {
+    IngestRequest {
+        source_type: None,
+        target: Some(target.to_string()),
+        ..Default::default()
+    }
+}
+
 #[async_trait]
 impl ServiceJobRuntime for CaptureRuntime {
     fn mode_name(&self) -> &'static str {
@@ -142,6 +151,52 @@ fn source_from_mcp_request_rejects_invalid_github_target() {
         .expect_err("invalid github target");
 
     assert!(err.contains("invalid GitHub target"));
+}
+
+#[test]
+fn source_from_mcp_request_auto_classifies_when_source_type_omitted() {
+    let cfg = Config::test_default();
+
+    // GitHub owner/repo shorthand.
+    let gh = source_from_mcp_request(&auto_ingest_req("unraid/api"), &cfg).expect("auto github");
+    assert!(matches!(gh, IngestSource::Github { repo, .. } if repo == "unraid/api"));
+
+    // GitLab URL — the case the palette's TS classifier got wrong (sent as github).
+    let gl = source_from_mcp_request(&auto_ingest_req("https://gitlab.com/group/project"), &cfg)
+        .expect("auto gitlab");
+    assert!(matches!(gl, IngestSource::Gitlab { .. }));
+
+    // Reddit shorthand.
+    let rd = source_from_mcp_request(&auto_ingest_req("r/rust"), &cfg).expect("auto reddit");
+    assert!(matches!(rd, IngestSource::Reddit { target } if target == "r/rust"));
+}
+
+#[test]
+fn source_from_mcp_request_auto_classify_requires_a_target() {
+    let cfg = Config::test_default();
+    let err = source_from_mcp_request(
+        &IngestRequest {
+            source_type: None,
+            target: None,
+            ..Default::default()
+        },
+        &cfg,
+    )
+    .expect_err("auto-classify with no target");
+    assert!(err.contains("target"));
+}
+
+#[tokio::test]
+async fn preflight_skips_non_github_sources() {
+    // Non-GitHub sources are never probed, so this is offline-safe and must
+    // succeed without touching the network.
+    let cfg = Config::test_default();
+    let source = IngestSource::Reddit {
+        target: "r/rust".to_string(),
+    };
+    preflight_ingest_source(&cfg, &source)
+        .await
+        .expect("non-github preflight is a no-op");
 }
 
 #[test]
@@ -306,16 +361,17 @@ fn source_from_mcp_request_rejects_non_reddit_comments_url() {
 }
 
 #[test]
-fn source_from_mcp_request_requires_source_type() {
+fn source_from_mcp_request_auto_classifies_omitted_source_type() {
+    // Previously this errored ("source_type is required"); now an omitted
+    // source_type auto-detects from the target via the shared classifier.
     let cfg = Config::test_default();
     let req = IngestRequest {
         target: Some("owner/repo".to_string()),
         ..Default::default()
     };
 
-    let err = source_from_mcp_request(&req, &cfg).expect_err("missing source type");
-
-    assert!(err.contains("source_type is required"));
+    let source = source_from_mcp_request(&req, &cfg).expect("auto-classified github");
+    assert!(matches!(source, IngestSource::Github { repo, .. } if repo == "owner/repo"));
 }
 
 #[test]

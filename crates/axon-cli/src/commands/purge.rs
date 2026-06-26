@@ -1,9 +1,14 @@
 //! CLI wrapper for deleting indexed Qdrant points by URL.
+//!
+//! Thin shim over `services::system::purge` — the CLI owns only the dry-run
+//! preview prompt and output formatting; all delete logic lives in the service
+//! layer (shared with the MCP and REST surfaces).
 
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use axon_core::ui::{accent, confirm_destructive, muted, primary, symbol_for_status};
-use axon_vector::ops::qdrant::{QdrantDeleteByUrlResult, qdrant_delete_by_url};
+use axon_services::system::purge;
+use axon_services::types::PurgeResult;
 use std::error::Error;
 
 pub async fn run_purge(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -15,7 +20,7 @@ pub async fn run_purge(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .filter(|value| !value.trim().is_empty())
         .ok_or("purge requires a URL argument")?;
 
-    let preview = qdrant_delete_by_url(cfg, target, cfg.purge_prefix, true).await?;
+    let preview = purge(cfg, target, cfg.purge_prefix, true).await?;
     if cfg.purge_dry_run {
         return report(cfg, &preview);
     }
@@ -44,11 +49,11 @@ pub async fn run_purge(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let result = qdrant_delete_by_url(cfg, target, cfg.purge_prefix, false).await?;
+    let result = purge(cfg, target, cfg.purge_prefix, false).await?;
     report(cfg, &result)
 }
 
-fn report(cfg: &Config, result: &QdrantDeleteByUrlResult) -> Result<(), Box<dyn Error>> {
+fn report(cfg: &Config, result: &PurgeResult) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
         println!(
             "{}",

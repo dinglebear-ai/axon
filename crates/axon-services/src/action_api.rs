@@ -109,7 +109,9 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         // Destructive / admin operations. INVARIANT: these must never return None here — the
         // authorize_action unconditional-auth guard for Migrate/Dedupe silently depends on
         // required_scope returning Some(...) so the scope check runs after auth is confirmed.
-        AxonRequest::Dedupe(_) | AxonRequest::Migrate(_) => Some("axon:write"),
+        AxonRequest::Dedupe(_) | AxonRequest::Migrate(_) | AxonRequest::Purge(_) => {
+            Some("axon:write")
+        }
         // ElicitDemo is an MCP elicitation primitive. Explicit arm prevents it silently
         // absorbing a future wildcard default change.
         AxonRequest::ElicitDemo(_) => Some("axon:write"),
@@ -178,6 +180,7 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Debug(_) => "debug",
         AxonRequest::Diff(_) => "diff",
         AxonRequest::Dedupe(_) => "dedupe",
+        AxonRequest::Purge(_) => "purge",
         AxonRequest::Migrate(_) => "migrate",
         AxonRequest::Watch(_) => "watch",
         AxonRequest::Setup(_) => "setup",

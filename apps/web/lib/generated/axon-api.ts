@@ -178,6 +178,12 @@ export type components = {
             "title"?: string | null;
             "url": string;
         };
+        "PurgeRequest": {
+            "collection"?: string | null;
+            "dry_run"?: boolean;
+            "prefix"?: boolean;
+            "target": string;
+        };
         "ReadinessBody": {
             "ok": boolean;
             "qdrant": string;
@@ -266,7 +272,7 @@ export type components = {
         "RestIngestRequest": {
             "include_source"?: boolean | null;
             "sessions"?: null | components['schemas']['RestSessionsIngestOptions'];
-            "source_type": components['schemas']['RestIngestSourceType'];
+            "source_type"?: null | components['schemas']['RestIngestSourceType'];
             "target"?: string | null;
         };
         "RestIngestSourceType": "github" | "gitlab" | "gitea" | "git" | "reddit" | "youtube" | "rss" | "sessions";
@@ -446,6 +452,7 @@ export type paths = {
     "/v1/memory": { post: operations["memory"] };
     "/v1/mobile/sessions": { get: operations["list_mobile_sessions"] };
     "/v1/mobile/sessions/{id}": { get: operations["get_mobile_session"]; put: operations["upsert_mobile_session"]; delete: operations["delete_mobile_session"] };
+    "/v1/purge": { post: operations["purge"] };
     "/v1/query": { post: operations["query"] };
     "/v1/research": { post: operations["research"] };
     "/v1/research/stream": { post: operations["research_stream"] };
@@ -515,6 +522,7 @@ export type operations = {
     "get_mobile_session": { method: "get"; path: "/v1/mobile/sessions/{id}"; operationId: "get_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['MobileSessionDetailResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "upsert_mobile_session": { method: "put"; path: "/v1/mobile/sessions/{id}"; operationId: "upsert_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: components['schemas']['UpsertMobileSessionRequest']; responses: { "200": components['schemas']['UpsertMobileSessionResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "delete_mobile_session": { method: "delete"; path: "/v1/mobile/sessions/{id}"; operationId: "delete_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['DeleteMobileSessionResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "500": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "purge": { method: "post"; path: "/v1/purge"; operationId: "purge"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['PurgeRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: never };
     "query": { method: "post"; path: "/v1/query"; operationId: "query"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestQueryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research": { method: "post"; path: "/v1/research"; operationId: "research"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "504": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research_stream": { method: "post"; path: "/v1/research/stream"; operationId: "research_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
