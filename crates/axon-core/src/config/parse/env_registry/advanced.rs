@@ -436,31 +436,6 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Advanced,
         false,
     ),
-    // Endpoint discovery concurrency caps — operator-tunable process-wide limits.
-    spec(
-        "AXON_ENDPOINT_BUNDLE_CONCURRENCY",
-        TrustedOperatorBootstrap,
-        HostOnly,
-        None,
-        Advanced,
-        false,
-    ),
-    spec(
-        "AXON_ENDPOINT_CHROME_CONCURRENCY",
-        TrustedOperatorBootstrap,
-        HostOnly,
-        None,
-        Advanced,
-        false,
-    ),
-    spec(
-        "AXON_ENDPOINT_VERIFY_CONCURRENCY",
-        TrustedOperatorBootstrap,
-        HostOnly,
-        None,
-        Advanced,
-        false,
-    ),
     // Internal debug / CI flags — not user-configurable operator tuning.
     spec(
         "AXON_DOMAINS_DETAILED",

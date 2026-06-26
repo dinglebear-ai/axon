@@ -5,7 +5,7 @@ pub(crate) mod excludes;
 pub(crate) mod helpers;
 mod performance;
 mod toml_config;
-pub(crate) mod tuning;
+pub mod tuning;
 
 use super::cli::Cli;
 use super::help::maybe_print_top_level_help_and_exit;

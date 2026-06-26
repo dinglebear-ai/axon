@@ -1,6 +1,7 @@
 use super::{EndpointError, validate_url_with_dns_timeout};
 use crate::types::{EndpointReport, EndpointSourceKind, RpcProbeResult, RpcProtocol, RpcTransport};
 use axon_core::config::Config;
+use axon_core::config::parse::tuning;
 use axon_core::http::{axon_ua, build_client};
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
@@ -21,11 +22,7 @@ const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 /// Per-endpoint concurrency cap, shared across all concurrent discovery sessions.
 /// Override with `AXON_ENDPOINT_PROBE_CONCURRENCY` (default 4, min 1).
 fn probe_concurrency() -> usize {
-    std::env::var("AXON_ENDPOINT_PROBE_CONCURRENCY")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(4)
-        .max(1)
+    tuning::endpoints_probe_concurrency()
 }
 
 /// Process-wide semaphore so `AXON_ENDPOINT_PROBE_CONCURRENCY` bounds the total

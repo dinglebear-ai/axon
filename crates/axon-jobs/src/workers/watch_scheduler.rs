@@ -19,12 +19,14 @@
 use crate::store::now_ms;
 use crate::watch::{lease_due_watches, parse_watch_lease_secs, run_leased_watch_now_with_pool};
 use axon_core::config::Config;
+use axon_core::config::parse::tuning;
 use sqlx::SqlitePool;
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+#[cfg_attr(not(test), allow(dead_code))]
 const DEFAULT_TICK_SECS: u64 = 15;
 #[cfg(test)]
 const DEFAULT_LEASE_SECS: i64 = 300;
@@ -32,22 +34,24 @@ const DEFAULT_LEASE_SECS: i64 = 300;
 /// concurrent runs. The lease keeps any watch left over due for the next tick.
 const LEASE_BATCH_LIMIT: i64 = 32;
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn parse_tick_secs(raw: Option<String>) -> u64 {
     raw.and_then(|raw| raw.parse::<u64>().ok())
         .filter(|secs| *secs >= 1)
         .unwrap_or(DEFAULT_TICK_SECS)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn parse_lease_secs(raw: Option<String>) -> i64 {
     parse_watch_lease_secs(raw)
 }
 
 fn tick_interval() -> Duration {
-    Duration::from_secs(parse_tick_secs(std::env::var("AXON_WATCH_TICK_SECS").ok()))
+    Duration::from_secs(tuning::watch_tick_secs())
 }
 
 fn lease_ttl_ms() -> i64 {
-    parse_lease_secs(std::env::var("AXON_WATCH_LEASE_SECS").ok()) * 1_000
+    tuning::watch_lease_secs() * 1_000
 }
 
 /// Run one sweep: lease due watches and spawn a detached run for each.

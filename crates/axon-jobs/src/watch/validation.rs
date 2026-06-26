@@ -79,6 +79,7 @@ pub fn validate_task_payload(payload: &serde_json::Value) -> Result<(), String> 
 pub const MIN_WATCH_INTERVAL_SECS: i64 = 30;
 /// Maximum allowed watch interval (7 days).
 pub const MAX_WATCH_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60;
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) const DEFAULT_WATCH_LEASE_SECS: i64 = 300;
 pub(super) const MAX_WATCH_LIST_LIMIT: i64 = 500;
 
