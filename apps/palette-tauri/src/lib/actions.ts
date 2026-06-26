@@ -33,6 +33,7 @@ export type PaletteSubcommand =
   | "diff"
   | "screenshot"
   | "dedupe"
+  | "purge"
   | "watch-list"
   | "watch-create"
   | "watch-run"
@@ -327,6 +328,16 @@ const STATIC_ACTIONS = [
     tone: "warn",
   },
   {
+    label: "Purge URL",
+    subcommand: "purge",
+    kind: "admin",
+    argMode: "split",
+    aliases: ["purge", "delete-url", "forget"],
+    description: "Delete all indexed points for a URL from the collection. Destructive.",
+    example: "purge https://docs.rs/serde",
+    tone: "warn",
+  },
+  {
     label: "List watches",
     subcommand: "watch-list",
     kind: "admin",
@@ -477,5 +488,22 @@ export function acceptsDirectUrl(action: PaletteAction): boolean {
     "brand",
     "screenshot",
     "watch-create",
+    "purge",
   ].includes(action.subcommand);
+}
+
+// Actions whose argument may be a NON-URL target, so a scheme-less argument must
+// NOT be coerced into an `https://` URL. They still accept a URL — it's just
+// passed through verbatim and classified server-side:
+//   - `ingest`: `owner/repo`, `r/subreddit`, a YouTube id, … (coercing
+//     `ingest unraid/api` → `https://unraid/api` breaks `parse_github_repo`).
+//   - `embed`: a file, a directory, or free text (coercing `embed some notes`
+//     → `https://some notes` corrupts the input).
+const BARE_TARGET_SUBCOMMANDS = new Set<PaletteSubcommand>(["ingest", "embed"]);
+
+// Whether a bare (scheme-less) argument should be coerced to an https:// URL on
+// submit. NARROWER than `acceptsDirectUrl` — the bare-target actions above are
+// excluded so their non-URL inputs survive intact.
+export function coercesArgumentToUrl(action: PaletteAction): boolean {
+  return acceptsDirectUrl(action) && !BARE_TARGET_SUBCOMMANDS.has(action.subcommand);
 }

@@ -4,8 +4,18 @@
 // request. Splitting them here keeps the registry declarative and the client
 // thin. No network calls or JSX here — pure shaping only.
 
+import type { components } from "./axon-api";
 import type { PaletteConfig } from "./axonClient";
 import { splitShellWords } from "./shellWords";
+
+/**
+ * Generated OpenAPI request schemas — the single source of truth for `/v1/*`
+ * request shapes. Each typed `BodyBuilder<Req[...]>` below is checked against
+ * its route's schema at compile time, so a backend field rename/removal (which
+ * `cargo xtask check-openapi-drift` regenerates into `axon-api.d.ts`) breaks the
+ * palette build instead of failing silently at runtime.
+ */
+type Req = components["schemas"];
 
 export type HttpMethod = "GET" | "POST" | "DELETE";
 
@@ -22,8 +32,10 @@ export interface RequestContext {
   arg: string;
   /** Tokenized argument words, per the action's `argMode`. */
   words: string[];
-  /** `{ collection }` when a collection is configured, else `{}`. */
-  collectionBody: Record<string, unknown>;
+  /** `{ collection }` when a collection is configured, else `{}`. Precisely
+   * typed (not `Record`) so builders that spread it stay assignable to their
+   * generated request schema. */
+  collectionBody: { collection?: string };
   /** Effective result limit (>= 1). */
   limit: number;
 }
@@ -51,7 +63,7 @@ function wordsFor(argMode: ArgMode, arg: string): string[] {
   }
 }
 
-export type BodyBuilder = (ctx: RequestContext) => Record<string, unknown> | null;
+export type BodyBuilder<T = Record<string, unknown>> = (ctx: RequestContext) => T | null;
 
 // ---- Static route helpers ------------------------------------------------
 
@@ -63,31 +75,39 @@ export const noBody: BodyBuilder = () => null;
 
 // ---- Per-action body builders -------------------------------------------
 
-export const scrapeBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url"), ...ctx.collectionBody });
-export const crawlBody: BodyBuilder = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
-export const mapBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url") });
-export const summarizeBody: BodyBuilder = (ctx) => ({ urls: required(ctx.words, "urls") });
-export const askBody: BodyBuilder = (ctx) => ({
+export const scrapeBody: BodyBuilder<Req["RestScrapeRequest"]> = (ctx) => ({ url: first(ctx.words, "url"), ...ctx.collectionBody });
+export const crawlBody: BodyBuilder<Req["RestCrawlRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
+export const mapBody: BodyBuilder<Req["RestMapRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
+export const summarizeBody: BodyBuilder<Req["RestSummarizeRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls") });
+export const askBody: BodyBuilder<Req["RestAskRequest"]> = (ctx) => ({
   query: first(ctx.words, "query"),
   explain: false,
   diagnostics: false,
   ...ctx.collectionBody,
 });
-export const chatBody: BodyBuilder = (ctx) => ({ message: first(ctx.words, "message") });
-export const queryBody: BodyBuilder = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit, ...ctx.collectionBody });
-export const retrieveBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url"), ...ctx.collectionBody });
-export const suggestBody: BodyBuilder = (ctx) => (ctx.words[0] ? { focus: ctx.words[0] } : {});
-export const evaluateBody: BodyBuilder = (ctx) => ({ question: first(ctx.words, "question") });
-export const searchBody: BodyBuilder = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
-export const researchBody: BodyBuilder = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
-export const embedBody: BodyBuilder = (ctx) => ({ input: first(ctx.words, "input"), ...ctx.collectionBody });
-export const extractBody: BodyBuilder = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
-export const ingestBody: BodyBuilder = (ctx) => ingestTargetBody(first(ctx.words, "target"));
-export const endpointsBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url") });
-export const brandBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url") });
-export const diffBody: BodyBuilder = (ctx) => diffRequestBody(ctx.words);
-export const screenshotBody: BodyBuilder = (ctx) => ({ url: first(ctx.words, "url"), full_page: true });
-export const dedupeBody: BodyBuilder = (ctx) => ctx.collectionBody;
+export const chatBody: BodyBuilder<Req["RestChatRequest"]> = (ctx) => ({ message: first(ctx.words, "message") });
+export const queryBody: BodyBuilder<Req["RestQueryRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit, ...ctx.collectionBody });
+export const retrieveBody: BodyBuilder<Req["RestRetrieveRequest"]> = (ctx) => ({ url: first(ctx.words, "url"), ...ctx.collectionBody });
+export const suggestBody: BodyBuilder<Req["RestSuggestRequest"]> = (ctx) => (ctx.words[0] ? { focus: ctx.words[0] } : {});
+export const evaluateBody: BodyBuilder<Req["RestEvaluateRequest"]> = (ctx) => ({ question: first(ctx.words, "question") });
+export const searchBody: BodyBuilder<Req["RestSearchRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
+export const researchBody: BodyBuilder<Req["RestResearchRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
+export const embedBody: BodyBuilder<Req["RestEmbedRequest"]> = (ctx) => ({ input: first(ctx.words, "input"), ...ctx.collectionBody });
+export const extractBody: BodyBuilder<Req["RestExtractRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
+// Ingest sends the RAW target with NO source_type — the server auto-detects the
+// provider via the canonical shared classifier (`classify_target`), the single
+// source of truth across CLI/MCP/REST/palette. Do NOT reintroduce a client-side
+// classifier here: it drifts from the backend (the old one only knew github/
+// reddit/youtube and rejected gitlab/gitea/git/rss targets).
+export const ingestBody: BodyBuilder<Req["RestIngestRequest"]> = (ctx) => ({ target: first(ctx.words, "target") });
+export const endpointsBody: BodyBuilder<Req["EndpointsRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
+export const brandBody: BodyBuilder<Req["RestBrandRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
+export const diffBody: BodyBuilder<Req["RestDiffRequest"]> = (ctx) => diffRequestBody(ctx.words);
+export const screenshotBody: BodyBuilder<Req["RestScreenshotRequest"]> = (ctx) => ({ url: first(ctx.words, "url"), full_page: true });
+export const dedupeBody: BodyBuilder<Req["DedupeRequest"]> = (ctx) => ctx.collectionBody;
+// Purge deletes by default (matches the CLI); the palette gates it behind a
+// confirmation guard. `prefix`/`dry_run` default false server-side.
+export const purgeBody: BodyBuilder<Req["PurgeRequest"]> = (ctx) => ({ target: first(ctx.words, "target") });
 export const watchCreateBody: BodyBuilder = (ctx) => watchCreateRequestBody(ctx.words);
 export const ingestSessionsPreparedBody: BodyBuilder = (ctx) => jsonBody(ctx.arg, "prepared sessions request");
 
@@ -101,30 +121,6 @@ export function required(words: string[], field: string): string[] {
   const clean = words.map((word) => word.trim()).filter(Boolean);
   if (!clean.length) throw new Error(`${field} is required`);
   return clean;
-}
-
-function ingestTargetBody(target: string): Record<string, unknown> {
-  const lower = target.toLowerCase();
-  const host = targetHost(lower);
-  if (hostMatches(host, "youtube.com") || host === "youtu.be") {
-    return { source_type: "youtube", target };
-  }
-  if (hostMatches(host, "reddit.com") || lower.startsWith("/r/") || lower.startsWith("r/")) {
-    return { source_type: "reddit", target };
-  }
-  return { source_type: "github", target, include_source: true };
-}
-
-function targetHost(target: string): string | null {
-  try {
-    return new URL(target).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function hostMatches(host: string | null, domain: string): boolean {
-  return host === domain || Boolean(host?.endsWith(`.${domain}`));
 }
 
 function watchCreateRequestBody(words: string[]): Record<string, unknown> {
@@ -142,7 +138,7 @@ function watchCreateRequestBody(words: string[]): Record<string, unknown> {
   };
 }
 
-function diffRequestBody(words: string[]): Record<string, unknown> {
+function diffRequestBody(words: string[]): Req["RestDiffRequest"] {
   const clean = required(words, "url_a and url_b");
   if (clean.length < 2) throw new Error("diff requires two URLs");
   return { url_a: clean[0], url_b: clean[1] };

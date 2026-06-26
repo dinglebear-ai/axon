@@ -668,6 +668,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["purge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/query": {
         parameters: {
             query?: never;
@@ -1124,6 +1140,16 @@ export interface components {
             title?: string | null;
             url: string;
         };
+        PurgeRequest: {
+            /** @description Optional collection override (defaults to the server's configured one). */
+            collection?: string | null;
+            /** @description Preview only — count matches without deleting. */
+            dry_run?: boolean;
+            /** @description Match `target` as a prefix over a whole docs subtree / origin. */
+            prefix?: boolean;
+            /** @description URL (or seed-URL/origin when `prefix` is set) to delete from the index. */
+            target: string;
+        };
         ReadinessBody: {
             ok: boolean;
             qdrant: string;
@@ -1220,7 +1246,7 @@ export interface components {
         RestIngestRequest: {
             include_source?: boolean | null;
             sessions?: null | components["schemas"]["RestSessionsIngestOptions"];
-            source_type: components["schemas"]["RestIngestSourceType"];
+            source_type?: null | components["schemas"]["RestIngestSourceType"];
             target?: string | null;
         };
         /** @enum {string} */
@@ -3871,6 +3897,48 @@ export interface operations {
             };
             /** @description Session store error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    purge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Purge result (counts of points/URLs matched or deleted) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid purge request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Upstream vector service unavailable */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
