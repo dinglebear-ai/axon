@@ -14,6 +14,7 @@ import {
   type PaletteResult,
 } from "@/lib/axonClient";
 import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
+import { type AsyncJobFamily, pendingJobSnapshot, summarizeJob } from "@/lib/jobProgress";
 import { formatPayload, outputKindFor, type OutputKind } from "@/lib/format";
 import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import { argumentFor, validationMessage, type ParsedCommand } from "@/lib/paletteView";
@@ -84,6 +85,15 @@ function makeErrorRun(args: {
     transcript: args.transcript,
     result: errorResult(args.message, args.path),
   };
+}
+
+// Concise display label for an async-job target: the first token, shortened to
+// a host when it is a URL (`https://docs.rs/x` → `docs.rs`), else verbatim
+// (`unraid/api`, `r/rust`). Used by the live job card's "Ingesting <label>".
+function jobLabel(argument: string): string {
+  const first = argument.trim().split(/\s+/)[0] ?? "";
+  if (!first) return "";
+  return /^https?:\/\//i.test(first) ? hostFromUrl(first) : first;
 }
 
 // Terminal error of a streamed action (the `palette://stream` "error" event or a
@@ -401,6 +411,77 @@ export function useActionRunner({
     }
   }
 
+  // ── Async-job branch: submit embed/extract/ingest, then hand the live poll
+  // off to useJobPoll. Mirrors submitCrawl but uses the generic JobSnapshot.
+  async function submitAsyncJob(
+    action: RemotePaletteAction,
+    argument: string,
+    family: AsyncJobFamily,
+    cli: Client,
+    cfg: PaletteConfig,
+  ) {
+    const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
+    const label = jobLabel(argument);
+    const startedAtMs = Date.now();
+    setRun({
+      kind: "asyncJob",
+      family,
+      title: `${action.label}`,
+      subtitle: "submitting…",
+      jobId: "",
+      statusUrl: "",
+      target: argument,
+      startedAtMs,
+      snapshot: pendingJobSnapshot(family, label),
+      minimized: false,
+    });
+    try {
+      const result = await executeAction(cli, action, argument, cfg);
+      const payload = (result.payload ?? {}) as Record<string, unknown>;
+      const jobId =
+        typeof payload.job_id === "string"
+          ? payload.job_id
+          : typeof payload.id === "string"
+            ? payload.id
+            : null;
+      if (!result.ok || !jobId) {
+        const text = formatPayload(action.subcommand, result.payload);
+        const subtitle = `${result.method} ${result.path} | HTTP ${result.status}`;
+        pushHistory(action, argument || action.subcommand, {
+          status: result.status,
+          title: `${action.label} failed`,
+          subtitle,
+          text,
+          outputKind: "code",
+          result,
+        });
+        setRun({ kind: "error", title: `${action.label} failed`, subtitle, text, outputKind: "code", result });
+        return;
+      }
+      pushHistory(action, argument || action.subcommand, {
+        status: result.status,
+        title: `${action.label}`,
+        subtitle: `job ${jobId}`,
+        outputKind: "code",
+        result,
+      });
+      setRun((current) =>
+        current.kind === "asyncJob" && current.target === argument
+          ? {
+              ...current,
+              jobId,
+              statusUrl: `/v1/${family}/${jobId}`,
+              subtitle: `job ${jobId}`,
+              snapshot: summarizeJob(family, result.payload, { jobId, label }),
+            }
+          : current,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRun(makeErrorRun({ title: `${action.label} failed`, subtitle: commandLine, message, path: `/v1/${family}` }));
+    }
+  }
+
   // ── Stream branch: start the streamed request; terminal states arrive via the
   // `palette://stream` listener and reduceStreamEvent. Returns false when the
   // current (non-Tauri) runtime can't stream so the caller falls back to one-shot.
@@ -481,7 +562,13 @@ export function useActionRunner({
     const current = runRef.current;
     // In-flight guard: one-shot serialization is the runtime's job (oneShotPending),
     // but a live crawl-job or active stream must still block re-entry.
-    if (oneShotPending || current.kind === "streaming" || (current.kind === "job" && !current.jobId)) return;
+    if (
+      oneShotPending ||
+      current.kind === "streaming" ||
+      (current.kind === "job" && !current.jobId) ||
+      (current.kind === "asyncJob" && !current.jobId)
+    )
+      return;
     const rawArgument = argumentOverride ?? argumentFor(action, modeAction, parsed, query);
 
     if (action.subcommand === "help") {
@@ -530,6 +617,14 @@ export function useActionRunner({
 
     if (executableAction.subcommand === "crawl") {
       await submitCrawl(executableAction, argument, client, config);
+      return;
+    }
+    if (
+      executableAction.subcommand === "embed" ||
+      executableAction.subcommand === "extract" ||
+      executableAction.subcommand === "ingest"
+    ) {
+      await submitAsyncJob(executableAction, argument, executableAction.subcommand, client, config);
       return;
     }
     if (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") {

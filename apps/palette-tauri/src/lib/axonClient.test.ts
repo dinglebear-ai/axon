@@ -60,50 +60,23 @@ describe("executeAction", () => {
     });
   });
 
-  it("posts GitHub ingest targets using the REST target field", async () => {
+  it("sends ingest targets raw with no source_type (server auto-detects the provider)", async () => {
+    // The palette must NOT classify client-side — that classifier drifted from the
+    // canonical backend `classify_target`. It ships the bare target; the server
+    // routes github/gitlab/gitea/git/reddit/youtube/rss from it.
     await executeTestAction("ingest", "owner/repo");
+    expect(lastRequestBody()).toEqual({ target: "owner/repo" });
 
-    expect(lastRequestBody()).toEqual({
-      source_type: "github",
-      target: "owner/repo",
-      include_source: true,
-    });
-  });
-
-  it("classifies ingest targets by parsed hostname, not substring matches", async () => {
     await executeTestAction("ingest", "https://www.youtube.com/watch?v=abc123");
-    expect(lastRequestBody()).toEqual({
-      source_type: "youtube",
-      target: "https://www.youtube.com/watch?v=abc123",
-    });
-
-    await executeTestAction("ingest", "https://old.reddit.com/r/rust");
-    expect(lastRequestBody()).toEqual({
-      source_type: "reddit",
-      target: "https://old.reddit.com/r/rust",
-    });
+    expect(lastRequestBody()).toEqual({ target: "https://www.youtube.com/watch?v=abc123" });
 
     await executeTestAction("ingest", "r/rust");
-    expect(lastRequestBody()).toEqual({
-      source_type: "reddit",
-      target: "r/rust",
-    });
+    expect(lastRequestBody()).toEqual({ target: "r/rust" });
   });
 
-  it("does not classify deceptive ingest hosts as Reddit or YouTube", async () => {
-    await executeTestAction("ingest", "https://youtube.com.evil.example/watch?v=abc123");
-    expect(lastRequestBody()).toEqual({
-      source_type: "github",
-      target: "https://youtube.com.evil.example/watch?v=abc123",
-      include_source: true,
-    });
-
-    await executeTestAction("ingest", "https://evil.example/reddit.com/r/rust");
-    expect(lastRequestBody()).toEqual({
-      source_type: "github",
-      target: "https://evil.example/reddit.com/r/rust",
-      include_source: true,
-    });
+  it("sends GitLab/Gitea targets raw (previously misclassified as github by the client)", async () => {
+    await executeTestAction("ingest", "https://gitlab.com/group/project");
+    expect(lastRequestBody()).toEqual({ target: "https://gitlab.com/group/project" });
   });
 
   it("does not attach collection to summarize requests", async () => {
@@ -206,12 +179,13 @@ describe("executeAction", () => {
       ["research", "qdrant hybrid", "POST", "/v1/research", { query: "qdrant hybrid", limit: 7 }],
       ["embed", "https://example.com/doc", "POST", "/v1/embed", { input: "https://example.com/doc", collection: "docs" }],
       ["extract", "https://example.com/pricing", "POST", "/v1/extract", { urls: ["https://example.com/pricing"], collection: "docs" }],
-      ["ingest", "owner/repo", "POST", "/v1/ingest", { source_type: "github", target: "owner/repo", include_source: true }],
+      ["ingest", "owner/repo", "POST", "/v1/ingest", { target: "owner/repo" }],
       ["endpoints", "https://example.com", "POST", "/v1/endpoints", { url: "https://example.com" }],
       ["brand", "https://example.com", "POST", "/v1/brand", { url: "https://example.com" }],
       ["diff", "https://example.com/a https://example.com/b", "POST", "/v1/diff", { url_a: "https://example.com/a", url_b: "https://example.com/b" }],
       ["screenshot", "https://example.com", "POST", "/v1/screenshot", { url: "https://example.com", full_page: true }],
       ["dedupe", "", "POST", "/v1/dedupe", { collection: "docs" }],
+      ["purge", "https://docs.rs/serde", "POST", "/v1/purge", { target: "https://docs.rs/serde" }],
       [
         "watch-create",
         "https://example.com/docs 120",
@@ -309,6 +283,7 @@ describe("executeAction", () => {
       "diff",
       "screenshot",
       "dedupe",
+      "purge",
       "watch-create",
       "ingest-sessions-prepared",
       // Job lifecycle (family-operation pairs)

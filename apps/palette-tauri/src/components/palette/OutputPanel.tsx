@@ -6,6 +6,7 @@ import {
   History,
   MoreHorizontal,
   Pin,
+  Play,
   RotateCw,
   X,
   type LucideIcon,
@@ -18,14 +19,18 @@ import { EvaluateView } from "@/components/palette/EvaluateView";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { hasStructuredOperationView, OperationResultView } from "@/components/palette/OperationResultView";
 import { arrayByKeys } from "@/components/palette/OperationResultViewShared";
+import { DoctorView } from "@/components/palette/DoctorView";
+import { DomainsView } from "@/components/palette/DomainsView";
+import { SourcesView } from "@/components/palette/SourcesView";
 import { StatsView } from "@/components/palette/StatsView";
-import { StatusView } from "@/components/palette/StatusView";
+import { StatusView, type OpenJobHandler } from "@/components/palette/StatusView";
 import { Button } from "@/components/ui/aurora/button";
 import { Spinner } from "@/components/ui/aurora/spinner";
 import { actionBehavior } from "@/lib/actionRegistry";
 import type { PaletteAction } from "@/lib/actions";
 import { numField, strField, unwrapPayload } from "@/lib/payload";
 import type { RunState } from "@/lib/runState";
+import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 import { firstUrl, hostLabel } from "@/lib/url";
 
 interface OutputPanelProps {
@@ -40,6 +45,12 @@ interface OutputPanelProps {
   onCollapse: () => void;
   onTogglePin: () => void;
   pinned: boolean;
+  liveRefresh?: LiveRefreshState;
+  onToggleLivePause?: () => void;
+  onOpenJob?: OpenJobHandler;
+  onRunAction?: (subcommand: string, argument: string) => void;
+  onDrillDomain?: (domain: string) => void;
+  sourcesInitialFilter?: string;
 }
 
 export const OutputPanel = memo(function OutputPanel({
@@ -54,6 +65,12 @@ export const OutputPanel = memo(function OutputPanel({
   onCollapse,
   onTogglePin,
   pinned,
+  liveRefresh,
+  onToggleLivePause,
+  onOpenJob,
+  onRunAction,
+  onDrillDomain,
+  sourcesInitialFilter,
 }: OutputPanelProps) {
   const runText = "text" in run ? run.text : "";
   // P-M1: the URL regex scans the whole growing buffer; without memoization it ran
@@ -97,6 +114,9 @@ export const OutputPanel = memo(function OutputPanel({
             </span>
             <span className="output-subtitle">{outputSubtitle(run, active)}</span>
           </div>
+          {liveRefresh?.active ? (
+            <LiveBadge state={liveRefresh} onTogglePause={onToggleLivePause} onRefreshNow={liveRefresh.refreshNow} />
+          ) : null}
           {quietConversationChrome ? null : <span className={`output-status output-status-${status.tone}`}>{status.label}</span>}
           <span className="output-tools">
             {run.kind === "running" || run.kind === "streaming" ? (
@@ -186,7 +206,20 @@ export const OutputPanel = memo(function OutputPanel({
         ) : run.kind === "success" && active?.subcommand === "stats" ? (
           <StatsView payload={run.result.payload} />
         ) : run.kind === "success" && active?.subcommand === "status" ? (
-          <StatusView payload={run.result.payload} />
+          <StatusView payload={run.result.payload} onOpenJob={onOpenJob} />
+        ) : run.kind === "success" && active?.subcommand === "doctor" ? (
+          <DoctorView payload={run.result.payload} />
+        ) : run.kind === "success" && active?.subcommand === "sources" ? (
+          // Keyed by the drill filter so a domain drill remounts the view and
+          // re-seeds its filter from `initialFilter`.
+          <SourcesView
+            key={`sources-${sourcesInitialFilter ?? ""}`}
+            payload={run.result.payload}
+            onRunAction={onRunAction}
+            initialFilter={sourcesInitialFilter}
+          />
+        ) : run.kind === "success" && active?.subcommand === "domains" ? (
+          <DomainsView payload={run.result.payload} onDrillDomain={onDrillDomain} />
         ) : run.kind === "success" && active && hasStructuredOperationView(active.subcommand) ? (
           <OperationResultView payload={run.result.payload} subcommand={active.subcommand} fallbackText={"text" in run ? run.text : ""} />
         ) : run.kind === "error" ? (
@@ -286,6 +319,48 @@ function PendingBody({
         <Spinner size="sm" />
       </div>
     </div>
+  );
+}
+
+// Live-refresh control for the auto-polling zero-input views (stats/status):
+// a LIVE/PAUSED toggle plus a manual refresh, shown in the output header.
+function LiveBadge({
+  state,
+  onTogglePause,
+  onRefreshNow,
+}: {
+  state: LiveRefreshState;
+  onTogglePause?: () => void;
+  onRefreshNow: () => void;
+}) {
+  const ago = state.lastRefreshedAtMs ? `${Math.max(0, Math.round((Date.now() - state.lastRefreshedAtMs) / 1000))}s ago` : "live";
+  return (
+    <span className={state.paused ? "output-live output-live-paused" : "output-live"}>
+      <Button
+        variant="plain"
+        size="unstyled"
+        type="button"
+        className="output-live-toggle"
+        onClick={onTogglePause}
+        title={state.paused ? "Resume auto-refresh" : "Pause auto-refresh"}
+        aria-label={state.paused ? "Resume auto-refresh" : "Pause auto-refresh"}
+      >
+        {state.paused ? <Play size={11} /> : <span className="output-live-dot" aria-hidden="true" />}
+        {state.paused ? "PAUSED" : "LIVE"}
+      </Button>
+      <span className="output-live-ago">{state.paused ? "" : `· ${ago}`}</span>
+      <Button
+        variant="plain"
+        size="unstyled"
+        type="button"
+        className="output-live-refresh"
+        onClick={onRefreshNow}
+        title="Refresh now"
+        aria-label="Refresh now"
+      >
+        <RotateCw size={12} />
+      </Button>
+    </span>
   );
 }
 

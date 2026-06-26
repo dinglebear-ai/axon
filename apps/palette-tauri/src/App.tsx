@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { ActionList, actionOptionId } from "@/components/palette/ActionList";
 import { AuthNotice } from "@/components/palette/AuthNotice";
 import { CrawlJobView } from "@/components/palette/CrawlJobView";
+import { JobProgressView } from "@/components/palette/JobProgressView";
 import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
 import { OutputPanel } from "@/components/palette/OutputPanel";
 import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
@@ -49,8 +50,12 @@ import {
   viewReducer,
 } from "@/lib/paletteViewState";
 import type { RunState } from "@/lib/runState";
+import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
+import { jobFamilyVerb, summarizeJob } from "@/lib/jobProgress";
 import { useActionRunner } from "@/lib/useActionRunner";
 import { useCrawlJob } from "@/lib/useCrawlJob";
+import { useJobPoll } from "@/lib/useJobPoll";
+import { useLiveRefresh } from "@/lib/useLiveRefresh";
 import { useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
 import { useWindowChrome } from "@/lib/useWindowChrome";
 import { hostLabel } from "@/lib/url";
@@ -180,8 +185,8 @@ export default function App() {
       ? actionConfirmationMessage(active, Boolean(confirmationArmed))
       : "";
   const canRunLocalAction = active?.kind === "local";
-  const jobMinimized = run.kind === "job" && run.minimized;
-  const jobExpanded = run.kind === "job" && !run.minimized;
+  const jobMinimized = (run.kind === "job" || run.kind === "asyncJob") && run.minimized;
+  const jobExpanded = (run.kind === "job" || run.kind === "asyncJob") && !run.minimized;
   const showOutput = run.kind !== "idle" && !jobMinimized;
   // Once an action mode is picked, the input collects that action's argument —
   // the palette should NOT keep listing other actions. Stay compact (just the
@@ -280,6 +285,81 @@ export default function App() {
     onExpandJob,
     onCloseJob,
   });
+
+  // Sibling lifecycle for embed/extract/ingest. The two hooks are mutually
+  // exclusive at runtime — each only acts when `run.kind` matches its variant —
+  // and reuse the same view-intent callbacks (family-agnostic).
+  const {
+    nowMs: jobNowMs,
+    canceling: jobCanceling,
+    cancelJob: cancelAsyncJob,
+    minimizeJob: minimizeAsyncJob,
+    expandJob: expandAsyncJob,
+    closeJob: closeAsyncJob,
+  } = useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob });
+
+  // Live-refresh for the zero-input dynamic views (stats/status): re-poll the
+  // result endpoint on an interval while it is open, with a pause toggle.
+  const [livePaused, setLivePaused] = useState(false);
+  const liveRefresh = useLiveRefresh({ run, setRun, paused: livePaused });
+
+  // Run a palette action against a single argument (e.g. SourcesView "retrieve"
+  // row action). Routes through the same confirmation/validation path as Enter.
+  const onRunAction = useCallback(
+    (subcommand: string, argument: string) => {
+      const action = ACTIONS.find((a) => a.subcommand === subcommand);
+      if (action) requestSubmit(action, argument);
+    },
+    [requestSubmit],
+  );
+
+  // Drill from a domain (DomainsView) into the sources list pre-filtered to that
+  // domain. `sourcesDrillFilter` seeds SourcesView's filter; cleared on reset.
+  const [sourcesDrillFilter, setSourcesDrillFilter] = useState("");
+  const onDrillDomain = useCallback(
+    (domain: string) => {
+      setSourcesDrillFilter(domain);
+      const action = ACTIONS.find((a) => a.subcommand === "sources");
+      if (action) requestSubmit(action, "");
+    },
+    [requestSubmit],
+  );
+
+  // Open the live job card for a job listed in StatusView. Crawl gets the rich
+  // crawl view; embed/extract/ingest get the generic async-job card. The poll
+  // hooks (useCrawlJob/useJobPoll) take over once the run state is set.
+  const onOpenJob = useCallback((family: string, jobId: string, label: string) => {
+    const startedAtMs = Date.now();
+    if (family === "crawl") {
+      setRun({
+        kind: "job",
+        family: "crawl",
+        title: `Crawling ${hostFromUrl(label)}`,
+        subtitle: `job ${jobId}`,
+        jobId,
+        statusUrl: `/v1/crawl/${jobId}`,
+        url: label,
+        startedAtMs,
+        maxPages: 0,
+        maxDepth: 0,
+        snapshot: summarizeCrawl({ job: { status: "running" } }, { jobId, url: label }),
+        minimized: false,
+      });
+    } else if (family === "embed" || family === "extract" || family === "ingest") {
+      setRun({
+        kind: "asyncJob",
+        family,
+        title: `${family[0].toUpperCase()}${family.slice(1)}`,
+        subtitle: `job ${jobId}`,
+        jobId,
+        statusUrl: `/v1/${family}/${jobId}`,
+        target: label,
+        startedAtMs,
+        snapshot: summarizeJob(family, { job: { status: "running" } }, { jobId, label }),
+        minimized: false,
+      });
+    }
+  }, []);
 
   function enterActionMode(action: PaletteAction) {
     setPendingConfirmation(null);
@@ -386,6 +466,7 @@ export default function App() {
     dispatchView({ type: "goToBrowse" });
     setRun({ kind: "idle" });
     setQuery("");
+    setSourcesDrillFilter("");
     focusInput(true);
   }
 
@@ -395,6 +476,7 @@ export default function App() {
     setQuery("");
     setRun({ kind: "idle" });
     setPendingConfirmation(null);
+    setSourcesDrillFilter("");
     dispatchView({ type: "reset" });
   }, []);
   const onToggleSettings = useCallback(() => dispatchView({ type: "toggleSettings" }), []);
@@ -474,6 +556,25 @@ export default function App() {
         </Button>
       )}
 
+      {jobMinimized && run.kind === "asyncJob" && (
+        <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={expandAsyncJob} title="Expand job">
+          <span className="idle-tray-dot" />
+          <Workflow size={14} strokeWidth={1.9} />
+          <span>
+            {jobFamilyVerb(run.family)} {run.snapshot.label}
+          </span>
+          {run.snapshot.percent != null && (
+            <>
+              <span className="idle-tray-bar">
+                <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, Math.round(run.snapshot.percent))}%` }} />
+              </span>
+              <strong>{Math.round(run.snapshot.percent)}%</strong>
+            </>
+          )}
+          <ChevronRight size={15} />
+        </Button>
+      )}
+
       {settingsOpen && draftConfig && (
         <div ref={settingsFocusRef} style={{ display: "contents" }}>
           <SettingsPanel
@@ -538,7 +639,20 @@ export default function App() {
           </div>
         )}
 
-        {showResultsLayout && !historyOpen && run.kind !== "job" && (
+        {showResultsLayout && !historyOpen && run.kind === "asyncJob" && (
+          <div ref={outputFocusRef} style={{ display: "contents" }}>
+          <JobProgressView
+            snapshot={run.snapshot}
+            nowMs={jobNowMs}
+            canceling={jobCanceling}
+            onCancel={() => void cancelAsyncJob()}
+            onMinimize={minimizeAsyncJob}
+            onClose={closeAsyncJob}
+          />
+          </div>
+        )}
+
+        {showResultsLayout && !historyOpen && run.kind !== "job" && run.kind !== "asyncJob" && (
           <div ref={outputFocusRef} style={{ display: "contents" }}>
           <OutputPanel
             active={active}
@@ -552,6 +666,12 @@ export default function App() {
             onCollapse={onCollapse}
             onTogglePin={onTogglePin}
             pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
+            liveRefresh={liveRefresh}
+            onToggleLivePause={() => setLivePaused((paused) => !paused)}
+            onOpenJob={onOpenJob}
+            onRunAction={onRunAction}
+            onDrillDomain={onDrillDomain}
+            sourcesInitialFilter={sourcesDrillFilter}
           />
           </div>
         )}

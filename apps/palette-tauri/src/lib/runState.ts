@@ -1,6 +1,7 @@
 import type { PaletteResult } from "@/lib/axonClient";
 import type { OutputKind } from "@/lib/format";
 import type { CrawlSnapshot } from "@/lib/crawlJob";
+import type { AsyncJobFamily, JobSnapshot } from "@/lib/jobProgress";
 
 export interface AskSource {
   label: string;
@@ -54,6 +55,21 @@ export type RunState =
       maxPages: number;
       maxDepth: number;
       snapshot: CrawlSnapshot;
+      minimized: boolean;
+    }
+  | {
+      // Live async-job view for embed/extract/ingest. Polled from the real
+      // backend the same way as crawl, but with the simpler `JobSnapshot`
+      // model. `minimized` drives the compact tray vs. the full job card.
+      kind: "asyncJob";
+      family: AsyncJobFamily;
+      title: string;
+      subtitle: string;
+      jobId: string;
+      statusUrl: string;
+      target: string;
+      startedAtMs: number;
+      snapshot: JobSnapshot;
       minimized: boolean;
     }
   | {
