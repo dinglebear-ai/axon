@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from "react";
 import { ArrowDownUp, Download, Search, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/aurora/button";
+import { Input } from "@/components/ui/aurora/input";
 import { arrField, unwrapPayload } from "@/lib/payload";
 
 export interface SourceRowAction {
@@ -74,16 +75,15 @@ export const SourcesView = memo(function SourcesView({ payload, onRunAction, ini
   return (
     <div className="output-body sources-view aurora-scrollbar">
       <div className="sources-toolbar">
-        <label className="sources-search">
-          <Search size={13} aria-hidden="true" />
-          <input
-            type="text"
-            value={filter}
-            placeholder="Filter URLs…"
-            onChange={(e) => setFilter(e.target.value)}
-            aria-label="Filter sources by URL"
-          />
-        </label>
+        <Input
+          className="sources-search"
+          size="sm"
+          startAdornment={<Search size={13} aria-hidden="true" />}
+          value={filter}
+          placeholder="Filter URLs…"
+          onChange={(e) => setFilter(e.target.value)}
+          aria-label="Filter sources by URL"
+        />
         <Button
           variant="plain"
           size="unstyled"

@@ -3441,28 +3441,10 @@ textarea {
   gap: 8px;
 }
 
+/* Aurora Input owns the field chrome; this just lets it grow in the toolbar. */
 .sources-search {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex: 1;
-  padding: 0 11px;
-  height: 32px;
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 9px;
-  color: var(--aurora-text-muted);
-}
-
-.sources-search input {
   flex: 1;
   min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--aurora-text-primary);
-  font-family: var(--aurora-font-mono);
-  font-size: 12.5px;
 }
 
 .sources-toggle {
