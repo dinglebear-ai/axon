@@ -395,4 +395,17 @@ fn embed_input_is_local_path_classifies_paths_urls_and_free_text() {
         embed_input_is_local_path(&format!("  {dir_path}  ")),
         "leading/trailing whitespace is trimmed before classification"
     );
+
+    // The URL short-circuit is anchored (starts_with), so a scheme-like substring
+    // that is not a prefix is classified by existence, not the URL guard.
+    assert!(
+        !embed_input_is_local_path("notes/http://draft"),
+        "non-anchored scheme substring (nonexistent) is not a local path"
+    );
+
+    // A trailing slash on an existing directory still classifies as local.
+    assert!(
+        embed_input_is_local_path(&format!("{dir_path}/")),
+        "trailing-slash directory path is a local path"
+    );
 }
