@@ -353,6 +353,10 @@ pub struct DedupeRequest {
 #[serde(deny_unknown_fields)]
 pub struct PurgeRequest {
     /// URL (or seed-URL/origin when `prefix` is set) to delete from the index.
+    /// **Handler-required despite the `Option`:** the type is `Option<String>`
+    /// only so a missing field deserializes to a clean "target is required"
+    /// error instead of a serde rejection; `handle_purge` returns an error when
+    /// it is `None`. It is not an optional argument.
     pub target: Option<String>,
     /// Match `target` as a prefix over a whole docs subtree / origin.
     #[serde(default)]

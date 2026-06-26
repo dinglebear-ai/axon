@@ -158,6 +158,15 @@ fn render(root: &Path) -> Result<String> {
         ));
     }
 
+    // Derive the REST-only callout from the computed sets so the narrative can't
+    // drift from the matrix when a new client/server-only segment is added.
+    let rest_only = all
+        .iter()
+        .filter(|op| rest.contains(*op) && !cli.contains(*op) && !mcp.contains(*op))
+        .map(|op| format!("`{op}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+
     Ok(format!(
         "# API Parity Matrix\n\
          \n\
@@ -173,7 +182,7 @@ fn render(root: &Path) -> Result<String> {
          {rows}\n\
          **Notes.** MCP intentionally omits destructive/stateful admin actions routed HTTP-only \
          (see the `AxonRequest` arm in `crates/axon-mcp/src/server.rs`). REST-only rows \
-         (`artifacts`, `capabilities`, `collections`, `mobile`) are client/server surfaces with no \
+         ({rest_only}) are client/server surfaces with no \
          CLI/MCP command. CLI-only rows are local/dev commands (`serve`, `mcp`, `completions`, \
          `setup`, `config`, …). A gap here is not automatically a bug — but a *new* gap should be a \
          conscious decision. See [crate-ownership.md](../architecture/crate-ownership.md) for where \

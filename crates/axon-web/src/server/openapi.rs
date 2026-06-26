@@ -152,7 +152,12 @@ use super::{handlers, openapi_jobs, routing};
         axon_ingest::sessions::IngestSessionsPreparedRequest,
         handlers::admin::DedupeRequest,
         handlers::admin::PurgeRequest,
-        handlers::admin::WatchCreateRequest
+        handlers::admin::WatchCreateRequest,
+        handlers::jobs::JobStatusResponse,
+        axon_api::job_progress::JobProgress,
+        axon_api::job_progress::JobFamily,
+        axon_api::job_progress::JobPhase,
+        axon_api::job_progress::JobMetric
     )),
     tags(
         (name = "discovery", description = "Read-only source, domain, stats, status, and health endpoints"),

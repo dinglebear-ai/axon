@@ -105,3 +105,119 @@ fn thousands_separator_formatting() {
         }
     );
 }
+
+#[test]
+fn fmt_int_boundaries() {
+    assert_eq!(fmt_int(0), "0");
+    assert_eq!(fmt_int(100), "100");
+    assert_eq!(fmt_int(1000), "1,000");
+    assert_eq!(fmt_int(-1234), "-1,234");
+}
+
+#[test]
+fn ingest_files_metric_sums_both_branches() {
+    // Both present → summed.
+    let p = derive(
+        JobFamily::Ingest,
+        "running",
+        json!({ "files_ast_chunked": 7, "files_prose_fallback": 3 }),
+    );
+    let files = p.metrics.iter().find(|m| m.label == "Files").unwrap();
+    assert_eq!(files.value, "10");
+
+    // Only one present → the absent one counts as 0, metric still emitted.
+    let p = derive(
+        JobFamily::Ingest,
+        "running",
+        json!({ "files_ast_chunked": 4 }),
+    );
+    let files = p.metrics.iter().find(|m| m.label == "Files").unwrap();
+    assert_eq!(files.value, "4");
+
+    // Neither present → no Files metric at all.
+    let p = derive(JobFamily::Ingest, "running", json!({ "phase": "cloning" }));
+    assert!(p.metrics.iter().all(|m| m.label != "Files"));
+}
+
+#[test]
+fn ingest_chunks_falls_back_to_chunks_key() {
+    // Prefer chunks_embedded when present.
+    let p = derive(
+        JobFamily::Ingest,
+        "running",
+        json!({ "chunks_embedded": 11, "chunks": 99 }),
+    );
+    let chunks = p.metrics.iter().find(|m| m.label == "Chunks").unwrap();
+    assert_eq!(chunks.value, "11");
+
+    // Fall back to bare `chunks` when chunks_embedded is absent.
+    let p = derive(JobFamily::Ingest, "running", json!({ "chunks": 5 }));
+    let chunks = p.metrics.iter().find(|m| m.label == "Chunks").unwrap();
+    assert_eq!(chunks.value, "5");
+}
+
+#[test]
+fn ingest_percent_clamps_and_guards_zero_total() {
+    // done > total would exceed 100 without the clamp.
+    let p = derive(
+        JobFamily::Ingest,
+        "running",
+        json!({ "tasks_done": 9, "tasks_total": 5 }),
+    );
+    assert_eq!(p.percent, Some(100.0));
+
+    // total == 0 must not divide-by-zero → indeterminate.
+    let p = derive(
+        JobFamily::Ingest,
+        "running",
+        json!({ "tasks_done": 0, "tasks_total": 0 }),
+    );
+    assert_eq!(p.percent, None);
+}
+
+#[test]
+fn non_ingest_family_ignores_task_counts() {
+    // Only Ingest derives percent from tasks_*; embed/extract stay indeterminate.
+    let p = derive(
+        JobFamily::Embed,
+        "running",
+        json!({ "tasks_done": 2, "tasks_total": 4 }),
+    );
+    assert_eq!(p.percent, None);
+}
+
+#[test]
+fn canceled_phase_is_terminal_and_indeterminate() {
+    let p = derive(JobFamily::Extract, "canceled", json!({}));
+    assert_eq!(p.phase, JobPhase::Canceled);
+    assert!(p.phase.is_terminal());
+    assert_eq!(p.percent, None);
+
+    // British spelling maps to the same phase.
+    let p = derive(JobFamily::Extract, "cancelled", json!({}));
+    assert_eq!(p.phase, JobPhase::Canceled);
+}
+
+#[test]
+fn unknown_status_is_treated_as_running() {
+    let p = derive(JobFamily::Embed, "reticulating_splines", json!({}));
+    assert_eq!(p.phase, JobPhase::Running);
+    assert!(!p.phase.is_terminal());
+}
+
+#[test]
+fn from_wire_value_reads_status_and_error() {
+    let value = json!({
+        "status": "failed",
+        "error_text": "boom",
+        "result_json": { "docs_embedded": 1 },
+    });
+    let p = JobProgress::from_wire_value(JobFamily::Embed, &value);
+    assert_eq!(p.phase, JobPhase::Failed);
+    assert_eq!(p.error.as_deref(), Some("boom"));
+
+    // Missing status defaults to pending; empty error_text is dropped.
+    let p = JobProgress::from_wire_value(JobFamily::Embed, &json!({ "error_text": "" }));
+    assert_eq!(p.phase, JobPhase::Pending);
+    assert_eq!(p.error, None);
+}

@@ -1044,6 +1044,48 @@ export interface components {
             docs: components["schemas"]["PreparedSessionDoc"][];
             project?: string | null;
         };
+        /** @enum {string} */
+        JobFamily: "embed" | "extract" | "ingest";
+        /** @description One labelled, display-formatted counter (e.g. `{ "Chunks", "1,024" }`). */
+        JobMetric: {
+            label: string;
+            /**
+             * @description **Display-formatted, not machine-readable.** Pre-rendered for direct
+             *     rendering by clients — integers carry thousands separators (`"1,024"`)
+             *     and string fields (e.g. ingest `phase`) pass through verbatim. Do not
+             *     parse this back into a number; if a surface needs the raw value, add a
+             *     typed field rather than reverse-engineering the formatting here.
+             */
+            value: string;
+        };
+        /** @enum {string} */
+        JobPhase: "pending" | "running" | "done" | "failed" | "canceled";
+        /** @description Derived, transport-neutral progress for a generic async job. */
+        JobProgress: {
+            error?: string | null;
+            family: components["schemas"]["JobFamily"];
+            metrics: components["schemas"]["JobMetric"][];
+            /**
+             * Format: double
+             * @description 0–100 when determinate; `None` = indeterminate (render a pulsing bar).
+             */
+            percent?: number | null;
+            phase: components["schemas"]["JobPhase"];
+        };
+        /**
+         * @description Typed job-status envelope so the `{ job, progress }` wire shape is a
+         *     registered OpenAPI schema (and thus reflected into the generated palette/
+         *     android clients) instead of an opaque `serde_json::Value`.
+         */
+        JobStatusResponse: {
+            /**
+             * @description Raw job record in the wire-compat shape (`status`, `result_json`,
+             *     timestamps, …). Still `Value` because the per-family job payloads are
+             *     heterogeneous; `progress` is the typed, cross-family projection of it.
+             */
+            job: unknown;
+            progress?: null | components["schemas"]["JobProgress"];
+        };
         LinkEntry: {
             href: string;
             text: string;
@@ -2177,7 +2219,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -2711,7 +2753,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -3137,7 +3179,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -3503,7 +3545,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -3930,6 +3972,24 @@ export interface operations {
             };
             /** @description Invalid purge request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
