@@ -156,6 +156,11 @@ VALID_TOML_DESTINATIONS = {
     "scrape.ladder-body-multiplier",
     "antibot.cookie-warmup",
     "antibot.max-body-scan-bytes",
+    "freshness.tick-secs",
+    "freshness.lease-secs",
+    "freshness.max-due-per-tick",
+    "freshness.max-concurrent-runs",
+    "freshness.run-retention-days",
 }
 
 

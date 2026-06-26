@@ -189,8 +189,15 @@ impl ServiceJobRuntime for HealthyRuntime {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn full_status_marks_count_failures_degraded() {
-    let ctx = ServiceContext::from_runtime(Arc::new(Config::default()), Arc::new(CountFailRuntime));
+    axon_jobs::store::reset_sqlite_runtime_health_for_tests();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cfg = Config {
+        sqlite_path: tmp.path().join("jobs.db"),
+        ..Default::default()
+    };
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg), Arc::new(CountFailRuntime));
 
     let result = full_status(&ctx)
         .await
@@ -221,6 +228,7 @@ async fn full_status_marks_count_failures_degraded() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn full_status_includes_sqlite_diagnostics_and_degrades_on_runtime_ioerr() {
     axon_jobs::store::reset_sqlite_runtime_health_for_tests();
     axon_jobs::store::record_sqlite_runtime_error(

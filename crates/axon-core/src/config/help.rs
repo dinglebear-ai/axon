@@ -47,7 +47,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     (
         "Jobs And Imports",
         &[
-            "status", "ingest", "sessions", "watch", "monitor", "sync", "refresh",
+            "status", "ingest", "sessions", "watch", "monitor", "sync", "refresh", "fresh",
         ],
     ),
     (

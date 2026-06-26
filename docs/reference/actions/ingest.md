@@ -86,6 +86,7 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--wait <bool>` | `false` | Block until ingestion completes; otherwise enqueue async job. |
 | `--collection <name>` | `axon` | Target Qdrant collection. |
+| `--fresh <Nd>` | — | CLI-only: create or update a recurring freshness schedule, for example `--fresh 7d`. |
 | `--json` | `false` | Machine-readable output. |
 
 With `--wait false`, `ingest` writes a SQLite job row and exits without draining
@@ -173,11 +174,15 @@ axon ingest clear --yes
 
 # Enqueue locally and print JSON
 axon ingest rust-lang/rust --json
+
+# Keep a feed or repository fresh weekly
+axon ingest rss:https://github.com/jmagar/axon/releases.atom --fresh 7d
 ```
 
 ## Notes
 
 - Generic CLI client-to-server forwarding was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon ingest` through HTTP; call the `/v1/ingest` REST route or MCP HTTP endpoint directly when using `axon serve` as a remote service.
+- `--fresh` is CLI-only in v1. It stores a safe replay snapshot and scheduled runs enqueue normal ingest jobs through the service layer; REST/MCP freshness management is not exposed yet.
 - Reddit-specific flags (`--sort`, `--time`, etc.) are silently ignored for GitHub and YouTube targets.
 - `--no-source` is silently ignored for Reddit and YouTube targets.
 - `axon sessions` is not routed through `axon ingest` — sessions take no URL/target and have format-specific flags.
