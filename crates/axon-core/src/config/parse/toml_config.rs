@@ -28,6 +28,8 @@ pub(super) struct TomlConfig {
     #[serde(default)]
     pub workers: TomlWorkersSection,
     #[serde(default)]
+    pub freshness: TomlFreshnessSection,
+    #[serde(default)]
     pub chrome: TomlChromeSection,
     #[serde(default)]
     pub scrape: TomlScrapeSection,
@@ -298,6 +300,21 @@ pub(super) struct TomlWorkersSection {
     /// Maximum reclaim attempts before a stale-running job is dead-lettered
     /// (marked failed) instead of re-queued. 0 disables the cap.
     pub max_job_attempts: Option<i64>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlFreshnessSection {
+    /// Seconds between due-schedule sweeps. Default 60.
+    pub tick_secs: Option<u64>,
+    /// Lease TTL for one running freshness dispatch. Default 1800.
+    pub lease_secs: Option<u64>,
+    /// Due schedules claimed per scheduler tick. Default 4.
+    pub max_due_per_tick: Option<i64>,
+    /// Global concurrent freshness dispatches. Default 2.
+    pub max_concurrent_runs: Option<usize>,
+    /// Retention window for run history. Default 90 days.
+    pub run_retention_days: Option<i64>,
 }
 
 #[derive(Deserialize, Default)]

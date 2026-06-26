@@ -188,6 +188,20 @@ impl fmt::Debug for Config {
             .field("embed_lanes", &self.embed_lanes)
             .field("embed_doc_timeout_secs", &self.embed_doc_timeout_secs)
             .field("queue_summary_secs", &self.queue_summary_secs)
+            .field("freshness_tick_secs", &self.freshness_tick_secs)
+            .field("freshness_lease_secs", &self.freshness_lease_secs)
+            .field(
+                "freshness_max_due_per_tick",
+                &self.freshness_max_due_per_tick,
+            )
+            .field(
+                "freshness_max_concurrent_runs",
+                &self.freshness_max_concurrent_runs,
+            )
+            .field(
+                "freshness_run_retention_days",
+                &self.freshness_run_retention_days,
+            )
             .field("qdrant_point_buffer", &self.qdrant_point_buffer)
             .field("max_pending_crawl_jobs", &self.max_pending_crawl_jobs)
             .field("max_pending_embed_jobs", &self.max_pending_embed_jobs)

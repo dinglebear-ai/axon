@@ -17,10 +17,15 @@ impl ServiceContext {
         spawn_workers: bool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
+        let context = Self {
+            cfg: Arc::clone(&cfg),
+            jobs: Arc::clone(&jobs),
+        };
         if spawn_workers {
+            crate::freshness::spawn_freshness_scheduler(context.clone());
             spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs);
         }
-        Ok(Self { cfg, jobs })
+        Ok(context)
     }
 
     /// Create a ServiceContext without in-process workers (enqueue-only in the SQLite runtime).
