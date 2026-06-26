@@ -608,6 +608,26 @@ pub struct Config {
     /// Env: `AXON_QUEUE_SUMMARY_SECS`. TOML: `workers.queue-summary-secs`. 0 disables logging. Clamped 0–3600. Default: 30.
     pub queue_summary_secs: u64,
 
+    /// Freshness scheduler tick interval in seconds.
+    /// Env: `AXON_FRESHNESS_TICK_SECS`. TOML: `freshness.tick-secs`. Clamped 1–3600. Default: 60.
+    pub freshness_tick_secs: u64,
+
+    /// Freshness run lease TTL in seconds.
+    /// Env: `AXON_FRESHNESS_LEASE_SECS`. TOML: `freshness.lease-secs`. Clamped 1–86400. Default: 1800.
+    pub freshness_lease_secs: u64,
+
+    /// Due freshness schedules claimed per tick.
+    /// Env: `AXON_FRESHNESS_MAX_DUE_PER_TICK`. TOML: `freshness.max-due-per-tick`. Clamped 1–4. Default: 4.
+    pub freshness_max_due_per_tick: i64,
+
+    /// Maximum concurrent freshness dispatches.
+    /// Env: `AXON_FRESHNESS_MAX_CONCURRENT_RUNS`. TOML: `freshness.max-concurrent-runs`. Clamped 1–16. Default: 2.
+    pub freshness_max_concurrent_runs: usize,
+
+    /// Run-history retention window in days.
+    /// Env: `AXON_FRESHNESS_RUN_RETENTION_DAYS`. TOML: `freshness.run-retention-days`. Clamped 1–3660. Default: 90.
+    pub freshness_run_retention_days: i64,
+
     /// Buffered Qdrant points before flush.
     /// Env: `AXON_QDRANT_POINT_BUFFER`. TOML: `workers.qdrant-point-buffer`. Clamped 128–16384. Default: 1024.
     pub qdrant_point_buffer: usize,
