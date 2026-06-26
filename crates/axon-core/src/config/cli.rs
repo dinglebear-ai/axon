@@ -359,7 +359,7 @@ pub(super) enum FreshSubcommand {
     History {
         id: String,
         #[arg(long, default_value_t = 50)]
-        limit: i64,
+        limit: usize,
         #[arg(long)]
         json: bool,
     },
