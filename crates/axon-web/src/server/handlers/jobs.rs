@@ -1,3 +1,4 @@
+use axon_api::job_progress::{JobFamily, JobProgress};
 use axon_jobs::backend::JobKind;
 use axon_services as services;
 use axon_services::context::ServiceContext;
@@ -91,7 +92,24 @@ pub(crate) async fn job_status(
             format!("job not found: {id}"),
         ));
     };
-    Ok(Json(json!({ "job": job.wire_json_compat() })))
+    // Canonical, server-derived progress for the generic async families so the
+    // palette/android/CLI consume it instead of re-deriving phase/percent/metrics.
+    // Crawl keeps its richer client-side snapshot.
+    let progress = job_family(state.kind).map(|family| JobProgress::from_service_job(family, &job));
+    Ok(Json(
+        json!({ "job": job.wire_json_compat(), "progress": progress }),
+    ))
+}
+
+/// Map a job-runtime `JobKind` to the generic progress family, or `None` for
+/// crawl (which has a bespoke client-side snapshot, not the generic shape).
+fn job_family(kind: JobKind) -> Option<JobFamily> {
+    match kind {
+        JobKind::Embed => Some(JobFamily::Embed),
+        JobKind::Extract => Some(JobFamily::Extract),
+        JobKind::Ingest => Some(JobFamily::Ingest),
+        JobKind::Crawl => None,
+    }
 }
 
 #[utoipa::path(

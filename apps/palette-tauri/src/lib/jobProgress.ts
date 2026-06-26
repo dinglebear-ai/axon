@@ -60,19 +60,8 @@ function asRecord(value: unknown): JsonRecord | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : null;
 }
 
-function num(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-/** Pull the job object out of `{ job: {...} }` or a bare job payload. */
-function jobFromPayload(payload: unknown): JsonRecord | null {
-  const root = asRecord(payload);
-  if (!root) return null;
-  return asRecord(root.job) ?? root;
 }
 
 function phaseFor(status: string): JobPhase {
@@ -100,64 +89,24 @@ function parseTimestamp(value: unknown): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
-/** Append a metric only when its source value is present (non-null number). */
-function pushNum(metrics: JobMetric[], label: string, value: unknown): void {
-  const n = num(value);
-  if (n != null) metrics.push({ label, value: n.toLocaleString() });
+const PHASES: readonly JobPhase[] = ["pending", "running", "done", "failed", "canceled"];
+
+function parsePhase(value: unknown): JobPhase | null {
+  return typeof value === "string" && (PHASES as readonly string[]).includes(value)
+    ? (value as JobPhase)
+    : null;
 }
 
-function embedMetrics(result: JsonRecord): JobMetric[] {
+function parseMetrics(value: unknown): JobMetric[] {
+  if (!Array.isArray(value)) return [];
   const metrics: JobMetric[] = [];
-  pushNum(metrics, "Docs", result.docs_embedded);
-  pushNum(metrics, "Chunks", result.chunks_embedded);
-  return metrics;
-}
-
-function extractMetrics(result: JsonRecord): JobMetric[] {
-  const metrics: JobMetric[] = [];
-  pushNum(metrics, "Pages", result.pages_visited);
-  pushNum(metrics, "With data", result.pages_with_data);
-  pushNum(metrics, "Items", result.total_items);
-  return metrics;
-}
-
-function ingestMetrics(result: JsonRecord): JobMetric[] {
-  const metrics: JobMetric[] = [];
-  const phase = str(result.phase);
-  if (phase) metrics.push({ label: "Phase", value: phase });
-  // Files are split across AST-chunked + prose-fallback counters.
-  const filesAst = num(result.files_ast_chunked);
-  const filesProse = num(result.files_prose_fallback);
-  if (filesAst != null || filesProse != null) {
-    metrics.push({ label: "Files", value: ((filesAst ?? 0) + (filesProse ?? 0)).toLocaleString() });
+  for (const item of value) {
+    const rec = asRecord(item);
+    const label = str(rec?.label);
+    const v = str(rec?.value);
+    if (label && v != null) metrics.push({ label, value: v });
   }
-  pushNum(metrics, "Chunks", result.chunks_embedded ?? result.chunks);
   return metrics;
-}
-
-function metricsFor(family: AsyncJobFamily, result: JsonRecord): JobMetric[] {
-  switch (family) {
-    case "embed":
-      return embedMetrics(result);
-    case "extract":
-      return extractMetrics(result);
-    case "ingest":
-      return ingestMetrics(result);
-  }
-}
-
-/** Determinate percent for ingest when the reporter exposes task counts. */
-function determinatePercent(family: AsyncJobFamily, result: JsonRecord, phase: JobPhase): number | null {
-  if (phase === "done") return 100;
-  if (phase !== "running" && phase !== "pending") return null;
-  if (family === "ingest") {
-    const done = num(result.tasks_done);
-    const total = num(result.tasks_total);
-    if (done != null && total != null && total > 0) {
-      return Math.max(0, Math.min(100, (done / total) * 100));
-    }
-  }
-  return null; // indeterminate — view shows a pulsing bar
 }
 
 export interface JobSummaryInput {
@@ -167,29 +116,53 @@ export interface JobSummaryInput {
 }
 
 /**
- * Map a polled job payload into a `JobSnapshot`. Pure: no I/O, no clock reads.
+ * Assemble a `JobSnapshot` from a polled job payload. The risk-prone derivation
+ * (phase / percent / metrics) is the SERVER's job: `GET /v1/{family}/{id}`
+ * returns a canonical `progress` block (axon-api `JobProgress`) that every
+ * surface consumes, so the logic can't drift across CLI/MCP/REST/palette. This
+ * is a thin view-model assembler — prefer `progress`, and fall back to a
+ * status-only snapshot for the brief pre-first-poll window (the POST accept
+ * response carries no `progress`).
  */
 export function summarizeJob(
   family: AsyncJobFamily,
   payload: unknown,
   input: JobSummaryInput,
 ): JobSnapshot {
-  const job = jobFromPayload(payload) ?? {};
-  const result = asRecord(job.result_json) ?? {};
+  const root = asRecord(payload) ?? {};
+  const job = asRecord(root.job) ?? root;
+  const progress = asRecord(root.progress);
   const status = str(job.status) ?? "pending";
-  const phase = phaseFor(status);
+  const updatedAtMs = parseTimestamp(job.updated_at);
+  const startedAtMs = parseTimestamp(job.started_at);
 
+  if (progress) {
+    return {
+      family,
+      jobId: input.jobId,
+      label: input.label,
+      status,
+      phase: parsePhase(progress.phase) ?? phaseFor(status),
+      percent: typeof progress.percent === "number" ? progress.percent : null,
+      metrics: parseMetrics(progress.metrics),
+      errorText: str(progress.error),
+      updatedAtMs,
+      startedAtMs,
+    };
+  }
+
+  // No server progress yet (the 202 accept response): status-only placeholder.
   return {
     family,
     jobId: input.jobId,
     label: input.label,
     status,
-    phase,
-    percent: determinatePercent(family, result, phase),
-    metrics: metricsFor(family, result),
+    phase: phaseFor(status),
+    percent: status === "completed" ? 100 : null,
+    metrics: [],
     errorText: str(job.error_text),
-    updatedAtMs: parseTimestamp(job.updated_at),
-    startedAtMs: parseTimestamp(job.started_at),
+    updatedAtMs,
+    startedAtMs,
   };
 }
 

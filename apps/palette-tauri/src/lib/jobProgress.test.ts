@@ -8,64 +8,57 @@ import {
 } from "./jobProgress";
 
 describe("summarizeJob", () => {
-  it("maps a pending job to the pending phase with an indeterminate bar", () => {
-    const snap = summarizeJob("ingest", { job: { status: "pending" } }, { jobId: "j1", label: "unraid/api" });
-    expect(snap.phase).toBe("pending");
-    expect(snap.percent).toBeNull();
-    expect(snap.label).toBe("unraid/api");
-  });
-
-  it("maps a completed job to done at 100%", () => {
-    const snap = summarizeJob(
-      "embed",
-      { job: { status: "completed", result_json: { docs_embedded: 3, chunks_embedded: 42 } } },
-      { jobId: "j2", label: "notes" },
-    );
-    expect(snap.phase).toBe("done");
-    expect(snap.percent).toBe(100);
-    expect(snap.metrics).toEqual([
-      { label: "Docs", value: "3" },
-      { label: "Chunks", value: "42" },
-    ]);
-  });
-
-  it("derives ingest percent from task counts when present", () => {
+  it("reads the server-derived progress block (phase / percent / metrics)", () => {
     const snap = summarizeJob(
       "ingest",
-      { job: { status: "running", result_json: { phase: "ingesting", tasks_done: 2, tasks_total: 5 } } },
-      { jobId: "j3", label: "owner/repo" },
+      {
+        job: { status: "running", updated_at: "2026-06-26T00:00:00Z" },
+        progress: {
+          family: "ingest",
+          phase: "running",
+          percent: 40,
+          metrics: [
+            { label: "Phase", value: "ingesting" },
+            { label: "Chunks", value: "1,024" },
+          ],
+          error: null,
+        },
+      },
+      { jobId: "j1", label: "owner/repo" },
     );
     expect(snap.phase).toBe("running");
     expect(snap.percent).toBe(40);
-    expect(snap.metrics[0]).toEqual({ label: "Phase", value: "ingesting" });
-  });
-
-  it("stays indeterminate for a running job without task counts", () => {
-    const snap = summarizeJob(
-      "extract",
-      { job: { status: "running", result_json: { pages_visited: 4, total_items: 9 } } },
-      { jobId: "j4", label: "example.com" },
-    );
-    expect(snap.percent).toBeNull();
     expect(snap.metrics).toEqual([
-      { label: "Pages", value: "4" },
-      { label: "Items", value: "9" },
+      { label: "Phase", value: "ingesting" },
+      { label: "Chunks", value: "1,024" },
     ]);
+    expect(snap.label).toBe("owner/repo");
   });
 
-  it("surfaces error text on a failed job", () => {
+  it("surfaces error from the progress block on a failed job", () => {
     const snap = summarizeJob(
       "ingest",
-      { job: { status: "failed", error_text: "github_repo target not found: owner/typo" } },
-      { jobId: "j5", label: "owner/typo" },
+      {
+        job: { status: "failed" },
+        progress: { phase: "failed", percent: null, metrics: [], error: "github_repo target not found: owner/typo" },
+      },
+      { jobId: "j2", label: "owner/typo" },
     );
     expect(snap.phase).toBe("failed");
     expect(snap.errorText).toContain("not found");
   });
 
-  it("accepts a bare job payload (no { job } wrapper)", () => {
-    const snap = summarizeJob("embed", { status: "running" }, { jobId: "j6", label: "x" });
-    expect(snap.phase).toBe("running");
+  it("falls back to a status-only snapshot when there is no progress (202 accept response)", () => {
+    const snap = summarizeJob("embed", { job_id: "j3", status: "pending" }, { jobId: "j3", label: "notes" });
+    expect(snap.phase).toBe("pending");
+    expect(snap.percent).toBeNull();
+    expect(snap.metrics).toEqual([]);
+  });
+
+  it("fallback marks a completed status as done at 100%", () => {
+    const snap = summarizeJob("embed", { job: { status: "completed" } }, { jobId: "j4", label: "x" });
+    expect(snap.phase).toBe("done");
+    expect(snap.percent).toBe(100);
   });
 });
 
