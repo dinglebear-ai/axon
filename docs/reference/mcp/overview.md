@@ -241,6 +241,14 @@ Lifecycle families:
 
 No top-level aliases are supported.
 
+`embed.start` has one transport-specific behavior: when `input` is a local
+filesystem path the server can see, the embed runs **in-process** and the
+response carries `{ "status": "completed", "input", "collection" }` instead of a
+`job_id`. A host path must be embedded by a process that shares its filesystem;
+enqueuing it onto the shared jobs DB would let a worker that cannot see the path
+(for example the container) claim it. URL and free-text inputs are enqueued as a
+job and return a `job_id`. This mirrors the CLI `embed` guard.
+
 ## Response Pattern
 Success responses are normalized:
 
