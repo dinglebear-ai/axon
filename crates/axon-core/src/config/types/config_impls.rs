@@ -24,6 +24,7 @@ impl Default for Config {
             code_search_path_prefix: None,
             code_search_no_freshness: false,
             code_search_watch: None,
+            freshness: None,
             retrieve_max_points: None,
             train_best_rank: None,
             train_notes: None,

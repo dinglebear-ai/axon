@@ -19,6 +19,7 @@ impl fmt::Debug for Config {
             .field("retrieve_max_points", &self.retrieve_max_points)
             .field("train_best_rank", &self.train_best_rank)
             .field("train_notes", &self.train_notes)
+            .field("freshness", &self.freshness)
             .field("max_pages", &self.max_pages)
             .field("max_depth", &self.max_depth)
             .field("include_subdomains", &self.include_subdomains)
