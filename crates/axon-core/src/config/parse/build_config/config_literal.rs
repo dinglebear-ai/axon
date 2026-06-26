@@ -166,11 +166,9 @@ fn populate_perf_and_credentials(
                 .collect()
         })
         .unwrap_or_default();
-    cfg.mcp_embed_max_local_bytes =
-        parse_positive_u64_env("AXON_MCP_EMBED_MAX_LOCAL_BYTES", 10 * 1024 * 1024)?;
-    cfg.mcp_embed_max_local_depth = parse_positive_usize_env("AXON_MCP_EMBED_MAX_LOCAL_DEPTH", 16)?;
-    cfg.mcp_embed_max_local_entries =
-        parse_positive_usize_env("AXON_MCP_EMBED_MAX_LOCAL_ENTRIES", 10_000)?;
+    cfg.mcp_embed_max_local_bytes = tuning::mcp_embed_max_local_bytes();
+    cfg.mcp_embed_max_local_depth = tuning::mcp_embed_max_local_depth();
+    cfg.mcp_embed_max_local_entries = tuning::mcp_embed_max_local_entries();
     cfg.batch_concurrency = g.batch_concurrency.clamp(1, 512);
     cfg.wait = g.wait;
     cfg.sqlite_path = inputs.sqlite_path.clone();

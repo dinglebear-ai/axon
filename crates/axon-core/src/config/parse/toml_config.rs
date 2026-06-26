@@ -61,6 +61,21 @@ pub(super) struct TomlConfig {
     pub antibot: TomlAntibotSection,
     #[serde(default)]
     pub payload: TomlPayloadSection,
+    #[serde(default)]
+    pub embed: TomlEmbedSection,
+    #[serde(default)]
+    pub chunking: TomlChunkingSection,
+    #[serde(default)]
+    pub qdrant: TomlQdrantSection,
+    #[serde(default)]
+    #[serde(rename = "code-search")]
+    pub code_search: TomlCodeSearchSection,
+    #[serde(default)]
+    pub watch: TomlWatchSection,
+    #[serde(default)]
+    pub endpoints: TomlEndpointsSection,
+    #[serde(default)]
+    pub mcp: TomlMcpSection,
 }
 
 #[derive(Deserialize, Default)]
@@ -167,6 +182,87 @@ pub(super) struct TomlPayloadSection {
     /// Maximum bytes stored in Qdrant `structured_blob` payload per chunk.
     /// Default 65536 (64 KiB).
     pub structured_data_max_bytes: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlEmbedSection {
+    pub tei_max_concurrent: Option<usize>,
+    pub tei_max_in_flight_inputs: Option<usize>,
+    pub pool_max_inputs: Option<usize>,
+    pub prep_concurrency: Option<usize>,
+    pub max_chunks_per_doc: Option<usize>,
+    pub max_source_chunks_per_doc: Option<usize>,
+    pub dedupe_exact_chunks: Option<bool>,
+    pub openai_max_client_batch_size: Option<usize>,
+    pub openai_max_concurrent: Option<usize>,
+    pub openai_max_in_flight_inputs: Option<usize>,
+    pub openai_pool_max_inputs: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlChunkingSection {
+    pub markdown_min_chars: Option<usize>,
+    pub markdown_max_chars: Option<usize>,
+    pub overlap_chars: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlQdrantSection {
+    pub upsert_batch_size: Option<usize>,
+    pub upsert_parallelism: Option<usize>,
+    pub bulk_load: Option<bool>,
+    pub bulk_indexing_threshold_kb: Option<usize>,
+    pub indexing_threshold_kb: Option<usize>,
+    pub hnsw_m: Option<usize>,
+    pub hnsw_ef_construct: Option<usize>,
+    pub payload_index_profile: Option<String>,
+    pub payload_index_parallelism: Option<usize>,
+    pub hnsw_on_disk: Option<bool>,
+    pub quantization_always_ram: Option<bool>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlCodeSearchSection {
+    pub freshness_ttl_secs: Option<u64>,
+    pub reindex_timeout_secs: Option<u64>,
+    pub max_file_bytes: Option<u64>,
+    pub changed_file_batch_size: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlWatchSection {
+    pub tick_secs: Option<u64>,
+    pub lease_secs: Option<i64>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlEndpointsSection {
+    pub bundle_concurrency: Option<usize>,
+    pub chrome_concurrency: Option<usize>,
+    pub verify_concurrency: Option<usize>,
+    pub probe_concurrency: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlMcpSection {
+    pub task_result_wait_timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub embed: TomlMcpEmbedSection,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlMcpEmbedSection {
+    pub max_local_bytes: Option<u64>,
+    pub max_local_depth: Option<usize>,
+    pub max_local_entries: Option<usize>,
 }
 
 #[derive(Deserialize, Default)]

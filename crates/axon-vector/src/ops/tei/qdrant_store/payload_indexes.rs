@@ -1,5 +1,6 @@
 use crate::ops::qdrant::qdrant_base;
 use axon_core::config::Config;
+use axon_core::config::parse::tuning;
 use axon_core::http::internal_service_http_client;
 use futures_util::stream::{self, StreamExt};
 use std::error::Error;
@@ -79,19 +80,21 @@ const CORE_TYPED_FIELDS: &[(&str, &str)] = &[
 const MAX_INDEX_ATTEMPTS: u32 = 3;
 
 fn payload_index_profile() -> &'static str {
-    match std::env::var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE")
-        .unwrap_or_else(|_| "full".to_string())
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "core" | "minimal" => "core",
-        _ => "full",
+    if matches!(
+        tuning::qdrant_payload_index_profile()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "core" | "minimal"
+    ) {
+        "core"
+    } else {
+        "full"
     }
 }
 
 fn payload_index_parallelism() -> usize {
-    crate::ops::qdrant::env_usize_clamped("AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM", 16, 1, 64)
+    tuning::qdrant_payload_index_parallelism()
 }
 
 /// PUT a single payload-index request with up to MAX_INDEX_ATTEMPTS attempts.

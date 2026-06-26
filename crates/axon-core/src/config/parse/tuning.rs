@@ -301,6 +301,430 @@ pub(crate) fn apply_default_minimal_tuning(cfg: &mut Config) {
     }
 }
 
+fn load_toml_or_default() -> TomlConfig {
+    match load_toml_config() {
+        Ok(toml) => toml,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "axon: failed to load TOML tuning for runtime resolver; using hardcoded defaults"
+            );
+            TomlConfig::default()
+        }
+    }
+}
+
+pub fn embed_tei_max_concurrent() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_TEI_MAX_CONCURRENT",
+        toml.embed.tei_max_concurrent,
+        8,
+        1,
+        64,
+    )
+}
+
+pub fn embed_tei_max_in_flight_inputs() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_TEI_MAX_IN_FLIGHT_INPUTS",
+        toml.embed.tei_max_in_flight_inputs,
+        320,
+        1,
+        4096,
+    )
+}
+
+pub fn embed_openai_max_client_batch_size() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE",
+        toml.embed.openai_max_client_batch_size,
+        32,
+        1,
+        256,
+    )
+}
+
+pub fn embed_openai_max_concurrent() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_OPENAI_EMBED_MAX_CONCURRENT",
+        toml.embed.openai_max_concurrent,
+        32,
+        1,
+        64,
+    )
+}
+
+pub fn embed_openai_max_in_flight_inputs() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS",
+        toml.embed.openai_max_in_flight_inputs,
+        512,
+        1,
+        4096,
+    )
+}
+
+pub fn embed_pool_max_inputs(openai_compatible: bool) -> usize {
+    let toml = load_toml_or_default();
+    if openai_compatible {
+        resolve_clamped_usize(
+            "AXON_OPENAI_EMBED_POOL_MAX_INPUTS",
+            toml.embed.openai_pool_max_inputs,
+            1024,
+            64,
+            65_536,
+        )
+    } else {
+        resolve_clamped_usize(
+            "AXON_EMBED_POOL_MAX_INPUTS",
+            toml.embed.pool_max_inputs,
+            512,
+            64,
+            65_536,
+        )
+    }
+}
+
+pub fn embed_prep_concurrency() -> usize {
+    let toml = load_toml_or_default();
+    let default = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(8)
+        .clamp(2, 16);
+    resolve_clamped_usize(
+        "AXON_EMBED_PREP_CONCURRENCY",
+        toml.embed.prep_concurrency,
+        default,
+        1,
+        64,
+    )
+}
+
+pub fn embed_max_chunks_per_doc() -> Option<usize> {
+    let toml = load_toml_or_default();
+    optional_env_or_toml_usize(
+        "AXON_EMBED_MAX_CHUNKS_PER_DOC",
+        toml.embed.max_chunks_per_doc,
+        1,
+        100_000,
+    )
+}
+
+pub fn embed_max_source_chunks_per_doc() -> Option<usize> {
+    let toml = load_toml_or_default();
+    optional_env_or_toml_usize(
+        "AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC",
+        toml.embed.max_source_chunks_per_doc,
+        1,
+        100_000,
+    )
+}
+
+pub fn embed_dedupe_exact_chunks() -> bool {
+    let toml = load_toml_or_default();
+    env_bool_opt("AXON_EMBED_DEDUPE_EXACT_CHUNKS")
+        .or(toml.embed.dedupe_exact_chunks)
+        .unwrap_or(true)
+}
+
+pub fn chunking_markdown_max_chars() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_MARKDOWN_CHUNK_MAX_CHARS",
+        toml.chunking.markdown_max_chars,
+        2000,
+        256,
+        16_384,
+    )
+}
+
+pub fn chunking_markdown_min_chars(max_chars: usize) -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_MARKDOWN_CHUNK_MIN_CHARS",
+        toml.chunking.markdown_min_chars,
+        500.min(max_chars),
+        1,
+        max_chars,
+    )
+}
+
+pub fn chunking_overlap_chars(max_chars: usize) -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_CHUNK_OVERLAP_CHARS",
+        toml.chunking.overlap_chars,
+        200.min(max_chars.saturating_sub(1)),
+        0,
+        max_chars.saturating_sub(1),
+    )
+}
+
+pub fn qdrant_upsert_batch_size() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_QDRANT_UPSERT_BATCH_SIZE",
+        toml.qdrant.upsert_batch_size,
+        1024,
+        1,
+        4096,
+    )
+}
+
+pub fn qdrant_upsert_parallelism() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_QDRANT_UPSERT_PARALLELISM",
+        toml.qdrant.upsert_parallelism,
+        1,
+        1,
+        16,
+    )
+}
+
+pub fn qdrant_bulk_load() -> bool {
+    let toml = load_toml_or_default();
+    env_bool_opt("AXON_QDRANT_BULK_LOAD")
+        .or(toml.qdrant.bulk_load)
+        .unwrap_or(false)
+}
+
+pub fn qdrant_bulk_indexing_threshold_kb() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB",
+        toml.qdrant.bulk_indexing_threshold_kb,
+        10_485_760,
+        20_000,
+        1_073_741_824,
+    )
+}
+
+pub fn qdrant_indexing_threshold_kb() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_QDRANT_INDEXING_THRESHOLD_KB",
+        toml.qdrant.indexing_threshold_kb,
+        20_000,
+        1,
+        1_073_741_824,
+    )
+}
+
+pub fn qdrant_hnsw_m() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize("AXON_QDRANT_HNSW_M", toml.qdrant.hnsw_m, 32, 8, 64)
+}
+
+pub fn qdrant_hnsw_ef_construct() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_QDRANT_HNSW_EF_CONSTRUCT",
+        toml.qdrant.hnsw_ef_construct,
+        256,
+        64,
+        512,
+    )
+}
+
+pub fn qdrant_payload_index_profile() -> String {
+    let toml = load_toml_or_default();
+    std::env::var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or(toml.qdrant.payload_index_profile)
+        .unwrap_or_else(|| "full".to_string())
+}
+
+pub fn qdrant_payload_index_parallelism() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM",
+        toml.qdrant.payload_index_parallelism,
+        16,
+        1,
+        64,
+    )
+}
+
+pub fn qdrant_hnsw_on_disk() -> bool {
+    let toml = load_toml_or_default();
+    env_bool_opt("AXON_QDRANT_HNSW_ON_DISK")
+        .or(toml.qdrant.hnsw_on_disk)
+        .unwrap_or(false)
+}
+
+pub fn qdrant_quantization_always_ram() -> bool {
+    let toml = load_toml_or_default();
+    env_bool_opt("AXON_QDRANT_QUANTIZATION_ALWAYS_RAM")
+        .or(toml.qdrant.quantization_always_ram)
+        .unwrap_or(true)
+}
+
+pub fn code_search_freshness_ttl_secs() -> u64 {
+    let toml = load_toml_or_default();
+    resolve_clamped_u64(
+        "AXON_CODE_SEARCH_FRESHNESS_TTL_SECS",
+        toml.code_search.freshness_ttl_secs,
+        30,
+        0,
+        86_400,
+    )
+}
+
+pub fn code_search_reindex_timeout_secs() -> u64 {
+    let toml = load_toml_or_default();
+    resolve_clamped_u64(
+        "AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS",
+        toml.code_search.reindex_timeout_secs,
+        300,
+        1,
+        3_600,
+    )
+}
+
+pub fn code_search_max_file_bytes() -> u64 {
+    let toml = load_toml_or_default();
+    resolve_clamped_u64(
+        "AXON_CODE_SEARCH_MAX_FILE_BYTES",
+        toml.code_search.max_file_bytes,
+        10 * 1024 * 1024,
+        1,
+        512 * 1024 * 1024,
+    )
+}
+
+pub fn code_search_changed_file_batch_size() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE",
+        toml.code_search.changed_file_batch_size,
+        5,
+        1,
+        1000,
+    )
+}
+
+pub fn watch_tick_secs() -> u64 {
+    let toml = load_toml_or_default();
+    resolve_clamped_u64("AXON_WATCH_TICK_SECS", toml.watch.tick_secs, 15, 1, 3600)
+}
+
+pub fn watch_lease_secs() -> i64 {
+    let toml = load_toml_or_default();
+    std::env::var("AXON_WATCH_LEASE_SECS")
+        .ok()
+        .and_then(|raw| raw.parse::<i64>().ok())
+        .or(toml.watch.lease_secs)
+        .unwrap_or(300)
+        .max(1)
+}
+
+pub fn endpoints_bundle_concurrency() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_ENDPOINT_BUNDLE_CONCURRENCY",
+        toml.endpoints.bundle_concurrency,
+        8,
+        1,
+        64,
+    )
+}
+
+pub fn endpoints_chrome_concurrency() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_ENDPOINT_CHROME_CONCURRENCY",
+        toml.endpoints.chrome_concurrency,
+        1,
+        1,
+        16,
+    )
+}
+
+pub fn endpoints_verify_concurrency() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_ENDPOINT_VERIFY_CONCURRENCY",
+        toml.endpoints.verify_concurrency,
+        16,
+        1,
+        128,
+    )
+}
+
+pub fn endpoints_probe_concurrency() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_ENDPOINT_PROBE_CONCURRENCY",
+        toml.endpoints.probe_concurrency,
+        4,
+        1,
+        128,
+    )
+}
+
+pub fn mcp_embed_max_local_bytes() -> u64 {
+    let toml = load_toml_or_default();
+    resolve_clamped_u64(
+        "AXON_MCP_EMBED_MAX_LOCAL_BYTES",
+        toml.mcp.embed.max_local_bytes,
+        10 * 1024 * 1024,
+        1,
+        u64::MAX,
+    )
+}
+
+pub fn mcp_task_result_wait_timeout_secs() -> u64 {
+    let toml = load_toml_or_default();
+    resolve_clamped_u64(
+        "AXON_TASK_RESULT_WAIT_TIMEOUT_SECS",
+        toml.mcp.task_result_wait_timeout_secs,
+        300,
+        1,
+        86_400,
+    )
+}
+
+pub fn mcp_embed_max_local_depth() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_MCP_EMBED_MAX_LOCAL_DEPTH",
+        toml.mcp.embed.max_local_depth,
+        16,
+        1,
+        1024,
+    )
+}
+
+pub fn mcp_embed_max_local_entries() -> usize {
+    let toml = load_toml_or_default();
+    resolve_clamped_usize(
+        "AXON_MCP_EMBED_MAX_LOCAL_ENTRIES",
+        toml.mcp.embed.max_local_entries,
+        10_000,
+        1,
+        1_000_000,
+    )
+}
+
+fn optional_env_or_toml_usize(
+    env_key: &str,
+    toml_value: Option<usize>,
+    min: usize,
+    max: usize,
+) -> Option<usize> {
+    if let Some(value) = performance::env_usize_opt(env_key, 0, max) {
+        return (value != 0).then(|| value.clamp(min, max));
+    }
+    toml_value.and_then(|value| (value != 0).then(|| value.clamp(min, max)))
+}
+
 fn resolve_clamped_usize(
     env_key: &str,
     toml_value: Option<usize>,

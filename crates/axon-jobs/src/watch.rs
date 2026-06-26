@@ -1,5 +1,6 @@
 use crate::store::{now_ms, open_config_pool};
 use axon_core::config::Config;
+use axon_core::config::parse::tuning;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -85,6 +86,7 @@ impl WatchDefCreateRequest {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn parse_watch_lease_secs(raw: Option<String>) -> i64 {
     raw.and_then(|raw| raw.parse::<i64>().ok())
         .filter(|secs| *secs >= 1)
@@ -92,7 +94,7 @@ pub(crate) fn parse_watch_lease_secs(raw: Option<String>) -> i64 {
 }
 
 pub(crate) fn watch_lease_ttl_ms_from_env() -> i64 {
-    parse_watch_lease_secs(std::env::var("AXON_WATCH_LEASE_SECS").ok()) * 1_000
+    tuning::watch_lease_secs() * 1_000
 }
 
 fn clamp_watch_list_limit(limit: i64) -> i64 {
