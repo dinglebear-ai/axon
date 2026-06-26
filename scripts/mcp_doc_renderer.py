@@ -414,6 +414,7 @@ HANDLER_REQUIRED_FIELDS: dict[str, set[str]] = {
     "endpoints": {"url"},
     "evaluate": {"query"},
     "map": {"url"},
+    "purge": {"target"},
     "query": {"query"},
     "research": {"query"},
     "retrieve": {"url"},
@@ -464,7 +465,11 @@ def _start_requirement_summary(action: str, sdef: StructDef) -> str:
         case "embed":
             return "start requires `input` (string)"
         case "ingest":
-            return "start requires `source_type` + `target`"
+            return (
+                "start requires `target`; `source_type` is optional and "
+                "auto-detected from `target` (github/gitlab/gitea/git/reddit/"
+                "youtube/rss) when omitted"
+            )
         case _:
             req = sdef.required_fields()
             if req:

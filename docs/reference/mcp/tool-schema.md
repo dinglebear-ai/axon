@@ -62,7 +62,7 @@ Incoming request map is parsed strictly with serde:
 ## Preferred Client Actions
 Use CLI-identical top-level actions:
 - Lifecycle families: `crawl`, `embed`, `extract`, `ingest`
-- Direct actions: `ask`, `brand`, `diff`, `doctor`, `domains`, `elicit_demo`, `endpoints`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`, `summarize`
+- Direct actions: `ask`, `brand`, `diff`, `doctor`, `domains`, `elicit_demo`, `endpoints`, `evaluate`, `help`, `map`, `purge`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`, `summarize`
 
 For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canonical families with `subaction`:
 
@@ -94,6 +94,7 @@ These actions do not require `subaction`:
 | `evaluate` | `query` (aliases: `question`) (string) | `diagnostics`, `retrieval_ab`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `help` | -- | `response_mode` |
 | `map` | `url` (string) | `limit`, `offset`, `response_mode` |
+| `purge` | `prefix` (bool), `target` (string) | `dry_run`, `collection`, `response_mode` |
 | `query` | `query` (string) | `limit`, `offset`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `research` | `query` (string) | `limit`, `offset`, `search_time_range`, `response_mode` |
 | `retrieve` | `url` (string) | `max_points`, `collection`, `since`, `before`, `response_mode`, `cursor`, `token_budget` |
@@ -133,7 +134,7 @@ Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 - `crawl`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `urls` (array)
 - `embed`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `input` (string)
 - `extract`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `urls` (array)
-- `ingest`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `source_type` + `target`
+- `ingest`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `target`; `source_type` is optional and auto-detected from `target` (github/gitlab/gitea/git/reddit/youtube/rss) when omitted
 
 ## Ingest Source Types
 
