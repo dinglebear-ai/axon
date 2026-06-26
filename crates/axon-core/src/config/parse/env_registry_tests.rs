@@ -1,5 +1,6 @@
 use super::*;
 use EnvClassification::{KeepEnv, MoveToml};
+use std::collections::BTreeSet;
 
 #[test]
 fn service_urls_are_env_not_toml() {
@@ -63,7 +64,7 @@ fn implemented_env_keys_are_registered() {
         "AXON_MCP_EMBED_MAX_LOCAL_ENTRIES",
     ];
 
-    let registered: std::collections::BTreeSet<_> = all_specs().map(|spec| spec.key).collect();
+    let registered: BTreeSet<_> = all_specs().map(|spec| spec.key).collect();
 
     let missing: Vec<_> = required
         .iter()
@@ -74,5 +75,40 @@ fn implemented_env_keys_are_registered() {
     assert!(
         missing.is_empty(),
         "missing env_registry entries: {missing:?}"
+    );
+}
+
+#[test]
+fn env_example_does_not_include_toml_tuning_keys() {
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root");
+    let env_example =
+        std::fs::read_to_string(repo_root.join(".env.example")).expect("read root .env.example");
+    let example_keys: BTreeSet<String> = env_example
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            line.split_once('=').map(|(key, _)| key.trim().to_string())
+        })
+        .collect();
+
+    let moved_keys: BTreeSet<_> = all_specs()
+        .filter(|spec| spec.classification == MoveToml)
+        .map(|spec| spec.key)
+        .collect();
+    let drift: Vec<_> = example_keys
+        .iter()
+        .filter(|key| moved_keys.contains(key.as_str()))
+        .cloned()
+        .collect();
+
+    assert!(
+        drift.is_empty(),
+        ".env.example contains TOML-owned keys: {drift:?}"
     );
 }
