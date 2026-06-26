@@ -446,7 +446,7 @@ fn freshness_max_due_per_tick(toml: &TomlConfig) -> i64 {
         .ok()
         .and_then(|raw| raw.parse::<i64>().ok())
         .or(toml.freshness.max_due_per_tick)
-        .map(|value| value.clamp(1, 4))
+        .map(|value| value.clamp(1, 100))
         .unwrap_or(4)
 }
 

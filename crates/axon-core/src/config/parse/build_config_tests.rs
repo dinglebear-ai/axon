@@ -369,6 +369,28 @@ fn migrated_worker_tuning_reads_from_toml_and_watchdog_env_still_wins() {
 
 #[allow(unsafe_code)]
 #[test]
+fn freshness_max_due_per_tick_accepts_configured_values_above_default() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[freshness]\nmax-due-per-tick = 12\n").unwrap();
+
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_FRESHNESS_MAX_DUE_PER_TICK"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_FRESHNESS_MAX_DUE_PER_TICK");
+            let toml_cfg = into_config_via_args(&["status"]).unwrap();
+            assert_eq!(toml_cfg.freshness_max_due_per_tick, 12);
+
+            env::set_var("AXON_FRESHNESS_MAX_DUE_PER_TICK", "20");
+            let env_cfg = into_config_via_args(&["status"]).unwrap();
+            assert_eq!(env_cfg.freshness_max_due_per_tick, 20);
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn explicit_default_collection_flag_wins_over_env() {
     // Regression: previously the sentinel check `global.collection != "axon"`
     // treated explicit `--collection axon` the same as the clap default and

@@ -149,6 +149,24 @@ async fn lease_due_freshness_is_single_flight_and_advances_next_run() -> Result<
 }
 
 #[tokio::test]
+async fn lease_due_freshness_honors_configured_limit_above_default() -> Result<(), Box<dyn Error>> {
+    let pool = test_pool().await?;
+    for index in 0..6 {
+        insert_due_freshness(
+            &pool,
+            &format!("hash-{index}"),
+            "ingest",
+            &format!("rss:https://example.com/feed-{index}.xml"),
+        )
+        .await?;
+    }
+
+    let leased = lease_due_freshness(&pool, now_ms(), 300_000, 6).await?;
+    assert_eq!(leased.len(), 6);
+    Ok(())
+}
+
+#[tokio::test]
 async fn creation_without_next_run_uses_stable_jitter() -> Result<(), Box<dyn Error>> {
     let pool = test_pool().await?;
     let before = now_ms();

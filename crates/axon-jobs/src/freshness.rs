@@ -263,7 +263,7 @@ pub async fn lease_due_freshness(
     .bind(now)
     .bind(now)
     .bind(now)
-    .bind(limit.clamp(1, 4))
+    .bind(limit.clamp(1, 100))
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(parse_freshness_def_row).collect())
