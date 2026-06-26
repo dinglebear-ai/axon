@@ -53,7 +53,7 @@ pub fn spawn_freshness_scheduler(service_context: ServiceContext) {
     };
     let tick_secs = service_context.cfg.freshness_tick_secs.max(1);
     let lease_ttl_ms = freshness_lease_ttl_ms(service_context.cfg());
-    let max_due = service_context.cfg.freshness_max_due_per_tick.clamp(1, 4);
+    let max_due = service_context.cfg.freshness_max_due_per_tick.clamp(1, 100);
     let max_concurrent = service_context.cfg.freshness_max_concurrent_runs.max(1);
     let semaphore = Arc::new(Semaphore::new(max_concurrent));
     tokio::spawn(async move {
