@@ -388,7 +388,7 @@ run_suite() {
     # see the host path could claim it. So embed.start of a local file returns a
     # completed status, not a job_id. embed status/cancel job-lifecycle is covered
     # by the crawl/extract smokes (shared plumbing).
-    run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and .data.status == "completed" and (.data.input | type == "string")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
+    run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and .data.status == "completed" and (.data.input | type == "string") and (.data.docs_embedded | type == "number")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
   fi
   run_json_case "${prefix}_embed_list" '.ok == true and .action == "embed" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:embed subaction:list limit:5 offset:0
 

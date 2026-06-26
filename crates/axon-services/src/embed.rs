@@ -158,11 +158,20 @@ pub async fn embed_now_with_source(
     input: &str,
     source_type: Option<&str>,
 ) -> Result<EmbedJobResult, Box<dyn Error>> {
-    embed_path_native_with_progress(cfg, input, None, source_type).await?;
+    // Surface the embed counts (matching the enqueued worker's result shape in
+    // crates/axon-jobs/src/workers/runners/embed.rs) so a partial embed
+    // (`docs_failed > 0`) is visible to the caller rather than reported as a bare
+    // success. NOTE: this path intentionally does not call `require_success` —
+    // crawl_sync also calls it and tolerates partial embeds; enforcing
+    // all-or-nothing across every embed surface is a separate policy decision.
+    let summary = embed_path_native_with_progress(cfg, input, None, source_type).await?;
     Ok(map_embed_job_result(serde_json::json!({
         "input": input,
         "collection": cfg.collection,
         "completed": true,
+        "docs_embedded": summary.docs_embedded,
+        "docs_failed": summary.docs_failed,
+        "chunks_embedded": summary.chunks_embedded,
     })))
 }
 
@@ -191,22 +200,29 @@ pub fn validate_server_embed_input_with_config(
 
 /// True when `input` names a local filesystem path that exists in this process.
 ///
-/// Mirrors the CLI guard in `crates/axon-cli/src/commands/embed.rs`: a local path
-/// can only be embedded by a process that shares its filesystem. Enqueuing it lets
-/// another worker (e.g. the axon container) claim a path it cannot read. URLs and
-/// free text are never local paths. Callers should run a local-path embed
-/// in-process rather than enqueueing it.
+/// Matches the intent of the CLI guard in `crates/axon-cli/src/commands/embed.rs`
+/// (with an added explicit URL short-circuit and an IO-error-tolerant existence
+/// probe): a local path can only be embedded by a process that shares its
+/// filesystem. Enqueuing it lets another worker (e.g. the axon container) claim a
+/// path it cannot read. URLs and free text are never local paths. Callers should
+/// run a local-path embed in-process rather than enqueueing it.
 ///
-/// Validation (`validate_server_embed_input_with_config`) already rejects a
-/// path-like input that does not exist, so by the time a validated input reaches
-/// this guard a returned `true` means the path is guaranteed visible here.
+/// `validate_server_embed_input_with_config` already rejects an absolute or
+/// `./`-style path-like input that does not exist, so by the time a validated
+/// input reaches this guard a returned `true` means the path is guaranteed
+/// visible here.
 #[must_use]
 pub fn embed_input_is_local_path(input: &str) -> bool {
     let input = input.trim();
     if input.starts_with("http://") || input.starts_with("https://") {
         return false;
     }
-    Path::new(input).exists()
+    // `Path::exists` collapses every IO error (e.g. permission denied) to
+    // `false`, which would let an unreadable path-shaped input fall through to
+    // the queue and fail on a worker that cannot see it (or embed the literal
+    // string as content). Treat an errored probe as a local path so the real
+    // error surfaces in-process here.
+    Path::new(input).try_exists().unwrap_or(true)
 }
 
 fn validate_server_embed_input_with_roots(

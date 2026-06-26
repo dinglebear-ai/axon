@@ -37,23 +37,23 @@ impl AxonMcpServer {
             });
         // A local path must be embedded in-process by a process that shares its
         // filesystem. Enqueuing it lets another worker (e.g. the axon container)
-        // claim a path it cannot read. This mirrors the CLI guard in
-        // crates/axon-cli/src/commands/embed.rs. Validation above already rejected
-        // a path-like input that does not exist, so a true here is a path visible
-        // to this process; URL / free-text inputs fall through to the queue.
+        // claim a path it cannot read. This matches the intent of the CLI guard in
+        // crates/axon-cli/src/commands/embed.rs. `validate_mcp_embed_input_with_config`
+        // (called earlier) already rejected a path-like input that does not exist,
+        // so a true here is a path visible to this process; URL / free-text inputs
+        // fall through to the queue.
         if embed_input_is_local_path(&input) {
-            embed_now_with_source(&cfg, &input, source_type.as_deref())
+            let result = embed_now_with_source(&cfg, &input, source_type.as_deref())
                 .await
                 .map_err(|e| logged_internal_error("embed.start", e.as_ref()))?;
-            return Ok(AxonToolResponse::ok(
-                "embed",
-                "start",
-                serde_json::json!({
-                    "status": "completed",
-                    "input": input,
-                    "collection": cfg.collection,
-                }),
-            ));
+            // Surface the real embed counts (docs_embedded / docs_failed /
+            // chunks_embedded) from the in-process result so a partial embed is
+            // not silently reported as a clean success.
+            let mut data = result.payload;
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("status".to_string(), serde_json::json!("completed"));
+            }
+            return Ok(AxonToolResponse::ok("embed", "start", data));
         }
         let service_context = self
             .service_context_for(cfg.clone())

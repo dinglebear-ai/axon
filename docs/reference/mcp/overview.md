@@ -241,13 +241,19 @@ Lifecycle families:
 
 No top-level aliases are supported.
 
-`embed.start` has one transport-specific behavior: when `input` is a local
-filesystem path the server can see, the embed runs **in-process** and the
-response carries `{ "status": "completed", "input", "collection" }` instead of a
-`job_id`. A host path must be embedded by a process that shares its filesystem;
-enqueuing it onto the shared jobs DB would let a worker that cannot see the path
-(for example the container) claim it. URL and free-text inputs are enqueued as a
-job and return a `job_id`. This mirrors the CLI `embed` guard.
+`embed.start` has one transport-specific behavior. On a normal (non-task)
+`embed.start` call, when `input` is a local filesystem path the server can see,
+the embed runs **in-process** and the response carries
+`{ "status": "completed", "input", "collection", "docs_embedded", "docs_failed",
+"chunks_embedded" }` instead of a `job_id`. A host path must be embedded by a
+process that shares its filesystem; enqueuing it onto the shared jobs DB would let
+a worker that cannot see the path (for example the container) claim it. URL and
+free-text inputs are enqueued as a job and return a `job_id`. This matches the
+intent of the CLI `embed` guard.
+
+Task-augmented `embed.start` (a task-call start) always returns a queued
+`job_id`, so it **rejects** a local-path `input` with an `invalid_params` error —
+use a normal `embed.start` tool call for local paths.
 
 ## Response Pattern
 Success responses are normalized:
