@@ -41,7 +41,8 @@ async fn embed_start_local_path_runs_in_process_not_enqueued() {
     // branch inversion / dropped early return / reordering would make this Ok.
     let err = result.expect_err("local path must run in-process and surface the TEI error");
     assert!(
-        err.message.contains("TEI_URL not configured") || err.code == rmcp::model::ErrorCode::INTERNAL_ERROR,
+        err.message.contains("TEI_URL not configured")
+            || err.code == rmcp::model::ErrorCode::INTERNAL_ERROR,
         "expected an in-process embed failure, got: {err:?}"
     );
 }
