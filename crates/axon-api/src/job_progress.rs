@@ -15,7 +15,7 @@ use crate::service_job::ServiceJob;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum JobFamily {
     Embed,
@@ -23,7 +23,7 @@ pub enum JobFamily {
     Ingest,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum JobPhase {
     Pending,
@@ -44,20 +44,29 @@ impl JobPhase {
             "completed" => JobPhase::Done,
             "failed" => JobPhase::Failed,
             "canceled" | "cancelled" => JobPhase::Canceled,
+            // Any other status string (including the live "running" and any
+            // future/unknown state) is treated as in-flight. A job we can't
+            // classify is safer shown as Running (active) than as a terminal
+            // phase that would stop the client from polling.
             _ => JobPhase::Running,
         }
     }
 }
 
 /// One labelled, display-formatted counter (e.g. `{ "Chunks", "1,024" }`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct JobMetric {
     pub label: String,
+    /// **Display-formatted, not machine-readable.** Pre-rendered for direct
+    /// rendering by clients — integers carry thousands separators (`"1,024"`)
+    /// and string fields (e.g. ingest `phase`) pass through verbatim. Do not
+    /// parse this back into a number; if a surface needs the raw value, add a
+    /// typed field rather than reverse-engineering the formatting here.
     pub value: String,
 }
 
 /// Derived, transport-neutral progress for a generic async job.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct JobProgress {
     pub family: JobFamily,
     pub phase: JobPhase,

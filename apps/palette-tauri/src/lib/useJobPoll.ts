@@ -36,6 +36,27 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
     // consecutive failures, surface a visible failed state (also stops the poll).
     let consecutiveFailures = 0;
     const STALL_THRESHOLD = 10;
+    // A transient failure (thrown error OR a non-ok HTTP status) is fine on a
+    // 1Hz loop, but if the server stays unreachable the spinner would freeze
+    // silently. After STALL_THRESHOLD consecutive failures, surface a *visible*
+    // failed state — phase AND errorText, so JobProgressView renders its error
+    // banner instead of leaving the user staring at a dead spinner.
+    const recordFailure = () => {
+      if (++consecutiveFailures < STALL_THRESHOLD) return; // transient — retry next tick
+      setRun((current) =>
+        current.kind === "asyncJob" && current.jobId === jobId
+          ? {
+              ...current,
+              subtitle: "lost contact with server",
+              snapshot: {
+                ...current.snapshot,
+                phase: "failed",
+                errorText: `Lost contact with the server after ${STALL_THRESHOLD} failed status checks. The job may still be running — reopen it once the server is reachable.`,
+              },
+            }
+          : current,
+      );
+    };
     const tick = async () => {
       try {
         const res = await invoke<{ ok: boolean; status: number; payload: unknown }>(
@@ -44,6 +65,12 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
         );
         if (!active) return;
         setNowMs(Date.now());
+        // A non-ok status (5xx/404) does not throw — count it toward the stall
+        // so a server returning errors trips the same visible failure path.
+        if (!res.ok) {
+          recordFailure();
+          return;
+        }
         setRun((current) => {
           if (current.kind !== "asyncJob" || current.jobId !== jobId) return current;
           const snapshot = summarizeJob(current.family, res.payload, {
@@ -55,18 +82,7 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
         consecutiveFailures = 0;
       } catch {
         if (!active) return;
-        if (++consecutiveFailures >= STALL_THRESHOLD) {
-          setRun((current) =>
-            current.kind === "asyncJob" && current.jobId === jobId
-              ? {
-                  ...current,
-                  subtitle: "lost contact with server",
-                  snapshot: { ...current.snapshot, phase: "failed" },
-                }
-              : current,
-          );
-        }
-        /* otherwise transient — keep trying on the next tick */
+        recordFailure();
       }
     };
     void tick();

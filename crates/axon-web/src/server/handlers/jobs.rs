@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, Query},
     routing::{get, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -19,6 +19,21 @@ use super::super::error::HttpError;
 pub(crate) struct JobListQuery {
     limit: Option<i64>,
     offset: Option<i64>,
+}
+
+/// Typed job-status envelope so the `{ job, progress }` wire shape is a
+/// registered OpenAPI schema (and thus reflected into the generated palette/
+/// android clients) instead of an opaque `serde_json::Value`.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct JobStatusResponse {
+    /// Raw job record in the wire-compat shape (`status`, `result_json`,
+    /// timestamps, …). Still `Value` because the per-family job payloads are
+    /// heterogeneous; `progress` is the typed, cross-family projection of it.
+    pub job: serde_json::Value,
+    /// Server-derived, transport-neutral progress for the generic async
+    /// families (embed/extract/ingest). `None` for crawl, which carries a
+    /// richer client-side snapshot rather than the generic shape.
+    pub progress: Option<JobProgress>,
 }
 
 #[derive(Clone)]
@@ -75,13 +90,13 @@ pub(crate) async fn list_jobs(
     get,
     path = "/v1/crawl/{id}",
     params(("id" = uuid::Uuid, Path, description = "Crawl job ID")),
-    responses((status = 200, description = "Crawl job status", body = serde_json::Value), (status = 404, description = "Job not found", body = crate::server::error::ErrorBody)),
+    responses((status = 200, description = "Crawl job status", body = JobStatusResponse), (status = 404, description = "Job not found", body = crate::server::error::ErrorBody)),
     tag = "jobs"
 )]
 pub(crate) async fn job_status(
     Extension(state): Extension<JobLifecycleState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<serde_json::Value>, HttpError> {
+) -> Result<Json<JobStatusResponse>, HttpError> {
     let job = services::jobs::job_status(&state.service_context, state.kind, id)
         .await
         .map_err(HttpError::from_box)?;
@@ -96,9 +111,10 @@ pub(crate) async fn job_status(
     // palette/android/CLI consume it instead of re-deriving phase/percent/metrics.
     // Crawl keeps its richer client-side snapshot.
     let progress = job_family(state.kind).map(|family| JobProgress::from_service_job(family, &job));
-    Ok(Json(
-        json!({ "job": job.wire_json_compat(), "progress": progress }),
-    ))
+    Ok(Json(JobStatusResponse {
+        job: job.wire_json_compat(),
+        progress,
+    }))
 }
 
 /// Map a job-runtime `JobKind` to the generic progress family, or `None` for
@@ -176,3 +192,7 @@ pub(crate) async fn recover_jobs(
         .map_err(HttpError::from_box)?;
     Ok(Json(json!({ "recovered": recovered })))
 }
+
+#[cfg(test)]
+#[path = "jobs_tests.rs"]
+mod tests;

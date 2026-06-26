@@ -169,6 +169,20 @@ fn source_from_mcp_request_auto_classifies_when_source_type_omitted() {
     // Reddit shorthand.
     let rd = source_from_mcp_request(&auto_ingest_req("r/rust"), &cfg).expect("auto reddit");
     assert!(matches!(rd, IngestSource::Reddit { target } if target == "r/rust"));
+
+    // RSS/Atom feed URL — `.rss` extension routes to the feed ingester, not a
+    // generic web crawl, when source_type is omitted.
+    let rss = source_from_mcp_request(&auto_ingest_req("https://example.com/feed.rss"), &cfg)
+        .expect("auto rss");
+    assert!(
+        matches!(rss, IngestSource::Rss { target } if target == "https://example.com/feed.rss")
+    );
+
+    // Explicit `feed:` prefix also classifies as a feed.
+    let feed =
+        source_from_mcp_request(&auto_ingest_req("feed:https://blog.example.com/atom"), &cfg)
+            .expect("auto feed prefix");
+    assert!(matches!(feed, IngestSource::Rss { .. }));
 }
 
 #[test]

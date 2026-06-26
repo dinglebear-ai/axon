@@ -60,6 +60,68 @@ describe("summarizeJob", () => {
     expect(snap.phase).toBe("done");
     expect(snap.percent).toBe(100);
   });
+
+  it("rejects an out-of-range progress.phase and recomputes from status", () => {
+    // A bogus phase string must NOT pass through — it falls back to the phase
+    // derived from the raw status (here: running).
+    const snap = summarizeJob(
+      "extract",
+      {
+        job: { status: "running" },
+        progress: { phase: "reticulating", percent: 10, metrics: [], error: null },
+      },
+      { jobId: "j5", label: "x" },
+    );
+    expect(snap.phase).toBe("running");
+  });
+
+  it("ignores a non-numeric progress.percent (renders indeterminate)", () => {
+    const snap = summarizeJob(
+      "embed",
+      {
+        job: { status: "running" },
+        progress: { phase: "running", percent: "lots", metrics: [], error: null },
+      },
+      { jobId: "j6", label: "x" },
+    );
+    expect(snap.percent).toBeNull();
+  });
+
+  it("drops malformed metric entries (non-object, missing/empty label or value)", () => {
+    const snap = summarizeJob(
+      "ingest",
+      {
+        job: { status: "running" },
+        progress: {
+          phase: "running",
+          percent: null,
+          metrics: [
+            { label: "Docs", value: "3" }, // kept
+            { label: "", value: "9" }, // dropped: empty label
+            { label: "Chunks", value: "" }, // dropped: empty value
+            { label: "NoValue" }, // dropped: missing value
+            "not-an-object", // dropped: not a record
+            42, // dropped: not a record
+          ],
+          error: null,
+        },
+      },
+      { jobId: "j7", label: "x" },
+    );
+    expect(snap.metrics).toEqual([{ label: "Docs", value: "3" }]);
+  });
+
+  it("treats a non-array progress.metrics as empty", () => {
+    const snap = summarizeJob(
+      "ingest",
+      {
+        job: { status: "running" },
+        progress: { phase: "running", percent: null, metrics: { label: "x", value: "1" }, error: null },
+      },
+      { jobId: "j8", label: "x" },
+    );
+    expect(snap.metrics).toEqual([]);
+  });
 });
 
 describe("isJobPhaseTerminal", () => {
