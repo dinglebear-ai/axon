@@ -14,6 +14,7 @@ pub mod embed;
 pub mod endpoints;
 pub mod events;
 pub mod extract;
+pub mod freshness;
 pub mod ingest;
 pub mod jobs;
 pub mod map;
@@ -40,6 +41,9 @@ pub mod watch;
 #[cfg(test)]
 #[path = "client_contract_tests.rs"]
 mod client_contract_tests;
+#[cfg(test)]
+#[path = "freshness_tests.rs"]
+mod freshness_tests;
 #[cfg(test)]
 #[path = "sync_tests.rs"]
 mod sync_tests;
