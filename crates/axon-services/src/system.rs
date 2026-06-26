@@ -10,6 +10,7 @@ mod collections;
 mod dedupe;
 mod doctor;
 mod domains;
+mod purge;
 mod sources;
 mod stats;
 mod status;
@@ -22,6 +23,7 @@ pub use self::domains::{
     detailed_domains, domain_indexed, domains, map_domains_payload, summarize_detailed_domains,
     summarize_detailed_domains_limited,
 };
+pub use self::purge::purge;
 pub use self::sources::{
     domain_sources_from_urls, map_sources_payload, normalize_domain_query, sources,
     sources_for_domain, sources_schema_version_breakdown, sources_with_breakdown,

@@ -102,16 +102,22 @@ CLI fire-and-forget contexts must use `new()`. Spawning workers in a short-lived
 
 ## Architecture Contract
 
-**Rule:** CLI handlers, MCP handlers, and web API routes call **service functions only** — never raw `crates/axon-vector/src/ops/*` or `crates/axon-jobs/src/*` functions directly.
+> **Canonical rule:** [`docs/architecture/crate-ownership.md`](../../../docs/architecture/crate-ownership.md). Read it before deciding where new logic goes.
+
+**Rule:** transports (CLI/MCP/web/palette) call a **typed, transport-neutral entry point** — never a domain crate's internal `::ops::*` modules. But `axon-services` is **not** the mandatory home for that entry point:
+
+- **Single-domain, job-free** ops (purge, dedupe, stats, query, classify) — the **logic** lives in the owning **domain crate** (`axon-vector`, `axon-ingest`, …) and the **DTO** lives in **`axon-api`**. `axon-services` may `pub use` / thinly wrap it so transports keep one import (a facade, not a reimplementation).
+- **Job-lifecycle** ops (need `ctx.jobs`) and **cross-domain orchestration** (scrape→embed, `ask`, the ingest pipeline) live in `axon-services` — domain crates are *below* `axon-jobs` and can't compose across domains.
 
 ```
-CLI handler (run_ask)
-    └─→ services::query::ask(cfg, question, tx)
-            └─→ vector::ops::commands::ask::ask_payload(cfg, question)
-                    └─→ vector::ops::tei, qdrant, ranking ...
+# cross-domain / job-runtime → axon-services owns it
+CLI run_ask → services::query::ask → vector::ops::commands::ask::ask_payload → tei/qdrant/ranking
+
+# single-domain → domain crate owns logic, axon-api owns DTO, services is a facade
+CLI run_purge → services::system::purge (facade) → axon_vector::purge → axon_api::PurgeResult
 ```
 
-This enforces a single call path that can be tested, typed, and evolved independently of the entry points.
+Do **not** add a `pub struct *Result` to `axon-services` for a single-domain op — it belongs in `axon-api`. Enforced by `cargo xtask check-layering` (transports must not import domain `::ops::` internals outside the seeded allowlist).
 
 ## Typed Result Pattern
 

@@ -1,9 +1,9 @@
 use super::AxonMcpServer;
 use super::artifacts::{InlineHint, artifact_root, client_context_name, respond_with_mode};
-use super::common::{MCP_TOOL_SCHEMA_URI, logged_internal_error, to_pagination};
+use super::common::{MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error, to_pagination};
 use crate::schema::{
-    AxonToolResponse, DoctorRequest, DomainsRequest, HelpRequest, SourcesRequest, StatsRequest,
-    StatusRequest,
+    AxonToolResponse, DoctorRequest, DomainsRequest, HelpRequest, PurgeRequest, SourcesRequest,
+    StatsRequest, StatusRequest,
 };
 use axon_services::system;
 use axon_services::transport;
@@ -30,6 +30,41 @@ impl AxonMcpServer {
             req.response_mode,
             "help-actions",
             help_payload(),
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    pub(super) async fn handle_purge(
+        &self,
+        req: PurgeRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let target = req
+            .target
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| invalid_params("purge requires a target URL"))?
+            .to_string();
+        // Agent safety: a bare `purge` previews; deletion requires dry_run=false.
+        let dry_run = req.dry_run.unwrap_or(true);
+        let mut cfg = (*self.cfg).clone();
+        if let Some(collection) = req.collection.as_deref() {
+            axon_core::config::validate_collection_name(collection)
+                .map_err(|e| invalid_params(format!("collection: {e}")))?;
+            cfg.collection = collection.to_string();
+        }
+        let result = system::purge(&cfg, &target, req.prefix, dry_run)
+            .await
+            .map_err(|e| logged_internal_error("purge", e.as_ref()))?;
+        let payload =
+            serde_json::to_value(result).map_err(|e| logged_internal_error("purge", &e))?;
+        respond_with_mode(
+            "purge",
+            "purge",
+            req.response_mode,
+            "purge",
+            payload,
             InlineHint::Default,
         )
         .await

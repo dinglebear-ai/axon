@@ -3612,6 +3612,54 @@
         ]
       }
     },
+    "/v1/purge": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "purge",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Purge result (counts of points/URLs matched or deleted)",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid purge request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream vector service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/query": {
       "post": {
         "tags": [
@@ -5798,6 +5846,34 @@
         },
         "additionalProperties": false
       },
+      "PurgeRequest": {
+        "type": "object",
+        "required": [
+          "target"
+        ],
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional collection override (defaults to the server's configured one)."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Preview only — count matches without deleting."
+          },
+          "prefix": {
+            "type": "boolean",
+            "description": "Match `target` as a prefix over a whole docs subtree / origin."
+          },
+          "target": {
+            "type": "string",
+            "description": "URL (or seed-URL/origin when `prefix` is set) to delete from the index."
+          }
+        },
+        "additionalProperties": false
+      },
       "ReadinessBody": {
         "type": "object",
         "required": [
@@ -6288,9 +6364,6 @@
       },
       "RestIngestRequest": {
         "type": "object",
-        "required": [
-          "source_type"
-        ],
         "properties": {
           "include_source": {
             "type": [
@@ -6309,7 +6382,15 @@
             ]
           },
           "source_type": {
-            "$ref": "#/components/schemas/RestIngestSourceType"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RestIngestSourceType",
+                "description": "Source type for the ingest target. **Omit to auto-detect** from `target`\nvia the canonical shared classifier (`classify_target`) — the same path\nthe CLI uses, covering GitHub / GitLab / Gitea / generic-git / Reddit /\nYouTube / RSS. Set explicitly only to force a specific interpretation."
+              }
+            ]
           },
           "target": {
             "type": [
