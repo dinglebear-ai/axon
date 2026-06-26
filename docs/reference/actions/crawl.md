@@ -68,6 +68,7 @@ All global flags apply. Key flags:
 | `--automation-script <PATH>` | — | JSON file mapping URL path prefixes → ordered Chrome web-automation steps run before each matching page is captured. Requires `--render-mode chrome`/`auto-switch`; ignored (with a warning) on HTTP-only. |
 | `--sitemap-only` | `false` | Sync-only path: run sitemap backfill without full crawl. |
 | `--skip-embed` | `false` | Do not queue an embed job from crawl output. |
+| `--fresh <Nd>` | — | CLI-only: create or update a recurring freshness schedule, for example `--fresh 1d`. |
 | `--json` | `false` | JSON output for job metadata/status responses. |
 
 With `--wait false`, `crawl` writes a SQLite job row and exits without draining
@@ -117,6 +118,9 @@ axon crawl errors 550e8400-e29b-41d4-a716-446655440000
 
 # Enqueue locally and print JSON
 axon crawl https://example.com --json
+
+# Keep a docs subtree fresh daily
+axon crawl https://modelcontextprotocol.io/docs/getting-started/intro --fresh 1d
 ```
 
 ## Automation-script format
@@ -152,6 +156,8 @@ skipped with a warning when `--render-mode http` is in effect.
 
 - `--warc` and `--automation-script` paths resolve on the **worker's** filesystem. Unlike `--output-dir`, they are not container-path-normalized, so for async crawls claimed by a dockerized worker a host path resolves inside the container. Use them with `--wait true` (or `axon serve`/`axon mcp` running on the same host) when pointing at host paths.
 - Async mode prints one job ID per URL and returns immediately.
+- `--fresh` is CLI-only in v1. It stores a safe replay snapshot and scheduled runs enqueue normal crawl jobs through the service layer; REST/MCP freshness management is not exposed yet.
+- Freshness schedule creation rejects secret-bearing custom headers such as `Authorization`, `Cookie`, and `X-API-Key` so secrets are not persisted in SQLite history.
 - Generic CLI client-to-server forwarding was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon crawl` through HTTP; call the `/v1/crawl` REST route or MCP HTTP endpoint directly when using `axon serve` as a remote service.
 - Async JSON output now includes the predicted `output_dir` plus `predicted_paths` for each enqueued job.
 - Sync mode writes crawl artifacts under `<output-dir>/domains/<domain>/sync/`.

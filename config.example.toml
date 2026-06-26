@@ -344,6 +344,32 @@
 # Env: AXON_MAX_JOB_ATTEMPTS
 # max-job-attempts = 5
 
+[freshness]
+# Scheduler sweep interval in seconds. Freshness schedules are created by
+# CLI-only `--fresh <Nd>` on scrape/crawl/embed/ingest and run from long-lived
+# `axon serve` / `axon mcp` processes.
+# Env: AXON_FRESHNESS_TICK_SECS
+# tick-secs = 60
+
+# Lease TTL in seconds for claimed schedules. The scheduler heartbeats during
+# long runs; stale leases are reclaimed on startup/sweep.
+# Env: AXON_FRESHNESS_LEASE_SECS
+# lease-secs = 1800
+
+# Max due schedules leased per sweep. Kept intentionally small to avoid restart
+# catch-up bursts.
+# Env: AXON_FRESHNESS_MAX_DUE_PER_TICK
+# max-due-per-tick = 4
+
+# Process-wide concurrent freshness dispatches. Scheduled scrape runs inline
+# under this semaphore; crawl/embed/ingest enqueue normal jobs.
+# Env: AXON_FRESHNESS_MAX_CONCURRENT_RUNS
+# max-concurrent-runs = 2
+
+# Retain freshness run history for this many days.
+# Env: AXON_FRESHNESS_RUN_RETENTION_DAYS
+# run-retention-days = 90
+
 [workers.adaptive-concurrency]
 # Off by default. When enabled, Axon replaces the fixed crawl semaphore with
 # Spider's adaptive semaphore for the main Spider crawl path.

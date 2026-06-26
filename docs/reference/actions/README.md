@@ -20,6 +20,7 @@ Axon exposes one logical action layer through three adapters: local CLI commands
 |---|---|---|---|---|
 | `ask` | `axon ask ...` | `POST /v1/ask`, `POST /v1/ask/stream` (Implemented) | `ask` | [axon ask](ask.md) |
 | `brand` | `axon brand ...` | `POST /v1/brand` (Implemented) | `brand` | [brand](brand.md) |
+| `code-search` | `axon code-search ...` | Not inventoried | Not inventoried | [code-search](code-search.md) |
 | `completions` | `axon completions ...` | Deferred | no action | [axon completions](completions.md) |
 | `config` | `axon config ...` | Deferred | no action | [config](config.md) |
 | `crawl` | `axon crawl ...` | `POST /v1/crawl`, `GET /v1/crawl`, `GET /v1/crawl/{id}`, `POST /v1/crawl/{id}/cancel`, `POST /v1/crawl/cleanup`, `DELETE /v1/crawl`, `POST /v1/crawl/recover` (Implemented) | `crawl.start`, `crawl.status`, `crawl.cancel`, `crawl.list`, `crawl.cleanup`, `crawl.clear`, `crawl.recover` | [axon crawl](crawl.md) |
@@ -32,6 +33,7 @@ Axon exposes one logical action layer through three adapters: local CLI commands
 | `endpoints` | `axon endpoints ...` | `POST /v1/endpoints` (Implemented) | `endpoints` | [endpoints](endpoints.md) |
 | `evaluate` | `axon evaluate ...` | `POST /v1/evaluate` (Implemented) | `evaluate` | [axon evaluate](evaluate.md) |
 | `extract` | `axon extract ...` | `POST /v1/extract`, `GET /v1/extract`, `GET /v1/extract/{id}`, `POST /v1/extract/{id}/cancel`, `POST /v1/extract/cleanup`, `DELETE /v1/extract`, `POST /v1/extract/recover` (Implemented) | `extract.start`, `extract.status`, `extract.cancel`, `extract.list`, `extract.cleanup`, `extract.clear`, `extract.recover` | [axon extract](extract.md) |
+| `fresh` | `axon fresh ...` | Not inventoried | Not inventoried | [axon fresh](fresh.md) |
 | `github` | `axon ingest <target>` | `POST /v1/ingest` | `ingest.start` with `source_type: "github"` | [axon github (removed — use `axon ingest`)](github.md) |
 | `ingest` | `axon ingest ...` | `POST /v1/ingest`, `GET /v1/ingest`, `GET /v1/ingest/{id}`, `POST /v1/ingest/{id}/cancel`, `POST /v1/ingest/cleanup`, `DELETE /v1/ingest`, `POST /v1/ingest/recover` (Implemented) | `ingest.start`, `ingest.status`, `ingest.cancel`, `ingest.list`, `ingest.cleanup`, `ingest.clear`, `ingest.recover` | [axon ingest](ingest.md) |
 | `map` | `axon map ...` | `POST /v1/map` (Implemented) | `map` | [axon map](map.md) |
@@ -40,8 +42,6 @@ Axon exposes one logical action layer through three adapters: local CLI commands
 | `migrate` | `axon migrate ...` | Deferred | no dedicated action | [migrate](migrate.md) |
 | `monitor` | `axon monitor ...` | Deferred | no action | [monitor](monitor.md) |
 | `query` | `axon query ...` | `POST /v1/query` (Implemented) | `query` | [axon query](query.md) |
-| `code-search` | `axon code-search ...` | Deferred | `code_search` | [code-search](code-search.md) |
-| `code-search-watch` | `axon code-search-watch ...` | Deferred | no dedicated action | [code-search](code-search.md) |
 | `reddit` | `axon ingest <target>` | `POST /v1/ingest` | `ingest.start` with `source_type: "reddit"` | [axon reddit (removed — use `axon ingest`)](reddit.md) |
 | `refresh` | `axon refresh ...` | Missing | no dedicated action | [axon refresh](refresh.md) |
 | `research` | `axon research ...` | `POST /v1/research` (Implemented) | `research` | [axon research](research.md) |

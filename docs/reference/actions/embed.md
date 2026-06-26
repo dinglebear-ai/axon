@@ -47,6 +47,7 @@ All global flags apply. Key flags for this command:
 |------|---------|-------------|
 | `--wait <bool>` | `false` | `false`: enqueue job and return immediately. `true`: run inline and block until embedding completes. |
 | `--collection <name>` | `axon` | Qdrant collection to write to. Also settable via `AXON_COLLECTION`. |
+| `--fresh <Nd>` | — | CLI-only: create or update a recurring freshness schedule, for example `--fresh 7d`. |
 | `--json` | `false` | Machine-readable JSON output. |
 | `--yes` | `false` | Skip destructive confirmation prompts (used by `embed clear`). |
 
@@ -89,6 +90,9 @@ axon embed list --json
 
 # URL/text input
 axon embed https://example.com/docs --json
+
+# Keep local docs fresh weekly
+axon embed ./docs --fresh 7d
 ```
 
 ## Notes
@@ -98,5 +102,6 @@ axon embed https://example.com/docs --json
 - `embed clear` is destructive and prompts unless `--yes` is set.
 - `--wait false` returns a queued job by default, and jobs stay pending until a worker process (`axon embed worker`) or long-running server process consumes them.
 - `--wait true` runs the submitted embed job in-process and blocks until it finishes. In that mode, `axon embed <input> --json` returns a single top-level object such as `{"job_id":"...","status":"completed"}`.
+- `--fresh` is CLI-only in v1. It stores a safe replay snapshot and scheduled runs enqueue normal embed jobs through the service layer; REST/MCP freshness management is not exposed yet.
 - `axon embed status <job_id> --json` returns a single top-level job object. The stable fields for automation are `id`, `status`, `target`, `collection`, `metrics`, `result_json`, and `config_json`.
 - The local source identifier for file embeds is the `target` field. Do not expect a nested `data.url` / `data.collection` envelope from the CLI.

@@ -114,6 +114,7 @@ for each key still overrides the TOML value at the precedence chain above.
 | `[ask]` | `max-context-chars`, `chunk-limit`, `candidate-limit`, `full-docs`, `backfill-chunks`, `doc-fetch-concurrency`, `doc-chunk-limit`, `min-relevance-score`, `authoritative-domains`, `authoritative-boost`, `min-citations-nontrivial` | `AXON_ASK_MAX_CONTEXT_CHARS`, `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_FULL_DOCS`, `AXON_ASK_BACKFILL_CHUNKS`, `AXON_ASK_DOC_FETCH_CONCURRENCY`, `AXON_ASK_DOC_CHUNK_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, `AXON_ASK_AUTHORITATIVE_BOOST`, `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs`, `concurrency-limit`, `crawl-concurrency-limit`, `backfill-concurrency-limit`, `watchdog-stale-timeout-secs`, `watchdog-confirm-secs`, `watchdog-sweep-secs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS`, `AXON_JOB_STALE_TIMEOUT_SECS`, `AXON_JOB_STALE_CONFIRM_SECS`, `AXON_WATCHDOG_SWEEP_SECS` |
+| `[freshness]` | `tick-secs`, `lease-secs`, `max-due-per-tick`, `max-concurrent-runs`, `run-retention-days` | `AXON_FRESHNESS_TICK_SECS`, `AXON_FRESHNESS_LEASE_SECS`, `AXON_FRESHNESS_MAX_DUE_PER_TICK`, `AXON_FRESHNESS_MAX_CONCURRENT_RUNS`, `AXON_FRESHNESS_RUN_RETENTION_DAYS` |
 | `[workers.adaptive-concurrency]` | `enabled`, `min`, `max` | TOML-only in this release |
 | `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries`, `remote-local-policy` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
 | `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `batch-timeout-secs`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | `AXON_SCRAPE_BATCH_TIMEOUT_SECS` plus ladder env vars |
@@ -165,6 +166,38 @@ machines should keep the value in `~/.axon/config.toml`.
 Spawning workers in a fire-and-forget CLI process orphans claimed jobs at process exit, so the CLI defaults to enqueue-only and lets a separate `serve`/`mcp` process drain the queue.
 
 `--wait false` is intentionally fire-and-forget for crawl/embed/ingest submits: the command enqueues the job, prints the job ID, and exits without draining the table. `--wait true` starts in-process workers where the service path needs queued workers, then waits only for the job IDs submitted by the current command and any explicit dependent job IDs.
+
+### Freshness scheduler
+
+Freshness schedules are created by the CLI only:
+
+```bash
+axon scrape https://modelcontextprotocol.io/specification --fresh 1d
+axon crawl https://modelcontextprotocol.io/docs/getting-started/intro --fresh 1d
+axon ingest unraid/api --fresh 7d
+axon fresh list --json
+axon fresh run-now <id> --json
+axon fresh history <id> --json
+```
+
+`--fresh` accepts whole-day durations from `1d` through `366d` on `scrape`,
+`crawl`, `embed`, and `ingest`. Management surfaces for REST, MCP, web, and the
+palette are not part of v1.
+
+The scheduler runs only in long-lived `ServiceContext::new_with_workers()`
+processes (`axon serve` and `axon mcp`). It stores versioned, secret-free replay
+snapshots in SQLite, revalidates them before dispatch, and routes scheduled
+`crawl`, `embed`, and `ingest` runs through the normal service/job queues.
+Scheduled `scrape` runs inline inside the bounded freshness executor because it
+does not have a dedicated job family in v1.
+
+| TOML key | Env override | Default | Description |
+|----------|--------------|---------|-------------|
+| `freshness.tick-secs` | `AXON_FRESHNESS_TICK_SECS` | `60` | Scheduler sweep interval in seconds |
+| `freshness.lease-secs` | `AXON_FRESHNESS_LEASE_SECS` | `1800` | Lease TTL for claimed schedules; heartbeats extend active runs |
+| `freshness.max-due-per-tick` | `AXON_FRESHNESS_MAX_DUE_PER_TICK` | `4` | Max schedules leased per sweep |
+| `freshness.max-concurrent-runs` | `AXON_FRESHNESS_MAX_CONCURRENT_RUNS` | `2` | Process-wide concurrent freshness dispatches |
+| `freshness.run-retention-days` | `AXON_FRESHNESS_RUN_RETENTION_DAYS` | `90` | Freshness run history retention window |
 
 ### Local code search
 
