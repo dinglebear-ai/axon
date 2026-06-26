@@ -15,7 +15,7 @@ use axon_jobs::freshness::{
     FRESHNESS_RUN_STATUS_SKIPPED_ACTIVE_JOB, FreshnessDef, FreshnessRun,
     create_freshness_run_with_pool, finish_freshness_run_with_pool, heartbeat_freshness_run,
     lease_due_freshness, lease_freshness_for_manual_run, list_freshness_runs_with_pool,
-    reclaim_current_stale_freshness_leases,
+    reclaim_current_stale_freshness_leases, set_freshness_run_dispatched_job_with_pool,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -107,14 +107,25 @@ async fn run_leased_freshness_def(
     let outcome = dispatch_freshness(&service_context, &def).await;
     heartbeat.abort();
 
-    let (status, result_json, error_text) = match outcome {
-        Ok(outcome) => (outcome.status, Some(outcome.result_json), None),
+    let (status, dispatched_job_id, result_json, error_text) = match outcome {
+        Ok(outcome) => (
+            outcome.status,
+            outcome.dispatched_job_id,
+            Some(outcome.result_json),
+            None,
+        ),
         Err(err) => (
             FRESHNESS_RUN_STATUS_FAILED.to_string(),
+            None,
             None,
             Some(redact_secrets(&err.to_string())),
         ),
     };
+    if let Some(dispatched_job_id) = dispatched_job_id {
+        set_freshness_run_dispatched_job_with_pool(&pool, def.id, run.id, dispatched_job_id)
+            .await
+            .map_err(to_freshness_error)?;
+    }
     finish_freshness_run_with_pool(
         &pool,
         def.id,

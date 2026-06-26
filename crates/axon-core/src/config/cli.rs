@@ -89,6 +89,8 @@ pub(super) enum CliCommand {
     Purge(PurgeArgs),
     /// Re-crawl / re-ingest previously indexed origins (full docs refresh)
     Refresh(RefreshArgs),
+    /// Manage embedding freshness schedules
+    Fresh(FreshArgs),
     /// Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube)
     Ingest(IngestArgs),
     /// Persistent agent memory: remember, list, search, show, link, supersede, or context memories
@@ -331,6 +333,36 @@ pub(super) struct RefreshArgs {
     /// Omit to refresh every indexed origin.
     #[arg(value_name = "FILTER")]
     pub(super) filter: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct FreshArgs {
+    #[command(subcommand)]
+    pub(super) action: FreshSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum FreshSubcommand {
+    /// List freshness schedules
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run one freshness schedule immediately
+    #[command(name = "run-now")]
+    RunNow {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show freshness run history
+    History {
+        id: String,
+        #[arg(long, default_value_t = 50)]
+        limit: i64,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Args)]

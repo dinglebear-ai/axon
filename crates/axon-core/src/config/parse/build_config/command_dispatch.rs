@@ -6,10 +6,10 @@
 
 use super::super::super::cli::{
     CliCommand, CodeSearchWatchSubcommand, ComposeArgs, ComposeSubcommand, ConfigArgs,
-    ConfigSubcommand, DoctorSubcommand, IngestArgs, MemoryCliSubcommand, MonitorSubcommand,
-    PaletteArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs,
-    SessionsSubcommand, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
-    UpdateArgs,
+    ConfigSubcommand, DoctorSubcommand, FreshSubcommand, IngestArgs, MemoryCliSubcommand,
+    MonitorSubcommand, PaletteArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand,
+    SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand,
+    SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CodeSearchWatchConfig, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
@@ -322,6 +322,10 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Refresh(args) => {
             out.command = CommandKind::Refresh;
             out.positional = args.filter.into_iter().collect();
+        }
+        CliCommand::Fresh(args) => {
+            out.command = CommandKind::Fresh;
+            out.positional = positional_from_fresh_subcommand(args.action);
         }
         CliCommand::Ingest(args) => apply_ingest(&mut out, args),
         CliCommand::Memory(args) => apply_memory(&mut out, args.action),
@@ -726,6 +730,37 @@ fn apply_compose(out: &mut DispatchOutput, args: ComposeArgs) {
         }
         .to_string(),
     ];
+}
+
+fn positional_from_fresh_subcommand(action: FreshSubcommand) -> Vec<String> {
+    match action {
+        FreshSubcommand::List { json } => {
+            let mut positional = vec!["list".to_string()];
+            if json {
+                positional.push("--json".to_string());
+            }
+            positional
+        }
+        FreshSubcommand::RunNow { id, json } => {
+            let mut positional = vec!["run-now".to_string(), id];
+            if json {
+                positional.push("--json".to_string());
+            }
+            positional
+        }
+        FreshSubcommand::History { id, limit, json } => {
+            let mut positional = vec![
+                "history".to_string(),
+                id,
+                "--limit".to_string(),
+                limit.to_string(),
+            ];
+            if json {
+                positional.push("--json".to_string());
+            }
+            positional
+        }
+    }
 }
 
 fn setup_init_positionals(init: SetupInitArgs) -> Vec<String> {
