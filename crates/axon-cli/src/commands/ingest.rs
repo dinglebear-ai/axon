@@ -1,4 +1,5 @@
 use crate::commands::CommandFuture;
+use crate::commands::fresh::create_schedule_from_command;
 use crate::commands::ingest_common;
 use axon_core::config::Config;
 use axon_core::logging::log_info;
@@ -42,6 +43,9 @@ pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> C
     Box::pin(async move {
         if ingest_common::maybe_handle_ingest_subcommand(cfg, service_context, "ingest").await? {
             return Ok(());
+        }
+        if cfg.freshness.is_some() {
+            return create_schedule_from_command(cfg, service_context).await;
         }
 
         let target = cfg.positional.first().cloned().ok_or(

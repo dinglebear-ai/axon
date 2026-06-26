@@ -8,10 +8,10 @@ use axon_services::context::ServiceContext;
 use commands::{
     run_ask, run_brand, run_code_search, run_code_search_watch, run_completions, run_config,
     run_crawl, run_debug, run_dedupe, run_diff, run_doctor, run_domains, run_embed, run_endpoints,
-    run_evaluate, run_extract, run_ingest, run_map, run_mcp, run_memory, run_migrate, run_monitor,
-    run_palette, run_purge, run_query, run_refresh, run_research, run_retrieve, run_scrape,
-    run_screenshot, run_search, run_serve, run_sessions, run_setup, run_sources, run_stats,
-    run_status, run_suggest, run_summarize, run_sync, run_train, run_update, run_watch,
+    run_evaluate, run_extract, run_fresh, run_ingest, run_map, run_mcp, run_memory, run_migrate,
+    run_monitor, run_palette, run_purge, run_query, run_refresh, run_research, run_retrieve,
+    run_scrape, run_screenshot, run_search, run_serve, run_sessions, run_setup, run_sources,
+    run_stats, run_status, run_suggest, run_summarize, run_sync, run_train, run_update, run_watch,
     start_url_from_cfg,
 };
 use std::error::Error;
@@ -34,7 +34,7 @@ async fn run_once(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     match cfg.command {
-        CommandKind::Scrape => run_scrape(cfg).await?,
+        CommandKind::Scrape => run_scrape(cfg, service_context).await?,
         CommandKind::Map => run_map(cfg, start_url).await?,
         CommandKind::Endpoints => run_endpoints(cfg).await?,
         CommandKind::Crawl => run_crawl(cfg, service_context).await?,
@@ -63,6 +63,7 @@ async fn run_once(
         CommandKind::Dedupe => run_dedupe(cfg).await?,
         CommandKind::Purge => run_purge(cfg).await?,
         CommandKind::Refresh => run_refresh(cfg, service_context).await?,
+        CommandKind::Fresh => run_fresh(cfg, service_context).await?,
         CommandKind::Ingest => run_ingest(cfg, service_context).await?,
         CommandKind::Memory => run_memory(cfg, service_context).await?,
         CommandKind::Sessions => run_sessions(cfg, service_context).await?,

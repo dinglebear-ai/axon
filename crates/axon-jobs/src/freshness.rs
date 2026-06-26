@@ -351,6 +351,27 @@ pub async fn heartbeat_freshness_run(
     Ok(true)
 }
 
+pub async fn set_freshness_run_dispatched_job_with_pool(
+    pool: &SqlitePool,
+    freshness_id: Uuid,
+    run_id: Uuid,
+    dispatched_job_id: Uuid,
+) -> Result<bool, Box<dyn Error>> {
+    let now = now_ms();
+    let updated = sqlx::query(
+        "UPDATE axon_freshness_runs SET dispatched_job_id = ?, updated_at = ? \
+         WHERE id = ? AND freshness_id = ?",
+    )
+    .bind(dispatched_job_id.to_string())
+    .bind(now)
+    .bind(run_id.to_string())
+    .bind(freshness_id.to_string())
+    .execute(pool)
+    .await?
+    .rows_affected();
+    Ok(updated > 0)
+}
+
 pub async fn finish_freshness_run_with_pool(
     pool: &SqlitePool,
     freshness_id: Uuid,
