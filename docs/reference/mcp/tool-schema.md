@@ -131,7 +131,7 @@ Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 
 ## Lifecycle Action Families
 - `crawl`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `urls` (array)
-- `embed`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `input` (string)
+- `embed`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `input` (string). When `input` is a local filesystem path that the server can see, `embed.start` runs the embed **in-process** and returns `{ "status": "completed", "input", "collection" }` instead of a `job_id` -- a host path must be embedded by a process that shares its filesystem, never enqueued onto the shared jobs DB where a worker (e.g. the container) could claim a path it cannot read. URL / free-text inputs are enqueued as a job and return a `job_id`.
 - `extract`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `urls` (array)
 - `ingest`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `source_type` + `target`
 

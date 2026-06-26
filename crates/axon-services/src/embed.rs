@@ -189,6 +189,26 @@ pub fn validate_server_embed_input_with_config(
     )
 }
 
+/// True when `input` names a local filesystem path that exists in this process.
+///
+/// Mirrors the CLI guard in `crates/axon-cli/src/commands/embed.rs`: a local path
+/// can only be embedded by a process that shares its filesystem. Enqueuing it lets
+/// another worker (e.g. the axon container) claim a path it cannot read. URLs and
+/// free text are never local paths. Callers should run a local-path embed
+/// in-process rather than enqueueing it.
+///
+/// Validation (`validate_server_embed_input_with_config`) already rejects a
+/// path-like input that does not exist, so by the time a validated input reaches
+/// this guard a returned `true` means the path is guaranteed visible here.
+#[must_use]
+pub fn embed_input_is_local_path(input: &str) -> bool {
+    let input = input.trim();
+    if input.starts_with("http://") || input.starts_with("https://") {
+        return false;
+    }
+    Path::new(input).exists()
+}
+
 fn validate_server_embed_input_with_roots(
     input: &str,
     allowed_roots: &[PathBuf],

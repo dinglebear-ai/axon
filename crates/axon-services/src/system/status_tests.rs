@@ -189,7 +189,7 @@ impl ServiceJobRuntime for HealthyRuntime {
 }
 
 #[tokio::test]
-#[serial_test::serial]
+#[serial_test::serial(sqlite_runtime_health)]
 async fn full_status_marks_count_failures_degraded() {
     axon_jobs::store::reset_sqlite_runtime_health_for_tests();
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -228,7 +228,7 @@ async fn full_status_marks_count_failures_degraded() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
+#[serial_test::serial(sqlite_runtime_health)]
 async fn full_status_includes_sqlite_diagnostics_and_degrades_on_runtime_ioerr() {
     axon_jobs::store::reset_sqlite_runtime_health_for_tests();
     axon_jobs::store::record_sqlite_runtime_error(
@@ -252,4 +252,7 @@ async fn full_status_includes_sqlite_diagnostics_and_degrades_on_runtime_ioerr()
             .iter()
             .any(|error| error.contains("SQLite runtime IOERR"))
     );
+
+    // Don't leak the recorded global IOERR into other tests in this binary.
+    axon_jobs::store::reset_sqlite_runtime_health_for_tests();
 }

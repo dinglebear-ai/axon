@@ -383,11 +383,12 @@ run_suite() {
   if [[ "$URL_MODE" == "1" ]]; then
     run_error_case "${prefix}_embed_start_unavailable" "local file embedding is disabled" call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
   else
-    run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
-    local embed_job_id
-    embed_job_id="$(extract_json_field "$OUTDIR/${prefix}_embed_start.log" '.data.job_id')"
-    run_json_case "${prefix}_embed_status" '.ok == true and .action == "embed" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:embed subaction:status job_id:"$embed_job_id"
-    run_json_case "${prefix}_embed_cancel" '.ok == true and .action == "embed" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:embed subaction:cancel job_id:"$embed_job_id"
+    # A local path that passes validation is embedded IN-PROCESS (mirrors the CLI
+    # guard) — never enqueued onto the shared jobs DB where a worker that cannot
+    # see the host path could claim it. So embed.start of a local file returns a
+    # completed status, not a job_id. embed status/cancel job-lifecycle is covered
+    # by the crawl/extract smokes (shared plumbing).
+    run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and .data.status == "completed" and (.data.input | type == "string")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
   fi
   run_json_case "${prefix}_embed_list" '.ok == true and .action == "embed" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:embed subaction:list limit:5 offset:0
 
