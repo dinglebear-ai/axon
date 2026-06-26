@@ -351,3 +351,48 @@ fn validate_server_embed_input_allows_free_text_with_slashes() {
 
     assert_eq!(validated, "a/b testing plan");
 }
+
+#[test]
+fn embed_input_is_local_path_classifies_paths_urls_and_free_text() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let dir_path = dir.path().to_string_lossy().to_string();
+    assert!(
+        embed_input_is_local_path(&dir_path),
+        "an existing directory is a local path"
+    );
+
+    let file = dir.path().join("note.txt");
+    std::fs::write(&file, "hi").expect("write file");
+    assert!(
+        embed_input_is_local_path(&file.to_string_lossy()),
+        "an existing file is a local path"
+    );
+
+    // URLs are never local paths.
+    assert!(
+        !embed_input_is_local_path("https://example.com/doc"),
+        "https URL is not a local path"
+    );
+    assert!(
+        !embed_input_is_local_path("http://example.com/doc"),
+        "http URL is not a local path"
+    );
+
+    // Free text and non-existent paths are not local paths. (A path-like input
+    // that does not exist is rejected upstream by validation, never reaching the
+    // in-process guard.)
+    assert!(
+        !embed_input_is_local_path("just some free text"),
+        "free text is not a local path"
+    );
+    assert!(
+        !embed_input_is_local_path("/nonexistent/path/should/not/exist/xyz"),
+        "a non-existent path is not a local path"
+    );
+
+    // Surrounding whitespace is trimmed before the existence check.
+    assert!(
+        embed_input_is_local_path(&format!("  {dir_path}  ")),
+        "leading/trailing whitespace is trimmed before classification"
+    );
+}
