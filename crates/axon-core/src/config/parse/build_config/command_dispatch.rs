@@ -15,6 +15,7 @@ use super::super::super::types::{
     CodeSearchWatchConfig, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
     RedditSort, RedditTime, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
 };
+use super::super::super::types::{FreshDuration, FreshnessCommand, FreshnessRequest};
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
 use std::env;
@@ -45,6 +46,7 @@ pub(super) struct DispatchOutput {
     pub code_search_path_prefix: Option<String>,
     pub code_search_no_freshness: bool,
     pub code_search_watch: Option<CodeSearchWatchConfig>,
+    pub freshness: Option<FreshnessRequest>,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -105,6 +107,7 @@ impl DispatchOutput {
             code_search_path_prefix: None,
             code_search_no_freshness: false,
             code_search_watch: None,
+            freshness: None,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -158,9 +161,11 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Scrape(args) => {
             out.command = CommandKind::Scrape;
             out.positional = args.positional_urls;
+            out.freshness = freshness_request(args.fresh, FreshnessCommand::Scrape);
         }
         CliCommand::Crawl(args) => {
             out.command = CommandKind::Crawl;
+            out.freshness = freshness_request(args.fresh, FreshnessCommand::Crawl);
             out.positional = if let Some(job) = args.job {
                 positional_from_job(job)
             } else {
@@ -208,6 +213,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Research(args) => set_simple(&mut out, CommandKind::Research, args.value),
         CliCommand::Embed(args) => {
             out.command = CommandKind::Embed;
+            out.freshness = freshness_request(args.fresh, FreshnessCommand::Embed);
             out.positional = if let Some(job) = args.job {
                 positional_from_job(job)
             } else {
@@ -366,6 +372,16 @@ fn set_simple(out: &mut DispatchOutput, kind: CommandKind, positional: Vec<Strin
     out.positional = positional;
 }
 
+fn freshness_request(
+    duration: Option<FreshDuration>,
+    command: FreshnessCommand,
+) -> Option<FreshnessRequest> {
+    duration.map(|fresh| FreshnessRequest {
+        command,
+        every_seconds: fresh.seconds,
+    })
+}
+
 fn apply_monitor(out: &mut DispatchOutput, action: MonitorSubcommand) {
     out.command = CommandKind::Monitor;
     match action {
@@ -520,6 +536,7 @@ fn apply_ingest(out: &mut DispatchOutput, args: IngestArgs) {
     out.reddit_depth = args.depth;
     out.reddit_scrape_links = args.scrape_links;
     out.command = CommandKind::Ingest;
+    out.freshness = freshness_request(args.fresh, FreshnessCommand::Ingest);
     out.positional = if let Some(job) = args.job {
         positional_from_job(job)
     } else {

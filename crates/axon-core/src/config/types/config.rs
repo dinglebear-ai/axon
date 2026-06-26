@@ -50,6 +50,9 @@ pub struct Config {
     /// Options for `code-search-watch`.
     pub code_search_watch: Option<super::session_watch::CodeSearchWatchConfig>,
 
+    /// Optional CLI intent to create or update a recurring freshness schedule.
+    pub freshness: Option<super::freshness::FreshnessRequest>,
+
     /// Maximum chunks fetched by `retrieve` before reconstructing the document.
     /// Flag: `retrieve --max-points` (`retrieve --limit` alias). Default: None
     /// (use the retrieve service ceiling).
