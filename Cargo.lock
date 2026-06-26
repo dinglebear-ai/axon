@@ -785,6 +785,7 @@ name = "axon-web"
 version = "6.1.1"
 dependencies = [
  "async-trait",
+ "axon-api",
  "axon-authz",
  "axon-core",
  "axon-ingest",
