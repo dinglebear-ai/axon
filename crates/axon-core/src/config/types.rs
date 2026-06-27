@@ -17,7 +17,7 @@ pub use enums::{
     ColorChoice, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
     RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
-pub use freshness::{FreshDuration, FreshnessCommand, FreshnessRequest};
+pub use freshness::{FreshAction, FreshDuration, FreshnessCommand, FreshnessRequest};
 pub use overrides::ConfigOverrides;
 pub use session_watch::{
     CodeSearchWatchConfig, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,

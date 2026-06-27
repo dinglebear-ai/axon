@@ -113,6 +113,7 @@ for each key still overrides the TOML value at the precedence chain above.
 | `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
 | `[ask]` | `max-context-chars`, `chunk-limit`, `candidate-limit`, `full-docs`, `backfill-chunks`, `doc-fetch-concurrency`, `doc-chunk-limit`, `min-relevance-score`, `authoritative-domains`, `authoritative-boost`, `min-citations-nontrivial` | `AXON_ASK_MAX_CONTEXT_CHARS`, `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_FULL_DOCS`, `AXON_ASK_BACKFILL_CHUNKS`, `AXON_ASK_DOC_FETCH_CONCURRENCY`, `AXON_ASK_DOC_CHUNK_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, `AXON_ASK_AUTHORITATIVE_BOOST`, `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
+| `[embed]` | `tei-max-concurrent`, `tei-max-in-flight-inputs`, `pool-max-inputs`, `prep-concurrency`, `max-chunks-per-doc`, `max-source-chunks-per-doc`, `dedupe-exact-chunks`, `openai-model`, `openai-max-client-batch-size`, `openai-max-concurrent`, `openai-max-in-flight-inputs`, `openai-pool-max-inputs` | `AXON_TEI_MAX_CONCURRENT`, `AXON_TEI_MAX_IN_FLIGHT_INPUTS`, `AXON_EMBED_POOL_MAX_INPUTS`, `AXON_EMBED_PREP_CONCURRENCY`, `AXON_EMBED_MAX_CHUNKS_PER_DOC`, `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC`, `AXON_EMBED_DEDUPE_EXACT_CHUNKS`, `AXON_OPENAI_EMBEDDING_MODEL`, `AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE`, `AXON_OPENAI_EMBED_MAX_CONCURRENT`, `AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS`, `AXON_OPENAI_EMBED_POOL_MAX_INPUTS` |
 | `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs`, `concurrency-limit`, `crawl-concurrency-limit`, `backfill-concurrency-limit`, `watchdog-stale-timeout-secs`, `watchdog-confirm-secs`, `watchdog-sweep-secs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS`, `AXON_JOB_STALE_TIMEOUT_SECS`, `AXON_JOB_STALE_CONFIRM_SECS`, `AXON_WATCHDOG_SWEEP_SECS` |
 | `[freshness]` | `tick-secs`, `lease-secs`, `max-due-per-tick`, `max-concurrent-runs`, `run-retention-days` | `AXON_FRESHNESS_TICK_SECS`, `AXON_FRESHNESS_LEASE_SECS`, `AXON_FRESHNESS_MAX_DUE_PER_TICK`, `AXON_FRESHNESS_MAX_CONCURRENT_RUNS`, `AXON_FRESHNESS_RUN_RETENTION_DAYS` |
 | `[workers.adaptive-concurrency]` | `enabled`, `min`, `max` | TOML-only in this release |
@@ -226,21 +227,31 @@ overrides, but should not live in `~/.axon/.env` for normal operation.
 | `tei.request-timeout-ms` | `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 1000-300000) |
 | `tei.max-client-batch-size` | `TEI_MAX_CLIENT_BATCH_SIZE` | `128` | Default docs-workload batch size sent to TEI (auto-splits on 413; max: 256) |
 
-Additional embed throughput and volume controls are env-only until they are
-wired as typed config fields:
+Additional embed throughput and volume controls belong in `[embed]`. Env vars
+still override these values for compatibility and one-off experiments:
 
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `AXON_TEI_MAX_CONCURRENT` | `8` | Process-wide max concurrent Axon client requests to TEI (clamped 1-64) |
-| `AXON_TEI_MAX_IN_FLIGHT_INPUTS` | `320` | Process-wide max input chunks concurrently submitted to TEI across client requests (clamped 1-4096) |
-| `AXON_EMBED_POOL_MAX_INPUTS` | `512` | Max chunk inputs pooled into one embed-pipeline TEI group before `tei.max-client-batch-size` sub-batching (clamped 64-65536) |
-| `AXON_MARKDOWN_CHUNK_MIN_CHARS` | `500` | Minimum target markdown chunk size for `text-splitter` before structural boundary splitting (clamped 1 to max chunk size) |
-| `AXON_MARKDOWN_CHUNK_MAX_CHARS` | `2000` | Maximum prose/markdown chunk size in characters (clamped 256-16384); `512` is useful for small-chunk benchmark sweeps |
-| `AXON_CHUNK_OVERLAP_CHARS` | `200` | Character overlap shared by adjacent prose/markdown chunks (clamped below max chunk size) |
-| `AXON_EMBED_PREP_CONCURRENCY` | CPU count clamped 2-16 | Concurrent source-document preparation tasks before TEI embedding (clamped 1-64) |
-| `AXON_EMBED_MAX_CHUNKS_PER_DOC` | `0` | Optional circuit breaker: max chunks allowed through per non-source document after exact dedupe; `0` disables this cap so all unique chunks remain indexable |
-| `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC` | `0` | Optional circuit breaker: max chunks allowed through per source-code-like document after exact dedupe; `0` disables this cap so all unique chunks remain indexable |
-| `AXON_EMBED_DEDUPE_EXACT_CHUNKS` | `true` | Drop exact duplicate chunks within one logical document before embedding |
+| TOML key | Env override | Default | Description |
+|----------|--------------|---------|-------------|
+| `embed.tei-max-concurrent` | `AXON_TEI_MAX_CONCURRENT` | `8` | Process-wide max concurrent Axon client requests to TEI (clamped 1-64) |
+| `embed.tei-max-in-flight-inputs` | `AXON_TEI_MAX_IN_FLIGHT_INPUTS` | `320` | Process-wide max input chunks concurrently submitted to TEI across client requests (clamped 1-4096) |
+| `embed.pool-max-inputs` | `AXON_EMBED_POOL_MAX_INPUTS` | `512` | Max chunk inputs pooled into one embed-pipeline TEI group before `tei.max-client-batch-size` sub-batching (clamped 64-65536) |
+| `embed.openai-model` | `AXON_OPENAI_EMBEDDING_MODEL`, fallback `VLLM_SERVED_MODEL_NAME` | `axon-qwen3-embedding` | Model field sent to OpenAI-compatible `/v1/embeddings` endpoints |
+| `embed.openai-max-client-batch-size` | `AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE` | `32` | Client batch size for OpenAI-compatible `/v1/embeddings` endpoints (clamped 1-256) |
+| `embed.openai-max-concurrent` | `AXON_OPENAI_EMBED_MAX_CONCURRENT` | `32` | Process-wide max concurrent client requests to OpenAI-compatible embedding endpoints (clamped 1-64) |
+| `embed.openai-max-in-flight-inputs` | `AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS` | `512` | Weighted cap on total input chunks submitted to OpenAI-compatible embedding endpoints (clamped 1-4096) |
+| `embed.openai-pool-max-inputs` | `AXON_OPENAI_EMBED_POOL_MAX_INPUTS` | `1024` | Max chunk inputs pooled into one OpenAI-compatible embedding wave (clamped 64-65536) |
+| `embed.prep-concurrency` | `AXON_EMBED_PREP_CONCURRENCY` | CPU count clamped 2-16 | Concurrent source-document preparation tasks before TEI embedding (clamped 1-64) |
+| `embed.max-chunks-per-doc` | `AXON_EMBED_MAX_CHUNKS_PER_DOC` | unset | Optional circuit breaker: max chunks allowed through per non-source document after exact dedupe; unset disables this cap |
+| `embed.max-source-chunks-per-doc` | `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC` | unset | Optional circuit breaker: max chunks allowed through per source-code-like document after exact dedupe; unset disables this cap |
+| `embed.dedupe-exact-chunks` | `AXON_EMBED_DEDUPE_EXACT_CHUNKS` | `true` | Drop exact duplicate chunks within one logical document before embedding |
+
+Chunking controls belong in `[chunking]`:
+
+| TOML key | Env override | Default | Description |
+|----------|--------------|---------|-------------|
+| `chunking.markdown-min-chars` | `AXON_MARKDOWN_CHUNK_MIN_CHARS` | `500` | Minimum target markdown chunk size for `text-splitter` before structural boundary splitting (clamped 1 to max chunk size) |
+| `chunking.markdown-max-chars` | `AXON_MARKDOWN_CHUNK_MAX_CHARS` | `2000` | Maximum prose/markdown chunk size in characters (clamped 256-16384); `512` is useful for small-chunk benchmark sweeps |
+| `chunking.overlap-chars` | `AXON_CHUNK_OVERLAP_CHARS` | `200` | Character overlap shared by adjacent prose/markdown chunks (clamped below max chunk size) |
 
 TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 
@@ -416,14 +427,6 @@ Queue caps now live in `~/.axon/config.toml` under `[workers]`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_EMBED_POOL_MAX_INPUTS` | `512` | Max chunk inputs pooled into one TEI group before client-side sub-batching |
-| `AXON_EMBED_PREP_CONCURRENCY` | CPU count clamped 2-16 | Max concurrent source-document preparation tasks before embedding |
-| `AXON_MARKDOWN_CHUNK_MIN_CHARS` | `500` | Minimum target markdown chunk size for structural splitting |
-| `AXON_MARKDOWN_CHUNK_MAX_CHARS` | `2000` | Maximum prose/markdown chunk size in characters |
-| `AXON_CHUNK_OVERLAP_CHARS` | `200` | Character overlap shared by adjacent prose/markdown chunks |
-| `AXON_EMBED_MAX_CHUNKS_PER_DOC` | `0` | Optional circuit breaker: max chunks per non-source document after exact dedupe (`0` disables) |
-| `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC` | `0` | Optional circuit breaker: max chunks per source-code-like document after exact dedupe (`0` disables) |
-| `AXON_EMBED_DEDUPE_EXACT_CHUNKS` | `true` | Enable exact duplicate chunk removal within a single document |
 | `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
 | `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Grace period before stale job reclaim |
 | `AXON_WATCH_TICK_SECS` | `15` | Watch scheduler sweep interval, seconds (min 1) |

@@ -1,4 +1,5 @@
 use super::PreparedDoc;
+use axon_core::config::Config;
 use axon_core::logging::log_warn;
 use std::collections::HashSet;
 
@@ -22,20 +23,15 @@ pub(super) struct ChunkVolumeGuardOutcome {
     pub(super) report: ChunkVolumeGuardReport,
 }
 
-pub(super) fn chunk_volume_limits_from_env() -> ChunkVolumeLimits {
-    chunk_volume_limits_from_values(
-        std::env::var("AXON_EMBED_MAX_CHUNKS_PER_DOC")
-            .ok()
-            .as_deref(),
-        std::env::var("AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC")
-            .ok()
-            .as_deref(),
-        std::env::var("AXON_EMBED_DEDUPE_EXACT_CHUNKS")
-            .ok()
-            .as_deref(),
-    )
+pub(super) fn chunk_volume_limits_from_config(cfg: &Config) -> ChunkVolumeLimits {
+    ChunkVolumeLimits {
+        max_chunks_per_doc: cfg.embed_max_chunks_per_doc,
+        max_source_chunks_per_doc: cfg.embed_max_source_chunks_per_doc,
+        dedupe_exact_chunks: cfg.embed_dedupe_exact_chunks,
+    }
 }
 
+#[cfg(test)]
 pub(super) fn chunk_volume_limits_from_values(
     max_chunks_per_doc: Option<&str>,
     max_source_chunks_per_doc: Option<&str>,
@@ -53,6 +49,7 @@ pub(super) fn chunk_volume_limits_from_values(
     }
 }
 
+#[cfg(test)]
 fn optional_usize_value(value: Option<&str>) -> Option<Option<usize>> {
     value
         .and_then(|value| value.trim().parse::<usize>().ok())
@@ -62,6 +59,7 @@ fn optional_usize_value(value: Option<&str>) -> Option<Option<usize>> {
         })
 }
 
+#[cfg(test)]
 fn is_truthy_default_true(value: &str) -> bool {
     !matches!(
         value.trim().to_ascii_lowercase().as_str(),

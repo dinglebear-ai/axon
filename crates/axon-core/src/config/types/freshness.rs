@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FreshDuration {
@@ -42,4 +43,12 @@ pub enum FreshnessCommand {
 pub struct FreshnessRequest {
     pub command: FreshnessCommand,
     pub every_seconds: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "action")]
+pub enum FreshAction {
+    List { json: bool },
+    RunNow { id: Uuid, json: bool },
+    History { id: Uuid, limit: usize, json: bool },
 }

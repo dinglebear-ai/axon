@@ -351,13 +351,13 @@ pub(super) enum FreshSubcommand {
     /// Run one freshness schedule immediately
     #[command(name = "run-now")]
     RunNow {
-        id: String,
+        id: uuid::Uuid,
         #[arg(long)]
         json: bool,
     },
     /// Show freshness run history
     History {
-        id: String,
+        id: uuid::Uuid,
         #[arg(long, default_value_t = 50)]
         limit: usize,
         #[arg(long)]

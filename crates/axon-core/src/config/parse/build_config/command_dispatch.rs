@@ -15,7 +15,7 @@ use super::super::super::types::{
     CodeSearchWatchConfig, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
     RedditSort, RedditTime, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
 };
-use super::super::super::types::{FreshDuration, FreshnessCommand, FreshnessRequest};
+use super::super::super::types::{FreshAction, FreshDuration, FreshnessCommand, FreshnessRequest};
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
 use std::env;
@@ -47,6 +47,7 @@ pub(super) struct DispatchOutput {
     pub code_search_no_freshness: bool,
     pub code_search_watch: Option<CodeSearchWatchConfig>,
     pub freshness: Option<FreshnessRequest>,
+    pub fresh_action: Option<FreshAction>,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -108,6 +109,7 @@ impl DispatchOutput {
             code_search_no_freshness: false,
             code_search_watch: None,
             freshness: None,
+            fresh_action: None,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -325,7 +327,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         }
         CliCommand::Fresh(args) => {
             out.command = CommandKind::Fresh;
-            out.positional = positional_from_fresh_subcommand(args.action);
+            out.fresh_action = Some(fresh_action_from_subcommand(args.action));
         }
         CliCommand::Ingest(args) => apply_ingest(&mut out, args),
         CliCommand::Memory(args) => apply_memory(&mut out, args.action),
@@ -732,34 +734,11 @@ fn apply_compose(out: &mut DispatchOutput, args: ComposeArgs) {
     ];
 }
 
-fn positional_from_fresh_subcommand(action: FreshSubcommand) -> Vec<String> {
+fn fresh_action_from_subcommand(action: FreshSubcommand) -> FreshAction {
     match action {
-        FreshSubcommand::List { json } => {
-            let mut positional = vec!["list".to_string()];
-            if json {
-                positional.push("--json".to_string());
-            }
-            positional
-        }
-        FreshSubcommand::RunNow { id, json } => {
-            let mut positional = vec!["run-now".to_string(), id];
-            if json {
-                positional.push("--json".to_string());
-            }
-            positional
-        }
-        FreshSubcommand::History { id, limit, json } => {
-            let mut positional = vec![
-                "history".to_string(),
-                id,
-                "--limit".to_string(),
-                limit.to_string(),
-            ];
-            if json {
-                positional.push("--json".to_string());
-            }
-            positional
-        }
+        FreshSubcommand::List { json } => FreshAction::List { json },
+        FreshSubcommand::RunNow { id, json } => FreshAction::RunNow { id, json },
+        FreshSubcommand::History { id, limit, json } => FreshAction::History { id, limit, json },
     }
 }
 
