@@ -1,3 +1,4 @@
+use axon_api::mcp_schema::PurgeRequest;
 use axon_core::config::Config;
 use axon_services as services;
 use axum::{
@@ -103,6 +104,40 @@ pub(crate) async fn dedupe(
         req_cfg.collection = collection;
     }
     services::system::dedupe(&req_cfg, None)
+        .await
+        .map(Json)
+        .map_err(HttpError::from_box)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/purge",
+    request_body = PurgeRequest,
+    responses(
+        (status = 200, description = "Purge result (counts of points/URLs matched or deleted)", body = axon_api::PurgeResult),
+        (status = 400, description = "Invalid purge request", body = crate::server::error::ErrorBody),
+        (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
+    ),
+    tag = "admin"
+)]
+pub(crate) async fn purge(
+    State((_state, cfg)): State<WebState>,
+    Json(req): Json<PurgeRequest>,
+) -> Result<Json<services::types::PurgeResult>, HttpError> {
+    let target = req
+        .target
+        .as_deref()
+        .map(str::trim)
+        .filter(|target| !target.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| HttpError::bad_request("target is required"))?;
+    let mut req_cfg = (*cfg).clone();
+    if let Some(collection) = req.collection {
+        axon_core::config::validate_collection_name(&collection)
+            .map_err(|e| HttpError::bad_request(format!("collection: {e}").as_str()))?;
+        req_cfg.collection = collection;
+    }
+    services::system::purge(&req_cfg, &target, req.prefix, req.dry_run.unwrap_or(true))
         .await
         .map(Json)
         .map_err(HttpError::from_box)

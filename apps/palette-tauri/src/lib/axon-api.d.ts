@@ -668,6 +668,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["purge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/query": {
         parameters: {
             query?: never;
@@ -1028,6 +1044,48 @@ export interface components {
             docs: components["schemas"]["PreparedSessionDoc"][];
             project?: string | null;
         };
+        /** @enum {string} */
+        JobFamily: "embed" | "extract" | "ingest";
+        /** @description One labelled, display-formatted counter (e.g. `{ "Chunks", "1,024" }`). */
+        JobMetric: {
+            label: string;
+            /**
+             * @description **Display-formatted, not machine-readable.** Pre-rendered for direct
+             *     rendering by clients — integers carry thousands separators (`"1,024"`)
+             *     and string fields (e.g. ingest `phase`) pass through verbatim. Do not
+             *     parse this back into a number; if a surface needs the raw value, add a
+             *     typed field rather than reverse-engineering the formatting here.
+             */
+            value: string;
+        };
+        /** @enum {string} */
+        JobPhase: "pending" | "running" | "done" | "failed" | "canceled";
+        /** @description Derived, transport-neutral progress for a generic async job. */
+        JobProgress: {
+            error?: string | null;
+            family: components["schemas"]["JobFamily"];
+            metrics: components["schemas"]["JobMetric"][];
+            /**
+             * Format: double
+             * @description 0–100 when determinate; `None` = indeterminate (render a pulsing bar).
+             */
+            percent?: number | null;
+            phase: components["schemas"]["JobPhase"];
+        };
+        /**
+         * @description Typed job-status envelope so the `{ job, progress }` wire shape is a
+         *     registered OpenAPI schema (and thus reflected into the generated palette/
+         *     android clients) instead of an opaque `serde_json::Value`.
+         */
+        JobStatusResponse: {
+            /**
+             * @description Raw job record in the wire-compat shape (`status`, `result_json`,
+             *     timestamps, …). Still `Value` because the per-family job payloads are
+             *     heterogeneous; `progress` is the typed, cross-family projection of it.
+             */
+            job: unknown;
+            progress?: null | components["schemas"]["JobProgress"];
+        };
         LinkEntry: {
             href: string;
             text: string;
@@ -1124,6 +1182,39 @@ export interface components {
             title?: string | null;
             url: string;
         };
+        PurgeRequest: {
+            collection?: string | null;
+            /**
+             * @description Preview only — count matches without deleting. **Defaults to `true`** for
+             *     agent safety: a bare `purge` previews; set `dry_run=false` to delete.
+             */
+            dry_run?: boolean | null;
+            /** @description Match `target` as a prefix over a whole docs subtree / origin. */
+            prefix?: boolean;
+            response_mode?: null | components["schemas"]["ResponseMode"];
+            /**
+             * @description URL (or seed-URL/origin when `prefix` is set) to delete from the index.
+             *     **Handler-required despite the `Option`:** the type is `Option<String>`
+             *     only so a missing field deserializes to a clean "target is required"
+             *     error instead of a serde rejection; `handle_purge` returns an error when
+             *     it is `None`. It is not an optional argument.
+             */
+            target?: string | null;
+        };
+        /**
+         * @description Result of a purge: counts of points/URLs matched (and deleted, unless this
+         *     was a `dry_run` preview).
+         */
+        PurgeResult: {
+            deleted_points: number;
+            /** @description When true, nothing was deleted — counts reflect what *would* be removed. */
+            dry_run: boolean;
+            matched_points: number;
+            matched_url_count: number;
+            prefix: boolean;
+            sample_urls: string[];
+            target: string;
+        };
         ReadinessBody: {
             ok: boolean;
             qdrant: string;
@@ -1132,6 +1223,8 @@ export interface components {
         };
         /** @enum {string} */
         RenderMode: "http" | "chrome" | "auto-switch";
+        /** @enum {string} */
+        ResponseMode: "path" | "inline" | "both" | "auto_inline";
         RestAskRequest: {
             /** Format: double */
             ask_authoritative_boost?: number | null;
@@ -1220,7 +1313,7 @@ export interface components {
         RestIngestRequest: {
             include_source?: boolean | null;
             sessions?: null | components["schemas"]["RestSessionsIngestOptions"];
-            source_type: components["schemas"]["RestIngestSourceType"];
+            source_type?: null | components["schemas"]["RestIngestSourceType"];
             target?: string | null;
         };
         /** @enum {string} */
@@ -2151,7 +2244,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -2685,7 +2778,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -3111,7 +3204,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -3477,7 +3570,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -3871,6 +3964,66 @@ export interface operations {
             };
             /** @description Session store error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    purge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Purge result (counts of points/URLs matched or deleted) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgeResult"];
+                };
+            };
+            /** @description Invalid purge request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Upstream vector service unavailable */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

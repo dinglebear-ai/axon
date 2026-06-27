@@ -102,16 +102,22 @@ CLI fire-and-forget contexts must use `new()`. Spawning workers in a short-lived
 
 ## Architecture Contract
 
-**Rule:** CLI handlers, MCP handlers, and web API routes call **service functions only** — never raw `crates/axon-vector/src/ops/*` or `crates/axon-jobs/src/*` functions directly.
+> **Canonical rule:** [`docs/architecture/crate-ownership.md`](../../../docs/architecture/crate-ownership.md). Read it before deciding where new logic goes.
+
+**Rule:** transports (CLI/MCP/web/palette) call a **typed, transport-neutral entry point** — never a domain crate's internal `::ops::*` modules. But `axon-services` is **not** the mandatory home for that entry point:
+
+- **Single-domain, job-free** ops (purge, dedupe, stats, query, classify) — the **logic** lives in the owning **domain crate** (`axon-vector`, `axon-ingest`, …) and the **DTO** lives in **`axon-api`**. `axon-services` may `pub use` / thinly wrap it so transports keep one import (a facade, not a reimplementation).
+- **Job-lifecycle** ops (need `ctx.jobs`) and **cross-domain orchestration** (scrape→embed, `ask`, the ingest pipeline) live in `axon-services` — domain crates are *below* `axon-jobs` and can't compose across domains.
 
 ```
-CLI handler (run_ask)
-    └─→ services::query::ask(cfg, question, tx)
-            └─→ vector::ops::commands::ask::ask_payload(cfg, question)
-                    └─→ vector::ops::tei, qdrant, ranking ...
+# cross-domain / job-runtime → axon-services owns it
+CLI run_ask → services::query::ask → vector::ops::commands::ask::ask_payload → tei/qdrant/ranking
+
+# single-domain → domain crate owns logic, axon-api owns DTO, services is a facade
+CLI run_purge → services::system::purge (facade) → axon_vector::purge → axon_api::PurgeResult
 ```
 
-This enforces a single call path that can be tested, typed, and evolved independently of the entry points.
+Do **not** add a `pub struct *Result` to `axon-services` for a single-domain op — it belongs in `axon-api`. Enforced by `cargo xtask check-layering` (transports must not import domain `::ops::` internals outside the seeded allowlist).
 
 ## Typed Result Pattern
 
@@ -125,8 +131,11 @@ pub async fn query(cfg: &Config, text: &str, opts: Pagination) -> Result<QueryRe
 println!("{}", serde_json::to_string(&results)?);
 ```
 
-Key result types live in domain-specific modules under `types/service/` and are
-re-exported through `types/service.rs` for compatibility:
+Legacy service-owned result types live in domain-specific modules under
+`types/service/` and are re-exported through `types/service.rs` for
+compatibility. For new single-domain operations, put the DTO in `axon-api`
+instead and re-export it through the services facade only when callers need the
+old `services::types::*` import path:
 
 | Result Type | Service function(s) |
 |-------------|---------------------|
@@ -147,10 +156,14 @@ re-exported through `types/service.rs` for compatibility:
 | `SearchResult` | `search::search` |
 | `ResearchResult` | `search::research` |
 
-When adding a new typed result, put it in the matching domain module under
-`crates/axon-services/src/types/service/` (for example `query.rs`, `content.rs`,
-`system.rs`, or `lifecycle.rs`) and re-export it from `types/service.rs`.
-Create a new small domain module when no existing module owns the contract.
+When adding a new typed result, first decide ownership:
+
+- Single-domain, job-free operation: DTO belongs in `axon-api`; domain crate
+  owns the logic; `axon-services` stays a facade.
+- Cross-domain or job-runtime operation: DTO can live in the matching
+  `crates/axon-services/src/types/service/` module (for example `query.rs`,
+  `content.rs`, `system.rs`, or `lifecycle.rs`) and be re-exported from
+  `types/service.rs`.
 
 ## Indexing Service Semantics
 

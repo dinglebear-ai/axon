@@ -46,11 +46,48 @@ pub async fn ingest_start(
     Ok(map_ingest_start_result(job_id.to_string()))
 }
 
+/// Pre-flight existence check run before an ingest job is enqueued.
+///
+/// Currently GitHub-only and **fail-open**: only a definitive `NotFound`
+/// rejects the submission (surfaced as a `vertical_target_not_found` /
+/// HTTP 404). Any inconclusive result (rate limit, network error, missing
+/// token on a private repo, timeout) lets the job proceed as before, so a
+/// transient GitHub outage never blocks ingest. Other source types
+/// (GitLab/Gitea/Reddit/YouTube/RSS) are not probed here.
+pub async fn preflight_ingest_source(
+    cfg: &Config,
+    source: &IngestSource,
+) -> Result<(), Box<dyn Error>> {
+    use axon_core::error::ServiceTaxonomyError;
+    use axon_ingest::github::{RepoExistence, github_repo_exists};
+
+    if let IngestSource::Github { repo, .. } = source {
+        match github_repo_exists(cfg, repo).await {
+            RepoExistence::NotFound => {
+                return Err(Box::new(ServiceTaxonomyError::VerticalTargetNotFound {
+                    vertical: "github_repo",
+                    url: repo.clone(),
+                }));
+            }
+            RepoExistence::Unknown(reason) => {
+                // Fail open — proceed, but leave a breadcrumb for why the check
+                // was inconclusive (rate limit, offline, private repo + no token).
+                axon_core::logging::log_warn(&format!(
+                    "ingest preflight inconclusive for github repo={repo}: {reason}"
+                ));
+            }
+            RepoExistence::Exists => {}
+        }
+    }
+    Ok(())
+}
+
 pub async fn ingest_start_with_context(
     cfg: &Config,
     source: IngestSource,
     service_context: &ServiceContext,
 ) -> Result<JobStartOutcome<IngestStartResult>, Box<dyn Error>> {
+    preflight_ingest_source(cfg, &source).await?;
     // Always route through service_context.jobs.enqueue() so that notify()
     // fires immediately and workers wake without 0-5 second polling delay.
     let source_type = source_type_label(&source).to_string();

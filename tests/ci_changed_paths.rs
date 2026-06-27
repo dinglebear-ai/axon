@@ -99,6 +99,28 @@ fn mcp_changes_enable_mcp_schema_and_runtime_checks() {
 }
 
 #[test]
+fn workspace_crate_changes_enable_rust_runtime_gates() {
+    let out = classify("pull_request", &["crates/axon-core/src/config.rs"]);
+    assert_eq!(out["rust"], "true");
+    assert_eq!(out["release"], "true");
+    assert_eq!(out["security"], "true");
+    assert_eq!(out["docker"], "true");
+    assert_eq!(out["codeql_rust"], "true");
+}
+
+#[test]
+fn axon_mcp_crate_changes_enable_mcp_schema_and_runtime_checks() {
+    let out = classify(
+        "pull_request",
+        &["crates/axon-mcp/src/server/tool_schema.rs"],
+    );
+    assert_eq!(out["rust"], "true");
+    assert_eq!(out["mcp"], "true");
+    assert_eq!(out["release"], "true");
+    assert_eq!(out["codeql_rust"], "true");
+}
+
+#[test]
 fn openapi_changes_enable_android_palette_and_rest_contracts() {
     let out = classify("pull_request", &["apps/web/openapi/axon.json"]);
     assert_eq!(out["openapi"], "true");

@@ -1,30 +1,35 @@
 import { startTransition, useActionState, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
-import { ACTIONS, type PaletteAction, type RemotePaletteAction } from "@/lib/actions";
+import type { PaletteAction, RemotePaletteAction } from "@/lib/actions";
 import { buildHelpRun, findHelpTarget, helpAction } from "@/lib/actionHelp";
-import { answerParts, appendAskActivity, appendAskPendingTurn, completeLastAssistantTurn, updateLastAssistantTurn } from "@/lib/askTranscript";
+import { answerParts, appendAskPendingTurn, completeLastAssistantTurn } from "@/lib/askTranscript";
 import { crawlSeedUrl, newRequestId, normalizeSubmitArgument } from "@/lib/appHelpers";
 import {
   buildActionRequest,
   executeAction,
   type Client,
-  type HttpMethod,
   type PaletteConfig,
   type PaletteResult,
 } from "@/lib/axonClient";
 import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
+import { type AsyncJobFamily, pendingJobSnapshot, summarizeJob } from "@/lib/jobProgress";
 import { formatPayload, outputKindFor, type OutputKind } from "@/lib/format";
 import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import { argumentFor, validationMessage, type ParsedCommand } from "@/lib/paletteView";
 import type { AskTurn, RunState } from "@/lib/runState";
+import {
+  jobLabel,
+  makeErrorRun,
+  makeStreamErrorRun,
+  type PaletteStreamEvent,
+  reduceStreamEvent,
+  statusFallbackAction,
+} from "@/lib/useActionRunner/runFactories";
 
-type PaletteStreamEvent =
-  | { type: "started"; requestId: string; path: string }
-  | { type: "delta"; requestId: string; text: string }
-  | { type: "activity"; requestId: string; label: string; detail?: string | null; kind?: "thinking" | "tool" | "done" | string | null }
-  | { type: "done"; requestId: string; answer?: string | null }
-  | { type: "error"; requestId: string; message: string };
+// Re-exported for import compatibility: other modules (and tests) import
+// `reduceStreamEvent` from "@/lib/useActionRunner".
+export { reduceStreamEvent };
 
 interface UseActionRunnerArgs {
   client: Client | null;
@@ -45,153 +50,6 @@ interface UseActionRunnerArgs {
   modeAction: PaletteAction | null;
   parsed: ParsedCommand;
   query: string;
-}
-
-// ── Run/result factories ───────────────────────────────────────────────────
-// Centralize the `{ ok:false, status:0, ... }` PaletteResult that submit used to
-// hand-roll 4-5× (finding L1), and give streaming-derived terminal states an
-// honest shape instead of fabricating a fake HTTP `{ ok:true, status:200 }`
-// (finding A-M4). `status: 0` here means "no HTTP round-trip produced this
-// result" (client-side error or a terminal stream event), distinct from a real
-// backend status code.
-
-// The terminal (success|error) RunState member — the only one carrying `result`.
-// Extracting by the discriminating `result` property is robust to runState.ts
-// modelling success/error as one combined `{ kind: "success" | "error" }` member.
-type TerminalRun = Extract<RunState, { result: PaletteResult }>;
-
-function errorResult(message: string, path: string, method: HttpMethod = "POST"): PaletteResult {
-  return { ok: false, status: 0, path, method, payload: { error: message } };
-}
-
-// A one-shot/local error RunState (missing client, thrown request, etc.).
-function makeErrorRun(args: {
-  title: string;
-  subtitle: string;
-  message: string;
-  path: string;
-  outputKind?: OutputKind;
-  prompt?: string;
-  transcript?: AskTurn[];
-}): TerminalRun {
-  return {
-    kind: "error",
-    title: args.title,
-    subtitle: args.subtitle,
-    text: args.message,
-    outputKind: args.outputKind ?? "code",
-    prompt: args.prompt,
-    transcript: args.transcript,
-    result: errorResult(args.message, args.path),
-  };
-}
-
-// Terminal error of a streamed action (the `palette://stream` "error" event or a
-// failed stream invoke). Honest result — no fabricated 200.
-function makeStreamErrorRun(args: {
-  actionLabel: string;
-  path: string;
-  message: string;
-  outputKind: OutputKind;
-  prompt?: string;
-  transcript?: AskTurn[];
-}): TerminalRun {
-  return {
-    kind: "error",
-    title: `${args.actionLabel} failed`,
-    subtitle: args.path,
-    text: args.message,
-    outputKind: args.outputKind,
-    prompt: args.prompt,
-    transcript: args.transcript,
-    result: errorResult(args.message, args.path),
-  };
-}
-
-// Terminal success of a streamed action. The answer never travelled through the
-// one-shot HTTP path, so `status: 0` is the truthful marker (A-M4); the payload
-// carries the streamed answer for downstream views.
-function makeStreamSuccessRun(args: {
-  actionLabel: string;
-  subtitle: string;
-  text: string;
-  outputKind: OutputKind;
-  path: string;
-  prompt?: string;
-  transcript?: AskTurn[];
-  payload?: unknown;
-}): TerminalRun {
-  const parts = answerParts(args.text, args.payload);
-  return {
-    kind: "success",
-    title: `${args.actionLabel} completed`,
-    subtitle: args.subtitle,
-    text: parts.answer,
-    outputKind: args.outputKind,
-    prompt: args.prompt,
-    transcript: completeLastAssistantTurn(args.transcript, parts.answer, parts.sources),
-    result: {
-      ok: true,
-      status: 0,
-      path: args.path,
-      method: "POST",
-      payload: { answer: parts.answer, sources: parts.sources },
-    },
-  };
-}
-
-function statusFallbackAction(action: PaletteAction, argument: string): PaletteAction {
-  if (action.kind !== "job" || argument.trim()) return action;
-  const match = /^(crawl|embed|extract|ingest)-status$/.exec(action.subcommand);
-  if (!match) return action;
-  return ACTIONS.find((candidate) => candidate.subcommand === `${match[1]}-list`) ?? action;
-}
-
-// ── Streaming event reducer ──────────────────────────────────────────────────
-// Folds a `palette://stream` event into the current RunState. Pure so it can be
-// unit-tested without the Tauri event bridge.
-export function reduceStreamEvent(current: RunState, payload: PaletteStreamEvent): RunState {
-  if (current.kind !== "streaming" || !("requestId" in payload) || current.requestId !== payload.requestId) {
-    return current;
-  }
-  if (payload.type === "delta") {
-    const text = current.text + payload.text;
-    return { ...current, text, transcript: updateLastAssistantTurn(current.transcript, text) };
-  }
-  if (payload.type === "activity") {
-    const kind = payload.kind === "tool" || payload.kind === "done" ? payload.kind : "thinking";
-    return {
-      ...current,
-      transcript: appendAskActivity(current.transcript, {
-        id: `${payload.requestId}:activity:${current.transcript?.at(-1)?.activities?.length ?? 0}`,
-        label: payload.label,
-        detail: payload.detail ?? undefined,
-        kind,
-      }),
-    };
-  }
-  if (payload.type === "done") {
-    return makeStreamSuccessRun({
-      actionLabel: current.actionLabel,
-      subtitle: current.subtitle,
-      text: payload.answer ?? current.text,
-      outputKind: current.outputKind,
-      path: current.path,
-      prompt: current.prompt,
-      transcript: current.transcript,
-    });
-  }
-  if (payload.type === "error") {
-    return makeStreamErrorRun({
-      actionLabel: current.actionLabel,
-      path: current.path,
-      message: payload.message,
-      outputKind: current.outputKind,
-      prompt: current.prompt,
-      transcript: current.transcript,
-    });
-  }
-  return current;
 }
 
 // Action-execution engine for the palette: turns a selected action + argument
@@ -401,6 +259,77 @@ export function useActionRunner({
     }
   }
 
+  // ── Async-job branch: submit embed/extract/ingest, then hand the live poll
+  // off to useJobPoll. Mirrors submitCrawl but uses the generic JobSnapshot.
+  async function submitAsyncJob(
+    action: RemotePaletteAction,
+    argument: string,
+    family: AsyncJobFamily,
+    cli: Client,
+    cfg: PaletteConfig,
+  ) {
+    const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
+    const label = jobLabel(argument);
+    const startedAtMs = Date.now();
+    setRun({
+      kind: "asyncJob",
+      family,
+      title: `${action.label}`,
+      subtitle: "submitting…",
+      jobId: "",
+      statusUrl: "",
+      target: argument,
+      startedAtMs,
+      snapshot: pendingJobSnapshot(family, label),
+      minimized: false,
+    });
+    try {
+      const result = await executeAction(cli, action, argument, cfg);
+      const payload = (result.payload ?? {}) as Record<string, unknown>;
+      const jobId =
+        typeof payload.job_id === "string"
+          ? payload.job_id
+          : typeof payload.id === "string"
+            ? payload.id
+            : null;
+      if (!result.ok || !jobId) {
+        const text = formatPayload(action.subcommand, result.payload);
+        const subtitle = `${result.method} ${result.path} | HTTP ${result.status}`;
+        pushHistory(action, argument || action.subcommand, {
+          status: result.status,
+          title: `${action.label} failed`,
+          subtitle,
+          text,
+          outputKind: "code",
+          result,
+        });
+        setRun({ kind: "error", title: `${action.label} failed`, subtitle, text, outputKind: "code", result });
+        return;
+      }
+      pushHistory(action, argument || action.subcommand, {
+        status: result.status,
+        title: `${action.label}`,
+        subtitle: `job ${jobId}`,
+        outputKind: "code",
+        result,
+      });
+      setRun((current) =>
+        current.kind === "asyncJob" && current.target === argument
+          ? {
+              ...current,
+              jobId,
+              statusUrl: `/v1/${family}/${jobId}`,
+              subtitle: `job ${jobId}`,
+              snapshot: summarizeJob(family, result.payload, { jobId, label }),
+            }
+          : current,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRun(makeErrorRun({ title: `${action.label} failed`, subtitle: commandLine, message, path: `/v1/${family}` }));
+    }
+  }
+
   // ── Stream branch: start the streamed request; terminal states arrive via the
   // `palette://stream` listener and reduceStreamEvent. Returns false when the
   // current (non-Tauri) runtime can't stream so the caller falls back to one-shot.
@@ -481,7 +410,13 @@ export function useActionRunner({
     const current = runRef.current;
     // In-flight guard: one-shot serialization is the runtime's job (oneShotPending),
     // but a live crawl-job or active stream must still block re-entry.
-    if (oneShotPending || current.kind === "streaming" || (current.kind === "job" && !current.jobId)) return;
+    if (
+      oneShotPending ||
+      current.kind === "streaming" ||
+      (current.kind === "job" && !current.jobId) ||
+      (current.kind === "asyncJob" && !current.jobId)
+    )
+      return;
     const rawArgument = argumentOverride ?? argumentFor(action, modeAction, parsed, query);
 
     if (action.subcommand === "help") {
@@ -530,6 +465,14 @@ export function useActionRunner({
 
     if (executableAction.subcommand === "crawl") {
       await submitCrawl(executableAction, argument, client, config);
+      return;
+    }
+    if (
+      executableAction.subcommand === "embed" ||
+      executableAction.subcommand === "extract" ||
+      executableAction.subcommand === "ingest"
+    ) {
+      await submitAsyncJob(executableAction, argument, executableAction.subcommand, client, config);
       return;
     }
     if (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") {

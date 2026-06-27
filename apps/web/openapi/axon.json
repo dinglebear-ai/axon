@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "6.1.0"
+    "version": "6.1.2"
   },
   "paths": {
     "/healthz": {
@@ -1050,7 +1050,9 @@
             "description": "Crawl job status",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
               }
             }
           },
@@ -1861,7 +1863,9 @@
             "description": "Embed job status",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
               }
             }
           },
@@ -2482,7 +2486,9 @@
             "description": "Extract job status",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
               }
             }
           },
@@ -3020,7 +3026,9 @@
             "description": "Ingest job status",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
               }
             }
           },
@@ -3586,6 +3594,91 @@
           },
           "500": {
             "description": "Session store error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/purge": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "purge",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Purge result (counts of points/URLs matched or deleted)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid purge request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream vector service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -5476,6 +5569,101 @@
         },
         "additionalProperties": false
       },
+      "JobFamily": {
+        "type": "string",
+        "enum": [
+          "embed",
+          "extract",
+          "ingest"
+        ]
+      },
+      "JobMetric": {
+        "type": "object",
+        "description": "One labelled, display-formatted counter (e.g. `{ \"Chunks\", \"1,024\" }`).",
+        "required": [
+          "label",
+          "value"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "**Display-formatted, not machine-readable.** Pre-rendered for direct\nrendering by clients — integers carry thousands separators (`\"1,024\"`)\nand string fields (e.g. ingest `phase`) pass through verbatim. Do not\nparse this back into a number; if a surface needs the raw value, add a\ntyped field rather than reverse-engineering the formatting here."
+          }
+        }
+      },
+      "JobPhase": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "done",
+          "failed",
+          "canceled"
+        ]
+      },
+      "JobProgress": {
+        "type": "object",
+        "description": "Derived, transport-neutral progress for a generic async job.",
+        "required": [
+          "family",
+          "phase",
+          "metrics"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "family": {
+            "$ref": "#/components/schemas/JobFamily"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobMetric"
+            }
+          },
+          "percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "0–100 when determinate; `None` = indeterminate (render a pulsing bar)."
+          },
+          "phase": {
+            "$ref": "#/components/schemas/JobPhase"
+          }
+        }
+      },
+      "JobStatusResponse": {
+        "type": "object",
+        "description": "Typed job-status envelope so the `{ job, progress }` wire shape is a\nregistered OpenAPI schema (and thus reflected into the generated palette/\nandroid clients) instead of an opaque `serde_json::Value`.",
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "description": "Raw job record in the wire-compat shape (`status`, `result_json`,\ntimestamps, …). Still `Value` because the per-family job payloads are\nheterogeneous; `progress` is the typed, cross-family projection of it."
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobProgress",
+                "description": "Server-derived, transport-neutral progress for the generic async\nfamilies (embed/extract/ingest). `None` for crawl, which carries a\nricher client-side snapshot rather than the generic shape."
+              }
+            ]
+          }
+        }
+      },
       "LinkEntry": {
         "type": "object",
         "required": [
@@ -5798,6 +5986,89 @@
         },
         "additionalProperties": false
       },
+      "PurgeRequest": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Preview only — count matches without deleting. **Defaults to `true`** for\nagent safety: a bare `purge` previews; set `dry_run=false` to delete."
+          },
+          "prefix": {
+            "type": "boolean",
+            "description": "Match `target` as a prefix over a whole docs subtree / origin."
+          },
+          "response_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ResponseMode"
+              }
+            ]
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL (or seed-URL/origin when `prefix` is set) to delete from the index.\n**Handler-required despite the `Option`:** the type is `Option<String>`\nonly so a missing field deserializes to a clean \"target is required\"\nerror instead of a serde rejection; `handle_purge` returns an error when\nit is `None`. It is not an optional argument."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PurgeResult": {
+        "type": "object",
+        "description": "Result of a purge: counts of points/URLs matched (and deleted, unless this\nwas a `dry_run` preview).",
+        "required": [
+          "target",
+          "prefix",
+          "dry_run",
+          "matched_points",
+          "deleted_points",
+          "matched_url_count",
+          "sample_urls"
+        ],
+        "properties": {
+          "deleted_points": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "When true, nothing was deleted — counts reflect what *would* be removed."
+          },
+          "matched_points": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "matched_url_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prefix": {
+            "type": "boolean"
+          },
+          "sample_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "target": {
+            "type": "string"
+          }
+        }
+      },
       "ReadinessBody": {
         "type": "object",
         "required": [
@@ -5827,6 +6098,15 @@
           "http",
           "chrome",
           "auto-switch"
+        ]
+      },
+      "ResponseMode": {
+        "type": "string",
+        "enum": [
+          "path",
+          "inline",
+          "both",
+          "auto_inline"
         ]
       },
       "RestAskRequest": {
@@ -6288,9 +6568,6 @@
       },
       "RestIngestRequest": {
         "type": "object",
-        "required": [
-          "source_type"
-        ],
         "properties": {
           "include_source": {
             "type": [
@@ -6309,7 +6586,15 @@
             ]
           },
           "source_type": {
-            "$ref": "#/components/schemas/RestIngestSourceType"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RestIngestSourceType",
+                "description": "Source type for the ingest target. **Omit to auto-detect** from `target`\nvia the canonical shared classifier (`classify_target`) — the same path\nthe CLI uses, covering GitHub / GitLab / Gitea / generic-git / Reddit /\nYouTube / RSS. Set explicitly only to force a specific interpretation."
+              }
+            ]
           },
           "target": {
             "type": [

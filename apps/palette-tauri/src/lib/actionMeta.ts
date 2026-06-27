@@ -40,6 +40,7 @@ const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   endpoints: { category: "Inspect", input: "URL", output: "endpoints", label: "Endpoints" },
   brand: { category: "Inspect", input: "URL", output: "brand", label: "Brand" },
   dedupe: { category: "System", input: "settings", output: "report", label: "Dedupe" },
+  purge: { category: "System", input: "url", output: "report", label: "Purge" },
   "watch-list": { category: "Watch", input: "none", output: "watches", label: "Watch list" },
   "watch-create": { category: "Watch", input: "URL", output: "watch", label: "Watch create" },
   "watch-run": { category: "Watch", input: "watch id", output: "run", label: "Watch run" },
