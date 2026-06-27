@@ -298,6 +298,18 @@ async fn enqueue_supported_start(
                 ..ConfigOverrides::default()
             });
             let input = validate_mcp_embed_input_with_config(&cfg, &input)?;
+            // The task-augmented start path must return a queued job handle, but a
+            // local filesystem path can only be embedded in-process by a process
+            // that shares its filesystem — enqueuing it would let a worker that
+            // cannot see the path (e.g. the container) claim it. Reject it here and
+            // point callers at the normal (non-task) embed.start, which runs local
+            // paths in-process. Mirrors the guard in handle_embed_start.
+            if embed_svc::embed_input_is_local_path(&input) {
+                return Err(invalid_params(
+                    "embed.start of a local filesystem path is not supported via task-augmented \
+                     start (it must run in-process); call embed.start as a normal tool call instead",
+                ));
+            }
             let service_context = server
                 .base_service_context()
                 .await
@@ -418,6 +430,7 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Diff(_) => ("diff", "None".to_string()),
         AxonRequest::Debug(_) => ("debug", "None".to_string()),
         AxonRequest::Dedupe(_) => ("dedupe", "None".to_string()),
+        AxonRequest::Purge(_) => ("purge", "None".to_string()),
         AxonRequest::Migrate(_) => ("migrate", "None".to_string()),
         AxonRequest::Watch(_) => ("watch", "None".to_string()),
         AxonRequest::Setup(_) => ("setup", "None".to_string()),

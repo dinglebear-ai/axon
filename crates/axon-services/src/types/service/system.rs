@@ -107,3 +107,9 @@ pub struct DedupeResult {
     pub duplicate_groups: usize,
     pub deleted: usize,
 }
+
+/// `PurgeResult` is the transport-neutral contract for the `purge` operation. It
+/// is owned by `axon-api` (where `axon-vector` returns it from), not redefined
+/// here — re-exported so `crate::types::PurgeResult` call sites resolve
+/// unchanged. See the workspace ownership rule in the crate `CLAUDE.md`.
+pub use axon_api::purge::PurgeResult;

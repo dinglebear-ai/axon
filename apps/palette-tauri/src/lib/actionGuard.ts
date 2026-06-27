@@ -13,6 +13,7 @@ export interface PendingActionConfirmation {
 
 const DESTRUCTIVE_SUBCOMMANDS = new Set([
   "dedupe",
+  "purge",
   "crawl-clear",
   "embed-clear",
   "extract-clear",

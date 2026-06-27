@@ -255,12 +255,19 @@ impl AxonMcpServer {
                 let job = extract_svc::extract_status(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("extract.status", e.as_ref()))?;
+                let payload = job.map(|j| j.payload);
+                let progress = payload.as_ref().map(|p| {
+                    axon_api::job_progress::JobProgress::from_wire_value(
+                        axon_api::job_progress::JobFamily::Extract,
+                        p,
+                    )
+                });
                 respond_with_mode(
                     "extract",
                     "status",
                     response_mode,
                     &format!("extract-status-{id}"),
-                    serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    serde_json::json!({ "job": payload, "progress": progress }),
                     InlineHint::Default,
                 )
                 .await

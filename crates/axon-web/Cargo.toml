@@ -7,6 +7,7 @@ description = "Axon web layer: Axum panel UI, REST /v1 API, OpenAPI, health, sec
 license = "MIT"
 
 [dependencies]
+axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 axon-vector = { path = "../axon-vector" }
 axon-ingest = { path = "../axon-ingest" }

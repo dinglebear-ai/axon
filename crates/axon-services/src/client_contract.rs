@@ -277,7 +277,12 @@ pub struct RestScreenshotRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RestIngestRequest {
-    pub source_type: RestIngestSourceType,
+    /// Source type for the ingest target. **Omit to auto-detect** from `target`
+    /// via the canonical shared classifier (`classify_target`) — the same path
+    /// the CLI uses, covering GitHub / GitLab / Gitea / generic-git / Reddit /
+    /// YouTube / RSS. Set explicitly only to force a specific interpretation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_type: Option<RestIngestSourceType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -304,7 +309,7 @@ impl From<RestIngestSourceType> for axon_api::mcp_schema::IngestSourceType {
 impl From<RestIngestRequest> for axon_api::mcp_schema::IngestRequest {
     fn from(req: RestIngestRequest) -> Self {
         Self {
-            source_type: Some(req.source_type.into()),
+            source_type: req.source_type.map(Into::into),
             target: req.target,
             include_source: req.include_source,
             sessions: req.sessions.map(Into::into),

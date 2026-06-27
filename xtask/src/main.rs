@@ -15,6 +15,12 @@ enum Command {
     Check,
     /// Enforce modern Rust module layout.
     CheckNoModRs,
+    /// Enforce crate ownership: transports must not reach into domain internals.
+    CheckLayering,
+    /// Verify docs/reference/api-parity.md is in sync with the source surfaces.
+    CheckApiParity,
+    /// Regenerate docs/reference/api-parity.md from the CLI/MCP/REST surfaces.
+    GenApiParity,
     /// Verify MCP HTTP transport support.
     CheckMcpHttp,
     /// Reject staged secret env files.
@@ -110,6 +116,9 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Check => checks::check(&root),
         Command::CheckNoModRs => checks::no_mod_rs::check(&root),
+        Command::CheckLayering => checks::layering::check(&root),
+        Command::CheckApiParity => checks::api_parity::check(&root),
+        Command::GenApiParity => checks::api_parity::write(&root),
         Command::CheckMcpHttp => checks::mcp_http::check(&root),
         Command::CheckEnvStaged => checks::env_staged::check(&root),
         Command::CheckUnwraps => checks::unwraps::check(&root),

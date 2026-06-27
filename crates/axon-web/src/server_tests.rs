@@ -496,6 +496,7 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let mobile_session = "/v1/mobile/sessions/test_session";
     let routes = [
         ("POST", "/v1/dedupe"),
+        ("POST", "/v1/purge"),
         ("POST", "/v1/watch"),
         ("POST", watch_run.as_str()),
         ("POST", "/v1/crawl"),

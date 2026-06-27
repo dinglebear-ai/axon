@@ -99,7 +99,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     chrome = any_match(paths, lambda p: starts(p, "apps/chrome-extension/", "assets/"))
     mcp = any_match(
         paths,
-        lambda p: starts(p, "src/mcp/", "docs/reference/mcp/")
+        lambda p: starts(p, "src/mcp/", "crates/axon-mcp/src/", "docs/reference/mcp/")
         or p in MCP_CI_HELPER_SCRIPTS
         or p == "tests/workflow_shapes.rs",
     )
@@ -108,6 +108,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         lambda p: starts(
             p,
             "src/",
+            "crates/",
             "xtask/",
             "benches/",
             "tests/",
