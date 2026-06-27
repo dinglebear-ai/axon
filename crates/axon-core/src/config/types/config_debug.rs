@@ -184,6 +184,36 @@ impl fmt::Debug for Config {
             .field("tei_max_retries", &self.tei_max_retries)
             .field("tei_request_timeout_ms", &self.tei_request_timeout_ms)
             .field("tei_max_client_batch_size", &self.tei_max_client_batch_size)
+            .field("embed_tei_max_concurrent", &self.embed_tei_max_concurrent)
+            .field(
+                "embed_tei_max_in_flight_inputs",
+                &self.embed_tei_max_in_flight_inputs,
+            )
+            .field("embed_pool_max_inputs", &self.embed_pool_max_inputs)
+            .field("embed_prep_concurrency", &self.embed_prep_concurrency)
+            .field("embed_max_chunks_per_doc", &self.embed_max_chunks_per_doc)
+            .field(
+                "embed_max_source_chunks_per_doc",
+                &self.embed_max_source_chunks_per_doc,
+            )
+            .field("embed_dedupe_exact_chunks", &self.embed_dedupe_exact_chunks)
+            .field("openai_embed_model", &self.openai_embed_model)
+            .field(
+                "openai_embed_max_client_batch_size",
+                &self.openai_embed_max_client_batch_size,
+            )
+            .field(
+                "openai_embed_max_concurrent",
+                &self.openai_embed_max_concurrent,
+            )
+            .field(
+                "openai_embed_max_in_flight_inputs",
+                &self.openai_embed_max_in_flight_inputs,
+            )
+            .field(
+                "openai_embed_pool_max_inputs",
+                &self.openai_embed_pool_max_inputs,
+            )
             .field("ingest_lanes", &self.ingest_lanes)
             .field("embed_lanes", &self.embed_lanes)
             .field("embed_doc_timeout_secs", &self.embed_doc_timeout_secs)

@@ -1,7 +1,6 @@
 use super::{EmbedProgress, EmbedSummary, PreparedDoc, StructuredPayload};
 use crate::ops::input::classify::path_extension;
 use crate::ops::input::select;
-use crate::ops::qdrant::env_usize_clamped;
 use crate::ops::{SourceDocument, SourceOrigin, prepare_source_document};
 use axon_core::config::Config;
 use axon_core::content::{is_excluded_url_path, to_markdown};
@@ -18,7 +17,7 @@ mod chunk_guard;
 mod input;
 
 use chunk_guard::{
-    ChunkVolumeGuardReport, ChunkVolumeLimits, chunk_volume_limits_from_env,
+    ChunkVolumeGuardReport, ChunkVolumeLimits, chunk_volume_limits_from_config,
     enforce_chunk_volume_limits_with_report,
 };
 #[cfg(test)]
@@ -100,16 +99,8 @@ pub(super) async fn prepare_embed_docs(
     let input_is_dir = Path::new(input).is_dir();
     let input_exists = Path::new(input).exists();
     let input_path = PathBuf::from(input);
-    let prep_concurrency = env_usize_clamped(
-        "AXON_EMBED_PREP_CONCURRENCY",
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(8)
-            .clamp(2, 16),
-        1,
-        64,
-    );
-    let chunk_volume_limits = chunk_volume_limits_from_env();
+    let prep_concurrency = cfg.embed_prep_concurrency;
+    let chunk_volume_limits = chunk_volume_limits_from_config(cfg);
     let mut prepared = Vec::new();
     // Count docs dropped for having no embeddable content so the skip is
     // attributable — without a trace, a directory of empty/whitespace files

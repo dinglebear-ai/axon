@@ -1,5 +1,4 @@
 use super::{EmbedProgress, EmbedSummary, PreparedDoc, qdrant_store::VectorMode};
-use crate::ops::qdrant::env_usize_clamped;
 use axon_core::config::Config;
 use axon_core::logging::{log_info, log_warn};
 use std::time::Instant;
@@ -233,9 +232,9 @@ pub(super) async fn run_embed_pipeline(
     let doc_timeout_secs = cfg.embed_doc_timeout_secs;
     let flush_threshold = cfg.qdrant_point_buffer.clamp(128, 16_384);
     let pool_input_limit = if is_openai_compatible_embedding_url(cfg) {
-        env_usize_clamped("AXON_OPENAI_EMBED_POOL_MAX_INPUTS", 1024, 64, 65_536)
+        cfg.openai_embed_pool_max_inputs
     } else {
-        env_usize_clamped("AXON_EMBED_POOL_MAX_INPUTS", 512, 64, 65_536)
+        cfg.embed_pool_max_inputs
     };
 
     let mut work = prepared.into_iter();

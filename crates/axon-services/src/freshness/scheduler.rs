@@ -7,15 +7,18 @@ use crate::context::ServiceContext;
 use crate::embed::embed_start_with_context;
 use crate::ingest::ingest_start_with_context;
 use crate::scrape::scrape_batch_with_optional_embed;
+use axon_api::ingest::target_label;
 use axon_core::config::Config;
 use axon_core::redact::redact_secrets;
 use axon_jobs::backend::JobKind;
+use axon_jobs::config_snapshot::{config_snapshot_json, ingest_config_json};
 use axon_jobs::freshness::{
     FRESHNESS_RUN_STATUS_COMPLETED, FRESHNESS_RUN_STATUS_ENQUEUED, FRESHNESS_RUN_STATUS_FAILED,
     FRESHNESS_RUN_STATUS_SKIPPED_ACTIVE_JOB, FreshnessDef, FreshnessRun,
     create_freshness_run_with_pool, finish_freshness_run_with_pool, heartbeat_freshness_run,
     lease_due_freshness, lease_freshness_for_manual_run, list_freshness_runs_with_pool,
-    reclaim_current_stale_freshness_leases, set_freshness_run_dispatched_job_with_pool,
+    prune_freshness_runs_for_retention, reclaim_current_stale_freshness_leases,
+    set_freshness_run_dispatched_job_with_pool,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -57,27 +60,30 @@ pub fn spawn_freshness_scheduler(service_context: ServiceContext) {
     let max_concurrent = service_context.cfg.freshness_max_concurrent_runs.max(1);
     let semaphore = Arc::new(Semaphore::new(max_concurrent));
     tokio::spawn(async move {
-        match reclaim_current_stale_freshness_leases(&pool).await {
-            Ok(count) if count > 0 => {
-                tracing::info!(count, "freshness scheduler reclaimed stale leases");
-            }
-            Ok(_) => {}
-            Err(err) => tracing::warn!(error = %err, "freshness scheduler lease reclaim failed"),
-        }
+        run_scheduler_maintenance(&pool, service_context.cfg()).await;
         let mut interval = tokio::time::interval(Duration::from_secs(tick_secs));
         interval.tick().await;
         loop {
             interval.tick().await;
-            let due =
-                match lease_due_freshness(&pool, axon_jobs::store::now_ms(), lease_ttl_ms, max_due)
-                    .await
-                {
-                    Ok(due) => due,
-                    Err(err) => {
-                        tracing::warn!(error = %err, "freshness scheduler lease sweep failed");
-                        continue;
-                    }
-                };
+            run_scheduler_maintenance(&pool, service_context.cfg()).await;
+            let available = semaphore.available_permits().min(max_due as usize) as i64;
+            if available == 0 {
+                continue;
+            }
+            let due = match lease_due_freshness(
+                &pool,
+                axon_jobs::store::now_ms(),
+                lease_ttl_ms,
+                available,
+            )
+            .await
+            {
+                Ok(due) => due,
+                Err(err) => {
+                    tracing::warn!(error = %err, "freshness scheduler lease sweep failed");
+                    continue;
+                }
+            };
             for def in due {
                 let Ok(permit) = Arc::clone(&semaphore).acquire_owned().await else {
                     continue;
@@ -93,6 +99,17 @@ pub fn spawn_freshness_scheduler(service_context: ServiceContext) {
             }
         }
     });
+}
+
+async fn run_scheduler_maintenance(pool: &sqlx::SqlitePool, cfg: &Config) {
+    match reclaim_current_stale_freshness_leases(pool).await {
+        Ok(count) if count > 0 => {
+            tracing::info!(count, "freshness scheduler reclaimed stale leases");
+        }
+        Ok(_) => {}
+        Err(err) => tracing::warn!(error = %err, "freshness scheduler lease reclaim failed"),
+    }
+    prune_retained_runs(pool, cfg).await;
 }
 
 async fn run_leased_freshness_def(
@@ -169,6 +186,22 @@ fn spawn_heartbeat(
     })
 }
 
+async fn prune_retained_runs(pool: &sqlx::SqlitePool, cfg: &Config) {
+    match prune_freshness_runs_for_retention(
+        pool,
+        cfg.freshness_run_retention_days,
+        axon_jobs::store::now_ms(),
+    )
+    .await
+    {
+        Ok(count) if count > 0 => {
+            tracing::info!(count, "freshness scheduler pruned old run history");
+        }
+        Ok(_) => {}
+        Err(err) => tracing::warn!(error = %err, "freshness scheduler retention cleanup failed"),
+    }
+}
+
 pub(crate) async fn dispatch_freshness(
     service_context: &ServiceContext,
     def: &FreshnessDef,
@@ -190,7 +223,9 @@ pub(crate) async fn dispatch_freshness(
             })
         }
         FreshnessRequestPayload::V1(FreshnessRequestV1::Crawl { urls }) => {
-            if has_active_equivalent_job(service_context, JobKind::Crawl, def).await? {
+            let effective = crate::crawl::apply_crawl_defaults(&cfg);
+            let expected_config_json = config_snapshot_json(&effective)?;
+            if has_active_equivalent_crawl(service_context, &urls, &expected_config_json).await? {
                 return Ok(skipped_active_job(def));
             }
             let outcome = crawl_start_for_freshness(&cfg, &urls, service_context).await?;
@@ -201,7 +236,15 @@ pub(crate) async fn dispatch_freshness(
             })
         }
         FreshnessRequestPayload::V1(FreshnessRequestV1::Embed { input }) => {
-            if has_active_equivalent_job(service_context, JobKind::Embed, def).await? {
+            let expected_config_json = config_snapshot_json(&cfg)?;
+            if has_active_equivalent_single(
+                service_context,
+                JobKind::Embed,
+                &input,
+                &expected_config_json,
+            )
+            .await?
+            {
                 return Ok(skipped_active_job(def));
             }
             let outcome = embed_start_with_context(&cfg, &input, service_context, None, None)
@@ -215,7 +258,16 @@ pub(crate) async fn dispatch_freshness(
             })
         }
         FreshnessRequestPayload::V1(FreshnessRequestV1::Ingest { source }) => {
-            if has_active_equivalent_job(service_context, JobKind::Ingest, def).await? {
+            let target = target_label(&source);
+            let expected_config_json = ingest_config_json(&cfg, &source)?;
+            if has_active_equivalent_single(
+                service_context,
+                JobKind::Ingest,
+                &target,
+                &expected_config_json,
+            )
+            .await?
+            {
                 return Ok(skipped_active_job(def));
             }
             let outcome = ingest_start_with_context(&cfg, source, service_context)
@@ -242,36 +294,46 @@ async fn crawl_start_for_freshness(
     Ok(serde_json::to_value(outcome.result)?)
 }
 
-async fn has_active_equivalent_job(
+async fn has_active_equivalent_single(
     service_context: &ServiceContext,
     kind: JobKind,
-    def: &FreshnessDef,
+    target: &str,
+    expected_config_json: &str,
 ) -> Result<bool, FreshnessError> {
-    let active = service_context
-        .jobs
-        .has_active_jobs(kind)
-        .await
-        .map_err(|err| -> FreshnessError { err.to_string().into() })?;
-    if !active {
-        return Ok(false);
-    }
-    let jobs = service_context
-        .jobs
-        .list_jobs(kind, 1000, 0)
-        .await
-        .unwrap_or_default();
-    if jobs.is_empty() {
-        return Ok(true);
-    }
+    let jobs = service_context.jobs.list_jobs(kind, 1000, 0).await?;
     Ok(jobs.iter().any(|job| {
         is_active_status(&job.status)
-            && (job.target.as_deref() == Some(def.target.as_str())
-                || job.url.as_deref() == Some(def.target.as_str())
-                || job
-                    .urls_json
-                    .as_ref()
-                    .is_some_and(|value| value.to_string().contains(&def.target)))
+            && (job.target.as_deref() == Some(target) || job.url.as_deref() == Some(target))
+            && job_config_matches(job.config_json.as_ref(), expected_config_json)
     }))
+}
+
+async fn has_active_equivalent_crawl(
+    service_context: &ServiceContext,
+    urls: &[String],
+    expected_config_json: &str,
+) -> Result<bool, FreshnessError> {
+    let jobs = service_context
+        .jobs
+        .list_jobs(JobKind::Crawl, 1000, 0)
+        .await?;
+    Ok(urls.iter().all(|url| {
+        jobs.iter().any(|job| {
+            is_active_status(&job.status)
+                && job.url.as_deref() == Some(url.as_str())
+                && job_config_matches(job.config_json.as_ref(), expected_config_json)
+        })
+    }))
+}
+
+fn job_config_matches(config_json: Option<&Value>, expected_config_json: &str) -> bool {
+    let Some(config_json) = config_json else {
+        return true;
+    };
+    let Ok(expected) = serde_json::from_str::<Value>(expected_config_json) else {
+        return false;
+    };
+    *config_json == expected
 }
 
 fn is_active_status(status: &str) -> bool {
@@ -299,30 +361,6 @@ fn first_uuid(value: Option<&Value>) -> Option<Uuid> {
 }
 
 #[cfg(test)]
-pub(crate) async fn run_fake_freshness_scheduler_with_limits(total: usize, limit: usize) -> usize {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    let semaphore = Arc::new(Semaphore::new(limit));
-    let active = Arc::new(AtomicUsize::new(0));
-    let max_seen = Arc::new(AtomicUsize::new(0));
-    let mut handles = Vec::new();
-    for _ in 0..total {
-        let permit = Arc::clone(&semaphore)
-            .acquire_owned()
-            .await
-            .expect("permit");
-        let active = Arc::clone(&active);
-        let max_seen = Arc::clone(&max_seen);
-        handles.push(tokio::spawn(async move {
-            let _permit = permit;
-            let now = active.fetch_add(1, Ordering::SeqCst) + 1;
-            max_seen.fetch_max(now, Ordering::SeqCst);
-            tokio::time::sleep(Duration::from_millis(5)).await;
-            active.fetch_sub(1, Ordering::SeqCst);
-        }));
-    }
-    for handle in handles {
-        handle.await.expect("fake dispatch");
-    }
-    max_seen.load(Ordering::SeqCst)
+pub(crate) fn lease_limit_for_available_capacity(max_due: i64, available_permits: usize) -> i64 {
+    available_permits.min(max_due.clamp(1, 100) as usize) as i64
 }

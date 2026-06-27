@@ -5,7 +5,7 @@ use crate::freshness::rows::{
 use crate::store::{now_ms, open_config_pool};
 use axon_core::config::Config;
 use axon_core::redact::redact_secrets;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::error::Error;
@@ -249,7 +249,7 @@ pub async fn lease_due_freshness(
     let lease_until = now + lease_ttl_ms;
     let rows = sqlx::query_as::<_, FreshnessDefRow>(
         "UPDATE axon_freshness_defs \
-         SET lease_expires_at = ?, next_run_at = ? + (every_seconds * 1000), updated_at = ? \
+         SET lease_expires_at = ?, updated_at = ? \
          WHERE id IN ( \
              SELECT id FROM axon_freshness_defs \
              WHERE enabled = 1 AND next_run_at <= ? \
@@ -259,7 +259,6 @@ pub async fn lease_due_freshness(
          RETURNING id, name, command, target, identity_hash, request_json, config_json, every_seconds, enabled, next_run_at, lease_expires_at, last_run_at, created_at, updated_at",
     )
     .bind(lease_until)
-    .bind(now)
     .bind(now)
     .bind(now)
     .bind(now)
@@ -278,13 +277,12 @@ pub async fn lease_freshness_for_manual_run(
     let lease_until = now + lease_ttl_ms;
     let row = sqlx::query_as::<_, FreshnessDefRow>(
         "UPDATE axon_freshness_defs \
-         SET lease_expires_at = ?, next_run_at = ? + (every_seconds * 1000), updated_at = ? \
+         SET lease_expires_at = ?, updated_at = ? \
          WHERE id = ? AND enabled = 1 \
            AND (lease_expires_at IS NULL OR lease_expires_at < ?) \
          RETURNING id, name, command, target, identity_hash, request_json, config_json, every_seconds, enabled, next_run_at, lease_expires_at, last_run_at, created_at, updated_at",
     )
     .bind(lease_until)
-    .bind(now)
     .bind(now)
     .bind(freshness_id.to_string())
     .bind(now)
@@ -438,17 +436,63 @@ pub async fn reclaim_stale_freshness_leases(
     pool: &SqlitePool,
     now: i64,
 ) -> Result<u64, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let failed_runs = sqlx::query(
+        "UPDATE axon_freshness_runs \
+         SET status = ?, error_text = ?, finished_at = ?, updated_at = ? \
+         WHERE status = ? \
+           AND freshness_id IN (SELECT id FROM axon_freshness_defs WHERE lease_expires_at < ?)",
+    )
+    .bind(FRESHNESS_RUN_STATUS_FAILED)
+    .bind("freshness lease expired before the run completed")
+    .bind(now)
+    .bind(now)
+    .bind(FRESHNESS_RUN_STATUS_RUNNING)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
     let result = sqlx::query(
-        "UPDATE axon_freshness_defs SET lease_expires_at = NULL WHERE lease_expires_at < ?",
+        "UPDATE axon_freshness_defs SET lease_expires_at = NULL, updated_at = ? WHERE lease_expires_at < ?",
     )
     .bind(now)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(result.rows_affected().max(failed_runs))
+}
+
+pub async fn reclaim_current_stale_freshness_leases(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+    reclaim_stale_freshness_leases(pool, now_ms()).await
+}
+
+pub async fn prune_freshness_runs_older_than(
+    pool: &SqlitePool,
+    cutoff: DateTime<Utc>,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        "DELETE FROM axon_freshness_runs \
+         WHERE created_at < ? AND status != ?",
+    )
+    .bind(cutoff.timestamp_millis())
+    .bind(FRESHNESS_RUN_STATUS_RUNNING)
     .execute(pool)
     .await?;
     Ok(result.rows_affected())
 }
 
-pub async fn reclaim_current_stale_freshness_leases(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
-    reclaim_stale_freshness_leases(pool, now_ms()).await
+pub async fn prune_freshness_runs_for_retention(
+    pool: &SqlitePool,
+    retention_days: i64,
+    now: i64,
+) -> Result<u64, sqlx::Error> {
+    let cutoff_ms = now - freshness_duration_seconds(retention_days.max(1)) * 1_000;
+    let cutoff = Utc
+        .timestamp_millis_opt(cutoff_ms)
+        .single()
+        .unwrap_or_else(Utc::now);
+    prune_freshness_runs_older_than(pool, cutoff).await
 }
 
 pub fn freshness_lease_ttl_ms_from_secs(lease_secs: i64) -> i64 {

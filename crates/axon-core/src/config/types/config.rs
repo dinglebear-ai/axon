@@ -53,6 +53,9 @@ pub struct Config {
     /// Optional CLI intent to create or update a recurring freshness schedule.
     pub freshness: Option<super::freshness::FreshnessRequest>,
 
+    /// Parsed `axon fresh <subcommand>` action.
+    pub fresh_action: Option<super::freshness::FreshAction>,
+
     /// Maximum chunks fetched by `retrieve` before reconstructing the document.
     /// Flag: `retrieve --max-points` (`retrieve --limit` alias). Default: None
     /// (use the retrieve service ceiling).
@@ -591,6 +594,54 @@ pub struct Config {
     /// Default client-side batch size for TEI embed requests (auto-splits on HTTP 413).
     /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `tei.max-client-batch-size`. Clamped 1–128. Default: 96.
     pub tei_max_client_batch_size: usize,
+
+    /// Max concurrent client requests to native TEI `/embed`.
+    /// Env: `AXON_TEI_MAX_CONCURRENT`. TOML: `embed.tei-max-concurrent`. Clamped 1–64. Default: 8.
+    pub embed_tei_max_concurrent: usize,
+
+    /// Weighted cap on input chunks in flight to native TEI `/embed`.
+    /// Env: `AXON_TEI_MAX_IN_FLIGHT_INPUTS`. TOML: `embed.tei-max-in-flight-inputs`. Clamped 1–4096. Default: 320.
+    pub embed_tei_max_in_flight_inputs: usize,
+
+    /// Max chunk inputs pooled into one native TEI embed wave.
+    /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `embed.pool-max-inputs`. Clamped 64–65536. Default: 512.
+    pub embed_pool_max_inputs: usize,
+
+    /// Concurrent source-document preparation tasks before embedding.
+    /// Env: `AXON_EMBED_PREP_CONCURRENCY`. TOML: `embed.prep-concurrency`. Clamped 1–64.
+    pub embed_prep_concurrency: usize,
+
+    /// Optional per-document chunk cap after exact dedupe; `None` disables the cap.
+    /// Env: `AXON_EMBED_MAX_CHUNKS_PER_DOC`. TOML: `embed.max-chunks-per-doc`.
+    pub embed_max_chunks_per_doc: Option<usize>,
+
+    /// Optional per-source-document chunk cap after exact dedupe; `None` disables the cap.
+    /// Env: `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC`. TOML: `embed.max-source-chunks-per-doc`.
+    pub embed_max_source_chunks_per_doc: Option<usize>,
+
+    /// Drop exact duplicate chunks within one logical document before embedding.
+    /// Env: `AXON_EMBED_DEDUPE_EXACT_CHUNKS`. TOML: `embed.dedupe-exact-chunks`. Default: true.
+    pub embed_dedupe_exact_chunks: bool,
+
+    /// Model sent to OpenAI-compatible `/v1/embeddings` endpoints.
+    /// Env: `AXON_OPENAI_EMBEDDING_MODEL` or `VLLM_SERVED_MODEL_NAME`. TOML: `embed.openai-model`.
+    pub openai_embed_model: String,
+
+    /// Client batch size for OpenAI-compatible `/v1/embeddings`.
+    /// Env: `AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE`. TOML: `embed.openai-max-client-batch-size`. Clamped 1–256. Default: 32.
+    pub openai_embed_max_client_batch_size: usize,
+
+    /// Max concurrent client requests to OpenAI-compatible `/v1/embeddings`.
+    /// Env: `AXON_OPENAI_EMBED_MAX_CONCURRENT`. TOML: `embed.openai-max-concurrent`. Clamped 1–64. Default: 32.
+    pub openai_embed_max_concurrent: usize,
+
+    /// Weighted cap on input chunks in flight to OpenAI-compatible `/v1/embeddings`.
+    /// Env: `AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS`. TOML: `embed.openai-max-in-flight-inputs`. Clamped 1–4096. Default: 512.
+    pub openai_embed_max_in_flight_inputs: usize,
+
+    /// Max chunk inputs pooled into one OpenAI-compatible embed wave.
+    /// Env: `AXON_OPENAI_EMBED_POOL_MAX_INPUTS`. TOML: `embed.openai-pool-max-inputs`. Clamped 64–65536. Default: 1024.
+    pub openai_embed_pool_max_inputs: usize,
 
     /// Parallel ingest worker lanes.
     /// Env: `AXON_INGEST_LANES`. TOML: `workers.ingest-lanes`. Clamped 1–16. Default: 2.

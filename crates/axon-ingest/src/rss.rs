@@ -112,13 +112,12 @@ fn prepare_feed_docs(feed_url: &str, feed_title: Option<&str>, feed: &Feed) -> V
     let mut seen_entry_identities = HashSet::new();
     for entry in feed.entries.iter().take(MAX_FEED_ENTRIES) {
         match prepare_entry_doc(feed_url, feed_title, entry) {
-            Some(doc) => {
-                let identity = normalized_entry_link_identity(doc.url());
-                if seen_entry_identities.insert(identity) {
+            Some((identity, doc)) => {
+                if seen_entry_identities.insert(identity.clone()) {
                     docs.push(doc);
                 } else {
                     log_info(&format!(
-                        "skipping duplicate feed entry link: feed={feed_url} url={}",
+                        "skipping duplicate feed entry link: feed={feed_url} url={} identity={identity}",
                         doc.url()
                     ));
                 }
@@ -171,8 +170,9 @@ fn prepare_entry_doc(
     feed_url: &str,
     feed_title: Option<&str>,
     entry: &Entry,
-) -> Option<PreparedDoc> {
+) -> Option<(String, PreparedDoc)> {
     let link = entry_link(entry)?;
+    let canonical_link = normalized_entry_link_identity(&link);
     let title = entry
         .title
         .as_ref()
@@ -207,17 +207,21 @@ fn prepare_entry_doc(
         "feed_url": feed_url,
         "feed_title": feed_title,
         "entry_id": entry.id,
+        "entry_link": link,
         "published": published,
         "author": author,
     });
 
-    Some(prepare_plain_text_source(
-        link.clone(),
-        url_to_domain(&link),
-        text,
-        "rss",
-        title,
-        Some(extra),
+    Some((
+        canonical_link.clone(),
+        prepare_plain_text_source(
+            canonical_link.clone(),
+            url_to_domain(&canonical_link),
+            text,
+            "rss",
+            title,
+            Some(extra),
+        ),
     ))
 }
 

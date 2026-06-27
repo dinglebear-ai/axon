@@ -72,6 +72,27 @@ fn valid_toml_parses_tei_and_workers() {
 }
 
 #[test]
+fn valid_toml_parses_embed_openai_compat_section() {
+    let cfg = load_toml_config_from_str(
+        r#"
+[embed]
+openai-model = "qwen3-openai"
+openai-max-client-batch-size = 24
+openai-max-concurrent = 12
+openai-max-in-flight-inputs = 256
+openai-pool-max-inputs = 768
+"#,
+    )
+    .expect("openai-compatible embed fields should parse");
+
+    assert_eq!(cfg.embed.openai_model.as_deref(), Some("qwen3-openai"));
+    assert_eq!(cfg.embed.openai_max_client_batch_size, Some(24));
+    assert_eq!(cfg.embed.openai_max_concurrent, Some(12));
+    assert_eq!(cfg.embed.openai_max_in_flight_inputs, Some(256));
+    assert_eq!(cfg.embed.openai_pool_max_inputs, Some(768));
+}
+
+#[test]
 fn valid_toml_parses_chrome_bootstrap_section() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(

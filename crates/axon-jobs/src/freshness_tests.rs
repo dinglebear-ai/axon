@@ -2,7 +2,8 @@ use crate::freshness::{
     FRESHNESS_RUN_STATUS_COMPLETED, FreshnessDefCreate, create_freshness_def_with_pool,
     create_freshness_run_with_pool, finish_freshness_run_with_pool, get_freshness_def_with_pool,
     heartbeat_freshness_run, lease_due_freshness, list_freshness_defs_with_pool,
-    list_freshness_runs_with_pool, reclaim_stale_freshness_leases, stable_initial_jitter_seconds,
+    list_freshness_runs_with_pool, prune_freshness_runs_for_retention,
+    reclaim_stale_freshness_leases, stable_initial_jitter_seconds,
 };
 use crate::store::now_ms;
 use chrono::{Duration, TimeZone, Utc};
@@ -129,8 +130,8 @@ async fn identity_hash_allows_same_target_in_different_collections() -> Result<(
 }
 
 #[tokio::test]
-async fn lease_due_freshness_is_single_flight_and_advances_next_run() -> Result<(), Box<dyn Error>>
-{
+async fn lease_due_freshness_is_single_flight_without_advancing_next_run()
+-> Result<(), Box<dyn Error>> {
     let pool = test_pool().await?;
     let id = insert_due_freshness(
         &pool,
@@ -144,7 +145,7 @@ async fn lease_due_freshness_is_single_flight_and_advances_next_run() -> Result<
     let second = lease_due_freshness(&pool, now, 300_000, 4).await?;
     assert_eq!(first[0].id, id);
     assert!(second.is_empty());
-    assert!(first[0].next_run_at.timestamp_millis() > now);
+    assert!(first[0].next_run_at.timestamp_millis() <= now);
     Ok(())
 }
 
@@ -258,5 +259,61 @@ async fn stale_freshness_leases_are_reclaimed() -> Result<(), Box<dyn Error>> {
         .await?
         .expect("stored freshness");
     assert!(stored.lease_expires_at.is_none());
+    assert!(stored.next_run_at.timestamp_millis() <= now);
+    Ok(())
+}
+
+#[tokio::test]
+async fn stale_freshness_reclaim_marks_running_runs_failed() -> Result<(), Box<dyn Error>> {
+    let pool = test_pool().await?;
+    let id = insert_due_freshness(&pool, "hash-a", "scrape", "https://example.com").await?;
+    let now = now_ms();
+    lease_due_freshness(&pool, now, 1, 4).await?;
+    create_freshness_run_with_pool(&pool, id, None).await?;
+
+    reclaim_stale_freshness_leases(&pool, now + 10).await?;
+
+    let runs = list_freshness_runs_with_pool(&pool, id, 10).await?;
+    assert_eq!(runs[0].status, "failed");
+    assert!(runs[0].finished_at.is_some());
+    Ok(())
+}
+
+#[tokio::test]
+async fn freshness_run_retention_prunes_only_old_terminal_runs() -> Result<(), Box<dyn Error>> {
+    let pool = test_pool().await?;
+    let id = insert_due_freshness(&pool, "hash-a", "scrape", "https://example.com").await?;
+    let old = create_freshness_run_with_pool(&pool, id, None).await?;
+    finish_freshness_run_with_pool(
+        &pool,
+        id,
+        old.id,
+        FRESHNESS_RUN_STATUS_COMPLETED,
+        None,
+        None,
+    )
+    .await?;
+    sqlx::query("UPDATE axon_freshness_runs SET created_at = ? WHERE id = ?")
+        .bind(now_ms() - 3 * 86_400_000)
+        .bind(old.id.to_string())
+        .execute(&pool)
+        .await?;
+    let recent = create_freshness_run_with_pool(&pool, id, None).await?;
+    finish_freshness_run_with_pool(
+        &pool,
+        id,
+        recent.id,
+        FRESHNESS_RUN_STATUS_COMPLETED,
+        None,
+        None,
+    )
+    .await?;
+
+    let pruned = prune_freshness_runs_for_retention(&pool, 1, now_ms()).await?;
+
+    assert_eq!(pruned, 1);
+    let runs = list_freshness_runs_with_pool(&pool, id, 10).await?;
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, recent.id);
     Ok(())
 }

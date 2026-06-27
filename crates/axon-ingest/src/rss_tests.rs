@@ -61,6 +61,16 @@ const RSS_WITH_TRACKING_PARAM_VARIANTS: &str = r#"<?xml version="1.0"?>
   </item>
 </channel></rss>"#;
 
+const RSS_WITH_TRACKED_LINK_FIRST: &str = r#"<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <title>Tracking First</title>
+  <item>
+    <title>Tracked Link</title>
+    <link>https://example.com/a?utm_source=newsletter&amp;gclid=abc</link>
+    <description>Body one</description>
+  </item>
+</channel></rss>"#;
+
 const RSS_WITH_LINK_AND_GUID: &str = r#"<?xml version="1.0"?>
 <rss version="2.0"><channel>
   <title>Link Guid</title>
@@ -100,6 +110,17 @@ fn duplicate_entry_links_use_normalized_tracking_url_identity() {
     let docs = prepare_feed_docs("https://example.com/feed.xml", Some("Feed"), &feed);
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].url(), "https://example.com/a");
+}
+
+#[test]
+fn feed_entry_doc_url_is_canonicalized_for_vector_identity() {
+    let feed = parse(RSS_WITH_TRACKED_LINK_FIRST);
+    let docs = prepare_feed_docs("https://example.com/feed.xml", Some("Feed"), &feed);
+    assert_eq!(docs[0].url(), "https://example.com/a");
+    assert_eq!(
+        docs[0].extra().unwrap()["entry_link"],
+        "https://example.com/a?utm_source=newsletter&gclid=abc"
+    );
 }
 
 #[test]

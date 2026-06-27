@@ -32,14 +32,17 @@ require_jq() {
 
 require_jq
 
-SCRAPE_JSON="$(./scripts/axon scrape https://example.com --collection "$COLLECTION" --fresh 1d --json --skip-embed)"
+cargo build -q --locked --bin axon
+AXON_BIN="$ROOT/target/debug/axon"
+
+SCRAPE_JSON="$("$AXON_BIN" scrape https://example.com --collection "$COLLECTION" --fresh 1d --json --skip-embed)"
 SCRAPE_ID="$(printf '%s' "$SCRAPE_JSON" | jq -r '.id')"
 test "$SCRAPE_ID" != "null"
-./scripts/axon fresh run-now "$SCRAPE_ID" --json | jq -e '.status == "completed" or .status == "enqueued"'
+"$AXON_BIN" fresh run-now "$SCRAPE_ID" --json | jq -e '.status == "completed" or .status == "enqueued"'
 
-RSS_JSON="$(./scripts/axon ingest rss:https://github.com/jmagar/axon/releases.atom --collection "$COLLECTION" --fresh 1d --json)"
+RSS_JSON="$("$AXON_BIN" ingest rss:https://github.com/jmagar/axon/releases.atom --collection "$COLLECTION" --fresh 1d --json)"
 RSS_ID="$(printf '%s' "$RSS_JSON" | jq -r '.id')"
 test "$RSS_ID" != "null"
-./scripts/axon fresh run-now "$RSS_ID" --json | jq -e '.status == "completed" or .status == "enqueued"'
+"$AXON_BIN" fresh run-now "$RSS_ID" --json | jq -e '.status == "completed" or .status == "enqueued"'
 
-./scripts/axon fresh history "$SCRAPE_ID" --json | jq -e '.items | length >= 1'
+"$AXON_BIN" fresh history "$SCRAPE_ID" --json | jq -e '.items | length >= 1'

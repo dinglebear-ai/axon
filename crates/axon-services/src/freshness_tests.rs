@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::freshness::{
     FreshnessRequestPayload, FreshnessRequestV1, create_from_config, dispatch_freshness,
-    freshness_identity_hash, run_fake_freshness_scheduler_with_limits, run_now,
-    safe_replay_snapshot, validate_freshness_payload_for_dispatch,
+    freshness_identity_hash, lease_limit_for_available_capacity, run_now, safe_replay_snapshot,
+    validate_freshness_payload_for_dispatch,
 };
 
 #[test]
@@ -21,6 +21,7 @@ fn safe_replay_snapshot_does_not_persist_secret_headers() {
     cfg.custom_headers = vec![
         "Authorization: Bearer sk-secret".to_string(),
         "Cookie: sid=secret".to_string(),
+        "X-Auth-Token: secret".to_string(),
         "X-Docs-Version: latest".to_string(),
     ];
     let err = safe_replay_snapshot(&cfg).unwrap_err();
@@ -28,6 +29,29 @@ fn safe_replay_snapshot_does_not_persist_secret_headers() {
         err.to_string()
             .contains("secret-bearing headers cannot be stored in freshness schedules")
     );
+}
+
+#[test]
+fn safe_replay_snapshot_preserves_replay_affecting_options() {
+    let mut cfg = Config::test_default();
+    cfg.collection = "fresh-replay".to_string();
+    cfg.respect_robots = true;
+    cfg.delay_ms = 250;
+    cfg.github_max_issues = 17;
+
+    let snapshot = safe_replay_snapshot(&cfg).expect("snapshot");
+    let encoded = snapshot
+        .config_snapshot_json
+        .as_deref()
+        .expect("full config snapshot");
+    let replayed =
+        axon_jobs::config_snapshot::apply_config_snapshot(&Config::test_default(), encoded)
+            .expect("replay snapshot");
+
+    assert_eq!(replayed.collection, "fresh-replay");
+    assert!(replayed.respect_robots);
+    assert_eq!(replayed.delay_ms, 250);
+    assert_eq!(replayed.github_max_issues, 17);
 }
 
 #[test]
@@ -94,8 +118,8 @@ fn dispatch_validation_rejects_local_embed_replaced_by_symlink_escape() {
 
 #[tokio::test]
 async fn scheduler_limits_concurrent_dispatches() {
-    let max_seen = run_fake_freshness_scheduler_with_limits(20, 2).await;
-    assert_eq!(max_seen, 2);
+    assert_eq!(lease_limit_for_available_capacity(100, 2), 2);
+    assert_eq!(lease_limit_for_available_capacity(4, 0), 0);
 }
 
 #[tokio::test]
@@ -156,9 +180,14 @@ async fn stored_freshness_intent_is_not_replayed_recursively() {
 async fn active_embed_job_is_recorded_as_skipped_without_duplicate_enqueue() {
     let mut cfg = Config::test_default();
     cfg.command = CommandKind::Embed;
-    let runtime = Arc::new(ActiveRuntime::with_active_target("fresh text"));
-    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
     let replay = safe_replay_snapshot(&cfg).expect("snapshot");
+    let job_config_json =
+        axon_jobs::config_snapshot::config_snapshot_json(&cfg).expect("job config");
+    let runtime = Arc::new(ActiveRuntime::with_active_target_and_config(
+        "fresh text",
+        serde_json::from_str(&job_config_json).expect("config json"),
+    ));
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
     let payload = FreshnessRequestPayload::V1(FreshnessRequestV1::Embed {
         input: "fresh text".to_string(),
     });
@@ -184,15 +213,54 @@ async fn active_embed_job_is_recorded_as_skipped_without_duplicate_enqueue() {
     assert_eq!(runtime.enqueued_count(), 0);
 }
 
+#[tokio::test]
+async fn active_embed_job_with_different_config_does_not_skip() {
+    let mut cfg = Config::test_default();
+    cfg.command = CommandKind::Embed;
+    cfg.collection = "fresh".to_string();
+    let replay = safe_replay_snapshot(&cfg).expect("snapshot");
+    let other_config = serde_json::json!({"config":{"collection":"other"},"version":2});
+    let runtime = Arc::new(ActiveRuntime::with_active_target_and_config(
+        "fresh text",
+        other_config,
+    ));
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
+    let payload = FreshnessRequestPayload::V1(FreshnessRequestV1::Embed {
+        input: "fresh text".to_string(),
+    });
+    let def = FreshnessDef {
+        id: Uuid::new_v4(),
+        name: "embed:fresh text".to_string(),
+        command: "embed".to_string(),
+        target: "fresh text".to_string(),
+        identity_hash: "0123456789abcdef".to_string(),
+        request_json: serde_json::to_value(payload).expect("payload json"),
+        config_json: serde_json::to_value(replay).expect("config json"),
+        every_seconds: 86_400,
+        enabled: true,
+        next_run_at: chrono::Utc::now(),
+        lease_expires_at: None,
+        last_run_at: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    let outcome = dispatch_freshness(&ctx, &def).await.expect("dispatch");
+    assert_eq!(outcome.status, "enqueued");
+    assert_eq!(runtime.enqueued_count(), 1);
+}
+
 struct ActiveRuntime {
     active_target: Option<String>,
+    active_config_json: Option<serde_json::Value>,
     payloads: Mutex<Vec<JobPayload>>,
 }
 
 impl ActiveRuntime {
-    fn with_active_target(target: &str) -> Self {
+    fn with_active_target_and_config(target: &str, config_json: serde_json::Value) -> Self {
         Self {
             active_target: Some(target.to_string()),
+            active_config_json: Some(config_json),
             payloads: Mutex::new(Vec::new()),
         }
     }
@@ -256,7 +324,7 @@ impl crate::runtime::ServiceJobRuntime for ActiveRuntime {
                 urls_json: None,
                 progress_json: None,
                 result_json: None,
-                config_json: None,
+                config_json: self.active_config_json.clone(),
                 attempt_count: 0,
                 active_attempt_id: None,
                 last_reclaimed_at: None,

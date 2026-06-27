@@ -29,7 +29,7 @@ pub async fn run_unified_server(
     let cfg_arc = Arc::new(cfg.clone());
     let service_context = Arc::new(OnceCell::<Arc<ServiceContext>>::new());
     let eager_context = Arc::new(
-        ServiceContext::new_with_workers(Arc::clone(&cfg_arc))
+        ServiceContext::new_with_workers_and_schedulers(Arc::clone(&cfg_arc))
             .await
             .map_err(|e| -> Box<dyn std::error::Error> { e })?,
     );

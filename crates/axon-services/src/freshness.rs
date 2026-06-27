@@ -4,6 +4,8 @@ use crate::ingest::{classify_target, validate_ingest_source};
 use axon_api::ingest::target_label;
 use axon_core::config::{CommandKind, Config, FreshnessCommand};
 use axon_core::http::validate_url;
+use axon_core::redact::is_secret_like;
+use axon_jobs::config_snapshot::{apply_config_snapshot, config_snapshot_json};
 use axon_jobs::freshness::{
     FreshnessDef, FreshnessDefCreate, FreshnessRun, create_freshness_def_with_pool,
     list_freshness_defs_with_pool, list_freshness_runs_with_pool,
@@ -20,7 +22,7 @@ mod scheduler;
 #[cfg(test)]
 pub(crate) use scheduler::dispatch_freshness;
 #[cfg(test)]
-pub(crate) use scheduler::run_fake_freshness_scheduler_with_limits;
+pub(crate) use scheduler::lease_limit_for_available_capacity;
 pub use scheduler::{run_now, spawn_freshness_scheduler};
 
 pub(crate) type FreshnessError = Box<dyn Error + Send + Sync>;
@@ -42,6 +44,8 @@ pub enum FreshnessRequestV1 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SafeReplayConfigV1 {
+    #[serde(default)]
+    pub config_snapshot_json: Option<String>,
     pub collection: String,
     pub render_mode: String,
     pub max_pages: u32,
@@ -93,6 +97,7 @@ pub fn safe_replay_snapshot(
 ) -> Result<SafeReplayConfigV1, Box<dyn Error + Send + Sync>> {
     reject_secret_headers(&cfg.custom_headers)?;
     Ok(SafeReplayConfigV1 {
+        config_snapshot_json: Some(config_snapshot_json(cfg)?),
         collection: cfg.collection.clone(),
         render_mode: cfg.render_mode.to_string(),
         max_pages: cfg.max_pages,
@@ -274,6 +279,13 @@ pub(crate) fn replay_config(
     base: &Config,
     replay: &SafeReplayConfigV1,
 ) -> Result<Config, FreshnessError> {
+    if let Some(config_snapshot_json) = replay.config_snapshot_json.as_deref() {
+        let mut cfg = apply_config_snapshot(base, config_snapshot_json)?;
+        cfg.freshness = None;
+        cfg.wait = false;
+        return Ok(cfg);
+    }
+
     let mut cfg = base.clone();
     cfg.collection = replay.collection.clone();
     cfg.render_mode = serde_json::from_value(Value::String(replay.render_mode.clone()))?;
@@ -320,10 +332,8 @@ fn reject_secret_headers(headers: &[String]) -> Result<(), Box<dyn Error + Send 
 }
 
 fn is_secret_header_name(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "authorization" | "cookie" | "x-api-key" | "proxy-authorization" | "set-cookie"
-    )
+    let lower = name.to_ascii_lowercase();
+    lower == "cookie" || lower == "set-cookie" || is_secret_like(&lower)
 }
 
 fn canonical_json(value: &Value) -> String {

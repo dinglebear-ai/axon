@@ -286,6 +286,11 @@ pub(super) struct TomlEmbedSection {
     pub max_chunks_per_doc: Option<usize>,
     pub max_source_chunks_per_doc: Option<usize>,
     pub dedupe_exact_chunks: Option<bool>,
+    pub openai_model: Option<String>,
+    pub openai_max_client_batch_size: Option<usize>,
+    pub openai_max_concurrent: Option<usize>,
+    pub openai_max_in_flight_inputs: Option<usize>,
+    pub openai_pool_max_inputs: Option<usize>,
 }
 
 #[derive(Deserialize, Default)]
