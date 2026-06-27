@@ -38,6 +38,7 @@ pub enum AxonRequest {
     Brand(BrandRequest),
     Debug(DebugRequest),
     Dedupe(DedupeRequest),
+    Purge(PurgeRequest),
     Diff(DiffRequest),
     Migrate(MigrateRequest),
     Watch(WatchRequest),

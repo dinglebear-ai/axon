@@ -109,6 +109,23 @@ export type components = {
             "docs": components['schemas']['PreparedSessionDoc'][];
             "project"?: string | null;
         };
+        "JobFamily": "embed" | "extract" | "ingest";
+        "JobMetric": {
+            "label": string;
+            "value": string;
+        };
+        "JobPhase": "pending" | "running" | "done" | "failed" | "canceled";
+        "JobProgress": {
+            "error"?: string | null;
+            "family": components['schemas']['JobFamily'];
+            "metrics": components['schemas']['JobMetric'][];
+            "percent"?: number | null;
+            "phase": components['schemas']['JobPhase'];
+        };
+        "JobStatusResponse": {
+            "job": unknown;
+            "progress"?: null | components['schemas']['JobProgress'];
+        };
         "LinkEntry": {
             "href": string;
             "text": string;
@@ -178,6 +195,22 @@ export type components = {
             "title"?: string | null;
             "url": string;
         };
+        "PurgeRequest": {
+            "collection"?: string | null;
+            "dry_run"?: boolean | null;
+            "prefix"?: boolean;
+            "response_mode"?: null | components['schemas']['ResponseMode'];
+            "target"?: string | null;
+        };
+        "PurgeResult": {
+            "deleted_points": number;
+            "dry_run": boolean;
+            "matched_points": number;
+            "matched_url_count": number;
+            "prefix": boolean;
+            "sample_urls": string[];
+            "target": string;
+        };
         "ReadinessBody": {
             "ok": boolean;
             "qdrant": string;
@@ -185,6 +218,7 @@ export type components = {
             "tei": string;
         };
         "RenderMode": "http" | "chrome" | "auto-switch";
+        "ResponseMode": "path" | "inline" | "both" | "auto_inline";
         "RestAskRequest": {
             "ask_authoritative_boost"?: number | null;
             "ask_authoritative_domains"?: string[] | null;
@@ -266,7 +300,7 @@ export type components = {
         "RestIngestRequest": {
             "include_source"?: boolean | null;
             "sessions"?: null | components['schemas']['RestSessionsIngestOptions'];
-            "source_type": components['schemas']['RestIngestSourceType'];
+            "source_type"?: null | components['schemas']['RestIngestSourceType'];
             "target"?: string | null;
         };
         "RestIngestSourceType": "github" | "gitlab" | "gitea" | "git" | "reddit" | "youtube" | "rss" | "sessions";
@@ -446,6 +480,7 @@ export type paths = {
     "/v1/memory": { post: operations["memory"] };
     "/v1/mobile/sessions": { get: operations["list_mobile_sessions"] };
     "/v1/mobile/sessions/{id}": { get: operations["get_mobile_session"]; put: operations["upsert_mobile_session"]; delete: operations["delete_mobile_session"] };
+    "/v1/purge": { post: operations["purge"] };
     "/v1/query": { post: operations["query"] };
     "/v1/research": { post: operations["research"] };
     "/v1/research/stream": { post: operations["research_stream"] };
@@ -479,7 +514,7 @@ export type operations = {
     "clear_jobs": { method: "delete"; path: "/v1/crawl"; operationId: "clear_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "cleanup_jobs": { method: "post"; path: "/v1/crawl/cleanup"; operationId: "cleanup_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "recover_jobs": { method: "post"; path: "/v1/crawl/recover"; operationId: "recover_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "job_status": { method: "get"; path: "/v1/crawl/{id}"; operationId: "job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "job_status": { method: "get"; path: "/v1/crawl/{id}"; operationId: "job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "cancel_job": { method: "post"; path: "/v1/crawl/{id}/cancel"; operationId: "cancel_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "dedupe": { method: "post"; path: "/v1/dedupe"; operationId: "dedupe"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: null | components['schemas']['DedupeRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "415": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "diff": { method: "post"; path: "/v1/diff"; operationId: "diff"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestDiffRequest']; responses: { "200": components['schemas']['DiffResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
@@ -490,7 +525,7 @@ export type operations = {
     "clear_embed_jobs": { method: "delete"; path: "/v1/embed"; operationId: "clear_embed_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "cleanup_embed_jobs": { method: "post"; path: "/v1/embed/cleanup"; operationId: "cleanup_embed_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "recover_embed_jobs": { method: "post"; path: "/v1/embed/recover"; operationId: "recover_embed_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "embed_job_status": { method: "get"; path: "/v1/embed/{id}"; operationId: "embed_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "embed_job_status": { method: "get"; path: "/v1/embed/{id}"; operationId: "embed_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "cancel_embed_job": { method: "post"; path: "/v1/embed/{id}/cancel"; operationId: "cancel_embed_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "endpoints": { method: "post"; path: "/v1/endpoints"; operationId: "endpoints"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['EndpointsRequest']; responses: { "200": components['schemas']['EndpointReport']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "evaluate": { method: "post"; path: "/v1/evaluate"; operationId: "evaluate"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestEvaluateRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
@@ -499,7 +534,7 @@ export type operations = {
     "clear_extract_jobs": { method: "delete"; path: "/v1/extract"; operationId: "clear_extract_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "cleanup_extract_jobs": { method: "post"; path: "/v1/extract/cleanup"; operationId: "cleanup_extract_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "recover_extract_jobs": { method: "post"; path: "/v1/extract/recover"; operationId: "recover_extract_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "extract_job_status": { method: "get"; path: "/v1/extract/{id}"; operationId: "extract_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "extract_job_status": { method: "get"; path: "/v1/extract/{id}"; operationId: "extract_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "cancel_extract_job": { method: "post"; path: "/v1/extract/{id}/cancel"; operationId: "cancel_extract_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "list_ingest_jobs": { method: "get"; path: "/v1/ingest"; operationId: "list_ingest_jobs"; parameters: { query: { "limit"?: number; "offset"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "start_ingest": { method: "post"; path: "/v1/ingest"; operationId: "start_ingest"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestIngestRequest']; responses: { "202": components['schemas']['AcceptedJob']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
@@ -507,7 +542,7 @@ export type operations = {
     "cleanup_ingest_jobs": { method: "post"; path: "/v1/ingest/cleanup"; operationId: "cleanup_ingest_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "recover_ingest_jobs": { method: "post"; path: "/v1/ingest/recover"; operationId: "recover_ingest_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "start_prepared_sessions_ingest": { method: "post"; path: "/v1/ingest/sessions/prepared"; operationId: "start_prepared_sessions_ingest"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['IngestSessionsPreparedRequest']; responses: { "202": components['schemas']['AcceptedJob']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "ingest_job_status": { method: "get"; path: "/v1/ingest/{id}"; operationId: "ingest_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "ingest_job_status": { method: "get"; path: "/v1/ingest/{id}"; operationId: "ingest_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "cancel_ingest_job": { method: "post"; path: "/v1/ingest/{id}/cancel"; operationId: "cancel_ingest_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "map": { method: "post"; path: "/v1/map"; operationId: "map"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMapRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "memory": { method: "post"; path: "/v1/memory"; operationId: "memory"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
@@ -515,6 +550,7 @@ export type operations = {
     "get_mobile_session": { method: "get"; path: "/v1/mobile/sessions/{id}"; operationId: "get_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['MobileSessionDetailResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "upsert_mobile_session": { method: "put"; path: "/v1/mobile/sessions/{id}"; operationId: "upsert_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: components['schemas']['UpsertMobileSessionRequest']; responses: { "200": components['schemas']['UpsertMobileSessionResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "delete_mobile_session": { method: "delete"; path: "/v1/mobile/sessions/{id}"; operationId: "delete_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['DeleteMobileSessionResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "500": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "purge": { method: "post"; path: "/v1/purge"; operationId: "purge"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['PurgeRequest']; responses: { "200": components['schemas']['PurgeResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "query": { method: "post"; path: "/v1/query"; operationId: "query"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestQueryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research": { method: "post"; path: "/v1/research"; operationId: "research"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "504": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research_stream": { method: "post"; path: "/v1/research/stream"; operationId: "research_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

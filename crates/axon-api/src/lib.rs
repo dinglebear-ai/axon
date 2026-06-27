@@ -17,12 +17,15 @@ pub mod diff;
 pub mod explain;
 pub mod ingest;
 pub mod job_dto;
+pub mod job_progress;
 pub mod job_status;
 pub mod mcp_schema;
+pub mod purge;
 pub mod result;
 pub mod service_job;
 
 pub use explain::*;
+pub use purge::*;
 pub use result::*;
 
 #[cfg(test)]

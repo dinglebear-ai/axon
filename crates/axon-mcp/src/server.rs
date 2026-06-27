@@ -144,7 +144,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, memory, query, code_search, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff, vertical_scrape.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, memory, query, code_search, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff, purge, vertical_scrape.",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]
@@ -200,6 +200,7 @@ impl AxonMcpServer {
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
             AxonRequest::Diff(req) => self.handle_diff(req).await?,
             AxonRequest::Brand(req) => self.handle_brand(req).await?,
+            AxonRequest::Purge(req) => self.handle_purge(req).await?,
             AxonRequest::Debug(_)
             | AxonRequest::Dedupe(_)
             | AxonRequest::Migrate(_)

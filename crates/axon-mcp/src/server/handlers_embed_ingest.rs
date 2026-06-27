@@ -114,12 +114,19 @@ impl AxonMcpServer {
                 let job = embed_status(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("embed.status", e.as_ref()))?;
+                let payload = job.map(|j| j.payload);
+                let progress = payload.as_ref().map(|p| {
+                    axon_api::job_progress::JobProgress::from_wire_value(
+                        axon_api::job_progress::JobFamily::Embed,
+                        p,
+                    )
+                });
                 respond_with_mode(
                     "embed",
                     "status",
                     response_mode,
                     &format!("embed-status-{id}"),
-                    serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    serde_json::json!({ "job": payload, "progress": progress }),
                     InlineHint::Default,
                 )
                 .await
@@ -254,12 +261,19 @@ impl AxonMcpServer {
                 let job = ingest_status(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("ingest.status", e.as_ref()))?;
+                let payload = job.map(|j| j.payload);
+                let progress = payload.as_ref().map(|p| {
+                    axon_api::job_progress::JobProgress::from_wire_value(
+                        axon_api::job_progress::JobFamily::Ingest,
+                        p,
+                    )
+                });
                 respond_with_mode(
                     "ingest",
                     "status",
                     response_mode,
                     &format!("ingest-status-{id}"),
-                    serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    serde_json::json!({ "job": payload, "progress": progress }),
                     InlineHint::Default,
                 )
                 .await

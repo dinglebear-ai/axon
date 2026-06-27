@@ -104,6 +104,12 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         cost: "moderate",
     },
     McpActionSpec {
+        name: "purge",
+        scope: ActionScope::Write,
+        description: "Preview or delete indexed points by URL or seed URL prefix",
+        cost: "write",
+    },
+    McpActionSpec {
         name: "ask",
         scope: ActionScope::Write,
         description: "Answer a question with RAG over indexed content",

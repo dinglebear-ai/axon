@@ -1,5 +1,23 @@
-use super::{is_indexable_doc_path, is_indexable_source_path, parse_github_repo};
+use super::{
+    RepoExistence, github_repo_exists, is_indexable_doc_path, is_indexable_source_path,
+    parse_github_repo,
+};
+use axon_core::config::Config;
 use axon_vector::ops::input::select::{is_minified_asset_filename, is_ts_declaration_file};
+
+// --- github_repo_exists (network-free paths) ---
+
+#[tokio::test]
+async fn repo_exists_returns_unknown_for_unparseable_target() {
+    // An unparseable target short-circuits before any network call, so this is
+    // deterministic and offline-safe.
+    let cfg = Config::default();
+    let result = github_repo_exists(&cfg, "not a repo at all").await;
+    assert!(
+        matches!(result, RepoExistence::Unknown(_)),
+        "expected Unknown, got {result:?}"
+    );
+}
 
 // --- is_indexable_source_path ---
 

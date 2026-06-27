@@ -59,6 +59,7 @@ ingest:recover
 ingest:start
 ingest:status
 map
+purge
 memory:remember
 memory:list
 memory:search
@@ -82,7 +83,7 @@ vertical_scrape:list
 EOF
 )"
 
-DIRECT_ACTIONS_JSON='["ask","brand","code_search","diff","doctor","domains","elicit_demo","endpoints","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
+DIRECT_ACTIONS_JSON='["ask","brand","code_search","diff","doctor","domains","elicit_demo","endpoints","evaluate","help","map","purge","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
 ask
 brand
@@ -100,6 +101,7 @@ help
 ingest
 map
 memory
+purge
 query
 research
 retrieve
@@ -269,6 +271,7 @@ build_suite_config() {
   local mode="$1"
   local runtime_root="$BASE_OUTDIR/runtime-$mode"
   local suite_config="$BASE_OUTDIR/mcporter-$mode.json"
+  mkdir -p "$runtime_root/logs"
   jq \
     --arg server "$SERVER" \
     --arg repo_root "$REPO_ROOT" \

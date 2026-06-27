@@ -1,5 +1,5 @@
 use axon_services::client_contract::rest_route_contracts;
-use axon_services::types::{RestRouteAuth, rest_route_inventory, supported_routes};
+use axon_services::types::{RestRouteAuth, rest_route_inventory};
 use std::collections::BTreeSet;
 
 const DOC: &str = include_str!("../docs/reference/api-parity.md");
@@ -52,55 +52,17 @@ fn parity_doc_covers_every_cli_command_kind() {
     }
 }
 
-#[test]
-fn parity_doc_lists_all_advertised_http_routes() {
-    for route in supported_routes() {
-        let needle = format!("`{route}`");
-        assert!(
-            DOC.contains(&needle) || DOC.contains(&route),
-            "docs/reference/api-parity.md does not mention advertised HTTP route `{route}`"
-        );
-    }
-}
-
-#[test]
-fn parity_doc_matches_capabilities_auth_contract() {
-    let capabilities = DOC
-        .lines()
-        .find(|line| line.starts_with("| `GET /v1/capabilities` |"))
-        .expect("capabilities row");
-    assert!(
-        capabilities.contains("axon:read or axon:write"),
-        "{capabilities}"
-    );
-}
-
-#[test]
-fn parity_doc_marks_representative_current_http_statuses() {
-    let ask = row_for_cli("ask").expect("ask row");
-    assert!(ask.contains("`POST /v1/ask`"), "{ask}");
-    assert!(ask.contains("Implemented"), "{ask}");
-
-    let status = row_for_cli("status").expect("status row");
-    assert!(status.contains("`GET /v1/status`"), "{status}");
-    assert!(status.contains("Implemented"), "{status}");
-
-    let query = row_for_cli("query").expect("query row");
-    assert!(query.contains("`POST /v1/query`"), "{query}");
-    assert!(query.contains("Implemented"), "{query}");
-
-    let retrieve = row_for_cli("retrieve").expect("retrieve row");
-    assert!(retrieve.contains("`POST /v1/retrieve`"), "{retrieve}");
-    assert!(retrieve.contains("Implemented"), "{retrieve}");
-
-    let completions = row_for_cli("completions").expect("completions row");
-    assert!(completions.contains("Deferred"), "{completions}");
-
-    assert!(
-        DOC.contains("`POST /v1/actions` action-envelope endpoint is removed"),
-        "docs/reference/api-parity.md should state that /v1/actions is removed"
-    );
-}
+// NOTE: the old `parity_doc_lists_all_advertised_http_routes`,
+// `parity_doc_matches_capabilities_auth_contract`, and
+// `parity_doc_marks_representative_current_http_statuses` tests were removed when
+// `docs/reference/api-parity.md` became a *generated* `| Operation | CLI | MCP |
+// REST |` matrix (see `cargo xtask gen-api-parity`). The retired hand-written doc
+// carried per-route auth strings ("axon:read or axon:write"), status words
+// ("Implemented"/"Deferred"), and full `METHOD /path` rows — none of which the
+// factual matrix encodes. The matrix's correctness is now enforced by
+// `cargo xtask check-api-parity` (drift gate against the CLI/MCP/REST surfaces),
+// and the OpenAPI↔route-inventory consistency it depends on is covered by the
+// tests below. `parity_doc_covers_every_cli_command_kind` still guards CLI rows.
 
 #[test]
 fn rest_route_contracts_match_openapi_request_schemas() {

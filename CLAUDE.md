@@ -200,10 +200,10 @@ axon-authz    (scope checking)
 axon-core     (config, http/SSRF, content/chunking, llm, paths, artifacts, events, redact)
    ↓
 axon-crawl · axon-vector · axon-ingest · axon-extract · axon-code-index
-   ↓
+   ↓                        (DOMAIN crates: own their logic + a typed public service entry)
 axon-jobs     (SQLite job runtime + in-process workers; constructs axon_api::ServiceJob)
    ↓
-axon-services (typed service-first entry points; the only API CLI/MCP/web call)
+axon-services (composition + job-runtime entry points + a re-export FACADE — NOT a mandatory reimplementation hop)
    ↓
 axon-mcp · axon-web   (siblings; the unified `serve` bootstrap lives in axon-cli)
    ↓
@@ -211,6 +211,14 @@ axon-cli      (argv dispatch + all command handlers)
    ↓
 axon (binary) (main.rs + build.rs web-asset embed)
 ```
+
+**Crate ownership rule (read before adding an operation):** own the contract where
+the data lives — single-domain logic in its domain crate, the `*Result` DTO in
+`axon-api`, `axon-services` as a thin facade; only cross-domain or job-runtime
+work lives *in* `axon-services`. Transports never import a domain crate's
+internal `::ops::*` modules. Canonical doc:
+[`docs/architecture/crate-ownership.md`](docs/architecture/crate-ownership.md);
+enforced by `cargo xtask check-layering`.
 
 High-level subsystem map (paths are `crates/<crate>/src/...`):
 
