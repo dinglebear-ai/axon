@@ -19,6 +19,7 @@ pub mod version_sync;
 pub fn check(root: &Path) -> Result<()> {
     no_mod_rs::check(root)?;
     layering::check(root)?;
+    openapi_drift::check(root)?;
     api_parity::check(root)?;
     mcp_http::check(root)?;
     env_staged::check(root)?;

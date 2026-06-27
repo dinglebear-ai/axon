@@ -234,15 +234,19 @@ def _emit_direct_actions(
         if not sdef:
             continue
         handler_required = HANDLER_REQUIRED_FIELDS.get(action, set())
-        required = [
-            f
-            for f in [*sdef.required_fields(), *sdef.optional_fields()]
-            if f.name in handler_required or not f.is_optional
-        ]
+        optional_override = OPTIONAL_FIELD_OVERRIDES.get(action, set())
+        def wire_required(field: FieldDef) -> bool:
+            if field.name in handler_required:
+                return True
+            if field.name in optional_override:
+                return False
+            return not field.is_optional
+
+        required = [f for f in [*sdef.required_fields(), *sdef.optional_fields()] if wire_required(f)]
         optional = [
             f
-            for f in sdef.optional_fields()
-            if f.name != "subaction" and f.name not in handler_required
+            for f in [*sdef.required_fields(), *sdef.optional_fields()]
+            if f.name != "subaction" and not wire_required(f)
         ]
         req_str = ", ".join(
             f"{_field_name_with_aliases(f)} ({f.display_type})" for f in required
@@ -421,6 +425,12 @@ HANDLER_REQUIRED_FIELDS: dict[str, set[str]] = {
     "scrape": {"url"},
     "screenshot": {"url"},
     "search": {"query"},
+}
+
+OPTIONAL_FIELD_OVERRIDES: dict[str, set[str]] = {
+    # `prefix` is a non-Option bool in Rust but has `#[serde(default)]`; clients
+    # may omit it and receive the default `false`.
+    "purge": {"prefix"},
 }
 
 

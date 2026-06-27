@@ -25,6 +25,7 @@ pub mod result;
 pub mod service_job;
 
 pub use explain::*;
+pub use purge::*;
 pub use result::*;
 
 #[cfg(test)]

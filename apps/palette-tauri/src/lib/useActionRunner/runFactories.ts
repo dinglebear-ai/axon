@@ -25,11 +25,24 @@ export type PaletteStreamEvent =
 // modelling success/error as one combined `{ kind: "success" | "error" }` member.
 type TerminalRun = Extract<RunState, { result: PaletteResult }>;
 
+/**
+ * Build the standard client-side error result shape.
+ *
+ * @param message - Error message to expose in the payload.
+ * @param path - Logical request path associated with the failure.
+ * @param method - HTTP method associated with the request.
+ * @returns A `PaletteResult` representing a failed client-side request.
+ */
 export function errorResult(message: string, path: string, method: HttpMethod = "POST"): PaletteResult {
   return { ok: false, status: 0, path, method, payload: { error: message } };
 }
 
-// A one-shot/local error RunState (missing client, thrown request, etc.).
+/**
+ * Build a terminal error run for one-shot/local request failures.
+ *
+ * @param args - Display metadata and error details for the failed run.
+ * @returns A terminal run state carrying a client-side error result.
+ */
 export function makeErrorRun(args: {
   title: string;
   subtitle: string;
@@ -51,17 +64,24 @@ export function makeErrorRun(args: {
   };
 }
 
-// Concise display label for an async-job target: the first token, shortened to
-// a host when it is a URL (`https://docs.rs/x` → `docs.rs`), else verbatim
-// (`unraid/api`, `r/rust`). Used by the live job card's "Ingesting <label>".
+/**
+ * Build a concise display label for an async-job target.
+ *
+ * @param argument - Raw action argument string.
+ * @returns The first token, shortened to a host when it is an HTTP URL.
+ */
 export function jobLabel(argument: string): string {
   const first = argument.trim().split(/\s+/)[0] ?? "";
   if (!first) return "";
   return /^https?:\/\//i.test(first) ? hostFromUrl(first) : first;
 }
 
-// Terminal error of a streamed action (the `palette://stream` "error" event or a
-// failed stream invoke). Honest result — no fabricated 200.
+/**
+ * Build a terminal error run from a streamed action failure.
+ *
+ * @param args - Display metadata and stream failure details.
+ * @returns A terminal run state with an honest non-HTTP error result.
+ */
 export function makeStreamErrorRun(args: {
   actionLabel: string;
   path: string;
@@ -82,9 +102,12 @@ export function makeStreamErrorRun(args: {
   };
 }
 
-// Terminal success of a streamed action. The answer never travelled through the
-// one-shot HTTP path, so `status: 0` is the truthful marker (A-M4); the payload
-// carries the streamed answer for downstream views.
+/**
+ * Build a terminal success run from a completed streamed action.
+ *
+ * @param args - Display metadata, transcript context, and streamed payload.
+ * @returns A terminal success run state carrying the streamed answer.
+ */
 export function makeStreamSuccessRun(args: {
   actionLabel: string;
   subtitle: string;
@@ -114,6 +137,13 @@ export function makeStreamSuccessRun(args: {
   };
 }
 
+/**
+ * Route empty job-status submissions to the corresponding job-list action.
+ *
+ * @param action - Submitted palette action.
+ * @param argument - Raw argument string.
+ * @returns The original action or a list fallback for empty status requests.
+ */
 export function statusFallbackAction(action: PaletteAction, argument: string): PaletteAction {
   if (action.kind !== "job" || argument.trim()) return action;
   const match = /^(crawl|embed|extract|ingest)-status$/.exec(action.subcommand);
@@ -121,9 +151,13 @@ export function statusFallbackAction(action: PaletteAction, argument: string): P
   return ACTIONS.find((candidate) => candidate.subcommand === `${match[1]}-list`) ?? action;
 }
 
-// ── Streaming event reducer ──────────────────────────────────────────────────
-// Folds a `palette://stream` event into the current RunState. Pure so it can be
-// unit-tested without the Tauri event bridge.
+/**
+ * Fold a `palette://stream` event into the current run state.
+ *
+ * @param current - Current run state.
+ * @param payload - Stream event payload.
+ * @returns The updated run state.
+ */
 export function reduceStreamEvent(current: RunState, payload: PaletteStreamEvent): RunState {
   if (current.kind !== "streaming" || !("requestId" in payload) || current.requestId !== payload.requestId) {
     return current;

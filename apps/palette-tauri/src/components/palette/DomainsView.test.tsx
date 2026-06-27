@@ -15,8 +15,12 @@ const payload = {
 
 describe("DomainsView", () => {
   it("renders domains sorted by vectors with totals", () => {
-    render(<DomainsView payload={payload} />);
-    expect(screen.getByText("docs.rs")).toBeInTheDocument();
+    render(<DomainsView payload={payload} onDrillDomain={vi.fn()} />);
+    expect(
+      screen
+        .getAllByTitle(/^Show sources for /)
+        .map((element) => element.querySelector(".domains-name")?.textContent?.trim()),
+    ).toEqual(["docs.rs", "example.com"]);
     expect(screen.getByText("250")).toBeInTheDocument(); // total vectors
   });
 

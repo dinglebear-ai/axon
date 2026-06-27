@@ -89,9 +89,7 @@ pub fn parse_github_target(input: &str) -> Option<GitHubTarget> {
 pub enum RepoExistence {
     /// GitHub returned the repository (HTTP 200).
     Exists,
-    /// GitHub authoritatively reported the repository does not exist (HTTP 404).
-    /// Note: a private repo accessed without a token also yields 404 — the two
-    /// are indistinguishable over the API.
+    /// GitHub authoritatively reported the repository does not exist.
     NotFound,
     /// The probe could not reach a definitive answer (network error, rate
     /// limit, auth failure, 5xx, timeout). Callers should fail open and let the
@@ -105,12 +103,10 @@ const GITHUB_EXISTENCE_PROBE_TIMEOUT_SECS: u64 = 10;
 
 /// Pre-flight check: does `owner/repo` exist on GitHub?
 ///
-/// Issues a single `GET /repos/{owner}/{repo}` via octocrab. A definitive 404
-/// becomes [`RepoExistence::NotFound`]; everything else inconclusive
-/// (unparseable target, octocrab init failure, rate limit, network error, 5xx,
-/// timeout) becomes [`RepoExistence::Unknown`] so callers can fail open. Uses
-/// the configured `GITHUB_TOKEN` when present (raising the rate limit and
-/// letting private repos resolve).
+/// Issues a single `GET /repos/{owner}/{repo}` via octocrab. Because GitHub
+/// returns 404 for private repositories without sufficient credentials, 404 is
+/// only treated as authoritative when a GitHub token is configured. Anonymous
+/// 404s are [`RepoExistence::Unknown`] so callers fail open.
 pub async fn github_repo_exists(cfg: &Config, target: &str) -> RepoExistence {
     let Some(parsed) = parse_github_target(target) else {
         return RepoExistence::Unknown(format!("unparseable GitHub target: {target}"));
@@ -123,8 +119,16 @@ pub async fn github_repo_exists(cfg: &Config, target: &str) -> RepoExistence {
     let timeout = std::time::Duration::from_secs(GITHUB_EXISTENCE_PROBE_TIMEOUT_SECS);
     match tokio::time::timeout(timeout, handler.get()).await {
         Ok(Ok(_)) => RepoExistence::Exists,
-        Ok(Err(octocrab::Error::GitHub { source, .. })) if source.status_code.as_u16() == 404 => {
+        Ok(Err(octocrab::Error::GitHub { source, .. }))
+            if source.status_code.as_u16() == 404 && cfg.github_token.is_some() =>
+        {
             RepoExistence::NotFound
+        }
+        Ok(Err(octocrab::Error::GitHub { source, .. })) if source.status_code.as_u16() == 404 => {
+            RepoExistence::Unknown(
+                "GitHub returned 404 without authentication; private repo access is ambiguous"
+                    .to_string(),
+            )
         }
         Ok(Err(err)) => RepoExistence::Unknown(err.to_string()),
         Err(_) => RepoExistence::Unknown(format!(

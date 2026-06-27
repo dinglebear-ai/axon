@@ -50,7 +50,9 @@ export const JobProgressView = memo(function JobProgressView({
             </span>
             <span className="output-subtitle">job {snapshot.jobId || "submitting…"}</span>
           </div>
-          <span className={`output-status output-status-${status.tone}`}>{status.label}</span>
+          <span className={`output-status output-status-${status.tone}`} role="status" aria-live="polite">
+            {status.label}
+          </span>
           <span className="output-tools">
             <Button variant="plain" size="unstyled" type="button" onClick={onMinimize} title="Minimize" aria-label="Minimize to tray">
               <Minus size={13} />
@@ -70,7 +72,7 @@ export const JobProgressView = memo(function JobProgressView({
             </div>
           )}
 
-          <div>
+          <div role="status" aria-live="polite" aria-atomic="true">
             <div className="running-progress-head">
               <span>{snapshot.percent != null ? `${pct}%` : snapshot.status}</span>
               {live ? (
@@ -86,7 +88,14 @@ export const JobProgressView = memo(function JobProgressView({
                 <span className="running-progress-stalled">{snapshot.phase.toUpperCase()}</span>
               )}
             </div>
-            <div className="running-progress">
+            <div
+              className="running-progress"
+              role="progressbar"
+              aria-label={`${jobFamilyVerb(snapshot.family)} job progress`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct}
+            >
               <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, pct)}%` }} />
             </div>
           </div>

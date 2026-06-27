@@ -1,3 +1,4 @@
+use axon_api::mcp_schema::PurgeRequest;
 use axon_core::config::Config;
 use axon_services as services;
 use axum::{
@@ -34,21 +35,6 @@ pub(crate) struct MigrateRequest {
 #[serde(deny_unknown_fields)]
 pub(crate) struct DedupeRequest {
     collection: Option<String>,
-}
-
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PurgeRequest {
-    /// URL (or seed-URL/origin when `prefix` is set) to delete from the index.
-    pub target: String,
-    /// Match `target` as a prefix over a whole docs subtree / origin.
-    #[serde(default)]
-    pub prefix: bool,
-    /// Preview only — count matches without deleting.
-    #[serde(default)]
-    pub dry_run: bool,
-    /// Optional collection override (defaults to the server's configured one).
-    pub collection: Option<String>,
 }
 
 // migrate_router is unused — migrate is wired directly in routing.rs
@@ -128,7 +114,7 @@ pub(crate) async fn dedupe(
     path = "/v1/purge",
     request_body = PurgeRequest,
     responses(
-        (status = 200, description = "Purge result (counts of points/URLs matched or deleted)", body = serde_json::Value),
+        (status = 200, description = "Purge result (counts of points/URLs matched or deleted)", body = axon_api::PurgeResult),
         (status = 400, description = "Invalid purge request", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -138,16 +124,20 @@ pub(crate) async fn purge(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<PurgeRequest>,
 ) -> Result<Json<services::types::PurgeResult>, HttpError> {
-    if req.target.trim().is_empty() {
-        return Err(HttpError::bad_request("target is required"));
-    }
+    let target = req
+        .target
+        .as_deref()
+        .map(str::trim)
+        .filter(|target| !target.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| HttpError::bad_request("target is required"))?;
     let mut req_cfg = (*cfg).clone();
     if let Some(collection) = req.collection {
         axon_core::config::validate_collection_name(&collection)
             .map_err(|e| HttpError::bad_request(format!("collection: {e}").as_str()))?;
         req_cfg.collection = collection;
     }
-    services::system::purge(&req_cfg, req.target.trim(), req.prefix, req.dry_run)
+    services::system::purge(&req_cfg, &target, req.prefix, req.dry_run.unwrap_or(true))
         .await
         .map(Json)
         .map_err(HttpError::from_box)

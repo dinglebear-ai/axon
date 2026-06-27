@@ -1,9 +1,9 @@
-import { memo, useMemo, useState } from "react";
+import { memo } from "react";
 import { ArrowDownUp, Download, Search, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
-import { arrField, unwrapPayload } from "@/lib/payload";
+import type { SourceRow, SourceSortMode, SourcesModel } from "@/lib/sourcesModel";
 
 export interface SourceRowAction {
   /** Run a palette action against a single source URL — `retrieve` (read the
@@ -13,65 +13,27 @@ export interface SourceRowAction {
 }
 
 interface SourcesViewProps {
-  payload: unknown;
+  model: SourcesModel;
   onRunAction?: SourceRowAction;
-  /** Pre-seeded filter, e.g. when drilling in from a domain. */
-  initialFilter?: string;
+  filter: string;
+  sort: SourceSortMode;
+  grouped: boolean;
+  onFilterChange: (filter: string) => void;
+  onSortChange: (sort: SourceSortMode) => void;
+  onGroupedChange: (grouped: boolean) => void;
 }
 
-interface SourceRow {
-  url: string;
-  chunks: number;
-}
-
-type SortMode = "chunks" | "url";
-
-function parseRows(payload: unknown): SourceRow[] {
-  const data = unwrapPayload(payload);
-  return arrField(data, "urls").flatMap((entry) => {
-    if (!Array.isArray(entry)) return [];
-    const url = typeof entry[0] === "string" ? entry[0] : "";
-    const chunks = typeof entry[1] === "number" ? entry[1] : 0;
-    return url ? [{ url, chunks }] : [];
-  });
-}
-
-function domainOf(url: string): string {
-  try {
-    return new URL(url).host.replace(/^www\./, "");
-  } catch {
-    return url.replace(/^https?:\/\//, "").split("/")[0] || url;
-  }
-}
-
-export const SourcesView = memo(function SourcesView({ payload, onRunAction, initialFilter }: SourcesViewProps) {
-  const [filter, setFilter] = useState(initialFilter ?? "");
-  const [sort, setSort] = useState<SortMode>("chunks");
-  const [grouped, setGrouped] = useState(false);
-
-  const rows = useMemo(() => parseRows(payload), [payload]);
-  const totalChunks = useMemo(() => rows.reduce((sum, r) => sum + r.chunks, 0), [rows]);
-
-  const filtered = useMemo(() => {
-    const needle = filter.trim().toLowerCase();
-    const matched = needle ? rows.filter((r) => r.url.toLowerCase().includes(needle)) : rows;
-    return [...matched].sort((a, b) => (sort === "chunks" ? b.chunks - a.chunks : a.url.localeCompare(b.url)));
-  }, [rows, filter, sort]);
-
-  const groups = useMemo(() => {
-    if (!grouped) return null;
-    const byDomain = new Map<string, SourceRow[]>();
-    for (const row of filtered) {
-      const key = domainOf(row.url);
-      const list = byDomain.get(key);
-      if (list) list.push(row);
-      else byDomain.set(key, [row]);
-    }
-    return [...byDomain.entries()]
-      .map(([domain, list]) => ({ domain, list, chunks: list.reduce((s, r) => s + r.chunks, 0) }))
-      .sort((a, b) => b.chunks - a.chunks);
-  }, [grouped, filtered]);
-
+export const SourcesView = memo(function SourcesView({
+  model,
+  onRunAction,
+  filter,
+  sort,
+  grouped,
+  onFilterChange,
+  onSortChange,
+  onGroupedChange,
+}: SourcesViewProps) {
+  const { rows, filtered, groups, totalChunks } = model;
   return (
     <div className="output-body sources-view aurora-scrollbar">
       <div className="sources-toolbar">
@@ -81,7 +43,7 @@ export const SourcesView = memo(function SourcesView({ payload, onRunAction, ini
           startAdornment={<Search size={13} aria-hidden="true" />}
           value={filter}
           placeholder="Filter URLs…"
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(event) => onFilterChange(event.target.value)}
           aria-label="Filter sources by URL"
         />
         <Button
@@ -89,7 +51,7 @@ export const SourcesView = memo(function SourcesView({ payload, onRunAction, ini
           size="unstyled"
           type="button"
           className="sources-toggle"
-          onClick={() => setSort((s) => (s === "chunks" ? "url" : "chunks"))}
+          onClick={() => onSortChange(sort === "chunks" ? "url" : "chunks")}
           title="Toggle sort"
         >
           <ArrowDownUp size={13} />
@@ -100,7 +62,7 @@ export const SourcesView = memo(function SourcesView({ payload, onRunAction, ini
           size="unstyled"
           type="button"
           className={grouped ? "sources-toggle sources-toggle-on" : "sources-toggle"}
-          onClick={() => setGrouped((g) => !g)}
+          onClick={() => onGroupedChange(!grouped)}
           title="Group by domain"
         >
           group

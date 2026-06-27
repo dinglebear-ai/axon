@@ -16,10 +16,13 @@ use walkdir::WalkDir;
 
 /// Domain-crate internal import prefixes that transports must not use directly.
 const FORBIDDEN: &[&str] = &[
-    "axon_vector::ops::",
     "axon_crawl::engine::",
-    "axon_extract::verticals::",
     "axon_extract::registry::",
+    "axon_extract::verticals::",
+    "axon_ingest::github::",
+    "axon_ingest::rss::",
+    "axon_ingest::youtube::",
+    "axon_vector::ops::",
 ];
 
 /// Transport crate `src` roots (repo-relative) that the rule applies to.
@@ -29,16 +32,46 @@ const TRANSPORT_SRC: &[&str] = &[
     "crates/axon-mcp/src",
 ];
 
-/// Files that already contain a reach when the rule was introduced. Grandfathered
-/// debt — do not add to this list without a deliberate decision (each entry is a
-/// candidate to push down to a domain-crate service entry).
-const ALLOWLIST: &[&str] = &[
-    "crates/axon-cli/src/commands/crawl/audit/sitemap.rs",
-    "crates/axon-cli/src/commands/scrape.rs",
-    "crates/axon-cli/src/commands/sources.rs",
-    "crates/axon-cli/src/commands/stats.rs",
-    "crates/axon-mcp/src/server/artifacts/respond.rs",
-    "crates/axon-web/src/server/handlers/rest/sync_post.rs",
+/// Specific reaches that existed when the rule was introduced. Grandfathered
+/// debt — do not add to this list without a deliberate decision. Matching by
+/// `(file, prefix)` prevents a whole allowed file from hiding new reaches.
+const ALLOWLIST: &[(&str, &str)] = &[
+    (
+        "crates/axon-cli/src/commands/crawl/audit/sitemap.rs",
+        "axon_crawl::engine::",
+    ),
+    (
+        "crates/axon-cli/src/commands/scrape.rs",
+        "axon_crawl::engine::",
+    ),
+    (
+        "crates/axon-cli/src/commands/scrape.rs",
+        "axon_vector::ops::",
+    ),
+    (
+        "crates/axon-cli/src/commands/sources.rs",
+        "axon_vector::ops::",
+    ),
+    (
+        "crates/axon-cli/src/commands/stats.rs",
+        "axon_vector::ops::",
+    ),
+    (
+        "crates/axon-mcp/src/server/artifacts/respond.rs",
+        "axon_crawl::engine::",
+    ),
+    (
+        "crates/axon-mcp/src/server/artifacts/respond.rs",
+        "axon_vector::ops::",
+    ),
+    (
+        "crates/axon-web/src/server/handlers/rest/sync_post.rs",
+        "axon_crawl::engine::",
+    ),
+    (
+        "crates/axon-web/src/server/handlers/rest/sync_post.rs",
+        "axon_vector::ops::",
+    ),
 ];
 
 fn is_test_file(rel: &str) -> bool {
@@ -69,7 +102,7 @@ pub fn check(root: &Path) -> Result<()> {
                 .unwrap_or(path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            if is_test_file(&rel) || ALLOWLIST.contains(&rel.as_str()) {
+            if is_test_file(&rel) {
                 continue;
             }
             let Ok(text) = std::fs::read_to_string(path) else {
@@ -77,6 +110,12 @@ pub fn check(root: &Path) -> Result<()> {
             };
             for (lineno, line) in text.lines().enumerate() {
                 if let Some(pat) = FORBIDDEN.iter().find(|p| line.contains(**p)) {
+                    if ALLOWLIST
+                        .iter()
+                        .any(|(allowed_rel, allowed_pat)| rel == *allowed_rel && pat == allowed_pat)
+                    {
+                        continue;
+                    }
                     violations.push(format!("{rel}:{}  reaches `{pat}`", lineno + 1));
                 }
             }
@@ -96,7 +135,8 @@ pub fn check(root: &Path) -> Result<()> {
         "\nTransports must call a typed entry point (axon-services facade or a domain\n\
          crate's public `pub fn`), not `::ops::`/engine internals. See\n\
          docs/architecture/crate-ownership.md. If this is a deliberate, reviewed\n\
-         exception, add the file to ALLOWLIST in xtask/src/checks/layering.rs."
+         exception, add the exact (file, prefix) reach to ALLOWLIST in\n\
+         xtask/src/checks/layering.rs."
     );
     bail!("layering violation: {} reach(es)", violations.len());
 }

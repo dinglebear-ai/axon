@@ -30,6 +30,7 @@ import { actionBehavior } from "@/lib/actionRegistry";
 import type { PaletteAction } from "@/lib/actions";
 import { numField, strField, unwrapPayload } from "@/lib/payload";
 import type { RunState } from "@/lib/runState";
+import { buildSourcesModel, type SourceSortMode } from "@/lib/sourcesModel";
 import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 import { firstUrl, hostLabel } from "@/lib/url";
 
@@ -50,7 +51,12 @@ interface OutputPanelProps {
   onOpenJob?: OpenJobHandler;
   onRunAction?: (subcommand: string, argument: string) => void;
   onDrillDomain?: (domain: string) => void;
-  sourcesInitialFilter?: string;
+  sourcesFilter?: string;
+  sourcesSort?: SourceSortMode;
+  sourcesGrouped?: boolean;
+  onSourcesFilterChange?: (filter: string) => void;
+  onSourcesSortChange?: (sort: SourceSortMode) => void;
+  onSourcesGroupedChange?: (grouped: boolean) => void;
 }
 
 export const OutputPanel = memo(function OutputPanel({
@@ -70,7 +76,12 @@ export const OutputPanel = memo(function OutputPanel({
   onOpenJob,
   onRunAction,
   onDrillDomain,
-  sourcesInitialFilter,
+  sourcesFilter = "",
+  sourcesSort = "chunks",
+  sourcesGrouped = false,
+  onSourcesFilterChange = () => {},
+  onSourcesSortChange = () => {},
+  onSourcesGroupedChange = () => {},
 }: OutputPanelProps) {
   const runText = "text" in run ? run.text : "";
   // P-M1: the URL regex scans the whole growing buffer; without memoization it ran
@@ -85,6 +96,13 @@ export const OutputPanel = memo(function OutputPanel({
   // P-M1: recomputes the scrape/retrieve reading-header metrics only when the run or
   // action changes, not on every unrelated parent re-render / stream token.
   const headerSummary = useMemo(() => readingHeaderSummary(run, active), [run, active]);
+  const sourcesModel = useMemo(
+    () =>
+      run.kind === "success" && active?.subcommand === "sources"
+        ? buildSourcesModel(run.result.payload, sourcesFilter, sourcesSort, sourcesGrouped)
+        : null,
+    [run, active, sourcesFilter, sourcesSort, sourcesGrouped],
+  );
 
   return (
     <section className="output-panel">
@@ -210,14 +228,18 @@ export const OutputPanel = memo(function OutputPanel({
         ) : run.kind === "success" && active?.subcommand === "doctor" ? (
           <DoctorView payload={run.result.payload} />
         ) : run.kind === "success" && active?.subcommand === "sources" ? (
-          // Keyed by the drill filter so a domain drill remounts the view and
-          // re-seeds its filter from `initialFilter`.
-          <SourcesView
-            key={`sources-${sourcesInitialFilter ?? ""}`}
-            payload={run.result.payload}
-            onRunAction={onRunAction}
-            initialFilter={sourcesInitialFilter}
-          />
+          sourcesModel ? (
+            <SourcesView
+              model={sourcesModel}
+              onRunAction={onRunAction}
+              filter={sourcesFilter}
+              sort={sourcesSort}
+              grouped={sourcesGrouped}
+              onFilterChange={onSourcesFilterChange}
+              onSortChange={onSourcesSortChange}
+              onGroupedChange={onSourcesGroupedChange}
+            />
+          ) : null
         ) : run.kind === "success" && active?.subcommand === "domains" ? (
           <DomainsView payload={run.result.payload} onDrillDomain={onDrillDomain} />
         ) : run.kind === "success" && active && hasStructuredOperationView(active.subcommand) ? (

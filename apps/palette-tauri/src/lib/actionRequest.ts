@@ -107,7 +107,10 @@ export const screenshotBody: BodyBuilder<Req["RestScreenshotRequest"]> = (ctx) =
 export const dedupeBody: BodyBuilder<Req["DedupeRequest"]> = (ctx) => ctx.collectionBody;
 // Purge deletes by default (matches the CLI); the palette gates it behind a
 // confirmation guard. `prefix`/`dry_run` default false server-side.
-export const purgeBody: BodyBuilder<Req["PurgeRequest"]> = (ctx) => ({ target: first(ctx.words, "target") });
+export const purgeBody: BodyBuilder<Req["PurgeRequest"]> = (ctx) => ({
+  target: first(ctx.words, "target"),
+  ...ctx.collectionBody,
+});
 export const watchCreateBody: BodyBuilder = (ctx) => watchCreateRequestBody(ctx.words);
 export const ingestSessionsPreparedBody: BodyBuilder = (ctx) => jsonBody(ctx.arg, "prepared sessions request");
 

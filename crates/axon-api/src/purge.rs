@@ -8,7 +8,7 @@
 
 /// Result of a purge: counts of points/URLs matched (and deleted, unless this
 /// was a `dry_run` preview).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct PurgeResult {
     pub target: String,
     pub prefix: bool,

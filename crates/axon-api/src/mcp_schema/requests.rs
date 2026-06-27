@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseMode {
     Path,
@@ -349,7 +349,7 @@ pub struct DedupeRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PurgeRequest {
     /// URL (or seed-URL/origin when `prefix` is set) to delete from the index.

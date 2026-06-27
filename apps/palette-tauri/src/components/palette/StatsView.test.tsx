@@ -23,4 +23,10 @@ describe("StatsView", () => {
     render(<StatsView payload={{ indexed_vectors_count: 500 }} />);
     expect(screen.queryByText(/^\+/)).not.toBeInTheDocument();
   });
+
+  it("shows a positive delta after the baseline increases", () => {
+    const { rerender } = render(<StatsView payload={{ indexed_vectors_count: 500 }} />);
+    rerender(<StatsView payload={{ indexed_vectors_count: 625 }} />);
+    expect(screen.getByText("+125")).toBeInTheDocument();
+  });
 });

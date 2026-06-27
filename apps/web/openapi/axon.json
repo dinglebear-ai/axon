@@ -3641,7 +3641,9 @@
             "description": "Purge result (counts of points/URLs matched or deleted)",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeResult"
+                }
               }
             }
           },
@@ -5986,31 +5988,86 @@
       },
       "PurgeRequest": {
         "type": "object",
-        "required": [
-          "target"
-        ],
         "properties": {
           "collection": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Optional collection override (defaults to the server's configured one)."
+            ]
           },
           "dry_run": {
-            "type": "boolean",
-            "description": "Preview only — count matches without deleting."
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Preview only — count matches without deleting. **Defaults to `true`** for\nagent safety: a bare `purge` previews; set `dry_run=false` to delete."
           },
           "prefix": {
             "type": "boolean",
             "description": "Match `target` as a prefix over a whole docs subtree / origin."
           },
+          "response_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ResponseMode"
+              }
+            ]
+          },
           "target": {
-            "type": "string",
-            "description": "URL (or seed-URL/origin when `prefix` is set) to delete from the index."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL (or seed-URL/origin when `prefix` is set) to delete from the index.\n**Handler-required despite the `Option`:** the type is `Option<String>`\nonly so a missing field deserializes to a clean \"target is required\"\nerror instead of a serde rejection; `handle_purge` returns an error when\nit is `None`. It is not an optional argument."
           }
         },
         "additionalProperties": false
+      },
+      "PurgeResult": {
+        "type": "object",
+        "description": "Result of a purge: counts of points/URLs matched (and deleted, unless this\nwas a `dry_run` preview).",
+        "required": [
+          "target",
+          "prefix",
+          "dry_run",
+          "matched_points",
+          "deleted_points",
+          "matched_url_count",
+          "sample_urls"
+        ],
+        "properties": {
+          "deleted_points": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "When true, nothing was deleted — counts reflect what *would* be removed."
+          },
+          "matched_points": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "matched_url_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prefix": {
+            "type": "boolean"
+          },
+          "sample_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "target": {
+            "type": "string"
+          }
+        }
       },
       "ReadinessBody": {
         "type": "object",
@@ -6041,6 +6098,15 @@
           "http",
           "chrome",
           "auto-switch"
+        ]
+      },
+      "ResponseMode": {
+        "type": "string",
+        "enum": [
+          "path",
+          "inline",
+          "both",
+          "auto_inline"
         ]
       },
       "RestAskRequest": {

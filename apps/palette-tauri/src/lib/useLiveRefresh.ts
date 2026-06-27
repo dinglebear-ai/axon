@@ -47,12 +47,14 @@ export function useLiveRefresh({ run, setRun, paused, intervalMs = 2000 }: UseLi
         const res = await invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
           request: { method: "GET", path, body: null },
         });
-        setRun((current) =>
-          current.kind === "success" && "result" in current && current.result.path === path
-            ? { ...current, result: { ...current.result, ok: res.ok, status: res.status, payload: res.payload } }
-            : current,
-        );
-        setLastRefreshedAtMs(Date.now());
+        if (res.ok) {
+          setRun((current) =>
+            current.kind === "success" && "result" in current && current.result.path === path
+              ? { ...current, result: { ...current.result, ok: res.ok, status: res.status, payload: res.payload } }
+              : current,
+          );
+          setLastRefreshedAtMs(Date.now());
+        }
       } catch {
         /* transient — keep the last good snapshot until the next tick */
       }
