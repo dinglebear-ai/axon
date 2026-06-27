@@ -34,7 +34,7 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
     //
     // It is LOAD-BEARING here and CANNOT be lowered without breaking behavior:
     // axon's `ask`/`evaluate`/`research`/`summarize` synthesis activates a native
-    // Gemini skill (`axon-rag-synthesize`) via an `activate_skill` tool round-trip,
+    // Gemini skill (`rag-synthesize`) via an `activate_skill` tool round-trip,
     // and the stream-json parser (`stream::GeminiStreamState`) is built to allow
     // that round-trip. Per the native-skill work (PR #209,
     // docs/sessions/2026-05-13-gemini-native-skill-ask-quality.md), `yolo` is the
@@ -44,7 +44,7 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
     //
     // Residual risk is mitigated by design — the subprocess runs in an isolated
     // `HOME`/`XDG_*` (see `spawn_gemini_child`) into which only the read-only
-    // `axon-rag-synthesize` skill is written, the env is allowlist-restricted
+    // `rag-synthesize` skill is written, the env is allowlist-restricted
     // (`apply_env_allowlist`), and the cwd is a throwaway tempdir, so there is no
     // file/shell-mutating skill for `yolo` to auto-approve.
     //

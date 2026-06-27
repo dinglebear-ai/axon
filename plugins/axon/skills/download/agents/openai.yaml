@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Download"
+  short_description: "Save local Axon capture artifacts, screenshots, HTML, and WARC archives."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

@@ -11,18 +11,18 @@ const GEMINI_AUTH_FILES: &[&str] = &[
     "google_accounts.json",
 ];
 
-/// The axon-rag-synthesize skill file, embedded at compile time and written
+/// The rag-synthesize skill file, embedded at compile time and written
 /// into the isolated Gemini HOME so Gemini CLI can discover and invoke it
 /// natively. Included directly here (rather than imported from the vector
 /// layer) so `core` does not depend on a downstream module.
 const SKILL_MD: &str =
-    include_str!("../../../../../../plugins/axon/skills/axon-rag-synthesize/SKILL.md");
+    include_str!("../../../../../../plugins/axon/references/rag-synthesize/SKILL.md");
 
 /// Create an isolated Gemini HOME directory for headless invocation.
 ///
 /// Copies the user's OAuth credentials from `AXON_HEADLESS_GEMINI_HOME` (or
 /// `$HOME`) into a temp dir, writes a side-effect-free settings.json, and
-/// installs the axon-rag-synthesize skill so Gemini CLI can invoke it natively.
+/// installs the rag-synthesize skill so Gemini CLI can invoke it natively.
 pub(super) fn prepare_gemini_home(
     config: &LlmBackendConfig,
 ) -> Result<TempDir, Box<dyn StdError + Send + Sync>> {
@@ -52,17 +52,17 @@ pub(super) fn prepare_gemini_home(
     Ok(temp)
 }
 
-/// Write the axon-rag-synthesize skill into the isolated Gemini home so Gemini CLI
+/// Write the rag-synthesize skill into the isolated Gemini home so Gemini CLI
 /// can discover and invoke it via the native activate_skill tool. The SKILL.md
 /// content is embedded at compile time — no separate disk location needed.
 fn write_axon_rag_synthesize_skill(
     gemini_dir: &Path,
 ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-    let skill_dir = gemini_dir.join("skills").join("axon-rag-synthesize");
+    let skill_dir = gemini_dir.join("skills").join("rag-synthesize");
     fs::create_dir_all(&skill_dir)
         .map_err(|err| format!("failed to create skill directory: {err}"))?;
     fs::write(skill_dir.join("SKILL.md"), SKILL_MD)
-        .map_err(|err| format!("failed to write axon-rag-synthesize skill: {err}"))?;
+        .map_err(|err| format!("failed to write rag-synthesize skill: {err}"))?;
     Ok(())
 }
 

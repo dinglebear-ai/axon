@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Shop"
+  short_description: "Research products, prices, merchants, and buying evidence."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

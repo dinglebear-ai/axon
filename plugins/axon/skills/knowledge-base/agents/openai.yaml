@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Knowledge Base"
+  short_description: "Build a searchable knowledge base from crawled and ingested sources."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

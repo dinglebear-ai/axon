@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Search"
+  short_description: "Discover current web sources and queue bounded Axon indexing."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

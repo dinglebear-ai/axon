@@ -60,7 +60,7 @@ fn skill_md_body_has_no_blanket_concise_instruction() {
 fn synthesis_prompt_returns_skill_invocation_shim() {
     let prompt = synthesis_prompt_for_gemini();
     assert!(
-        prompt.contains("axon-rag-synthesize"),
+        prompt.contains("rag-synthesize"),
         "prompt must reference the skill by name"
     );
     assert!(
@@ -79,11 +79,11 @@ fn synthesis_prompt_returns_skill_invocation_shim() {
 fn generic_synthesis_prompt_omits_skill_frontmatter_and_activation() {
     let prompt = synthesis_prompt_for_openai_compat();
     assert!(
-        !prompt.contains("Use the axon-rag-synthesize skill"),
+        !prompt.contains("Use the rag-synthesize skill"),
         "generic OpenAI-compatible prompt should not ask the model to activate a Gemini skill"
     );
     assert!(
-        !prompt.contains("name: axon-rag-synthesize"),
+        !prompt.contains("name: rag-synthesize"),
         "generic prompt must strip skill YAML frontmatter"
     );
     assert!(
@@ -100,7 +100,7 @@ fn generic_synthesis_prompt_omits_skill_frontmatter_and_activation() {
 fn codex_app_server_uses_direct_synthesis_prompt() {
     let prompt = synthesis_prompt_for_backend(axon_core::llm::LlmBackendKind::CodexAppServer);
 
-    assert!(!prompt.contains("Use the axon-rag-synthesize skill"));
+    assert!(!prompt.contains("Use the rag-synthesize skill"));
     assert!(prompt.contains("provided context"));
 }
 
@@ -108,11 +108,11 @@ fn codex_app_server_uses_direct_synthesis_prompt() {
 fn gemini_synthesis_prompt_keeps_activation_but_strips_frontmatter() {
     let prompt = synthesis_prompt_for_gemini();
     assert!(
-        prompt.contains("Use the axon-rag-synthesize skill"),
+        prompt.contains("Use the rag-synthesize skill"),
         "Gemini prompt should keep native skill activation"
     );
     assert!(
-        !prompt.contains("name: axon-rag-synthesize"),
+        !prompt.contains("name: rag-synthesize"),
         "Gemini system prompt should not inline YAML frontmatter"
     );
     assert!(

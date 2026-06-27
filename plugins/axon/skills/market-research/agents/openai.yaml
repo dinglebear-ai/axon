@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Market Research"
+  short_description: "Analyze markets, segments, trends, and sources with Axon research."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

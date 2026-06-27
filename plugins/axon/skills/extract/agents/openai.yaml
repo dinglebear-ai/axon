@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Extract"
+  short_description: "Extract schema-shaped structured data from URLs with Axon."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true
