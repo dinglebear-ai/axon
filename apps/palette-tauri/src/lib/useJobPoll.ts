@@ -41,6 +41,7 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
     // silently. After STALL_THRESHOLD consecutive failures, surface a *visible*
     // failed state — phase AND errorText, so JobProgressView renders its error
     // banner instead of leaving the user staring at a dead spinner.
+    let inFlight = false;
     const recordFailure = () => {
       if (++consecutiveFailures < STALL_THRESHOLD) return; // transient — retry next tick
       setRun((current) =>
@@ -58,6 +59,8 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
       );
     };
     const tick = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const res = await invoke<{ ok: boolean; status: number; payload: unknown }>(
           "axon_http_request",
@@ -83,6 +86,8 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
       } catch {
         if (!active) return;
         recordFailure();
+      } finally {
+        inFlight = false;
       }
     };
     void tick();
@@ -114,9 +119,23 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
     const fam = run.family;
     setCanceling(true);
     try {
-      await invoke("axon_http_request", {
+      const res = await invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
         request: { method: "POST", path: `/v1/${fam}/${id}/cancel`, body: null },
       });
+      if (!res.ok) {
+        setRun((current) =>
+          current.kind === "asyncJob" && current.jobId === id
+            ? {
+                ...current,
+                subtitle: `cancel failed (${res.status})`,
+                snapshot: {
+                  ...current.snapshot,
+                  errorText: `Cancel request failed with HTTP ${res.status}.`,
+                },
+              }
+            : current,
+        );
+      }
     } catch {
       /* the poll will surface the canceled row state */
     } finally {

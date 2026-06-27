@@ -52,6 +52,7 @@ import {
 import type { RunState } from "@/lib/runState";
 import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
 import { jobFamilyVerb, summarizeJob } from "@/lib/jobProgress";
+import type { SourceSortMode } from "@/lib/sourcesModel";
 import { useActionRunner } from "@/lib/useActionRunner";
 import { useCrawlJob } from "@/lib/useCrawlJob";
 import { useJobPoll } from "@/lib/useJobPoll";
@@ -307,6 +308,10 @@ export default function App() {
   // row action). Routes through the same confirmation/validation path as Enter.
   const onRunAction = useCallback(
     (subcommand: string, argument: string) => {
+      if (subcommand === "sources") {
+        setSourcesDrillFilter("");
+        setSourcesFilter("");
+      }
       const action = ACTIONS.find((a) => a.subcommand === subcommand);
       if (action) requestSubmit(action, argument);
     },
@@ -316,9 +321,13 @@ export default function App() {
   // Drill from a domain (DomainsView) into the sources list pre-filtered to that
   // domain. `sourcesDrillFilter` seeds SourcesView's filter; cleared on reset.
   const [sourcesDrillFilter, setSourcesDrillFilter] = useState("");
+  const [sourcesFilter, setSourcesFilter] = useState("");
+  const [sourcesSort, setSourcesSort] = useState<SourceSortMode>("chunks");
+  const [sourcesGrouped, setSourcesGrouped] = useState(false);
   const onDrillDomain = useCallback(
     (domain: string) => {
       setSourcesDrillFilter(domain);
+      setSourcesFilter(domain);
       const action = ACTIONS.find((a) => a.subcommand === "sources");
       if (action) requestSubmit(action, "");
     },
@@ -363,6 +372,10 @@ export default function App() {
 
   function enterActionMode(action: PaletteAction) {
     setPendingConfirmation(null);
+    if (action.subcommand === "sources") {
+      setSourcesDrillFilter("");
+      setSourcesFilter("");
+    }
     dispatchView({ type: "enterMode", action });
     setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
     setSelected(0);
@@ -379,10 +392,18 @@ export default function App() {
       setQuery("");
       setSelected(0);
       setRun({ kind: "idle" });
+      if (action.subcommand === "sources") {
+        setSourcesDrillFilter("");
+        setSourcesFilter("");
+      }
       requestSubmit(action, "");
       return;
     }
     setPendingConfirmation(null);
+    if (action.subcommand === "sources") {
+      setSourcesDrillFilter("");
+      setSourcesFilter("");
+    }
     dispatchView({ type: "switchMode", action });
     setSelected(0);
     setRun({ kind: "idle" });
@@ -467,6 +488,7 @@ export default function App() {
     setRun({ kind: "idle" });
     setQuery("");
     setSourcesDrillFilter("");
+    setSourcesFilter("");
     focusInput(true);
   }
 
@@ -477,6 +499,7 @@ export default function App() {
     setRun({ kind: "idle" });
     setPendingConfirmation(null);
     setSourcesDrillFilter("");
+    setSourcesFilter("");
     dispatchView({ type: "reset" });
   }, []);
   const onToggleSettings = useCallback(() => dispatchView({ type: "toggleSettings" }), []);
@@ -671,7 +694,12 @@ export default function App() {
             onOpenJob={onOpenJob}
             onRunAction={onRunAction}
             onDrillDomain={onDrillDomain}
-            sourcesInitialFilter={sourcesDrillFilter}
+            sourcesFilter={sourcesFilter || sourcesDrillFilter}
+            sourcesSort={sourcesSort}
+            sourcesGrouped={sourcesGrouped}
+            onSourcesFilterChange={setSourcesFilter}
+            onSourcesSortChange={setSourcesSort}
+            onSourcesGroupedChange={setSourcesGrouped}
           />
           </div>
         )}

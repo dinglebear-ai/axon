@@ -501,9 +501,12 @@ export function acceptsDirectUrl(action: PaletteAction): boolean {
 //     → `https://some notes` corrupts the input).
 const BARE_TARGET_SUBCOMMANDS = new Set<PaletteSubcommand>(["ingest", "embed"]);
 
-// Whether a bare (scheme-less) argument should be coerced to an https:// URL on
-// submit. NARROWER than `acceptsDirectUrl` — the bare-target actions above are
-// excluded so their non-URL inputs survive intact.
+/**
+ * Return whether a bare scheme-less argument should be coerced to an HTTPS URL.
+ *
+ * @param action - Palette action being submitted.
+ * @returns True when a direct URL action should receive `https://` coercion.
+ */
 export function coercesArgumentToUrl(action: PaletteAction): boolean {
   return acceptsDirectUrl(action) && !BARE_TARGET_SUBCOMMANDS.has(action.subcommand);
 }

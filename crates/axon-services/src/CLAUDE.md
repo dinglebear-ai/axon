@@ -131,8 +131,11 @@ pub async fn query(cfg: &Config, text: &str, opts: Pagination) -> Result<QueryRe
 println!("{}", serde_json::to_string(&results)?);
 ```
 
-Key result types live in domain-specific modules under `types/service/` and are
-re-exported through `types/service.rs` for compatibility:
+Legacy service-owned result types live in domain-specific modules under
+`types/service/` and are re-exported through `types/service.rs` for
+compatibility. For new single-domain operations, put the DTO in `axon-api`
+instead and re-export it through the services facade only when callers need the
+old `services::types::*` import path:
 
 | Result Type | Service function(s) |
 |-------------|---------------------|
@@ -153,10 +156,14 @@ re-exported through `types/service.rs` for compatibility:
 | `SearchResult` | `search::search` |
 | `ResearchResult` | `search::research` |
 
-When adding a new typed result, put it in the matching domain module under
-`crates/axon-services/src/types/service/` (for example `query.rs`, `content.rs`,
-`system.rs`, or `lifecycle.rs`) and re-export it from `types/service.rs`.
-Create a new small domain module when no existing module owns the contract.
+When adding a new typed result, first decide ownership:
+
+- Single-domain, job-free operation: DTO belongs in `axon-api`; domain crate
+  owns the logic; `axon-services` stays a facade.
+- Cross-domain or job-runtime operation: DTO can live in the matching
+  `crates/axon-services/src/types/service/` module (for example `query.rs`,
+  `content.rs`, `system.rs`, or `lifecycle.rs`) and be re-exported from
+  `types/service.rs`.
 
 ## Indexing Service Semantics
 

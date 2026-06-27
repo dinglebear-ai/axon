@@ -9,6 +9,7 @@ export interface OpenJobHandler {
 }
 
 const TOTAL_FAMILIES = ["crawl", "extract", "embed", "ingest"] as const;
+const OPENABLE_FAMILIES = new Set<string>(TOTAL_FAMILIES);
 
 function jobUrl(job: Record<string, unknown>): string | undefined {
   const direct = strField(job, "url") ?? strField(job, "target");
@@ -32,7 +33,9 @@ function JobRow({
   const attempts = numField(job, "attempt_count");
   const id = strField(job, "id") ?? strField(job, "job_id");
   // Only live (pending/running) jobs have a live card worth tailing.
-  const openable = Boolean(onOpenJob && id && (status === "running" || status === "pending"));
+  const openable = Boolean(
+    onOpenJob && id && OPENABLE_FAMILIES.has(family) && (status === "running" || status === "pending"),
+  );
 
   const body = (
     <>

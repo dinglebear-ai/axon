@@ -19,7 +19,15 @@ describe("JobProgressView", () => {
   it("renders a running ingest job with family verb, label, and Cancel", () => {
     const snapshot = summarizeJob(
       "ingest",
-      { job: { status: "running", result_json: { phase: "ingesting", tasks_done: 1, tasks_total: 4 } } },
+      {
+        job: { status: "running" },
+        progress: {
+          family: "ingest",
+          phase: "running",
+          percent: 25,
+          metrics: [{ label: "tasks", value: "1 / 4" }],
+        },
+      },
       { jobId: "abc123", label: "unraid/api" },
     );
     render(
@@ -34,6 +42,8 @@ describe("JobProgressView", () => {
     );
     expect(screen.getByText(/Ingesting unraid\/api/)).toBeInTheDocument();
     expect(screen.getByText("job abc123")).toBeInTheDocument();
+    expect(screen.getByText("25%")).toBeInTheDocument();
+    expect(screen.getByText("1 / 4")).toBeInTheDocument();
     expect(screen.getByText("Cancel job")).toBeInTheDocument();
   });
 

@@ -1183,13 +1183,36 @@ export interface components {
             url: string;
         };
         PurgeRequest: {
-            /** @description Optional collection override (defaults to the server's configured one). */
             collection?: string | null;
-            /** @description Preview only — count matches without deleting. */
-            dry_run?: boolean;
+            /**
+             * @description Preview only — count matches without deleting. **Defaults to `true`** for
+             *     agent safety: a bare `purge` previews; set `dry_run=false` to delete.
+             */
+            dry_run?: boolean | null;
             /** @description Match `target` as a prefix over a whole docs subtree / origin. */
             prefix?: boolean;
-            /** @description URL (or seed-URL/origin when `prefix` is set) to delete from the index. */
+            response_mode?: null | components["schemas"]["ResponseMode"];
+            /**
+             * @description URL (or seed-URL/origin when `prefix` is set) to delete from the index.
+             *     **Handler-required despite the `Option`:** the type is `Option<String>`
+             *     only so a missing field deserializes to a clean "target is required"
+             *     error instead of a serde rejection; `handle_purge` returns an error when
+             *     it is `None`. It is not an optional argument.
+             */
+            target?: string | null;
+        };
+        /**
+         * @description Result of a purge: counts of points/URLs matched (and deleted, unless this
+         *     was a `dry_run` preview).
+         */
+        PurgeResult: {
+            deleted_points: number;
+            /** @description When true, nothing was deleted — counts reflect what *would* be removed. */
+            dry_run: boolean;
+            matched_points: number;
+            matched_url_count: number;
+            prefix: boolean;
+            sample_urls: string[];
             target: string;
         };
         ReadinessBody: {
@@ -1200,6 +1223,8 @@ export interface components {
         };
         /** @enum {string} */
         RenderMode: "http" | "chrome" | "auto-switch";
+        /** @enum {string} */
+        ResponseMode: "path" | "inline" | "both" | "auto_inline";
         RestAskRequest: {
             /** Format: double */
             ask_authoritative_boost?: number | null;
@@ -3967,7 +3992,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PurgeResult"];
                 };
             };
             /** @description Invalid purge request */

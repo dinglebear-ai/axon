@@ -1,4 +1,4 @@
-import { memo, useRef } from "react";
+import { memo, useEffect, useState } from "react";
 
 import { Sparkline } from "@/components/palette/Sparkline";
 import { arrField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
@@ -63,10 +63,11 @@ export const StatsView = memo(function StatsView({ payload }: { payload: unknown
   // mounted view, so live refreshes show how much landed while you watched.
   // Resets on remount (navigating away and back opens a fresh baseline).
   const indexed = numField(stats, "indexed_vectors_count");
-  const baselineRef = useRef<number | null>(null);
-  if (baselineRef.current === null && indexed !== undefined) baselineRef.current = indexed;
-  const delta =
-    indexed !== undefined && baselineRef.current !== null ? indexed - baselineRef.current : 0;
+  const [baseline, setBaseline] = useState<number | null>(indexed ?? null);
+  useEffect(() => {
+    if (baseline === null && indexed !== undefined) setBaseline(indexed);
+  }, [baseline, indexed]);
+  const delta = indexed !== undefined && baseline !== null ? indexed - baseline : 0;
 
   const countRows = Object.entries(counts)
     .filter(([, v]) => typeof v === "number" && Number.isFinite(v))

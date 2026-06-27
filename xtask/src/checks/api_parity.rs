@@ -180,6 +180,7 @@ fn render(root: &Path) -> Result<String> {
          | Operation | CLI | MCP | REST |\n\
          |---|:--:|:--:|:--:|\n\
          {rows}\n\
+         \n\
          **Notes.** MCP intentionally omits destructive/stateful admin actions routed HTTP-only \
          (see the `AxonRequest` arm in `crates/axon-mcp/src/server.rs`). REST-only rows \
          ({rest_only}) are client/server surfaces with no \
