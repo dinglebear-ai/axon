@@ -7,8 +7,8 @@ use crate::schema::{
     AxonToolResponse, EmbedRequest, EmbedSubaction, IngestRequest, IngestSubaction, ResponseMode,
 };
 use axon_services::embed::{
-    embed_cancel, embed_cleanup, embed_clear, embed_list, embed_recover, embed_start_with_context,
-    embed_status,
+    embed_cancel, embed_cleanup, embed_clear, embed_input_is_local_path, embed_list,
+    embed_now_with_source, embed_recover, embed_start_with_context, embed_status,
 };
 use axon_services::ingest::{
     ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
@@ -35,6 +35,26 @@ impl AxonMcpServer {
                 collection,
                 ..axon_core::config::ConfigOverrides::default()
             });
+        // A local path must be embedded in-process by a process that shares its
+        // filesystem. Enqueuing it lets another worker (e.g. the axon container)
+        // claim a path it cannot read. This matches the intent of the CLI guard in
+        // crates/axon-cli/src/commands/embed.rs. `validate_mcp_embed_input_with_config`
+        // (called earlier) already rejected a path-like input that does not exist,
+        // so a true here is a path visible to this process; URL / free-text inputs
+        // fall through to the queue.
+        if embed_input_is_local_path(&input) {
+            let result = embed_now_with_source(&cfg, &input, source_type.as_deref())
+                .await
+                .map_err(|e| logged_internal_error("embed.start", e.as_ref()))?;
+            // Surface the real embed counts (docs_embedded / docs_failed /
+            // chunks_embedded) from the in-process result so a partial embed is
+            // not silently reported as a clean success.
+            let mut data = result.payload;
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("status".to_string(), serde_json::json!("completed"));
+            }
+            return Ok(AxonToolResponse::ok("embed", "start", data));
+        }
         let service_context = self
             .service_context_for(cfg.clone())
             .await
