@@ -1,6 +1,6 @@
 # Axon
 
-Version: 6.0.2
+Version: 6.1.0
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -231,6 +231,7 @@ CLI and MCP commands always run in-process against Qdrant and TEI. `axon serve` 
 - **Hybrid search.** New Qdrant collections are created with named `dense` + `bm42` sparse vectors and queried with Reciprocal Rank Fusion (RRF). Legacy unnamed collections fall back to dense-only cosine search. Tune via the `[search]` section in `config.toml`; run `axon migrate --from <old> --to <new>` to copy a legacy unnamed collection into a new named-mode one, then point `AXON_COLLECTION` at it.
 - **Normalized source planning.** Crawl manifests, scrape results, ingest sources, local files, and memory records are normalized into `SourceDocument` before chunking. The source-doc planner is the only layer that chooses markdown/plain-text/file chunking and emits `PreparedDoc` values for TEI/Qdrant. File origins (`GitFile`, `LocalFile`) get tree-sitter-aware code chunks where supported plus `code_*`, `symbol_*`, `chunk_locator`, `source_range`, and `chunk_content_kind` payload metadata; unsupported code falls back to prose chunks with fallback metadata instead of losing enrichment.
 - **Vertical extractors.** `scrape` (and the `scrape` MCP/REST action) auto-routes known URLs to structured per-site extractors (GitHub, PyPI, npm, crates.io, Reddit, YouTube, and more) instead of generic HTML→markdown. Vertical payloads keep `extractor_name` and bounded structured data through the same source-doc planner used by generic scrape. Disable with `AXON_ENABLE_VERTICALS=false` or the `[verticals]` config section.
+- **Freshness schedules.** The CLI can create recurring schedules with `--fresh <Nd>` on `scrape`, `crawl`, `embed`, and `ingest`. `axon serve`/`axon mcp` run the scheduler from SQLite, replaying safe versioned snapshots through the normal service/job paths. Freshness management is CLI-only in v1: use `axon fresh list`, `axon fresh run-now <id>`, and `axon fresh history <id>`.
 - **Web panel.** `axon serve` hosts an Aurora-styled control panel at the bind address (default `http://127.0.0.1:8001`) with a first-run setup flow, config/stack inspection, and a command runner, alongside the `/v1/*` REST surface and OpenAPI docs at `/docs`.
 
 ## CLI Map
@@ -269,6 +270,7 @@ Operations:
 - `mcp`
 - `status`
 - `monitor jobs` — stream job lifecycle events (start/complete/fail/cancel)
+- `fresh` — list, run, and inspect CLI-created freshness schedules
 - `sources`
 - `domains`
 - `stats`

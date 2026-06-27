@@ -2,7 +2,9 @@ mod config_args;
 mod global_args;
 mod setup_args;
 
-use super::types::{EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime};
+use super::types::{
+    EvaluateResponsesMode, FreshDuration, MapFallback, McpTransport, RedditSort, RedditTime,
+};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 pub(super) use config_args::{ConfigArgs, ConfigSubcommand, SyncArgs, SyncSubcommand};
@@ -26,7 +28,7 @@ pub(super) struct Cli {
 #[derive(Debug, Subcommand)]
 pub(super) enum CliCommand {
     /// Scrape one or more URLs to markdown
-    Scrape(ScrapeArgs),
+    Scrape(FreshScrapeArgs),
     /// Full site crawl for one or more start URLs
     Crawl(CrawlArgs),
     /// Manage recurring watch definitions and runs
@@ -87,6 +89,8 @@ pub(super) enum CliCommand {
     Purge(PurgeArgs),
     /// Re-crawl / re-ingest previously indexed origins (full docs refresh)
     Refresh(RefreshArgs),
+    /// Manage embedding freshness schedules
+    Fresh(FreshArgs),
     /// Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube)
     Ingest(IngestArgs),
     /// Persistent agent memory: remember, list, search, show, link, supersede, or context memories
@@ -309,12 +313,56 @@ pub(super) struct ScrapeArgs {
 }
 
 #[derive(Debug, Args)]
+pub(super) struct FreshScrapeArgs {
+    #[arg(value_name = "URL")]
+    pub(super) positional_urls: Vec<String>,
+
+    /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
+    #[arg(long, value_parser = parse_fresh_arg)]
+    pub(super) fresh: Option<FreshDuration>,
+}
+
+fn parse_fresh_arg(raw: &str) -> Result<FreshDuration, String> {
+    FreshDuration::parse(raw)
+}
+
+#[derive(Debug, Args)]
 pub(super) struct RefreshArgs {
     /// Optional filter: a source_type (crawl/embed/scrape/github/gitlab/gitea/
     /// git/reddit/youtube) or a domain/substring matched against indexed origins.
     /// Omit to refresh every indexed origin.
     #[arg(value_name = "FILTER")]
     pub(super) filter: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct FreshArgs {
+    #[command(subcommand)]
+    pub(super) action: FreshSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum FreshSubcommand {
+    /// List freshness schedules
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run one freshness schedule immediately
+    #[command(name = "run-now")]
+    RunNow {
+        id: uuid::Uuid,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show freshness run history
+    History {
+        id: uuid::Uuid,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -694,6 +742,9 @@ pub(super) struct CrawlArgs {
     pub(super) job: Option<JobSubcommand>,
     #[arg(value_name = "URL")]
     pub(super) positional_urls: Vec<String>,
+    /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
+    #[arg(long, value_parser = parse_fresh_arg)]
+    pub(super) fresh: Option<FreshDuration>,
 }
 
 #[derive(Debug, Args)]
@@ -712,6 +763,9 @@ pub(super) struct EmbedArgs {
     pub(super) job: Option<JobSubcommand>,
     #[arg(value_name = "INPUT")]
     pub(super) input: Option<String>,
+    /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
+    #[arg(long, value_parser = parse_fresh_arg)]
+    pub(super) fresh: Option<FreshDuration>,
 }
 
 #[derive(Debug, Args)]
@@ -723,6 +777,10 @@ pub(super) struct IngestArgs {
     /// Ingest target: GitHub slug, GitLab/Gitea URL, git:https URL, YouTube URL/@handle, or Reddit target
     #[arg(value_name = "TARGET")]
     pub(super) target: Option<String>,
+
+    /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
+    #[arg(long, value_parser = parse_fresh_arg)]
+    pub(super) fresh: Option<FreshDuration>,
 
     /// Skip source code files when ingesting a Git repository (GitHub, GitLab, Gitea, or generic git).
     /// By default source code is included. Has no effect on Reddit or YouTube targets.

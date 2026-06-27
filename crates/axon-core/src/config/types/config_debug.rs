@@ -19,6 +19,7 @@ impl fmt::Debug for Config {
             .field("retrieve_max_points", &self.retrieve_max_points)
             .field("train_best_rank", &self.train_best_rank)
             .field("train_notes", &self.train_notes)
+            .field("freshness", &self.freshness)
             .field("max_pages", &self.max_pages)
             .field("max_depth", &self.max_depth)
             .field("include_subdomains", &self.include_subdomains)
@@ -183,10 +184,54 @@ impl fmt::Debug for Config {
             .field("tei_max_retries", &self.tei_max_retries)
             .field("tei_request_timeout_ms", &self.tei_request_timeout_ms)
             .field("tei_max_client_batch_size", &self.tei_max_client_batch_size)
+            .field("embed_tei_max_concurrent", &self.embed_tei_max_concurrent)
+            .field(
+                "embed_tei_max_in_flight_inputs",
+                &self.embed_tei_max_in_flight_inputs,
+            )
+            .field("embed_pool_max_inputs", &self.embed_pool_max_inputs)
+            .field("embed_prep_concurrency", &self.embed_prep_concurrency)
+            .field("embed_max_chunks_per_doc", &self.embed_max_chunks_per_doc)
+            .field(
+                "embed_max_source_chunks_per_doc",
+                &self.embed_max_source_chunks_per_doc,
+            )
+            .field("embed_dedupe_exact_chunks", &self.embed_dedupe_exact_chunks)
+            .field("openai_embed_model", &self.openai_embed_model)
+            .field(
+                "openai_embed_max_client_batch_size",
+                &self.openai_embed_max_client_batch_size,
+            )
+            .field(
+                "openai_embed_max_concurrent",
+                &self.openai_embed_max_concurrent,
+            )
+            .field(
+                "openai_embed_max_in_flight_inputs",
+                &self.openai_embed_max_in_flight_inputs,
+            )
+            .field(
+                "openai_embed_pool_max_inputs",
+                &self.openai_embed_pool_max_inputs,
+            )
             .field("ingest_lanes", &self.ingest_lanes)
             .field("embed_lanes", &self.embed_lanes)
             .field("embed_doc_timeout_secs", &self.embed_doc_timeout_secs)
             .field("queue_summary_secs", &self.queue_summary_secs)
+            .field("freshness_tick_secs", &self.freshness_tick_secs)
+            .field("freshness_lease_secs", &self.freshness_lease_secs)
+            .field(
+                "freshness_max_due_per_tick",
+                &self.freshness_max_due_per_tick,
+            )
+            .field(
+                "freshness_max_concurrent_runs",
+                &self.freshness_max_concurrent_runs,
+            )
+            .field(
+                "freshness_run_retention_days",
+                &self.freshness_run_retention_days,
+            )
             .field("qdrant_point_buffer", &self.qdrant_point_buffer)
             .field("max_pending_crawl_jobs", &self.max_pending_crawl_jobs)
             .field("max_pending_embed_jobs", &self.max_pending_embed_jobs)

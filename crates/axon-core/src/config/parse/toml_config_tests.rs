@@ -72,6 +72,27 @@ fn valid_toml_parses_tei_and_workers() {
 }
 
 #[test]
+fn valid_toml_parses_embed_openai_compat_section() {
+    let cfg = load_toml_config_from_str(
+        r#"
+[embed]
+openai-model = "qwen3-openai"
+openai-max-client-batch-size = 24
+openai-max-concurrent = 12
+openai-max-in-flight-inputs = 256
+openai-pool-max-inputs = 768
+"#,
+    )
+    .expect("openai-compatible embed fields should parse");
+
+    assert_eq!(cfg.embed.openai_model.as_deref(), Some("qwen3-openai"));
+    assert_eq!(cfg.embed.openai_max_client_batch_size, Some(24));
+    assert_eq!(cfg.embed.openai_max_concurrent, Some(12));
+    assert_eq!(cfg.embed.openai_max_in_flight_inputs, Some(256));
+    assert_eq!(cfg.embed.openai_pool_max_inputs, Some(768));
+}
+
+#[test]
 fn valid_toml_parses_chrome_bootstrap_section() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(
@@ -284,6 +305,69 @@ bootstrap-retries = 4"#,
     let chrome = result.unwrap().chrome;
     assert_eq!(chrome.bootstrap_timeout_ms, Some(750));
     assert_eq!(chrome.bootstrap_retries, Some(4));
+}
+
+#[test]
+fn live_tuning_sections_parse_without_weakening_unknown_field_rejection() {
+    let result = load_toml_config_from_str(
+        r#"
+[embed]
+tei-max-concurrent = 8
+tei-max-in-flight-inputs = 512
+pool-max-inputs = 1024
+prep-concurrency = 12
+max-chunks-per-doc = 0
+max-source-chunks-per-doc = 0
+dedupe-exact-chunks = true
+
+[chunking]
+markdown-min-chars = 500
+markdown-max-chars = 2000
+overlap-chars = 200
+
+[qdrant]
+upsert-batch-size = 1024
+upsert-parallelism = 1
+bulk-load = false
+bulk-indexing-threshold-kb = 10485760
+indexing-threshold-kb = 20000
+hnsw-m = 32
+hnsw-ef-construct = 256
+payload-index-profile = "full"
+payload-index-parallelism = 16
+hnsw-on-disk = false
+quantization-always-ram = true
+
+[code-search]
+freshness-ttl-secs = 30
+reindex-timeout-secs = 300
+max-file-bytes = 10485760
+changed-file-batch-size = 5
+
+[watch]
+tick-secs = 15
+lease-secs = 300
+
+[endpoints]
+bundle-concurrency = 8
+chrome-concurrency = 1
+verify-concurrency = 16
+probe-concurrency = 4
+
+[mcp]
+task-result-wait-timeout-secs = 300
+
+[mcp.embed]
+max-local-bytes = 10485760
+max-local-depth = 16
+max-local-entries = 10000
+"#,
+    );
+    assert!(
+        result.is_ok(),
+        "durable live tuning sections should parse: {:?}",
+        result.err()
+    );
 }
 
 #[test]

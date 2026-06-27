@@ -2,11 +2,13 @@
 mod scrape_migration_tests;
 
 use super::common::parse_urls;
+use super::fresh::create_schedule_from_command;
 use axon_core::config::Config;
 use axon_core::http::axon_ua;
 use axon_core::http::validate_url;
 use axon_core::logging::{log_done, log_info, log_warn};
 use axon_core::ui::{muted, primary, print_option, print_phase};
+use axon_services::context::ServiceContext;
 use axon_services::scrape as scrape_service;
 use axon_vector::ops::tei::{PreparedDoc, embed_prepared_docs};
 use futures_util::stream::{self, StreamExt};
@@ -224,7 +226,14 @@ async fn run_explicit_vertical(cfg: &Config, name: &str) -> Result<(), Box<dyn E
     Ok(())
 }
 
-pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_scrape(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.freshness.is_some() {
+        return create_schedule_from_command(cfg, service_context).await;
+    }
+
     // Explicit vertical override for auto_dispatch=false extractors (amazon, ebay, youtube).
     // Transparent auto-dispatch for auto_dispatch=true extractors happens inside
     // services::scrape::scrape() — no env var needed for those.

@@ -15,12 +15,20 @@ impl ServiceContext {
     async fn build(
         cfg: Arc<Config>,
         spawn_workers: bool,
+        spawn_freshness_scheduler: bool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
+        let context = Self {
+            cfg: Arc::clone(&cfg),
+            jobs: Arc::clone(&jobs),
+        };
+        if spawn_freshness_scheduler {
+            crate::freshness::spawn_freshness_scheduler(context.clone());
+        }
         if spawn_workers {
             spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs);
         }
-        Ok(Self { cfg, jobs })
+        Ok(context)
     }
 
     /// Create a ServiceContext without in-process workers (enqueue-only in the SQLite runtime).
@@ -28,16 +36,27 @@ impl ServiceContext {
     /// This is the safe default for CLI commands that enqueue and exit.
     /// Use `new_with_workers()` for long-lived processes that should process jobs.
     pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, false).await
+        Self::build(cfg, false, false).await
     }
 
     /// Create a ServiceContext with in-process workers (SQLite runtime only).
     ///
-    /// Use for `axon serve`, MCP server, web server, or CLI `--wait true`.
+    /// Use for foreground CLI `--wait true`, where jobs should drain but
+    /// unrelated recurring freshness schedules must not be swept.
     pub async fn new_with_workers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, true).await
+        Self::build(cfg, true, false).await
+    }
+
+    /// Create a long-lived ServiceContext with in-process workers and recurring
+    /// freshness scheduling enabled.
+    ///
+    /// Use for `axon serve`, MCP server, and web server runtimes.
+    pub async fn new_with_workers_and_schedulers(
+        cfg: Arc<Config>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::build(cfg, true, true).await
     }
 
     /// Factory for test helpers — inject a mock `ServiceJobRuntime`.
@@ -64,8 +83,7 @@ impl ServiceContext {
 
 /// Periodic queue-depth summary logger for log-based monitoring.
 ///
-/// Spawned only by `new_with_workers()` (so worker-bearing processes — serve,
-/// mcp — emit a baseline queue signal). Interval is `AXON_QUEUE_SUMMARY_SECS`
+/// Spawned only by worker-bearing contexts. Interval is `AXON_QUEUE_SUMMARY_SECS`
 /// (default 30s).
 fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
     if secs == 0 {

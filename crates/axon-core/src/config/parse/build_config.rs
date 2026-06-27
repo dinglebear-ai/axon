@@ -58,6 +58,7 @@ pub(super) fn into_config_with_sources(
         return Ok(Config {
             command: dispatched.command,
             positional: dispatched.positional,
+            fresh_action: dispatched.fresh_action,
             json_output: global.json,
             color_choice: global.color,
             watch_mode: global.watch,

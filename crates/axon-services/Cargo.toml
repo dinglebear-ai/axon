@@ -24,6 +24,7 @@ psl = "2"
 futures-util = "0.3"
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
 rand_core = { version = "0.9", features = ["os_rng", "std"] }
+sha2 = "0.10"
 metrics = "0.24"
 notify = "8"
 serde = { version = "1", features = ["derive"] }

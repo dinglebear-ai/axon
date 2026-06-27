@@ -29,6 +29,59 @@ const ATOM_ONE_ENTRY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
   </entry>
 </feed>"#;
 
+const RSS_WITH_DUPLICATE_LINKS: &str = r#"<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <title>Duplicate Links</title>
+  <item>
+    <title>First Copy</title>
+    <link>https://example.com/a</link>
+    <description>Body one</description>
+    <guid>guid-1</guid>
+  </item>
+  <item>
+    <title>Second Copy</title>
+    <link>https://example.com/a</link>
+    <description>Body two</description>
+    <guid>guid-2</guid>
+  </item>
+</channel></rss>"#;
+
+const RSS_WITH_TRACKING_PARAM_VARIANTS: &str = r#"<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <title>Tracking Links</title>
+  <item>
+    <title>Clean Link</title>
+    <link>https://example.com/a</link>
+    <description>Body one</description>
+  </item>
+  <item>
+    <title>Tracked Link</title>
+    <link>https://example.com/a?utm_source=newsletter&amp;utm_medium=email&amp;gclid=abc</link>
+    <description>Body two</description>
+  </item>
+</channel></rss>"#;
+
+const RSS_WITH_TRACKED_LINK_FIRST: &str = r#"<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <title>Tracking First</title>
+  <item>
+    <title>Tracked Link</title>
+    <link>https://example.com/a?utm_source=newsletter&amp;gclid=abc</link>
+    <description>Body one</description>
+  </item>
+</channel></rss>"#;
+
+const RSS_WITH_LINK_AND_GUID: &str = r#"<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <title>Link Guid</title>
+  <item>
+    <title>Linked Post</title>
+    <link>https://example.com/a</link>
+    <guid>guid-1</guid>
+    <description>Body one</description>
+  </item>
+</channel></rss>"#;
+
 #[test]
 fn rss_items_become_docs() {
     let feed = parse(RSS_TWO_ITEMS);
@@ -41,6 +94,41 @@ fn atom_entry_becomes_doc() {
     let feed = parse(ATOM_ONE_ENTRY);
     let docs = prepare_feed_docs("https://example.com/atom.xml", Some("Atom Example"), &feed);
     assert_eq!(docs.len(), 1);
+}
+
+#[test]
+fn duplicate_entry_links_collapse_before_embedding() {
+    let feed = parse(RSS_WITH_DUPLICATE_LINKS);
+    let docs = prepare_feed_docs("https://example.com/feed.xml", Some("Feed"), &feed);
+    let urls: Vec<_> = docs.iter().map(|doc| doc.url()).collect();
+    assert_eq!(urls, vec!["https://example.com/a"]);
+}
+
+#[test]
+fn duplicate_entry_links_use_normalized_tracking_url_identity() {
+    let feed = parse(RSS_WITH_TRACKING_PARAM_VARIANTS);
+    let docs = prepare_feed_docs("https://example.com/feed.xml", Some("Feed"), &feed);
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0].url(), "https://example.com/a");
+}
+
+#[test]
+fn feed_entry_doc_url_is_canonicalized_for_vector_identity() {
+    let feed = parse(RSS_WITH_TRACKED_LINK_FIRST);
+    let docs = prepare_feed_docs("https://example.com/feed.xml", Some("Feed"), &feed);
+    assert_eq!(docs[0].url(), "https://example.com/a");
+    assert_eq!(
+        docs[0].extra().unwrap()["entry_link"],
+        "https://example.com/a?utm_source=newsletter&gclid=abc"
+    );
+}
+
+#[test]
+fn entry_identity_prefers_link_over_mutable_guid() {
+    let feed = parse(RSS_WITH_LINK_AND_GUID);
+    let docs = prepare_feed_docs("https://example.com/feed.xml", Some("Feed"), &feed);
+    assert_eq!(docs[0].url(), "https://example.com/a");
+    assert_eq!(docs[0].extra().unwrap()["entry_id"], "guid-1");
 }
 
 #[test]

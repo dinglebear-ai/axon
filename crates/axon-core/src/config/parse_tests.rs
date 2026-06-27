@@ -1,6 +1,6 @@
 use super::build_config::tests::{ENV_LOCK, with_env_saved};
 use super::docker::is_docker_service_host;
-use crate::config::types::{CommandKind, McpTransport};
+use crate::config::types::{CommandKind, FreshnessCommand, McpTransport};
 use clap::Parser;
 use std::env;
 
@@ -70,6 +70,49 @@ fn parse_code_search_watch_is_watch_only_by_default_and_accepts_multiple_roots()
     );
     assert!(!watch.initial_refresh);
     assert!(watch.dry_run);
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_scrape_fresh_sets_freshness_intent() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut default_toml = tempfile::Builder::new()
+        .suffix(".toml")
+        .tempfile()
+        .expect("temp default config");
+    std::io::Write::write_all(&mut default_toml, b"\n").expect("write empty config");
+
+    let mut result = None;
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", default_toml.path());
+        let cli = super::Cli::parse_from([
+            "axon",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "scrape",
+            "https://example.com",
+            "--fresh",
+            "1d",
+        ]);
+        result = Some(super::build_config::into_config(cli));
+    });
+
+    let cfg = result
+        .expect("config result should be set")
+        .expect("scrape --fresh should parse");
+    assert!(matches!(cfg.command, CommandKind::Scrape));
+    let freshness = cfg.freshness.expect("freshness intent");
+    assert_eq!(freshness.command, FreshnessCommand::Scrape);
+    assert_eq!(freshness.every_seconds, 86_400);
+}
+
+#[test]
+fn parse_brand_rejects_fresh_flag() {
+    let result =
+        super::Cli::try_parse_from(["axon", "brand", "https://example.com", "--fresh", "1d"]);
+    assert!(result.is_err(), "brand must not inherit scrape freshness");
 }
 
 #[allow(unsafe_code)]
@@ -316,9 +359,14 @@ fn try_ask_cli(extra: &[&str]) -> Result<super::Cli, clap::Error> {
 #[allow(unsafe_code)]
 fn into_ask_config(extra: &[&str]) -> Result<crate::config::Config, String> {
     let _guard = ENV_LOCK.lock().unwrap();
+    let mut default_toml = tempfile::Builder::new()
+        .suffix(".toml")
+        .tempfile()
+        .expect("temp default config");
+    std::io::Write::write_all(&mut default_toml, b"\n").expect("write empty config");
     let mut result = None;
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
-        env::remove_var("AXON_CONFIG_PATH");
+        env::set_var("AXON_CONFIG_PATH", default_toml.path());
         result = Some(super::build_config::into_config(ask_cli(extra)));
     });
     result.expect("config result set")

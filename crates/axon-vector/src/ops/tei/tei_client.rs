@@ -1,4 +1,3 @@
-use crate::ops::qdrant::env_usize_clamped;
 use axon_core::config::Config;
 use axon_core::http::internal_service_http_client;
 use axon_core::logging::{log_debug, log_warn};
@@ -99,7 +98,7 @@ pub(crate) fn is_openai_compatible_embedding_url(cfg: &Config) -> bool {
 /// Each permit covers one batch sent to TEI; the permit is held until the response returns.
 /// Tunable via AXON_TEI_MAX_CONCURRENT (default 8, range 1–64).
 static TEI_CONCURRENCY: LazyLock<Semaphore> =
-    LazyLock::new(|| Semaphore::new(env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64)));
+    LazyLock::new(|| Semaphore::new(Config::default_minimal().embed_tei_max_concurrent));
 
 /// Weighted process-wide limit on total input chunks currently submitted to TEI.
 ///
@@ -108,23 +107,17 @@ static TEI_CONCURRENCY: LazyLock<Semaphore> =
 /// concurrency while preventing large batches from stampeding past the server's
 /// `max_batch_requests` budget.
 static TEI_IN_FLIGHT_INPUT_LIMIT: LazyLock<usize> =
-    LazyLock::new(|| env_usize_clamped("AXON_TEI_MAX_IN_FLIGHT_INPUTS", 320, 1, 4096));
+    LazyLock::new(|| Config::default_minimal().embed_tei_max_in_flight_inputs);
 static TEI_IN_FLIGHT_INPUTS: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(*TEI_IN_FLIGHT_INPUT_LIMIT));
 
 /// OpenAI-compatible embedding servers such as vLLM do better with smaller
 /// client request batches and higher request fanout than TEI's native `/embed`
 /// endpoint on the same workload.
-static OPENAI_EMBED_CONCURRENCY: LazyLock<Semaphore> = LazyLock::new(|| {
-    Semaphore::new(env_usize_clamped(
-        "AXON_OPENAI_EMBED_MAX_CONCURRENT",
-        32,
-        1,
-        64,
-    ))
-});
+static OPENAI_EMBED_CONCURRENCY: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(Config::default_minimal().openai_embed_max_concurrent));
 static OPENAI_EMBED_IN_FLIGHT_INPUT_LIMIT: LazyLock<usize> =
-    LazyLock::new(|| env_usize_clamped("AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS", 512, 1, 4096));
+    LazyLock::new(|| Config::default_minimal().openai_embed_max_in_flight_inputs);
 static OPENAI_EMBED_IN_FLIGHT_INPUTS: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(*OPENAI_EMBED_IN_FLIGHT_INPUT_LIMIT));
 
@@ -172,18 +165,9 @@ impl EmbedBackend {
     fn from_config(cfg: &Config) -> Self {
         let base = cfg.tei_url.trim_end_matches('/');
         if base.ends_with("/v1") {
-            let model = std::env::var("AXON_OPENAI_EMBEDDING_MODEL")
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .or_else(|| {
-                    std::env::var("VLLM_SERVED_MODEL_NAME")
-                        .ok()
-                        .filter(|value| !value.trim().is_empty())
-                })
-                .unwrap_or_else(|| "axon-qwen3-embedding".to_string());
             return Self::OpenAiCompat {
                 url: format!("{base}/embeddings"),
-                model,
+                model: cfg.openai_embed_model.clone(),
             };
         }
         Self::Tei {
@@ -245,17 +229,17 @@ fn embed_limiters(backend: &EmbedBackend) -> (&'static Semaphore, &'static Semap
     }
 }
 
-fn embed_split_concurrency(backend: &EmbedBackend) -> usize {
+fn embed_split_concurrency(cfg: &Config, backend: &EmbedBackend) -> usize {
     if backend.is_openai_compat() {
-        env_usize_clamped("AXON_OPENAI_EMBED_MAX_CONCURRENT", 32, 1, 64)
+        cfg.openai_embed_max_concurrent
     } else {
-        env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64)
+        cfg.embed_tei_max_concurrent
     }
 }
 
 fn embed_client_batch_size(cfg: &Config, backend: &EmbedBackend) -> usize {
     if backend.is_openai_compat() {
-        env_usize_clamped("AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE", 32, 1, 256)
+        cfg.openai_embed_max_client_batch_size
     } else {
         cfg.tei_max_client_batch_size.clamp(1, 256)
     }
@@ -484,7 +468,7 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
     // cannot itself become a thundering herd; the backend-specific request
     // semaphore in send_chunk_with_retries remains the hard ceiling on
     // in-flight requests to the embedding server.
-    let split_concurrency = embed_split_concurrency(&backend);
+    let split_concurrency = embed_split_concurrency(cfg, &backend);
 
     // Bind `Copy` references once so each spawned future captures only cheap
     // copies (the `&'static` client, a `&str` view of the URL) under `async

@@ -76,6 +76,8 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.code_search_path_prefix = inputs.dispatched.code_search_path_prefix.clone();
     cfg.code_search_no_freshness = inputs.dispatched.code_search_no_freshness;
     cfg.code_search_watch = inputs.dispatched.code_search_watch.clone();
+    cfg.freshness = inputs.dispatched.freshness.clone();
+    cfg.fresh_action = inputs.dispatched.fresh_action.clone();
     cfg.retrieve_max_points = inputs.dispatched.retrieve_max_points;
     cfg.train_best_rank = inputs.dispatched.train_best_rank;
     cfg.train_notes = inputs.dispatched.train_notes.clone();
