@@ -10,6 +10,7 @@
 //! The feed origin is recorded as `seed_url` (set by the ingest runner) so
 //! `axon refresh` can re-pull the feed.
 
+use std::collections::HashSet;
 use std::error::Error;
 
 use feed_rs::model::{Entry, Feed};
@@ -18,7 +19,7 @@ use futures_util::StreamExt;
 use crate::progress::PhaseReporter;
 use axon_core::config::Config;
 use axon_core::content::{to_markdown, url_to_domain};
-use axon_core::http::{http_client, validate_url};
+use axon_core::http::{http_client, normalize_url, validate_url};
 use axon_core::logging::{log_done, log_info, log_warn};
 use axon_vector::ops::{PreparedDoc, embed_prepared_docs, prepare_plain_text_source};
 
@@ -108,9 +109,19 @@ fn prepare_feed_docs(feed_url: &str, feed_title: Option<&str>, feed: &Feed) -> V
         ));
     }
     let mut docs = Vec::new();
+    let mut seen_entry_identities = HashSet::new();
     for entry in feed.entries.iter().take(MAX_FEED_ENTRIES) {
         match prepare_entry_doc(feed_url, feed_title, entry) {
-            Some(doc) => docs.push(doc),
+            Some((identity, doc)) => {
+                if seen_entry_identities.insert(identity.clone()) {
+                    docs.push(doc);
+                } else {
+                    log_info(&format!(
+                        "skipping duplicate feed entry link: feed={feed_url} url={} identity={identity}",
+                        doc.url()
+                    ));
+                }
+            }
             None => log_warn(&format!(
                 "skipping feed entry with no link or content (id={})",
                 entry.id
@@ -120,14 +131,48 @@ fn prepare_feed_docs(feed_url: &str, feed_title: Option<&str>, feed: &Feed) -> V
     docs
 }
 
+fn normalized_entry_link_identity(link: &str) -> String {
+    let normalized = normalize_url(link).into_owned();
+    let Ok(mut url) = reqwest::Url::parse(&normalized) else {
+        return normalized;
+    };
+    url.set_fragment(None);
+    let retained: Vec<(String, String)> = url
+        .query_pairs()
+        .filter(|(key, _)| !is_tracking_query_param(key))
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect();
+    if retained.is_empty() {
+        url.set_query(None);
+    } else {
+        let query = retained
+            .into_iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        url.set_query(Some(&query));
+    }
+    url.to_string()
+}
+
+fn is_tracking_query_param(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    lower.starts_with("utm_")
+        || matches!(
+            lower.as_str(),
+            "gclid" | "fbclid" | "mc_cid" | "mc_eid" | "igshid" | "ref"
+        )
+}
+
 /// Convert a single feed entry into a `PreparedDoc`, or `None` when it has no
 /// resolvable link and no body to embed.
 fn prepare_entry_doc(
     feed_url: &str,
     feed_title: Option<&str>,
     entry: &Entry,
-) -> Option<PreparedDoc> {
+) -> Option<(String, PreparedDoc)> {
     let link = entry_link(entry)?;
+    let canonical_link = normalized_entry_link_identity(&link);
     let title = entry
         .title
         .as_ref()
@@ -162,17 +207,21 @@ fn prepare_entry_doc(
         "feed_url": feed_url,
         "feed_title": feed_title,
         "entry_id": entry.id,
+        "entry_link": link,
         "published": published,
         "author": author,
     });
 
-    Some(prepare_plain_text_source(
-        link.clone(),
-        url_to_domain(&link),
-        text,
-        "rss",
-        title,
-        Some(extra),
+    Some((
+        canonical_link.clone(),
+        prepare_plain_text_source(
+            canonical_link.clone(),
+            url_to_domain(&canonical_link),
+            text,
+            "rss",
+            title,
+            Some(extra),
+        ),
     ))
 }
 

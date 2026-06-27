@@ -6,15 +6,16 @@
 
 use super::super::super::cli::{
     CliCommand, CodeSearchWatchSubcommand, ComposeArgs, ComposeSubcommand, ConfigArgs,
-    ConfigSubcommand, DoctorSubcommand, IngestArgs, MemoryCliSubcommand, MonitorSubcommand,
-    PaletteArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs,
-    SessionsSubcommand, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand,
-    UpdateArgs,
+    ConfigSubcommand, DoctorSubcommand, FreshSubcommand, IngestArgs, MemoryCliSubcommand,
+    MonitorSubcommand, PaletteArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand,
+    SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand,
+    SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CodeSearchWatchConfig, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
     RedditSort, RedditTime, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
 };
+use super::super::super::types::{FreshAction, FreshDuration, FreshnessCommand, FreshnessRequest};
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
 use std::env;
@@ -45,6 +46,8 @@ pub(super) struct DispatchOutput {
     pub code_search_path_prefix: Option<String>,
     pub code_search_no_freshness: bool,
     pub code_search_watch: Option<CodeSearchWatchConfig>,
+    pub freshness: Option<FreshnessRequest>,
+    pub fresh_action: Option<FreshAction>,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -105,6 +108,8 @@ impl DispatchOutput {
             code_search_path_prefix: None,
             code_search_no_freshness: false,
             code_search_watch: None,
+            freshness: None,
+            fresh_action: None,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -158,9 +163,11 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Scrape(args) => {
             out.command = CommandKind::Scrape;
             out.positional = args.positional_urls;
+            out.freshness = freshness_request(args.fresh, FreshnessCommand::Scrape);
         }
         CliCommand::Crawl(args) => {
             out.command = CommandKind::Crawl;
+            out.freshness = freshness_request(args.fresh, FreshnessCommand::Crawl);
             out.positional = if let Some(job) = args.job {
                 positional_from_job(job)
             } else {
@@ -208,6 +215,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Research(args) => set_simple(&mut out, CommandKind::Research, args.value),
         CliCommand::Embed(args) => {
             out.command = CommandKind::Embed;
+            out.freshness = freshness_request(args.fresh, FreshnessCommand::Embed);
             out.positional = if let Some(job) = args.job {
                 positional_from_job(job)
             } else {
@@ -317,6 +325,10 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.command = CommandKind::Refresh;
             out.positional = args.filter.into_iter().collect();
         }
+        CliCommand::Fresh(args) => {
+            out.command = CommandKind::Fresh;
+            out.fresh_action = Some(fresh_action_from_subcommand(args.action));
+        }
         CliCommand::Ingest(args) => apply_ingest(&mut out, args),
         CliCommand::Memory(args) => apply_memory(&mut out, args.action),
         CliCommand::Sessions(args) => apply_sessions(&mut out, args),
@@ -364,6 +376,16 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
 fn set_simple(out: &mut DispatchOutput, kind: CommandKind, positional: Vec<String>) {
     out.command = kind;
     out.positional = positional;
+}
+
+fn freshness_request(
+    duration: Option<FreshDuration>,
+    command: FreshnessCommand,
+) -> Option<FreshnessRequest> {
+    duration.map(|fresh| FreshnessRequest {
+        command,
+        every_seconds: fresh.seconds,
+    })
 }
 
 fn apply_monitor(out: &mut DispatchOutput, action: MonitorSubcommand) {
@@ -520,6 +542,7 @@ fn apply_ingest(out: &mut DispatchOutput, args: IngestArgs) {
     out.reddit_depth = args.depth;
     out.reddit_scrape_links = args.scrape_links;
     out.command = CommandKind::Ingest;
+    out.freshness = freshness_request(args.fresh, FreshnessCommand::Ingest);
     out.positional = if let Some(job) = args.job {
         positional_from_job(job)
     } else {
@@ -709,6 +732,14 @@ fn apply_compose(out: &mut DispatchOutput, args: ComposeArgs) {
         }
         .to_string(),
     ];
+}
+
+fn fresh_action_from_subcommand(action: FreshSubcommand) -> FreshAction {
+    match action {
+        FreshSubcommand::List { json } => FreshAction::List { json },
+        FreshSubcommand::RunNow { id, json } => FreshAction::RunNow { id, json },
+        FreshSubcommand::History { id, limit, json } => FreshAction::History { id, limit, json },
+    }
 }
 
 fn setup_init_positionals(init: SetupInitArgs) -> Vec<String> {

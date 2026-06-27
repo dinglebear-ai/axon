@@ -1,5 +1,19 @@
 # code-search
 
+<!-- BEGIN GENERATED ACTION SURFACES -->
+## Surfaces
+
+| Surface | Entry point |
+|---|---|
+| CLI | `axon code-search ...` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
+
+Parity notes: This action page is missing from docs/reference/api-parity.md.
+<!-- END GENERATED ACTION SURFACES -->
+
+
 Specialized semantic search over a local Git checkout's docs, source, and config
 files.
 

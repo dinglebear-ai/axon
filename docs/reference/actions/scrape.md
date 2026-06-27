@@ -51,6 +51,7 @@ All global flags apply. Key flags:
 | `--output <path>` | — | Write output to a file (single URL only). |
 | `--output-dir <dir>` | `.cache/axon-rust/output` | Base output directory used by embed flow. |
 | `--header "Key: Value"` | — | Repeatable custom HTTP headers for scrape requests. |
+| `--fresh <Nd>` | — | CLI-only: create or update a recurring freshness schedule, for example `--fresh 1d`. |
 | `--json` | `false` | Emit structured JSON per URL on stdout. |
 
 ## Related Config
@@ -80,6 +81,9 @@ axon scrape https://example.com --json
 # Disable embedding
 axon scrape https://example.com --skip-embed
 
+# Keep a page fresh daily
+axon scrape https://modelcontextprotocol.io/specification --fresh 1d
+
 # JSON output from the local in-process CLI path
 axon scrape https://example.com --json
 ```
@@ -90,5 +94,7 @@ axon scrape https://example.com --json
 - `--output` with multiple URLs is rejected to prevent overwrite.
 - Scrape errors are reported per URL; other URLs continue.
 - By default, scrape writes markdown under `<output-dir>/scrape-markdown/runs/<uuid>/` (isolated per run) and embeds once at the end. Each scrape invocation writes into its own run directory so only the current session's files are indexed, not historical outputs. Pass `--skip-embed` to fetch/save without indexing.
+- `--fresh` is CLI-only in v1. It stores a safe replay snapshot and schedules this scrape to run inside the bounded freshness executor started by `axon serve`/`axon mcp`; REST/MCP freshness management is not exposed yet.
+- Freshness schedule creation rejects secret-bearing custom headers such as `Authorization`, `Cookie`, and `X-API-Key` so secrets are not persisted in SQLite history.
 - Scrape artifacts are written through the shared service artifact writer, which rejects paths outside the output root and uses a temporary file plus rename to avoid partial final files.
 - Generic CLI client-to-server forwarding was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon scrape` through HTTP; call the `/v1/scrape` REST route or MCP HTTP endpoint directly when using `axon serve` as a remote service.

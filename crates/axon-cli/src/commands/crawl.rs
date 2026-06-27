@@ -11,6 +11,7 @@ mod sync_backfill_migration_tests;
 mod sync_crawl_migration_tests;
 
 use super::common::parse_urls;
+use super::fresh::create_schedule_from_command;
 use crate::commands::CommandFuture;
 use axon_core::config::{Config, ScrapeFormat};
 use axon_core::logging::{log_info, log_warn};
@@ -30,6 +31,9 @@ pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
     Box::pin(async move {
         if subcommands::maybe_handle_subcommand(cfg, service_context).await? {
             return Ok(());
+        }
+        if cfg.freshness.is_some() {
+            return create_schedule_from_command(cfg, service_context).await;
         }
         if cfg.format == ScrapeFormat::Llm && !cfg.wait {
             return Err(

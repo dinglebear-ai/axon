@@ -181,6 +181,14 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_CODE_SEARCH_ALLOWED_ROOTS",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "AXON_COLLECTION",
         TrustedOperatorBootstrap,
         HostOnly,

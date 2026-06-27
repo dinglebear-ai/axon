@@ -1,5 +1,5 @@
 # Axon CLI (Rust + Spider.rs)
-Last Modified: 2026-06-11
+Last Modified: 2026-06-26
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
@@ -58,6 +58,7 @@ MCP docs:
 | `search <query>` | Web search (SearXNG when `AXON_SEARXNG_URL` set, else Tavily), auto-queues crawl jobs for results | No |
 | `research <query>` | Web research with LLM synthesis. Backend: SearXNG when `AXON_SEARXNG_URL` set, else Tavily. Synthesizes over **full-page content** of the top sources (`AXON_RESEARCH_FULL_CONTENT=false` for snippet-only/fast), then auto-queues bounded crawl/index jobs for result URLs. | No |
 | `embed [input]` | Embed file/dir/URL into Qdrant | Yes (default) |
+| `fresh <sub>` | CLI-only freshness schedules created by `--fresh <Nd>` on scrape/crawl/embed/ingest. Subcommands: `list`, `run-now`, `history`. | No |
 | `memory <sub>` | Persistent agent memory: `remember`, `search`, `show`, `link`, `supersede`, `context` backed by Qdrant content + SQLite metadata/edges | No |
 | `query <text>` | Semantic vector search | No |
 | `code-search <text>` | Local Git checkout semantic code search with foreground freshness | No |
@@ -113,6 +114,7 @@ All flags are `--global` (usable with any subcommand).
 | `--wait <bool>` | bool | `false` | Run synchronously and block until completion. Without this, async commands enqueue and return immediately. |
 | `--yes` | flag | `false` | Skip confirmation prompts (non-interactive mode). |
 | `--json` | flag | `false` | Machine-readable JSON output on stdout. |
+| `--fresh <Nd>` | duration | — | CLI-only schedule creation for `scrape`, `crawl`, `embed`, and `ingest`. Whole days only, `1d` through `366d`. |
 
 #### Crawl & Scrape
 

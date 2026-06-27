@@ -218,49 +218,58 @@
 # Env: TEI_MAX_CLIENT_BATCH_SIZE
 # max-client-batch-size = 128
 
-# Env-only embed throughput/volume controls. These are intentionally listed
-# here for operator discoverability, but are not TOML keys yet.
+[embed]
+# Client-side embed throughput/volume controls. Env vars still override these
+# keys for compatibility, but durable tuning belongs here instead of `.env`.
 #
-# AXON_TEI_MAX_CONCURRENT=8
-#   Process-wide max concurrent Axon client requests to TEI (clamped 1-64).
+# Process-wide max concurrent Axon client requests to native TEI `/embed`.
+# Env: AXON_TEI_MAX_CONCURRENT
+# tei-max-concurrent = 8
 #
-# AXON_EMBED_PREP_CONCURRENCY=<cpu count clamped 2-16>
-#   Concurrent source-document preparation tasks before TEI embedding
-#   (clamped 1-64).
+# Weighted cap on total input chunks concurrently submitted to native TEI.
+# Env: AXON_TEI_MAX_IN_FLIGHT_INPUTS
+# tei-max-in-flight-inputs = 320
 #
-# AXON_EMBED_MAX_CHUNKS_PER_DOC=0
-#   Optional circuit breaker: max chunks allowed through per non-source
-#   document after exact dedupe. Default 0 disables the cap so all unique
-#   chunks remain indexable.
+# Max chunk inputs pooled into one native TEI embedding wave.
+# Env: AXON_EMBED_POOL_MAX_INPUTS
+# pool-max-inputs = 512
 #
-# AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC=0
-#   Optional circuit breaker: max chunks allowed through per source-code-like
-#   document after exact dedupe. Default 0 disables the cap so all unique
-#   chunks remain indexable.
+# Concurrent source-document preparation tasks before embedding.
+# Env: AXON_EMBED_PREP_CONCURRENCY
+# prep-concurrency = 8
 #
-# AXON_EMBED_DEDUPE_EXACT_CHUNKS=true
-#   Drop exact duplicate chunks within one logical document before embedding.
+# Optional circuit breakers after exact dedupe. `0` / unset disables the cap.
+# Env: AXON_EMBED_MAX_CHUNKS_PER_DOC, AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC
+# max-chunks-per-doc = 0
+# max-source-chunks-per-doc = 0
+#
+# Drop exact duplicate chunks within one logical document before embedding.
+# Env: AXON_EMBED_DEDUPE_EXACT_CHUNKS
+# dedupe-exact-chunks = true
 #
 # OpenAI-compatible embedding endpoints, including vLLM served at a `/v1`
 # TEI_URL, use separate client-side defaults so native TEI tuning is not
 # overloaded for a different scheduler shape:
 #
-# AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE=32
-#   Client batch size for OpenAI-compatible `/v1/embeddings` endpoints
-#   (clamped 1-256).
+# Model sent in OpenAI-compatible `/v1/embeddings` payloads.
+# Env: AXON_OPENAI_EMBEDDING_MODEL, fallback VLLM_SERVED_MODEL_NAME
+# openai-model = "axon-qwen3-embedding"
 #
-# AXON_OPENAI_EMBED_MAX_CONCURRENT=32
-#   Process-wide max concurrent client requests to OpenAI-compatible embedding
-#   endpoints (clamped 1-64).
+# Client batch size for OpenAI-compatible `/v1/embeddings` endpoints.
+# Env: AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE
+# openai-max-client-batch-size = 32
 #
-# AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS=512
-#   Weighted cap on total input chunks currently submitted to OpenAI-compatible
-#   embedding endpoints (clamped 1-4096).
+# Process-wide max concurrent client requests to OpenAI-compatible embedding endpoints.
+# Env: AXON_OPENAI_EMBED_MAX_CONCURRENT
+# openai-max-concurrent = 32
 #
-# AXON_OPENAI_EMBED_POOL_MAX_INPUTS=1024
-#   Cross-document pool size for one OpenAI-compatible embedding wave before
-#   rebuilding Qdrant points (clamped 64-65536). On RTX 4070 + vLLM + Qwen3 0.6B,
-#   1024 kept the GPU full without the long queue latency seen at 2048.
+# Weighted cap on total input chunks currently submitted to OpenAI-compatible endpoints.
+# Env: AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS
+# openai-max-in-flight-inputs = 512
+#
+# Cross-document pool size for one OpenAI-compatible embedding wave.
+# Env: AXON_OPENAI_EMBED_POOL_MAX_INPUTS
+# openai-pool-max-inputs = 1024
 
 [workers]
 # Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
@@ -343,6 +352,32 @@
 # crashes or hangs on every attempt from cycling forever. 0 = unlimited.
 # Env: AXON_MAX_JOB_ATTEMPTS
 # max-job-attempts = 5
+
+[freshness]
+# Scheduler sweep interval in seconds. Freshness schedules are created by
+# CLI-only `--fresh <Nd>` on scrape/crawl/embed/ingest and run from long-lived
+# `axon serve` / `axon mcp` processes.
+# Env: AXON_FRESHNESS_TICK_SECS
+# tick-secs = 60
+
+# Lease TTL in seconds for claimed schedules. The scheduler heartbeats during
+# long runs; stale leases are reclaimed on startup/sweep.
+# Env: AXON_FRESHNESS_LEASE_SECS
+# lease-secs = 1800
+
+# Max due schedules leased per sweep. Kept intentionally small to avoid restart
+# catch-up bursts.
+# Env: AXON_FRESHNESS_MAX_DUE_PER_TICK
+# max-due-per-tick = 4
+
+# Process-wide concurrent freshness dispatches. Scheduled scrape runs inline
+# under this semaphore; crawl/embed/ingest enqueue normal jobs.
+# Env: AXON_FRESHNESS_MAX_CONCURRENT_RUNS
+# max-concurrent-runs = 2
+
+# Retain freshness run history for this many days.
+# Env: AXON_FRESHNESS_RUN_RETENTION_DAYS
+# run-retention-days = 90
 
 [workers.adaptive-concurrency]
 # Off by default. When enabled, Axon replaces the fixed crawl semaphore with

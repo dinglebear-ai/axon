@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "6.0.2"
+    "version": "6.1.0"
   },
   "paths": {
     "/healthz": {

@@ -3,6 +3,7 @@ use crate::commands::common::{
     handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors,
     handle_job_list_with_rows, handle_job_recover, handle_job_status, handle_worker_mode,
 };
+use crate::commands::fresh::create_schedule_from_command;
 use crate::commands::job_progress::embed_progress_summary;
 use crate::commands::status::metrics::{
     collection_from_config, display_embed_input, format_error, job_runtime_text,
@@ -119,6 +120,9 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
     Box::pin(async move {
         if maybe_handle_embed_subcommand(cfg, service_context).await? {
             return Ok(());
+        }
+        if cfg.freshness.is_some() {
+            return create_schedule_from_command(cfg, service_context).await;
         }
 
         log_info(&format!(

@@ -89,6 +89,7 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec("TAVILY_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec("AXON_SEARXNG_URL", KeepEnv, Both, None, Canonical, false),
     spec("GITHUB_TOKEN", KeepEnv, Both, None, Canonical, true),
     spec("GITLAB_TOKEN", KeepEnv, Both, None, Canonical, true),
     spec("GITEA_TOKEN", KeepEnv, Both, None, Canonical, true),
