@@ -334,7 +334,7 @@ pub(super) struct TomlCodeSearchSection {
 #[allow(dead_code)]
 pub(super) struct TomlWatchSection {
     pub tick_secs: Option<u64>,
-    pub lease_secs: Option<u64>,
+    pub lease_secs: Option<i64>,
 }
 
 #[derive(Deserialize, Default)]

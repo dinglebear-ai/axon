@@ -5,49 +5,24 @@ pub mod select;
 
 pub use indexable::{is_indexable_doc_path, is_indexable_source_path};
 
-use axon_core::http::normalize_url;
+use axon_core::{config::parse::tuning, http::normalize_url};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::HashSet;
 use text_splitter::{ChunkConfig, MarkdownSplitter};
 
 /// Overlap in characters shared between adjacent chunks.
 pub const CHUNK_OVERLAP: usize = 200;
-const MARKDOWN_CHUNK_MAX: usize = 2000;
-const MARKDOWN_CHUNK_MIN: usize = 500;
-
-fn env_usize_clamped(key: &str, default: usize, min: usize, max: usize) -> usize {
-    std::env::var(key)
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .map(|value| value.clamp(min, max))
-        .unwrap_or(default)
-}
 
 fn markdown_chunk_max_chars() -> usize {
-    env_usize_clamped(
-        "AXON_MARKDOWN_CHUNK_MAX_CHARS",
-        MARKDOWN_CHUNK_MAX,
-        256,
-        16_384,
-    )
+    tuning::chunking_markdown_max_chars()
 }
 
 fn markdown_chunk_min_chars(max_chars: usize) -> usize {
-    env_usize_clamped(
-        "AXON_MARKDOWN_CHUNK_MIN_CHARS",
-        MARKDOWN_CHUNK_MIN.min(max_chars),
-        1,
-        max_chars,
-    )
+    tuning::chunking_markdown_min_chars(max_chars)
 }
 
 fn chunk_overlap_chars(max_chars: usize) -> usize {
-    env_usize_clamped(
-        "AXON_CHUNK_OVERLAP_CHARS",
-        CHUNK_OVERLAP.min(max_chars.saturating_sub(1)),
-        0,
-        max_chars.saturating_sub(1),
-    )
+    tuning::chunking_overlap_chars(max_chars)
 }
 
 #[must_use]

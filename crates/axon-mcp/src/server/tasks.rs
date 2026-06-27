@@ -11,7 +11,7 @@ use crate::schema::{
     AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction,
     parse_axon_request,
 };
-use axon_core::config::ConfigOverrides;
+use axon_core::config::{ConfigOverrides, parse::tuning};
 use axon_jobs::backend::JobKind;
 use axon_services::crawl as crawl_svc;
 use axon_services::embed as embed_svc;
@@ -29,7 +29,6 @@ use uuid::Uuid;
 
 const TASK_LIST_LIMIT: usize = 20;
 const TASK_LIST_MAX_OFFSET: usize = 200;
-const DEFAULT_TASK_RESULT_WAIT_TIMEOUT_SECS: u64 = 300;
 
 pub(super) async fn enqueue_task(
     server: &AxonMcpServer,
@@ -369,12 +368,7 @@ fn parse_uuid(raw: &str) -> Result<Uuid, ErrorData> {
 }
 
 fn task_result_wait_timeout() -> std::time::Duration {
-    let secs = std::env::var("AXON_TASK_RESULT_WAIT_TIMEOUT_SECS")
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_TASK_RESULT_WAIT_TIMEOUT_SECS);
-    std::time::Duration::from_secs(secs)
+    std::time::Duration::from_secs(tuning::mcp_task_result_wait_timeout_secs())
 }
 
 fn parse_cursor_offset(cursor: Option<String>) -> Result<usize, ErrorData> {

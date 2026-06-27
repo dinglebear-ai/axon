@@ -3,6 +3,7 @@ use crate::types::{
     DiscoveredEndpoint, EndpointKind, EndpointOptions, EndpointReport, EndpointSourceKind,
 };
 use axon_core::config::Config;
+use axon_core::config::parse::tuning;
 use axon_core::content::{EndpointExtractOptions, discover_script_sources, extract_endpoints};
 use axon_core::http::{axon_ua, build_client, normalize_url, validate_url_with_dns};
 use futures_util::{StreamExt, stream};
@@ -17,25 +18,13 @@ use url::Url;
 /// Process-wide semaphore limiting concurrent individual bundle HTTP fetches.
 /// Caps total simultaneous bundle requests across all endpoint discovery sessions.
 /// Default cap: 8. Override with `AXON_ENDPOINT_BUNDLE_CONCURRENCY`.
-static BUNDLE_FETCH_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
-    let cap = std::env::var("AXON_ENDPOINT_BUNDLE_CONCURRENCY")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(8)
-        .max(1);
-    Semaphore::new(cap)
-});
+static BUNDLE_FETCH_SEMAPHORE: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(tuning::endpoints_bundle_concurrency()));
 
 /// Process-wide semaphore limiting concurrent Chrome capture sessions.
 /// Default cap: 1 (Chrome is a scarce resource).
-static CHROME_CAPTURE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
-    let cap = std::env::var("AXON_ENDPOINT_CHROME_CONCURRENCY")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(1)
-        .max(1);
-    Semaphore::new(cap)
-});
+static CHROME_CAPTURE_SEMAPHORE: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(tuning::endpoints_chrome_concurrency()));
 
 mod capture;
 use capture::capture_requests_with_chrome;

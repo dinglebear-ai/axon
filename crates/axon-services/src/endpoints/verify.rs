@@ -1,6 +1,7 @@
 use super::{EndpointError, timeout_secs, validate_url_with_dns_timeout};
 use crate::types::{DiscoveredEndpoint, EndpointKind, EndpointReport, EndpointVerification};
 use axon_core::config::Config;
+use axon_core::config::parse::tuning;
 use axon_core::http::{axon_ua, build_client_no_redirect};
 use futures_util::{StreamExt, stream};
 use std::sync::LazyLock;
@@ -20,14 +21,8 @@ const VERIFY_CONCURRENCY: usize = 4;
 /// cap × VERIFY_CONCURRENCY. Set the cap to control session-level parallelism,
 /// not individual probe counts.
 /// Default cap: 16. Override with AXON_ENDPOINT_VERIFY_CONCURRENCY env var.
-static VERIFY_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
-    let cap = std::env::var("AXON_ENDPOINT_VERIFY_CONCURRENCY")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(16)
-        .max(1);
-    Semaphore::new(cap)
-});
+static VERIFY_SEMAPHORE: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(tuning::endpoints_verify_concurrency()));
 
 pub(super) async fn verify_endpoints(cfg: &Config, page_url: &str, report: &mut EndpointReport) {
     let _permit = match VERIFY_SEMAPHORE.acquire().await {
