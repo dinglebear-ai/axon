@@ -1,7 +1,8 @@
 //! Qdrant point upsert with batching and retry.
 
-use crate::ops::qdrant::{env_usize_clamped, qdrant_base};
+use crate::ops::qdrant::qdrant_base;
 use axon_core::config::Config;
+use axon_core::config::parse::tuning;
 use axon_core::http::internal_service_http_client;
 use axon_core::logging::{log_debug, log_warn};
 use futures_util::stream::{self, StreamExt};
@@ -70,8 +71,8 @@ pub async fn qdrant_upsert(
         return Ok(());
     }
     let client = internal_service_http_client()?;
-    let upsert_batch_size = env_usize_clamped("AXON_QDRANT_UPSERT_BATCH_SIZE", 1024, 1, 4096);
-    let upsert_parallelism = env_usize_clamped("AXON_QDRANT_UPSERT_PARALLELISM", 1, 1, 16);
+    let upsert_batch_size = tuning::qdrant_upsert_batch_size();
+    let upsert_parallelism = tuning::qdrant_upsert_parallelism();
     let url = format!(
         "{}/collections/{}/points?wait=true",
         qdrant_base(cfg),

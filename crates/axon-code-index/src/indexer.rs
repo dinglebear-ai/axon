@@ -1,9 +1,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use crate::config::{
-    CodeIndexIdentity, DEFAULT_CHANGED_FILE_BATCH_SIZE, max_indexed_file_bytes, u64_env,
-};
+use crate::config::{CodeIndexIdentity, max_indexed_file_bytes};
 use crate::manifest::{FileDiff, FileManifestEntry, ManifestSnapshot};
 use crate::store::CodeIndexStore;
 use axon_core::config::Config;
@@ -398,11 +396,7 @@ async fn finish_completed_generation_inner(
 }
 
 fn changed_file_batch_size() -> usize {
-    u64_env(
-        "AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE",
-        DEFAULT_CHANGED_FILE_BATCH_SIZE as u64,
-        "files",
-    ) as usize
+    axon_core::config::parse::tuning::code_search_changed_file_batch_size()
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ Axon uses two user-editable files under `~/.axon/`:
 | File | Owns | Does not own |
 |---|---|---|
 | `~/.axon/.env` | Secrets, endpoint URLs, auth/runtime bootstrap, trusted local override paths, Docker Compose interpolation | Non-secret tuning knobs |
-| `~/.axon/config.toml` | Non-secret tuning defaults for ask/search/TEI client/workers | Secrets, endpoint URLs, OAuth client secrets, bearer tokens |
+| `~/.axon/config.toml` | Non-secret tuning defaults for ask/search/LLM model names/TEI client/embed/chunking/Qdrant/workers/code search/watch/endpoints/MCP guards | Secrets, endpoint URLs, OAuth client secrets, bearer tokens |
 
 ## Precedence (highest to lowest)
 
@@ -112,15 +112,22 @@ for each key still overrides the TOML value at the precedence chain above.
 | `[build]` | `allow-fallback-web-assets` | `AXON_ALLOW_FALLBACK_WEB_ASSETS` |
 | `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
 | `[ask]` | `max-context-chars`, `chunk-limit`, `candidate-limit`, `full-docs`, `backfill-chunks`, `doc-fetch-concurrency`, `doc-chunk-limit`, `min-relevance-score`, `authoritative-domains`, `authoritative-boost`, `min-citations-nontrivial` | `AXON_ASK_MAX_CONTEXT_CHARS`, `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_FULL_DOCS`, `AXON_ASK_BACKFILL_CHUNKS`, `AXON_ASK_DOC_FETCH_CONCURRENCY`, `AXON_ASK_DOC_CHUNK_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, `AXON_ASK_AUTHORITATIVE_BOOST`, `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` |
+| `[llm]` | `synthesis-openai-model`, `chat-openai-model`, `synthesis-gemini-model`, `chat-gemini-model`, `synthesis-high-context` | `AXON_SYNTHESIS_OPENAI_MODEL` / `AXON_OPENAI_MODEL`, `AXON_CHAT_OPENAI_MODEL`, `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` / `AXON_HEADLESS_GEMINI_MODEL`, `AXON_CHAT_HEADLESS_GEMINI_MODEL`, `AXON_SYNTHESIS_HIGH_CONTEXT` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[embed]` | `tei-max-concurrent`, `tei-max-in-flight-inputs`, `pool-max-inputs`, `prep-concurrency`, `max-chunks-per-doc`, `max-source-chunks-per-doc`, `dedupe-exact-chunks`, `openai-model`, `openai-max-client-batch-size`, `openai-max-concurrent`, `openai-max-in-flight-inputs`, `openai-pool-max-inputs` | `AXON_TEI_MAX_CONCURRENT`, `AXON_TEI_MAX_IN_FLIGHT_INPUTS`, `AXON_EMBED_POOL_MAX_INPUTS`, `AXON_EMBED_PREP_CONCURRENCY`, `AXON_EMBED_MAX_CHUNKS_PER_DOC`, `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC`, `AXON_EMBED_DEDUPE_EXACT_CHUNKS`, `AXON_OPENAI_EMBEDDING_MODEL`, `AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE`, `AXON_OPENAI_EMBED_MAX_CONCURRENT`, `AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS`, `AXON_OPENAI_EMBED_POOL_MAX_INPUTS` |
+| `[chunking]` | `markdown-max-chars`, `markdown-min-chars`, `overlap-chars` | `AXON_MARKDOWN_CHUNK_MAX_CHARS`, `AXON_MARKDOWN_CHUNK_MIN_CHARS`, `AXON_CHUNK_OVERLAP_CHARS` |
+| `[qdrant]` | `upsert-batch-size`, `upsert-parallelism`, `bulk-load`, indexing thresholds, HNSW construction, payload index profile, memory flags | `AXON_QDRANT_*` tuning env vars |
+| `[code-search]` | `freshness-ttl-secs`, `reindex-timeout-secs`, `max-file-bytes`, `changed-file-batch-size` | `AXON_CODE_SEARCH_*` |
+| `[watch]` | `tick-secs`, `lease-secs` | `AXON_WATCH_TICK_SECS`, `AXON_WATCH_LEASE_SECS` |
+| `[endpoints]` | `bundle-concurrency`, `chrome-concurrency`, `verify-concurrency`, `probe-concurrency` | `AXON_ENDPOINT_*_CONCURRENCY` |
+| `[mcp]`, `[mcp.embed]` | `task-result-wait-timeout-secs`, local embed file guards | `AXON_TASK_RESULT_WAIT_TIMEOUT_SECS`, `AXON_MCP_EMBED_MAX_LOCAL_*` |
 | `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs`, `concurrency-limit`, `crawl-concurrency-limit`, `backfill-concurrency-limit`, `watchdog-stale-timeout-secs`, `watchdog-confirm-secs`, `watchdog-sweep-secs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS`, `AXON_JOB_STALE_TIMEOUT_SECS`, `AXON_JOB_STALE_CONFIRM_SECS`, `AXON_WATCHDOG_SWEEP_SECS` |
 | `[freshness]` | `tick-secs`, `lease-secs`, `max-due-per-tick`, `max-concurrent-runs`, `run-retention-days` | `AXON_FRESHNESS_TICK_SECS`, `AXON_FRESHNESS_LEASE_SECS`, `AXON_FRESHNESS_MAX_DUE_PER_TICK`, `AXON_FRESHNESS_MAX_CONCURRENT_RUNS`, `AXON_FRESHNESS_RUN_RETENTION_DAYS` |
 | `[workers.adaptive-concurrency]` | `enabled`, `min`, `max` | TOML-only in this release |
 | `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries`, `remote-local-policy` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
 | `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `batch-timeout-secs`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | `AXON_SCRAPE_BATCH_TIMEOUT_SECS` plus ladder env vars |
 
-URLs, API keys, secrets, and LLM runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` and `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`) for llama.cpp/OpenAI-compatible endpoints, or `AXON_LLM_BACKEND=codex-app-server` to spawn Codex CLI app-server completions over stdio. `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, secrets, and LLM runtime/bootstrap controls belong in `~/.axon/.env` — not in `config.toml`. Non-secret model names and tuning knobs belong in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the default LLM synthesis path; set `AXON_LLM_BACKEND=openai-compat` with `AXON_OPENAI_BASE_URL` for llama.cpp/OpenAI-compatible endpoints, or `AXON_LLM_BACKEND=codex-app-server` to spawn Codex CLI app-server completions over stdio. See `config.example.toml` / `config.toml.example` for the full annotated example with defaults.
 
 `[build] allow-fallback-web-assets = true` is the preferred local-development
 way to let the Rust build embed the placeholder web panel when `apps/web/out`
@@ -210,10 +217,10 @@ The CLI may search the current Git checkout directly.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_CODE_SEARCH_ALLOWED_ROOTS` | -- | Colon- or comma-separated filesystem roots allowed for MCP `code_search` `cwd` resolution. `/` and `HOME` are rejected. |
-| `AXON_CODE_SEARCH_FRESHNESS_TTL_SECS` | `30` | Process-local freshness cache TTL before a new manifest check is required. |
-| `AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS` | `15` | Foreground refresh timeout. On timeout, stale vectors are returned with a freshness warning; no background refresh continues in v1. |
-| `AXON_CODE_SEARCH_MAX_FILE_BYTES` | `10485760` | Max local source file size considered by the manifest and embed pass. Larger files are skipped. |
-| `AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE` | `50` | Changed-file batch size for local-code embedding. |
+| `code-search.freshness-ttl-secs` / `AXON_CODE_SEARCH_FRESHNESS_TTL_SECS` | `30` | Process-local freshness cache TTL before a new manifest check is required. |
+| `code-search.reindex-timeout-secs` / `AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS` | `300` | Foreground refresh timeout. On timeout, stale vectors are returned with a freshness warning; no background refresh continues in v1. |
+| `code-search.max-file-bytes` / `AXON_CODE_SEARCH_MAX_FILE_BYTES` | `10485760` | Max local source file size considered by the manifest and embed pass. Larger files are skipped. |
+| `code-search.changed-file-batch-size` / `AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE` | `5` | Changed-file batch size for local-code embedding. |
 
 ### TEI embedding
 
@@ -262,7 +269,7 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 | `TEI_MAX_CONCURRENT_REQUESTS` | `512` | Max concurrent TEI server requests |
 | `TEI_MAX_BATCH_TOKENS` | `196608` | Max TEI server batch tokens for Qwen3-Embedding-0.6B on the RTX 4070 profile; `245760` OOM'd during warmup in local testing |
 | `TEI_MAX_BATCH_REQUESTS` | `512` | Max TEI server batch requests; keeps concurrent docs batches from tripping overload at the old 256-input boundary |
-| `TEI_SERVER_MAX_CLIENT_BATCH_SIZE` | `256` | Max TEI server client batch size. Distinct from Axon's `TEI_MAX_CLIENT_BATCH_SIZE` client tuning knob; current RTX 4070/Qwen docs benchmark prefers client batch `128`. |
+| `TEI_SERVER_MAX_CLIENT_BATCH_SIZE` | `256` | Max TEI server client batch size. Distinct from Axon's `tei.max-client-batch-size` client tuning knob. |
 | `TEI_POOLING` | `last-token` | Pooling strategy |
 | `TEI_TOKENIZATION_WORKERS` | `20` | Tokenization workers |
 | `HF_TOKEN` | -- | HuggingFace token for gated models |
@@ -273,13 +280,11 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 |----------|---------|-------------|
 | `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Supported: `gemini-headless`, `openai-compat`, `codex-app-server`. |
 | `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. Do not include `/chat/completions`; Axon appends it. |
-| `AXON_SYNTHESIS_OPENAI_MODEL` | -- | Synthesis model for the OpenAI-compatible endpoint (ask/evaluate/suggest/extract/research). Required when `AXON_LLM_BACKEND=openai-compat`. |
-| `AXON_OPENAI_MODEL` | -- | Legacy alias for `AXON_SYNTHESIS_OPENAI_MODEL`. |
-| `AXON_CHAT_OPENAI_MODEL` | -- | Direct-chat model override. Empty = use the synthesis model. |
+| `llm.synthesis-openai-model` / `AXON_SYNTHESIS_OPENAI_MODEL` | -- | Synthesis model for the OpenAI-compatible endpoint (ask/evaluate/suggest/extract/research). Required when `AXON_LLM_BACKEND=openai-compat`. Legacy env alias: `AXON_OPENAI_MODEL`. |
+| `llm.chat-openai-model` / `AXON_CHAT_OPENAI_MODEL` | -- | Direct-chat model override. Empty = use the synthesis model. |
 | `AXON_OPENAI_API_KEY` | -- | Optional bearer token for OpenAI-compatible endpoints. Leave unset for local llama.cpp servers that do not require auth. |
-| `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | -- | Gemini synthesis model override (ask/evaluate/suggest/extract/research). Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
-| `AXON_HEADLESS_GEMINI_MODEL` | -- | Legacy alias for `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL`. |
-| `AXON_CHAT_HEADLESS_GEMINI_MODEL` | -- | Direct-chat Gemini model override. Empty = use the synthesis model. |
+| `llm.synthesis-gemini-model` / `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | -- | Gemini synthesis model override (ask/evaluate/suggest/extract/research). Legacy env alias: `AXON_HEADLESS_GEMINI_MODEL`. |
+| `llm.chat-gemini-model` / `AXON_CHAT_HEADLESS_GEMINI_MODEL` | -- | Direct-chat Gemini model override. Empty = use the synthesis model. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
 | `AXON_CODEX_CMD` | `codex` | Host-only Codex CLI command used when `AXON_LLM_BACKEND=codex-app-server`. Do not put host paths in the shared compose `.env`; production compose clears this variable inside the container. Explicit paths must be executable and non-symlinked. |
@@ -307,15 +312,15 @@ temporary overrides and legacy scripts.
 | `workers.embed-doc-timeout-secs` | `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout (clamped 30-3600) |
 | `workers.queue-summary-secs` | `AXON_QUEUE_SUMMARY_SECS` | `30` | Queue summary logging interval (0 disables, clamped 0-3600) |
 | `workers.qdrant-point-buffer` | `AXON_QDRANT_POINT_BUFFER` | `1024` | Buffered Qdrant points before flush (clamped 128-16384) |
-| `AXON_QDRANT_UPSERT_BATCH_SIZE` | env only | `1024` | Points per Qdrant upsert request (clamped 1-4096) |
-| `AXON_QDRANT_UPSERT_PARALLELISM` | env only | `1` | Concurrent Qdrant upsert requests per flush (clamped 1-16); try `2-4` with smaller batches for large remote imports |
-| `AXON_QDRANT_BULK_LOAD` | env only | `false` | For fresh collections, create with high indexing threshold and restore after the embed pipeline finishes |
-| `AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB` | env only | `10485760` | Temporary indexing threshold when `AXON_QDRANT_BULK_LOAD=true` |
-| `AXON_QDRANT_INDEXING_THRESHOLD_KB` | env only | `20000` | Restored indexing threshold after a bulk load |
-| `AXON_QDRANT_HNSW_M` | env only | `32` | HNSW graph connectivity for newly-created collections (clamped 8-64) |
-| `AXON_QDRANT_HNSW_EF_CONSTRUCT` | env only | `256` | HNSW construction effort for newly-created collections (clamped 64-512) |
-| `AXON_QDRANT_PAYLOAD_INDEX_PROFILE` | env only | `full` | Payload index set for collection init: `full` creates all known indexes; `core` creates only URL/domain/source/schema/time indexes |
-| `AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM` | env only | `16` | Concurrent payload-index PUTs during collection init (clamped 1-64) |
+| `qdrant.upsert-batch-size` | `AXON_QDRANT_UPSERT_BATCH_SIZE` | `1024` | Points per Qdrant upsert request (clamped 1-4096) |
+| `qdrant.upsert-parallelism` | `AXON_QDRANT_UPSERT_PARALLELISM` | `1` | Concurrent Qdrant upsert requests per flush (clamped 1-16); try `2-4` with smaller batches for large remote imports |
+| `qdrant.bulk-load` | `AXON_QDRANT_BULK_LOAD` | `false` | For fresh collections, create with high indexing threshold and restore after the embed pipeline finishes |
+| `qdrant.bulk-indexing-threshold-kb` | `AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB` | `10485760` | Temporary indexing threshold when bulk load is enabled |
+| `qdrant.indexing-threshold-kb` | `AXON_QDRANT_INDEXING_THRESHOLD_KB` | `20000` | Restored indexing threshold after a bulk load |
+| `qdrant.hnsw-m` | `AXON_QDRANT_HNSW_M` | `32` | HNSW graph connectivity for newly-created collections (clamped 8-64) |
+| `qdrant.hnsw-ef-construct` | `AXON_QDRANT_HNSW_EF_CONSTRUCT` | `256` | HNSW construction effort for newly-created collections (clamped 64-512) |
+| `qdrant.payload-index-profile` | `AXON_QDRANT_PAYLOAD_INDEX_PROFILE` | `full` | Payload index set for collection init: `full` creates all known indexes; `core` creates only URL/domain/source/schema/time indexes |
+| `qdrant.payload-index-parallelism` | `AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM` | `16` | Concurrent payload-index PUTs during collection init (clamped 1-64) |
 | `workers.job-wait-timeout-secs` | `AXON_JOB_WAIT_TIMEOUT_SECS` | `300` | Timeout for `--wait true` job polling (clamped 30-3600) |
 | `workers.concurrency-limit` | -- | profile default | Override crawl and backfill concurrency at once |
 | `workers.crawl-concurrency-limit` | -- | profile default | Override crawl concurrency |
@@ -425,8 +430,16 @@ Queue caps now live in `~/.axon/config.toml` under `[workers]`.
 | `workers.max-pending-extract-jobs` | `AXON_MAX_PENDING_EXTRACT_JOBS` | `50` | Extract queue cap (0 = unlimited) |
 | `workers.max-pending-ingest-jobs` | `AXON_MAX_PENDING_INGEST_JOBS` | `50` | Ingest queue cap (0 = unlimited) |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `embed.pool-max-inputs` | `512` | Max chunk inputs pooled into one TEI group before client-side sub-batching |
+| `embed.prep-concurrency` | CPU count clamped 2-16 | Max concurrent source-document preparation tasks before embedding |
+| `chunking.markdown-min-chars` | `500` | Minimum target markdown chunk size for structural splitting |
+| `chunking.markdown-max-chars` | `2000` | Maximum prose/markdown chunk size in characters |
+| `chunking.overlap-chars` | `200` | Character overlap shared by adjacent prose/markdown chunks |
+| `embed.max-chunks-per-doc` | `0` | Optional circuit breaker: max chunks per non-source document after exact dedupe (`0` disables) |
+| `embed.max-source-chunks-per-doc` | `0` | Optional circuit breaker: max chunks per source-code-like document after exact dedupe (`0` disables) |
+| `embed.dedupe-exact-chunks` | `true` | Enable exact duplicate chunk removal within a single document |
 | `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
 | `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Grace period before stale job reclaim |
 | `AXON_WATCH_TICK_SECS` | `15` | Watch scheduler sweep interval, seconds (min 1) |

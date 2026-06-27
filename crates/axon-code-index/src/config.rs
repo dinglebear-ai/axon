@@ -2,51 +2,18 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 pub(crate) use axon_core::CODE_INDEX_VERSION;
-pub(crate) const DEFAULT_FRESHNESS_TTL: Duration = Duration::from_secs(30);
-pub(crate) const DEFAULT_REINDEX_TIMEOUT: Duration = Duration::from_secs(300);
-pub(crate) const DEFAULT_CHANGED_FILE_BATCH_SIZE: usize = 5;
-pub(crate) const MAX_INDEXED_FILE_BYTES: u64 = 10 * 1024 * 1024;
+use axon_core::config::parse::tuning;
 
 pub(crate) fn freshness_ttl() -> Duration {
-    duration_secs_env("AXON_CODE_SEARCH_FRESHNESS_TTL_SECS", DEFAULT_FRESHNESS_TTL)
+    Duration::from_secs(tuning::code_search_freshness_ttl_secs())
 }
 
 pub(crate) fn reindex_timeout() -> Duration {
-    duration_secs_env(
-        "AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS",
-        DEFAULT_REINDEX_TIMEOUT,
-    )
+    Duration::from_secs(tuning::code_search_reindex_timeout_secs())
 }
 
 pub(crate) fn max_indexed_file_bytes() -> u64 {
-    u64_env(
-        "AXON_CODE_SEARCH_MAX_FILE_BYTES",
-        MAX_INDEXED_FILE_BYTES,
-        "bytes",
-    )
-}
-
-fn duration_secs_env(name: &str, fallback: Duration) -> Duration {
-    Duration::from_secs(u64_env(name, fallback.as_secs(), "seconds"))
-}
-
-pub(crate) fn u64_env(name: &str, fallback: u64, unit: &'static str) -> u64 {
-    match std::env::var(name) {
-        Ok(value) => match value.parse::<u64>() {
-            Ok(parsed) if parsed > 0 => parsed,
-            _ => {
-                tracing::warn!(
-                    env_var = name,
-                    value,
-                    default = fallback,
-                    unit,
-                    "invalid code search environment variable; using default"
-                );
-                fallback
-            }
-        },
-        Err(_) => fallback,
-    }
+    tuning::code_search_max_file_bytes()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

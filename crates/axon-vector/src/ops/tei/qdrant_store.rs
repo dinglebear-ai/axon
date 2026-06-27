@@ -1,5 +1,6 @@
-use crate::ops::qdrant::{env_usize_clamped, qdrant_base};
+use crate::ops::qdrant::qdrant_base;
 use axon_core::config::Config;
+use axon_core::config::parse::tuning;
 use axon_core::http::internal_service_http_client;
 use axon_core::logging::{log_debug, log_info, log_warn};
 use reqwest::StatusCode;
@@ -319,47 +320,24 @@ fn validate_existing_dim(
 /// `AXON_QDRANT_QUANTIZATION_ALWAYS_RAM` (default `true`).
 /// Lever B (axon_rust-o9y2): trade ~5-6 GiB RAM for higher query latency.
 fn memory_settings() -> (bool, bool) {
-    let hnsw_on_disk = std::env::var("AXON_QDRANT_HNSW_ON_DISK")
-        .ok()
-        .is_some_and(|v| matches!(v.trim(), "1" | "true" | "yes"));
-    let always_ram = std::env::var("AXON_QDRANT_QUANTIZATION_ALWAYS_RAM")
-        .ok()
-        .is_none_or(|v| !matches!(v.trim(), "0" | "false" | "no"));
-    (hnsw_on_disk, always_ram)
+    (
+        tuning::qdrant_hnsw_on_disk(),
+        tuning::qdrant_quantization_always_ram(),
+    )
 }
 
 fn hnsw_build_settings() -> (usize, usize) {
-    let m = env_usize_clamped("AXON_QDRANT_HNSW_M", 32, 8, 64);
-    let ef_construct = env_usize_clamped("AXON_QDRANT_HNSW_EF_CONSTRUCT", 256, 64, 512);
-    (m, ef_construct)
-}
-
-fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key).ok().map_or(default, |v| {
-        matches!(
-            v.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        )
-    })
+    (tuning::qdrant_hnsw_m(), tuning::qdrant_hnsw_ef_construct())
 }
 
 fn bulk_indexing_thresholds() -> Option<(usize, usize)> {
-    if !env_bool("AXON_QDRANT_BULK_LOAD", false) {
+    if !tuning::qdrant_bulk_load() {
         return None;
     }
-    let bulk = env_usize_clamped(
-        "AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB",
-        10_485_760,
-        20_000,
-        1_073_741_824,
-    );
-    let restore = env_usize_clamped(
-        "AXON_QDRANT_INDEXING_THRESHOLD_KB",
-        20_000,
-        1,
-        1_073_741_824,
-    );
-    Some((bulk, restore))
+    Some((
+        tuning::qdrant_bulk_indexing_threshold_kb(),
+        tuning::qdrant_indexing_threshold_kb(),
+    ))
 }
 
 /// Ensure the collection exists and is configured with the right vector schema.
