@@ -246,6 +246,7 @@ fn help_payload() -> Value {
             "retrieve": ["retrieve"],
             "search": ["search"],
             "map": ["map"],
+            "purge": ["purge"],
             "doctor": ["doctor"],
             "domains": ["domains"],
             "sources": ["sources"],
