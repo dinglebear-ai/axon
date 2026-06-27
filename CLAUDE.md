@@ -12,6 +12,21 @@ Web crawl, scrape, extract, embed, and query — all in one binary backed by a s
 - Do not merge `marketplace-no-mcp` into `main` by default, and do not delete it
   as stale unless Jacob explicitly retires the no-MCP marketplace variant.
 
+## Verification Scope Guard
+
+- Before running tests, builds, CI reruns, or other expensive validation, classify
+  the changed-file surface and pick the smallest check that proves the change.
+- `.agents/skills/**`, `docs/sessions/**`, and prose-only docs changes do not
+  justify full Rust, web, Android, Docker, or release CI. Use structural checks
+  instead, such as file counts, required `SKILL.md` presence, symlink checks, or
+  targeted formatter/parser validation for the files touched.
+- Run broader tests only when code, workflow, schema, generated artifacts,
+  package manifests, or runtime configuration changed, or when Jacob explicitly
+  asks for a build/test/CI pass.
+- If a workflow skill asks for baseline tests but the change is non-code, state
+  the narrower verification choice and why. Do not spend minutes compiling Axon
+  just to prove copied agent skills exist.
+
 ## Quick Start
 
 > **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime.

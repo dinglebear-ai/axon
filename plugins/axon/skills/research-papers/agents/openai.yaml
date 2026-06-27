@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Research Papers"
+  short_description: "Find, ingest, and summarize research papers and related sources."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

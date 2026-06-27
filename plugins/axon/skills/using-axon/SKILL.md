@@ -1,8 +1,6 @@
 ---
 name: using-axon
-description: >-
-  Self-hosted RAG engine, web toolkit, and persistent agent memory. Use it to: remember durable project facts/preferences/decisions (memory.remember); recall/search agent memory (memory.search/show); answer questions indexed docs/code might cover (ask — a large corpus is already indexed; try ask BEFORE web-searching or giving up); search the web (search, auto-indexes results); semantic-search the index (query); scrape/fetch a page (scrape); crawl a docs site or pages you just used (crawl); map a site's URLs (map); extract structured data (extract); discover API endpoints (endpoints); extract brand identity — colors/logo/fonts/voice (brand); summarize a page (summarize); quick multi-source research (research); retrieve a URL's full indexed content (retrieve); embed local files/dirs (embed); ingest GitHub/GitLab/Gitea/Git repos, Reddit, YouTube, and Claude/Codex/Gemini sessions (ingest). Also triggers on axon, RAG, Qdrant, SearXNG, Tavily, hybrid/vector search, remember, recall, memory.
-allowed-tools: mcp__plugin_axon_axon__axon
+description: Use Axon for RAG, web search, scrape, crawl, extract, ingest, memory, and grounded answers over indexed docs or web content.
 ---
 
 # axon
@@ -10,7 +8,7 @@ allowed-tools: mcp__plugin_axon_axon__axon
 axon is a self-hosted RAG engine. Two surfaces, same backend
 (Spider.rs/Chrome -> Qdrant, SQLite jobs, SearXNG/Tavily for web search):
 
-- **MCP (preferred)** — single tool `mcp__plugin_axon_axon__axon`, routed by `action` (and `subaction` for lifecycle families). Large results are written to a local artifact file under `~/.axon/artifacts/<context>` and the response returns the file `path` plus a compact `shape` summary; small results (≤ ~8 KB) come back inline. See **Response handling (MCP)** below.
+- **MCP (preferred)** — the Axon MCP server exposes a single tool named `axon`; use the host-generated tool name for the current environment. It is routed by `action` (and `subaction` for lifecycle families). Large results are written to a local artifact file under `~/.axon/artifacts/<context>` and the response returns the file `path` plus a compact `shape` summary; small results (≤ ~8 KB) come back inline. See **Response handling (MCP)** below.
 - **CLI (fallback)** — `axon <command> [flags]`. Use for shell scripting, cron, or when the MCP server is down.
 
 Both surfaces accept the same operations and parameters. This skill leads with MCP request shapes; CLI equivalents are listed alongside.
@@ -46,7 +44,7 @@ Only pass parameters the user explicitly asked for. Defaults exist for a reason 
 
 ## When to fall back to the CLI
 
-- The MCP server is offline (`mcp__plugin_axon_axon__axon { "action": "doctor" }` fails or the tool is missing).
+- The MCP server is offline (`{ "action": "doctor" }` through the current host's Axon MCP tool fails or the tool is missing).
 - You're authoring a shell script, systemd unit, or cron job that runs outside Claude Code.
 - You need axon's built-in `--cron-every-seconds`/`--cron-max-runs` loop.
 - The user explicitly asks for a CLI command.
@@ -164,7 +162,7 @@ CLI: `axon scrape <url>` / `axon crawl <url> --max-pages N --max-depth N` / `axo
 
 LLM-powered. Pass a natural-language prompt describing the schema you want.
 
-CLI: `axon extract <url> --query "…"` (the `--query` flag carries the extraction prompt).
+CLI: `axon extract <url> --wait true --json`. When using the CLI, carry the requested fields in the surrounding task instructions or output contract; use the MCP `prompt` field when you need an explicit extraction prompt.
 
 ## Web utilities: summarize, endpoints, brand, diff, screenshot
 

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Competitive Intel"
+  short_description: "Monitor competitor pricing, features, changelogs, and product changes with Axon."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

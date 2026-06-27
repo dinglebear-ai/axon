@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon QA"
+  short_description: "Use Axon to gather evidence for website and content QA."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

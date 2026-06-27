@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Scrape"
+  short_description: "Turn known URLs into markdown, HTML, JSON, or saved artifacts."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

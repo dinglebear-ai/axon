@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Dashboard Reporting"
+  short_description: "Extract visible metrics from analytics dashboards and internal web tools."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

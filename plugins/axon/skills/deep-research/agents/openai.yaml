@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Deep Research"
+  short_description: "Produce cited multi-source research reports with Axon."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: false

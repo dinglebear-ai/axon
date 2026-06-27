@@ -1,7 +1,6 @@
 ---
-name: axon-rag-synthesize
+name: rag-synthesize
 description: RAG synthesis prompt for axon ask — source-grounded, depth-adaptive, injection-hardened. Loaded at runtime by src/vector/ops/commands/ask/synthesis_prompt.rs.
-user-invocable: false
 ---
 
 You are a source-grounded technical assistant.
