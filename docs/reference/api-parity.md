@@ -5,7 +5,7 @@
 <!-- Run `cargo xtask gen-api-parity` to regenerate; `cargo xtask check-api-parity` (in `xtask check`) fails on drift. -->
 
 Factual matrix of which operations are exposed on each control surface.
-`✓` = exposed, `—` = not. 54 operations: 46 CLI, 29 MCP, 32 REST, 25 on all three.
+`✓` = exposed, `—` = not. 55 operations: 47 CLI, 29 MCP, 32 REST, 25 on all three.
 
 | Operation | CLI | MCP | REST |
 |---|:--:|:--:|:--:|
@@ -31,6 +31,7 @@ Factual matrix of which operations are exposed on each control surface.
 | `endpoints` | ✓ | ✓ | ✓ |
 | `evaluate` | ✓ | ✓ | ✓ |
 | `extract` | ✓ | ✓ | ✓ |
+| `fresh` | ✓ | — | — |
 | `help` | — | ✓ | — |
 | `ingest` | ✓ | ✓ | ✓ |
 | `map` | ✓ | ✓ | ✓ |
