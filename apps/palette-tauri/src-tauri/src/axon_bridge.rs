@@ -366,6 +366,7 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
                 | "/v1/diff"
                 | "/v1/screenshot"
                 | "/v1/dedupe"
+                | "/v1/purge"
                 | "/v1/watch"
                 | "/v1/ingest/sessions/prepared"
         ) | (

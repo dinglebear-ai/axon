@@ -8,10 +8,16 @@ pub fn source_from_mcp_request(
 ) -> Result<IngestSource, String> {
     use axon_api::mcp_schema::IngestSourceType;
 
-    let source_type = req
-        .source_type
-        .clone()
-        .ok_or_else(|| "source_type is required for ingest.start".to_string())?;
+    // No explicit source_type → auto-detect from the raw target via the canonical
+    // shared classifier. This is the single source of truth across CLI/MCP/REST/
+    // palette: clients send a bare target (`owner/repo`, `gitlab.com/g/p`,
+    // `r/rust`, a YouTube URL, a feed) and never reimplement classification.
+    let Some(source_type) = req.source_type.clone() else {
+        let target = required_ingest_target(req, "target")?;
+        let include_source = req.include_source.unwrap_or(cfg.github_include_source);
+        return ingest::classify::classify_target(&target, include_source)
+            .map_err(|err| format!("could not auto-detect ingest source for '{target}': {err}"));
+    };
     match source_type {
         IngestSourceType::Github => {
             let repo = validate_github_ingest_target(&required_ingest_target(req, "target repo")?)?;

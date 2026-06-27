@@ -2430,6 +2430,74 @@ textarea {
   border: 1px solid var(--aurora-neutral-border);
 }
 
+/* Live-refresh badge for the auto-polling zero-input views (stats/status). */
+.output-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 6px 0 8px;
+  border-radius: 7px;
+  font-family: var(--aurora-font-mono);
+  font-size: 10.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  color: var(--aurora-success-foreground);
+  background: var(--aurora-success-surface);
+  border: 1px solid var(--aurora-success-border);
+}
+
+.output-live-paused {
+  color: var(--aurora-neutral-foreground);
+  background: var(--aurora-neutral-surface);
+  border-color: var(--aurora-neutral-border);
+}
+
+.output-live-toggle,
+.output-live-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 5px var(--aurora-success);
+  }
+  50% {
+    opacity: 0.5;
+    box-shadow: 0 0 10px 1.5px color-mix(in srgb, var(--aurora-success) 60%, transparent);
+  }
+}
+
+.output-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--aurora-success);
+  box-shadow: 0 0 6px var(--aurora-success);
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+.output-live-ago {
+  opacity: 0.72;
+  font-weight: 550;
+}
+
+.output-live-refresh {
+  opacity: 0.8;
+}
+
+.output-live-refresh:hover {
+  opacity: 1;
+}
+
 .output-meta-strip {
   display: flex;
   flex-wrap: wrap;
@@ -3103,9 +3171,430 @@ textarea {
 }
 
 .stats-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 11px;
   color: var(--aurora-text-muted);
   font-family: var(--aurora-font-mono);
   font-size: 12px;
+}
+
+.stats-spark-caption {
+  padding-bottom: 2px;
+}
+
+.spark-svg {
+  display: block;
+  overflow: visible;
+}
+
+.spark-bar {
+  fill: color-mix(in srgb, var(--aurora-accent-strong) 45%, transparent);
+}
+
+.spark-bar-last {
+  fill: var(--aurora-accent-strong);
+}
+
+.metric-delta {
+  margin-left: 7px;
+  color: var(--aurora-success-foreground);
+  font-family: var(--aurora-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* Status totals strip (true per-family DB counts). */
+.status-totals {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.status-total-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 11px;
+  background: var(--aurora-control-surface);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 10px;
+}
+
+.status-total-cell span {
+  color: var(--aurora-text-muted);
+  font-size: 9.5px;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.status-total-cell strong {
+  color: var(--aurora-text-primary);
+  font-family: var(--aurora-font-display);
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-job-clickable {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.status-job-clickable:hover {
+  border-color: color-mix(in srgb, var(--aurora-accent) 50%, var(--aurora-border-default));
+  background: color-mix(in srgb, var(--aurora-accent) 7%, var(--aurora-control-surface));
+}
+
+/* Doctor view */
+.doctor-view,
+.sources-view,
+.domains-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.doctor-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.doctor-summary-meta {
+  color: var(--aurora-text-muted);
+  font-size: 12.5px;
+}
+
+.doctor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.doctor-service-list,
+.doctor-cap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.doctor-service {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--aurora-control-surface);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 10px;
+  font-size: 12.5px;
+}
+
+.doctor-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.doctor-dot-ok {
+  background: var(--aurora-success);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--aurora-success) 60%, transparent);
+}
+
+.doctor-dot-bad {
+  background: var(--aurora-error);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--aurora-error) 60%, transparent);
+}
+
+.doctor-service-name {
+  flex: 0 0 auto;
+  min-width: 96px;
+  color: var(--aurora-text-primary);
+  font-family: var(--aurora-font-mono);
+  font-weight: 650;
+}
+
+.doctor-service-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--aurora-text-muted);
+  font-family: var(--aurora-font-mono);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doctor-service-latency {
+  flex: 0 0 auto;
+  color: var(--aurora-text-muted);
+  font-family: var(--aurora-font-mono);
+  font-size: 11px;
+}
+
+.doctor-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--aurora-border-default);
+  background: var(--aurora-control-surface);
+}
+
+.doctor-cap-bad {
+  border-color: var(--aurora-warn-border);
+  background: var(--aurora-warn-surface);
+}
+
+.doctor-cap-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--aurora-text-primary);
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.doctor-cap-ok .doctor-cap-head {
+  color: var(--aurora-success-foreground);
+}
+
+.doctor-cap-bad .doctor-cap-head {
+  color: var(--aurora-warn-foreground);
+}
+
+.doctor-cap-impact,
+.doctor-cap-remedy {
+  color: var(--aurora-text-muted);
+  font-size: 11.5px;
+  padding-left: 21px;
+}
+
+.doctor-cap-remedy {
+  color: var(--aurora-warn-foreground);
+}
+
+.doctor-pipelines,
+.domains-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.doctor-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-family: var(--aurora-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.doctor-pill-ok {
+  color: var(--aurora-success-foreground);
+  background: var(--aurora-success-surface);
+  border: 1px solid var(--aurora-success-border);
+}
+
+.doctor-pill-bad {
+  color: var(--aurora-neutral-foreground);
+  background: var(--aurora-neutral-surface);
+  border: 1px solid var(--aurora-neutral-border);
+}
+
+.doctor-recs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doctor-recs li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--aurora-text-secondary);
+  font-size: 12.5px;
+}
+
+.doctor-recs svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--aurora-warn);
+}
+
+/* Sources + domains views */
+.sources-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Aurora Input owns the field chrome; this just lets it grow in the toolbar. */
+.sources-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.sources-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 9px;
+  color: var(--aurora-text-muted);
+  font-family: var(--aurora-font-mono);
+  font-size: 11.5px;
+}
+
+.sources-toggle-on {
+  color: var(--aurora-accent-strong);
+  border-color: color-mix(in srgb, var(--aurora-accent) 45%, var(--aurora-border-default));
+}
+
+.sources-summary {
+  display: flex;
+  gap: 16px;
+  color: var(--aurora-text-muted);
+  font-size: 12px;
+}
+
+.sources-summary strong {
+  color: var(--aurora-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.sources-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sources-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 11px;
+  background: var(--aurora-control-surface);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 9px;
+}
+
+.sources-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--aurora-text-primary);
+  font-family: var(--aurora-font-mono);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sources-chunks {
+  flex: 0 0 auto;
+  color: var(--aurora-text-muted);
+  font-family: var(--aurora-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sources-row-actions {
+  display: flex;
+  gap: 6px;
+  color: var(--aurora-text-muted);
+}
+
+.sources-row-actions :hover {
+  color: var(--aurora-accent-strong);
+}
+
+.sources-action-danger:hover {
+  color: var(--aurora-error-foreground);
+}
+
+.domains-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--aurora-control-surface);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 10px;
+}
+
+.domains-list {
+  flex-direction: column;
+}
+
+.domains-row-clickable {
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+
+.domains-row-clickable:hover {
+  border-color: color-mix(in srgb, var(--aurora-accent) 50%, var(--aurora-border-default));
+}
+
+.domains-bar {
+  position: relative;
+  flex: 0 0 90px;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--aurora-border-default) 60%, transparent);
+  overflow: hidden;
+}
+
+.domains-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--aurora-accent);
+}
+
+.domains-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--aurora-text-primary);
+  font-family: var(--aurora-font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domains-count {
+  flex: 0 0 auto;
+  color: var(--aurora-text-muted);
+  font-family: var(--aurora-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.domains-chevron {
+  flex: 0 0 auto;
+  color: var(--aurora-text-muted);
 }
 
 /* Parsed operation result views */

@@ -85,6 +85,7 @@ use super::{handlers, openapi_jobs, routing};
         openapi_jobs::recover_extract_jobs,
         openapi_jobs::recover_ingest_jobs,
         handlers::admin::dedupe,
+        handlers::admin::purge,
         handlers::admin::list_watch,
         handlers::admin::create_watch,
         handlers::admin::run_watch,
@@ -150,7 +151,14 @@ use super::{handlers, openapi_jobs, routing};
         axon_ingest::sessions::PreparedSessionDoc,
         axon_ingest::sessions::IngestSessionsPreparedRequest,
         handlers::admin::DedupeRequest,
-        handlers::admin::WatchCreateRequest
+        axon_api::mcp_schema::PurgeRequest,
+        axon_api::PurgeResult,
+        handlers::admin::WatchCreateRequest,
+        handlers::jobs::JobStatusResponse,
+        axon_api::job_progress::JobProgress,
+        axon_api::job_progress::JobFamily,
+        axon_api::job_progress::JobPhase,
+        axon_api::job_progress::JobMetric
     )),
     tags(
         (name = "discovery", description = "Read-only source, domain, stats, status, and health endpoints"),

@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "async-trait",
  "axon-cli",
@@ -405,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "axon-api"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "chrono",
  "percent-encoding",
@@ -420,11 +420,11 @@ dependencies = [
 
 [[package]]
 name = "axon-authz"
-version = "6.1.1"
+version = "6.1.2"
 
 [[package]]
 name = "axon-cli"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -467,7 +467,7 @@ dependencies = [
 
 [[package]]
 name = "axon-code-index"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "anyhow",
  "axon-core",
@@ -492,7 +492,7 @@ dependencies = [
 
 [[package]]
 name = "axon-core"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "axon-crawl"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "axon-core",
  "base64",
@@ -564,7 +564,7 @@ dependencies = [
 
 [[package]]
 name = "axon-extract"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "axon-api",
  "axon-core",
@@ -589,7 +589,7 @@ dependencies = [
 
 [[package]]
 name = "axon-ingest"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "axon-jobs"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "axon-mcp"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "axon-api",
  "axon-authz",
@@ -690,7 +690,7 @@ dependencies = [
 
 [[package]]
 name = "axon-services"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "axon-vector"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -782,9 +782,10 @@ dependencies = [
 
 [[package]]
 name = "axon-web"
-version = "6.1.1"
+version = "6.1.2"
 dependencies = [
  "async-trait",
+ "axon-api",
  "axon-authz",
  "axon-core",
  "axon-ingest",

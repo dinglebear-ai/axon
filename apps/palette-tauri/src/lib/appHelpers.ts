@@ -1,6 +1,6 @@
 // Pure, side-effect-free helpers extracted from App.tsx. Kept framework-free so
 // they stay trivially unit-testable and reusable by the palette hooks.
-import { acceptsDirectUrl, type PaletteAction } from "@/lib/actions";
+import { coercesArgumentToUrl, type PaletteAction } from "@/lib/actions";
 import type { RunState } from "@/lib/runState";
 
 export function currentOutputTarget(
@@ -31,7 +31,7 @@ export function newRequestId(): string {
 
 export function normalizeSubmitArgument(action: PaletteAction, argument: string): string {
   const trimmed = argument.trim();
-  if (acceptsDirectUrl(action) && trimmed && !/^https?:\/\//i.test(trimmed)) {
+  if (coercesArgumentToUrl(action) && trimmed && !/^https?:\/\//i.test(trimmed)) {
     return `https://${trimmed}`;
   }
   return trimmed;

@@ -1,18 +1,8 @@
-import {
-  ChevronRight,
-  Workflow,
-} from "lucide-react";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 
-import { ActionList, actionOptionId } from "@/components/palette/ActionList";
-import { AuthNotice } from "@/components/palette/AuthNotice";
-import { CrawlJobView } from "@/components/palette/CrawlJobView";
-import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
-import { OutputPanel } from "@/components/palette/OutputPanel";
-import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
-import { PaletteFooter } from "@/components/palette/PaletteFooter";
-import { SettingsPanel } from "@/components/palette/SettingsPanel";
-import { Button } from "@/components/ui/aurora/button";
+import { actionOptionId } from "@/components/palette/ActionList";
+import type { HistoryItem } from "@/components/palette/HistoryPanel";
+import { PaletteShell } from "@/components/palette/PaletteShell";
 import {
   ACTIONS,
   type PaletteAction,
@@ -27,10 +17,9 @@ import {
 } from "@/lib/actionGuard";
 import { buildHelpRun, helpAction } from "@/lib/actionHelp";
 import { currentOutputTarget } from "@/lib/appHelpers";
-import { type PaletteConfig, createAxonClient } from "@/lib/axonClient";
-import { MIN_PROGRESS_PCT, outputKindFor } from "@/lib/format";
-import { runStateFromHistory } from "@/lib/historyRun";
-import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
+import { createAxonClient } from "@/lib/axonClient";
+import { outputKindFor } from "@/lib/format";
+import { invoke, isTauriRuntime } from "@/lib/invoke";
 import {
   argumentFor,
   focusInput,
@@ -49,9 +38,17 @@ import {
   viewReducer,
 } from "@/lib/paletteViewState";
 import type { RunState } from "@/lib/runState";
+import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
+import { summarizeJob } from "@/lib/jobProgress";
 import { useActionRunner } from "@/lib/useActionRunner";
 import { useCrawlJob } from "@/lib/useCrawlJob";
+import { useJobPoll } from "@/lib/useJobPoll";
+import { useLiveRefresh } from "@/lib/useLiveRefresh";
 import { useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
+import { usePaletteConfig } from "@/lib/usePaletteConfig";
+import { usePaletteLifecycle } from "@/lib/usePaletteLifecycle";
+import { usePalettePins } from "@/lib/usePalettePins";
+import { useSourcesNavigation } from "@/lib/useSourcesNavigation";
 import { useWindowChrome } from "@/lib/useWindowChrome";
 import { hostLabel } from "@/lib/url";
 
@@ -64,11 +61,8 @@ export default function App() {
   const [view, dispatchView] = useReducer(viewReducer, INITIAL_VIEW);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
-  const [config, setConfig] = useState<PaletteConfig | null>(null);
-  const [draftConfig, setDraftConfig] = useState<PaletteConfig | null>(null);
-  const [configError, setConfigError] = useState<string | null>(null);
+  const { config, draftConfig, setDraftConfig, configError, saveSettings } = usePaletteConfig(dispatchView);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [pinnedTargets, setPinnedTargets] = useState<Set<string>>(() => new Set());
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
@@ -78,45 +72,7 @@ export default function App() {
   const settingsOpen = isSettingsOpen(view);
   const historyOpen = isHistoryOpen(view);
   const browseOpen = isBrowseOpen(view);
-
-  useEffect(() => {
-    invoke<PaletteConfig>("load_palette_config")
-      .then((nextConfig) => {
-        setConfig(nextConfig);
-        setDraftConfig(nextConfig);
-      })
-      .catch((err) => {
-        setConfigError(String(err));
-        void invoke<PaletteConfig>("load_palette_default_config")
-          .then((fallbackConfig) => {
-            setConfig(fallbackConfig);
-            setDraftConfig(fallbackConfig);
-          })
-          .catch(() => {
-            setConfig(null);
-            setDraftConfig(null);
-          });
-      });
-  }, []);
-
-  useEffect(() => {
-    const unlisteners = [
-      appWindow.listen("palette://shown", () => {
-        setShownTick((tick) => tick + 1);
-        focusInput(true);
-      }),
-      appWindow.listen("palette://open-settings", () => dispatchView({ type: "openSettings" })),
-    ];
-    return () => {
-      void Promise.all(unlisteners).then((items) => items.forEach((unlisten) => unlisten()));
-    };
-  }, []);
-
-  useEffect(() => {
-    const onBlur = () => void invoke("hide_palette");
-    window.addEventListener("blur", onBlur);
-    return () => window.removeEventListener("blur", onBlur);
-  }, []);
+  usePaletteLifecycle(dispatchView, setShownTick);
 
   // R-M1/H3/P-H2 — ref-for-latest-value; the keydown listener binds once.
   const keyStateRef = useRef({ settingsOpen, historyOpen, browseOpen, query, modeAction, run });
@@ -132,20 +88,6 @@ export default function App() {
     },
     copyOutput: (text) => void copyOutput(text),
   });
-
-  useEffect(() => {
-    if (!config) return;
-    const root = document.documentElement;
-    const media = window.matchMedia("(prefers-color-scheme: light)");
-    const applyTheme = () => {
-      const useLight = config.theme === "light" || (config.theme === "system" && media.matches);
-      root.classList.toggle("light", useLight);
-      root.classList.toggle("dark", !useLight);
-    };
-    applyTheme();
-    media.addEventListener("change", applyTheme);
-    return () => media.removeEventListener("change", applyTheme);
-  }, [config]);
 
   const parsed = useMemo(() => parseCommand(query), [query]);
   const hasQuery = query.trim().length > 0;
@@ -180,8 +122,8 @@ export default function App() {
       ? actionConfirmationMessage(active, Boolean(confirmationArmed))
       : "";
   const canRunLocalAction = active?.kind === "local";
-  const jobMinimized = run.kind === "job" && run.minimized;
-  const jobExpanded = run.kind === "job" && !run.minimized;
+  const jobMinimized = (run.kind === "job" || run.kind === "asyncJob") && run.minimized;
+  const jobExpanded = (run.kind === "job" || run.kind === "asyncJob") && !run.minimized;
   const showOutput = run.kind !== "idle" && !jobMinimized;
   // Once an action mode is picked, the input collects that action's argument —
   // the palette should NOT keep listing other actions. Stay compact (just the
@@ -281,8 +223,75 @@ export default function App() {
     onCloseJob,
   });
 
+  // Sibling lifecycle for embed/extract/ingest. The two hooks are mutually
+  // exclusive at runtime — each only acts when `run.kind` matches its variant —
+  // and reuse the same view-intent callbacks (family-agnostic).
+  const {
+    nowMs: jobNowMs,
+    canceling: jobCanceling,
+    cancelJob: cancelAsyncJob,
+    minimizeJob: minimizeAsyncJob,
+    expandJob: expandAsyncJob,
+    closeJob: closeAsyncJob,
+  } = useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob });
+
+  // Live-refresh for the zero-input dynamic views (stats/status): re-poll the
+  // result endpoint on an interval while it is open, with a pause toggle.
+  const [livePaused, setLivePaused] = useState(false);
+  const liveRefresh = useLiveRefresh({ run, setRun, paused: livePaused });
+  const {
+    sourcesDrillFilter,
+    sourcesFilter,
+    sourcesSort,
+    sourcesGrouped,
+    setSourcesFilter,
+    setSourcesSort,
+    setSourcesGrouped,
+    clearSourcesFilter,
+    clearSourcesForAction,
+    onRunAction,
+    onDrillDomain,
+  } = useSourcesNavigation(requestSubmit);
+
+  // Open the live job card for a job listed in StatusView. Crawl gets the rich
+  // crawl view; embed/extract/ingest get the generic async-job card. The poll
+  // hooks (useCrawlJob/useJobPoll) take over once the run state is set.
+  const onOpenJob = useCallback((family: string, jobId: string, label: string) => {
+    const startedAtMs = Date.now();
+    if (family === "crawl") {
+      setRun({
+        kind: "job",
+        family: "crawl",
+        title: `Crawling ${hostFromUrl(label)}`,
+        subtitle: `job ${jobId}`,
+        jobId,
+        statusUrl: `/v1/crawl/${jobId}`,
+        url: label,
+        startedAtMs,
+        maxPages: 0,
+        maxDepth: 0,
+        snapshot: summarizeCrawl({ job: { status: "running" } }, { jobId, url: label }),
+        minimized: false,
+      });
+    } else if (family === "embed" || family === "extract" || family === "ingest") {
+      setRun({
+        kind: "asyncJob",
+        family,
+        title: `${family[0].toUpperCase()}${family.slice(1)}`,
+        subtitle: `job ${jobId}`,
+        jobId,
+        statusUrl: `/v1/${family}/${jobId}`,
+        target: label,
+        startedAtMs,
+        snapshot: summarizeJob(family, { job: { status: "running" } }, { jobId, label }),
+        minimized: false,
+      });
+    }
+  }, []);
+
   function enterActionMode(action: PaletteAction) {
     setPendingConfirmation(null);
+    clearSourcesForAction(action);
     dispatchView({ type: "enterMode", action });
     setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
     setSelected(0);
@@ -299,10 +308,12 @@ export default function App() {
       setQuery("");
       setSelected(0);
       setRun({ kind: "idle" });
+      clearSourcesForAction(action);
       requestSubmit(action, "");
       return;
     }
     setPendingConfirmation(null);
+    clearSourcesForAction(action);
     dispatchView({ type: "switchMode", action });
     setSelected(0);
     setRun({ kind: "idle" });
@@ -328,21 +339,6 @@ export default function App() {
     setQuery(action?.subcommand ?? cleanUnknownTarget ?? "");
     setRun(helpRun);
     setHistory((items) => [historyItem, ...items].slice(0, 18));
-  }
-
-  async function saveSettings() {
-    if (!draftConfig) return;
-    try {
-      const nextConfig = await invoke<PaletteConfig>("save_palette_settings", { settings: draftConfig });
-      setConfig(nextConfig);
-      setDraftConfig(nextConfig);
-      setConfigError(null);
-      setPendingConfirmation(null);
-      dispatchView({ type: "closeSettings" });
-      focusInput(true);
-    } catch (err) {
-      setConfigError(String(err));
-    }
   }
 
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -377,6 +373,7 @@ export default function App() {
   const endpointTone = configError ? "error" : "syncing";
   const showBackButton = settingsOpen || historyOpen || showOutput;
   const currentTarget = currentOutputTarget(run, active, query);
+  const { pinnedTargets, togglePin: onTogglePin } = usePalettePins(setHistory, currentTarget);
   const commandRunning = run.kind === "running" || run.kind === "streaming";
   const submitDisabled =
     (!client && !canRunLocalAction) || !active || commandRunning || Boolean(validation);
@@ -386,6 +383,7 @@ export default function App() {
     dispatchView({ type: "goToBrowse" });
     setRun({ kind: "idle" });
     setQuery("");
+    clearSourcesFilter();
     focusInput(true);
   }
 
@@ -395,8 +393,9 @@ export default function App() {
     setQuery("");
     setRun({ kind: "idle" });
     setPendingConfirmation(null);
+    clearSourcesFilter();
     dispatchView({ type: "reset" });
-  }, []);
+  }, [clearSourcesFilter]);
   const onToggleSettings = useCallback(() => dispatchView({ type: "toggleSettings" }), []);
   const onToggleMaximize = useCallback(() => void invoke("toggle_maximize"), []);
   const onCopy = useCallback((text: string) => void copyOutput(text), [copyOutput]);
@@ -417,161 +416,26 @@ export default function App() {
     setQuery("");
     dispatchView({ type: "collapse" });
   }, []);
-  const onTogglePin = useCallback(() => {
-    if (!currentTarget) return;
-    setPinnedTargets((items) => {
-      const next = new Set(items);
-      if (next.has(currentTarget)) next.delete(currentTarget);
-      else next.add(currentTarget);
-      return next;
-    });
-    setHistory((items) =>
-      items.map((item) =>
-        item.target === currentTarget ? { ...item, pinned: !pinnedTargets.has(currentTarget) } : item,
-      ),
-    );
-  }, [currentTarget, pinnedTargets]);
+  const shellProps = {
+    active, activeDescendantId, cancelAsyncJob, cancelJob, canceling, commandRunning, compact, config,
+    configError, copied, dispatchView, draftConfig, endpointLabel, endpointTone, enterActionMode,
+    expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, history, historyFocusRef, historyOpen,
+    jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs,
+    onBack: goBackToBrowse, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown,
+    onOpenJob, onReset, onRetry, onRunAction, onSaveSettings: () => {
+      setPendingConfirmation(null);
+      void saveSettings();
+    }, onSubmitAction,
+    onToggleLivePause: () => setLivePaused((paused) => !paused), onToggleMaximize, onTogglePin,
+    onToggleSettings, outputFocusRef, outputKind, parsed, pinned: currentTarget ? pinnedTargets.has(currentTarget) : false,
+    query, requestSubmit, run, selected, setDraftConfig, setHistory, setQuery, setRun, setSelected,
+    settingsFocusRef, settingsOpen, shortcutOptions, showActionPanel, showBackButton, showContent,
+    showResultsLayout, sourcesFilter: sourcesFilter || sourcesDrillFilter, sourcesGrouped, sourcesSort,
+    submitDisabled, switchActionMode, validation, viewPartialJob, showHelpFor, minimizeJob, closeJob,
+    minimizeAsyncJob, closeAsyncJob, setSourcesFilter, setSourcesSort, setSourcesGrouped,
+  };
 
-  return (
-    <div className={`aurora-page-shell palette-shell${compact ? " palette-shell-compact" : ""}${showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${jobExpanded ? " palette-shell-job" : ""}`}>
-      <AuthNotice />
-      <PaletteCommandBar
-        active={active}
-        activeDescendantId={activeDescendantId}
-        config={config}
-        endpointLabel={endpointLabel}
-        endpointTone={endpointTone}
-        hasQuery={hasQuery}
-        listboxOpen={listboxOpen}
-        modeAction={modeAction}
-        query={query}
-        running={commandRunning}
-        settingsOpen={settingsOpen}
-        showBackButton={showBackButton}
-        submitDisabled={submitDisabled}
-        validation={validation || guardMessage}
-        onBack={goBackToBrowse}
-        onHelp={showHelpFor}
-        onInputKeyDown={onInputKeyDown}
-        onQueryChange={setQuery}
-        onReset={onReset}
-        onSubmit={onSubmitAction}
-        onSwitchAction={switchActionMode}
-        onToggleMaximize={onToggleMaximize}
-        onToggleSettings={onToggleSettings}
-      />
-
-      {jobMinimized && run.kind === "job" && (
-        <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={expandJob} title="Expand crawl job">
-          <span className="idle-tray-dot" />
-          <Workflow size={14} strokeWidth={1.9} />
-          <span>Crawling {run.snapshot.host}</span>
-          <span className="idle-tray-bar">
-            <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, Math.round(run.snapshot.percent))}%` }} />
-          </span>
-          <strong>{Math.round(run.snapshot.percent)}%</strong>
-          <ChevronRight size={15} />
-        </Button>
-      )}
-
-      {settingsOpen && draftConfig && (
-        <div ref={settingsFocusRef} style={{ display: "contents" }}>
-          <SettingsPanel
-            configError={configError}
-            draftConfig={draftConfig}
-            shortcutOptions={shortcutOptions}
-            onChange={setDraftConfig}
-            onClose={() => dispatchView({ type: "closeSettings" })}
-            onSave={() => void saveSettings()}
-          />
-        </div>
-      )}
-
-      {showContent && !settingsOpen && (
-      <main className={showResultsLayout ? (showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
-        {showActionPanel && (
-          <ActionList
-            filtered={filtered}
-            selected={selected}
-            setSelected={setSelected}
-            parsed={parsed}
-            onSubmit={requestSubmit}
-            onEnterMode={enterActionMode}
-            onHelp={showHelpFor}
-          />
-        )}
-
-        {historyOpen && (
-          <div ref={historyFocusRef} style={{ display: "contents" }}>
-          <HistoryPanel
-            items={history}
-            onClear={() => setHistory([])}
-            onOpen={(item) => {
-              dispatchView({ type: "openHistoryItem", action: item.action });
-              setQuery(item.target);
-              const historyRun = runStateFromHistory(item);
-              if (historyRun) {
-                setRun(historyRun);
-              } else if (item.running) {
-                setRun({
-                  kind: "running",
-                  title: `Running ${item.action.label}`,
-                  subtitle: item.target,
-                });
-              }
-            }}
-          />
-          </div>
-        )}
-
-        {showResultsLayout && !historyOpen && run.kind === "job" && (
-          <div ref={outputFocusRef} style={{ display: "contents" }}>
-          <CrawlJobView
-            snapshot={run.snapshot}
-            nowMs={nowMs}
-            canceling={canceling}
-            onCancel={() => void cancelJob()}
-            onViewPartial={() => void viewPartialJob()}
-            onMinimize={minimizeJob}
-            onClose={closeJob}
-          />
-          </div>
-        )}
-
-        {showResultsLayout && !historyOpen && run.kind !== "job" && (
-          <div ref={outputFocusRef} style={{ display: "contents" }}>
-          <OutputPanel
-            active={active}
-            copied={copied}
-            outputKind={outputKind}
-            run={run}
-            onCopy={onCopy}
-            onRetry={onRetry}
-            onFollowUp={onFollowUp}
-            onHistory={onHistory}
-            onCollapse={onCollapse}
-            onTogglePin={onTogglePin}
-            pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
-          />
-          </div>
-        )}
-      </main>
-      )}
-
-      {showContent && !settingsOpen && (
-        <PaletteFooter
-          config={config}
-          configError={configError}
-          onRecent={() => {
-            setRun({ kind: "idle" });
-            dispatchView({ type: "toggleHistory" });
-          }}
-          onSettings={() => dispatchView({ type: "toggleSettings" })}
-          onHide={() => void invoke("hide_palette")}
-        />
-      )}
-    </div>
-  );
+  return <PaletteShell {...shellProps} />;
 
   async function copyOutput(text: string) {
     await navigator.clipboard.writeText(text);

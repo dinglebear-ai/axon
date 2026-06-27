@@ -10,16 +10,10 @@ use std::collections::HashSet;
 use super::super::utils::{qdrant_collection_endpoint, qdrant_retry_delay};
 use super::scroll::{qdrant_scroll_pages_selective, scroll_url_set};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QdrantDeleteByUrlResult {
-    pub target: String,
-    pub prefix: bool,
-    pub dry_run: bool,
-    pub matched_points: usize,
-    pub deleted_points: usize,
-    pub matched_url_count: usize,
-    pub sample_urls: Vec<String>,
-}
+// The purge result DTO is owned by `axon-api` (transport-neutral contract), not
+// redefined here. This crate owns the *logic*; the contract lives where every
+// surface can consume it. Aliased so the existing call sites read unchanged.
+pub use axon_api::purge::PurgeResult as QdrantDeleteByUrlResult;
 
 /// Delete with retry on 429/5xx (up to 4 attempts, 250 ms exponential backoff).
 async fn qdrant_delete_with_retry(
