@@ -62,6 +62,41 @@ fn docs_only_changes_skip_expensive_runtime_categories() {
 }
 
 #[test]
+fn agent_skill_changes_skip_expensive_runtime_categories() {
+    let out = classify(
+        "pull_request",
+        &[
+            "plugins/axon/skills/cli/SKILL.md",
+            "plugins/axon/skills/cli/rules/install.md",
+        ],
+    );
+    for key in [
+        "all",
+        "docs",
+        "workflow",
+        "rust",
+        "web",
+        "android",
+        "palette",
+        "chrome",
+        "docker",
+        "compose",
+        "mcp",
+        "security",
+        "release",
+        "version_files",
+        "openapi",
+        "codeql_actions",
+        "codeql_javascript_typescript",
+        "codeql_python",
+        "codeql_rust",
+        "codeql_java_kotlin",
+    ] {
+        assert_eq!(out[key], "false", ".agents changes should not enable {key}");
+    }
+}
+
+#[test]
 fn version_bearing_root_docs_trigger_version_sync() {
     for file in ["README.md", "CHANGELOG.md"] {
         let out = classify("pull_request", &[file]);

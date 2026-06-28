@@ -45,7 +45,9 @@ The service runs `axon sessions watch --no-initial-scan --json` and reuses the e
 
 ## MCP Server
 
-Single tool: `mcp__axon__axon`. Routed by `action` plus an optional `subaction` for lifecycle families.
+The Axon MCP server exposes a single `axon` tool. Hosts generate the concrete
+tool name, so use the current environment's generated name. Requests are routed
+by `action` plus an optional `subaction` for lifecycle families.
 
 ```json
 { "action": "doctor" }
@@ -62,14 +64,21 @@ Response envelope:
 
 Default `response_mode: "path"` writes large outputs under the configured Axon appdata root (default `~/.axon/artifacts`) and returns a compact `shape` summary plus an artifact pointer. See the `using-axon` skill for the full action map.
 
-## Skills (2)
+## Skills
 
-The per-action skills were consolidated into a single unified usage skill.
+The plugin ships plain-name Axon skills under `skills/`. Action skills cover the
+core CLI/MCP surfaces; workflow skills cover outcome-focused research,
+monitoring, QA, shopping, and design deliverables.
 
 | Skill | Purpose |
 |-------|---------|
-| `using-axon` | Unified usage guide — full action map and routing for the single `axon` MCP/CLI tool (scrape, crawl, map, extract, search, research, embed, query, ask, ingest, …) |
-| `axon-rag-synthesize` | RAG synthesis prompt embedded at compile time into `ask` synthesis (not user-invocable) |
+| `using-axon` | Unified usage guide for the single `axon` MCP/CLI surface. |
+| `cli`, `crawl`, `download`, `extract`, `map`, `scrape`, `search`, `monitor` | Core Axon command and action workflows. |
+| `company-directories`, `competitive-intel`, `dashboard-reporting`, `deep-research`, `demo-walkthrough`, `knowledge-base`, `knowledge-ingest`, `lead-gen`, `lead-research`, `market-research`, `qa`, `research-papers`, `seo-audit`, `shop`, `website-design-clone`, `workflows` | Outcome-focused Axon workflow skills. |
+
+The runtime RAG synthesis prompt is stored under
+`references/rag-synthesize/SKILL.md` and embedded into `ask` synthesis at compile
+time. It is intentionally not exposed as a user-invocable plugin skill.
 
 ## Agents
 
@@ -84,21 +93,20 @@ plugins/axon/
 ├── .mcp.json                  — MCP server config (stdio, ${user_config.*})
 ├── agents/
 │   └── researcher.md
+├── references/
+│   ├── capture-recipes.md
+│   └── rag-synthesize/
+│       ├── SKILL.md          — runtime RAG synthesis prompt
+│       └── example-response.md
 └── skills/
-    ├── axon/SKILL.md          — meta-skill
-    ├── ask/SKILL.md
+    ├── using-axon/SKILL.md   — meta-skill
+    ├── cli/SKILL.md
     ├── crawl/SKILL.md
-    ├── doctor/SKILL.md
-    ├── domains/SKILL.md
-    ├── embed/SKILL.md
+    ├── download/SKILL.md
     ├── extract/SKILL.md
-    ├── ingest/SKILL.md
     ├── map/SKILL.md
-    ├── query/SKILL.md
-    ├── retrieve/SKILL.md
     ├── scrape/SKILL.md
     ├── search/SKILL.md
-    ├── sources/SKILL.md
-    ├── stats/SKILL.md
-    └── status/SKILL.md
+    ├── monitor/SKILL.md
+    └── <workflow-name>/SKILL.md
 ```

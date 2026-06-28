@@ -1,11 +1,11 @@
-// The axon-rag-synthesize skill file content, embedded at compile time.
+// The rag-synthesize prompt content, embedded at compile time.
 // gemini.rs writes this to the isolated Gemini home so Gemini CLI can discover
 // and invoke it natively via the activate_skill tool.
 pub(crate) const SKILL_MD: &str =
-    include_str!("../../../../../../plugins/axon/skills/axon-rag-synthesize/SKILL.md");
+    include_str!("../../../../../../plugins/axon/references/rag-synthesize/SKILL.md");
 
 const GEMINI_SKILL_INVOCATION: &str =
-    "Use the axon-rag-synthesize skill to synthesize an answer from the provided context.\n\n";
+    "Use the rag-synthesize skill to synthesize an answer from the provided context.\n\n";
 const DIRECT_FALLBACK_INTRO: &str =
     "You must also follow these instructions directly if the skill is unavailable:\n\n";
 

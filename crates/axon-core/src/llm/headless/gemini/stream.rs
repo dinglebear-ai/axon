@@ -45,7 +45,7 @@ impl GeminiStreamState {
 
     fn handle_tool_use(&mut self, value: &Value) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Permitted tool calls for synthesis mode:
-        // - "activate_skill": loads the axon-rag-synthesize skill (intentional)
+        // - "activate_skill": loads the rag-synthesize skill (intentional)
         // - "update_topic": Gemini 0.41.2+ internal session management (harmless)
         // All other tool_use events indicate unexpected tool execution and are rejected.
         // Field name changed from "name" to "tool_name" in Gemini CLI 0.41.2.

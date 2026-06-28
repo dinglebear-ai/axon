@@ -15,6 +15,11 @@
 [build]
 rustc-wrapper = "scripts/cargo-rustc-wrapper"
 
+[env]
+# Local cargo commands are test/dev oriented by default. The root build script
+# still enforces real web assets when this env/config opt-in is absent.
+AXON_ALLOW_FALLBACK_WEB_ASSETS = { value = "1", force = false }
+
 [alias]
 # The `cargo xtask` convention: `cargo xtask <cmd>` delegates to the xtask crate.
 # See: https://github.com/matklad/cargo-xtask

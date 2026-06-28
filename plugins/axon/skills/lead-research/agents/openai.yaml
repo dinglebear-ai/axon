@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Lead Research"
+  short_description: "Research individual leads and accounts with cited web evidence."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

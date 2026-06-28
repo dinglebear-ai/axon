@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Lead Gen"
+  short_description: "Find and qualify lead lists from public web sources."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

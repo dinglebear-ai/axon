@@ -89,7 +89,7 @@ fn gemini_headless_parser_allows_activate_skill_tool_event() {
     // activate_skill via old "name" field
     state
         .handle_line(
-            r#"{"type":"tool_use","name":"activate_skill","input":{"name":"axon-rag-synthesize"}}"#,
+            r#"{"type":"tool_use","name":"activate_skill","input":{"name":"rag-synthesize"}}"#,
             &mut |_| Ok(()),
         )
         .expect("activate_skill tool_use must be allowed");

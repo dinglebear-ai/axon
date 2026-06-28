@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Knowledge Ingest"
+  short_description: "Ingest JS-heavy or auth-gated docs portals with browser-assisted Axon capture."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

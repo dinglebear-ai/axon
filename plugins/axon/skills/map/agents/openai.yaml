@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Map"
+  short_description: "Discover URLs on a site before scraping, crawling, or extraction."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

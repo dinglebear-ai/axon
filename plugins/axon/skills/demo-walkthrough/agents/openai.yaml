@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Demo Walkthrough"
+  short_description: "Prepare evidence-backed walkthroughs from product or docs pages."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

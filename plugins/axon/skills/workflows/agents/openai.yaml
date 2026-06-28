@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Workflows"
+  short_description: "Route outcome-oriented web workflows to the right Axon skill."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true
