@@ -1,6 +1,6 @@
 // AST-aware code chunking via tree-sitter.
 
-use axon_core::logging::log_warn;
+use axon_core::logging::log_debug;
 
 use super::chunk_text_with_offsets;
 
@@ -67,10 +67,12 @@ pub fn chunk_code_chunks(content: &str, file_extension: &str) -> Option<Vec<Code
 
     if symbols.is_empty() {
         // A non-trivial supported file with zero symbols is suspected grammar
-        // drift (node-kind names changed upstream) — surface it before degrading
-        // the whole file to prose.
+        // drift (node-kind names changed upstream). Keep it available for
+        // debug diagnostics, but do not warn during normal indexing because
+        // the prose fallback below is loss-tolerant and expected for many
+        // script/config-shaped files.
         if content.len() > GRAMMAR_DRIFT_WARN_MIN_BYTES {
-            log_warn(&format!(
+            log_debug(&format!(
                 "command=chunk_code grammar_drift_zero_symbols ext={file_extension} bytes={}",
                 content.len()
             ));

@@ -339,7 +339,7 @@
 
 # Number of changed files processed per foreground refresh batch.
 # Env: AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE
-# changed-file-batch-size = 5
+# changed-file-batch-size = 64
 
 [watch]
 # Recurring watch scheduler sweep interval and lease TTL.

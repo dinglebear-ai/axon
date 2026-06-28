@@ -259,8 +259,6 @@ async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error
     // `apply_plugin_options()` in `run()`. Re-applying here is harmless and
     // covers any direct caller that bypasses the early path.
     apply_plugin_options();
-    // Keep the user's terminal copy in ~/.local/bin fresh each session.
-    let _ = install_self();
 
     // The SessionStart hook NEVER deploys — provisioning is the `/axon-deploy`
     // slash command. The hook only probes whether the stack is already serving:

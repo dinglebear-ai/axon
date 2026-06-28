@@ -604,7 +604,7 @@ pub fn code_search_changed_file_batch_size() -> usize {
     resolve_clamped_usize(
         "AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE",
         toml.code_search.changed_file_batch_size,
-        5,
+        64,
         1,
         1000,
     )

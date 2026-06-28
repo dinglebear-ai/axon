@@ -6,11 +6,11 @@ use dashmap::DashMap;
 use tokio::sync::Mutex;
 
 use crate::config::{CodeIndexIdentity, freshness_ttl, reindex_timeout};
-use crate::indexer::{
-    ReindexSummary, finish_completed_generation, reindex_changed_files, retry_cleanup_debt,
-};
+use crate::indexer::{finish_completed_generation, reindex_changed_files, retry_cleanup_debt};
 use crate::manifest::{ManifestOptions, build_manifest};
+use crate::progress::ReindexProgressSink;
 use crate::store::CodeIndexStore;
+use crate::summary::ReindexSummary;
 use axon_core::config::Config;
 
 static FRESH_UNTIL: LazyLock<DashMap<String, Instant>> = LazyLock::new(DashMap::new);
@@ -53,6 +53,16 @@ pub async fn ensure_fresh(
     pool: sqlx::SqlitePool,
     identity: &CodeIndexIdentity,
     options: EnsureFreshOptions,
+) -> anyhow::Result<EnsureFreshOutcome> {
+    ensure_fresh_with_progress(cfg, pool, identity, options, None).await
+}
+
+pub async fn ensure_fresh_with_progress(
+    cfg: &Config,
+    pool: sqlx::SqlitePool,
+    identity: &CodeIndexIdentity,
+    options: EnsureFreshOptions,
+    progress: Option<&dyn ReindexProgressSink>,
 ) -> anyhow::Result<EnsureFreshOutcome> {
     if FRESH_UNTIL
         .get(&identity.project_key)
@@ -97,7 +107,7 @@ pub async fn ensure_fresh(
         });
     }
 
-    let result = refresh_under_lease(cfg, &store, identity, &options).await;
+    let result = refresh_under_lease(cfg, &store, identity, &options, progress).await;
     let release_result = store.release_lease(identity, &owner).await;
     if let Err(err) = release_result {
         tracing::warn!(error = %err, "code-search freshness lease release failed");
@@ -141,10 +151,11 @@ async fn refresh_under_lease(
     store: &CodeIndexStore,
     identity: &CodeIndexIdentity,
     options: &EnsureFreshOptions,
+    progress: Option<&dyn ReindexProgressSink>,
 ) -> Result<ReindexSummary, RefreshError> {
     tokio::time::timeout(
         options.reindex_timeout,
-        refresh_under_lease_inner(cfg, store, identity, options),
+        refresh_under_lease_inner(cfg, store, identity, options, progress),
     )
     .await
     .map_err(|_| RefreshError::TimedOut)?
@@ -155,6 +166,7 @@ async fn refresh_under_lease_inner(
     store: &CodeIndexStore,
     identity: &CodeIndexIdentity,
     options: &EnsureFreshOptions,
+    progress: Option<&dyn ReindexProgressSink>,
 ) -> Result<ReindexSummary, RefreshError> {
     let manifest = build_manifest(store, identity, options.manifest_options)
         .await
@@ -164,7 +176,7 @@ async fn refresh_under_lease_inner(
         .await
         .map_err(|err| RefreshError::Failed(err.to_string()))?
     {
-        return finish_completed_generation(cfg, store, identity, &manifest, generation)
+        return finish_completed_generation(cfg, store, identity, &manifest, generation, progress)
             .await
             .map_err(|err| RefreshError::Failed(err.to_string()));
     }
@@ -183,7 +195,7 @@ async fn refresh_under_lease_inner(
         return Ok(ReindexSummary::default());
     }
 
-    reindex_changed_files(cfg, store, identity, &manifest, &diff)
+    reindex_changed_files(cfg, store, identity, &manifest, &diff, progress)
         .await
         .map_err(|err| RefreshError::Failed(err.to_string()))
 }

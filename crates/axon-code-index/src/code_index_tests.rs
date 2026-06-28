@@ -404,6 +404,7 @@ async fn changed_refresh_cleans_previous_generation_for_complete_snapshot() {
 }
 
 #[tokio::test]
+#[cfg(feature = "test-util")]
 async fn concurrent_refresh_cannot_delete_newer_generation() {
     let body = axon_vector::ops::qdrant::local_code_batch_delete_body_for_test(
         "project-1",

@@ -6,6 +6,7 @@ use crate::context::ServiceContext;
 use crate::query;
 use crate::types::CodeSearchCaller;
 use anyhow::Result;
+use axon_code_index::ReindexProgressSink;
 use axon_core::config::CodeSearchWatchConfig;
 use notify::Watcher;
 use std::collections::BTreeMap;
@@ -14,9 +15,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+pub use axon_code_index::ReindexProgress;
 pub use event::{
     CodeSearchWatchDryRunPlan, CodeSearchWatchDryRunRoot, CodeSearchWatchEvent,
-    CodeSearchWatchEventSink, StdoutCodeSearchWatchEventSink,
+    CodeSearchWatchEventSink,
 };
 use roots::{
     build_code_search_watch_dry_run_plan, code_search_watch_dirs, code_search_watch_dirty_roots,
@@ -140,10 +142,12 @@ fn queue_dirty_roots(
         });
         entry.since = Instant::now();
         entry.paths = entry.paths.saturating_add(1);
-        events.emit(CodeSearchWatchEvent::Pending {
-            root,
-            paths: entry.paths,
-        });
+        if entry.paths == 1 || entry.paths.is_multiple_of(100) {
+            events.emit(CodeSearchWatchEvent::Pending {
+                root,
+                paths: entry.paths,
+            });
+        }
     }
 }
 
@@ -192,7 +196,15 @@ async fn refresh_code_search_watch_root(
         root: root.to_path_buf(),
         reason,
     });
-    match query::refresh_code_search_index(ctx, Some(root), CodeSearchCaller::Cli).await {
+    let progress = WatchProgressSink { events };
+    match query::refresh_code_search_index_with_progress(
+        ctx,
+        Some(root),
+        CodeSearchCaller::Cli,
+        Some(&progress),
+    )
+    .await
+    {
         Ok(result) => events.emit(CodeSearchWatchEvent::RefreshFinished {
             root: root.to_path_buf(),
             status: result.freshness.status,
@@ -205,6 +217,17 @@ async fn refresh_code_search_watch_root(
             root: root.to_path_buf(),
             error: error.to_string(),
         }),
+    }
+}
+
+struct WatchProgressSink<'a> {
+    events: &'a dyn CodeSearchWatchEventSink,
+}
+
+impl ReindexProgressSink for WatchProgressSink<'_> {
+    fn emit(&self, progress: ReindexProgress) {
+        self.events
+            .emit(CodeSearchWatchEvent::RefreshProgress { progress });
     }
 }
 

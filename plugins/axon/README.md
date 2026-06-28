@@ -10,7 +10,15 @@ Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optiona
 claude plugin install <path>
 ```
 
-The plugin manifest declares a minimal `userConfig` block. Claude Code prompts for the shared Axon server URL, bearer token, optional Tavily/GitHub/Reddit credentials, and optional OAuth settings. Qdrant, TEI, Chrome, Qwen3 embedding, and LLM backend settings are configured by the shared Docker setup path, not by plugin prompts.
+The plugin manifest declares a minimal `userConfig` block. Claude Code prompts
+only for connection details for an already-running Axon server.
+
+The current plugin prompt surface is intentionally small:
+
+- `server_url` — base URL for a running `axon serve` instance, defaulting to `http://localhost:8080`.
+- `api_token` — bearer token sent to `${server_url}/mcp`; leave empty only for loopback/unauthenticated development instances.
+
+Search providers, ingest credentials, Qdrant, TEI, Chrome, embedding, and LLM backend settings live in the shared Axon host configuration (`~/.axon/.env` and `~/.axon/config.toml`), not in plugin prompts.
 
 The plugin includes two narrow Claude hooks:
 
@@ -21,7 +29,7 @@ The hooks are intentionally non-blocking. They do not deploy Docker services; st
 
 To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
 
-No systemd unit is created. Docker Compose is the only production deployment target. The `.mcp.json` connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
+No systemd unit is created. Docker Compose is the only production deployment target. The `.mcp.json` uses HTTP transport and connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
 
 ### Session Memory and Auto-Ingest
 
@@ -66,15 +74,23 @@ Default `response_mode: "path"` writes large outputs under the configured Axon a
 
 ## Skills
 
-The plugin ships plain-name Axon skills under `skills/`. Action skills cover the
-core CLI/MCP surfaces; workflow skills cover outcome-focused research,
-monitoring, QA, shopping, and design deliverables.
+The plugin ships 25 plain-name Axon skills under `skills/`. Because these
+skills already live inside the Axon plugin namespace, folder names do not carry
+an `axon-` prefix. Every skill includes `agents/openai.yaml` metadata.
+
+Action skills cover the core CLI/MCP surfaces; workflow skills cover
+outcome-focused research, monitoring, QA, shopping, and design deliverables.
 
 | Skill | Purpose |
 |-------|---------|
 | `using-axon` | Unified usage guide for the single `axon` MCP/CLI surface. |
 | `cli`, `crawl`, `download`, `extract`, `map`, `scrape`, `search`, `monitor` | Core Axon command and action workflows. |
 | `company-directories`, `competitive-intel`, `dashboard-reporting`, `deep-research`, `demo-walkthrough`, `knowledge-base`, `knowledge-ingest`, `lead-gen`, `lead-research`, `market-research`, `qa`, `research-papers`, `seo-audit`, `shop`, `website-design-clone`, `workflows` | Outcome-focused Axon workflow skills. |
+
+The `download` skill documents Axon's current composed capture workflow:
+`scrape`, `crawl --output-dir`, and `screenshot`. It is not a promise that Axon
+already has a single offline-site mirroring command that rewrites linked assets
+for fully browsable local copies.
 
 The runtime RAG synthesis prompt is stored under
 `references/rag-synthesize/SKILL.md` and embedded into `ask` synthesis at compile
@@ -90,16 +106,30 @@ time. It is intentionally not exposed as a user-invocable plugin skill.
 plugins/axon/
 ├── README.md                  — this file
 ├── CHANGELOG.md
-├── .mcp.json                  — MCP server config (stdio, ${user_config.*})
+├── .claude-plugin/
+│   └── plugin.json            — plugin manifest and userConfig
+├── .mcp.json                  — MCP server config (HTTP, ${user_config.*})
 ├── agents/
 │   └── researcher.md
+├── commands/
+│   └── axon-deploy.md
+├── examples/
+│   └── workflow-output-templates.md
+├── hooks/
+│   └── hooks.json
 ├── references/
 │   ├── capture-recipes.md
+│   ├── workflow-authoring.md
 │   └── rag-synthesize/
 │       ├── SKILL.md          — runtime RAG synthesis prompt
 │       └── example-response.md
+├── scripts/
+│   ├── plugin-setup.sh
+│   └── session-start-memory-context.sh
 └── skills/
-    ├── using-axon/SKILL.md   — meta-skill
+    ├── using-axon/
+    │   ├── SKILL.md          — meta-skill
+    │   └── agents/openai.yaml
     ├── cli/SKILL.md
     ├── crawl/SKILL.md
     ├── download/SKILL.md

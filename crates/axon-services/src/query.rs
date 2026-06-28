@@ -10,9 +10,11 @@ use crate::types::{
     RetrieveResult, ServiceRetrieveVariantError, SuggestResult, Suggestion,
 };
 use axon_code_index::config::validate_path_prefix;
-use axon_code_index::ensure::EnsureFreshOptions;
+use axon_code_index::ensure::{EnsureFreshOptions, ensure_fresh_with_progress};
 use axon_code_index::store::CodeIndexStore;
-use axon_code_index::{CodeIndexIdentity, CodeSearchAllowedRoots, FreshnessWarning, ensure_fresh};
+use axon_code_index::{
+    CodeIndexIdentity, CodeSearchAllowedRoots, FreshnessWarning, ReindexProgressSink,
+};
 use axon_core::config::{Config, ConfigOverrides, ScrapeFormat};
 use axon_core::error::{ServiceError, diagnostics_from_error};
 use axon_vector::ops::commands::ask::{ask_result, ask_result_with_deltas};
@@ -272,9 +274,20 @@ pub async fn refresh_code_search_index(
     cwd: Option<&Path>,
     caller: CodeSearchCaller,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
+    refresh_code_search_index_with_progress(ctx, cwd, caller, None).await
+}
+
+#[must_use = "refresh_code_search_index_with_progress returns a Result that should be handled"]
+pub async fn refresh_code_search_index_with_progress(
+    ctx: &ServiceContext,
+    cwd: Option<&Path>,
+    caller: CodeSearchCaller,
+    progress: Option<&dyn ReindexProgressSink>,
+) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
     let root = resolve_code_search_root(cwd, caller).await?;
     let identity = code_search_identity(ctx.cfg(), root).await;
-    let freshness = resolve_code_search_freshness(ctx, &identity, true).await;
+    let freshness =
+        resolve_code_search_freshness_with_progress(ctx, &identity, true, progress).await;
     let generation = code_search_committed_generation(ctx, &identity).await?;
     Ok(CodeSearchRefreshResult {
         project_root: identity.project_root.clone(),
@@ -288,6 +301,15 @@ async fn resolve_code_search_freshness(
     ctx: &ServiceContext,
     identity: &CodeIndexIdentity,
     ensure: bool,
+) -> CodeSearchFreshness {
+    resolve_code_search_freshness_with_progress(ctx, identity, ensure, None).await
+}
+
+async fn resolve_code_search_freshness_with_progress(
+    ctx: &ServiceContext,
+    identity: &CodeIndexIdentity,
+    ensure: bool,
+    progress: Option<&dyn ReindexProgressSink>,
 ) -> CodeSearchFreshness {
     if !ensure {
         return code_search_freshness("skipped", None, 0, 0);
@@ -307,7 +329,15 @@ async fn resolve_code_search_freshness(
         }
     };
 
-    match ensure_fresh(ctx.cfg(), pool, identity, EnsureFreshOptions::default()).await {
+    match ensure_fresh_with_progress(
+        ctx.cfg(),
+        pool,
+        identity,
+        EnsureFreshOptions::default(),
+        progress,
+    )
+    .await
+    {
         Ok(outcome) => code_search_freshness(
             "fresh",
             outcome.warning,
