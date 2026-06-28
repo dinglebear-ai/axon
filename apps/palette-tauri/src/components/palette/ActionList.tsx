@@ -4,7 +4,7 @@ import { ActionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
 import { Kbd } from "@/components/ui/aurora/kbd";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
-import { acceptsDirectUrl, type PaletteAction } from "@/lib/actions";
+import { acceptsDirectUrl, actionMatches, type PaletteAction } from "@/lib/actions";
 import { isAsyncAction } from "@/lib/actionHelp";
 import { actionDisplayMeta } from "@/lib/actionMeta";
 import { looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
@@ -14,7 +14,7 @@ interface ActionListProps {
   selected: number;
   setSelected: Dispatch<SetStateAction<number>>;
   parsed: ParsedCommand;
-  onSubmit: (action: PaletteAction) => void;
+  onSubmit: (action: PaletteAction, argumentOverride?: string) => void;
   onEnterMode: (action: PaletteAction) => void;
   onHelp: (action: PaletteAction) => void;
 }
@@ -116,6 +116,13 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
                             } else if (action.argMode === "none") {
                               // No-input actions run immediately — no empty argument prompt.
                               onSubmit(action);
+                            } else if (
+                              action.subcommand === "ask" &&
+                              parsed.search.trim().length > 0 &&
+                              !actionMatches(action, parsed.search)
+                            ) {
+                              // Free text in the empty command field is an Ask prompt.
+                              onSubmit(action, parsed.search);
                             } else if (acceptsDirectUrl(action) && looksLikeUrl(parsed.search)) {
                               onSubmit(action);
                             } else {

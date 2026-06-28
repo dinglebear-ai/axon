@@ -96,8 +96,13 @@ export default function App() {
     if (looksLikeUrl(parsed.search)) {
       return sortActionsForDisplay(ACTIONS).slice(0, 12);
     }
+    const matches = ACTIONS.filter((action) => actionMatches(action, parsed.search));
+    if (parsed.search.trim().length > 0 && matches.length === 0) {
+      const ask = ACTIONS.find((action) => action.subcommand === "ask");
+      return ask ? [ask] : [];
+    }
     return sortActionsByRelevance(
-      ACTIONS.filter((action) => actionMatches(action, parsed.search)),
+      matches,
       parsed.search,
     ).slice(0, 12);
   }, [parsed.invoked, parsed.search]);
@@ -113,7 +118,8 @@ export default function App() {
   selectedIndex = Math.min(selectedIndex, Math.max(filtered.length - 1, 0));
   const suggestedAction = filtered[selectedIndex];
   const active = modeAction ?? suggestedAction;
-  const activeArgument = active ? argumentFor(active, modeAction, parsed, query) : "";
+  const askFallback = active?.subcommand === "ask" && !modeAction && !parsed.invoked && parsed.search.trim().length > 0 && !actionMatches(active, parsed.search);
+  const activeArgument = active ? (askFallback ? parsed.search : argumentFor(active, modeAction, parsed, query)) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
   const confirmationArmed =
     active && !validation ? actionConfirmationArmed(pendingConfirmation, active, activeArgument) : false;
@@ -357,7 +363,7 @@ export default function App() {
       if (!modeAction && !parsed.invoked && active.argMode !== "none" && !looksLikeUrl(parsed.search)) {
         enterActionMode(active);
       } else {
-        requestSubmit(active);
+        requestSubmit(active, askFallback ? parsed.search : undefined);
       }
     } else if (event.key === "Tab") {
       event.preventDefault();

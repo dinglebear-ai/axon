@@ -6,7 +6,7 @@ import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { ActionList } from "@/components/palette/ActionList";
-import { ACTIONS } from "@/lib/actions";
+import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { parseCommand } from "@/lib/paletteView";
 
 const onSubmit = vi.fn();
@@ -94,4 +94,33 @@ it("enters argument mode on row click for an action that needs input", async () 
   expect(onEnterMode).toHaveBeenCalledTimes(1);
   expect(onEnterMode.mock.calls[0][0].subcommand).toBe("scrape");
   expect(onSubmit).not.toHaveBeenCalled();
+});
+
+it("submits free text through Ask instead of entering argument mode", async () => {
+  const user = userEvent.setup();
+  const [ask] = ACTIONS.filter((action): action is PaletteAction => action.subcommand === "ask");
+  if (!ask) throw new Error("missing ask action");
+
+  function AskHarness() {
+    const [selected, setSelected] = useState(0);
+    return (
+      <ActionList
+        filtered={[ask]}
+        selected={selected}
+        setSelected={setSelected}
+        parsed={parseCommand("why is qdrant slow today")}
+        onSubmit={onSubmit}
+        onEnterMode={onEnterMode}
+        onHelp={onHelp}
+      />
+    );
+  }
+
+  render(<AskHarness />);
+  await user.click(screen.getByRole("option", { name: /Ask/ }));
+
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  expect(onSubmit.mock.calls[0][0].subcommand).toBe("ask");
+  expect(onSubmit.mock.calls[0][1]).toBe("why is qdrant slow today");
+  expect(onEnterMode).not.toHaveBeenCalled();
 });

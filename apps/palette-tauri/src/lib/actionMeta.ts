@@ -37,13 +37,13 @@ const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   status: { category: "System", input: "none", output: "jobs", label: "Status" },
   stats: { category: "System", input: "none", output: "stats", label: "Stats" },
   doctor: { category: "System", input: "none", output: "health", label: "Doctor" },
-  endpoints: { category: "Inspect", input: "URL", output: "endpoints", label: "Endpoints" },
-  brand: { category: "Inspect", input: "URL", output: "brand", label: "Brand" },
+  endpoints: { category: "Fetch & read", input: "URL", output: "endpoints", label: "Endpoints" },
+  brand: { category: "Fetch & read", input: "URL", output: "brand", label: "Brand" },
   dedupe: { category: "System", input: "settings", output: "report", label: "Dedupe" },
   purge: { category: "System", input: "url", output: "report", label: "Purge" },
-  "watch-list": { category: "Watch", input: "none", output: "watches", label: "Watch list" },
-  "watch-create": { category: "Watch", input: "URL", output: "watch", label: "Watch create" },
-  "watch-run": { category: "Watch", input: "watch id", output: "run", label: "Watch run" },
+  "watch-list": { category: "System", input: "none", output: "watches", label: "Watch list" },
+  "watch-create": { category: "System", input: "URL", output: "watch", label: "Watch create" },
+  "watch-run": { category: "System", input: "watch id", output: "run", label: "Watch run" },
 };
 
 export function actionDisplayMeta(action: PaletteAction): ActionDisplayMeta {
@@ -77,14 +77,14 @@ export function actionKindLabel(action: PaletteAction): string {
   }
 }
 
-export function actionKindTone(action: PaletteAction): "info" | "success" | "warn" | "neutral" | "rose" | "violet" {
+export function actionKindTone(action: PaletteAction): "info" | "success" | "warn" | "neutral" | "rose" | "orange" {
   switch (action.kind) {
     case "admin":
       return "warn";
     case "discovery":
       return "neutral";
     case "job":
-      return "violet";
+      return "orange";
     case "local":
       return "info";
     default:
