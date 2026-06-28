@@ -57,6 +57,18 @@ The app reads Axon connection settings from the environment first, then `~/.axon
 
 Runtime palette preferences are stored in the platform app config directory as `settings.json`. The settings panel can override the server URL, token, shortcut, collection, result limit, theme, and hide-on-blur behavior. Hide-on-blur is on by default so clicking outside the palette dismisses it.
 
+When using the browser dev entry against a public reverse-proxied Axon endpoint
+for live QA, set `AXON_DEV_SERVER` to the live server and `AXON_DEV_TOKEN` to a
+token the dev proxy can inject as `authorization` and `x-api-key` headers.
+Set `AXON_DEV_STRIP_ORIGIN=true` explicitly only if browser-origin POSTs are
+rejected before Axon handles auth; this mode is not sufficient on its own
+without `AXON_DEV_TOKEN`. This is a privileged server-side proxy mode: Vite
+strips the browser `Origin` header, forwards to `AXON_DEV_SERVER`, injects the
+dev token when configured, and marks origin-stripped requests with
+`x-axon-dev-proxy: origin-stripped`. See `vite.config.ts` for the dev proxy
+setup. Keep the normal `pnpm vite:dev` default for everyday local development
+so public-origin/CORS drift remains visible.
+
 ## Authentication
 
 The palette authenticates to Axon two ways, and both can be configured at once:
