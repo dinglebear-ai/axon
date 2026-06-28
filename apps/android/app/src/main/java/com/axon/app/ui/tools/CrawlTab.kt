@@ -99,7 +99,7 @@ fun CrawlTab(vm: ToolsViewModel) {
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        AuroraKbd(key = s.jobId, contentDescription = "Submitted crawl job ID")
+                        AuroraKbd(key = s.jobId)
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -136,7 +136,7 @@ fun CrawlTab(vm: ToolsViewModel) {
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        AuroraKbd(key = s.jobId, contentDescription = "Crawl job ID")
+                        AuroraKbd(key = s.jobId)
                         s.pagesCrawled?.let { pages ->
                             Text(
                                 "Pages crawled: $pages",
