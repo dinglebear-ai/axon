@@ -1,5 +1,5 @@
 use super::test_support::{EnvGuard, spawn_full_test_server, stop};
-use axon_mcp::auth::AuthPolicy;
+use axon_authz::http::AuthPolicy;
 use axum::http::StatusCode;
 use serial_test::serial;
 

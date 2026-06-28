@@ -298,7 +298,7 @@ fn ingest_source(
     req: IngestStartRequest,
     cfg: &Config,
 ) -> Result<services::ingest::IngestSource, HttpError> {
-    let req = axon_mcp::schema::IngestRequest::from(req);
+    let req = axon_api::mcp_schema::IngestRequest::from(req);
     services::ingest::source_from_mcp_request(&req, cfg).map_err(HttpError::bad_request)
 }
 

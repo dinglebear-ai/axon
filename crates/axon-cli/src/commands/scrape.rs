@@ -10,7 +10,6 @@ use axon_core::logging::{log_done, log_info, log_warn};
 use axon_core::ui::{muted, primary, print_option, print_phase};
 use axon_services::context::ServiceContext;
 use axon_services::scrape as scrape_service;
-use axon_vector::ops::tei::{PreparedDoc, embed_prepared_docs};
 use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 
@@ -265,7 +264,7 @@ pub async fn run_scrape(
 
     // Phase 1: scrape URLs concurrently, bounded by batch_concurrency.
     let concurrency = cfg.batch_concurrency.max(1);
-    let mut to_embed: Vec<PreparedDoc> = Vec::new();
+    let mut scraped = Vec::new();
     let mut errors: Vec<String> = Vec::new();
     let results: Vec<_> = stream::iter(&urls)
         .map(|url| scrape_one(cfg, url))
@@ -274,8 +273,7 @@ pub async fn run_scrape(
         .await;
     for result in results {
         match result {
-            Ok(Some(doc)) => to_embed.push(doc),
-            Ok(None) => {}
+            Ok(result) => scraped.push(result),
             Err(e) => {
                 log_warn(&format!("scrape error={e}"));
                 errors.push(e.to_string());
@@ -283,17 +281,12 @@ pub async fn run_scrape(
         }
     }
 
-    // Phase 2: embed PreparedDocs directly — no disk write, no metadata loss.
+    // Phase 2: embed the in-memory scrape results — no disk write, no metadata loss.
     // Vertical extractor fields (extra, extractor_name, title) flow through
     // to Qdrant without being discarded.
-    if cfg.embed && !to_embed.is_empty() {
-        embed_prepared_docs(cfg, to_embed, None)
+    if cfg.embed && !scraped.is_empty() {
+        scrape_service::embed_scrape_results(cfg, &scraped, "scrape command embed")
             .await
-            .and_then(|summary| {
-                summary
-                    .require_success("scrape command embed")
-                    .map_err(|err| err.into())
-            })
             .map_err(|e| -> Box<dyn Error> { format!("embed failed: {e}").into() })?;
     }
 
@@ -309,9 +302,10 @@ pub async fn run_scrape(
     Ok(())
 }
 
-/// Scrape one URL, returning `Some(PreparedDoc)` when `cfg.embed` is true.
-/// Preserves vertical extractor metadata (extra, extractor_name, title) in the doc.
-async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<PreparedDoc>, Box<dyn Error>> {
+async fn scrape_one(
+    cfg: &Config,
+    url: &str,
+) -> Result<axon_services::types::ScrapeResult, Box<dyn Error>> {
     print_scrape_preamble(cfg, url);
     validate_url(url)?;
     let result = scrape_service::scrape(cfg, url, None).await?;
@@ -322,30 +316,22 @@ async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<PreparedDoc>, Box<
 
     // Enqueue follow-up crawl jobs (e.g. docs.rs crawl after crates.io scrape).
     if cfg.embed && !follow_crawl_urls.is_empty() {
-        let unique: Vec<&String> = follow_crawl_urls
-            .iter()
-            .filter(|u| u.as_str() != normalized.as_str())
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .take(5)
-            .collect();
-        for follow_url in unique {
-            match axon_jobs::crawl::start_crawl_job(cfg, follow_url).await {
-                Ok(job_id) => log_info(&format!(
-                    "queued follow-up crawl: url={follow_url} job={job_id}"
-                )),
-                Err(e) => log_warn(&format!(
-                    "could not queue follow-up crawl: url={follow_url} err={e}"
-                )),
+        for queued in
+            scrape_service::enqueue_follow_crawl_jobs(cfg, &normalized, &follow_crawl_urls, 5).await
+        {
+            if let Some(job_id) = queued.job_id {
+                log_info(&format!(
+                    "queued follow-up crawl: url={} job={job_id}",
+                    queued.url
+                ));
+            } else if let Some(error) = queued.error {
+                log_warn(&format!(
+                    "could not queue follow-up crawl: url={} err={error}",
+                    queued.url
+                ));
             }
         }
     }
 
-    if cfg.embed {
-        Ok(Some(
-            scrape_service::scrape_result_to_prepared_doc(cfg, &result).await?,
-        ))
-    } else {
-        Ok(None)
-    }
+    Ok(result)
 }

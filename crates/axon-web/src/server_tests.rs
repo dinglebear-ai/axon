@@ -4,7 +4,7 @@
 
 use super::HttpError;
 use super::test_support::{EnvGuard, spawn_ask_test_server, spawn_full_test_server, stop};
-use axon_mcp::auth::AuthPolicy;
+use axon_authz::http::AuthPolicy;
 use axon_services::types::{RestRouteAuth, rest_route_inventory};
 use axum::http::StatusCode;
 use serial_test::serial;

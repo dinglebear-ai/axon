@@ -6,7 +6,6 @@ use rand::RngExt as _;
 use reqwest::StatusCode;
 use serde::{Serialize, de::DeserializeOwned};
 use spider::url::Url;
-use std::env;
 use std::time::{Duration, Instant};
 
 pub fn qdrant_base(cfg: &Config) -> &str {
@@ -116,14 +115,7 @@ where
     Err(last_err.unwrap_or_else(|| anyhow!("{context}: unknown qdrant request failure")))
 }
 
-pub fn env_usize_clamped(key: &str, default: usize, min: usize, max: usize) -> usize {
-    env::var(key)
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .filter(|v| *v >= min)
-        .unwrap_or(default)
-        .clamp(min, max)
-}
+pub use axon_core::env::env_usize_clamped;
 
 pub fn payload_text_typed(payload: &QdrantPayload) -> &str {
     if !payload.chunk_text.is_empty() {
