@@ -6,6 +6,8 @@
 //! extraction inventory, §5.4 "Authz scope constants"). Do not alter the
 //! literal values.
 
+pub mod http;
+
 /// OAuth scope granting read access to Axon read/RAG routes.
 pub const AXON_READ_SCOPE: &str = "axon:read";
 /// OAuth scope granting write access to Axon mutating routes.

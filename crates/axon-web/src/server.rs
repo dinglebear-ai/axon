@@ -31,7 +31,7 @@ pub fn router(
     cfg: Arc<axon_core::config::Config>,
     panel: Arc<PanelRuntimeState>,
     service_context: Arc<ServiceContext>,
-    auth_policy: axon_mcp::auth::AuthPolicy,
+    auth_policy: axon_authz::http::AuthPolicy,
 ) -> Router {
     routing::router(cfg, panel, service_context, auth_policy)
 }

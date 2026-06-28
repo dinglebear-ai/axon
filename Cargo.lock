@@ -421,6 +421,11 @@ dependencies = [
 [[package]]
 name = "axon-authz"
 version = "6.1.3"
+dependencies = [
+ "axum",
+ "lab-auth",
+ "tracing",
+]
 
 [[package]]
 name = "axon-cli"
@@ -790,7 +795,6 @@ dependencies = [
  "axon-core",
  "axon-ingest",
  "axon-jobs",
- "axon-mcp",
  "axon-services",
  "axon-vector",
  "axum",
