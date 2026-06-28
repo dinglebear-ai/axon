@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Monitor"
+  short_description: "Track recurring URL changes and async Axon job activity."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

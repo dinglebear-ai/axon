@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon SEO Audit"
+  short_description: "Audit SEO surfaces and content evidence from crawled pages."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Crawl"
+  short_description: "Capture many pages from a bounded site or documentation section."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

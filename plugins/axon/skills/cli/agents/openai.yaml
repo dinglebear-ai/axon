@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon CLI"
+  short_description: "Route web, crawl, extract, ingest, RAG, and watch tasks through Axon."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

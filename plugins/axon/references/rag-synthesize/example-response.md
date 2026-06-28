@@ -1,6 +1,6 @@
 # Example Response
 
-This documents the expected output format for the axon-rag-synthesize synthesis prompt.
+This documents the expected output format for the rag-synthesize synthesis prompt.
 Used by human maintainers — this file is NOT read by the Rust loader or passed to the LLM.
 
 ## Context the LLM receives

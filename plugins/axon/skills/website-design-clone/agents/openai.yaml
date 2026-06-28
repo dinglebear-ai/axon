@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Website Design Clone"
+  short_description: "Create an agent-ready DESIGN.md from Axon brand, scrape, and screenshot evidence."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

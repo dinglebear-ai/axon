@@ -1,0 +1,6 @@
+interface:
+  display_name: "Axon Company Directories"
+  short_description: "Build structured company lists from directory and listing sites."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Using Axon"
+  short_description: "Use Axon for RAG, web search, crawl, ingest, and memory."
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true
