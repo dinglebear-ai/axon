@@ -130,6 +130,9 @@
   --axon-launcher-glow:
     0 4px 16px rgba(0, 0, 0, 0.34),
     0 1px 3px rgba(0, 0, 0, 0.30);
+  --axon-orange: #ff9645;
+  --axon-orange-strong: #ffb474;
+  --axon-orange-deep: #c96a1c;
 }
 
 * {
@@ -168,6 +171,50 @@ body {
 body[data-fixture] {
   min-width: 0;
   overflow: auto;
+}
+
+@media (max-width: 559px) {
+  body:not(.tauri-runtime) {
+    min-width: 0;
+  }
+
+  #app {
+    place-items: start center;
+    padding-top: 136px;
+  }
+
+  .palette-shell,
+  .palette-shell-results,
+  .palette-shell-compact {
+    width: min(100vw - 16px, 720px);
+  }
+
+  .palette-shell-compact {
+    --axon-launcher-inset: 8px;
+  }
+
+  .palette-shell-compact .command-bar {
+    gap: 6px;
+    padding: 0 6px 0 8px;
+  }
+
+  .axon-word {
+    display: none;
+  }
+
+  .palette-footer {
+    padding: 0 10px;
+  }
+
+  .palette-footer-hints {
+    justify-content: flex-start;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .palette-footer-hints .palette-hint-group {
+    display: none;
+  }
 }
 
 .fixture-shell {
@@ -1321,21 +1368,35 @@ textarea {
   min-width: 0;
   align-items: center;
   gap: 10px;
-  height: 100%;
+  height: 44px;
+  padding: 0 8px 0 12px;
   color: var(--aurora-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 11px;
   cursor: text;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .command-input-wrap:focus-within {
   color: var(--aurora-text-muted);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 6%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 62%, var(--aurora-border-strong));
+  box-shadow:
+    0 0 22px 4px color-mix(in srgb, var(--aurora-accent-primary) 34%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 5%, transparent);
 }
 
 /* A11Y-M1 — visible keyboard-focus ring for the command input. The <input>
    itself has outline:0; surface focus on its wrapper so AT/keyboard users get
    a WCAG 2.4.7 indicator. :focus-visible avoids a ring on pointer clicks. */
 .command-input-wrap:has(.command-input:focus-visible) {
-  border-radius: 9px;
-  box-shadow: inset 0 0 0 1px var(--aurora-focus-ring-strong);
+  box-shadow:
+    0 0 24px 5px color-mix(in srgb, var(--aurora-accent-primary) 38%, transparent),
+    inset 0 0 0 1px var(--aurora-focus-ring-strong);
 }
 
 /* Active-mode switcher: the selected action sits inside the input and opens a
@@ -1396,8 +1457,8 @@ textarea {
   color: var(--aurora-accent-pink-strong);
 }
 
-.command-mode-icon-violet {
-  color: var(--aurora-accent-violet-strong);
+.command-mode-icon-orange {
+  color: var(--axon-orange-strong);
 }
 
 .command-action-menu {
@@ -1426,6 +1487,27 @@ textarea {
   overflow-y: auto;
   flex-direction: column;
   gap: 2px;
+}
+
+.command-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.command-action-group + .command-action-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--aurora-border-default) 54%, transparent);
+}
+
+.command-action-group-heading {
+  padding: 2px 7px 3px;
+  color: var(--aurora-text-muted);
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: var(--aurora-letter-eyebrow);
+  text-transform: uppercase;
 }
 
 .command-action-search {
@@ -1580,6 +1662,25 @@ textarea {
   letter-spacing: 0;
 }
 
+.command-submit-armed,
+.command-submit-armed:hover:not(:disabled),
+.palette-shell-compact .command-submit-armed,
+.palette-shell-compact .command-submit-armed:hover:not(:disabled) {
+  color: #2a0f18;
+  background: var(--aurora-accent-pink);
+  border-color: var(--aurora-accent-pink-deep);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-pink-deep) 48%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.command-submit-armed:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--aurora-focus-ring-strong),
+    0 0 0 1px color-mix(in srgb, var(--aurora-accent-pink-deep) 48%, transparent);
+}
+
 .command-action-option-warn {
   color: var(--aurora-warn-foreground);
 }
@@ -1588,8 +1689,97 @@ textarea {
   color: var(--aurora-accent-pink-strong);
 }
 
-.command-action-option-violet {
-  color: var(--aurora-accent-violet-strong);
+.command-action-option-orange {
+  color: var(--axon-orange-strong);
+}
+
+.command-menu-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.command-settings-active {
+  color: var(--aurora-text-primary);
+  background: var(--aurora-hover-bg);
+  border-color: var(--aurora-border-strong);
+}
+
+.command-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  min-width: 230px;
+  padding: 6px;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--aurora-text-primary);
+  background: color-mix(in srgb, var(--aurora-panel-strong) 98%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 68%, transparent);
+  border-radius: 10px;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.command-menu-item {
+  all: unset;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 7px;
+  color: var(--aurora-accent-strong);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.command-menu-item:hover:not(:disabled),
+.command-menu-item:focus-visible {
+  color: var(--aurora-text-primary);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 7%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 26%, var(--aurora-border-default));
+  outline: none;
+}
+
+.command-menu-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.command-menu-item-separated {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top-color: color-mix(in srgb, var(--aurora-border-default) 58%, transparent);
+}
+
+.command-menu-item span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.command-menu-item strong,
+.command-menu-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-menu-item strong {
+  color: var(--aurora-text-primary);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.command-menu-item small {
+  color: var(--aurora-text-muted);
+  font-size: 10.5px;
+  font-weight: 520;
 }
 
 .palette-grid {
@@ -1850,7 +2040,7 @@ textarea {
 }
 
 .running-stat-accent strong {
-  color: var(--aurora-warn-foreground);
+  color: var(--aurora-accent-strong);
 }
 
 .running-progress-head {
@@ -1865,15 +2055,15 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--aurora-warn-foreground);
+  color: var(--aurora-accent-pink-strong);
 }
 
 .running-progress-head i {
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: var(--aurora-warn);
-  box-shadow: 0 0 6px var(--aurora-warn);
+  background: var(--aurora-success);
+  box-shadow: 0 0 6px var(--aurora-success);
   animation: crawl-pulse 1.6s ease-in-out infinite;
 }
 
@@ -1889,7 +2079,7 @@ textarea {
   display: block;
   width: 17%;
   height: 100%;
-  background: linear-gradient(90deg, var(--aurora-warn-border), var(--aurora-warn));
+  background: linear-gradient(90deg, var(--aurora-success), var(--aurora-accent-primary));
   border-radius: inherit;
 }
 
@@ -2064,7 +2254,7 @@ textarea {
 
 .ask-activity-row svg {
   margin-top: 1px;
-  color: var(--aurora-accent-violet-strong);
+  color: var(--aurora-accent-pink-strong);
 }
 
 .ask-activity-tool svg {
@@ -2377,9 +2567,9 @@ textarea {
 
 .output-tone-warn .output-op-tile,
 .output-running .output-op-tile {
-  color: var(--aurora-warn-foreground);
-  background: color-mix(in srgb, var(--aurora-warn) 14%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--aurora-warn) 30%, transparent);
+  color: var(--axon-orange-strong);
+  background: color-mix(in srgb, var(--axon-orange) 14%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--axon-orange) 30%, transparent);
 }
 
 .output-tone-rose .output-op-tile {
@@ -2388,10 +2578,10 @@ textarea {
   border-color: color-mix(in srgb, var(--aurora-accent-pink) 30%, transparent);
 }
 
-.output-tone-violet .output-op-tile {
-  color: var(--aurora-accent-violet-strong);
-  background: color-mix(in srgb, var(--aurora-accent-violet) 13%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--aurora-accent-violet) 30%, transparent);
+.output-tone-orange .output-op-tile {
+  color: var(--axon-orange-strong);
+  background: color-mix(in srgb, var(--axon-orange) 13%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--axon-orange) 30%, transparent);
 }
 
 .output-status {
@@ -2652,10 +2842,10 @@ textarea {
   border-color: color-mix(in srgb, var(--aurora-accent-pink) 28%, transparent);
 }
 
-.action-icon-violet {
-  color: var(--aurora-accent-violet-strong);
-  background: color-mix(in srgb, var(--aurora-accent-violet) 13%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--aurora-accent-violet) 28%, transparent);
+.action-icon-orange {
+  color: var(--axon-orange-strong);
+  background: color-mix(in srgb, var(--axon-orange) 13%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--axon-orange) 28%, transparent);
 }
 
 .action-main {
@@ -3632,8 +3822,8 @@ textarea {
   border-color: var(--aurora-accent-pink-border);
 }
 
-.operation-hero-violet {
-  border-color: var(--aurora-accent-violet-border);
+.operation-hero-orange {
+  border-color: color-mix(in srgb, var(--axon-orange) 34%, transparent);
 }
 
 .operation-hero-icon {
@@ -3654,10 +3844,10 @@ textarea {
   border-color: var(--aurora-accent-pink-border);
 }
 
-.operation-hero-violet .operation-hero-icon {
-  color: var(--aurora-accent-violet-strong);
-  background: var(--aurora-accent-violet-surface);
-  border-color: var(--aurora-accent-violet-border);
+.operation-hero-orange .operation-hero-icon {
+  color: var(--axon-orange-strong);
+  background: color-mix(in srgb, var(--axon-orange) 12%, var(--aurora-panel-medium));
+  border-color: color-mix(in srgb, var(--axon-orange) 30%, transparent);
 }
 
 .operation-hero-success .operation-hero-icon {

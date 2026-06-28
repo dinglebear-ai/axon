@@ -81,11 +81,8 @@ describe("App local help", () => {
 
   it("opens selected action help from the command bar and replays it from history as local help", async () => {
     await renderAndType("scrape");
-    const commandHelp = (await screen.findAllByLabelText("Help for Scrape URL")).find((button) =>
-      button.classList.contains("command-help"),
-    );
-    expect(commandHelp).toBeDefined();
-    fireEvent.click(commandHelp!);
+    fireEvent.click(await screen.findByRole("button", { name: "Menu" }));
+    fireEvent.click(await screen.findByText("Help"));
 
     expect((await screen.findAllByText("Scrape URL")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("POST /v1/scrape").length).toBeGreaterThan(0);
@@ -99,13 +96,13 @@ describe("App local help", () => {
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
 
-  it("shows unknown-query help from the command-bar question mark without REST", async () => {
+  it("shows Ask help for free text from the command menu without REST", async () => {
     await renderAndType("nope");
 
-    fireEvent.click(await screen.findByRole("button", { name: "Help" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Menu" }));
+    fireEvent.click(await screen.findByText("Help"));
 
-    expect(await screen.findByText("No matching action:")).toBeTruthy();
-    expect(screen.getByText("nope")).toBeTruthy();
+    expect((await screen.findAllByText("POST /v1/ask")).length).toBeGreaterThan(0);
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
 });

@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, HelpCircle, Search, Send, Settings } from "lucide-react";
+import { ArrowLeft, ChevronDown, CircleHelp, Menu, Search, Send, Settings, SlidersHorizontal, TerminalSquare } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
@@ -53,6 +53,8 @@ function sentenceCase(value: string): string {
   return value ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
+const SWITCHER_GROUPS = ["Fetch & read", "Crawl & ingest", "Search & discover", "Reason", "System", "Jobs"] as const;
+
 export function PaletteCommandBar({
   active,
   activeDescendantId,
@@ -81,26 +83,43 @@ export function PaletteCommandBar({
   const ModeIcon = modeAction ? actionIcon(modeAction.subcommand) : null;
   const switcherRef = useRef<HTMLDivElement | null>(null);
   const switcherTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const switcherActions = useMemo(
     () => sortActionsForDisplay(ACTIONS).filter((action) => action.subcommand !== modeAction?.subcommand),
     [modeAction?.subcommand],
   );
-  const modeMeta = modeAction ? actionDisplayMeta(modeAction) : null;
-  const modeDescriptor = modeMeta ? sentenceCase(`${modeMeta.input} to ${modeMeta.output}`) : "";
+  const groupedSwitcherActions = useMemo(() => {
+    const groups = new Map<string, PaletteAction[]>();
+    for (const action of switcherActions) {
+      const category = actionDisplayMeta(action).category;
+      groups.set(category, [...(groups.get(category) ?? []), action]);
+    }
+    return [
+      ...SWITCHER_GROUPS.map((category) => ({ category, actions: groups.get(category) ?? [] })),
+      ...[...groups.entries()]
+        .filter(([category]) => !SWITCHER_GROUPS.includes(category as (typeof SWITCHER_GROUPS)[number]))
+        .map(([category, actions]) => ({ category, actions })),
+    ].filter((group) => group.actions.length > 0);
+  }, [switcherActions]);
 
   useEffect(() => {
-    if (!switcherOpen) return;
+    if (!switcherOpen && !menuOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       if (switcherRef.current?.contains(event.target as Node)) return;
+      if (menuRef.current?.contains(event.target as Node)) return;
       setSwitcherOpen(false);
+      setMenuOpen(false);
     };
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [switcherOpen]);
+  }, [switcherOpen, menuOpen]);
 
   useEffect(() => {
     setSwitcherOpen(false);
+    setMenuOpen(false);
   }, []);
 
   // A11Y-M2 — surface submit validation as text tied to the input via
@@ -139,6 +158,7 @@ export function PaletteCommandBar({
       </Button>
       <span className="axon-divider" aria-hidden="true" />
       {/* biome-ignore lint/a11y/noStaticElementInteractions: click-to-focus convenience; the real control is the command input within */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users focus the input directly; this wrapper only expands the pointer target */}
       <div className="command-input-wrap" onClick={() => focusInput()}>
         {modeAction && ModeIcon ? (
           // A11Y-H1 — the action switcher is an `aria-expanded` disclosure of plain
@@ -154,6 +174,7 @@ export function PaletteCommandBar({
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
+                setMenuOpen(false);
                 setSwitcherOpen((open) => !open);
               }}
               onKeyDown={(event) => {
@@ -177,8 +198,6 @@ export function PaletteCommandBar({
               <div
                 id="command-action-disclosure"
                 className="command-action-menu"
-                role="group"
-                aria-label="Switch action"
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     event.stopPropagation();
@@ -188,46 +207,38 @@ export function PaletteCommandBar({
                 }}
               >
                 <div className="command-action-options">
-                  {switcherActions.map((action) => {
-                    const Icon = actionIcon(action.subcommand);
-                    const meta = actionDisplayMeta(action);
-                    const descriptor = sentenceCase(`${meta.input} to ${meta.output}`);
-                    return (
-                      <Button
-                        variant="plain"
-                        size="unstyled"
-                        key={action.subcommand}
-                        className={`command-action-option command-action-option-${action.tone}`}
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setSwitcherOpen(false);
-                          onSwitchAction(action);
-                        }}
-                      >
-                        <Icon size={15} strokeWidth={1.85} aria-hidden="true" />
-                        <span>
-                          <strong>{meta.label}</strong>
-                          <small>{descriptor}</small>
-                        </span>
-                        <Kbd unstyled>{action.subcommand}</Kbd>
-                      </Button>
-                    );
-                  })}
+                  {groupedSwitcherActions.map((group) => (
+                    <div className="command-action-group" key={group.category}>
+                      <div className="command-action-group-heading">{group.category}</div>
+                      {group.actions.map((action) => {
+                        const Icon = actionIcon(action.subcommand);
+                        const meta = actionDisplayMeta(action);
+                        const descriptor = sentenceCase(`${meta.input} to ${meta.output}`);
+                        return (
+                          <Button
+                            variant="plain"
+                            size="unstyled"
+                            key={action.subcommand}
+                            className={`command-action-option command-action-option-${action.tone}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSwitcherOpen(false);
+                              onSwitchAction(action);
+                            }}
+                          >
+                            <Icon size={15} strokeWidth={1.85} aria-hidden="true" />
+                            <span>
+                              <strong>{meta.label}</strong>
+                              <small>{descriptor}</small>
+                            </span>
+                            <Kbd unstyled>{actionDisplayMeta(action).method}</Kbd>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
-                {modeAction && modeMeta && (
-                  <div className="command-action-footer">
-                    <span className="command-action-footer-current">
-                      <strong>{modeMeta.label}</strong>
-                      <span>{modeDescriptor}</span>
-                    </span>
-                    <span className="command-action-footer-hints">
-                      <span><Kbd unstyled>↑</Kbd><Kbd unstyled>↓</Kbd> navigate</span>
-                      <span><Kbd unstyled>↵</Kbd> switch</span>
-                      <span><Kbd unstyled>esc</Kbd> close</span>
-                    </span>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -258,23 +269,9 @@ export function PaletteCommandBar({
       <Button
         variant="plain"
         size="unstyled"
-        // `.command-help:disabled` owns the disabled look (no opacity change);
-        // neutralize the primitive base's disabled:opacity-45 to stay pixel-identical.
-        className="command-help disabled:opacity-100"
-        type="button"
-        onClick={() => onHelp(active, active ? undefined : query.trim())}
-        disabled={running}
-        aria-label={active ? `Help for ${active.label}` : "Help"}
-        title={active ? `Help for ${active.label}` : "Help"}
-      >
-        <HelpCircle size={15} />
-      </Button>
-      <Button
-        variant="plain"
-        size="unstyled"
         // `.command-submit:disabled` owns the disabled look (no opacity change);
         // neutralize the primitive base's disabled:opacity-45 to stay pixel-identical.
-        className={`${active && !validation ? `command-submit command-submit-${active.tone}` : "command-submit"} disabled:opacity-100`}
+        className={`${active && !validation ? "command-submit command-submit-armed" : "command-submit"} disabled:opacity-100`}
         type="button"
         onClick={() => active && onSubmit(active)}
         disabled={submitDisabled}
@@ -283,17 +280,91 @@ export function PaletteCommandBar({
       >
         <Send size={15} />
       </Button>
-      <Button
-        variant="plain"
-        size="unstyled"
-        className={settingsOpen ? "command-settings command-settings-active" : "command-settings"}
-        type="button"
-        onClick={onToggleSettings}
-        aria-label="Settings"
-        title="Settings"
-      >
-        <Settings size={15} />
-      </Button>
+      <div className="command-menu-wrap" ref={menuRef}>
+        <Button
+          variant="plain"
+          size="unstyled"
+          ref={menuTriggerRef}
+          className={settingsOpen || menuOpen ? "command-settings command-settings-active" : "command-settings"}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setSwitcherOpen(false);
+            setMenuOpen((open) => !open);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && menuOpen) {
+              event.stopPropagation();
+              setMenuOpen(false);
+              menuTriggerRef.current?.focus();
+            }
+          }}
+          aria-haspopup="true"
+          aria-expanded={menuOpen}
+          aria-controls="command-menu"
+          aria-label="Menu"
+          title="Menu"
+        >
+          <Menu size={15} />
+        </Button>
+        {menuOpen && (
+          <div id="command-menu" className="command-menu">
+            <Button
+              variant="plain"
+              size="unstyled"
+              className="command-menu-item"
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onToggleSettings();
+              }}
+            >
+              <Settings size={15} strokeWidth={1.7} aria-hidden="true" />
+              <span><strong>Settings</strong><small>Palette preferences</small></span>
+            </Button>
+            <Button
+              variant="plain"
+              size="unstyled"
+              className="command-menu-item"
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onToggleSettings();
+              }}
+            >
+              <SlidersHorizontal size={15} strokeWidth={1.7} aria-hidden="true" />
+              <span><strong>Config</strong><small>config.toml tuning</small></span>
+            </Button>
+            <Button
+              variant="plain"
+              size="unstyled"
+              className="command-menu-item"
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onToggleSettings();
+              }}
+            >
+              <TerminalSquare size={15} strokeWidth={1.7} aria-hidden="true" />
+              <span><strong>Environment</strong><small>.env secrets & URLs</small></span>
+            </Button>
+            <Button
+              variant="plain"
+              size="unstyled"
+              className="command-menu-item command-menu-item-separated"
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onHelp(active, active ? undefined : query.trim());
+              }}
+              disabled={running}
+            >
+              <CircleHelp size={15} strokeWidth={1.7} aria-hidden="true" />
+              <span><strong>Help</strong><small>Shortcuts & action docs</small></span>
+            </Button>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

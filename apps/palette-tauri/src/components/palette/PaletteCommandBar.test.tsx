@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
+import { actionDisplayMeta } from "@/lib/actionMeta";
 
 const config = {
   serverUrl: "http://127.0.0.1:9999",
@@ -112,9 +113,9 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
 
     const askButton = screen
       .getAllByRole("button")
-      .find((b) => b.textContent?.includes(ask.subcommand));
-    expect(askButton).toBeDefined();
-    await user.click(askButton!);
+      .find((b) => b.textContent?.includes(actionDisplayMeta(ask).label));
+    if (!askButton) throw new Error("missing Ask switcher button");
+    await user.click(askButton);
     expect(onSwitchAction).toHaveBeenCalledTimes(1);
     expect(onSwitchAction.mock.calls[0][0].subcommand).toBe("ask");
   });
@@ -128,18 +129,32 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     expect(screen.getByText("Question to answer")).toBeInTheDocument();
   });
 
-  it("renders a pinned switcher footer with current action context and hints", async () => {
+  it("renders grouped switcher sections with compact action metadata", async () => {
     const user = userEvent.setup();
     renderBar({ modeAction: scrape });
 
     await user.click(screen.getByRole("button", { name: /Switch from/ }));
 
-    const footer = screen.getByText("One URL to content").closest(".command-action-footer");
-    expect(footer).toBeTruthy();
-    expect(within(footer as HTMLElement).getByText("Scrape")).toBeInTheDocument();
-    expect(within(footer as HTMLElement).getByText("navigate")).toBeInTheDocument();
-    expect(within(footer as HTMLElement).getByText("switch")).toBeInTheDocument();
-    expect(within(footer as HTMLElement).getByText("close")).toBeInTheDocument();
+    expect(screen.getByText("Fetch & read")).toBeInTheDocument();
+    expect(screen.getByText("Reason")).toBeInTheDocument();
+    expect(screen.getByText("Question to answer")).toBeInTheDocument();
+    expect(screen.queryByText("navigate")).not.toBeInTheDocument();
+  });
+
+  it("opens the utility menu and routes help through the menu", async () => {
+    const user = userEvent.setup();
+    const onHelp = vi.fn();
+    renderBar({ onHelp });
+
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("Config")).toBeInTheDocument();
+    expect(screen.getByText("Environment")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Help"));
+    expect(onHelp).toHaveBeenCalledTimes(1);
+    expect(onHelp.mock.calls[0][0].subcommand).toBe("scrape");
   });
 
   it("closes the disclosure on Escape and keeps focus on the trigger", async () => {

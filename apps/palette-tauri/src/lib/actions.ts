@@ -1,6 +1,6 @@
 export type ArgMode = "none" | "optionalSingle" | "single" | "split";
 type RemoteActionKind = "operation" | "job" | "admin" | "discovery";
-type ActionTone = "info" | "success" | "warn" | "neutral" | "rose" | "violet";
+type ActionTone = "info" | "success" | "warn" | "neutral" | "rose" | "orange";
 export const JOB_FAMILIES = ["crawl", "embed", "extract", "ingest"] as const;
 export type JobFamily = (typeof JOB_FAMILIES)[number];
 export const JOB_OPERATIONS = ["list", "status", "cancel", "cleanup", "clear", "recover"] as const;
@@ -130,7 +130,7 @@ const STATIC_ACTIONS = [
     aliases: ["chat", "llm", "talk"],
     description: "Chat directly with the configured LLM without RAG retrieval.",
     example: "chat explain this error simply",
-    tone: "violet",
+    tone: "rose",
   },
   {
     label: "Query knowledge base",
@@ -160,7 +160,7 @@ const STATIC_ACTIONS = [
     aliases: ["suggest", "recommend", "discover-more"],
     description: "Suggest additional documentation URLs worth crawling.",
     example: "suggest tauri",
-    tone: "violet",
+    tone: "rose",
   },
   {
     label: "Evaluate answer",
@@ -170,7 +170,7 @@ const STATIC_ACTIONS = [
     aliases: ["evaluate", "eval", "judge"],
     description: "Compare RAG and baseline answers with an independent LLM judge.",
     example: "evaluate how does Tauri v2 HTTP work?",
-    tone: "violet",
+    tone: "rose",
   },
   {
     label: "Search the web",
@@ -200,7 +200,7 @@ const STATIC_ACTIONS = [
     aliases: ["embed", "index", "vectorize"],
     description: "Embed a URL, file, directory, or text input into the collection.",
     example: "embed https://docs.rs/serde",
-    tone: "violet",
+    tone: "orange",
   },
   {
     label: "Extract data",
@@ -210,7 +210,7 @@ const STATIC_ACTIONS = [
     aliases: ["extract", "structured", "parse"],
     description: "Queue structured extraction for one or more URLs.",
     example: "extract https://example.com/pricing",
-    tone: "violet",
+    tone: "orange",
   },
   {
     label: "Ingest target",
@@ -220,7 +220,7 @@ const STATIC_ACTIONS = [
     aliases: ["ingest", "import", "repo", "youtube", "reddit"],
     description: "Ingest GitHub, Reddit, or YouTube targets into the collection.",
     example: "ingest https://github.com/zed-industries/zed",
-    tone: "warn",
+    tone: "orange",
   },
   {
     label: "Job status",
@@ -285,7 +285,7 @@ const STATIC_ACTIONS = [
     aliases: ["endpoints", "api", "routes", "discover-endpoints"],
     description: "Scan a page for API endpoints, scripts, and optional probes.",
     example: "endpoints https://example.com/app",
-    tone: "violet",
+    tone: "info",
   },
   {
     label: "Extract brand",
@@ -315,7 +315,7 @@ const STATIC_ACTIONS = [
     aliases: ["screenshot", "capture", "shot", "png"],
     description: "Render a URL in Chrome and capture a full-page screenshot using the default viewport.",
     example: "screenshot https://example.com",
-    tone: "violet",
+    tone: "info",
   },
   {
     label: "Dedupe collection",
@@ -356,7 +356,7 @@ const STATIC_ACTIONS = [
     aliases: ["watch-create", "watch-url", "monitor-url"],
     description: "Create a URL change detector. Optional second argument is seconds.",
     example: "watch-create https://example.com/docs 3600",
-    tone: "violet",
+    tone: "orange",
   },
   {
     label: "Run watch now",
@@ -376,7 +376,7 @@ const STATIC_ACTIONS = [
     aliases: ["sessions-prepared", "ingest-sessions-prepared", "prepared-sessions"],
     description: "Submit a prepared AI-session ingest request as JSON.",
     example: "ingest-sessions-prepared {\"sessions\":[]}",
-    tone: "violet",
+    tone: "orange",
   },
 ] as const satisfies readonly PaletteAction[];
 
@@ -422,7 +422,7 @@ function jobLifecycleActions(family: JobFamily): PaletteAction[] {
       aliases: [`${family}-cancel`, `cancel-${family}`],
       description: `Cancel one pending or running ${family} job by UUID.`,
       example: `${family}-cancel 00000000-0000-4000-8000-000000000000`,
-      tone: "warn",
+      tone: "orange",
     },
     {
       label: `Cleanup ${family} jobs`,
@@ -432,7 +432,7 @@ function jobLifecycleActions(family: JobFamily): PaletteAction[] {
       aliases: [`${family}-cleanup`, `cleanup-${family}`],
       description: `Clean completed ${family} job records.`,
       example: `${family}-cleanup`,
-      tone: "warn",
+      tone: "orange",
     },
     {
       label: `Clear ${family} jobs`,
