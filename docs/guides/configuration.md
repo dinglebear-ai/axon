@@ -220,7 +220,7 @@ The CLI may search the current Git checkout directly.
 | `code-search.freshness-ttl-secs` / `AXON_CODE_SEARCH_FRESHNESS_TTL_SECS` | `30` | Process-local freshness cache TTL before a new manifest check is required. |
 | `code-search.reindex-timeout-secs` / `AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS` | `300` | Foreground refresh timeout. On timeout, stale vectors are returned with a freshness warning; no background refresh continues in v1. |
 | `code-search.max-file-bytes` / `AXON_CODE_SEARCH_MAX_FILE_BYTES` | `10485760` | Max local source file size considered by the manifest and embed pass. Larger files are skipped. |
-| `code-search.changed-file-batch-size` / `AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE` | `5` | Changed-file batch size for local-code embedding. |
+| `code-search.changed-file-batch-size` / `AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE` | `64` | Changed-file batch size for local-code embedding. |
 
 ### TEI embedding
 

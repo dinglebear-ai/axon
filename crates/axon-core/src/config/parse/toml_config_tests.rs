@@ -415,7 +415,7 @@ quantization-always-ram = true
 freshness-ttl-secs = 30
 reindex-timeout-secs = 300
 max-file-bytes = 10485760
-changed-file-batch-size = 5
+changed-file-batch-size = 64
 
 [watch]
 tick-secs = 15

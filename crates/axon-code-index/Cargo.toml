@@ -43,7 +43,7 @@ unused_qualifications = "warn"
 all = { level = "warn", priority = -1 }
 module_inception = "allow"              # src/crawl.rs: acceptable module name
 [features]
-test-util = []
+test-util = ["axon-vector/test-util"]
 
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }
