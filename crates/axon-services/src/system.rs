@@ -28,7 +28,7 @@ pub use self::sources::{
     domain_sources_from_urls, map_sources_payload, normalize_domain_query, sources,
     sources_for_domain, sources_schema_version_breakdown, sources_with_breakdown,
 };
-pub use self::stats::{map_stats_payload, stats};
+pub use self::stats::{map_stats_payload, print_stats_human, stats};
 pub use self::status::{
     StatusJobs, build_status_payload, build_status_payload_with_errors,
     build_status_payload_with_errors_and_sqlite, full_status, load_status_jobs,

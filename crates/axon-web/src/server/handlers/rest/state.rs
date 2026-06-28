@@ -4,9 +4,9 @@
 //! initializes the `ServiceContext` (with workers) on first use. Used by every
 //! family of REST routes.
 
+use axon_authz::http::AuthPolicy;
 use axon_core::config::Config;
 use axon_jobs::store::open_config_pool;
-use axon_mcp::auth::AuthPolicy;
 use axon_services::context::ServiceContext;
 use sqlx::SqlitePool;
 use std::error::Error;

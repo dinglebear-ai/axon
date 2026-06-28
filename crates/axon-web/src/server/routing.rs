@@ -2,12 +2,12 @@ use super::error::HttpError;
 use super::handlers;
 use super::state::AppState;
 use super::types::ASK_BODY_LIMIT;
-use axon_authz::scope_satisfies;
-use axon_core::config::Config;
-use axon_mcp::auth::{
+use axon_authz::http::{
     AuthPolicy, build_auth_layer, configured_mcp_http_token, normalize_api_key_header,
     oauth_resource_url,
 };
+use axon_authz::scope_satisfies;
+use axon_core::config::Config;
 use axon_services::context::ServiceContext;
 use axon_services::types::ServerInfo;
 use axum::{
