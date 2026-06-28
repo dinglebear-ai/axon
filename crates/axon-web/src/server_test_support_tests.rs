@@ -2,8 +2,8 @@
 
 use super::{ScopeRequirement, ask_router, protect_routes};
 use async_trait::async_trait;
+use axon_authz::http::AuthPolicy;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
-use axon_mcp::auth::AuthPolicy;
 use axon_services::context::ServiceContext;
 use axon_services::runtime::ServiceJobRuntime;
 use axon_services::types::ServiceJob;

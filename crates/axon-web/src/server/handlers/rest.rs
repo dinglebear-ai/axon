@@ -25,11 +25,11 @@ pub(crate) mod sync_post;
 #[path = "rest/types.rs"]
 pub(crate) mod types;
 
-use axon_core::config::Config;
-use axon_mcp::auth::{
+use axon_authz::http::{
     AuthPolicy, build_auth_layer, configured_mcp_http_token, normalize_api_key_header,
     oauth_resource_url,
 };
+use axon_core::config::Config;
 use axon_services::context::ServiceContext;
 use axum::{
     Router, middleware,

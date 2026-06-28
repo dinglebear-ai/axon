@@ -28,24 +28,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-fn embed_scrape_doc_sync(
-    cfg: &axon_core::config::Config,
-    doc: axon_vector::ops::PreparedDoc,
-) -> Result<(), String> {
-    let handle = tokio::runtime::Handle::current();
-    tokio::task::block_in_place(|| {
-        handle
-            .block_on(axon_vector::ops::embed_prepared_docs(cfg, vec![doc], None))
-            .and_then(|summary| {
-                summary
-                    .require_success("sync scrape embed")
-                    .map_err(|err| err.into())
-            })
-            .map(|_| ())
-            .map_err(|err| err.to_string())
-    })
-}
-
 #[allow(clippy::result_large_err)] // Err is an Axum Response we just return as-is.
 fn parse_time_range(value: &str) -> Result<axon_services::types::ServiceTimeRange, Response> {
     transport::parse_service_time_range(value)
@@ -208,27 +190,24 @@ pub(crate) async fn v1_scrape(
     if let Some(embed) = req.embed {
         cfg.embed = embed;
     }
-    let result = match scrape_svc::scrape(&cfg, &req.url, None).await {
-        Ok(result) => result,
+    let results = match scrape_svc::scrape_batch_with_optional_embed(
+        &cfg,
+        std::slice::from_ref(&req.url),
+        None,
+    )
+    .await
+    {
+        Ok(results) => results,
         Err(err) => return map_service_error(err.as_ref()),
     };
-    let doc = if cfg.embed {
-        match scrape_svc::scrape_result_to_prepared_doc(&cfg, &result).await {
-            Ok(doc) => Some(doc),
-            Err(err) => {
-                return rest_error(StatusCode::BAD_GATEWAY, "upstream_error", err.to_string());
-            }
-        }
-    } else {
-        None
-    };
-    if cfg.embed
-        && let Some(doc) = doc
-        && let Err(err) = embed_scrape_doc_sync(&cfg, doc)
-    {
-        return rest_error(StatusCode::BAD_GATEWAY, "upstream_error", err);
+    match results.into_iter().next() {
+        Some(result) => Json(result).into_response(),
+        None => rest_error(
+            StatusCode::BAD_GATEWAY,
+            "upstream_error",
+            "scrape returned no result".to_string(),
+        ),
     }
-    Json(result).into_response()
 }
 
 pub(crate) async fn v1_summarize(

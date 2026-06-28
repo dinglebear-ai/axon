@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.94.0"
 description = "Axon web layer: Axum panel UI, REST /v1 API, OpenAPI, health, security headers, first-run setup"
 license = "MIT"
+build = "build.rs"
 
 [dependencies]
 axon-api = { path = "../axon-api" }
@@ -14,7 +15,6 @@ axon-ingest = { path = "../axon-ingest" }
 axon-jobs = { path = "../axon-jobs" }
 axon-services = { path = "../axon-services" }
 axon-authz = { path = "../axon-authz" }
-axon-mcp = { path = "../axon-mcp" }
 async-trait = "0.1"
 axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22"
