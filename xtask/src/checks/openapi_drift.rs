@@ -57,6 +57,7 @@ fn export_android_route_contracts(root: &Path) -> Result<()> {
     fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
 
     let output = command_with_clean_env("cargo")
+        .env("AXON_ALLOW_FALLBACK_WEB_ASSETS", "1")
         .args([
             "run",
             "--quiet",

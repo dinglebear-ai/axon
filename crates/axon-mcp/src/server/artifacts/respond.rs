@@ -2,7 +2,7 @@ use super::super::common::internal_error;
 use super::path::{artifact_handle_for_path, build_artifact_path};
 use super::shape::{clip_inline_json, json_shape_preview, line_count, sha256_hex};
 use crate::schema::{AxonToolResponse, ResponseMode};
-use axon_vector::ops::qdrant::env_usize_clamped;
+use axon_core::env::env_usize_clamped;
 use rmcp::ErrorData;
 use uuid::Uuid;
 

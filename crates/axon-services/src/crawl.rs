@@ -8,8 +8,10 @@ use crate::types::{
 };
 use axon_core::config::Config;
 use axon_core::http::validate_url;
+use axon_crawl::engine::{SitemapDiscovery, discover_sitemap_urls};
 use axon_jobs::backend::JobKind;
 use axon_jobs::config_snapshot::config_snapshot_json;
+use serde::{Deserialize, Serialize};
 use spider::url::Url;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -72,6 +74,55 @@ fn predict_audit_report_path(output_dir: &Path, url: &str) -> PathBuf {
 }
 
 pub use axon_crawl::predict_crawl_output_dir;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SitemapDiscoveryStats {
+    pub robots_declared_sitemaps: usize,
+    pub seeded_default_sitemaps: usize,
+    pub discovered_sitemap_documents: usize,
+    pub parsed_sitemap_documents: usize,
+    pub discovered_urls: usize,
+    pub filtered_out_of_scope_host: usize,
+    pub filtered_out_of_scope_path: usize,
+    pub filtered_excluded_prefix: usize,
+    pub failed_fetches: usize,
+    pub parse_errors: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SitemapDiscoveryResult {
+    pub urls: Vec<String>,
+    pub stats: SitemapDiscoveryStats,
+}
+
+impl From<SitemapDiscovery> for SitemapDiscoveryResult {
+    fn from(d: SitemapDiscovery) -> Self {
+        Self {
+            urls: d.urls,
+            stats: SitemapDiscoveryStats {
+                robots_declared_sitemaps: d.robots_declared_sitemaps,
+                seeded_default_sitemaps: d.seeded_default_sitemaps,
+                parsed_sitemap_documents: d.parsed_sitemap_documents,
+                discovered_urls: d.discovered_urls,
+                failed_fetches: d.failed_fetches,
+                discovered_sitemap_documents: d.robots_declared_sitemaps
+                    + d.seeded_default_sitemaps,
+                filtered_out_of_scope_host: 0,
+                filtered_out_of_scope_path: 0,
+                filtered_excluded_prefix: 0,
+                parse_errors: 0,
+            },
+        }
+    }
+}
+
+pub async fn discover_sitemap_urls_with_robots(
+    cfg: &Config,
+    start_url: &str,
+) -> Result<SitemapDiscoveryResult, Box<dyn Error>> {
+    let discovery = discover_sitemap_urls(cfg, start_url).await?;
+    Ok(SitemapDiscoveryResult::from(discovery))
+}
 
 pub fn predict_crawl_output_paths(output_dir: &Path, url: &str) -> Vec<String> {
     vec![
