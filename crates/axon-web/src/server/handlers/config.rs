@@ -6,11 +6,11 @@ use super::super::types::{
     SaveConfigResponse, SaveEnvConfigRequest,
 };
 use super::super::utils::authorized;
-use axon_core::config::Config;
-use axon_mcp::schema::{
+use axon_api::mcp_schema::{
     AxonRequest, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction, ResponseMode,
     ScrapeRequest, ScreenshotRequest, StatusRequest,
 };
+use axon_core::config::Config;
 use axon_services::{action_api, config as config_service, query as query_service, setup, system};
 use axum::{
     Json,

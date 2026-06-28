@@ -406,7 +406,7 @@ async fn gemini_check() -> StackCheck {
 }
 
 fn token_check() -> StackCheck {
-    if axon_mcp::auth::configured_mcp_http_token().is_some() {
+    if axon_authz::http::configured_mcp_http_token().is_some() {
         check("MCP/API token", "ok", "AXON_MCP_HTTP_TOKEN configured")
     } else {
         check("MCP/API token", "warn", "loopback-only tokenless mode")

@@ -4,6 +4,7 @@ pub mod binary_status;
 pub mod config;
 pub mod content;
 pub mod endpoints;
+pub mod env;
 pub mod error;
 pub mod events;
 pub mod health;
