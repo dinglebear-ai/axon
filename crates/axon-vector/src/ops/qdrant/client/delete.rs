@@ -15,6 +15,7 @@ use super::scroll::{qdrant_scroll_pages_selective, scroll_url_set};
 // surface can consume it. Aliased so the existing call sites read unchanged.
 pub use axon_api::purge::PurgeResult as QdrantDeleteByUrlResult;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CleanupSelectorV1 {
     pub collection: String,
@@ -24,6 +25,7 @@ pub struct CleanupSelectorV1 {
     pub item_key: String,
 }
 
+#[allow(dead_code)]
 impl CleanupSelectorV1 {
     pub fn new(
         collection: impl Into<String>,

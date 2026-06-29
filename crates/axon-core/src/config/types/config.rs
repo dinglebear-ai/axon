@@ -50,6 +50,9 @@ pub struct Config {
     /// Options for `code-search-watch`.
     pub code_search_watch: Option<super::session_watch::CodeSearchWatchConfig>,
 
+    /// Attach foreground output to SourceLedger refresh progress for `embed --watch`.
+    pub embed_watch: bool,
+
     /// Optional CLI intent to create or update a recurring freshness schedule.
     pub freshness: Option<super::freshness::FreshnessRequest>,
 

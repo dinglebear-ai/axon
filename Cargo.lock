@@ -706,6 +706,7 @@ dependencies = [
  "axon-extract",
  "axon-ingest",
  "axon-jobs",
+ "axon-source-ledger",
  "axon-vector",
  "base64",
  "chrono",

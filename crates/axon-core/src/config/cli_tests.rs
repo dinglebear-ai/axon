@@ -44,12 +44,17 @@ fn parse_retrieve_max_points_flag() {
 }
 
 #[test]
-fn parse_code_search_watch_enable_subcommand_with_cwd_after_enable() {
-    let result =
-        Cli::try_parse_from(["axon", "code-search-watch", "enable", "--cwd", "/workspace"]);
+fn embed_accepts_watch_flag() {
+    let result = Cli::try_parse_from(["axon", "embed", "/tmp/project", "--watch"]);
+    assert!(result.is_ok(), "embed --watch should parse: {result:?}");
+}
+
+#[test]
+fn code_search_watch_returns_tombstone_error() {
+    let err = Cli::try_parse_from(["axon", "code-search-watch"]).unwrap_err();
     assert!(
-        result.is_ok(),
-        "code-search-watch enable --cwd should parse: {result:?}"
+        err.to_string().contains("use `axon embed <path> --watch`"),
+        "{err}"
     );
 }
 
