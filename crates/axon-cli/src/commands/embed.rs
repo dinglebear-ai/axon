@@ -138,6 +138,9 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         // Local-path embeds therefore always run in-process here; only URL /
         // free-text inputs go through the shared queue when --wait is false.
         let input_is_local_path = Path::new(&input).exists();
+        if cfg.embed_watch && !input_is_local_path {
+            return Err("embed --watch requires a local file or directory path".into());
+        }
         if !cfg.wait && !input_is_local_path {
             let result = enqueue_embed_job(cfg, &input, service_context).await;
             if result.is_ok() {
@@ -146,7 +149,18 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
             return result;
         }
         if !cfg.wait && input_is_local_path {
-            log_info("command=embed local_path_runs_in_process");
+            let reason = if cfg.embed_watch {
+                "local_path_watch_runs_in_process"
+            } else {
+                "local_path_runs_in_process"
+            };
+            log_info(&format!("command=embed {reason}"));
+        }
+        if cfg.embed_watch && !cfg.json_output {
+            println!(
+                "  {}",
+                muted("Watching local embed refresh in the foreground.")
+            );
         }
 
         let sp = wait_spinner_for(cfg, &format!("Embedding {}…", input));

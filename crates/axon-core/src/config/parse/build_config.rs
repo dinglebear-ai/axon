@@ -36,7 +36,10 @@ pub(super) fn into_config_with_sources(
     let mut global = cli.global;
 
     let dispatched = command_dispatch::dispatch(cli.command);
-    if global.watch && dispatched.command != CommandKind::Status {
+    if global.watch
+        && dispatched.command != CommandKind::Status
+        && !(dispatched.command == CommandKind::Embed && dispatched.embed_watch)
+    {
         return Err("--watch is only supported with `axon status`".to_string());
     }
 
