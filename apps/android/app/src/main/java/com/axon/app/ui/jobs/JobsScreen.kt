@@ -49,6 +49,7 @@ import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.WatchUi
 import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.AxonBadge
 import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.rememberRevealState
@@ -413,15 +414,15 @@ private fun HierarchyJobRow(job: JobUi, modifier: Modifier = Modifier, onClick: 
             Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.66f), modifier = Modifier.size(16.dp))
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            JobBadge(job.kind?.label() ?: "Job", tone)
-            JobBadge(statusLabel(job.status), statusTone)
-            JobBadge(source, colors.textMuted)
+            AxonBadge(job.kind?.label() ?: "Job", tone)
+            AxonBadge(statusLabel(job.status), statusTone)
+            AxonBadge(source, colors.textMuted)
         }
         if (isActiveJobStatus(job.status) || isCompletedJobStatus(job.status)) {
             ProgressBar(progressForJob(job), tone, modifier = Modifier.width(188.dp))
         }
         coverageSummary(job)?.let { summary ->
-            JobBadge(summary, tone)
+            AxonBadge(summary, tone)
         }
         Text(
             jobProgressLabel(job),
@@ -480,9 +481,9 @@ private fun HierarchyWatchRow(watch: WatchUi, modifier: Modifier = Modifier) {
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            JobBadge("Watch", colors.accentPrimary)
-            JobBadge(if (watch.enabled) "Enabled" else "Paused", tone)
-            JobBadge(watch.taskType, colors.textMuted)
+            AxonBadge("Watch", colors.accentPrimary)
+            AxonBadge(if (watch.enabled) "Enabled" else "Paused", tone)
+            AxonBadge(watch.taskType, colors.textMuted)
         }
         Text(
             "Every ${watch.everySeconds}s · next ${watch.nextRunAt ?: "not scheduled"}",
@@ -494,26 +495,6 @@ private fun HierarchyWatchRow(watch: WatchUi, modifier: Modifier = Modifier) {
             overflow = TextOverflow.Ellipsis,
         )
     }
-}
-
-@Composable
-private fun JobBadge(text: String, tone: Color) {
-    val colors = AxonTheme.colors
-    Text(
-        text,
-        color = colors.tint(tone, 82, colors.textPrimary),
-        fontSize = 10.4.sp,
-        lineHeight = 13.sp,
-        fontFamily = AxonTheme.fonts.body,
-        fontWeight = FontWeight.SemiBold,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(colors.tint(tone, 10, colors.control), RoundedCornerShape(999.dp))
-            .border(1.dp, colors.tint(tone, 23, colors.control), RoundedCornerShape(999.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    )
 }
 
 @Composable

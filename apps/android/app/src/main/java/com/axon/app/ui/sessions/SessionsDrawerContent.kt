@@ -36,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -52,6 +51,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.local.Session
 import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.AxonBadge
 import com.axon.app.ui.common.AxonElevation
 import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.common.axonElevation
@@ -201,21 +201,7 @@ private fun AskHistorySessionRow(entry: AskHistoryEntry, modifier: Modifier = Mo
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            "Ask history",
-            fontSize = 10.2.sp,
-            lineHeight = 13.4.sp,
-            color = colors.tint(colors.accentPrimary, 82, colors.textPrimary),
-            fontFamily = AxonTheme.fonts.body,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(colors.tint(colors.accentPrimary, 11, colors.control), RoundedCornerShape(999.dp))
-                .border(1.dp, colors.tint(colors.accentPrimary, 24, colors.control), RoundedCornerShape(999.dp))
-                .padding(horizontal = 8.dp, vertical = 3.dp),
-        )
+        AxonBadge("Ask history", colors.accentPrimary, compact = true)
     }
 }
 
@@ -323,10 +309,10 @@ private fun SessionRow(
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SessionBadge("Session", colors.accentPrimary)
-                if (pinned) SessionBadge("Pinned", colors.accentStrong)
-                SessionBadge("${session.turnCount} turns", colors.textMuted)
-                if (session.injectedOpCount > 0) SessionBadge("${session.injectedOpCount} ops", colors.accentStrong)
+                AxonBadge("Session", colors.accentPrimary, compact = true)
+                if (pinned) AxonBadge("Pinned", colors.accentStrong, compact = true)
+                AxonBadge("${session.turnCount} turns", colors.textMuted, compact = true)
+                if (session.injectedOpCount > 0) AxonBadge("${session.injectedOpCount} ops", colors.accentStrong, compact = true)
                 Box(modifier = Modifier.weight(1f))
                 Row(
                     modifier = Modifier
@@ -388,26 +374,6 @@ private fun SessionRow(
             )
         }
     }
-}
-
-@Composable
-private fun SessionBadge(text: String, tone: Color) {
-    val colors = AxonTheme.colors
-    Text(
-        text,
-        color = colors.tint(tone, 82, colors.textPrimary),
-        fontSize = 10.2.sp,
-        lineHeight = 13.sp,
-        fontFamily = AxonTheme.fonts.body,
-        fontWeight = FontWeight.SemiBold,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(colors.tint(tone, 10, colors.control), RoundedCornerShape(999.dp))
-            .border(1.dp, colors.tint(tone, 23, colors.control), RoundedCornerShape(999.dp))
-            .padding(horizontal = 7.dp, vertical = 3.dp),
-    )
 }
 
 private fun relativeTime(ts: Long): String {

@@ -48,6 +48,7 @@ import com.axon.app.ui.knowledge.KnowledgeScreen
 import com.axon.app.ui.knowledge.KnowledgeTab
 import com.axon.app.ui.sessions.SessionsDrawerContent
 import com.axon.app.ui.settings.SettingsScreen
+import com.axon.app.ui.status.StatusDiagnostics
 import com.axon.app.ui.status.TopChromeStatus
 import com.axon.app.ui.theme.AxonTheme
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -64,7 +65,11 @@ sealed interface ShellOverlay {
 private data object ShellHome
 
 @Composable
-fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
+fun RailScaffold(
+    navController: NavController,
+    diagnostics: StatusDiagnostics,
+    modifier: Modifier = Modifier,
+) {
     var activePage by remember { mutableStateOf<DrawerSection?>(null) }
     var activeOverlay by remember { mutableStateOf<ShellOverlay?>(null) }
     var sidebarOpen by remember { mutableStateOf(false) }
@@ -130,6 +135,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
                     activePage = DrawerSection.Settings
                     sidebarOpen = false
                 },
+                diagnostics = diagnostics,
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault.copy(alpha = 0.32f)))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -291,6 +297,7 @@ private fun AxonTopBar(
     onToggleSidebar: () -> Unit,
     onCloseOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
+    diagnostics: StatusDiagnostics,
 ) {
     val colors = AxonTheme.colors
     Box(
@@ -343,7 +350,7 @@ private fun AxonTopBar(
                         .padding(9.dp),
                 )
             } else {
-                TopChromeStatus(onOfflineClick = onOpenSettings)
+                TopChromeStatus(onOfflineClick = onOpenSettings, diagnostics = diagnostics)
             }
         }
     }
