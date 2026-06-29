@@ -142,8 +142,12 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         // Local-path embeds therefore always run in-process here; only URL /
         // free-text inputs go through the shared queue when --wait is false.
         let input_is_local_path = Path::new(&input).exists();
-        let watch_mode =
-            embed_local_watch_mode(cfg.embed_watch, cfg.embed_no_watch, Path::new(&input));
+        let watch_mode = embed_local_watch_mode(
+            cfg.embed_watch,
+            cfg.embed_no_watch,
+            cfg.wait,
+            Path::new(&input),
+        );
         if watch_mode != EmbedLocalWatchMode::None {
             validate_embed_watch_input(&input, input_is_local_path)?;
         }
@@ -246,12 +250,15 @@ enum EmbedLocalWatchMode {
 fn embed_local_watch_mode(
     explicit_watch: bool,
     no_watch: bool,
+    wait: bool,
     input: &Path,
 ) -> EmbedLocalWatchMode {
     if no_watch || !input.exists() {
         EmbedLocalWatchMode::None
     } else if explicit_watch {
         EmbedLocalWatchMode::Foreground
+    } else if wait {
+        EmbedLocalWatchMode::None
     } else {
         EmbedLocalWatchMode::Background
     }
@@ -488,11 +495,11 @@ mod tests {
         let dir = tempfile::TempDir::new()?;
 
         assert_eq!(
-            embed_local_watch_mode(false, false, dir.path()),
+            embed_local_watch_mode(false, false, false, dir.path()),
             EmbedLocalWatchMode::Background
         );
         assert_eq!(
-            embed_local_watch_mode(false, true, dir.path()),
+            embed_local_watch_mode(false, true, false, dir.path()),
             EmbedLocalWatchMode::None
         );
         Ok(())
@@ -503,11 +510,22 @@ mod tests {
         let file = tempfile::NamedTempFile::new()?;
 
         assert_eq!(
-            embed_local_watch_mode(false, false, file.path()),
+            embed_local_watch_mode(false, false, false, file.path()),
             EmbedLocalWatchMode::Background
         );
         assert_eq!(
-            embed_local_watch_mode(false, true, file.path()),
+            embed_local_watch_mode(false, true, false, file.path()),
+            EmbedLocalWatchMode::None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn embed_wait_keeps_local_embeds_synchronous() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+
+        assert_eq!(
+            embed_local_watch_mode(false, false, true, dir.path()),
             EmbedLocalWatchMode::None
         );
         Ok(())
@@ -518,7 +536,7 @@ mod tests {
         let dir = tempfile::TempDir::new()?;
 
         assert_eq!(
-            embed_local_watch_mode(true, false, dir.path()),
+            embed_local_watch_mode(true, false, true, dir.path()),
             EmbedLocalWatchMode::Foreground
         );
         Ok(())
