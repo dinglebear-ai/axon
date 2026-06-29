@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -42,23 +45,27 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.axon.app.AxonApp
-import com.axon.app.data.repository.AxonSettings
 import com.axon.app.ui.common.AxonElevation
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.theme.AxonTheme
+import java.net.URI
 import java.text.DateFormat
 import java.util.Date
+
+data class StatusDiagnostics(
+    val serverUrl: String = "",
+    val authMode: String = "",
+    val collection: String = "",
+)
 
 @Composable
 fun TopChromeStatus(
     modifier: Modifier = Modifier,
     vm: ConnectionStatusViewModel = viewModel(),
     onOfflineClick: (() -> Unit)? = null,
+    diagnostics: StatusDiagnostics = StatusDiagnostics(),
 ) {
     val colors = AxonTheme.colors
-    val app = LocalContext.current.applicationContext as AxonApp
-    val settings by app.container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = AxonSettings())
     val state by vm.state.collectAsStateWithLifecycle()
     val latencyMs by vm.latencyMs.collectAsStateWithLifecycle()
     var detailOpen by remember { mutableStateOf(false) }
@@ -109,9 +116,9 @@ fun TopChromeStatus(
             state = state,
             latencyMs = latencyMs,
             lastCheckAt = lastCheckAt,
-            serverUrl = settings.serverUrl.value,
-            authMode = settings.authMode.name,
-            collection = settings.collection,
+            serverUrl = diagnostics.serverUrl,
+            authMode = diagnostics.authMode,
+            collection = diagnostics.collection,
             onDismiss = { detailOpen = false },
             onRetry = vm::refresh,
             onOpenSettings = onOfflineClick,
@@ -142,8 +149,9 @@ private fun StatusDetailDialog(
         ConnectionState.Online -> "Online"
         ConnectionState.Offline -> "Offline"
     }
-    val curlCommand = remember(serverUrl) {
-        val base = serverUrl.trim().trimEnd('/')
+    val safeServerUrl = remember(serverUrl) { redactUrlUserInfo(serverUrl) }
+    val curlCommand = remember(safeServerUrl) {
+        val base = safeServerUrl.trim().trimEnd('/')
         if (base.isBlank()) "curl -i http://<axon-host>/healthz" else "curl -i $base/healthz"
     }
     fun copyDiagnostics() {
@@ -163,7 +171,10 @@ private fun StatusDetailDialog(
             border = BorderStroke(1.dp, colors.borderStrong.copy(alpha = 0.48f)),
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
@@ -190,29 +201,26 @@ private fun StatusDetailDialog(
                     )
                 }
                 StatusDetailRow("Status", statusLabel)
-                StatusDetailRow("Server", serverUrl)
+                StatusDetailRow("Server", safeServerUrl)
                 StatusDetailRow("Auth", authMode)
                 StatusDetailRow("Collection", collection.ifBlank { "unset" })
                 StatusDetailRow("Last check", lastCheck)
                 StatusDetailRow("Latency", latencyMs?.let { "${it.coerceAtMost(999)}ms" } ?: "n/a")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    StatusDialogAction(
-                        label = if (state == ConnectionState.Checking) "Checking..." else "Retry",
-                        onClick = onRetry,
-                        modifier = Modifier.weight(1f),
-                        enabled = state != ConnectionState.Checking,
-                    )
-                    if (state == ConnectionState.Offline && onOpenSettings != null) {
+                    if (state == ConnectionState.Offline) {
                         StatusDialogAction(
-                            label = "Settings",
-                            onClick = {
-                                onDismiss()
-                                onOpenSettings()
-                            },
+                            label = "Done",
+                            onClick = onDismiss,
                             modifier = Modifier.weight(1f),
                             outlined = true,
                         )
                     } else {
+                        StatusDialogAction(
+                            label = if (state == ConnectionState.Checking) "Checking..." else "Retry",
+                            onClick = onRetry,
+                            modifier = Modifier.weight(1f),
+                            enabled = state != ConnectionState.Checking,
+                        )
                         StatusDialogAction(
                             label = "Done",
                             onClick = onDismiss,
@@ -316,6 +324,30 @@ private fun StatusDiagnosticCommand(command: String) {
             .border(1.dp, colors.borderDefault.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),
     )
+}
+
+internal fun redactUrlUserInfo(value: String): String {
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) return trimmed
+    return runCatching {
+        val uri = URI(trimmed)
+        fun redactedUri(): String = URI(
+            uri.scheme,
+            null,
+            uri.host,
+            uri.port,
+            uri.path,
+            null,
+            null,
+        ).toString()
+        if (uri.rawUserInfo == null) {
+            if (uri.rawQuery == null && uri.rawFragment == null) trimmed else redactedUri()
+        } else if (uri.host == null) {
+            trimmed.replace(Regex("(?<=://)[^/@]+@"), "").substringBefore('?').substringBefore('#')
+        } else {
+            redactedUri()
+        }
+    }.getOrElse { trimmed.replace(Regex("(?<=://)[^/@]+@"), "").substringBefore('?').substringBefore('#') }
 }
 
 @Composable

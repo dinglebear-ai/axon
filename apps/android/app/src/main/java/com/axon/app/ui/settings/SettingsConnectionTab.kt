@@ -69,6 +69,7 @@ internal fun ConnectionTab(
         SectionLabel("Connection")
         ConnectionSetupSummary(
             serverUrl = serverUrl,
+            token = token,
             collection = collection,
             authMode = authMode,
             oauthStatus = oauthStatus,
@@ -124,6 +125,7 @@ internal fun ConnectionTab(
 @Composable
 private fun ConnectionSetupSummary(
     serverUrl: String,
+    token: String,
     collection: String,
     authMode: AuthMode,
     oauthStatus: OAuthUiStatus,
@@ -132,12 +134,16 @@ private fun ConnectionSetupSummary(
 ) {
     val colors = AxonTheme.colors
     val serverReady = serverUrl.isNotBlank()
-    val authReady = authMode == AuthMode.Bearer || oauthStatus == OAuthUiStatus.SignedIn
+    val authReady = when (authMode) {
+        AuthMode.Bearer -> token.isNotBlank()
+        AuthMode.OAuth -> oauthStatus == OAuthUiStatus.SignedIn
+    }
     val collectionReady = collection.isNotBlank()
     val connected = connection is TestConnectionState.Ok
     val actionLabel = when {
         connection is TestConnectionState.Testing -> "Testing..."
         !serverReady -> "Add server URL"
+        !authReady && authMode == AuthMode.Bearer -> "Add token below"
         !authReady && authMode == AuthMode.OAuth -> "Sign in below"
         else -> "Test connection"
     }
@@ -145,6 +151,7 @@ private fun ConnectionSetupSummary(
         connected -> "Connection is ready for Axon requests."
         connection is TestConnectionState.Failed -> "Connection test failed. Check the details below and retry."
         !serverReady -> "Start with the Axon server URL."
+        !authReady && authMode == AuthMode.Bearer -> "Bearer mode needs a token before testing most Axon servers."
         !authReady && authMode == AuthMode.OAuth -> "OAuth needs a completed sign-in before testing."
         !collectionReady -> "Pick the Qdrant collection used for requests."
         else -> "Test the saved endpoint before leaving setup."

@@ -34,7 +34,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                             detail = "Scraped markdown is now available in this conversation. Use the Axon skill when reasoning over scraped or indexed content.",
                         )
                     },
-                    onFailure = { e -> replaceLastAxonMsg(userFacingAskError(e.message ?: "Unknown scrape error")) },
+                    onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown scrape error")) },
                 )
             }
             FabOp.Extract -> {
@@ -61,7 +61,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                         )
                         pollJobOnce(JobFamily.Extract, jobId)
                     },
-                    onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingAskError(e.message ?: "Unknown extract error"))) },
+                    onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Unknown extract error"))) },
                 )
             }
             FabOp.Embed -> {
@@ -88,7 +88,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                         )
                         pollJobOnce(JobFamily.Embed, jobId)
                     },
-                    onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingAskError(e.message ?: "Unknown embed error"))) },
+                    onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Unknown embed error"))) },
                 )
             }
             FabOp.Research -> {
@@ -96,7 +96,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
                 repo.research(query = input).fold(
                     onSuccess = { r -> replaceLastAxonMsg(previewText(r.summary ?: "(no summary returned)")) },
-                    onFailure = { e -> replaceLastAxonMsg(userFacingAskError(e.message ?: "Unknown research error")) },
+                    onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown research error")) },
                 )
             }
             FabOp.Query -> {
@@ -110,7 +110,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                         val countNote = compactHitCountNote(hits.size)
                         replaceLastAxonMsg(text + countNote)
                     },
-                    onFailure = { e -> replaceLastAxonMsg(userFacingAskError(e.message ?: "Unknown query error")) },
+                    onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown query error")) },
                 )
             }
             FabOp.Search -> {
@@ -140,7 +140,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                         }
                         replaceLastAxonMsg(resultsText + countNote + jobsText)
                     },
-                    onFailure = { e -> replaceLastAxonMsg(userFacingAskError(e.message ?: "Unknown search error")) },
+                    onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown search error")) },
                 )
             }
             FabOp.Map -> {
@@ -151,7 +151,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                         val text = "Found ${r.total} URLs:\n" + r.urls.take(20).joinToString("\n") { "• $it" }
                         replaceLastAxonMsg(text)
                     },
-                    onFailure = { e -> replaceLastAxonMsg(userFacingAskError(e.message ?: "Unknown map error")) },
+                    onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown map error")) },
                 )
             }
             FabOp.Retrieve -> {
@@ -159,7 +159,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
                 repo.retrieve(url = input).fold(
                     onSuccess = { r -> replaceLastAxonMsg(previewText(r.content)) },
-                    onFailure = { e -> replaceLastAxonMsg(userFacingAskError(e.message ?: "Unknown retrieve error")) },
+                    onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown retrieve error")) },
                 )
             }
             FabOp.Summarize -> {
@@ -167,7 +167,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
                 repo.summarize(urls = listOf(input)).fold(
                     onSuccess = { r -> replaceLastAxonMsg(previewText(r.summary)) },
-                    onFailure = { e -> replaceLastAxonMsg(userFacingAskError(e.message ?: "Unknown summarize error")) },
+                    onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown summarize error")) },
                 )
             }
             FabOp.Crawl -> {
@@ -220,7 +220,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                 val sourceType = inferFabIngestSource(input).fold(
                     onSuccess = { it.wire },
                     onFailure = { e ->
-                        appendItem(ChatItem.AxonMsg(userFacingAskError(e.message ?: "Invalid ingest target")))
+                        appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Invalid ingest target")))
                         return@launch
                     },
                 )
@@ -246,7 +246,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                         )
                         pollJobOnce(JobFamily.Ingest, jobId)
                     },
-                    onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingAskError(e.message ?: "Unknown ingest error"))) },
+                    onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Unknown ingest error"))) },
                 )
             }
         }
@@ -255,3 +255,22 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
 
 internal fun compactHitCountNote(total: Int): String =
     if (total > COMPACT_HIT_LIMIT) "\n\nShowing $COMPACT_HIT_LIMIT of $total results." else ""
+
+internal fun userFacingOperationError(op: FabOp, message: String): String {
+    val detail = message.trim().ifBlank { "Unknown error" }
+    val hint = when (op) {
+        FabOp.Scrape, FabOp.Map, FabOp.Retrieve, FabOp.Summarize ->
+            "Check that the URL is reachable from the Axon server, then retry."
+        FabOp.Crawl ->
+            "Check the crawl URL and server status, then retry or open Jobs for any queued work."
+        FabOp.Search, FabOp.Research, FabOp.Query ->
+            "Check connection/auth status and try a narrower query."
+        FabOp.Embed ->
+            "Check that the input is a URL or server-readable source, then retry."
+        FabOp.Extract ->
+            "Check the target URL and extraction options, then retry."
+        FabOp.Ingest ->
+            "Check the source type and target format, then retry."
+    }
+    return "Error: ${op.label} could not complete. $hint\n\nDetail: $detail"
+}
