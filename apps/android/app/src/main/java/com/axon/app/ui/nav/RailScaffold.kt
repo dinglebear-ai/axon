@@ -241,7 +241,7 @@ private fun ShellPageContent(
                 onShowAsk()
             },
         )
-        DrawerSection.Jobs -> JobsScreen()
+        DrawerSection.Jobs -> JobsScreen(onOpenAsk = onShowAsk)
         DrawerSection.Knowledge -> KnowledgeScreen(
             onOpenTab = { tab -> onOpenOverlay(ShellOverlay.Knowledge(tab)) },
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },

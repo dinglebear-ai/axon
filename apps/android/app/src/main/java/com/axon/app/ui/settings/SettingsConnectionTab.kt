@@ -17,6 +17,7 @@ import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Route
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.data.auth.AuthMode
 import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
@@ -109,6 +111,12 @@ internal fun ConnectionTab(
                 kind = SettingsFeedbackKind.Error,
             )
             else -> {}
+        }
+        if (connection is TestConnectionState.Failed) {
+            ConnectionRecoveryChecklist(
+                authMode = authMode,
+                onRetry = onTestConnection,
+            )
         }
     }
 }
@@ -185,6 +193,24 @@ private fun ConnectionSetupSummary(
             icon = Icons.Rounded.Sync,
         )
     }
+}
+
+@Composable
+private fun ConnectionRecoveryChecklist(
+    authMode: AuthMode,
+    onRetry: () -> Unit,
+) {
+    val authHint = when (authMode) {
+        AuthMode.Bearer -> "Confirm the bearer token is current and includes Axon access."
+        AuthMode.OAuth -> "Refresh OAuth sign-in below if the server rejects the token."
+    }
+    RecoveryActionCard(
+        title = "Connection recovery",
+        message = "Check server reachability, auth, and collection spelling. $authHint",
+        primaryLabel = "Retry test",
+        onPrimary = onRetry,
+        icon = Icons.Rounded.Route,
+    )
 }
 
 @Composable

@@ -358,7 +358,7 @@ private fun ChatItemContent(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            ActionResultCard(item)
+            ActionResultCard(item, onOpenJobs = onOpenJobs)
         }
         is ChatItem.Injection -> Box(
             modifier = Modifier.fillMaxWidth(),

@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.WatchUi
 import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
@@ -55,7 +57,10 @@ import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
 @Composable
-fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
+fun JobsScreen(
+    onOpenAsk: () -> Unit = {},
+    vm: JobsOverviewViewModel = viewModel(),
+) {
     DisposableEffect(vm) {
         vm.setVisible(true)
         onDispose { vm.setVisible(false) }
@@ -71,6 +76,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
     var crawledPagesLoading by remember { mutableStateOf(false) }
     var crawledPagesError by remember { mutableStateOf<String?>(null) }
     val overviewRows = jobOverviewRows(jobsByKind, watches)
+    val hasAnyJobs = jobsByKind.values.any { it.isNotEmpty() } || watches.isNotEmpty()
     val reveal = rememberRevealState()
     val selectedJob = selectedJobRef?.let { ref ->
         jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
@@ -118,7 +124,24 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                     null -> {
                         item { SectionLabel("Jobs") }
                         if (error != null && active.isEmpty() && jobsByKind.isEmpty()) {
-                            item { JobsErrorCard(error.orEmpty()) }
+                            item {
+                                JobsErrorCard(
+                                    message = error.orEmpty(),
+                                    onRetry = vm::refresh,
+                                )
+                            }
+                        } else if (!hasAnyJobs) {
+                            item {
+                                RecoveryActionCard(
+                                    title = "No jobs yet",
+                                    message = "Start from Ask or the action launcher, then return here to watch crawl, ingest, embed, and extract work progress.",
+                                    primaryLabel = "Create a job",
+                                    onPrimary = onOpenAsk,
+                                    secondaryLabel = "Refresh",
+                                    onSecondary = vm::refresh,
+                                    icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                )
+                            }
                         }
                         itemsIndexed(overviewRows, key = { _, row -> row.key }) { index, row ->
                             JobOverviewRow(

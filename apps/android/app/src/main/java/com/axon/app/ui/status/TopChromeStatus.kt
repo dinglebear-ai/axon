@@ -1,5 +1,8 @@
 package com.axon.app.ui.status
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,7 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -122,6 +131,7 @@ private fun StatusDetailDialog(
     onRetry: () -> Unit,
     onOpenSettings: (() -> Unit)?,
 ) {
+    val context = LocalContext.current
     val colors = AxonTheme.colors
     val shape = RoundedCornerShape(14.dp)
     val lastCheck = lastCheckAt?.let {
@@ -131,6 +141,15 @@ private fun StatusDetailDialog(
         ConnectionState.Checking -> "Checking"
         ConnectionState.Online -> "Online"
         ConnectionState.Offline -> "Offline"
+    }
+    val curlCommand = remember(serverUrl) {
+        val base = serverUrl.trim().trimEnd('/')
+        if (base.isBlank()) "curl -i http://<axon-host>/healthz" else "curl -i $base/healthz"
+    }
+    fun copyDiagnostics() {
+        context.getSystemService(ClipboardManager::class.java)
+            ?.setPrimaryClip(ClipData.newPlainText("Axon health check", curlCommand))
+        Toast.makeText(context, "Health check copied", Toast.LENGTH_SHORT).show()
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -155,6 +174,21 @@ private fun StatusDetailDialog(
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = AxonTheme.fonts.body,
                 )
+                if (state == ConnectionState.Offline) {
+                    OfflineRecoveryPanel(
+                        serverUrl = serverUrl,
+                        authMode = authMode,
+                        curlCommand = curlCommand,
+                        onRetry = onRetry,
+                        onOpenSettings = onOpenSettings?.let {
+                            {
+                                onDismiss()
+                                it()
+                            }
+                        },
+                        onCopyDiagnostics = ::copyDiagnostics,
+                    )
+                }
                 StatusDetailRow("Status", statusLabel)
                 StatusDetailRow("Server", serverUrl)
                 StatusDetailRow("Auth", authMode)
@@ -193,6 +227,98 @@ private fun StatusDetailDialog(
 }
 
 @Composable
+private fun OfflineRecoveryPanel(
+    serverUrl: String,
+    authMode: String,
+    curlCommand: String,
+    onRetry: () -> Unit,
+    onOpenSettings: (() -> Unit)?,
+    onCopyDiagnostics: () -> Unit,
+) {
+    val colors = AxonTheme.colors
+    val shape = RoundedCornerShape(10.dp)
+    val serverHint = if (serverUrl.isBlank()) {
+        "Add your Axon server URL in Settings, then test the connection."
+    } else {
+        "Verify the server is reachable, then check auth and collection settings."
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.error.copy(alpha = 0.08f), shape)
+            .border(1.dp, colors.error.copy(alpha = 0.24f), shape)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = colors.error, modifier = Modifier.size(18.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Connection needs attention",
+                    color = colors.textPrimary,
+                    fontSize = 13.4.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = AxonTheme.fonts.body,
+                )
+                Text(
+                    "$serverHint Auth mode: $authMode.",
+                    color = colors.textMuted,
+                    fontSize = 11.6.sp,
+                    lineHeight = 16.sp,
+                    fontFamily = AxonTheme.fonts.body,
+                )
+            }
+        }
+        StatusDiagnosticCommand(curlCommand)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            StatusDialogAction(
+                label = "Retry",
+                onClick = onRetry,
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.Sync,
+            )
+            if (onOpenSettings != null) {
+                StatusDialogAction(
+                    label = "Settings",
+                    onClick = onOpenSettings,
+                    modifier = Modifier.weight(1f),
+                    outlined = true,
+                    icon = Icons.Rounded.Settings,
+                )
+            }
+            StatusDialogAction(
+                label = "Copy",
+                onClick = onCopyDiagnostics,
+                modifier = Modifier.weight(1f),
+                outlined = true,
+                icon = Icons.Rounded.ContentCopy,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusDiagnosticCommand(command: String) {
+    val colors = AxonTheme.colors
+    Text(
+        command,
+        color = colors.textMuted.copy(alpha = 0.92f),
+        fontSize = 11.sp,
+        lineHeight = 15.sp,
+        fontFamily = AxonTheme.fonts.mono,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.pageBg.copy(alpha = 0.58f), RoundedCornerShape(8.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
 private fun StatusDetailRow(label: String, value: String) {
     val colors = AxonTheme.colors
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -226,6 +352,7 @@ private fun StatusDialogAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     outlined: Boolean = false,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     val colors = AxonTheme.colors
     Row(
@@ -246,6 +373,14 @@ private fun StatusDialogAction(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (icon != null) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (outlined) colors.textMuted else androidx.compose.ui.graphics.Color.White,
+                modifier = Modifier.size(15.dp),
+            )
+        }
         Text(
             label,
             color = if (outlined) colors.textMuted else androidx.compose.ui.graphics.Color.White,

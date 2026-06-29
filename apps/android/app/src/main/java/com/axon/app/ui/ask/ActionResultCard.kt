@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Pending
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,11 +34,13 @@ import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
 import com.axon.app.ui.theme.tint
 import com.axon.app.ui.theme.toneOf
+import tv.tootie.aurora.components.AuroraButton
 
 @Composable
 fun ActionResultCard(
     item: ChatItem.ActionResult,
     modifier: Modifier = Modifier,
+    onOpenJobs: (() -> Unit)? = null,
 ) {
     val colors = AxonTheme.colors
     val tone = colors.toneOf(if (item.op.isAsync) AxonTone.Orange else AxonTone.Cyan)
@@ -115,6 +118,17 @@ fun ActionResultCard(
             maxLines = ACTION_RESULT_BODY_MAX_LINES,
             overflow = TextOverflow.Ellipsis,
         )
+        if (item.op.isAsync && onOpenJobs != null) {
+            AuroraButton(
+                onClick = onOpenJobs,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.TaskAlt, contentDescription = null, modifier = Modifier.size(15.dp))
+                    Text("Open Jobs")
+                }
+            }
+        }
     }
 }
 
