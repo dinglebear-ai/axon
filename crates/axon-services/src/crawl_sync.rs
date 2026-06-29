@@ -16,8 +16,10 @@ use axon_crawl::engine::{
     CrawlSummary, build_waf_diagnostics, run_crawl_once, run_sitemap_only, update_latest_reflink,
 };
 use axon_crawl::manifest::{
-    manifest_cache_is_stale, read_manifest_data, read_manifest_urls, write_audit_diff,
+    ManifestEntry, manifest_cache_is_stale, read_manifest_data, read_manifest_urls,
+    write_audit_diff,
 };
+use axon_source_ledger::{ManifestItem, SourceIdentity, SourceKind, SourceLedgerStore};
 use chrome_fallback::maybe_chrome_fallback;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -179,7 +181,7 @@ async fn run_sitemap_only_crawl(
 async fn run_crawl_phase(
     cfg: &mut Config,
     start_url: &str,
-    previous_manifest: Arc<HashMap<String, axon_crawl::manifest::ManifestEntry>>,
+    previous_manifest: Arc<HashMap<String, ManifestEntry>>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
     let initial_mode = axon_crawl::chrome_bootstrap::resolve_initial_mode(cfg);
     let chrome_bootstrap = axon_crawl::chrome_bootstrap::bootstrap_chrome_runtime(cfg).await;
@@ -269,6 +271,7 @@ async fn finalize_crawl(
         let input = markdown_dir.to_string_lossy().to_string();
         let spinner = Spinner::new("embedding crawl output");
         embed_now_with_source(cfg, &input, Some("crawl")).await?;
+        commit_sync_crawl_manifest_to_ledger(cfg, start_url, manifest_path).await?;
         spinner.finish("embedded into Qdrant");
     }
 
@@ -311,6 +314,60 @@ async fn finalize_crawl(
         report_path.to_string_lossy(),
     ));
     Ok(())
+}
+
+async fn commit_sync_crawl_manifest_to_ledger(
+    cfg: &Config,
+    start_url: &str,
+    manifest_path: &std::path::Path,
+) -> Result<(), Box<dyn Error>> {
+    let pool = axon_jobs::store::open_sqlite_pool_or_recover(&cfg.sqlite_path.to_string_lossy())
+        .await
+        .map_err(|err| -> Box<dyn Error> { Box::new(err) })?;
+    let store = SourceLedgerStore::new(pool);
+    let source = crawl_source_identity(start_url, &cfg.collection);
+    store.ensure_source(&source).await?;
+    let generation = store.begin_generation(&source).await?;
+    for item in crawl_manifest_to_ledger_items(manifest_path).await? {
+        store
+            .record_manifest_item(&source.source_id, generation, item)
+            .await?;
+    }
+    store
+        .commit_generation(&source.source_id, generation)
+        .await?;
+    Ok(())
+}
+
+fn crawl_source_identity(start_url: &str, collection: &str) -> SourceIdentity {
+    SourceIdentity::new(
+        format!("crawl:{start_url}"),
+        SourceKind::Crawl,
+        collection.to_string(),
+        1,
+    )
+}
+
+pub(crate) async fn crawl_manifest_to_ledger_items(
+    manifest_path: &std::path::Path,
+) -> Result<Vec<ManifestItem>, Box<dyn Error>> {
+    let mut entries: Vec<ManifestEntry> = read_manifest_data(manifest_path)
+        .await?
+        .into_values()
+        .collect();
+    entries.sort_by(|a, b| a.url.cmp(&b.url));
+    Ok(entries
+        .into_iter()
+        .map(|entry| {
+            ManifestItem::new(
+                entry.url,
+                entry
+                    .content_hash
+                    .unwrap_or_else(|| format!("markdown_chars:{}", entry.markdown_chars)),
+                entry.markdown_chars as i64,
+            )
+        })
+        .collect())
 }
 
 // ─── LLM stream pass ──────────────────────────────────────────────────────
