@@ -16,6 +16,14 @@ export interface AskActivity {
   kind?: "thinking" | "tool" | "done";
 }
 
+export interface ChatSuggestion {
+  title: string;
+  url?: string;
+  snippet?: string;
+  score?: number;
+  rank: number;
+}
+
 export interface AskTurn {
   id: string;
   role: "user" | "assistant";

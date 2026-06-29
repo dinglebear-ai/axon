@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, CheckCircle2, Paperclip, Send, Wrench } from "lucide-react";
+import { Brain, CheckCircle2, Paperclip, Send, Sparkles, Wrench } from "lucide-react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
@@ -8,7 +8,12 @@ import { AxonMark } from "@/components/palette/AxonMark";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
-import type { AskActivity, AskSource, AskTurn } from "@/lib/runState";
+import type { AskActivity, AskSource, AskTurn, ChatSuggestion } from "@/lib/runState";
+
+type SuggestionState =
+  | { status: "loading" }
+  | { status: "ready"; rows: ChatSuggestion[] }
+  | { status: "error"; message: string };
 
 function hasRichMarkdown(value: string): boolean {
   return /```|^\s{0,3}#{1,6}\s|^\s{0,3}(?:[-*+]|\d+\.)\s|^\s{0,3}>\s|\n\|.+\|\n|\[[^\]]+\]\([^)]+\)/m.test(value);
@@ -94,12 +99,18 @@ export const ConversationThread = memo(function ConversationThread({
   turns,
   waiting = "Waiting for response...",
   reader = false,
+  suggestionsEnabled = false,
+  suggestionsByTurn = {},
+  onSuggestTurn,
 }: {
   prompt?: string;
   answer: string;
   turns?: AskTurn[];
   waiting?: string;
   reader?: boolean;
+  suggestionsEnabled?: boolean;
+  suggestionsByTurn?: Record<string, SuggestionState>;
+  onSuggestTurn?: (turn: AskTurn) => void;
 }) {
   const threadTurns = useMemo<AskTurn[]>(
     () =>
@@ -151,6 +162,12 @@ export const ConversationThread = memo(function ConversationThread({
           <div key={turn.id} className="ask-message ask-message-user">
             <span>You</span>
             <p>{turn.content}</p>
+            <ChatMessageActions
+              enabled={suggestionsEnabled}
+              turn={turn}
+              suggestion={suggestionsByTurn[turn.id]}
+              onSuggest={onSuggestTurn}
+            />
           </div>
         ) : (
           <div key={turn.id} className="ask-message ask-message-assistant">
@@ -162,12 +179,93 @@ export const ConversationThread = memo(function ConversationThread({
               {turn.content ? <AskAnswerBody answer={turn.content} /> : <span className="ask-waiting">{waiting}</span>}
             </div>
             <SourceStrip sources={turn.sources} />
+            <ChatMessageActions
+              enabled={suggestionsEnabled}
+              turn={turn}
+              suggestion={suggestionsByTurn[turn.id]}
+              onSuggest={onSuggestTurn}
+            />
           </div>
         ),
       )}
     </div>
   );
 });
+
+function ChatMessageActions({
+  enabled,
+  turn,
+  suggestion,
+  onSuggest,
+}: {
+  enabled: boolean;
+  turn: AskTurn;
+  suggestion?: SuggestionState;
+  onSuggest?: (turn: AskTurn) => void;
+}) {
+  if (!enabled || turn.pending || !turn.content.trim() || !onSuggest) return null;
+  const loading = suggestion?.status === "loading";
+  return (
+    <div className="chat-message-tools">
+      <Button
+        variant="plain"
+        size="unstyled"
+        className="chat-message-tool"
+        type="button"
+        onClick={() => onSuggest(turn)}
+        disabled={loading}
+        aria-label={`Suggest docs for ${turn.role} message`}
+        title="Suggest relevant docs"
+      >
+        <Sparkles size={12} strokeWidth={1.9} />
+        <span>{loading ? "Searching" : "Suggest"}</span>
+      </Button>
+      <ChatSuggestionPanel suggestion={suggestion} />
+    </div>
+  );
+}
+
+function ChatSuggestionPanel({ suggestion }: { suggestion?: SuggestionState }) {
+  if (!suggestion) return null;
+  if (suggestion.status === "loading") {
+    return (
+      <div className="chat-suggestion-panel" role="status">
+        Searching indexed docs...
+      </div>
+    );
+  }
+  if (suggestion.status === "error") {
+    return (
+      <div className="chat-suggestion-panel chat-suggestion-error" role="alert">
+        {suggestion.message}
+      </div>
+    );
+  }
+  if (suggestion.rows.length === 0) {
+    return <div className="chat-suggestion-panel">No indexed docs matched this message.</div>;
+  }
+  return (
+    <div className="chat-suggestion-panel" aria-label="Suggested docs">
+      {suggestion.rows.map((row) => (
+        <a
+          key={`${row.url ?? row.title}-${row.rank}`}
+          className="chat-suggestion-row"
+          href={row.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-disabled={row.url ? undefined : true}
+        >
+          <span>
+            <strong>{row.title}</strong>
+            {row.url ? <small>{row.url}</small> : null}
+          </span>
+          {row.snippet ? <p>{row.snippet}</p> : null}
+          {row.score !== undefined ? <code>{row.score.toFixed(3)}</code> : null}
+        </a>
+      ))}
+    </div>
+  );
+}
 
 // The full ask view: a conversation thread plus a follow-up compose box.
 export const AskConversation = memo(function AskConversation({
@@ -177,6 +275,8 @@ export const AskConversation = memo(function AskConversation({
   pending,
   onFollowUp,
   onRunAction,
+  suggestionsEnabled = false,
+  onSuggestMessage,
 }: {
   prompt?: string;
   answer?: string;
@@ -184,9 +284,12 @@ export const AskConversation = memo(function AskConversation({
   pending?: boolean;
   onFollowUp: (text: string) => void;
   onRunAction?: (subcommand: string, argument: string) => void;
+  suggestionsEnabled?: boolean;
+  onSuggestMessage?: (message: string) => Promise<ChatSuggestion[]>;
 }) {
   const [draft, setDraft] = useState("");
   const [selectedCommand, setSelectedCommand] = useState(0);
+  const [suggestionsByTurn, setSuggestionsByTurn] = useState<Record<string, SuggestionState>>({});
   const canSend = draft.trim().length > 0 && !pending;
   const slashQuery = draft.startsWith("/") ? draft.slice(1).trimStart() : null;
   const slashMenuOpen = slashQuery !== null && !pending && Boolean(onRunAction);
@@ -239,9 +342,28 @@ export const AskConversation = memo(function AskConversation({
     onFollowUp(value);
   }
 
+  async function suggestTurn(turn: AskTurn) {
+    if (!onSuggestMessage || !turn.content.trim()) return;
+    setSuggestionsByTurn((current) => ({ ...current, [turn.id]: { status: "loading" } }));
+    try {
+      const rows = await onSuggestMessage(turn.content);
+      setSuggestionsByTurn((current) => ({ ...current, [turn.id]: { status: "ready", rows } }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSuggestionsByTurn((current) => ({ ...current, [turn.id]: { status: "error", message } }));
+    }
+  }
+
   return (
     <div className="ask-body">
-      <ConversationThread prompt={prompt} answer={answer ?? ""} turns={transcript} />
+      <ConversationThread
+        prompt={prompt}
+        answer={answer ?? ""}
+        turns={transcript}
+        suggestionsEnabled={suggestionsEnabled && Boolean(onSuggestMessage)}
+        suggestionsByTurn={suggestionsByTurn}
+        onSuggestTurn={suggestTurn}
+      />
       <form
         className="ask-compose"
         onSubmit={(event) => {

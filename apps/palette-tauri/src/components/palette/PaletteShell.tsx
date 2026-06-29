@@ -19,7 +19,7 @@ import { invoke } from "@/lib/invoke";
 import { jobFamilyVerb } from "@/lib/jobProgress";
 import type { ParsedCommand } from "@/lib/paletteView";
 import type { ViewIntent } from "@/lib/paletteViewState";
-import type { RunState } from "@/lib/runState";
+import type { ChatSuggestion, RunState } from "@/lib/runState";
 import type { SourceSortMode } from "@/lib/sourcesModel";
 import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 
@@ -71,6 +71,7 @@ interface PaletteShellProps {
   onResumeAskSession: (item: HistoryItem) => void;
   onRetry: () => void;
   onRunAction: (subcommand: string, argument: string) => void;
+  onSuggestMessage: (message: string) => Promise<ChatSuggestion[]>;
   onSaveSettings: () => void;
   onSubmitAction: (action: PaletteAction) => void;
   onSwitcherOpenChange: (open: boolean) => void;
@@ -318,6 +319,7 @@ function OutputRegion(props: PaletteShellProps) {
         onToggleLivePause={props.onToggleLivePause}
         onOpenJob={props.onOpenJob}
         onRunAction={props.onRunAction}
+        onSuggestMessage={props.onSuggestMessage}
         onDrillDomain={props.onDrillDomain}
         sourcesFilter={props.sourcesFilter}
         sourcesSort={props.sourcesSort}

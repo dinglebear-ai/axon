@@ -95,4 +95,34 @@ describe("AskConversation", () => {
 
     expect(onRunAction).toHaveBeenCalledWith("scrape", "https://example.com");
   });
+
+  it("shows chat message suggestions from indexed docs", async () => {
+    const onSuggestMessage = vi.fn().mockResolvedValue([
+      {
+        rank: 1,
+        title: "Claude Code hooks",
+        url: "https://docs.example/hooks",
+        snippet: "Hooks run commands around Claude Code lifecycle events.",
+        score: 0.92,
+      },
+    ]);
+    render(
+      <AskConversation
+        transcript={[
+          { id: "u1", role: "user", content: "how do hooks work?" },
+          { id: "a1", role: "assistant", content: "Hooks run at configured lifecycle points." },
+        ]}
+        onFollowUp={noop}
+        suggestionsEnabled
+        onSuggestMessage={onSuggestMessage}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Suggest docs for user message" }));
+
+    expect(onSuggestMessage).toHaveBeenCalledWith("how do hooks work?");
+    expect(await screen.findByText("Claude Code hooks")).toBeInTheDocument();
+    expect(screen.getByText("https://docs.example/hooks")).toBeInTheDocument();
+    expect(screen.getByText(/Hooks run commands/)).toBeInTheDocument();
+  });
 });
