@@ -6,6 +6,7 @@ import { PaletteShell } from "@/components/palette/PaletteShell";
 import {
   ACTIONS,
   type PaletteAction,
+  type RemotePaletteAction,
   actionMatches,
 } from "@/lib/actions";
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/lib/actionGuard";
 import { buildHelpRun, helpAction } from "@/lib/actionHelp";
 import { currentOutputTarget } from "@/lib/appHelpers";
-import { createAxonClient } from "@/lib/axonClient";
+import { createAxonClient, executeAction } from "@/lib/axonClient";
 import { outputKindFor } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke, isTauriRuntime } from "@/lib/invoke";
@@ -38,9 +39,10 @@ import {
   modeOf,
   viewReducer,
 } from "@/lib/paletteViewState";
-import type { RunState } from "@/lib/runState";
+import type { ChatSuggestion, RunState } from "@/lib/runState";
 import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
 import { summarizeJob } from "@/lib/jobProgress";
+import { arrField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
 import { useActionRunner } from "@/lib/useActionRunner";
 import { useCrawlJob } from "@/lib/useCrawlJob";
 import { useJobPoll } from "@/lib/useJobPoll";
@@ -55,6 +57,7 @@ import { hostLabel } from "@/lib/url";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 const HISTORY_STORAGE_KEY = "axon.palette.history.v1";
+const CHAT_SUGGESTION_LIMIT = 4;
 
 type StoredHistoryItem = Omit<HistoryItem, "action"> & { actionSubcommand: string };
 
@@ -71,6 +74,25 @@ function hydrateHistoryItem(raw: unknown): HistoryItem | null {
   if (typeof record.title !== "string" || typeof record.subtitle !== "string" || typeof record.when !== "string") return null;
   const { actionSubcommand: _actionSubcommand, ...rest } = record;
   return { ...(rest as Omit<HistoryItem, "action">), action };
+}
+
+function normalizeChatSuggestions(payload: unknown): ChatSuggestion[] {
+  const data = unwrapPayload(payload);
+  return arrField(data, "results")
+    .flatMap((item, index): ChatSuggestion[] => {
+      if (!isRecord(item)) return [];
+      const title = strField(item, "title") ?? strField(item, "name") ?? strField(item, "url") ?? `Result ${index + 1}`;
+      const url = strField(item, "url") ?? strField(item, "source_url");
+      const snippet = strField(item, "snippet") ?? strField(item, "content") ?? strField(item, "text") ?? strField(item, "reason");
+      return [{
+        title,
+        url,
+        snippet,
+        score: numField(item, "score"),
+        rank: numField(item, "rank") ?? index + 1,
+      }];
+    })
+    .slice(0, CHAT_SUGGESTION_LIMIT);
 }
 
 function loadPaletteHistory(): HistoryItem[] {
@@ -507,6 +529,17 @@ export default function App() {
     setQuery(text);
     void submit(askAction, text);
   }, [submit]);
+  const onSuggestMessage = useCallback(async (message: string): Promise<ChatSuggestion[]> => {
+    if (!client || !config) throw new Error("Axon is not connected.");
+    const queryAction = ACTIONS.find((action): action is RemotePaletteAction => action.subcommand === "query" && action.kind !== "local");
+    if (!queryAction) throw new Error("Query action is unavailable.");
+    const result = await executeAction(client, queryAction, message, config);
+    if (!result.ok) {
+      const payload = unwrapPayload(result.payload);
+      throw new Error(strField(payload, "message") ?? strField(payload, "error") ?? strField(payload, "detail") ?? `Query failed with HTTP ${result.status}`);
+    }
+    return normalizeChatSuggestions(result.payload);
+  }, [client, config]);
   const onHistory = useCallback(() => {
     setRun({ kind: "idle" });
     dispatchView({ type: "openHistory" });
@@ -533,7 +566,7 @@ export default function App() {
     onAskSessionsOpenChange: setAskSessionsOpen, onOpenJob, onReset, onResumeAskSession, onRetry, onRunAction, onSaveSettings: () => {
       setPendingConfirmation(null);
       void saveSettings();
-    }, onSubmitAction, onSwitcherOpenChange: setActionSwitcherOpen,
+    }, onSubmitAction, onSuggestMessage, onSwitcherOpenChange: setActionSwitcherOpen,
     onToggleLivePause: () => setLivePaused((paused) => !paused), onToggleMaximize, onTogglePin,
     onToggleSettings, outputFocusRef, outputKind, parsed, pinned: currentTarget ? pinnedTargets.has(currentTarget) : false,
     query, requestSubmit, run, selected, setDraftConfig, setHistory, setQuery, setRun, setSelected,

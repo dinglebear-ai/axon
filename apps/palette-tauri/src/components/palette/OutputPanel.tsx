@@ -30,7 +30,7 @@ import { Spinner } from "@/components/ui/aurora/spinner";
 import { actionBehavior } from "@/lib/actionRegistry";
 import type { PaletteAction } from "@/lib/actions";
 import { numField, strField, unwrapPayload } from "@/lib/payload";
-import type { RunState } from "@/lib/runState";
+import type { ChatSuggestion, RunState } from "@/lib/runState";
 import { buildSourcesModel, type SourceSortMode } from "@/lib/sourcesModel";
 import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 import { firstUrl, hostLabel } from "@/lib/url";
@@ -51,6 +51,7 @@ interface OutputPanelProps {
   onToggleLivePause?: () => void;
   onOpenJob?: OpenJobHandler;
   onRunAction?: (subcommand: string, argument: string) => void;
+  onSuggestMessage?: (message: string) => Promise<ChatSuggestion[]>;
   onDrillDomain?: (domain: string) => void;
   sourcesFilter?: string;
   sourcesSort?: SourceSortMode;
@@ -76,6 +77,7 @@ export const OutputPanel = memo(function OutputPanel({
   onToggleLivePause,
   onOpenJob,
   onRunAction,
+  onSuggestMessage,
   onDrillDomain,
   sourcesFilter = "",
   sourcesSort = "chunks",
@@ -230,9 +232,26 @@ export const OutputPanel = memo(function OutputPanel({
           </span>
         </header>
         {(run.kind === "streaming" || run.kind === "running") && conversationMode && transcript?.length ? (
-          <AskConversation prompt={run.prompt ?? ""} answer={"text" in run ? run.text : ""} transcript={transcript} pending onFollowUp={onFollowUp} onRunAction={onRunAction} />
+          <AskConversation
+            prompt={run.prompt ?? ""}
+            answer={"text" in run ? run.text : ""}
+            transcript={transcript}
+            pending
+            onFollowUp={onFollowUp}
+            onRunAction={onRunAction}
+            suggestionsEnabled={active?.subcommand === "chat"}
+            onSuggestMessage={onSuggestMessage}
+          />
         ) : run.kind === "streaming" && conversationMode ? (
-          <AskConversation prompt={run.prompt ?? ""} answer={run.text} pending onFollowUp={onFollowUp} onRunAction={onRunAction} />
+          <AskConversation
+            prompt={run.prompt ?? ""}
+            answer={run.text}
+            pending
+            onFollowUp={onFollowUp}
+            onRunAction={onRunAction}
+            suggestionsEnabled={active?.subcommand === "chat"}
+            onSuggestMessage={onSuggestMessage}
+          />
         ) : (run.kind === "running" || run.kind === "streaming") ? (
           <PendingBody run={run} />
         ) : run.kind === "success" && active?.subcommand === "evaluate" ? (
@@ -263,7 +282,15 @@ export const OutputPanel = memo(function OutputPanel({
         ) : run.kind === "error" ? (
           <ErrorResultView result={run.result} text={run.text} />
         ) : "text" in run && conversationMode ? (
-          <AskConversation prompt={run.prompt ?? ""} answer={run.text} transcript={transcript} onFollowUp={onFollowUp} onRunAction={onRunAction} />
+          <AskConversation
+            prompt={run.prompt ?? ""}
+            answer={run.text}
+            transcript={transcript}
+            onFollowUp={onFollowUp}
+            onRunAction={onRunAction}
+            suggestionsEnabled={active?.subcommand === "chat"}
+            onSuggestMessage={onSuggestMessage}
+          />
         ) : "text" in run ? (
           outputKind === "markdown" ? (
             <div className="output-body output-markdown">

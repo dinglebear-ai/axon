@@ -1,9 +1,10 @@
 import { OutputPanel } from "@/components/palette/OutputPanel";
 import { ACTIONS } from "@/lib/actions";
-import type { RunState } from "@/lib/runState";
+import type { ChatSuggestion, RunState } from "@/lib/runState";
 
 const noop = () => {};
 const askAction = ACTIONS.find((action) => action.subcommand === "ask");
+const chatAction = ACTIONS.find((action) => action.subcommand === "chat");
 
 const streamingRun: RunState = {
   kind: "streaming",
@@ -55,14 +56,57 @@ const completeRun: RunState = {
   ],
 };
 
+const chatRun: RunState = {
+  kind: "success",
+  title: "Chat with LLM",
+  subtitle: "/v1/chat",
+  text: "Claude Code plugins are packaged workflows with a manifest, optional skills, and distribution metadata.",
+  outputKind: "markdown",
+  prompt: "how do I create a Claude Code plugin?",
+  result: {
+    ok: true,
+    status: 200,
+    method: "POST",
+    path: "/v1/chat",
+    payload: { answer: "Claude Code plugins are packaged workflows with a manifest, optional skills, and distribution metadata." },
+  },
+  transcript: [
+    { id: "u1", role: "user", content: "how do I create a Claude Code plugin?" },
+    {
+      id: "a1",
+      role: "assistant",
+      content: "Claude Code plugins are packaged workflows with a manifest, optional skills, and distribution metadata.",
+    },
+  ],
+};
+
+const fixtureSuggestions: ChatSuggestion[] = [
+  {
+    rank: 1,
+    title: "Build plugins",
+    url: "https://developers.openai.com/codex/build-plugins",
+    snippet: "Create, test, and distribute plugins for Codex with a plugin manifest and marketplace entry.",
+    score: 0.918,
+  },
+  {
+    rank: 2,
+    title: "Plugin creator skill",
+    url: "https://developers.openai.com/codex/plugins",
+    snippet: "Use @plugin-creator to scaffold plugin files and package metadata.",
+    score: 0.874,
+  },
+];
+
 export function AskStreamTransitionFixture() {
   const state = new URLSearchParams(window.location.search).get("state");
-  const run = state === "streaming" ? streamingRun : completeRun;
-  if (!askAction) return null;
+  const chatMode = state === "chat";
+  const run = chatMode ? chatRun : state === "streaming" ? streamingRun : completeRun;
+  const active = chatMode ? chatAction : askAction;
+  if (!active) return null;
   return (
     <main className="fixture-shell fixture-shell-ask">
       <OutputPanel
-        active={askAction}
+        active={active}
         copied={false}
         outputKind="markdown"
         run={run}
@@ -73,6 +117,8 @@ export function AskStreamTransitionFixture() {
         onHistory={noop}
         onCollapse={noop}
         onTogglePin={noop}
+        onRunAction={noop}
+        onSuggestMessage={async () => fixtureSuggestions}
       />
     </main>
   );
