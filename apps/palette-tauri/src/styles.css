@@ -1696,6 +1696,7 @@ textarea {
   border-color: var(--aurora-accent-pink-deep);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--aurora-accent-pink-deep) 48%, transparent),
+    0 0 18px color-mix(in srgb, var(--aurora-accent-pink) 34%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
@@ -1703,6 +1704,7 @@ textarea {
   outline: none;
   box-shadow:
     0 0 0 2px var(--aurora-focus-ring-strong),
+    0 0 18px color-mix(in srgb, var(--aurora-accent-pink) 34%, transparent),
     0 0 0 1px color-mix(in srgb, var(--aurora-accent-pink-deep) 48%, transparent);
 }
 
