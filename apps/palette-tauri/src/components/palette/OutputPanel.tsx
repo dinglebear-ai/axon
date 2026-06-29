@@ -230,9 +230,9 @@ export const OutputPanel = memo(function OutputPanel({
           </span>
         </header>
         {(run.kind === "streaming" || run.kind === "running") && conversationMode && transcript?.length ? (
-          <AskConversation prompt={run.prompt ?? ""} answer={"text" in run ? run.text : ""} transcript={transcript} pending onFollowUp={onFollowUp} />
+          <AskConversation prompt={run.prompt ?? ""} answer={"text" in run ? run.text : ""} transcript={transcript} pending onFollowUp={onFollowUp} onRunAction={onRunAction} />
         ) : run.kind === "streaming" && conversationMode ? (
-          <AskConversation prompt={run.prompt ?? ""} answer={run.text} pending onFollowUp={onFollowUp} />
+          <AskConversation prompt={run.prompt ?? ""} answer={run.text} pending onFollowUp={onFollowUp} onRunAction={onRunAction} />
         ) : (run.kind === "running" || run.kind === "streaming") ? (
           <PendingBody run={run} />
         ) : run.kind === "success" && active?.subcommand === "evaluate" ? (
@@ -263,7 +263,7 @@ export const OutputPanel = memo(function OutputPanel({
         ) : run.kind === "error" ? (
           <ErrorResultView result={run.result} text={run.text} />
         ) : "text" in run && conversationMode ? (
-          <AskConversation prompt={run.prompt ?? ""} answer={run.text} transcript={transcript} onFollowUp={onFollowUp} />
+          <AskConversation prompt={run.prompt ?? ""} answer={run.text} transcript={transcript} onFollowUp={onFollowUp} onRunAction={onRunAction} />
         ) : "text" in run ? (
           outputKind === "markdown" ? (
             <div className="output-body output-markdown">

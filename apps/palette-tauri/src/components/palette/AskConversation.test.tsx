@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AskConversation } from "./AskConversation";
 import type { AskTurn } from "@/lib/runState";
@@ -70,5 +70,29 @@ describe("AskConversation", () => {
     expect(screen.getByText("Retrieving context")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send follow-up" })).toHaveClass("command-submit");
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+  });
+
+  it("opens a slash command palette and runs selected no-input actions", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/status" } });
+
+    expect(screen.getByRole("listbox", { name: "Palette commands" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("option", { name: /Status/i })[0]);
+
+    expect(onRunAction).toHaveBeenCalledWith("status", "");
+  });
+
+  it("runs slash commands with arguments from the composer", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/scrape https://example.com" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onRunAction).toHaveBeenCalledWith("scrape", "https://example.com");
   });
 });
