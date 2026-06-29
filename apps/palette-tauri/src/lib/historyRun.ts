@@ -18,5 +18,7 @@ export function runStateFromHistory(item: HistoryItem): RunState | null {
     text: item.text,
     outputKind: item.outputKind ?? outputKindFor(item.action.subcommand),
     result,
+    prompt: item.prompt,
+    transcript: item.transcript,
   };
 }

@@ -44,6 +44,7 @@ describe("App local help", () => {
       })),
     });
     HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.localStorage.clear();
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async (command) => {
       if (command === "load_palette_config" || command === "load_palette_default_config") return config;
@@ -111,6 +112,7 @@ describe("App command palette accessibility + keyboard nav", () => {
   afterEach(() => cleanup());
 
   beforeEach(() => {
+    window.localStorage.clear();
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async (command) => {
       if (command === "load_palette_config" || command === "load_palette_default_config") return config;

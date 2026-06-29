@@ -4,6 +4,7 @@ import { ActionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
 import type { PaletteAction } from "@/lib/actions";
 import type { PaletteResult } from "@/lib/axonClient";
+import type { AskTurn } from "@/lib/runState";
 
 export interface HistoryItem {
   action: PaletteAction;
@@ -18,6 +19,8 @@ export interface HistoryItem {
   text?: string;
   outputKind?: "markdown" | "code";
   result?: PaletteResult;
+  prompt?: string;
+  transcript?: AskTurn[];
 }
 
 export function HistoryPanel({

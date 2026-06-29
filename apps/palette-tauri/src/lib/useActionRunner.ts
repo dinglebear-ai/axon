@@ -90,13 +90,15 @@ export function useActionRunner({
       text?: string;
       outputKind?: OutputKind;
       result?: PaletteResult;
+      prompt?: string;
+      transcript?: AskTurn[];
     },
   ) {
     setHistory((items) =>
       [
         { action, target, ...entry, when: "just now", duration: entry.status === 0 ? "fail" : undefined },
         ...items,
-      ].slice(0, 18),
+      ],
     );
   }
 
@@ -148,6 +150,8 @@ export function useActionRunner({
         text,
         outputKind: outputKindFor(action.subcommand),
         result,
+        prompt: isConversation ? argument : undefined,
+        transcript: isConversation ? completeLastAssistantTurn(pendingTranscript, text, parts.sources) : undefined,
       });
       const next: RunState = {
         kind: result.ok ? "success" : "error",
@@ -186,6 +190,8 @@ export function useActionRunner({
         text: message,
         outputKind: outputKindFor(action.subcommand),
         result: next.result,
+        prompt: isConversation ? argument : undefined,
+        transcript: isConversation ? completeLastAssistantTurn(pendingTranscript, message) : undefined,
       });
       setRun(next);
       return next;
