@@ -2734,7 +2734,7 @@ textarea {
   --ask-compose-pad-x: 16px;
   --ask-compose-menu-gap: 10px;
   --ask-compose-attach-width: 36px;
-  --ask-compose-send-width: 54px;
+  --ask-compose-send-width: 46px;
   position: relative;
   display: flex;
   align-items: center;
@@ -2847,10 +2847,47 @@ textarea {
   min-height: 54px;
   flex: 1;
   align-items: center;
+  gap: 8px;
   padding: 0 18px;
   background: color-mix(in srgb, var(--aurora-page-bg) 72%, transparent);
   border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 46%, transparent);
   border-radius: 12px;
+}
+
+.ask-action-chip {
+  display: inline-flex;
+  max-width: 180px;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  color: var(--aurora-accent-strong);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 10%, var(--aurora-panel-strong));
+  border: 1px solid color-mix(in srgb, var(--aurora-accent-primary) 30%, var(--aurora-border-default));
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.ask-action-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-action-chip-rose {
+  color: var(--aurora-accent-pink);
+  background: color-mix(in srgb, var(--aurora-accent-pink) 12%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-accent-pink) 32%, var(--aurora-border-default));
+}
+
+.ask-action-chip-warn,
+.ask-action-chip-orange {
+  color: var(--aurora-accent-orange);
+  background: color-mix(in srgb, var(--aurora-accent-orange) 12%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-accent-orange) 30%, var(--aurora-border-default));
 }
 
 .ask-compose input {
@@ -2868,7 +2905,7 @@ textarea {
 }
 
 .ask-compose .command-submit {
-  --ctl: 54px;
+  --ctl: var(--ask-compose-send-width);
   --r-ctl: 10px;
   flex: 0 0 var(--ctl);
 }
