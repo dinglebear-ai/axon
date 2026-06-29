@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Route
 import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -145,15 +147,15 @@ private fun ConnectionSetupSummary(
         connection is TestConnectionState.Testing -> "Testing..."
         !serverReady -> "Add server URL"
         !authReady && authMode == AuthMode.Bearer -> "Add token below"
-        !authReady && authMode == AuthMode.OAuth -> "Sign in below"
+        !authReady && authMode == AuthMode.OAuth -> "Sign in with OAuth"
         else -> "Test connection"
     }
     val summary = when {
         connected -> "Server health endpoint is reachable. Auth and collection are set locally."
         connection is TestConnectionState.Failed -> "Connection test failed. Check the details below and retry."
-        !serverReady -> "Start with the Axon server URL."
+        !serverReady -> "Enter your Axon server URL, then sign in with OAuth."
         !authReady && authMode == AuthMode.Bearer -> "Bearer mode needs a token before testing most Axon servers."
-        !authReady && authMode == AuthMode.OAuth -> "OAuth needs a completed sign-in before testing."
+        !authReady && authMode == AuthMode.OAuth -> "OAuth is the recommended sign-in flow. No bearer token is needed."
         !collectionReady -> "Pick the Qdrant collection used for requests."
         else -> "Test the saved endpoint before leaving setup."
     }
@@ -277,20 +279,38 @@ private fun AuthModeSelector(authMode: AuthMode, onAuthMode: (AuthMode) -> Unit)
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text("Auth", color = colors.textMuted.copy(alpha = 0.86f), fontSize = 13.sp, lineHeight = 17.sp, fontFamily = AxonTheme.fonts.body)
         Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
-            AuthModeButton("Bearer", selected = authMode == AuthMode.Bearer, modifier = Modifier.weight(1f)) {
-                onAuthMode(AuthMode.Bearer)
-            }
-            AuthModeButton("OAuth", selected = authMode == AuthMode.OAuth, modifier = Modifier.weight(1f)) {
+            AuthModeButton(
+                label = "OAuth",
+                detail = "Recommended",
+                selected = authMode == AuthMode.OAuth,
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.VerifiedUser,
+            ) {
                 onAuthMode(AuthMode.OAuth)
+            }
+            AuthModeButton(
+                label = "Bearer",
+                detail = "Fallback",
+                selected = authMode == AuthMode.Bearer,
+                modifier = Modifier.weight(1f),
+            ) {
+                onAuthMode(AuthMode.Bearer)
             }
         }
     }
 }
 
 @Composable
-private fun AuthModeButton(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun AuthModeButton(
+    label: String,
+    detail: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    onClick: () -> Unit,
+) {
     val colors = AxonTheme.colors
-    Row(
+    Column(
         modifier = modifier
             .height(54.dp)
             .clip(RoundedCornerShape(8.dp))
@@ -298,15 +318,28 @@ private fun AuthModeButton(label: String, selected: Boolean, modifier: Modifier 
             .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 28, colors.pageBg) else colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            icon?.let { Icon(it, contentDescription = null, tint = if (selected) colors.accentStrong else colors.textMuted, modifier = Modifier.size(14.dp)) }
+            Text(
+                label,
+                color = if (selected) colors.accentStrong else colors.textMuted,
+                fontSize = 13.6.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = AxonTheme.fonts.body,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Text(
-            label,
-            color = if (selected) colors.accentStrong else colors.textMuted,
-            fontSize = 13.6.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.SemiBold,
+            detail,
+            color = if (selected) colors.accentStrong.copy(alpha = 0.78f) else colors.textMuted.copy(alpha = 0.78f),
+            fontSize = 10.4.sp,
+            lineHeight = 13.sp,
+            fontWeight = FontWeight.Medium,
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -323,7 +356,7 @@ private fun OAuthControls(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         when (status) {
             OAuthUiStatus.SignedIn -> SettingsFeedbackBanner(
-                message = "Signed in",
+                message = "OAuth signed in. This server URL is saved for future launches.",
                 kind = SettingsFeedbackKind.Success,
             )
             OAuthUiStatus.Starting -> SettingsFeedbackBanner(
@@ -346,7 +379,7 @@ private fun OAuthControls(
                 )
             } else {
                 CompactActionButton(
-                    label = if (status == OAuthUiStatus.Starting) "Starting OAuth..." else "Sign in",
+                    label = if (status == OAuthUiStatus.Starting) "Starting OAuth..." else "Sign in with OAuth",
                     onClick = onBeginOAuth,
                     modifier = Modifier.weight(1f),
                     enabled = status != OAuthUiStatus.Starting,
@@ -354,7 +387,7 @@ private fun OAuthControls(
             }
         }
         SettingsFeedbackBanner(
-            message = "Use com.axon.app://oauth2redirect for this internal build. Verified HTTPS App Links are preferred before broad production distribution.",
+            message = "OAuth opens your browser and returns here after approval. Bearer tokens remain available as a fallback.",
             kind = SettingsFeedbackKind.Info,
             modifier = Modifier.fillMaxWidth(),
         )
