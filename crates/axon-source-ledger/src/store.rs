@@ -302,6 +302,41 @@ impl SourceLedgerStore {
         })
     }
 
+    pub async fn record_cleanup_debt(
+        &self,
+        source_id: &str,
+        generation: i64,
+        item_key: &str,
+        selector_json: &str,
+    ) -> anyhow::Result<()> {
+        let now_ms = now_ms();
+        sqlx::query(
+            "INSERT INTO axon_source_cleanup_debt (
+                source_id, generation, item_key, selector_json, retry_count, last_error, updated_at_ms
+             ) VALUES (?, ?, ?, ?, 0, NULL, ?)
+             ON CONFLICT(source_id, generation, item_key) DO UPDATE SET
+                selector_json = excluded.selector_json,
+                updated_at_ms = excluded.updated_at_ms",
+        )
+        .bind(source_id)
+        .bind(generation)
+        .bind(item_key)
+        .bind(selector_json)
+        .bind(now_ms)
+        .execute(&self.pool)
+        .await
+        .context("failed to record source cleanup debt")?;
+        Ok(())
+    }
+
+    pub async fn cleanup_debt_count(&self, source_id: &str) -> anyhow::Result<i64> {
+        sqlx::query_scalar("SELECT COUNT(*) FROM axon_source_cleanup_debt WHERE source_id = ?")
+            .bind(source_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("failed to count source cleanup debt")
+    }
+
     pub async fn set_backoff(
         &self,
         source_id: &str,
