@@ -1,10 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Brain, CheckCircle2, Paperclip, Send, Wrench } from "lucide-react";
 
+import { actionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { AxonMark } from "@/components/palette/AxonMark";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
+import { ACTIONS, type PaletteAction } from "@/lib/actions";
+import { actionDisplayMeta } from "@/lib/actionMeta";
 import type { AskActivity, AskSource, AskTurn } from "@/lib/runState";
 
 function hasRichMarkdown(value: string): boolean {
@@ -173,15 +176,69 @@ export const AskConversation = memo(function AskConversation({
   transcript,
   pending,
   onFollowUp,
+  onRunAction,
 }: {
   prompt?: string;
   answer?: string;
   transcript?: AskTurn[];
   pending?: boolean;
   onFollowUp: (text: string) => void;
+  onRunAction?: (subcommand: string, argument: string) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [selectedCommand, setSelectedCommand] = useState(0);
   const canSend = draft.trim().length > 0 && !pending;
+  const slashQuery = draft.startsWith("/") ? draft.slice(1).trimStart() : null;
+  const slashMenuOpen = slashQuery !== null && !pending && Boolean(onRunAction);
+  const slashCommands = useMemo(() => {
+    if (slashQuery === null) return [];
+    const needle = slashQuery.split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+    return ACTIONS.filter((action) => {
+      if (action.subcommand === "chat" || action.subcommand === "ask") return false;
+      if (!needle) return true;
+      const meta = actionDisplayMeta(action);
+      return (
+        action.subcommand.toLowerCase().includes(needle) ||
+        action.label.toLowerCase().includes(needle) ||
+        meta.label.toLowerCase().includes(needle) ||
+        action.aliases.some((alias) => alias.toLowerCase().includes(needle))
+      );
+    }).slice(0, 10);
+  }, [slashQuery]);
+  const clampedSelectedCommand = Math.min(selectedCommand, Math.max(slashCommands.length - 1, 0));
+
+  useEffect(() => {
+    setSelectedCommand(0);
+  }, [slashQuery]);
+
+  function runSlashCommand(action: PaletteAction, argument: string) {
+    if (!onRunAction) return;
+    if (action.argMode !== "none" && !argument.trim()) {
+      setDraft(`/${action.subcommand} `);
+      return;
+    }
+    setDraft("");
+    onRunAction(action.subcommand, argument.trim());
+  }
+
+  function submitDraft() {
+    const value = draft.trim();
+    if (!value || pending) return;
+    if (value.startsWith("/") && onRunAction) {
+      const [token = "", ...rest] = value.slice(1).trim().split(/\s+/);
+      const normalizedToken = token.toLowerCase();
+      const action = ACTIONS.find(
+        (candidate) => candidate.subcommand === normalizedToken || candidate.aliases.some((alias) => alias.toLowerCase() === normalizedToken),
+      );
+      if (action && action.subcommand !== "ask" && action.subcommand !== "chat") {
+        runSlashCommand(action, rest.join(" "));
+        return;
+      }
+    }
+    setDraft("");
+    onFollowUp(value);
+  }
+
   return (
     <div className="ask-body">
       <ConversationThread prompt={prompt} answer={answer ?? ""} turns={transcript} />
@@ -189,12 +246,41 @@ export const AskConversation = memo(function AskConversation({
         className="ask-compose"
         onSubmit={(event) => {
           event.preventDefault();
-          const value = draft.trim();
-          if (!value || pending) return;
-          setDraft("");
-          onFollowUp(value);
+          submitDraft();
         }}
       >
+        {slashMenuOpen && slashCommands.length > 0 ? (
+          <div className="ask-slash-menu" role="listbox" aria-label="Palette commands">
+            {slashCommands.map((action, index) => {
+              const Icon = actionIcon(action.subcommand);
+              const meta = actionDisplayMeta(action);
+              const selected = index === clampedSelectedCommand;
+              return (
+                <Button
+                  variant="plain"
+                  size="unstyled"
+                  className={`ask-slash-option${selected ? " ask-slash-option-selected" : ""}`}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  key={action.subcommand}
+                  onMouseEnter={() => setSelectedCommand(index)}
+                  onClick={() => {
+                    const argument = draft.slice(1).trim().split(/\s+/).slice(1).join(" ");
+                    runSlashCommand(action, argument);
+                  }}
+                >
+                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+                  <span>
+                    <strong>{meta.label}</strong>
+                    <small>{action.description}</small>
+                  </span>
+                  <code>/{action.subcommand}</code>
+                </Button>
+              );
+            })}
+          </div>
+        ) : null}
         <Button
           variant="plain"
           size="unstyled"
@@ -212,6 +298,23 @@ export const AskConversation = memo(function AskConversation({
             value={draft}
             disabled={pending}
             onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (!slashMenuOpen || slashCommands.length === 0) return;
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setSelectedCommand((index) => Math.min(index + 1, slashCommands.length - 1));
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setSelectedCommand((index) => Math.max(index - 1, 0));
+              } else if (event.key === "Tab" || event.key === "Enter") {
+                event.preventDefault();
+                const argument = draft.slice(1).trim().split(/\s+/).slice(1).join(" ");
+                runSlashCommand(slashCommands[clampedSelectedCommand], argument);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setDraft("");
+              }
+            }}
             placeholder={pending ? "Waiting for response..." : "Ask a follow-up..."}
             aria-label="Ask a follow-up"
           />
