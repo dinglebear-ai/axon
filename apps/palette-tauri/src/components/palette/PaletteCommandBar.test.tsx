@@ -147,9 +147,10 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
   it("opens the utility menu and routes help through the menu", async () => {
     const user = userEvent.setup();
     const onHelp = vi.fn();
-    renderBar({ onHelp });
+    const { props } = renderBar({ onHelp });
 
     await user.click(screen.getByRole("button", { name: "Menu" }));
+    expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(true);
 
     expect(screen.getByText("Settings")).toBeInTheDocument();
     expect(screen.getByText("Config")).toBeInTheDocument();
@@ -158,6 +159,7 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     await user.click(screen.getByText("Help"));
     expect(onHelp).toHaveBeenCalledTimes(1);
     expect(onHelp.mock.calls[0][0].subcommand).toBe("scrape");
+    expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(false);
   });
 
   it("closes the disclosure on Escape and keeps focus on the trigger", async () => {
