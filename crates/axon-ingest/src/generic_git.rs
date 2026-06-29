@@ -2,7 +2,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
+use axon_source_ledger::{ManifestItem, SourceIdentity, SourceKind, SourceLedgerStore};
 use reqwest::Url;
+use sha2::{Digest, Sha256};
+use sqlx::SqlitePool;
 
 use crate::git_payload::{ContentKind, GitPayload, build_git_payload};
 use crate::progress::PhaseReporter;
@@ -18,6 +21,8 @@ use axon_vector::ops::input::classify::{
 use axon_vector::ops::qdrant::qdrant_delete_repo_file_fragments;
 use axon_vector::ops::{PreparedDoc, SourceDocument, SourceOrigin, prepare_source_document};
 
+const GIT_SOURCE_INDEX_VERSION: i64 = 1;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericGitTarget {
     pub clone_url: String,
@@ -28,6 +33,27 @@ pub struct GenericGitTarget {
 
 pub fn normalize_generic_git_target(input: &str) -> Result<String> {
     Ok(parse_generic_git_target(input)?.clone_url)
+}
+
+pub(crate) fn git_ref_is_immutable_commit_sha(reference: &str) -> bool {
+    reference.len() == 40 && reference.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+pub(crate) fn git_ref_schedules_refresh(reference: &str) -> bool {
+    !git_ref_is_immutable_commit_sha(reference)
+}
+
+fn git_source_id(target: &GenericGitTarget, reference: &str) -> String {
+    format!("git:{}#{reference}", target.clone_url)
+}
+
+fn git_source_identity(cfg: &Config, target: &GenericGitTarget, reference: &str) -> SourceIdentity {
+    SourceIdentity::new(
+        git_source_id(target, reference),
+        SourceKind::Git,
+        cfg.collection.clone(),
+        GIT_SOURCE_INDEX_VERSION,
+    )
 }
 
 pub fn parse_generic_git_target(input: &str) -> Result<GenericGitTarget> {
@@ -143,12 +169,19 @@ pub(crate) async fn ingest_git_repository(
         }
     }
     let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url().to_string()).collect();
+    let manifest = git_manifest_from_docs(&docs);
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
         .map_err(|e| anyhow!("{e}"))?
         .require_success("generic git embed")
         .map_err(|e| anyhow!("{e}"))?;
     if include_source && skipped_files == 0 && summary.docs_failed == 0 {
+        if let Err(err) = commit_git_manifest_to_ledger(cfg, &target, &branch, &manifest).await {
+            log_warn(&format!(
+                "command=ingest_git source_ledger_commit_failed target={} err={err}",
+                target.clone_url
+            ));
+        }
         if let Err(err) = qdrant_delete_repo_file_fragments(
             cfg,
             provider,
@@ -183,6 +216,95 @@ pub(crate) async fn ingest_git_repository(
         target.clone_url, summary.chunks_embedded
     ));
     Ok(summary.chunks_embedded)
+}
+
+fn git_manifest_from_docs(docs: &[PreparedDoc]) -> Vec<ManifestItem> {
+    docs.iter().map(git_manifest_item_from_doc).collect()
+}
+
+fn git_manifest_item_from_doc(doc: &PreparedDoc) -> ManifestItem {
+    let item_key = doc
+        .extra()
+        .and_then(|extra| extra.get("code_file_path"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_else(|| doc.url())
+        .to_string();
+    let mut hasher = Sha256::new();
+    let mut size_bytes = 0i64;
+    for chunk in doc.chunks() {
+        size_bytes = size_bytes.saturating_add(chunk.len() as i64);
+        hasher.update(chunk.as_bytes());
+        hasher.update([0]);
+    }
+    ManifestItem::new(item_key, hex::encode(hasher.finalize()), size_bytes)
+}
+
+async fn commit_git_manifest_to_ledger(
+    cfg: &Config,
+    target: &GenericGitTarget,
+    reference: &str,
+    manifest: &[ManifestItem],
+) -> Result<()> {
+    let pool = open_source_ledger_pool(&cfg.sqlite_path.to_string_lossy()).await?;
+    let store = SourceLedgerStore::new(pool);
+    let source = git_source_identity(cfg, target, reference);
+    commit_git_manifest_with_store(&store, &source, target, reference, manifest)
+        .await
+        .map(|_| ())
+}
+
+async fn open_source_ledger_pool(path: &str) -> Result<SqlitePool> {
+    let pool = axon_core::sqlite::open_pool(path)
+        .await
+        .map_err(|err| anyhow!("open source ledger sqlite: {err}"))?;
+    sqlx::migrate!("../axon-jobs/src/migrations")
+        .run(&pool)
+        .await
+        .map_err(|err| anyhow!("run source ledger migrations: {err}"))?;
+    Ok(pool)
+}
+
+pub(crate) async fn commit_git_manifest_with_store(
+    store: &SourceLedgerStore,
+    source: &SourceIdentity,
+    target: &GenericGitTarget,
+    reference: &str,
+    manifest: &[ManifestItem],
+) -> Result<i64> {
+    store.ensure_source(source).await?;
+    let diff = store.diff_manifest(&source.source_id, manifest).await?;
+    let generation = store.begin_generation(source).await?;
+    for item in manifest {
+        store
+            .record_manifest_item(&source.source_id, generation, item.clone())
+            .await?;
+    }
+    for item_key in diff.removed {
+        let selector = serde_json::json!({
+            "kind": "git_file",
+            "source_id": source.source_id.as_str(),
+            "source_kind": source.source_kind.as_str(),
+            "generation": generation,
+            "clone_url": target.clone_url.as_str(),
+            "host": target.host.as_str(),
+            "repo": target.name.as_str(),
+            "reference": reference,
+            "refreshable": git_ref_schedules_refresh(reference),
+            "item_key": item_key.as_str(),
+        });
+        store
+            .record_cleanup_debt(
+                &source.source_id,
+                generation,
+                &item_key,
+                &selector.to_string(),
+            )
+            .await?;
+    }
+    store
+        .commit_generation(&source.source_id, generation)
+        .await?;
+    Ok(generation)
 }
 
 pub(crate) async fn file_docs(

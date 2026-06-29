@@ -81,6 +81,55 @@ fn rejects_non_https_generic_git_target() {
 }
 
 #[tokio::test]
+async fn git_branch_remove_creates_cleanup_debt_without_qdrant_scroll() {
+    let pool = open_source_ledger_pool(":memory:").await.unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let cfg = Config::default();
+    let target = GenericGitTarget {
+        host: "example.com".into(),
+        name: "repo".into(),
+        clone_url: "https://example.com/org/repo.git".into(),
+        web_url: "https://example.com/org/repo".into(),
+    };
+    let source = git_source_identity(&cfg, &target, "main");
+
+    store.ensure_source(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            &source.source_id,
+            1,
+            ManifestItem::new("src/removed.rs", "old-hash", 20),
+        )
+        .await
+        .unwrap();
+    store.commit_generation(&source.source_id, 1).await.unwrap();
+
+    let generation = commit_git_manifest_with_store(
+        &store,
+        &source,
+        &target,
+        "main",
+        &[ManifestItem::new("src/lib.rs", "new-hash", 30)],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(generation, 2);
+    assert_eq!(
+        store.cleanup_debt_count(&source.source_id).await.unwrap(),
+        1
+    );
+}
+
+#[test]
+fn immutable_commit_sha_does_not_schedule_refresh() {
+    assert!(!git_ref_schedules_refresh(
+        "0123456789abcdef0123456789abcdef01234567"
+    ));
+    assert!(git_ref_schedules_refresh("main"));
+}
+
+#[tokio::test]
 async fn file_docs_returns_empty_for_whitespace_only_file() {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
