@@ -47,6 +47,7 @@ function renderBar(overrides: Partial<Parameters<typeof PaletteCommandBar>[0]> =
     onReset: vi.fn(),
     onSubmit: vi.fn(),
     onSwitchAction: vi.fn(),
+    onSwitcherOpenChange: vi.fn(),
     onToggleMaximize: vi.fn(),
     onToggleSettings: vi.fn(),
     ...overrides,
@@ -106,10 +107,11 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
   it("opens to plain Tab-focusable buttons and switches action on click", async () => {
     const user = userEvent.setup();
     const onSwitchAction = vi.fn();
-    renderBar({ modeAction: scrape, onSwitchAction });
+    const { props } = renderBar({ modeAction: scrape, onSwitchAction });
 
     await user.click(screen.getByRole("button", { name: /Switch from/ }));
     expect(screen.getByRole("button", { name: /Switch from/ })).toHaveAttribute("aria-expanded", "true");
+    expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(true);
 
     const askButton = screen
       .getAllByRole("button")
@@ -118,6 +120,7 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     await user.click(askButton);
     expect(onSwitchAction).toHaveBeenCalledTimes(1);
     expect(onSwitchAction.mock.calls[0][0].subcommand).toBe("ask");
+    expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(false);
   });
 
   it("uses sentence casing for action descriptors", async () => {

@@ -68,6 +68,7 @@ interface PaletteShellProps {
   onRunAction: (subcommand: string, argument: string) => void;
   onSaveSettings: () => void;
   onSubmitAction: (action: PaletteAction) => void;
+  onSwitcherOpenChange: (open: boolean) => void;
   onToggleLivePause: () => void;
   onToggleMaximize: () => void;
   onTogglePin: () => void;
@@ -135,6 +136,7 @@ export function PaletteShell(props: PaletteShellProps) {
         onReset={props.onReset}
         onSubmit={props.onSubmitAction}
         onSwitchAction={props.switchActionMode}
+        onSwitcherOpenChange={props.onSwitcherOpenChange}
         onToggleMaximize={props.onToggleMaximize}
         onToggleSettings={props.onToggleSettings}
       />

@@ -67,6 +67,7 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingActionConfirmation | null>(null);
+  const [actionSwitcherOpen, setActionSwitcherOpen] = useState(false);
 
   const modeAction = modeOf(view);
   const settingsOpen = isSettingsOpen(view);
@@ -154,6 +155,7 @@ export default function App() {
   const outputFocusRef = useFocusReturn<HTMLDivElement>(showOutput && !settingsOpen && !historyOpen);
 
   useWindowChrome({
+    actionSwitcherOpen,
     jobExpanded,
     jobMinimized,
     settingsOpen,
@@ -431,7 +433,7 @@ export default function App() {
     onOpenJob, onReset, onRetry, onRunAction, onSaveSettings: () => {
       setPendingConfirmation(null);
       void saveSettings();
-    }, onSubmitAction,
+    }, onSubmitAction, onSwitcherOpenChange: setActionSwitcherOpen,
     onToggleLivePause: () => setLivePaused((paused) => !paused), onToggleMaximize, onTogglePin,
     onToggleSettings, outputFocusRef, outputKind, parsed, pinned: currentTarget ? pinnedTargets.has(currentTarget) : false,
     query, requestSubmit, run, selected, setDraftConfig, setHistory, setQuery, setRun, setSelected,
