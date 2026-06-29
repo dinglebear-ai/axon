@@ -743,6 +743,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "axon-source-ledger"
+version = "6.1.5"
+dependencies = [
+ "anyhow",
+ "axon-jobs",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
 name = "axon-vector"
 version = "6.1.5"
 dependencies = [

@@ -1,5 +1,5 @@
 [workspace]
-members = ["xtask", "crates/axon-authz", "crates/axon-api", "crates/axon-core", "crates/axon-crawl", "crates/axon-vector", "crates/axon-ingest", "crates/axon-extract", "crates/axon-jobs", "crates/axon-code-index", "crates/axon-services", "crates/axon-mcp", "crates/axon-web", "crates/axon-cli"]
+members = ["xtask", "crates/axon-authz", "crates/axon-api", "crates/axon-core", "crates/axon-crawl", "crates/axon-vector", "crates/axon-ingest", "crates/axon-extract", "crates/axon-jobs", "crates/axon-source-ledger", "crates/axon-code-index", "crates/axon-services", "crates/axon-mcp", "crates/axon-web", "crates/axon-cli"]
 # apps/palette-tauri/src-tauri declares its own `[workspace]`, so it builds as a
 # standalone workspace and is not a member here.
 resolver = "2"
