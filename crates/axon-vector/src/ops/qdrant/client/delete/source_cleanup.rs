@@ -50,7 +50,7 @@ impl CleanupSelectorV1 {
                 {"key": "source_id", "match": {"value": self.source_id}},
                 {"key": "source_index_version", "match": {"value": self.source_index_version}},
                 {"key": "source_generation", "match": {"value": self.source_generation}},
-                {"key": "source_item_key", "match": {"value": self.item_key}}
+                {"key": "source_item_key", "match": {"any": [self.item_key.clone()]}}
             ]
         })
     }
