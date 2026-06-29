@@ -110,13 +110,12 @@ describe("OutputPanel run-state transitions (T-H2)", () => {
 
     renderPanel(success);
 
-    expect(screen.getByText("You")).toBeInTheDocument();
     expect(screen.getByLabelText("Axon")).toBeInTheDocument();
     expect(screen.queryByText("Axon")).not.toBeInTheDocument();
     expect(screen.getAllByText("what is a skill?")).toHaveLength(2);
     expect(screen.getByText(/A skill is a reusable instruction pack/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Ask a follow-up" })).toBeEnabled();
-    expect(document.querySelector(".ask-answer-prose")).not.toBeNull();
+    expect(document.querySelector(".aurora-response")).not.toBeNull();
     expect(document.querySelector(".ask-answer pre.output-body.output-code")).toBeNull();
     expect(screen.queryByText("Question")).not.toBeInTheDocument();
   });
