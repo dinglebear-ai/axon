@@ -50,12 +50,15 @@ fn embed_accepts_watch_flag() {
 }
 
 #[test]
+fn embed_accepts_no_watch_flag() {
+    let result = Cli::try_parse_from(["axon", "embed", "/tmp/project", "--no-watch"]);
+    assert!(result.is_ok(), "embed --no-watch should parse: {result:?}");
+}
+
+#[test]
 fn code_search_watch_returns_tombstone_error() {
     let err = Cli::try_parse_from(["axon", "code-search-watch"]).unwrap_err();
-    assert!(
-        err.to_string().contains("use `axon embed <path> --watch`"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("use `axon embed <path>`"), "{err}");
 }
 
 #[test]

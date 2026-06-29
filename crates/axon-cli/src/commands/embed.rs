@@ -141,7 +141,9 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         // Local-path embeds therefore always run in-process here; only URL /
         // free-text inputs go through the shared queue when --wait is false.
         let input_is_local_path = Path::new(&input).exists();
-        if cfg.embed_watch {
+        let effective_embed_watch =
+            embed_should_watch(cfg.embed_watch, cfg.embed_no_watch, Path::new(&input));
+        if effective_embed_watch {
             validate_embed_watch_input(&input, input_is_local_path)?;
         }
         if !cfg.wait && !input_is_local_path {
@@ -152,21 +154,21 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
             return result;
         }
         if !cfg.wait && input_is_local_path {
-            let reason = if cfg.embed_watch {
+            let reason = if effective_embed_watch {
                 "local_path_watch_runs_in_process"
             } else {
                 "local_path_runs_in_process"
             };
             log_info(&format!("command=embed {reason}"));
         }
-        if cfg.embed_watch && !cfg.json_output {
+        if effective_embed_watch && !cfg.json_output {
             println!(
                 "  {}",
                 muted("Watching local code indexing refresh in the foreground.")
             );
         }
-        if cfg.embed_watch {
-            let input_path = PathBuf::from(&input);
+        if effective_embed_watch {
+            let input_path = watch_root_for_embed_input(Path::new(&input));
             let initial_refresh = is_watchable_code_dir(&input_path);
             let mut watch_cfg = cfg.clone();
             watch_cfg.code_search_watch = Some(CodeSearchWatchConfig {
@@ -229,6 +231,25 @@ fn is_watchable_code_dir(path: &Path) -> bool {
     path.is_dir()
 }
 
+fn embed_should_watch(explicit_watch: bool, no_watch: bool, input: &Path) -> bool {
+    !no_watch && (explicit_watch || input.exists())
+}
+
+fn watch_root_for_embed_input(input: &Path) -> PathBuf {
+    let start = if input.is_file() {
+        input.parent().unwrap_or(input)
+    } else {
+        input
+    };
+    nearest_git_root(start).unwrap_or_else(|| start.to_path_buf())
+}
+
+fn nearest_git_root(path: &Path) -> Option<PathBuf> {
+    path.ancestors()
+        .find(|ancestor| ancestor.join(".git").exists())
+        .map(Path::to_path_buf)
+}
+
 fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>> {
     let id = cfg
         .positional
@@ -238,11 +259,11 @@ fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>
 }
 
 fn validate_embed_watch_input(
-    input: &str,
+    _input: &str,
     input_is_local_path: bool,
 ) -> Result<(), Box<dyn Error>> {
-    if !input_is_local_path || !Path::new(input).is_dir() {
-        return Err("embed --watch requires a local Git checkout or workspace directory".into());
+    if !input_is_local_path {
+        return Err("embed watch mode requires a local file or directory".into());
     }
     Ok(())
 }
@@ -346,22 +367,24 @@ async fn enqueue_embed_job(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_watchable_code_dir, validate_embed_watch_input};
+    use super::{
+        embed_should_watch, is_watchable_code_dir, validate_embed_watch_input,
+        watch_root_for_embed_input,
+    };
 
     #[test]
     fn embed_watch_rejects_non_local_inputs() {
         let err = validate_embed_watch_input("https://example.com/repo", false).unwrap_err();
 
-        assert!(err.to_string().contains("Git checkout or workspace"));
+        assert!(err.to_string().contains("local file or directory"));
     }
 
     #[test]
-    fn embed_watch_rejects_files() -> Result<(), Box<dyn std::error::Error>> {
+    fn embed_watch_accepts_files() -> Result<(), Box<dyn std::error::Error>> {
         let file = tempfile::NamedTempFile::new()?;
         let path = file.path().to_string_lossy();
-        let err = validate_embed_watch_input(&path, true).unwrap_err();
 
-        assert!(err.to_string().contains("Git checkout or workspace"));
+        validate_embed_watch_input(&path, true)?;
         Ok(())
     }
 
@@ -383,6 +406,37 @@ mod tests {
 
         assert!(is_watchable_code_dir(checkout.path()));
         assert!(is_watchable_code_dir(workspace.path()));
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watches_local_directories_by_default() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+
+        assert!(embed_should_watch(false, false, dir.path()));
+        assert!(!embed_should_watch(false, true, dir.path()));
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watches_local_files_by_default() -> Result<(), Box<dyn std::error::Error>> {
+        let file = tempfile::NamedTempFile::new()?;
+
+        assert!(embed_should_watch(false, false, file.path()));
+        assert!(!embed_should_watch(false, true, file.path()));
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watch_roots_file_inputs_at_nearest_git_checkout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let repo = tempfile::TempDir::new()?;
+        std::fs::create_dir(repo.path().join(".git"))?;
+        std::fs::create_dir_all(repo.path().join("src"))?;
+        let file = repo.path().join("src/lib.rs");
+        std::fs::write(&file, "fn main() {}\n")?;
+
+        assert_eq!(watch_root_for_embed_input(&file), repo.path());
         Ok(())
     }
 }
