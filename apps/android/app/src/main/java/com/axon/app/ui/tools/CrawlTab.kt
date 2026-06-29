@@ -21,12 +21,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.axon.app.ui.common.ErrorContent
+import com.axon.app.ui.common.JobIdChip
 import com.axon.app.ui.common.LoadingContent
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraButtonVariant
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
-import tv.tootie.aurora.components.AuroraKbd
 import tv.tootie.aurora.components.AuroraSeparator
 import tv.tootie.aurora.components.AuroraStatusIndicator
 import tv.tootie.aurora.components.AuroraStatusTone
@@ -99,7 +99,7 @@ fun CrawlTab(vm: ToolsViewModel) {
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        AuroraKbd(key = s.jobId, contentDescription = "Job ID ${s.jobId}")
+                        JobIdChip(s.jobId)
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -136,7 +136,7 @@ fun CrawlTab(vm: ToolsViewModel) {
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        AuroraKbd(key = s.jobId, contentDescription = "Job ID ${s.jobId}")
+                        JobIdChip(s.jobId)
                         s.pagesCrawled?.let { pages ->
                             Text(
                                 "Pages crawled: $pages",
