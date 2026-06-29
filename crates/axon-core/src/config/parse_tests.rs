@@ -59,6 +59,22 @@ fn parse_embed_watch_sets_embed_watch_mode() {
     assert_eq!(cfg.positional, vec!["/workspace".to_string()]);
 }
 
+#[test]
+fn help_mentions_embed_watch_not_code_search_watch() {
+    let mut command = super::build_cli_command();
+    let top_help = command.render_long_help().to_string();
+    let embed_help = command
+        .find_subcommand_mut("embed")
+        .expect("embed subcommand")
+        .render_long_help()
+        .to_string();
+    let help = format!("{top_help}\n{embed_help}");
+
+    assert!(help.contains("embed"));
+    assert!(help.contains("--watch"));
+    assert!(!help.contains("code-search-watch"));
+}
+
 #[allow(unsafe_code)]
 #[test]
 fn parse_scrape_fresh_sets_freshness_intent() {
