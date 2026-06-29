@@ -212,13 +212,37 @@ private fun injectionNarrative(item: ChatItem.Injection) = buildAnnotatedString 
 }
 
 private fun ChatItem.Injection.isIndexedEvent(): Boolean =
-    pageCount != null && !status.contains("fail", ignoreCase = true) && !status.contains("error", ignoreCase = true)
+    pageCount != null && isFinalSuccessfulStatus(status)
+
+internal fun isFinalSuccessfulStatus(status: String): Boolean {
+    val normalized = status.trim().lowercase()
+    if (normalized.isBlank() || isFailedStatus(normalized)) return false
+    if (
+        normalized.contains("accepted") ||
+        normalized.contains("pending") ||
+        normalized.contains("queued") ||
+        normalized.contains("running")
+    ) {
+        return false
+    }
+    val code = normalized.takeWhile { it.isDigit() }.toIntOrNull()
+    if (code != null) return code in 200..299 && code != 202
+    return normalized.contains("complete") ||
+        normalized.contains("completed") ||
+        normalized.contains("done") ||
+        normalized.contains("indexed")
+}
+
+internal fun isFailedStatus(status: String): Boolean {
+    val normalized = status.trim().lowercase()
+    return normalized.contains("fail") || normalized.contains("error")
+}
 
 @Composable
 private fun AsyncProgressStrip(item: ChatItem.Injection) {
     val colors = AxonTheme.colors
-    val complete = item.status.contains("complete", ignoreCase = true) || item.status.startsWith("2")
-    val failed = item.status.contains("fail", ignoreCase = true) || item.status.contains("error", ignoreCase = true)
+    val complete = isFinalSuccessfulStatus(item.status)
+    val failed = isFailedStatus(item.status)
     val progress = when {
         failed -> 1f
         complete -> 1f
@@ -262,8 +286,8 @@ private fun AsyncProgressStrip(item: ChatItem.Injection) {
 @Composable
 private fun JobStatusPill(status: String) {
     val colors = AxonTheme.colors
-    val isDone = status.contains("complete", ignoreCase = true) || status.startsWith("2")
-    val isFailed = status.contains("fail", ignoreCase = true) || status.contains("error", ignoreCase = true)
+    val isDone = isFinalSuccessfulStatus(status)
+    val isFailed = isFailedStatus(status)
     val tintColor = when {
         isFailed -> colors.error
         isDone -> colors.success
