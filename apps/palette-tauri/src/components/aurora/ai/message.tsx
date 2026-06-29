@@ -58,7 +58,6 @@ const MessageContent = React.forwardRef<HTMLDivElement, MessageContentProps>(
       {...props}
     >
       {children}
-      {streaming ? <span className="aurora-message-caret" aria-hidden="true" /> : null}
     </div>
   ),
 );
