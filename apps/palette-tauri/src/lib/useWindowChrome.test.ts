@@ -10,6 +10,7 @@ describe("resolvePaletteWindowSize", () => {
     expect(
       resolvePaletteWindowSize(
         {
+          actionSwitcherOpen: false,
           jobExpanded: true,
           jobMinimized: false,
           settingsOpen: false,
@@ -22,6 +23,25 @@ describe("resolvePaletteWindowSize", () => {
         () => 468,
       ),
     ).toEqual({ width: 1280, height: 470 });
+  });
+
+  it("grows the compact launcher while the action switcher is open", () => {
+    expect(
+      resolvePaletteWindowSize(
+        {
+          actionSwitcherOpen: true,
+          jobExpanded: false,
+          jobMinimized: false,
+          settingsOpen: false,
+          historyOpen: false,
+          showResultsLayout: false,
+          showContent: false,
+          filteredLength: 0,
+        },
+        { width: 2560, height: 1440 },
+        () => 468,
+      ),
+    ).toEqual({ width: 720, height: 480 });
   });
 
 });

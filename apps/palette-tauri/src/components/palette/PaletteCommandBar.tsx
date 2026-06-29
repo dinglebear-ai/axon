@@ -33,6 +33,7 @@ interface PaletteCommandBarProps {
   onReset: () => void;
   onSubmit: (action: PaletteAction) => void;
   onSwitchAction: (action: PaletteAction) => void;
+  onSwitcherOpenChange: (open: boolean) => void;
   onToggleMaximize: () => void;
   onToggleSettings: () => void;
 }
@@ -77,6 +78,7 @@ export function PaletteCommandBar({
   onReset,
   onSubmit,
   onSwitchAction,
+  onSwitcherOpenChange,
   onToggleMaximize,
   onToggleSettings,
 }: PaletteCommandBarProps) {
@@ -121,6 +123,10 @@ export function PaletteCommandBar({
     setSwitcherOpen(false);
     setMenuOpen(false);
   }, []);
+
+  useEffect(() => {
+    onSwitcherOpenChange(switcherOpen);
+  }, [onSwitcherOpenChange, switcherOpen]);
 
   // A11Y-M2 — surface submit validation as text tied to the input via
   // aria-describedby (not just a `title` tooltip). The id is referenced only when
