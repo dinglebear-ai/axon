@@ -2,6 +2,8 @@ package com.axon.app.ui.settings
 
 import app.cash.turbine.test
 import com.axon.app.data.auth.AuthMode
+import com.axon.app.data.auth.authModeFromWireValue
+import com.axon.app.data.repository.AxonSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,7 +93,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `setDraftAuthMode does not persist oauth before successful sign in`() = runTest(dispatcher) {
-        val vm = TestSettingsViewModel()
+        val vm = TestSettingsViewModel(initialPersistedAuthMode = AuthMode.Bearer)
 
         vm.setDraftAuthMode(AuthMode.OAuth)
 
@@ -100,13 +102,13 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `cancelOAuthSignIn shows failure and keeps bearer mode`() = runTest(dispatcher) {
+    fun `cancelOAuthSignIn shows failure and keeps oauth-first draft mode`() = runTest(dispatcher) {
         val vm = TestSettingsViewModel()
 
         vm.cancelOAuthSignIn()
 
         assertTrue(vm.saveState.value is SaveState.Failed)
-        assertEquals(AuthMode.Bearer, vm.draftAuthMode.value)
+        assertEquals(AuthMode.OAuth, vm.draftAuthMode.value)
     }
 
     @Test
@@ -118,11 +120,21 @@ class SettingsViewModelTest {
 
         assertTrue(vm.saveState.value is SaveState.Failed)
         assertEquals(AuthMode.OAuth, vm.draftAuthMode.value)
-        assertEquals(AuthMode.Bearer, vm.persistedAuthMode.value)
+        assertEquals(AuthMode.OAuth, vm.persistedAuthMode.value)
     }
 }
 
 class SettingsSecurityHelpersTest {
+    @Test fun `new settings default to oauth auth mode`() {
+        assertEquals(AuthMode.OAuth, AxonSettings().authMode)
+    }
+
+    @Test fun `missing persisted auth mode decodes to oauth for first run`() {
+        assertEquals(AuthMode.OAuth, authModeFromWireValue(null))
+        assertEquals(AuthMode.OAuth, authModeFromWireValue(""))
+        assertEquals(AuthMode.Bearer, authModeFromWireValue("bearer"))
+    }
+
     @Test fun `validateServerUrl rejects cleartext outside tailnet allowlist`() {
         val result = runCatching { validateAxonServerUrl("http://axon.example.com") }
         assertTrue(result.isFailure)
@@ -192,6 +204,7 @@ private class TestSettingsViewModel(
     private val saveResult: Result<Unit> = Result.success(Unit),
     private val pingResult: Result<Unit> = Result.success(Unit),
     private val oauthClearResult: Boolean = true,
+    initialPersistedAuthMode: AuthMode = AuthMode.OAuth,
 ) {
     private val _saveState = MutableStateFlow<SaveState>(SaveState.Idle)
     val saveState = _saveState.asStateFlow()
@@ -199,10 +212,10 @@ private class TestSettingsViewModel(
     private val _connection = MutableStateFlow<TestConnectionState>(TestConnectionState.Idle)
     val connection = _connection.asStateFlow()
 
-    private val _draftAuthMode = MutableStateFlow(AuthMode.Bearer)
+    private val _draftAuthMode = MutableStateFlow(initialPersistedAuthMode)
     val draftAuthMode = _draftAuthMode.asStateFlow()
 
-    private val _persistedAuthMode = MutableStateFlow(AuthMode.Bearer)
+    private val _persistedAuthMode = MutableStateFlow(initialPersistedAuthMode)
     val persistedAuthMode = _persistedAuthMode.asStateFlow()
 
     fun setDraftAuthMode(mode: AuthMode) {

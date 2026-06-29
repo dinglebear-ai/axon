@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Polish mobile Ask, FAB, Jobs, Sessions, Settings, and status recovery surfaces with clearer hierarchy, actions, and elevation.
 - Share compact Android action button styling across settings and status recovery controls.
+- Make OAuth the recommended Android setup flow so first-run users can enter a server URL, complete browser sign-in, and stay logged in.
 
 ### Fixed
 

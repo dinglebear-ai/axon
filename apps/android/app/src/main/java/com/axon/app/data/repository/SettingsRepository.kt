@@ -49,7 +49,7 @@ data class AxonSettings(
     val serverUrl: ServerUrl = ServerUrl(DEFAULT_SERVER_URL),
     val token: ApiToken = ApiToken(""),
     val collection: String = DEFAULT_COLLECTION,
-    val authMode: AuthMode = AuthMode.Bearer,
+    val authMode: AuthMode = AuthMode.OAuth,
 )
 
 /**
