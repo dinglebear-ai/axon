@@ -2552,29 +2552,47 @@ textarea {
   display: flex;
   max-width: min(720px, 88%);
   flex-direction: column;
-  gap: 4px;
-  padding: 2px 0 1px;
+  gap: 0;
+  padding: 2px 0 5px 2px;
 }
 
 .ask-activity-row {
-  display: inline-grid;
-  grid-template-columns: 16px minmax(0, 1fr);
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: start;
-  gap: 7px;
-  width: fit-content;
+  gap: 9px;
+  width: min(520px, 100%);
   max-width: 100%;
-  padding: 4px 8px;
+  padding: 3px 0 5px;
   color: var(--aurora-text-muted);
-  background: color-mix(in srgb, var(--aurora-panel-medium) 58%, transparent);
-  border: 1px solid color-mix(in srgb, var(--aurora-border-default) 54%, transparent);
-  border-radius: 8px;
   font-size: 11px;
   line-height: 1.35;
 }
 
+.ask-activity-row::before {
+  position: absolute;
+  top: 17px;
+  bottom: -3px;
+  left: 7px;
+  width: 1px;
+  background: color-mix(in srgb, var(--aurora-border-default) 64%, transparent);
+  content: "";
+}
+
+.ask-activity-row:last-child::before {
+  display: none;
+}
+
 .ask-activity-row svg {
+  position: relative;
+  z-index: 1;
   margin-top: 1px;
+  padding: 2px;
   color: var(--aurora-accent-pink-strong);
+  background: color-mix(in srgb, var(--aurora-panel-medium) 88%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 22%, var(--aurora-border-default));
+  border-radius: 999px;
 }
 
 .ask-activity-tool svg {
@@ -2589,14 +2607,14 @@ textarea {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
 }
 
 .ask-activity-row strong {
   overflow: hidden;
-  color: var(--aurora-text-primary);
+  color: color-mix(in srgb, var(--aurora-text-primary) 88%, var(--aurora-text-muted));
   font-size: 11px;
-  font-weight: 680;
+  font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2607,6 +2625,10 @@ textarea {
   font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ask-activity-row:not(:has(small)) {
+  width: fit-content;
 }
 
 .ask-sources {
