@@ -32,7 +32,7 @@ type BrowseHeight = () => number;
 // in src-tauri/src/lib.rs — COMPACT = 680×52 bar + 20px inset all round; TRAY =
 // 680×100 panel (52px command bar + 48px idle tray) + 20px inset all round.
 const COMPACT = { width: 720, height: 92 }; // launcher input only
-const COMPACT_SWITCHER = { width: 720, height: 480 }; // launcher + action switcher disclosure
+const COMPACT_SWITCHER = { width: 720, height: 480 }; // launcher + compact command overlays
 const TRAY = { width: 720, height: 140 }; // minimized crawl-job tray
 const SETTINGS = { width: 800, height: 560 };
 const HISTORY = { width: 760, height: 520 };

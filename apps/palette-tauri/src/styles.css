@@ -2471,10 +2471,40 @@ textarea {
 .ask-compose {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 12px;
   margin: 0 16px 16px;
-  padding: 8px 8px 8px 13px;
-  background: color-mix(in srgb, var(--aurora-page-bg) 70%, transparent);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.ask-attach {
+  display: inline-flex;
+  width: 36px;
+  height: 54px;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  color: var(--aurora-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+}
+
+.ask-attach:hover:not(:disabled) {
+  color: var(--aurora-accent-strong);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 7%, transparent);
+}
+
+.ask-compose-input {
+  display: flex;
+  min-width: 0;
+  min-height: 54px;
+  flex: 1;
+  align-items: center;
+  padding: 0 18px;
+  background: color-mix(in srgb, var(--aurora-page-bg) 72%, transparent);
   border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 46%, transparent);
   border-radius: 12px;
 }
@@ -2494,8 +2524,9 @@ textarea {
 }
 
 .ask-compose .command-submit {
-  --ctl: 38px;
+  --ctl: 54px;
   --r-ctl: 10px;
+  flex: 0 0 var(--ctl);
 }
 
 .panel-heading {

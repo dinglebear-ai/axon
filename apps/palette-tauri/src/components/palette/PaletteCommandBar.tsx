@@ -125,8 +125,8 @@ export function PaletteCommandBar({
   }, []);
 
   useEffect(() => {
-    onSwitcherOpenChange(switcherOpen);
-  }, [onSwitcherOpenChange, switcherOpen]);
+    onSwitcherOpenChange(switcherOpen || menuOpen);
+  }, [menuOpen, onSwitcherOpenChange, switcherOpen]);
 
   // A11Y-M2 — surface submit validation as text tied to the input via
   // aria-describedby (not just a `title` tooltip). The id is referenced only when
