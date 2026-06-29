@@ -1,6 +1,9 @@
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SourceKind {
     LocalCode,
     Crawl,

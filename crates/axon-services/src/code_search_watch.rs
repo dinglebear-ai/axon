@@ -135,19 +135,22 @@ fn queue_dirty_roots(
     dirty: &mut BTreeMap<PathBuf, DirtyRoot>,
 ) {
     for root in code_search_watch_dirty_roots(roots, event, overflow_rescan) {
-        let entry = dirty.entry(root.clone()).or_insert_with(|| DirtyRoot {
-            since: Instant::now(),
-            paths: 0,
-        });
-        entry.since = Instant::now();
-        entry.paths = entry.paths.saturating_add(1);
-        if entry.paths == 1 || entry.paths.is_multiple_of(100) {
-            events.emit(CodeSearchWatchEvent::Pending {
-                root,
-                paths: entry.paths,
-            });
+        let paths = mark_dirty_root(dirty, root.clone(), Instant::now());
+        if paths == 1 || paths.is_multiple_of(100) {
+            events.emit(CodeSearchWatchEvent::Pending { root, paths });
         }
     }
+}
+
+fn mark_dirty_root(
+    dirty: &mut BTreeMap<PathBuf, DirtyRoot>,
+    root: PathBuf,
+    since: Instant,
+) -> usize {
+    let entry = dirty.entry(root).or_insert(DirtyRoot { since, paths: 0 });
+    entry.since = since;
+    entry.paths = entry.paths.saturating_add(1);
+    entry.paths
 }
 
 async fn refresh_due_roots(
@@ -167,16 +170,20 @@ async fn refresh_due_roots(
             });
         }
     }
-    let due = dirty
-        .iter()
-        .filter_map(|(root, state)| {
-            (state.since.elapsed() >= refresh_delay).then_some(root.clone())
-        })
-        .collect::<Vec<_>>();
+    let due = due_dirty_roots(dirty, refresh_delay);
     for root in due {
         dirty.remove(&root);
         refresh_code_search_watch_root(ctx, events, &root, "file_change").await;
     }
+}
+
+fn due_dirty_roots(dirty: &BTreeMap<PathBuf, DirtyRoot>, refresh_delay: Duration) -> Vec<PathBuf> {
+    dirty
+        .iter()
+        .filter_map(|(root, state)| {
+            (state.since.elapsed() >= refresh_delay).then_some(root.clone())
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -249,5 +256,26 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watcher_event_storm_coalesces_to_one_refresh() {
+        let root = PathBuf::from("/workspace/repo");
+        let mut dirty = BTreeMap::new();
+        let old_enough = Instant::now() - Duration::from_secs(5);
+
+        for _ in 0..100 {
+            mark_dirty_root(&mut dirty, root.clone(), old_enough);
+        }
+
+        let refreshes_started = due_dirty_roots(&dirty, Duration::from_secs(1)).len();
+
+        assert_eq!(refreshes_started, 1);
+        assert_eq!(dirty.get(&root).map(|state| state.paths), Some(100));
     }
 }

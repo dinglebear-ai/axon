@@ -2,6 +2,7 @@ use super::*;
 use crate::runtime::ServiceJobRuntime;
 use async_trait::async_trait;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
+use axon_source_ledger::{SourceKind, SourcePhase, SourceStatus};
 use std::error::Error;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -23,6 +24,31 @@ fn status_payload_includes_expected_keys() {
             .map(Vec::len),
         Some(0)
     );
+}
+
+#[tokio::test]
+async fn source_status_redacts_headers_and_local_paths() {
+    let status = SourceStatus {
+        source_id: "local-code".to_string(),
+        source_kind: SourceKind::LocalCode,
+        phase: SourcePhase::BackingOff,
+        committed_generation: 7,
+        active_generation: Some(8),
+        backoff_until_ms: Some(123_456),
+        last_error: Some(
+            "Authorization: Bearer secret Cookie: sid=abc failed at /home/jmagar/private/repo"
+                .to_string(),
+        ),
+        cleanup_debt_count: 2,
+        updated_at_ms: 123_400,
+    };
+
+    let body = serde_json::to_string(&status).unwrap();
+
+    assert!(!body.contains("Authorization"));
+    assert!(!body.contains("Cookie"));
+    assert!(!body.contains("/home/"));
+    assert!(body.contains("[redacted]"));
 }
 
 struct CountFailRuntime;
